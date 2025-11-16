@@ -161,7 +161,7 @@ const Upscale = () => {
 	const sidebarStyle = useMemo(() => ({
 		width: '280px',
 		minWidth: '280px',
-		height: '100vh',
+		height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
 		display: 'flex',
 		flexDirection: 'column',
 		padding: '12px',
@@ -173,7 +173,7 @@ const Upscale = () => {
 
 	const previewAreaStyle = useMemo(() => ({
 		flex: 1,
-		height: '100vh',
+		height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
 		display: 'flex',
 		alignItems: 'center',
 		justifyContent: 'center',
@@ -1142,7 +1142,8 @@ const Upscale = () => {
 
 	return (
 		<Box sx={{ 
-			height: '100vh', 
+			height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
+			minHeight: '100%',
 			display: 'flex', 
 			overflow: 'hidden',
 			background: 'radial-gradient(1200px 700px at 30% -10%, color-mix(in srgb, var(--accent), transparent 90%), transparent 60%), radial-gradient(1000px 600px at 85% 10%, color-mix(in srgb, var(--accent-muted), transparent 92%), transparent 60%), linear-gradient(135deg, var(--surface-2) 0%, var(--bg) 100%)',

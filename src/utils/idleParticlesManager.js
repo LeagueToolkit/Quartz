@@ -209,10 +209,10 @@ export function extractParticleName(pyContent, vfxSystemName) {
  * Add or update idle particles effects in a character skin file
  * @param {string} pyContent - The Python file content
  * @param {string} vfxSystemName - Name of the VFX system to add as idle particle
- * @param {string} boneName - Bone name to attach the effect to
+ * @param {string|Array<{boneName: string}>} boneNameOrArray - Bone name or array of bone configs
  * @returns {string} - Updated Python content
  */
-export function addIdleParticleEffect(pyContent, vfxSystemName, boneName = 'head') {
+export function addIdleParticleEffect(pyContent, vfxSystemName, boneNameOrArray = 'head') {
   const lines = pyContent.split('\n');
   let updatedLines = [...lines];
 
@@ -288,24 +288,31 @@ export function addIdleParticleEffect(pyContent, vfxSystemName, boneName = 'head
     ? `effectKey: hash = ${particleName}`
     : `effectKey: hash = "${particleName}"`;
 
-  const newIdleEffect = `            SkinCharacterDataProperties_CharacterIdleEffect {
+  // Support both single bone and multiple bones
+  const boneConfigs = Array.isArray(boneNameOrArray) 
+    ? boneNameOrArray 
+    : [{ boneName: boneNameOrArray }];
+
+  const newIdleEffects = boneConfigs.map(config => 
+    `            SkinCharacterDataProperties_CharacterIdleEffect {
                 ${effectKeyLine}
-                boneName: string = "${boneName}"
-            }`;
+                boneName: string = "${config.boneName}"
+            }`
+  );
 
   if (idleParticlesStart !== -1) {
     // idleParticlesEffects already exists, add to it
-    devLog(`Adding idle particle effect to existing idleParticlesEffects`);
+    devLog(`Adding ${newIdleEffects.length} idle particle effect(s) to existing idleParticlesEffects`);
 
     // Insert before the closing bracket
-    updatedLines.splice(idleParticlesEnd, 0, newIdleEffect);
+    updatedLines.splice(idleParticlesEnd, 0, ...newIdleEffects);
   } else {
     // Create new idleParticlesEffects block
-    devLog(`Creating new idleParticlesEffects block`);
+    devLog(`Creating new idleParticlesEffects block with ${newIdleEffects.length} effect(s)`);
 
     const newIdleParticlesBlock = [
       `        idleParticlesEffects: list[embed] = {`,
-      newIdleEffect,
+      ...newIdleEffects,
       `        }`
     ];
 
@@ -388,7 +395,179 @@ export function hasIdleParticleEffect(pyContent, vfxSystemName) {
 }
 
 /**
+ * Remove all idle particle effects for a specific VFX system
+ * @param {string} pyContent - The Python file content
+ * @param {string} vfxSystemName - Name of the VFX system to remove idle particles from
+ * @returns {string} - Updated Python content
+ */
+export function removeAllIdleParticlesForSystem(pyContent, vfxSystemName) {
+  const particleName = extractParticleName(pyContent, vfxSystemName);
+  if (!particleName) return pyContent;
+
+  const lines = pyContent.split('\n');
+  const updatedLines = [];
+
+  // Locate SkinCharacterDataProperties block
+  let skinStart = -1;
+  let skinEnd = -1;
+  let depth = 0;
+  let inSkin = false;
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t.includes('= SkinCharacterDataProperties {')) { inSkin = true; skinStart = i; depth = 1; }
+    if (inSkin) {
+      const open = (lines[i].match(/\{/g) || []).length;
+      const close = (lines[i].match(/\}/g) || []).length;
+      depth += open - close;
+      if (depth === 0) { skinEnd = i; break; }
+    }
+  }
+  if (skinStart === -1) return pyContent;
+
+  // Find idleParticlesEffects block
+  let idleStart = -1;
+  let idleEnd = -1;
+  let idleDepth = 0;
+  let inIdle = false;
+  for (let i = skinStart; i < (skinEnd === -1 ? lines.length : skinEnd); i++) {
+    const t = lines[i].trim();
+    if (t.includes('idleParticlesEffects: list[embed] = {')) { inIdle = true; idleStart = i; idleDepth = 1; }
+    if (inIdle) {
+      const open = (lines[i].match(/\{/g) || []).length;
+      const close = (lines[i].match(/\}/g) || []).length;
+      idleDepth += open - close;
+      if (idleDepth === 0) { idleEnd = i; break; }
+    }
+  }
+  if (idleStart === -1) return pyContent;
+
+  // Scan and remove matching idle effect blocks
+  let i = 0;
+  while (i < lines.length) {
+    // Only process lines within the idleParticlesEffects block
+    if (i >= idleStart && i < idleEnd) {
+      if (lines[i].includes('SkinCharacterDataProperties_CharacterIdleEffect {')) {
+        let blockDepth = 1;
+        let effectKeyMatches = false;
+        const blockStart = i;
+        let blockEnd = i;
+        
+        for (let j = i + 1; j < idleEnd; j++) {
+          const l = lines[j];
+          const trimmed = l.trim();
+          const open = (l.match(/\{/g) || []).length;
+          const close = (l.match(/\}/g) || []).length;
+          blockDepth += open - close;
+          
+          if (/^effectKey:\s*hash\s*=/.test(trimmed)) {
+            const m = trimmed.match(/^effectKey:\s*hash\s*=\s*(?:"([^"]+)"|([^\s]+))/);
+            const val = m ? (m[1] || m[2]) : null;
+            if (val && (val === particleName || val.endsWith('/' + particleName))) {
+              effectKeyMatches = true;
+            }
+          }
+          
+          if (blockDepth <= 0) {
+            blockEnd = j;
+            break;
+          }
+        }
+        
+        // If this block matches, skip it (don't add to updatedLines)
+        if (effectKeyMatches) {
+          i = blockEnd + 1;
+          continue;
+        }
+      }
+    }
+    
+    updatedLines.push(lines[i]);
+    i++;
+  }
+
+  return updatedLines.join('\n');
+}
+
+/**
+ * Get all idle particle bones for a VFX system
+ * @returns {Array<string>} - Array of bone names
+ */
+export function getAllIdleParticleBones(pyContent, vfxSystemName) {
+  const particleName = extractParticleName(pyContent, vfxSystemName);
+  if (!particleName) return [];
+  const lines = pyContent.split('\n');
+  const bones = [];
+
+  // Locate SkinCharacterDataProperties block
+  let skinStart = -1;
+  let skinEnd = -1;
+  let depth = 0;
+  let inSkin = false;
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t.includes('= SkinCharacterDataProperties {')) { inSkin = true; skinStart = i; depth = 1; continue; }
+    if (inSkin) {
+      const open = (lines[i].match(/\{/g) || []).length;
+      const close = (lines[i].match(/\}/g) || []).length;
+      depth += open - close;
+      if (depth === 0) { skinEnd = i; break; }
+    }
+  }
+  if (skinStart === -1) return [];
+
+  // Find idleParticlesEffects block
+  let idleStart = -1;
+  let idleEnd = -1;
+  let idleDepth = 0;
+  let inIdle = false;
+  for (let i = skinStart; i < (skinEnd === -1 ? lines.length : skinEnd); i++) {
+    const t = lines[i].trim();
+    if (t.includes('idleParticlesEffects: list[embed] = {')) { inIdle = true; idleStart = i; idleDepth = 1; continue; }
+    if (inIdle) {
+      const open = (lines[i].match(/\{/g) || []).length;
+      const close = (lines[i].match(/\}/g) || []).length;
+      idleDepth += open - close;
+      if (idleDepth === 0) { idleEnd = i; break; }
+    }
+  }
+  if (idleStart === -1) return [];
+
+  // Scan entries for matching effectKey
+  for (let i = idleStart; i < (idleEnd === -1 ? lines.length : idleEnd); i++) {
+    if (lines[i].includes('SkinCharacterDataProperties_CharacterIdleEffect {')) {
+      let blockDepth = 1;
+      let effectKeyMatches = false;
+      let foundBone = null;
+      for (let j = i + 1; j < (idleEnd === -1 ? lines.length : idleEnd); j++) {
+        const l = lines[j];
+        const trimmed = l.trim();
+        const open = (l.match(/\{/g) || []).length;
+        const close = (l.match(/\}/g) || []).length;
+        blockDepth += open - close;
+        if (/^effectKey:\s*hash\s*=/.test(trimmed)) {
+          const m = trimmed.match(/^effectKey:\s*hash\s*=\s*(?:"([^"]+)"|([^\s]+))/);
+          const val = m ? (m[1] || m[2]) : null;
+          if (val && (val === particleName || val.endsWith('/' + particleName))) {
+            effectKeyMatches = true;
+          }
+        }
+        if (effectKeyMatches && trimmed.startsWith('boneName:')) {
+          const bm = trimmed.match(/boneName:\s*string\s*=\s*"([^"]+)"/);
+          if (bm) foundBone = bm[1];
+        }
+        if (blockDepth <= 0) {
+          if (effectKeyMatches && foundBone) bones.push(foundBone);
+          break;
+        }
+      }
+    }
+  }
+  return bones;
+}
+
+/**
  * Get the existing bone name for an idle particle effect, if present
+ * @deprecated Use getAllIdleParticleBones for multiple bones support
  */
 export function getIdleParticleBone(pyContent, vfxSystemName) {
   const particleName = extractParticleName(pyContent, vfxSystemName);
@@ -543,5 +722,7 @@ export default {
   hasIdleParticleEffect,
   extractParticleName,
   getIdleParticleBone,
-  updateIdleParticleBone
+  getAllIdleParticleBones,
+  updateIdleParticleBone,
+  removeAllIdleParticlesForSystem
 };

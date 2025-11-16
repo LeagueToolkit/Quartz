@@ -551,7 +551,8 @@ const UniversalFileRandomizer = () => {
 
   return (
     <Box sx={{ 
-      height: '100vh',
+      height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
+      minHeight: '100%',
       display: 'flex',
       flexDirection: 'column',
       background: 'linear-gradient(135deg, var(--bg-2) 0%, var(--bg) 100%)',

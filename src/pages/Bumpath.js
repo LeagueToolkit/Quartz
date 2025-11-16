@@ -789,7 +789,8 @@ const Bumpath = () => {
   return (
     <Box sx={{ 
       width: '100%',
-      height: '100vh',
+      height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
+      minHeight: '100%',
       overflow: 'hidden',
       background: 'linear-gradient(135deg, var(--bg-2) 0%, var(--bg) 100%)',
       color: 'var(--text)',

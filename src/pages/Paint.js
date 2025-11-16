@@ -19,10 +19,12 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Collapse,
+  Menu,
 } from '@mui/material';
 import { glassButton, glassButtonOutlined, glassPanel } from '../utils/glassStyles';
 import CropOriginalIcon from '@mui/icons-material/CropOriginal';
-import { Folder as FolderIcon } from '@mui/icons-material';
+import { Folder as FolderIcon, ChevronRight as ChevronRightIcon, ChevronLeft as ChevronLeftIcon, Tune as TuneIcon } from '@mui/icons-material';
 import './Paint.css';
 import GlowingSpinner from '../components/GlowingSpinner';
 import ColorHandler from '../utils/ColorHandler';
@@ -44,6 +46,7 @@ import { ToPy, ToPyWithPath, ToBin } from '../utils/fileOperations';
 import { loadFileWithBackup, createBackup } from '../utils/backupManager.js';
 import BackupViewer from '../components/BackupViewer';
 import { convertTextureToPNG } from '../utils/textureConverter.js';
+import { processDataURL } from '../utils/rgbaDataURL.js';
 import { loadEmitterData } from '../utils/vfxEmitterParser.js';
 import { extractVFXSystem } from '../utils/vfxSystemParser.js';
 import { savePalette, loadAllPalettes, deletePalette } from '../utils/paletteManager.js';
@@ -274,6 +277,7 @@ const Paint = () => {
   } = colorState;
   const [blendModeFilter, setBlendModeFilter] = useState(0);
   const [blendModeSlider, setBlendModeSlider] = useState(100);
+  const [blendModeExpanded, setBlendModeExpanded] = useState(Prefs?.obj?.BlendModeExpanded !== undefined ? Prefs.obj.BlendModeExpanded : true);
   const [targets, setTargets] = useState({
     oc: false,
     birthColor: true,
@@ -296,8 +300,7 @@ const Paint = () => {
     emitters: false,
     textures: false
   });
-  const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
-  const searchDropdownRef = useRef(null);
+  const [searchDropdownOpen, setSearchDropdownOpen] = useState(null);
   const searchButtonRef = useRef(null);
   const [filePath, setFilePath] = useState('');
   const [pyPath, setPyPath] = useState('');
@@ -508,6 +511,7 @@ const Paint = () => {
 
   // Palette management state
   const [showPaletteDropdown, setShowPaletteDropdown] = useState(false);
+  const [showOptionsDropdown, setShowOptionsDropdown] = useState(false);
   const [showPaletteModal, setShowPaletteModal] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [savedPalettesList, setSavedPalettesList] = useState([]);
@@ -732,11 +736,14 @@ const Paint = () => {
       if (showPaletteDropdown && !event.target.closest('.palette-dropdown-container')) {
         setShowPaletteDropdown(false);
       }
+      if (showOptionsDropdown && !event.target.closest('.options-dropdown-container')) {
+        setShowOptionsDropdown(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showPaletteDropdown]);
+  }, [showPaletteDropdown, showOptionsDropdown]);
 
   // Effect to handle debounced shades color changes (handled below in consolidated shades effect)
   // Removed duplicate/lightweight effect to avoid double generation and unintended overrides
@@ -1963,7 +1970,7 @@ const Paint = () => {
           <span>Texture Preview</span>
         </div>
         <div class="texture-hover-body">
-          <img src="${imageDataUrl}" alt="Texture preview" class="texture-hover-image" />
+          <img src="${processDataURL(imageDataUrl)}" alt="Texture preview" class="texture-hover-image" />
           <div class="texture-hover-path">${texturePath}</div>
         </div>
       </div>
@@ -2187,19 +2194,28 @@ const Paint = () => {
             const path = window.require('path');
             const projectRoot = path.dirname(activeFilePath);
 
-            const pngPath = await convertTextureToPNG(texturePath, activeFilePath, activeFilePath, projectRoot);
+            const result = await convertTextureToPNG(texturePath, activeFilePath, activeFilePath, projectRoot);
 
-            if (pngPath) {
-              const fs = window.require('fs');
+            if (result) {
+              let dataUrl;
+              
+              // Check if result is a data URL (new native format) or file path (old format)
+              if (result.startsWith('data:')) {
+                // Native format - already a data URL
+                dataUrl = result;
+              } else {
+                // Old format - file path, read it
+                const fs = window.require('fs');
+                
+                if (!fs.existsSync(result)) {
+                  showTextureError(texturePath, e.target);
+                  return;
+                }
 
-              if (!fs.existsSync(pngPath)) {
-                showTextureError(texturePath, e.target);
-                return;
+                const imageBuffer = fs.readFileSync(result);
+                const base64Image = imageBuffer.toString('base64');
+                dataUrl = `data:image/png;base64,${base64Image}`;
               }
-
-              const imageBuffer = fs.readFileSync(pngPath);
-              const base64Image = imageBuffer.toString('base64');
-              const dataUrl = `data:image/png;base64,${base64Image}`;
 
               // Show preview immediately after conversion
               const rect = e.target.getBoundingClientRect();
@@ -2244,7 +2260,7 @@ const Paint = () => {
                <div style="text-align: center; color: var(--accent-muted); font-family: 'JetBrains Mono', monospace; margin-bottom: 6px; font-size: 0.9rem;">
                   Texture Preview
                 </div>
-                <img src="${dataUrl}" style="width: 260px; height: 200px; object-fit: contain; display: block; border-radius: 4px;" />
+                <img src="${processDataURL(dataUrl)}" style="width: 260px; height: 200px; object-fit: contain; display: block; border-radius: 4px;" />
                <div style="margin-top: 8px; color: var(--accent-muted); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; word-break: break-all; opacity: 0.8;">
                   ${texturePath}
                 </div>
@@ -2966,7 +2982,7 @@ const Paint = () => {
           if (randomGradient) {
             // Match processing: limit to first N colors if gradient count set
             let available = Palette;
-            if (typeof randomGradientCount === 'number' && randomGradientCount > 0 && randomGradientCount < Palette.length) {
+            if (typeof randomGradientCount === 'number' && randomGradientCount > 0 && randomGradientCount !== -1 && randomGradientCount < Palette.length) {
               available = Palette.slice(0, randomGradientCount);
             }
             const idx = Math.floor(Math.random() * available.length);
@@ -4231,19 +4247,10 @@ const Paint = () => {
     }
   };
 
-  // Click outside handler for dropdown
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (searchDropdownRef.current && !searchDropdownRef.current.contains(event.target)) {
-        setSearchDropdownOpen(false);
-      }
-    };
-
-    if (searchDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [searchDropdownOpen]);
+  // Close dropdown when clicking outside
+  const handleCloseSearchDropdown = () => {
+    setSearchDropdownOpen(null);
+  };
 
   const handleSelectByBlendMode = () => {
     selectByBlendMode(blendModeFilter, blendModeSlider, particleListRef, setStatusMessage);
@@ -4847,7 +4854,8 @@ const Paint = () => {
   return (
     <Box 
       sx={{
-        height: '100vh',
+        height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
+        minHeight: '100%', // Ensure it fills the container
         width: '100%',
         overflow: 'hidden',
         display: 'flex',
@@ -5132,6 +5140,140 @@ const Paint = () => {
             '& .MuiSlider-rail': { background: 'var(--bg)' },
           }}
         />
+
+        {/* Random Gradient Count Selector - Visible when enabled */}
+        {randomGradient && (
+          <FormControl size="small" sx={{ minWidth: '120px', ml: 1 }}>
+            <Select
+              value={randomGradientCount}
+              onChange={(e) => setRandomGradientCount(e.target.value)}
+              sx={{
+                height: '32px',
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: '0.75rem',
+                color: 'var(--accent)',
+                '& .MuiSelect-select': { padding: '4px 8px' },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg)' },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--accent)' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--accent)' },
+              }}
+            >
+              <MenuItem value={2} sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem' }}>2 colors</MenuItem>
+              <MenuItem value={3} sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem' }}>3 colors</MenuItem>
+              <MenuItem value={4} sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem' }}>4 colors</MenuItem>
+              <MenuItem value={5} sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem' }}>5 colors</MenuItem>
+              <MenuItem value={-1} sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem' }}>All colors</MenuItem>
+            </Select>
+          </FormControl>
+        )}
+
+        {/* Options Dropdown Button - Ignore B/W, Color Filter, Random Gradient */}
+        <Box sx={{ position: 'relative', ml: 1 }} className="options-dropdown-container">
+          <Button
+            onClick={() => setShowOptionsDropdown(!showOptionsDropdown)}
+            variant="outlined"
+            size="small"
+            sx={{
+              ...glassButtonOutlined,
+              minWidth: '80px',
+              height: '28px',
+              fontSize: '0.75rem',
+              fontFamily: 'JetBrains Mono, monospace',
+              color: 'var(--accent)',
+              borderColor: 'var(--accent-muted)',
+              '&:hover': {
+                borderColor: 'var(--accent)',
+                background: 'color-mix(in srgb, var(--accent), transparent 90%)'
+              }
+            }}
+          >
+            Options ▼
+          </Button>
+
+          {/* Dropdown Menu */}
+          {showOptionsDropdown && (
+            <Box sx={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              mt: 0.5,
+              zIndex: 3000,
+              background: 'var(--surface-2)',
+              border: '1px solid var(--glass-border)',
+              borderRadius: '10px',
+              backdropFilter: 'saturate(220%) blur(18px)',
+              WebkitBackdropFilter: 'saturate(220%) blur(18px)',
+              boxShadow: '0 12px 28px rgba(0,0,0,0.5)',
+              p: 0.75,
+              minWidth: '180px'
+            }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={ignoreBW}
+                    onChange={(e) => {
+                      setIgnoreBW(e.target.checked);
+                      if (Prefs?.IgnoreBW) {
+                        Prefs.IgnoreBW(e.target.checked);
+                      }
+                    }}
+                    size="small"
+                    sx={{
+                      color: 'var(--accent2)',
+                      '&.Mui-checked': { color: 'var(--accent)' },
+                    }}
+                  />
+                }
+                label={
+                  <Typography sx={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem' }}>
+                    Ignore B/W
+                  </Typography>
+                }
+                sx={{ width: '100%', mb: 0.5 }}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={colorFilterEnabled}
+                    onChange={(e) => setColorFilterEnabled(e.target.checked)}
+                    size="small"
+                    sx={{
+                      color: 'var(--accent2)',
+                      '&.Mui-checked': { color: 'var(--accent)' },
+                    }}
+                  />
+                }
+                label={
+                  <Typography sx={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem' }}>
+                    Color Filter
+                  </Typography>
+                }
+                sx={{ width: '100%', mb: 0.5 }}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={randomGradient}
+                    onChange={(e) => {
+                      setRandomGradient(e.target.checked);
+                    }}
+                    size="small"
+                    sx={{
+                      color: 'var(--accent2)',
+                      '&.Mui-checked': { color: 'var(--accent)' },
+                    }}
+                  />
+                }
+                label={
+                  <Typography sx={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem' }}>
+                    Random Gradient
+                  </Typography>
+                }
+                sx={{ width: '100%' }}
+              />
+            </Box>
+          )}
+        </Box>
 
         {/* Palette Dropdown Button - Pushed to the right */}
         <Box sx={{ position: 'relative', ml: 1 }} className="palette-dropdown-container">
@@ -5482,195 +5624,178 @@ const Paint = () => {
         height: '36px',
         minHeight: '36px',
       }}>
-        <Typography sx={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.875rem', minWidth: '30px' }}>
-          BM:
-        </Typography>
-        <FormControl size="small" sx={{ minWidth: 60 }}>
-          <Select
-            value={blendModeFilter}
-            onChange={(e) => setBlendModeFilter(e.target.value)}
-            sx={{
-              color: 'var(--accent)',
-              height: '32px',
-              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg)' },
-            }}
-          >
-            <MenuItem value={0}>0</MenuItem>
-            <MenuItem value={1}>1</MenuItem>
-            <MenuItem value={2}>2</MenuItem>
-            <MenuItem value={3}>3</MenuItem>
-            <MenuItem value={4}>4</MenuItem>
-            <MenuItem value={5}>5</MenuItem>
-          </Select>
-        </FormControl>
-
-        <Button
-          variant="contained"
-          onClick={handleSelectByBlendMode}
+        {/* Expand/Collapse Button */}
+        <IconButton
           size="small"
+          onClick={() => {
+            const newState = !blendModeExpanded;
+            setBlendModeExpanded(newState);
+            if (Prefs?.obj) {
+              Prefs.obj.BlendModeExpanded = newState;
+              if (Prefs.Save) Prefs.Save();
+            }
+          }}
           sx={{
-            ...glassButton,
-            textTransform: 'none',
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '0.75rem',
-            height: '32px',
-            minWidth: '80px',
+            color: 'var(--accent2)',
+            padding: '4px',
+            minWidth: '24px',
+            width: '24px',
+            height: '24px',
+            '&:hover': { color: 'var(--accent)', backgroundColor: 'rgba(255,255,255,0.05)' }
           }}
         >
-          Select BM{blendModeFilter}
-        </Button>
+          {blendModeExpanded ? <ChevronLeftIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
+        </IconButton>
+        
+        {blendModeExpanded && (
+          <Typography sx={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.875rem', minWidth: '30px' }}>
+            BM:
+          </Typography>
+        )}
 
-        <Slider
-          value={blendModeSlider}
-          onChange={(e, value) => setBlendModeSlider(value)}
-          min={0}
-          max={100}
-          size="small"
-          sx={{
-            width: '100px',
-            '& .MuiSlider-track': { background: 'var(--accent)' },
-            '& .MuiSlider-thumb': { background: 'var(--accent)' },
-            '& .MuiSlider-rail': { background: 'var(--bg)' },
-          }}
-        />
+        {/* Collapsible BM Controls */}
         <Box sx={{
-          minWidth: '44px',
-          height: '24px',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--accent)',
-          fontFamily: 'JetBrains Mono, monospace',
-          fontSize: '0.75rem',
-          border: '1px solid var(--bg)',
-          borderRadius: '6px',
-          background: 'var(--bg)'
+          gap: 0.5,
+          overflow: 'hidden',
+          maxWidth: blendModeExpanded ? '1000px' : '0px',
+          transition: 'max-width 0.3s ease-in-out',
+          opacity: blendModeExpanded ? 1 : 0,
         }}>
-          {blendModeSlider}%
-        </Box>
-
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={ignoreBW}
-              onChange={(e) => {
-                setIgnoreBW(e.target.checked);
-                if (Prefs?.IgnoreBW) {
-                  Prefs.IgnoreBW(e.target.checked);
-                }
-              }}
-              size="small"
-              sx={{
-                color: 'var(--accent2)',
-                '&.Mui-checked': { color: 'var(--accent)' },
-              }}
-            />
-          }
-          label={
-            <Typography sx={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem' }}>
-              Ignore B/W
-            </Typography>
-          }
-        />
-
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={colorFilterEnabled}
-              onChange={(e) => setColorFilterEnabled(e.target.checked)}
-              sx={{
-                color: 'var(--accent)',
-                '&.Mui-checked': {
-                  color: 'var(--accent)',
-                },
-              }}
-            />
-          }
-          label={
-            <Typography sx={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem' }}>
-              Color Filter
-            </Typography>
-          }
-        />
-
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={randomGradient}
-              onChange={(e) => {
-                setRandomGradient(e.target.checked);
-              }}
-              size="small"
-              sx={{
-                color: 'var(--accent2)',
-                '&.Mui-checked': { color: 'var(--accent)' },
-              }}
-            />
-          }
-          label={
-            <Typography sx={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem' }}>
-              Random Gradient
-            </Typography>
-          }
-        />
-
-        {randomGradient && (
-          <FormControl size="small" sx={{ minWidth: '120px', ml: 1 }}>
+          <FormControl size="small" sx={{ minWidth: 60 }}>
             <Select
-              value={randomGradientCount}
-              onChange={(e) => setRandomGradientCount(e.target.value)}
+              value={blendModeFilter}
+              onChange={(e) => setBlendModeFilter(e.target.value)}
               sx={{
-                height: '32px',
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: '0.75rem',
                 color: 'var(--accent)',
-                '& .MuiSelect-select': { padding: '4px 8px' },
+                height: '32px',
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--bg)' },
-                '& .MuiSvgIcon-root': { color: 'var(--accent)' },
               }}
             >
-              <MenuItem value={2}>2 colors</MenuItem>
-              <MenuItem value={3}>3 colors</MenuItem>
-              <MenuItem value={4}>4 colors</MenuItem>
-              <MenuItem value={5}>5 colors</MenuItem>
-              <MenuItem value={-1}>All colors</MenuItem>
+              <MenuItem value={0}>0</MenuItem>
+              <MenuItem value={1}>1</MenuItem>
+              <MenuItem value={2}>2</MenuItem>
+              <MenuItem value={3}>3</MenuItem>
+              <MenuItem value={4}>4</MenuItem>
+              <MenuItem value={5}>5</MenuItem>
             </Select>
           </FormControl>
-        )}
+
+          <Button
+            variant="contained"
+            onClick={handleSelectByBlendMode}
+            size="small"
+            sx={{
+              ...glassButton,
+              textTransform: 'none',
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '0.75rem',
+              height: '32px',
+              minWidth: '80px',
+            }}
+          >
+            Select BM{blendModeFilter}
+          </Button>
+
+          <Slider
+            value={blendModeSlider}
+            onChange={(e, value) => setBlendModeSlider(value)}
+            min={0}
+            max={100}
+            size="small"
+            sx={{
+              width: '100px',
+              '& .MuiSlider-track': { background: 'var(--accent)' },
+              '& .MuiSlider-thumb': { background: 'var(--accent)' },
+              '& .MuiSlider-rail': { background: 'var(--bg)' },
+            }}
+          />
+          <Box sx={{
+            minWidth: '44px',
+            height: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--accent)',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '0.75rem',
+            border: '1px solid var(--bg)',
+            borderRadius: '6px',
+            background: 'var(--bg)'
+          }}>
+            {blendModeSlider}%
+          </Box>
+        </Box>
 
         <Box sx={{ flex: 1 }} />
 
-        {/* Target checkboxes in a row */}
-        {[ 
-          { key: 'oc', label: 'OC' },
-          { key: 'birthColor', label: 'Birth Color' },
-          { key: 'color', label: 'Color' },
-        ].map((option) => (
-          <FormControlLabel
-            key={option.key}
-            control={
-              <Checkbox
-                checked={targets[option.key]}
-                onChange={(e) => handleTargetChange(option.key, e.target.checked)}
-                size="small"
-                sx={{
-                  color: 'var(--accent2)',
-                  '&.Mui-checked': { color: 'var(--accent)' },
-                  '& .MuiSvgIcon-root': {
-                    fontSize: 22,
-                    borderRadius: '4px',
-                    boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--accent), transparent 65%)'
-                  },
-                }}
+        {/* Target checkboxes in a row - aligned with color containers */}
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '8px',
+          paddingLeft: '0.2rem'
+        }}>
+          {/* Spacer to match checkbox (18px) + gap (8px) + nameLabel (flex: 1, min ~100px) + gap (8px) + previewBtn (28px + 4px margin) + gap (8px) */}
+          <Box sx={{ 
+            width: '18px', // checkbox width
+            flexShrink: 0
+          }} />
+          <Box sx={{ 
+            flex: 1, // matches nameLabel flex: 1
+            minWidth: 0
+          }} />
+          <Box sx={{ 
+            width: '28px', // previewBtn width
+            marginLeft: '4px', // previewBtn marginLeft
+            flexShrink: 0
+          }} />
+          
+          {[ 
+            { key: 'oc', label: 'OC', width: '3rem' },
+            { key: 'birthColor', label: 'BC', width: '3rem' },
+            { key: 'color', label: 'Color', width: '10rem' },
+          ].map((option) => (
+            <Box key={option.key} sx={{ 
+              width: option.width,
+              margin: '0 0.25rem',
+              display: 'flex', 
+              justifyContent: 'flex-start',
+              alignItems: 'center'
+            }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={targets[option.key]}
+                    onChange={(e) => handleTargetChange(option.key, e.target.checked)}
+                    size="small"
+                    sx={{
+                      color: 'var(--accent2)',
+                      '&.Mui-checked': { color: 'var(--accent)' },
+                      '& .MuiSvgIcon-root': {
+                        fontSize: 22,
+                        borderRadius: '4px',
+                        boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--accent), transparent 65%)'
+                      },
+                    }}
+                  />
+                }
+                label={
+                  <Typography sx={{ 
+                    color: 'var(--accent)', 
+                    fontFamily: 'JetBrains Mono, monospace', 
+                    fontSize: '0.75rem',
+                    ml: 0.5
+                  }}>
+                    {option.label}
+                  </Typography>
+                }
+                sx={{ margin: 0 }}
               />
-            }
-            label={
-              <Typography sx={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem' }}>
-                {option.label}
-              </Typography>
-            }
-          />
-        ))}
+            </Box>
+          ))}
+        </Box>
 
         <Typography sx={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', ml: 1 }}>
           BM
@@ -5903,122 +6028,125 @@ const Paint = () => {
                 },
               }}
             />
-            <button
+            <IconButton
               ref={searchButtonRef}
-              onClick={() => setSearchDropdownOpen(!searchDropdownOpen)}
+              onClick={(e) => setSearchDropdownOpen(e.currentTarget)}
               title="Search Options"
-              style={{
-                padding: '8px 12px',
-                background: 'var(--surface-2)',
-                border: '1px solid #444',
-                borderRadius: '6px',
+              size="small"
+              sx={{
                 color: 'var(--accent)',
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: '12px',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                minWidth: '60px'
+                padding: '6px',
+                '&:hover': {
+                  backgroundColor: 'rgba(255,255,255,0.05)',
+                }
               }}
             >
-              ⚙️
-            </button>
+              <TuneIcon fontSize="small" />
+            </IconButton>
           </div>
         </Box>
       )}
 
 
-      {/* Search Options Dropdown - Rendered at root level */}
-      {searchDropdownOpen && (
-        <Box
-          ref={searchDropdownRef}
-          sx={{
-            position: 'absolute',
-            top: '200px', // Fixed position below search bar
-            left: '20px', // Fixed position from left
-            zIndex: 99999,
+      {/* Search Options Dropdown */}
+      <Menu
+        anchorEl={searchDropdownOpen}
+        open={Boolean(searchDropdownOpen)}
+        onClose={handleCloseSearchDropdown}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
+        PaperProps={{
+          sx: {
             background: 'var(--surface-2)',
-            border: '1px solid #444',
+            border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: '6px',
             padding: '8px',
             minWidth: '200px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
-          }}
-        >
-          <Typography variant="caption" sx={{ color: 'var(--accent)', fontWeight: 'bold', mb: 1, display: 'block' }}>
-            Search Options
-          </Typography>
-          
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={searchOptions.systems}
-                onChange={(e) => {
-                  const newOptions = { ...searchOptions, systems: e.target.checked };
-                  setSearchOptions(newOptions);
-                  lastSearchOptionsRef.current = newOptions;
-                  if (filterText.trim()) {
-                    FilterParticles(filterText, newOptions);
-                  }
-                }}
-                size="small"
-                sx={{
-                  color: 'var(--accent2)',
-                  '&.Mui-checked': { color: 'var(--accent)' },
-                }}
-              />
-            }
-            label="Systems"
-            sx={{ color: 'var(--accent)', fontSize: '12px' }}
-          />
-          
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={searchOptions.emitters}
-                onChange={(e) => {
-                  const newOptions = { ...searchOptions, emitters: e.target.checked };
-                  setSearchOptions(newOptions);
-                  lastSearchOptionsRef.current = newOptions;
-                  console.log('Emitter search toggled:', e.target.checked, 'New options:', newOptions);
-                  if (filterText.trim()) {
-                    FilterParticles(filterText, newOptions);
-                  }
-                }}
-                size="small"
-                sx={{
-                  color: 'var(--accent2)',
-                  '&.Mui-checked': { color: 'var(--accent)' },
-                }}
-              />
-            }
-            label="Emitters (slower)"
-            sx={{ color: 'var(--accent)', fontSize: '12px' }}
-          />
-          
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={searchOptions.textures}
-                onChange={(e) => {
-                  const newOptions = { ...searchOptions, textures: e.target.checked };
-                  setSearchOptions(newOptions);
-                  lastSearchOptionsRef.current = newOptions;
-                  if (filterText.trim()) {
-                    FilterParticles(filterText, newOptions);
-                  }
-                }}
-                size="small"
-                sx={{
-                  color: 'var(--accent2)',
-                  '&.Mui-checked': { color: 'var(--accent)' },
-                }}
-              />
-            }
-            label="Texture Paths"
-            sx={{ color: 'var(--accent)', fontSize: '12px' }}
-          />
-        </Box>
-      )}
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            mt: 0.5
+          }
+        }}
+      >
+        <Typography variant="caption" sx={{ color: 'var(--accent)', fontWeight: 'bold', mb: 1, display: 'block', px: 1 }}>
+          Search Options
+        </Typography>
+        
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={searchOptions.systems}
+              onChange={(e) => {
+                const newOptions = { ...searchOptions, systems: e.target.checked };
+                setSearchOptions(newOptions);
+                lastSearchOptionsRef.current = newOptions;
+                if (filterText.trim()) {
+                  FilterParticles(filterText, newOptions);
+                }
+              }}
+              size="small"
+              sx={{
+                color: 'var(--accent2)',
+                '&.Mui-checked': { color: 'var(--accent)' },
+              }}
+            />
+          }
+          label="Systems"
+          sx={{ color: 'var(--accent)', fontSize: '12px', display: 'block', px: 1, py: 0.5 }}
+        />
+        
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={searchOptions.emitters}
+              onChange={(e) => {
+                const newOptions = { ...searchOptions, emitters: e.target.checked };
+                setSearchOptions(newOptions);
+                lastSearchOptionsRef.current = newOptions;
+                console.log('Emitter search toggled:', e.target.checked, 'New options:', newOptions);
+                if (filterText.trim()) {
+                  FilterParticles(filterText, newOptions);
+                }
+              }}
+              size="small"
+              sx={{
+                color: 'var(--accent2)',
+                '&.Mui-checked': { color: 'var(--accent)' },
+              }}
+            />
+          }
+          label="Emitters (slower)"
+          sx={{ color: 'var(--accent)', fontSize: '12px', display: 'block', px: 1, py: 0.5 }}
+        />
+        
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={searchOptions.textures}
+              onChange={(e) => {
+                const newOptions = { ...searchOptions, textures: e.target.checked };
+                setSearchOptions(newOptions);
+                lastSearchOptionsRef.current = newOptions;
+                if (filterText.trim()) {
+                  FilterParticles(filterText, newOptions);
+                }
+              }}
+              size="small"
+              sx={{
+                color: 'var(--accent2)',
+                '&.Mui-checked': { color: 'var(--accent)' },
+              }}
+            />
+          }
+          label="Texture Paths"
+          sx={{ color: 'var(--accent)', fontSize: '12px', display: 'block', px: 1, py: 0.5 }}
+        />
+      </Menu>
 
       {/* Particle List */}
       <Box sx={{

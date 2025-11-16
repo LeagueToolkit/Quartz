@@ -4180,7 +4180,8 @@ const BinEditor = () => {
       sx={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100vh',
+        height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
+        minHeight: '100%',
         background: 'linear-gradient(135deg, var(--bg-2) 0%, var(--bg) 100%)',
         color: 'var(--text)',
         fontFamily: 'JetBrains Mono, monospace',

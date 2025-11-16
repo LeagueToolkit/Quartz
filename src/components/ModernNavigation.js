@@ -14,12 +14,14 @@ import {
 } from '@mui/material';
 import { glassPanel, glassSurface } from '../utils/glassStyles';
 import electronPrefs from '../utils/electronPrefs.js';
+import { TITLE_BAR_HEIGHT } from './CustomTitleBar';
 import {
   Brush as PaletteIcon,
   CompareArrows as PortIcon,
   GitHub as GitHubIcon,
           FormatColorFill as RGBAIcon,
   Image as FrogImgIcon,
+  Palette as ImgRecolorIcon,
   PhotoSizeSelectLarge as UpscaleIcon,
   Code as BinEditorIcon,
   Build as ToolsIcon,
@@ -172,7 +174,7 @@ const ModernNavigation = () => {
         { text: 'Asset Extractor', icon: <FrogChangerIcon />, path: '/frogchanger', key: 'frogchanger' },
         { text: 'Bumpath', icon: <BumpathIcon />, path: '/bumpath', key: 'bumpath' },
         { text: 'AniPort', icon: <AniPortIcon />, path: '/aniport', key: 'aniport' },
-        { text: 'FrogImg', icon: <FrogImgIcon />, path: '/frogimg', key: 'frogImg' },
+        { text: 'Img Recolor', icon: <ImgRecolorIcon />, path: '/img-recolor', key: 'imgRecolor' },
         { text: 'Upscale', icon: <UpscaleIcon />, path: '/upscale', key: 'upscale' },
         { text: 'RGBA', icon: <RGBAIcon />, path: '/rgba', key: 'rgba' },
         // HUD Editor removed - moved to archived/removed-features/hud-editor/
@@ -196,8 +198,8 @@ const ModernNavigation = () => {
                 case 'rgba':
         settingKey = 'RGBAEnabled';
             break;
-          case 'frogImg':
-            settingKey = 'FrogImgEnabled';
+          case 'imgRecolor':
+            settingKey = 'ImgRecolorEnabled';
             break;
           case 'binEditor':
             settingKey = 'BinEditorEnabled';
@@ -251,9 +253,9 @@ const ModernNavigation = () => {
     <Box
       sx={{
         position: 'fixed',
-        top: 0,
+        top: `${TITLE_BAR_HEIGHT}px`, // Start below title bar
         left: 0,
-        height: '100vh',
+        height: `calc(100vh - ${TITLE_BAR_HEIGHT}px)`, // Adjust height for title bar
         width: navExpandEnabled && isExpanded ? expandedWidth : collapsedWidth,
         transition: 'width 0.2s ease-out',
         background: themeVariant === 'bluePurple'
@@ -549,12 +551,12 @@ const ModernNavigation = () => {
                  justifyContent: 'flex-start',
                  px: isExpanded ? 2 : 1.5,
                   background: isActive(settingsItem.path)
-                    ? 'linear-gradient(135deg, var(--accent2), color-mix(in srgb, var(--accent2), transparent 30%))'
+                    ? 'linear-gradient(135deg, rgba(107,114,128,0.4), rgba(107,114,128,0.2))'
                     : 'transparent',
                  '&:hover': {
                     background: isActive(settingsItem.path)
-                      ? 'linear-gradient(135deg, color-mix(in srgb, var(--accent2), transparent 10%), color-mix(in srgb, var(--accent2), transparent 36%))'
-                      : 'linear-gradient(135deg, var(--accent2), color-mix(in srgb, var(--accent2), transparent 30%))',
+                      ? 'linear-gradient(135deg, rgba(107,114,128,0.5), rgba(107,114,128,0.3))'
+                      : 'linear-gradient(135deg, rgba(107,114,128,0.3), rgba(107,114,128,0.15))',
                    transform: 'translateX(4px)',
                    transition: 'all 0.2s ease',
                  },

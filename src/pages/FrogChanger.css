@@ -3,8 +3,8 @@
 
 /* Tailwind-like utility classes for exact replication - Theme-aware */
 /* Using higher specificity and !important to override Tailwind */
-.min-h-screen { min-height: 100vh !important; }
-.h-screen { height: 100vh !important; }
+.min-h-screen { min-height: 100% !important; }
+.h-screen { height: 100% !important; }
 .bg-black { background-color: var(--bg, #000000) !important; }
 .text-white { color: var(--text, #ffffff) !important; }
 /* Force white text for buttons with green/blue backgrounds - scoped to frogchanger-wrapper */
@@ -424,7 +424,7 @@
   display: flex;
   max-width: 1400px;
   margin: 0 auto;
-  min-height: calc(100vh - 80px);
+  min-height: calc(100% - 80px);
 }
 
 /* Champions Sidebar */
@@ -435,7 +435,7 @@
   border-right: 1px solid var(--glass-border, rgba(55, 65, 81, 0.3));
   padding: 1.5rem;
   overflow-y: auto;
-  max-height: calc(100vh - 80px);
+  max-height: calc(100% - 80px);
 }
 
 .sidebar-header {
@@ -574,7 +574,7 @@
   flex: 1;
   padding: 2rem;
   overflow-y: auto;
-  max-height: calc(100vh - 80px);
+  max-height: calc(100% - 80px);
 }
 
 /* Welcome Screen */

@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Port.css';
-import { Box, IconButton, Tooltip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Checkbox, FormControlLabel, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
-import { Apps as AppsIcon, Add as AddIcon, Folder as FolderIcon, ArrowBack as ArrowBackIcon, Warning as WarningIcon } from '@mui/icons-material';
+import { Box, IconButton, Tooltip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Checkbox, FormControlLabel, Select, MenuItem, FormControl, InputLabel, Menu } from '@mui/material';
+import { Apps as AppsIcon, Add as AddIcon, Folder as FolderIcon, ArrowBack as ArrowBackIcon, Warning as WarningIcon, ChevronRight as ChevronRightIcon, ChevronLeft as ChevronLeftIcon } from '@mui/icons-material';
 import CropOriginalIcon from '@mui/icons-material/CropOriginal';
 import { ToPyWithPath } from '../utils/fileOperations.js';
 import { loadFileWithBackup, createBackup } from '../utils/backupManager.js';
@@ -16,9 +17,10 @@ import { parseVfxEmitters, loadEmitterData, loadEmitterDataFromAllSystems, gener
 import { insertVFXSystemIntoFile, generateUniqueSystemName, insertVFXSystemWithPreservedNames } from '../utils/vfxInsertSystem.js';
 import { extractVFXSystem } from '../utils/vfxSystemParser.js';
 import { convertTextureToPNG, getCachedPngPath, findActualTexturePath } from '../utils/textureConverter.js';
+import { processDataURL } from '../utils/rgbaDataURL.js';
 import { findAssetFiles, copyAssetFiles, showAssetCopyResults } from '../utils/assetCopier.js';
 import GlowingSpinner from '../components/GlowingSpinner';
-import { addIdleParticleEffect, hasIdleParticleEffect, extractParticleName, BONE_NAMES, getIdleParticleBone, updateIdleParticleBone } from '../utils/idleParticlesManager.js';
+import { addIdleParticleEffect, hasIdleParticleEffect, extractParticleName, BONE_NAMES, getIdleParticleBone, getAllIdleParticleBones, updateIdleParticleBone, removeAllIdleParticlesForSystem } from '../utils/idleParticlesManager.js';
 import { addChildParticleEffect, findAvailableVfxSystems, hasChildParticleEffect, extractChildParticleEmitters, isDivineLabChildParticle, extractChildParticleData, updateChildParticleEmitter } from '../utils/childParticlesManager.js';
 import { scanEffectKeys, extractSubmeshes, insertOrUpdatePersistentEffect, insertMultiplePersistentEffects, ensureResolverMapping, resolveEffectKey, extractExistingPersistentConditions } from '../utils/persistentEffectsManager.js';
 import MatrixEditor from '../components/MatrixEditor';
@@ -314,10 +316,9 @@ const Port = () => {
   // Idle particles states
   const [showIdleParticleModal, setShowIdleParticleModal] = useState(false);
   const [selectedSystemForIdle, setSelectedSystemForIdle] = useState(null);
-  const [selectedBoneName, setSelectedBoneName] = useState('head');
+  const [idleBonesList, setIdleBonesList] = useState([]);
   const [isEditingIdle, setIsEditingIdle] = useState(false);
-  const [existingIdleBone, setExistingIdleBone] = useState('');
-  const [customBoneName, setCustomBoneName] = useState('');
+  const [existingIdleBones, setExistingIdleBones] = useState([]);
   
   // Child particles states
   const [showChildModal, setShowChildModal] = useState(false);
@@ -401,6 +402,7 @@ const Port = () => {
   const [recentCreatedSystemKeys, setRecentCreatedSystemKeys] = useState([]);
   // Matrix editor modal state
   const [showMatrixModal, setShowMatrixModal] = useState(false);
+  const [actionsMenuAnchor, setActionsMenuAnchor] = useState(null);
   const [matrixModalState, setMatrixModalState] = useState({ systemKey: null, initial: null });
   
   // Emitter rename state
@@ -2691,27 +2693,27 @@ const Port = () => {
       return;
     }
 
-    // If system already has idle particles, open edit flow instead of blocking
+    // If system already has idle particles, open edit flow with existing bones
     if (hasIdleParticleEffect(targetPyContent, systemKey)) {
-      const currentBone = getIdleParticleBone(targetPyContent, systemKey) || '';
+      const currentBones = getAllIdleParticleBones(targetPyContent, systemKey);
       setIsEditingIdle(true);
-      setExistingIdleBone(currentBone);
-      setCustomBoneName('');
-      setSelectedBoneName(currentBone || 'head');
+      setExistingIdleBones(currentBones);
+      // Populate list with existing bones for editing
+      setIdleBonesList(currentBones.map((bone, idx) => ({ id: Date.now() + idx, boneName: bone, customBoneName: '' })));
       setSelectedSystemForIdle({ key: systemKey, name: systemName });
       setShowIdleParticleModal(true);
-      setStatusMessage(`VFX system "${systemName}" already has idle particles. You can edit the bone.`);
+      setStatusMessage(`Editing ${currentBones.length} idle particle(s) for "${systemName}". Modify bones or add more.`);
       return;
     }
 
     setIsEditingIdle(false);
-    setExistingIdleBone('');
-    setCustomBoneName('');
+    setExistingIdleBones([]);
+    setIdleBonesList([]); // Start with empty list - user clicks "Add Another Bone" to add
     setSelectedSystemForIdle({ key: systemKey, name: systemName });
     setShowIdleParticleModal(true);
   };
 
-  // Confirm adding idle particles with selected bone
+  // Confirm adding idle particles with selected bones
   const handleConfirmIdleParticles = () => {
     if (!selectedSystemForIdle || !targetPyContent) return;
 
@@ -2720,20 +2722,40 @@ const Port = () => {
       const action = isEditingIdle ? 'Update idle particles' : 'Add idle particles';
       saveStateToHistory(`${action} for "${selectedSystemForIdle.name}"`);
       
-      const chosenBone = (customBoneName && customBoneName.trim()) ? customBoneName.trim() : selectedBoneName;
-      // IMPORTANT: Use the full system path (key) when modifying the file
-      const updatedContent = isEditingIdle
-        ? updateIdleParticleBone(targetPyContent, selectedSystemForIdle.key, chosenBone)
-        : addIdleParticleEffect(targetPyContent, selectedSystemForIdle.key, chosenBone);
-      setTargetPyContent(updatedContent);
-      try { setFileSaved(false); } catch {}
+      // Build bone configs from the list
+      const boneConfigs = idleBonesList.map(item => ({
+        boneName: (item.customBoneName && item.customBoneName.trim()) 
+          ? item.customBoneName.trim() 
+          : item.boneName
+      }));
 
-      setStatusMessage(`${isEditingIdle ? 'Updated idle bone for' : 'Added idle particles for'} "${selectedSystemForIdle.name}" ${isEditingIdle ? 'to' : 'on bone'} "${chosenBone}"`);
+      let updatedContent = targetPyContent;
+
+      // If editing, remove all existing idle particles for this system first
+      if (isEditingIdle) {
+        updatedContent = removeAllIdleParticlesForSystem(updatedContent, selectedSystemForIdle.key);
+      }
+
+      // If user removed all entries, just remove idle particles and don't add any
+      if (boneConfigs.length === 0) {
+        setTargetPyContent(updatedContent);
+        try { setFileSaved(false); } catch {}
+        setStatusMessage(`Removed all idle particles from "${selectedSystemForIdle.name}"`);
+      } else {
+        // Add all the bones from the list (edited + new)
+        updatedContent = addIdleParticleEffect(updatedContent, selectedSystemForIdle.key, boneConfigs);
+        setTargetPyContent(updatedContent);
+        try { setFileSaved(false); } catch {}
+
+        const boneNames = boneConfigs.map(c => c.boneName).join(', ');
+        setStatusMessage(`${isEditingIdle ? 'Updated' : 'Added'} ${boneConfigs.length} idle particle(s) for "${selectedSystemForIdle.name}" on bones: ${boneNames}`);
+      }
+
       setShowIdleParticleModal(false);
       setSelectedSystemForIdle(null);
       setIsEditingIdle(false);
-      setExistingIdleBone('');
-      setCustomBoneName('');
+      setExistingIdleBones([]);
+      setIdleBonesList([]);
     } catch (error) {
       console.error('Error adding idle particles:', error);
       setStatusMessage(`Failed to add idle particles: ${error.message}`);
@@ -3155,7 +3177,7 @@ const Port = () => {
           <span>Texture Preview</span>
         </div>
         <div class="texture-hover-body">
-          <img src="${imageDataUrl}" alt="Texture preview" class="texture-hover-image" />
+          <img src="${processDataURL(imageDataUrl)}" alt="Texture preview" class="texture-hover-image" />
           ${colorSwatches}
           <div class="texture-hover-path">${texturePath}</div>
         </div>
@@ -3719,7 +3741,20 @@ const Port = () => {
         onDragOver={(e) => {
           if (!isTarget) return;
           // Allow dropping emitters into target systems
-          if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('application/x-vfxemitter')) {
+          const types = e.dataTransfer?.types;
+          const hasEmitterType = types && (
+            Array.from(types).includes('application/x-vfxemitter') || 
+            (typeof types.contains === 'function' && types.contains('application/x-vfxemitter'))
+          );
+          const hasVfxType = types && (
+            Array.from(types).includes('application/x-vfxsys') || 
+            (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
+          );
+          // Allow VFX system drops to bubble up to parent container
+          if (hasVfxType) {
+            return; // Don't prevent default, let it bubble up
+          }
+          if (hasEmitterType) {
             e.preventDefault();
             e.stopPropagation();
             e.dataTransfer.dropEffect = 'move';
@@ -3727,6 +3762,15 @@ const Port = () => {
         }}
         onDrop={(e) => {
           if (!isTarget) return;
+          // Check if this is a VFX system drop - if so, let it bubble up to parent
+          const types = e.dataTransfer?.types;
+          const hasVfxType = types && (
+            Array.from(types).includes('application/x-vfxsys') || 
+            (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
+          );
+          if (hasVfxType) {
+            return; // Let VFX system drops bubble up to parent container
+          }
           try {
             e.preventDefault();
             e.stopPropagation();
@@ -3813,171 +3857,227 @@ const Port = () => {
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <div className="label ellipsis flex-1" title={system.particleName || system.name} style={{
-              color: 'var(--accent)',
-              fontWeight: '600',
-              fontSize: '1rem',
-              textShadow: '0 1px 2px rgba(0,0,0,0.5)'
-            }}>
-              {(() => {
-                const displayName = system.particleName || system.name || system.key;
-                const shouldTrim = isTarget ? trimTargetNames : trimDonorNames;
-                const maxLength = 35;
-                const trimLength = 32;
-                
-                if (shouldTrim && displayName.length > maxLength) {
-                  return displayName.substring(0, trimLength) + '...';
-                }
-                return displayName;
-              })()}
-            </div>
-          )}
-          
-          {/* Rename button for target systems */}
-          {isTarget && (!renamingSystem || renamingSystem.systemKey !== system.key) && (
-            <button
-              className="rename-system-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setRenamingSystem({ systemKey: system.key, newName: system.particleName || system.name || system.key });
-              }}
-              title="Rename VFX system"
+            <div 
+              className="label ellipsis flex-1" 
+              title={system.particleName || system.name}
               style={{
-                width: '24px',
-                height: '24px',
-                marginLeft: '6px',
-                flexShrink: 0,
-                background: 'rgba(147, 51, 234, 0.1)',
-                border: '1px solid rgba(147, 51, 234, 0.4)',
-                borderRadius: '4px',
-                color: '#c084fc',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '12px',
-                padding: 0
+                color: 'var(--accent)',
+                fontWeight: '600',
+                fontSize: '1rem',
+                textShadow: '0 1px 2px rgba(0,0,0,0.5)'
               }}
             >
-              ✏️
-            </button>
+              <span
+                onClick={(e) => {
+                  if (isTarget) {
+                    e.stopPropagation();
+                  }
+                }}
+                onDoubleClick={(e) => {
+                  if (isTarget) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    setRenamingSystem({ systemKey: system.key, newName: system.particleName || system.name || system.key });
+                  }
+                }}
+                style={{
+                  cursor: isTarget ? 'text' : 'default',
+                  display: 'inline-block'
+                }}
+              >
+                {(() => {
+                  const displayName = system.particleName || system.name || system.key;
+                  const shouldTrim = isTarget ? trimTargetNames : trimDonorNames;
+                  const maxLength = 35;
+                  const trimLength = 32;
+                  
+                  if (shouldTrim && displayName.length > maxLength) {
+                    return displayName.substring(0, trimLength) + '...';
+                  }
+                  return displayName;
+                })()}
+              </span>
+            </div>
           )}
           {isTarget && selectedTargetSystem === system.key && (
             <div className="selection-indicator"></div>
           )}
           {isTarget && (
-            <button
-              className="idle-btn"
-              disabled={!hasResourceResolver || !hasSkinCharacterData}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleAddIdleParticles(system.key, system.name);
-              }}
-              title="Add Idle Particles to this system"
-              style={{
-                flexShrink: 0,
-                minWidth: '12px',
-                height: '28px',
-                marginLeft: 'auto',
-                marginRight: '0',
-                fontSize: '12px',
-                padding: '2px 6px',
-                background: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.08)' : 'rgba(76, 175, 80, 0.1)',
-                border: '1px solid rgba(76, 175, 80, 0.4)',
-                color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : '#4caf50',
-                borderRadius: '4px',
-                cursor: (!hasResourceResolver || !hasSkinCharacterData) ? 'not-allowed' : 'pointer',
-                position: 'relative',
-                zIndex: 1,
-                backdropFilter: 'none',
-                WebkitBackdropFilter: 'none',
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                minHeight: '28px'
-              }}
-            >
-              I
-            </button>
-          )}
-          {isTarget && (
-            <button
-              className="child-btn"
-              disabled={!hasResourceResolver || !hasSkinCharacterData}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleAddChildParticles(system.key, system.name);
-              }}
-              title="Add Child Particles to this system"
-              style={{
-                flexShrink: 0,
-                minWidth: '12px',
-                height: '28px',
-                marginLeft: '4px',
-                marginRight: '0',
-                fontSize: '12px',
-                padding: '2px 6px',
-                background: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.08)' : 'rgba(76, 175, 80, 0.1)',
-                border: '1px solid rgba(76, 175, 80, 0.4)',
-                color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : '#4caf50',
-                borderRadius: '4px',
-                cursor: (!hasResourceResolver || !hasSkinCharacterData) ? 'not-allowed' : 'pointer',
-                position: 'relative',
-                zIndex: 1,
-                backdropFilter: 'none',
-                WebkitBackdropFilter: 'none',
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                minHeight: '28px'
-              }}
-            >
-              C
-            </button>
-          )}
-          {isTarget && (
             <>
-              <button
-                className="matrix-btn"
-                              onClick={(e) => {
+              <IconButton
+                size="small"
+                onClick={(e) => {
                   e.stopPropagation();
-                  try {
-                    // Use system's current content directly instead of scanning the entire file
-                    const sysText = system.rawContent || '';
-                    console.log('System text length:', sysText.length);
-                    const parsed = parseSystemMatrix(sysText);
-                    console.log('Parsed matrix:', parsed);
-                    setMatrixModalState({ systemKey: system.key, initial: parsed.matrix || [
-                      1,0,0,0,
-                      0,1,0,0,
-                      0,0,1,0,
-                      0,0,0,1
-                    ]});
-                    setShowMatrixModal(true);
-                    console.log('Matrix modal should be open now');
-                  } catch (err) {
-                    console.error('Open matrix editor failed:', err);
+                  e.preventDefault();
+                  const isOpen = actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key;
+                  if (isOpen) {
+                    setActionsMenuAnchor(null);
+                  } else {
+                    setActionsMenuAnchor({ element: e.currentTarget, systemKey: system.key });
                   }
                 }}
-              title="Edit system transform matrix"
-              style={{
-                flexShrink: 0,
-                minWidth: '12px',
-                height: '28px',
-                marginLeft: '6px',
-                fontSize: '12px',
-                padding: '2px 6px',
-                background: 'rgba(76, 175, 80, 0.1)',
-                border: '1px solid rgba(76, 175, 80, 0.4)',
-                color: '#4caf50',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                zIndex: 10,
-                position: 'relative',
-                backdropFilter: 'none',
-                WebkitBackdropFilter: 'none',
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                minHeight: '28px'
-              }}
-                          >
-              M
-            </button>
+                disabled={!hasResourceResolver || !hasSkinCharacterData}
+                title="Actions menu"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                }}
+                sx={{
+                  color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : 'var(--accent2)',
+                  padding: '4px',
+                  minWidth: '24px',
+                  width: '24px',
+                  height: '24px',
+                  marginLeft: 'auto',
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                  transform: actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? 'rotate(90deg)' : 'rotate(0deg)',
+                  '&:hover': { 
+                    color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : 'var(--accent)', 
+                    backgroundColor: 'rgba(255,255,255,0.05)' 
+                  },
+                  '&.Mui-disabled': {
+                    opacity: 0.5
+                  }
+                }}
+              >
+                {actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? (
+                  <ChevronLeftIcon fontSize="small" />
+                ) : (
+                  <ChevronRightIcon fontSize="small" />
+                )}
+              </IconButton>
+              <Menu
+                anchorEl={actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? actionsMenuAnchor.element : null}
+                open={Boolean(actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key)}
+                onClose={(e) => {
+                  if (e) {
+                    e.stopPropagation();
+                  }
+                  setActionsMenuAnchor(null);
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                }}
+                anchorOrigin={{
+                  vertical: 'bottom',
+                  horizontal: 'right',
+                }}
+                transformOrigin={{
+                  vertical: 'top',
+                  horizontal: 'right',
+                }}
+                TransitionProps={{
+                  timeout: 200,
+                  enter: true,
+                  exit: true,
+                }}
+                PaperProps={{
+                  onClick: (e) => {
+                    e.stopPropagation();
+                  },
+                  onMouseDown: (e) => {
+                    e.stopPropagation();
+                  },
+                  sx: {
+                    background: 'var(--surface-2)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '6px',
+                    minWidth: '180px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    mt: 0.5,
+                    transition: 'opacity 0.2s ease-in-out, transform 0.2s ease-in-out',
+                    '&.MuiMenu-paper': {
+                      transformOrigin: 'top right',
+                    }
+                  }
+                }}
+              >
+                <MenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAddIdleParticles(system.key, system.name);
+                    setActionsMenuAnchor(null);
+                  }}
+                  disabled={!hasResourceResolver || !hasSkinCharacterData}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                  }}
+                  sx={{
+                    color: 'var(--accent)',
+                    fontSize: '0.875rem',
+                    transition: 'background-color 0.15s ease',
+                    '&:hover': {
+                      backgroundColor: 'rgba(255,255,255,0.05)'
+                    },
+                    '&.Mui-disabled': {
+                      opacity: 0.5
+                    }
+                  }}
+                >
+                  Add Idle
+                </MenuItem>
+                <MenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAddChildParticles(system.key, system.name);
+                    setActionsMenuAnchor(null);
+                  }}
+                  disabled={!hasResourceResolver || !hasSkinCharacterData}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                  }}
+                  sx={{
+                    color: 'var(--accent)',
+                    fontSize: '0.875rem',
+                    transition: 'background-color 0.15s ease',
+                    '&:hover': {
+                      backgroundColor: 'rgba(255,255,255,0.05)'
+                    },
+                    '&.Mui-disabled': {
+                      opacity: 0.5
+                    }
+                  }}
+                >
+                  Add Child
+                </MenuItem>
+                <MenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    try {
+                      const sysText = system.rawContent || '';
+                      console.log('System text length:', sysText.length);
+                      const parsed = parseSystemMatrix(sysText);
+                      console.log('Parsed matrix:', parsed);
+                      setMatrixModalState({ systemKey: system.key, initial: parsed.matrix || [
+                        1,0,0,0,
+                        0,1,0,0,
+                        0,0,1,0,
+                        0,0,0,1
+                      ]});
+                      setShowMatrixModal(true);
+                      console.log('Matrix modal should be open now');
+                    } catch (err) {
+                      console.error('Open matrix editor failed:', err);
+                    }
+                    setActionsMenuAnchor(null);
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                  }}
+                  sx={{
+                    color: 'var(--accent)',
+                    fontSize: '0.875rem',
+                    transition: 'background-color 0.15s ease',
+                    '&:hover': {
+                      backgroundColor: 'rgba(255,255,255,0.05)'
+                    }
+                  }}
+                >
+                  Add Matrix
+                </MenuItem>
+              </Menu>
             </>
           )}
         </div>
@@ -4058,14 +4158,32 @@ const Port = () => {
                 className="label flex-1 ellipsis"
                 style={{ 
                   minWidth: 0, 
-                  cursor: 'default',
                   color: 'var(--accent)',
                   fontWeight: '600',
                   fontSize: '0.95rem',
                   textShadow: '0 1px 2px rgba(0,0,0,0.5)'
                 }}
               >
-                {emitter.name || `Emitter ${index + 1}`}
+                <span
+                  onClick={(e) => {
+                    if (isTarget && !isQuartzChild) {
+                      e.stopPropagation();
+                    }
+                  }}
+                  onDoubleClick={(e) => {
+                    if (isTarget && !isQuartzChild) {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      setRenamingEmitter({ systemKey: system.key, emitterName: emitter.name, newName: emitter.name });
+                    }
+                  }}
+                  style={{ 
+                    cursor: isTarget && !isQuartzChild ? 'text' : 'default',
+                    display: 'inline-block'
+                  }}
+                >
+                  {emitter.name || `Emitter ${index + 1}`}
+                </span>
                 {emitter.isChildParticle && (
                   <span 
                     style={{
@@ -4084,36 +4202,6 @@ const Port = () => {
                   </span>
                 )}
               </div>
-            )}
-            
-            {/* Rename button for target emitters */}
-            {isTarget && !isQuartzChild && (!renamingEmitter || renamingEmitter.systemKey !== system.key || renamingEmitter.emitterName !== emitter.name) && (
-              <button
-                className="rename-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setRenamingEmitter({ systemKey: system.key, emitterName: emitter.name, newName: emitter.name });
-                }}
-                title="Rename emitter"
-                style={{
-                  width: '24px',
-                  height: '24px',
-                  marginLeft: '6px',
-                  flexShrink: 0,
-                  background: 'rgba(147, 51, 234, 0.1)',
-                  border: '1px solid rgba(147, 51, 234, 0.4)',
-                  borderRadius: '4px',
-                  color: '#c084fc',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '12px',
-                  padding: 0
-                }}
-              >
-                ✏️
-              </button>
             )}
             
             {/* Color blocks */}
@@ -4221,21 +4309,32 @@ const Port = () => {
                           donorPath,
                           projectRoot
                         });
-                        const pngPath = await convertTextureToPNG(fullEmitterData.texturePath, targetPath, donorPath, projectRoot);
-                        console.log('🖼️ convertTextureToPNG returned:', pngPath);
+                        const result = await convertTextureToPNG(fullEmitterData.texturePath, targetPath, donorPath, projectRoot);
+                        console.log('🖼️ convertTextureToPNG returned:', result);
 
-                        if (pngPath) {
-                          const fs = window.require('fs');
-                          if (!fs.existsSync(pngPath)) {
-                            console.log('🖼️ PNG file does not exist at path:', pngPath);
-                            showTextureError(fullEmitterData.texturePath, e.target);
-                            return;
+                        if (result) {
+                          let dataUrl;
+                          
+                          // Check if result is a data URL (new native format) or file path (old format)
+                          if (result.startsWith('data:')) {
+                            // Native format - already a data URL
+                            console.log('🖼️ Using native data URL format');
+                            dataUrl = result;
+                          } else {
+                            // Old format - file path, read it
+                            const fs = window.require('fs');
+                            
+                            if (!fs.existsSync(result)) {
+                              console.log('🖼️ PNG file does not exist at path:', result);
+                              showTextureError(fullEmitterData.texturePath, e.target);
+                              return;
+                            }
+
+                            console.log('🖼️ PNG file exists, reading and converting to base64...');
+                            const imageBuffer = fs.readFileSync(result);
+                            const base64Image = imageBuffer.toString('base64');
+                            dataUrl = `data:image/png;base64,${base64Image}`;
                           }
-
-                          console.log('🖼️ PNG file exists, reading and converting to base64...');
-                          const imageBuffer = fs.readFileSync(pngPath);
-                          const base64Image = imageBuffer.toString('base64');
-                          const dataUrl = `data:image/png;base64,${base64Image}`;
 
                           console.log('🖼️ Calling showTexturePreview with data URL...');
                           showTexturePreview(fullEmitterData.texturePath, dataUrl, e.target, fullEmitterData);
@@ -4372,8 +4471,8 @@ const Port = () => {
 
   return (
     <div className="port-container" style={{
-      minHeight: '100vh',
-      height: '100vh',
+      minHeight: '100%',
+      height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
       background: 'linear-gradient(135deg, var(--bg-2) 0%, var(--bg) 100%)',
       position: 'relative',
       overflow: 'hidden',
@@ -4465,7 +4564,12 @@ const Port = () => {
           }}
             onDragOver={(e) => {
               // Allow dropping donor systems into the target list
-              if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('application/x-vfxsys')) {
+              const types = e.dataTransfer?.types;
+              const hasVfxType = types && (
+                Array.from(types).includes('application/x-vfxsys') || 
+                (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
+              );
+              if (hasVfxType) {
                 e.preventDefault();
                 e.stopPropagation();
                 e.dataTransfer.dropEffect = 'copy';
@@ -4476,7 +4580,12 @@ const Port = () => {
               // Prevent bubbling to avoid multiple triggers
               e.preventDefault();
               e.stopPropagation();
-              if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('application/x-vfxsys')) {
+              const types = e.dataTransfer?.types;
+              const hasVfxType = types && (
+                Array.from(types).includes('application/x-vfxsys') || 
+                (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
+              );
+              if (hasVfxType) {
                 dragEnterCounter.current += 1;
                 if (!isDragOverVfx) setIsDragOverVfx(true);
               }
@@ -4496,8 +4605,14 @@ const Port = () => {
               try {
                 e.preventDefault();
                 e.stopPropagation();
+                console.log('🎯 Drop event triggered on target container');
+                console.log('🎯 dataTransfer.types:', Array.from(e.dataTransfer?.types || []));
                 const data = e.dataTransfer.getData('application/x-vfxsys');
-                if (!data) return;
+                console.log('🎯 Retrieved data:', data ? 'Data found' : 'No data');
+                if (!data) {
+                  console.warn('🎯 No data found in drop event');
+                  return;
+                }
                 setIsDragOverVfx(false);
                 dragEnterCounter.current = 0;
                 if (!targetPyContent) {
@@ -4514,6 +4629,7 @@ const Port = () => {
                   setStatusMessage('Dropped item has no VFX content');
                   return;
                 }
+                console.log('🎯 Opening name prompt modal for:', name);
                 // Defer insertion until user confirms name in modal
                 const defaultName = (name && typeof name === 'string') ? name : 'NewVFXSystem';
                 setPendingDrop({ fullContent, defaultName });
@@ -4578,7 +4694,89 @@ const Port = () => {
               </div>
             )}
             {Object.keys(targetSystems).length > 0 ? (
-              <div ref={targetListRef} style={{ width: '100%', height: '100%', overflow: 'auto' }}>
+              <div 
+                ref={targetListRef} 
+                style={{ width: '100%', height: '100%', overflow: 'auto' }}
+                onDragOver={(e) => {
+                  // Allow dropping on the list container itself
+                  const types = e.dataTransfer?.types;
+                  const hasVfxType = types && (
+                    Array.from(types).includes('application/x-vfxsys') || 
+                    (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
+                  );
+                  if (hasVfxType) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'copy';
+                    if (!isDragOverVfx) setIsDragOverVfx(true);
+                  }
+                }}
+                onDrop={(e) => {
+                  // Handle drop on the list container
+                  try {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('🎯 Drop event triggered on target list container');
+                    console.log('🎯 dataTransfer.types:', Array.from(e.dataTransfer?.types || []));
+                    const data = e.dataTransfer.getData('application/x-vfxsys');
+                    console.log('🎯 Retrieved data:', data ? 'Data found' : 'No data');
+                    if (!data) {
+                      console.warn('🎯 No data found in drop event');
+                      return;
+                    }
+                    setIsDragOverVfx(false);
+                    dragEnterCounter.current = 0;
+                    if (!targetPyContent) {
+                      setStatusMessage('No target file loaded - please open a target bin first');
+                      return;
+                    }
+                    if (!hasResourceResolver) {
+                      setStatusMessage('Locked: target bin missing ResourceResolver');
+                      return;
+                    }
+                    const payload = JSON.parse(data);
+                    const { name, fullContent } = payload || {};
+                    if (!fullContent) {
+                      setStatusMessage('Dropped item has no VFX content');
+                      return;
+                    }
+                    console.log('🎯 Opening name prompt modal for:', name);
+                    // Defer insertion until user confirms name in modal
+                    const defaultName = (name && typeof name === 'string') ? name : 'NewVFXSystem';
+                    setPendingDrop({ fullContent, defaultName });
+                    setNamePromptValue(defaultName);
+                    setShowNamePromptModal(true);
+
+                    // After updating, scroll target list to top so newly added item is visible
+                    requestAnimationFrame(() => {
+                      if (targetListRef.current) {
+                        try {
+                          targetListRef.current.scrollTop = 0;
+                        } catch {}
+                      }
+                    });
+
+                    // Copy associated assets for the inserted full VFX system
+                    try {
+                      const assetFiles = findAssetFiles(fullContent);
+                      if (assetFiles && assetFiles.length > 0) {
+                        const { copiedFiles, failedFiles, skippedFiles } = copyAssetFiles(donorPath, targetPath, assetFiles);
+                        const { ipcRenderer } = window.require('electron');
+                        showAssetCopyResults(copiedFiles, failedFiles, skippedFiles, (messageData) => {
+                          ipcRenderer.send('Message', messageData);
+                        });
+                        // Status messaging for asset copy will be handled after insertion with chosen name
+                      }
+                    } catch (assetError) {
+                      console.error('Error copying assets for inserted VFX system:', assetError);
+                      // Keep prior status; asset copy is best-effort
+                    }
+                  } catch (err) {
+                    console.error('Drop failed:', err);
+                    setStatusMessage('Failed to add VFX system');
+                  }
+                }}
+              >
                 {renderParticleSystems(filteredTargetSystems, true)}
               </div>
             ) : (
@@ -6320,137 +6518,205 @@ const Port = () => {
       </Dialog>
 
       {/* Name Prompt for Drag-and-Drop Full VFX System */}
-      {showNamePromptModal && (
-        <div
-          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
-        >
-          <div
-            style={{
-              background: 'linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))',
-              border: '1px solid rgba(255,255,255,0.14)',
-              backdropFilter: 'saturate(200%) blur(20px)',
-              WebkitBackdropFilter: 'saturate(200%) blur(20px)',
-              borderRadius: 12,
-              width: 520,
-              maxWidth: '90%',
+      <Dialog
+        open={showNamePromptModal}
+        onClose={() => {
+          setShowNamePromptModal(false);
+          setPendingDrop(null);
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: 'var(--glass-bg)',
+            border: '1px solid var(--glass-border)',
+            backdropFilter: 'saturate(180%) blur(20px)',
+            WebkitBackdropFilter: 'saturate(180%) blur(20px)',
+            boxShadow: 'var(--glass-shadow)',
+            borderRadius: 3,
+            overflow: 'hidden',
+          }
+        }}
+      >
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '4px',
+            background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+            backgroundSize: '200% 100%',
+            animation: 'shimmer 3s ease-in-out infinite',
+            '@keyframes shimmer': {
+              '0%': { backgroundPosition: '200% 0' },
+              '100%': { backgroundPosition: '-200% 0' },
+            },
+          }}
+        />
+        <DialogTitle sx={{ 
+          color: 'var(--accent)', 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1.5,
+          pb: 1.5,
+          pt: 2.5,
+          px: 3,
+          borderBottom: '1px solid var(--glass-border)',
+        }}>
+          <Box
+            sx={{
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              background: 'rgba(139, 92, 246, 0.15)',
               display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
             }}
-            onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ padding: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.12)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
-              <h2 style={{ margin: 0, color: 'var(--accent)', fontSize: '1.25rem', fontWeight: 600 }}>Name New VFX System</h2>
-              <button onClick={() => { setShowNamePromptModal(false); setPendingDrop(null); }} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', width: 32, height: 32, borderRadius: '50%', color: 'var(--accent)', cursor: 'pointer' }}>×</button>
-            </div>
-            <div style={{ padding: '1rem 1.25rem', display: 'grid', gap: 12 }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.85)' }}>System Name</span>
-                <MemoizedInput
-                  autoFocus
-                  value={namePromptValue}
-                  onChange={e => setNamePromptValue(e.target.value)}
-                  placeholder="Enter a unique name (e.g., testname)"
-                  style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, color: 'var(--accent)', fontSize: '0.95rem' }}
-                />
-              </label>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
-                This will be used for the VfxSystemDefinitionData key, particleName, and particlePath, and linked in ResourceResolver.
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, padding: '0 1.25rem 1.25rem' }}>
-              <button
-                onClick={() => { setShowNamePromptModal(false); setPendingDrop(null); }}
-                style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 8, color: '#ddd', cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  try {
-                    const chosen = (namePromptValue || (pendingDrop?.defaultName || 'NewVFXSystem')).trim();
-                    if (!chosen) {
-                      setStatusMessage('Enter a system name');
-                      return;
-                    }
-                    if (!pendingDrop) return;
-                    
-                    if (!hasResourceResolver) {
-                      setStatusMessage('Locked: target bin missing ResourceResolver');
-                      return;
-                    }
-                    // Save state before insertion
-                    saveStateToHistory(`Add VFX system "${chosen}"`);
-                    
-                    const { fullContent, defaultName } = pendingDrop;
-                    const prevKeys = new Set(Object.keys(targetSystems || {}));
-                    
-                    // Check if user kept the original name (preservation mode)
-                    const isPreservationMode = chosen === defaultName;
-                    let updatedPy;
-                    
-                    if (isPreservationMode) {
-                      // Use preservation function to maintain original ResourceResolver names and system structure
-                      console.log(`[Drag Drop] Using preservation mode for system "${chosen}"`);
-                      updatedPy = insertVFXSystemWithPreservedNames(targetPyContent || '', fullContent, chosen, donorPyContent);
-                    } else {
-                      // Use standard insertion for renamed systems
-                      console.log(`[Drag Drop] Using standard insertion for renamed system "${chosen}"`);
-                      updatedPy = insertVFXSystemIntoFile(targetPyContent || '', fullContent, chosen);
-                    }
-                    
-                    setTargetPyContent(updatedPy);
-                    try { setFileSaved(false); } catch {}
-                    const systems = parseVfxEmitters(updatedPy);
-                    const nowTs = Date.now();
-                    
-                    // Apply deleted emitters state to the newly parsed systems
-                    const systemsWithDeletedEmitters = Object.fromEntries(
-                      Object.entries(systems).map(([key, sys]) => {
-                        if (sys.emitters) {
-                          // Filter out deleted emitters for this system
-                          const filteredEmitters = sys.emitters.filter(emitter => {
-                            const emitterKey = `${key}:${emitter.name}`;
-                            return !deletedEmitters.has(emitterKey);
-                          });
-                          return [key, { ...sys, emitters: filteredEmitters }];
-                        }
-                        return [key, sys];
-                      })
-                    );
-                    
-                    const entries = Object.entries(systemsWithDeletedEmitters).map(([key, sys]) => (
-                      !prevKeys.has(key)
-                        ? [key, { ...sys, ported: true, portedAt: nowTs }]
-                        : [key, sys]
-                    ));
-                    const newEntries = entries.filter(([key]) => !prevKeys.has(key));
-                    const oldEntries = entries.filter(([key]) => prevKeys.has(key));
-                    const ordered = Object.fromEntries([...newEntries, ...oldEntries]);
-                    setTargetSystems(ordered);
-                    
-                    // Preserve deleted emitters state - don't reset it when adding new systems
-                    // The deletedEmitters Map should remain unchanged during drag and drop operations
-                    
-                    const modeText = isPreservationMode ? 'with preserved ResourceResolver names' : 'with updated names';
-                    setStatusMessage(`Added VFX system "${chosen}" to target ${modeText}`);
-                  } catch (e) {
-                    console.error('Insert VFX system failed:', e);
-                    setStatusMessage('Failed to add VFX system');
-                  } finally {
-                    setShowNamePromptModal(false);
-                    setPendingDrop(null);
-                  }
+            <WarningIcon sx={{ color: 'var(--accent)', fontSize: 24 }} />
+          </Box>
+          <Typography variant="h6" sx={{ fontWeight: 600, flex: 1 }}>
+            Name New VFX System
+          </Typography>
+        </DialogTitle>
+        <DialogContent sx={{ px: 3, py: 2.5 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)', mb: 1 }}>
+                System Name
+              </Typography>
+              <MemoizedInput
+                autoFocus
+                value={namePromptValue}
+                onChange={e => setNamePromptValue(e.target.value)}
+                placeholder="Enter a unique name (e.g., testname)"
+                style={{ 
+                  width: '100%',
+                  padding: '10px 12px', 
+                  background: 'rgba(255,255,255,0.05)', 
+                  border: '1px solid rgba(255,255,255,0.15)', 
+                  borderRadius: 8, 
+                  color: 'var(--accent)', 
+                  fontSize: '0.95rem' 
                 }}
-                style={{ padding: '10px 14px', background: 'var(--accent-green, #22c55e)', border: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), black 30%)', borderRadius: 8, color: '#0b131a', fontWeight: 600, cursor: 'pointer' }}
-              >
-                Insert
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              />
+            </Box>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)', fontSize: 12 }}>
+              This will be used for the VfxSystemDefinitionData key, particleName, and particlePath, and linked in ResourceResolver.
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1.5 }}>
+          <Button
+            onClick={() => {
+              setShowNamePromptModal(false);
+              setPendingDrop(null);
+            }}
+            sx={{
+              color: '#ddd',
+              border: '1px solid rgba(255,255,255,0.18)',
+              '&:hover': {
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.25)',
+              }
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              try {
+                const chosen = (namePromptValue || (pendingDrop?.defaultName || 'NewVFXSystem')).trim();
+                if (!chosen) {
+                  setStatusMessage('Enter a system name');
+                  return;
+                }
+                if (!pendingDrop) return;
+                
+                if (!hasResourceResolver) {
+                  setStatusMessage('Locked: target bin missing ResourceResolver');
+                  return;
+                }
+                // Save state before insertion
+                saveStateToHistory(`Add VFX system "${chosen}"`);
+                
+                const { fullContent, defaultName } = pendingDrop;
+                const prevKeys = new Set(Object.keys(targetSystems || {}));
+                
+                // Check if user kept the original name (preservation mode)
+                const isPreservationMode = chosen === defaultName;
+                let updatedPy;
+                
+                if (isPreservationMode) {
+                  // Use preservation function to maintain original ResourceResolver names and system structure
+                  console.log(`[Drag Drop] Using preservation mode for system "${chosen}"`);
+                  updatedPy = insertVFXSystemWithPreservedNames(targetPyContent || '', fullContent, chosen, donorPyContent);
+                } else {
+                  // Use standard insertion for renamed systems
+                  console.log(`[Drag Drop] Using standard insertion for renamed system "${chosen}"`);
+                  updatedPy = insertVFXSystemIntoFile(targetPyContent || '', fullContent, chosen);
+                }
+                
+                setTargetPyContent(updatedPy);
+                try { setFileSaved(false); } catch {}
+                const systems = parseVfxEmitters(updatedPy);
+                const nowTs = Date.now();
+                
+                // Apply deleted emitters state to the newly parsed systems
+                const systemsWithDeletedEmitters = Object.fromEntries(
+                  Object.entries(systems).map(([key, sys]) => {
+                    if (sys.emitters) {
+                      // Filter out deleted emitters for this system
+                      const filteredEmitters = sys.emitters.filter(emitter => {
+                        const emitterKey = `${key}:${emitter.name}`;
+                        return !deletedEmitters.has(emitterKey);
+                      });
+                      return [key, { ...sys, emitters: filteredEmitters }];
+                    }
+                    return [key, sys];
+                  })
+                );
+                
+                const entries = Object.entries(systemsWithDeletedEmitters).map(([key, sys]) => (
+                  !prevKeys.has(key)
+                    ? [key, { ...sys, ported: true, portedAt: nowTs }]
+                    : [key, sys]
+                ));
+                const newEntries = entries.filter(([key]) => !prevKeys.has(key));
+                const oldEntries = entries.filter(([key]) => prevKeys.has(key));
+                const ordered = Object.fromEntries([...newEntries, ...oldEntries]);
+                setTargetSystems(ordered);
+                
+                // Preserve deleted emitters state - don't reset it when adding new systems
+                // The deletedEmitters Map should remain unchanged during drag and drop operations
+                
+                const modeText = isPreservationMode ? 'with preserved ResourceResolver names' : 'with updated names';
+                setStatusMessage(`Added VFX system "${chosen}" to target ${modeText}`);
+              } catch (e) {
+                console.error('Insert VFX system failed:', e);
+                setStatusMessage('Failed to add VFX system');
+              } finally {
+                setShowNamePromptModal(false);
+                setPendingDrop(null);
+              }
+            }}
+            variant="contained"
+            sx={{
+              background: 'var(--accent-green, #22c55e)',
+              color: '#0b131a',
+              fontWeight: 600,
+              '&:hover': {
+                background: 'color-mix(in srgb, var(--accent-green, #22c55e), black 10%)',
+              }
+            }}
+          >
+            Insert
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Idle Particles Modal */}
       <Dialog
@@ -6458,6 +6724,9 @@ const Port = () => {
         onClose={() => {
           setShowIdleParticleModal(false);
           setSelectedSystemForIdle(null);
+          setIsEditingIdle(false);
+          setExistingIdleBones([]);
+          setIdleBonesList([{ id: Date.now(), boneName: 'head', customBoneName: '' }]);
         }}
         maxWidth="sm"
         fullWidth
@@ -6532,84 +6801,169 @@ const Port = () => {
               VFX System: <strong style={{ color: 'var(--accent)' }}>{selectedSystemForIdle?.name}</strong>
             </Typography>
             
-            <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
-                mb: 1,
-                fontSize: '0.875rem',
-              }}>
-                {isEditingIdle ? 'Select or enter a new bone for this idle particle:' : 'Select bone to attach particles:'}
-              </Typography>
-              <FormControl fullWidth size="small">
-                <Select
-                  value={selectedBoneName}
-                  onChange={(e) => setSelectedBoneName(e.target.value)}
-                  sx={{
-                    color: 'var(--accent)',
-                    backgroundColor: 'var(--surface)',
-                    '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--glass-border)',
-                    },
-                    '&:hover .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--accent)',
-                    },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--accent)',
-                    },
-                    '& .MuiSvgIcon-root': {
-                      color: 'var(--accent)',
-                    },
-                  }}
-                >
-                  {BONE_NAMES.map(bone => (
-                    <MenuItem key={bone} value={bone} sx={{ color: 'var(--accent2)' }}>
-                      {bone}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
+            <Typography variant="body2" sx={{ 
+              color: 'var(--accent2)', 
+              fontSize: '0.875rem',
+              fontWeight: 600,
+            }}>
+              {isEditingIdle ? `Edit idle particles (${idleBonesList.length}):` : 'Add idle particles:'}
+            </Typography>
 
-            <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
-                mb: 1,
-                fontSize: '0.875rem',
-              }}>
-                Or type a custom bone name:
-              </Typography>
-              <MemoizedInput
-                value={customBoneName}
-                onChange={(e) => setCustomBoneName(e.target.value)}
-                placeholder={isEditingIdle && existingIdleBone ? `Current: ${existingIdleBone}` : 'e.g., r_weapon, C_Head_Jnt, etc.'}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'var(--surface)',
-                  color: 'var(--accent)',
-                  border: '1px solid var(--glass-border)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              />
-            </Box>
-
-            {isEditingIdle && existingIdleBone && (
+            {idleBonesList.length === 0 && (
               <Box sx={{ 
-                backgroundColor: 'rgba(var(--accent-rgb), 0.08)',
-                border: '1px solid rgba(var(--accent-rgb), 0.2)',
+                backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
+                border: '1px dashed var(--glass-border)',
                 borderRadius: 1.5,
-                p: 2,
+                p: 3,
+                textAlign: 'center',
               }}>
                 <Typography variant="body2" sx={{ 
                   color: 'var(--accent2)', 
                   fontSize: '0.8rem',
                 }}>
-                  Current bone: <strong style={{ color: 'var(--accent)' }}>{existingIdleBone}</strong>
+                  No idle particles yet. Click "Add Another Bone" below to add one.
                 </Typography>
               </Box>
             )}
+
+            {idleBonesList.map((item, index) => (
+              <Box key={item.id} sx={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: 1.5,
+                p: 2,
+                backgroundColor: 'rgba(var(--accent-rgb), 0.03)',
+                borderRadius: 1.5,
+                border: '1px solid var(--glass-border)',
+              }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" sx={{ 
+                    color: 'var(--accent)', 
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    minWidth: '60px',
+                  }}>
+                    Bone #{index + 1}
+                  </Typography>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      const newList = idleBonesList.filter(bone => bone.id !== item.id);
+                      setIdleBonesList(newList);
+                    }}
+                    sx={{
+                      minWidth: 'auto',
+                      padding: '2px 8px',
+                      fontSize: '0.7rem',
+                      color: '#ff6b6b',
+                      borderColor: '#ff6b6b',
+                      '&:hover': {
+                        backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                        borderColor: '#ff6b6b',
+                      },
+                    }}
+                    variant="outlined"
+                  >
+                    Remove
+                  </Button>
+                </Box>
+
+                <Box>
+                  <Typography variant="body2" sx={{ 
+                    color: 'var(--accent2)', 
+                    mb: 0.5,
+                    fontSize: '0.75rem',
+                  }}>
+                    Select bone:
+                  </Typography>
+                  <FormControl fullWidth size="small">
+                    <Select
+                      value={item.boneName}
+                      onChange={(e) => {
+                        const newList = idleBonesList.map(bone => 
+                          bone.id === item.id ? { ...bone, boneName: e.target.value } : bone
+                        );
+                        setIdleBonesList(newList);
+                      }}
+                      sx={{
+                        color: 'var(--accent)',
+                        backgroundColor: 'var(--surface)',
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'var(--glass-border)',
+                        },
+                        '&:hover .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'var(--accent)',
+                        },
+                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'var(--accent)',
+                        },
+                        '& .MuiSvgIcon-root': {
+                          color: 'var(--accent)',
+                        },
+                      }}
+                    >
+                      {BONE_NAMES.map(bone => (
+                        <MenuItem key={bone} value={bone} sx={{ color: 'var(--accent2)' }}>
+                          {bone}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+
+                <Box>
+                  <Typography variant="body2" sx={{ 
+                    color: 'var(--accent2)', 
+                    mb: 0.5,
+                    fontSize: '0.75rem',
+                  }}>
+                    Or custom bone name:
+                  </Typography>
+                  <input
+                    type="text"
+                    value={item.customBoneName}
+                    onChange={(e) => {
+                      const newList = idleBonesList.map(bone => 
+                        bone.id === item.id ? { ...bone, customBoneName: e.target.value } : bone
+                      );
+                      setIdleBonesList(newList);
+                    }}
+                    placeholder="e.g., r_weapon, C_Head_Jnt"
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'var(--surface)',
+                      color: 'var(--accent)',
+                      border: '1px solid var(--glass-border)',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      fontFamily: 'JetBrains Mono, monospace',
+                    }}
+                  />
+                </Box>
+              </Box>
+            ))}
+
+            <Button
+              onClick={() => {
+                setIdleBonesList([...idleBonesList, { id: Date.now(), boneName: 'head', customBoneName: '' }]);
+              }}
+              variant="outlined"
+              startIcon={<AddIcon />}
+              sx={{
+                color: 'var(--accent)',
+                borderColor: 'var(--glass-border)',
+                textTransform: 'none',
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: '0.75rem',
+                '&:hover': {
+                  borderColor: 'var(--accent)',
+                  backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
+                },
+              }}
+            >
+              Add Another Bone
+            </Button>
           </Box>
         </DialogContent>
         <DialogActions sx={{ 
@@ -6622,6 +6976,9 @@ const Port = () => {
             onClick={() => {
               setShowIdleParticleModal(false);
               setSelectedSystemForIdle(null);
+              setIsEditingIdle(false);
+              setExistingIdleBones([]);
+              setIdleBonesList([]);
             }}
             variant="outlined"
             sx={{
@@ -6655,7 +7012,7 @@ const Port = () => {
               },
             }}
           >
-            {isEditingIdle ? 'Update Idle Bone' : 'Add Idle Particles'}
+            {isEditingIdle ? `Add ${idleBonesList.length} More` : `Add ${idleBonesList.length} Idle Particle${idleBonesList.length > 1 ? 's' : ''}`}
           </Button>
         </DialogActions>
       </Dialog>

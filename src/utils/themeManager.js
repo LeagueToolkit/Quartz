@@ -34,7 +34,7 @@ const THEMES = {
   // bluePurple removed
   // Neutral theme
   onyx: {
-    accent: '#9aa4ae',
+    accent: '#c3cedaff',
     // Brighter secondary for clearer labels in Neutral theme
     accent2: '#cbd5e1',
     accentMuted: '#6b7280',
@@ -269,6 +269,36 @@ const THEMES = {
     // Green accent for success/ported states (neon success)
     accentGreen: '#00ff88',
     accentGreenMuted: '#00cc6a'
+  },
+  // Crystal theme (inspired by clear/white crystals - pure white, no pink)
+  crystal: {
+    accent: '#ffffff', // pure white crystal
+    accent2: '#e5e7eb', // light gray-white (crystal secondary)
+    accentMuted: '#d1d5db', // soft gray (crystal depth)
+    bg: '#0f0f0f', // neutral dark background
+    bg2: '#1a1a1a', // neutral dark gray
+    surface: '#141414', // neutral dark surface
+    surface2: '#1f1f1f', // neutral lighter dark surface
+    text: '#ffffff', // pure white (primary text)
+    text2: '#e5e7eb', // light gray (secondary text)
+    glassBg: 'rgba(20,20,20,0.45)',
+    glassBorder: 'rgba(255,255,255,0.15)', // pure white border
+    glassShadow: '0 12px 32px rgba(0,0,0,0.40)', // soft shadow
+    // MUI specific colors
+    muiPrimary: '#ffffff',
+    muiPrimaryLight: '#ffffff',
+    muiPrimaryDark: '#d1d5db',
+    muiSecondary: '#e5e7eb', // light gray-white
+    muiSecondaryLight: '#f3f4f6',
+    muiSecondaryDark: '#d1d5db',
+    muiBackground: '#0f0f0f',
+    muiPaper: '#141414',
+    muiTextPrimary: '#ffffff',
+    muiTextSecondary: '#e5e7eb',
+    muiDivider: '#2a2a2a',
+    // Success accents
+    accentGreen: '#22c55e',
+    accentGreenMuted: '#166534'
   }
 };
 
@@ -365,7 +395,7 @@ export function applyThemeFromObject(themeObject = {}) {
   root.style.setProperty('--surface-gradient', `linear-gradient(135deg, ${t.surface2} 0%, ${t.bg} 100%)`);
 }
 
-export function applyThemeVariables(variant = 'amethyst') {
+export function applyThemeVariables(variant = 'onyx') {
   // Handle custom variant reference like 'custom:MyTheme'
   if (typeof variant === 'string' && variant.startsWith('custom:') && electronPrefs && electronPrefs.obj) {
     const name = variant.slice('custom:'.length);
@@ -376,9 +406,9 @@ export function applyThemeVariables(variant = 'amethyst') {
       return;
     }
   }
-  const theme = THEMES[variant] || THEMES.amethyst;
+  const theme = THEMES[variant] || THEMES.onyx;
   const root = document.documentElement;
-  const appliedVariant = THEMES[variant] ? variant : 'amethyst';
+  const appliedVariant = THEMES[variant] ? variant : 'onyx';
   root.setAttribute('data-theme', appliedVariant);
   
   // Core theme variables
@@ -417,8 +447,8 @@ export function applyThemeVariables(variant = 'amethyst') {
 }
 
 // Get current theme object
-export function getCurrentTheme(variant = 'amethyst') {
-  return THEMES[variant] || THEMES.amethyst;
+export function getCurrentTheme(variant = 'onyx') {
+  return THEMES[variant] || THEMES.onyx;
 }
 
 // Get all available theme names

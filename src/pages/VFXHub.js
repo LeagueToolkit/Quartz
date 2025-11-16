@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import './Port.css'; // Reuse existing styles
 import themeManager from '../utils/themeManager.js';
 import electronPrefs from '../utils/electronPrefs.js';
-import { Box, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Select, MenuItem, FormControl, Checkbox, FormControlLabel } from '@mui/material';
-import { Apps as AppsIcon, Add as AddIcon, Folder as FolderIcon, Warning as WarningIcon } from '@mui/icons-material';
+import { Box, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Select, MenuItem, FormControl, Checkbox, FormControlLabel, Menu } from '@mui/material';
+import { Apps as AppsIcon, Add as AddIcon, Folder as FolderIcon, Warning as WarningIcon, ChevronRight as ChevronRightIcon, ChevronLeft as ChevronLeftIcon } from '@mui/icons-material';
 import GlowingSpinner from '../components/GlowingSpinner';
 import { ToPyWithPath } from '../utils/fileOperations.js';
 import { loadFileWithBackup, createBackup } from '../utils/backupManager.js';
@@ -19,7 +19,7 @@ import { convertTextureToPNG } from '../utils/textureConverter.js';
 import { findAssetFiles, copyAssetFiles, showAssetCopyResults } from '../utils/assetCopier.js';
 import { parseCompleteVFXSystems, parseIndividualVFXSystems } from '../utils/vfxSystemParser.js';
 import { detectVFXSystemAssets, prepareAssetsForUpload } from '../utils/vfxAssetManager.js';
-import { addIdleParticleEffect, hasIdleParticleEffect, extractParticleName, BONE_NAMES, getIdleParticleBone, updateIdleParticleBone } from '../utils/idleParticlesManager.js';
+import { addIdleParticleEffect, hasIdleParticleEffect, extractParticleName, BONE_NAMES, getIdleParticleBone, getAllIdleParticleBones, updateIdleParticleBone, removeAllIdleParticlesForSystem } from '../utils/idleParticlesManager.js';
 import MatrixEditor from '../components/MatrixEditor';
 import { parseSystemMatrix, upsertSystemMatrix, replaceSystemBlockInFile } from '../utils/matrixUtils.js';
 import { scanEffectKeys, extractSubmeshes, insertOrUpdatePersistentEffect, insertMultiplePersistentEffects, ensureResolverMapping, resolveEffectKey, extractExistingPersistentConditions } from '../utils/persistentEffectsManager.js';
@@ -533,7 +533,14 @@ const MemoizedInput = React.memo(({
 
   // Idle particles states
   const [showIdleParticleModal, setShowIdleParticleModal] = useState(false);
+  const [selectedSystemForIdle, setSelectedSystemForIdle] = useState(null);
+  const [idleBonesList, setIdleBonesList] = useState([]);
+  const [isEditingIdle, setIsEditingIdle] = useState(false);
+  const [existingIdleBones, setExistingIdleBones] = useState([]);
+  
+  // Matrix and persistent states
   const [showMatrixModal, setShowMatrixModal] = useState(false);
+  const [actionsMenuAnchor, setActionsMenuAnchor] = useState(null);
   const [matrixModalState, setMatrixModalState] = useState({ systemKey: null, initial: null });
   const [showPersistentModal, setShowPersistentModal] = useState(false);
   const [persistentPreset, setPersistentPreset] = useState({ type: 'IsAnimationPlaying', animationName: 'Spell4', delay: { on: 0, off: 0 } });
@@ -552,8 +559,6 @@ const MemoizedInput = React.memo(({
   const [existingConditions, setExistingConditions] = useState([]);
   const [showExistingConditions, setShowExistingConditions] = useState(false);
   const [editingConditionIndex, setEditingConditionIndex] = useState(null);
-  const [selectedSystemForIdle, setSelectedSystemForIdle] = useState(null);
-  const [selectedBoneName, setSelectedBoneName] = useState('head');
   
   // Type options for the dropdown
   const typeOptions = [
@@ -591,9 +596,6 @@ const MemoizedInput = React.memo(({
   
   // Backup viewer state
   const [showBackupViewer, setShowBackupViewer] = useState(false);
-  const [isEditingIdle, setIsEditingIdle] = useState(false);
-  const [existingIdleBone, setExistingIdleBone] = useState('');
-  const [customBoneName, setCustomBoneName] = useState('');
 
   // VFX Hub specific states
   const [showDownloadModal, setShowDownloadModal] = useState(false);
@@ -1552,7 +1554,7 @@ const MemoizedInput = React.memo(({
     e.dataTransfer.dropEffect = 'copy';
   };
 
-  // Handle adding idle particles to a VFX system
+  // Handle adding idle particles to a VFX system (TARGET list only)
   const handleAddIdleParticles = (systemKey, systemName) => {
     if (!targetPyContent) {
       setStatusMessage('No target file loaded - Please open a target bin file first');
@@ -1563,74 +1565,73 @@ const MemoizedInput = React.memo(({
       return;
     }
 
-    // Debug: Log what we're receiving
-    console.log('DEBUG - handleAddIdleParticles called with:');
-    console.log('  systemKey:', systemKey);
-    console.log('  systemName:', systemName);
-
     // Check if this system has a particleName (only when clicked)
     // IMPORTANT: Use the full system path (systemKey), not the short display name
-    
-    // First check if the system exists in targetSystems (for unsaved changes)
-    const targetSystem = targetSystems[systemKey];
-    let particleName = null;
-    
-    if (targetSystem) {
-      // System exists in state - use its particleName
-      particleName = targetSystem.particleName || targetSystem.name;
-      console.log(`Found system in targetSystems: "${particleName}"`);
-    } else {
-      // System not in state - check file content
-      particleName = extractParticleName(targetPyContent, systemKey);
-    }
-    
+    const particleName = extractParticleName(targetPyContent, systemKey);
     if (!particleName) {
       setStatusMessage(`VFX system "${systemName}" does not have particle emitters and cannot be used for idle particles. Only systems with particleName can be added as idle effects.`);
       return;
     }
 
-    // If system already has idle particles, open edit flow instead of blocking
+    // If system already has idle particles, open edit flow with existing bones
     if (hasIdleParticleEffect(targetPyContent, systemKey)) {
-      const currentBone = getIdleParticleBone(targetPyContent, systemKey) || '';
+      const currentBones = getAllIdleParticleBones(targetPyContent, systemKey);
       setIsEditingIdle(true);
-      setExistingIdleBone(currentBone);
-      setCustomBoneName('');
-      setSelectedBoneName(currentBone || 'head');
+      setExistingIdleBones(currentBones);
+      // Populate list with existing bones for editing
+      setIdleBonesList(currentBones.map((bone, idx) => ({ id: Date.now() + idx, boneName: bone, customBoneName: '' })));
       setSelectedSystemForIdle({ key: systemKey, name: systemName });
       setShowIdleParticleModal(true);
-      setStatusMessage(`VFX system "${systemName}" already has idle particles. You can edit the bone.`);
+      setStatusMessage(`Editing ${currentBones.length} idle particle(s) for "${systemName}". Modify bones or add more.`);
       return;
     }
 
     setIsEditingIdle(false);
-    setExistingIdleBone('');
-    setCustomBoneName('');
+    setExistingIdleBones([]);
+    setIdleBonesList([]); // Start with empty list - user clicks "Add Another Bone" to add
     setSelectedSystemForIdle({ key: systemKey, name: systemName });
     setShowIdleParticleModal(true);
   };
 
-  // Confirm adding idle particles with selected bone
+  // Confirm adding idle particles with selected bones
   const handleConfirmIdleParticles = () => {
     if (!selectedSystemForIdle || !targetPyContent) return;
 
     try {
-      const chosenBone = (customBoneName && customBoneName.trim()) ? customBoneName.trim() : selectedBoneName;
-      console.log(`${isEditingIdle ? 'Updating' : 'Adding'} idle particles for "${selectedSystemForIdle.name}" on bone "${chosenBone}"`);
+      // Build bone configs from the list
+      const boneConfigs = idleBonesList.map(item => ({
+        boneName: (item.customBoneName && item.customBoneName.trim()) 
+          ? item.customBoneName.trim() 
+          : item.boneName
+      }));
 
-      // IMPORTANT: Use the full system path (key) when modifying the file
-      const updatedContent = isEditingIdle
-        ? updateIdleParticleBone(targetPyContent, selectedSystemForIdle.key, chosenBone)
-        : addIdleParticleEffect(targetPyContent, selectedSystemForIdle.key, chosenBone);
-      setTargetPyContent(updatedContent);
-      try { setFileSaved(false); } catch {}
+      let updatedContent = targetPyContent;
 
-      setStatusMessage(`${isEditingIdle ? 'Updated idle bone for' : 'Added idle particles for'} "${selectedSystemForIdle.name}" ${isEditingIdle ? 'to' : 'on bone'} "${chosenBone}"`);
+      // If editing, remove all existing idle particles for this system first
+      if (isEditingIdle) {
+        updatedContent = removeAllIdleParticlesForSystem(updatedContent, selectedSystemForIdle.key);
+      }
+
+      // If user removed all entries, just remove idle particles and don't add any
+      if (boneConfigs.length === 0) {
+        setTargetPyContent(updatedContent);
+        try { setFileSaved(false); } catch {}
+        setStatusMessage(`Removed all idle particles from "${selectedSystemForIdle.name}"`);
+      } else {
+        // Add all the bones from the list (edited + new)
+        updatedContent = addIdleParticleEffect(updatedContent, selectedSystemForIdle.key, boneConfigs);
+        setTargetPyContent(updatedContent);
+        try { setFileSaved(false); } catch {}
+
+        const boneNames = boneConfigs.map(c => c.boneName).join(', ');
+        setStatusMessage(`${isEditingIdle ? 'Updated' : 'Added'} ${boneConfigs.length} idle particle(s) for "${selectedSystemForIdle.name}" on bones: ${boneNames}`);
+      }
+
       setShowIdleParticleModal(false);
       setSelectedSystemForIdle(null);
       setIsEditingIdle(false);
-      setExistingIdleBone('');
-      setCustomBoneName('');
-
+      setExistingIdleBones([]);
+      setIdleBonesList([]);
     } catch (error) {
       console.error('Error adding idle particles:', error);
       setStatusMessage(`Failed to add idle particles: ${error.message}`);
@@ -3241,66 +3242,155 @@ const MemoizedInput = React.memo(({
             <div className="selection-indicator"></div>
           )}
           {isTarget && (
-            <button
-              className="idle-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleAddIdleParticles(system.key, system.name);
-              }}
-              title="Add Idle Particles to this system"
-              style={{
-                flexShrink: 0,
-                minWidth: '15px',
-                height: '30px',
-                marginLeft: 'auto',
-                marginRight: '0',
-                fontSize: '14px',
-                padding: '2px 8px',
-                background: 'var(--accent-gradient-subtle)',
-                border: '1px solid var(--accent)',
-                color: 'var(--accent)',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              Idle
-            </button>
-          )}
-          {isTarget && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                try {
-                  const sysText = system.rawContent || system.fullContent || (Array.isArray(system.content) ? system.content.join('\n') : '') || '';
-                  const parsed = parseSystemMatrix(sysText);
-                  setMatrixModalState({ systemKey: system.key, initial: parsed.matrix || [
-                    1,0,0,0,
-                    0,1,0,0,
-                    0,0,1,0,
-                    0,0,0,1
-                  ]});
-                  setShowMatrixModal(true);
-                } catch (err) {
-                  console.error('Open matrix editor failed:', err);
-                }
-              }}
-              title="Edit system transform matrix"
-              style={{
-                flexShrink: 0,
-                minWidth: '15px',
-                height: '30px',
-                marginLeft: '6px',
-                fontSize: '14px',
-                padding: '2px 8px',
-                background: 'var(--surface-2)',
-                border: '1px solid var(--bg)',
-                color: 'var(--accent)',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              Matrix
-            </button>
+            <>
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  const isOpen = actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key;
+                  if (isOpen) {
+                    setActionsMenuAnchor(null);
+                  } else {
+                    setActionsMenuAnchor({ element: e.currentTarget, systemKey: system.key });
+                  }
+                }}
+                disabled={!hasResourceResolver || !hasSkinCharacterData}
+                title="Actions menu"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                }}
+                sx={{
+                  color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : 'var(--accent2)',
+                  padding: '4px',
+                  minWidth: '24px',
+                  width: '24px',
+                  height: '24px',
+                  marginLeft: 'auto',
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                  transform: actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? 'rotate(90deg)' : 'rotate(0deg)',
+                  '&:hover': { 
+                    color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : 'var(--accent)', 
+                    backgroundColor: 'rgba(255,255,255,0.05)' 
+                  },
+                  '&.Mui-disabled': {
+                    opacity: 0.5
+                  }
+                }}
+              >
+                {actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? (
+                  <ChevronLeftIcon fontSize="small" />
+                ) : (
+                  <ChevronRightIcon fontSize="small" />
+                )}
+              </IconButton>
+              <Menu
+                anchorEl={actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? actionsMenuAnchor.element : null}
+                open={Boolean(actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key)}
+                onClose={(e) => {
+                  if (e) {
+                    e.stopPropagation();
+                  }
+                  setActionsMenuAnchor(null);
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                }}
+                anchorOrigin={{
+                  vertical: 'bottom',
+                  horizontal: 'right',
+                }}
+                transformOrigin={{
+                  vertical: 'top',
+                  horizontal: 'right',
+                }}
+                TransitionProps={{
+                  timeout: 200,
+                  enter: true,
+                  exit: true,
+                }}
+                PaperProps={{
+                  onClick: (e) => {
+                    e.stopPropagation();
+                  },
+                  onMouseDown: (e) => {
+                    e.stopPropagation();
+                  },
+                  sx: {
+                    background: 'var(--surface-2)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '6px',
+                    minWidth: '180px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    mt: 0.5,
+                    transition: 'opacity 0.2s ease-in-out, transform 0.2s ease-in-out',
+                    '&.MuiMenu-paper': {
+                      transformOrigin: 'top right',
+                    }
+                  }
+                }}
+              >
+                <MenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAddIdleParticles(system.key, system.name);
+                    setActionsMenuAnchor(null);
+                  }}
+                  disabled={!hasResourceResolver || !hasSkinCharacterData}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                  }}
+                  sx={{
+                    color: 'var(--accent)',
+                    fontSize: '0.875rem',
+                    transition: 'background-color 0.15s ease',
+                    '&:hover': {
+                      backgroundColor: 'rgba(255,255,255,0.05)'
+                    },
+                    '&.Mui-disabled': {
+                      opacity: 0.5
+                    }
+                  }}
+                >
+                  Add Idle
+                </MenuItem>
+                <MenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    try {
+                      const sysText = system.rawContent || system.fullContent || (Array.isArray(system.content) ? system.content.join('\n') : '') || '';
+                      const parsed = parseSystemMatrix(sysText);
+                      setMatrixModalState({ systemKey: system.key, initial: parsed.matrix || [
+                        1,0,0,0,
+                        0,1,0,0,
+                        0,0,1,0,
+                        0,0,0,1
+                      ]});
+                      setShowMatrixModal(true);
+                    } catch (err) {
+                      console.error('Open matrix editor failed:', err);
+                    }
+                    setActionsMenuAnchor(null);
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                  }}
+                  sx={{
+                    color: 'var(--accent)',
+                    fontSize: '0.875rem',
+                    transition: 'background-color 0.15s ease',
+                    '&:hover': {
+                      backgroundColor: 'rgba(255,255,255,0.05)'
+                    }
+                  }}
+                >
+                  Add Matrix
+                </MenuItem>
+              </Menu>
+            </>
           )}
         </div>
         {system.emitters && system.emitters.map((emitter, index) => (
@@ -4507,8 +4597,8 @@ const MemoizedInput = React.memo(({
 
   return (
     <div className="port-container" style={{
-      minHeight: '100vh',
-      height: '100vh',
+      minHeight: '100%',
+      height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
       background: 'linear-gradient(135deg, var(--bg-2) 0%, var(--bg) 100%)',
       position: 'relative',
       overflow: 'hidden',
@@ -5873,6 +5963,9 @@ const MemoizedInput = React.memo(({
         onClose={() => {
           setShowIdleParticleModal(false);
           setSelectedSystemForIdle(null);
+          setIsEditingIdle(false);
+          setExistingIdleBones([]);
+          setIdleBonesList([]);
         }}
         maxWidth="sm"
         fullWidth
@@ -5947,84 +6040,169 @@ const MemoizedInput = React.memo(({
               VFX System: <strong style={{ color: 'var(--accent)' }}>{selectedSystemForIdle?.name}</strong>
             </Typography>
             
-            <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
-                mb: 1,
-                fontSize: '0.875rem',
-              }}>
-                {isEditingIdle ? 'Select or enter a new bone for this idle particle:' : 'Select bone to attach particles:'}
-              </Typography>
-              <FormControl fullWidth size="small">
-                <Select
-                  value={selectedBoneName}
-                  onChange={(e) => setSelectedBoneName(e.target.value)}
-                  sx={{
-                    color: 'var(--accent)',
-                    backgroundColor: 'var(--surface)',
-                    '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--glass-border)',
-                    },
-                    '&:hover .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--accent)',
-                    },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--accent)',
-                    },
-                    '& .MuiSvgIcon-root': {
-                      color: 'var(--accent)',
-                    },
-                  }}
-                >
-                  {BONE_NAMES.map(bone => (
-                    <MenuItem key={bone} value={bone} sx={{ color: 'var(--accent2)' }}>
-                      {bone}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
+            <Typography variant="body2" sx={{ 
+              color: 'var(--accent2)', 
+              fontSize: '0.875rem',
+              fontWeight: 600,
+            }}>
+              {isEditingIdle ? `Edit idle particles (${idleBonesList.length}):` : 'Add idle particles:'}
+            </Typography>
 
-            <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
-                mb: 1,
-                fontSize: '0.875rem',
-              }}>
-                Or type a custom bone name:
-              </Typography>
-              <MemoizedInput
-                value={customBoneName}
-                onChange={(e) => setCustomBoneName(e.target.value)}
-                placeholder={isEditingIdle && existingIdleBone ? `Current: ${existingIdleBone}` : 'e.g., r_weapon, C_Head_Jnt, etc.'}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'var(--surface)',
-                  color: 'var(--accent)',
-                  border: '1px solid var(--glass-border)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              />
-            </Box>
-
-            {isEditingIdle && existingIdleBone && (
+            {idleBonesList.length === 0 && (
               <Box sx={{ 
-                backgroundColor: 'rgba(var(--accent-rgb), 0.08)',
-                border: '1px solid rgba(var(--accent-rgb), 0.2)',
+                backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
+                border: '1px dashed var(--glass-border)',
                 borderRadius: 1.5,
-                p: 2,
+                p: 3,
+                textAlign: 'center',
               }}>
                 <Typography variant="body2" sx={{ 
                   color: 'var(--accent2)', 
                   fontSize: '0.8rem',
                 }}>
-                  Current bone: <strong style={{ color: 'var(--accent)' }}>{existingIdleBone}</strong>
+                  No idle particles yet. Click "Add Another Bone" below to add one.
                 </Typography>
               </Box>
             )}
+
+            {idleBonesList.map((item, index) => (
+              <Box key={item.id} sx={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: 1.5,
+                p: 2,
+                backgroundColor: 'rgba(var(--accent-rgb), 0.03)',
+                borderRadius: 1.5,
+                border: '1px solid var(--glass-border)',
+              }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" sx={{ 
+                    color: 'var(--accent)', 
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    minWidth: '60px',
+                  }}>
+                    Bone #{index + 1}
+                  </Typography>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      const newList = idleBonesList.filter(bone => bone.id !== item.id);
+                      setIdleBonesList(newList);
+                    }}
+                    sx={{
+                      minWidth: 'auto',
+                      padding: '2px 8px',
+                      fontSize: '0.7rem',
+                      color: '#ff6b6b',
+                      borderColor: '#ff6b6b',
+                      '&:hover': {
+                        backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                        borderColor: '#ff6b6b',
+                      },
+                    }}
+                    variant="outlined"
+                  >
+                    Remove
+                  </Button>
+                </Box>
+
+                <Box>
+                  <Typography variant="body2" sx={{ 
+                    color: 'var(--accent2)', 
+                    mb: 0.5,
+                    fontSize: '0.75rem',
+                  }}>
+                    Select bone:
+                  </Typography>
+                  <FormControl fullWidth size="small">
+                    <Select
+                      value={item.boneName}
+                      onChange={(e) => {
+                        const newList = idleBonesList.map(bone => 
+                          bone.id === item.id ? { ...bone, boneName: e.target.value } : bone
+                        );
+                        setIdleBonesList(newList);
+                      }}
+                      sx={{
+                        color: 'var(--accent)',
+                        backgroundColor: 'var(--surface)',
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'var(--glass-border)',
+                        },
+                        '&:hover .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'var(--accent)',
+                        },
+                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'var(--accent)',
+                        },
+                        '& .MuiSvgIcon-root': {
+                          color: 'var(--accent)',
+                        },
+                      }}
+                    >
+                      {BONE_NAMES.map(bone => (
+                        <MenuItem key={bone} value={bone} sx={{ color: 'var(--accent2)' }}>
+                          {bone}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+
+                <Box>
+                  <Typography variant="body2" sx={{ 
+                    color: 'var(--accent2)', 
+                    mb: 0.5,
+                    fontSize: '0.75rem',
+                  }}>
+                    Or custom bone name:
+                  </Typography>
+                  <input
+                    type="text"
+                    value={item.customBoneName}
+                    onChange={(e) => {
+                      const newList = idleBonesList.map(bone => 
+                        bone.id === item.id ? { ...bone, customBoneName: e.target.value } : bone
+                      );
+                      setIdleBonesList(newList);
+                    }}
+                    placeholder="e.g., r_weapon, C_Head_Jnt"
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'var(--surface)',
+                      color: 'var(--accent)',
+                      border: '1px solid var(--glass-border)',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      fontFamily: 'JetBrains Mono, monospace',
+                    }}
+                  />
+                </Box>
+              </Box>
+            ))}
+
+            <Button
+              onClick={() => {
+                setIdleBonesList([...idleBonesList, { id: Date.now(), boneName: 'head', customBoneName: '' }]);
+              }}
+              variant="outlined"
+              startIcon={<AddIcon />}
+              sx={{
+                color: 'var(--accent)',
+                borderColor: 'var(--glass-border)',
+                textTransform: 'none',
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: '0.75rem',
+                '&:hover': {
+                  borderColor: 'var(--accent)',
+                  backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
+                },
+              }}
+            >
+              Add Another Bone
+            </Button>
           </Box>
         </DialogContent>
         <DialogActions sx={{ 
@@ -6037,6 +6215,9 @@ const MemoizedInput = React.memo(({
             onClick={() => {
               setShowIdleParticleModal(false);
               setSelectedSystemForIdle(null);
+              setIsEditingIdle(false);
+              setExistingIdleBones([]);
+              setIdleBonesList([]);
             }}
             variant="outlined"
             sx={{
@@ -6070,7 +6251,7 @@ const MemoizedInput = React.memo(({
               },
             }}
           >
-            {isEditingIdle ? 'Update Idle Bone' : 'Add Idle Particles'}
+            {isEditingIdle ? `Add ${idleBonesList.length} More` : `Add ${idleBonesList.length} Idle Particle${idleBonesList.length > 1 ? 's' : ''}`}
           </Button>
         </DialogActions>
       </Dialog>

@@ -1,0 +1,115 @@
+/* Img Recolor Page Styles */
+
+.img-recolor-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+  color: var(--text-1);
+}
+
+.img-recolor-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  image-rendering: pixelated;
+  border: 1px solid var(--accent-muted);
+  cursor: crosshair;
+}
+
+.img-recolor-canvas:hover {
+  border-color: var(--accent);
+}
+
+/* Color pair card animations */
+.color-pair-card {
+  transition: all 0.2s ease;
+}
+
+.color-pair-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--shadow-medium);
+}
+
+/* Color input styling */
+input[type="color"] {
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+input[type="color"]:hover {
+  transform: scale(1.05);
+}
+
+/* Scrollbar styling for color pairs list */
+.color-pairs-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.color-pairs-list::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.color-pairs-list::-webkit-scrollbar-thumb {
+  background: var(--accent-muted);
+  border-radius: 4px;
+}
+
+.color-pairs-list::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* Loading state */
+.img-recolor-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--text-2);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Empty state */
+.img-recolor-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--text-2);
+  font-family: 'JetBrains Mono', monospace;
+  padding: 40px;
+  text-align: center;
+}
+
+.img-recolor-empty svg {
+  font-size: 64px;
+  opacity: 0.5;
+}
+
+/* Tolerance slider custom styling */
+.MuiSlider-root {
+  color: var(--accent) !important;
+}
+
+.MuiSlider-thumb {
+  background-color: var(--accent) !important;
+}
+
+.MuiSlider-track {
+  background-color: var(--accent) !important;
+}
+
+.MuiSlider-rail {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Color picker eyedropper mode */
+.eyedropper-active {
+  cursor: crosshair !important;
+}
+
+.eyedropper-active * {
+  cursor: crosshair !important;
+}

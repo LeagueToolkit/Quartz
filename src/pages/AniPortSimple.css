@@ -2,7 +2,8 @@
 
 /* Main Container */
 .aniport-container {
-  height: 100vh;
+  height: 100%; /* Use 100% of parent container instead of 100vh to account for title bar */
+  min-height: 100%;
   width: 100%;
   overflow: hidden;
   display: flex;
@@ -1341,7 +1342,8 @@
   top: 0;
   right: -100%;
   width: 50%;
-  height: 100vh;
+  height: calc(100vh - 32px); /* Account for title bar height */
+  top: 32px; /* Start below title bar */
   background: var(--surface);
   border-left: 2px solid var(--accent);
   z-index: 1000;

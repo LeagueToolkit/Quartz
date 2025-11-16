@@ -254,15 +254,31 @@ function createWindow() {
     width: 1200,
     height: 800,
     icon: path.join(__dirname, 'public', 'divinelab.ico'),
+    frame: false, // Remove default Windows title bar completely
+    titleBarStyle: 'hidden', // macOS only, but harmless on Windows
+    transparent: false, // Keep opaque for better performance
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
       enableRemoteModule: false,
     },
   });
+  
+  // Ensure frame is removed (Windows-specific check)
+  if (process.platform === 'win32') {
+    mainWindow.setMenuBarVisibility(false); // Hide menu bar if any
+  }
 
   // Set the window reference for auto-updater
   updateCheckWindow = mainWindow;
+  
+  // Notify renderer when window state changes
+  mainWindow.on('maximize', () => {
+    mainWindow.webContents.send('window:maximized');
+  });
+  mainWindow.on('unmaximize', () => {
+    mainWindow.webContents.send('window:unmaximized');
+  });
 
   // Load the app
   const isDevelopment = isDev && !app.isPackaged;
@@ -3605,6 +3621,37 @@ ipcMain.handle('update:install', async () => {
     logToFile(`Update install error: ${error.message}`, 'ERROR');
     return { success: false, error: error.message };
   }
+});
+
+// Window control IPC handlers for custom title bar
+ipcMain.handle('window:minimize', (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (window) {
+    window.minimize();
+  }
+});
+
+ipcMain.handle('window:maximize', (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (window) {
+    if (window.isMaximized()) {
+      window.unmaximize();
+    } else {
+      window.maximize();
+    }
+  }
+});
+
+ipcMain.handle('window:close', (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (window) {
+    window.close();
+  }
+});
+
+ipcMain.handle('window:isMaximized', (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  return window ? window.isMaximized() : false;
 });
 
 ipcMain.handle('update:get-version', async () => {

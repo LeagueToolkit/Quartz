@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './FrogChanger.css';
 import electronPrefs from '../utils/electronPrefs.js';
-import CollectionsBookmarkIcon from '@mui/icons-material/CollectionsBookmark';
 import { IconButton, Tooltip, Box } from '@mui/material';
 import CelestiaGuide from '../components/CelestiaGuide';
 
@@ -1669,74 +1668,7 @@ const FrogChanger = () => {
 
   return (
     <div className="frogchanger-wrapper h-screen bg-black text-white relative overflow-hidden">
-      {/* Header */}
-      <header className="border-b border-gray-800 p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ 
-              background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%)',
-              color: 'var(--text)'
-            }}>
-              <CollectionsBookmarkIcon sx={{ 
-                fontSize: '2rem', 
-                color: 'var(--text)',
-                filter: 'drop-shadow(0 0.5px 1px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 1px rgba(0, 0, 0, 0.5))',
-                textShadow: '0 1px 2px rgba(0, 0, 0, 0.8), 0 0 1px rgba(0, 0, 0, 0.5)'
-              }} />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">
-                Asset Extractor
-              </h1>
-              <p className="text-xs text-gray-400">Asset Extractor for Modding</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Console Display */}
-            <div className="flex-1 min-w-0 mr-4">
-              <div className="bg-gray-900 border border-gray-700 rounded-lg p-2 h-8 overflow-x-auto overflow-y-hidden">
-                <div className="text-xs text-gray-300 font-mono whitespace-nowrap">
-                  {consoleLogs.length > 0 ? (
-                    <div className="animate-pulse">
-                      {consoleLogs[consoleLogs.length - 1]?.message || 'Ready...'}
-                    </div>
-                  ) : (
-                    'Ready...'
-                  )}
-                </div>
-              </div>
-            </div>
-            
-            {/* Search Info Button */}
-            <button
-              className="p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-900/20 rounded-lg transition-all duration-200"
-              onClick={() => setShowSearchInfo(!showSearchInfo)}
-              title="Search Help"
-            >
-              ℹ️
-            </button>
-            
-            {/* Stop Button */}
-            {(isExtracting || isRepathing) && (
-              <button
-                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-all duration-200"
-                onClick={cancelOperations}
-                disabled={isCancelling}
-                title="Stop all operations"
-              >
-                {isCancelling ? '⏳' : '⏹️'}
-              </button>
-            )}
-            
-            <button
-              className="p-2 text-gray-400 hover:text-green-400 hover:bg-gray-800 rounded-lg transition-all duration-200"
-              onClick={() => setShowSettings(true)}
-            >
-              ⚙️
-            </button>
-          </div>
-        </div>
-      </header>
+
 
       {/* Search Info Modal */}
       {showSearchInfo && (
@@ -1786,7 +1718,7 @@ const FrogChanger = () => {
         </div>
       )}
 
-      <div className="flex h-[calc(100vh-80px)]">
+      <div className="flex h-screen">
         {/* Sidebar */}
         <aside className="w-64 border-r border-gray-800 p-4 overflow-y-auto">
           <div className="relative mb-4">
@@ -1860,7 +1792,53 @@ const FrogChanger = () => {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 p-6 overflow-y-auto">
+        <main className="flex-1 p-6 overflow-y-auto relative">
+          {/* Top Right Controls */}
+          <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+            {/* Console Display */}
+            <div className="min-w-0 mr-2">
+              <div className="bg-gray-900 border border-gray-700 rounded-lg p-2 h-8 overflow-x-auto overflow-y-hidden">
+                <div className="text-xs text-gray-300 font-mono whitespace-nowrap">
+                  {consoleLogs.length > 0 ? (
+                    <div className="animate-pulse">
+                      {consoleLogs[consoleLogs.length - 1]?.message || 'Ready...'}
+                    </div>
+                  ) : (
+                    'Ready...'
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            {/* Search Info Button */}
+            <button
+              className="p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-900/20 rounded-lg transition-all duration-200"
+              onClick={() => setShowSearchInfo(!showSearchInfo)}
+              title="Search Help"
+            >
+              ℹ️
+            </button>
+            
+            {/* Stop Button */}
+            {(isExtracting || isRepathing) && (
+              <button
+                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-all duration-200"
+                onClick={cancelOperations}
+                disabled={isCancelling}
+                title="Stop all operations"
+              >
+                {isCancelling ? '⏳' : '⏹️'}
+              </button>
+            )}
+            
+            <button
+              className="p-2 text-gray-400 hover:text-green-400 hover:bg-gray-800 rounded-lg transition-all duration-200"
+              onClick={() => setShowSettings(true)}
+            >
+              ⚙️
+            </button>
+          </div>
+
           {showSkinlineSearch ? (
             /* Skinline Search Results */
             <div>

@@ -5,12 +5,14 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { Box } from '@mui/material';
 import './styles/theme-variables.css';
 import ModernNavigation from './components/ModernNavigation';
+import CustomTitleBar, { TITLE_BAR_HEIGHT } from './components/CustomTitleBar';
 import MainPage from './pages/MainPage';
 import Paint from './pages/Paint';
 import Port from './pages/Port';
 import VFXHub from './pages/VFXHub';
 import RGBA from './pages/RGBA';
-import FrogImg from './pages/FrogImg';
+
+import ImgRecolor from './pages/ImgRecolor';
 import BinEditor from './pages/BinEditor';
 import Tools from './pages/Tools';
 import Settings from './pages/Settings';
@@ -322,18 +324,21 @@ function App() {
           bgcolor: 'var(--mui-background)',
           overflow: 'hidden'
         }}>
+          {/* Custom Title Bar */}
+          <CustomTitleBar />
+          
           {/* Navbar as floating overlay */}
           <ModernNavigation />
           
           {/* Main content positioned after navbar */}
           <Box sx={{ 
             position: 'absolute',
-            top: 0,
+            top: `${TITLE_BAR_HEIGHT}px`, // Start below title bar
             left: '64px', // Start after collapsed navbar
             right: 0,
             bottom: 0,
             background: 'var(--mui-background)',
-            overflow: 'hidden',
+            overflow: 'auto', // Allow scrolling if content exceeds container
             zIndex: 1,
           }}>
             <Routes>
@@ -344,7 +349,8 @@ function App() {
               <Route path="/vfx-hub" element={<VFXHub />} />
               <Route path="/ " element={<div>  feature removed</div>} />
               <Route path="/rgba" element={<RGBA />} />
-              <Route path="/frogimg" element={<FrogImg />} />
+
+              <Route path="/img-recolor" element={<ImgRecolor />} />
               <Route path="/bineditor" element={<BinEditor />} />
               <Route path="/upscale" element={<Upscale />} />
               <Route path="/file-randomizer" element={<UniversalFileRandomizer />} />

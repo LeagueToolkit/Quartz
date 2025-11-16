@@ -197,27 +197,17 @@ class CLI:
 
     @staticmethod
     def png2dds(src, dst):
-        from LtMAO import lepath, tools
+        from LtMAO import lepath, texsmart
         if dst == None:
             dst = lepath.ext(src, '.png', '.dds')
-        tools.ImageMagick.to_dds(
-            src=src,
-            dds=dst,
-            format='dxt5',
-            mipmap=False
-        )
+        texsmart.png2dds(src, dst, format='dxt5', mipmap=False)
 
     @staticmethod
     def png2ddsmm(src, dst):
-        from LtMAO import lepath, tools
+        from LtMAO import lepath, texsmart
         if dst == None:
             dst = lepath.ext(src, '.png', '.dds')
-        tools.ImageMagick.to_dds(
-            src=src,
-            dds=dst,
-            format='dxt5',
-            mipmap=True
-        )
+        texsmart.png2dds(src, dst, format='dxt5', mipmap=True)
 
 
     @staticmethod
@@ -229,6 +219,20 @@ class CLI:
             src=src,
             png=dst,
         )
+
+    @staticmethod
+    def png2ddsdir(src):
+        import os
+        from LtMAO import lepath, texsmart
+        for root, dirs, files in os.walk(src):
+            for file in files:  
+                if file.endswith('.png'):
+                    png_file = lepath.join(root, file)
+                    print(f'Native: Start: PNG to DDS: {png_file}')
+                    try:
+                        texsmart.png2dds(png_file, format='dxt5', mipmap=False)
+                    except Exception as e:
+                        print(f'Native: Failed to convert {png_file}: {e}')
 
     @staticmethod
     def dds2x4x(src):
@@ -435,6 +439,7 @@ def main():
         'dds2png':          lambda src, dst: CLI.dds2png(src, dst),
         'png2dds':          lambda src, dst: CLI.png2dds(src, dst),
         'png2ddsmm':        lambda src, dst: CLI.png2ddsmm(src, dst),
+        'png2ddsdir':       lambda src, dst: CLI.png2ddsdir(src),
 
         'dds2x4x':          lambda src, dst: CLI.dds2x4x(src),
 

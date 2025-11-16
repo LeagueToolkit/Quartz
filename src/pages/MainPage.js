@@ -324,9 +324,9 @@ const MainPage = () => {
   const handleWebsiteClick = () => {
     if (window.require) {
       const { shell } = window.require('electron');
-      shell.openExternal('https://dev.divineskins.gg');
+      shell.openExternal('https://divineskins.gg');
     } else {
-      window.open('https://dev.divineskins.gg', '_blank');
+      window.open('https://divineskins.gg', '_blank');
     }
   };
 
@@ -358,8 +358,8 @@ const MainPage = () => {
     <Box
       key={renderKey}
       sx={{
-        minHeight: '100vh',
-        height: '100vh',
+        minHeight: '100%',
+        height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
         background: 'linear-gradient(135deg, var(--bg-2) 0%, var(--bg) 100%)',
         position: 'relative',
         overflow: 'hidden',
@@ -651,7 +651,8 @@ const MainPage = () => {
             sx={{
               textAlign: 'center',
               flexShrink: 0,
-              mb: { xs: 1.5, sm: 2, md: 3 },
+              mb: { xs: 2, sm: 3, md: 4 },
+              pt: { xs: 1, sm: 2 },
             }}
           >
           {/* Title */}
@@ -665,7 +666,7 @@ const MainPage = () => {
                backgroundClip: 'text',
                WebkitBackgroundClip: 'text',
                WebkitTextFillColor: 'transparent',
-               mb: 1,
+               mb: { xs: 1.5, sm: 2 },
                animation: 'shimmer 3s ease-in-out infinite',
                '@keyframes shimmer': {
                  '0%': { backgroundPosition: '0% 50%' },
@@ -674,7 +675,7 @@ const MainPage = () => {
                },
              }}
            >
-                           Quartz
+             Quartz
            </Typography>
 
           {/* Golden Underline */}
@@ -684,24 +685,9 @@ const MainPage = () => {
               height: '2px',
               background: 'linear-gradient(90deg, transparent, var(--accent), transparent)',
               margin: '0 auto',
-              mb: { xs: 1.5, sm: 2 },
+              mb: { xs: 2, sm: 2.5, md: 3 },
             }}
           />
-
-          {/* Tagline */}
-          <Typography
-            variant="h6"
-            sx={{
-              color: '#ffffff',
-              mb: { xs: 1.5, sm: 2, md: 3 },
-              opacity: 0.9,
-              fontWeight: 300,
-              fontSize: { xs: '0.8rem', sm: '0.9rem', md: '1rem' },
-              px: { xs: 1, sm: 2 },
-            }}
-          >
-            Professional League of Legends modding suite for creators and enthusiasts.
-          </Typography>
 
           {/* Call-to-Action Buttons */}
           <Box sx={{ 
@@ -709,7 +695,7 @@ const MainPage = () => {
             gap: { xs: 1, sm: 1.5 }, 
             justifyContent: 'center', 
             flexWrap: 'wrap',
-            mb: { xs: 1.5, sm: 2 },
+            mb: 0,
           }}>
             <Button
               variant="contained"
@@ -768,43 +754,13 @@ const MainPage = () => {
           </Box>
           </Box>
 
-          {/* Middle Section */}
-          <Box sx={{ 
-            textAlign: 'center', 
-            mb: { xs: 1.5, sm: 2, md: 3 },
-            flexShrink: 0,
-          }}>
-          <Typography
-            variant="h4"
-            sx={{
-              color: '#ffffff',
-              fontWeight: 'bold',
-              mb: { xs: 0.5, sm: 1 },
-              fontSize: { xs: '1.2rem', sm: '1.4rem', md: '1.6rem' },
-            }}
-          >
-            Modding Tools Suite
-          </Typography>
-          <Typography
-            variant="body1"
-            sx={{
-              color: '#ffffff',
-              opacity: 0.8,
-              fontWeight: 300,
-              fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.9rem' },
-              px: { xs: 1, sm: 2 },
-            }}
-          >
-            Everything you need to create, edit, and share League of Legends modifications.
-          </Typography>
-          </Box>
-
           {/* Tool Cards Grid */}
           <Box sx={{ 
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
             minHeight: 0,
+            mt: { xs: 7, sm: 8, md: 9 },
           }}>
             <Grid 
               container 
@@ -812,6 +768,7 @@ const MainPage = () => {
               sx={{ 
                 flex: 1,
                 alignContent: 'flex-start',
+                justifyContent: 'center',
               }}
             >
             {toolCards.map((tool) => (

@@ -85,8 +85,7 @@ const Settings = () => {
         // hudEditorEnabled: removed - HUD Editor archived
     vfxHubEnabled: true,
     rgbaEnabled: false, // Disabled by default for new users
-    frogImgEnabled: false, // Disabled by default for new users
-    // frogImgGreyscaleFilter: removed - no longer used
+    imgRecolorEnabled: true, // Enabled by default
     binEditorEnabled: true,
     toolsEnabled: false, // Disabled by default for new users
     fileRandomizerEnabled: false, // Disabled by default for new users
@@ -304,8 +303,7 @@ const Settings = () => {
         portEnabled: electronPrefs.obj.portEnabled !== false,
         vfxHubEnabled: electronPrefs.obj.VFXHubEnabled !== false,
         binEditorEnabled: electronPrefs.obj.BinEditorEnabled !== false,
-        frogImgEnabled: electronPrefs.obj.FrogImgEnabled !== false,
-        // frogImgGreyscaleFilter: removed - no longer used
+        imgRecolorEnabled: electronPrefs.obj.ImgRecolorEnabled !== false,
         UpscaleEnabled: electronPrefs.obj.UpscaleEnabled !== false,
         rgbaEnabled: electronPrefs.obj.RGBAEnabled !== false,
         // hudEditorEnabled: removed - HUD Editor archived
@@ -638,12 +636,8 @@ const Settings = () => {
               case 'rgbaEnabled':
         await electronPrefs.set('RGBAEnabled', value);
           break;
-        case 'frogImgEnabled':
-          await electronPrefs.set('FrogImgEnabled', value);
-          break;
-        case 'frogImgGreyscaleFilter':
-          // Auto Greyscale Filter removed - setting disabled
-          // await electronPrefs.set('FrogImgGreyscaleFilter', value);
+        case 'imgRecolorEnabled':
+          await electronPrefs.set('ImgRecolorEnabled', value);
           break;
         case 'binEditorEnabled':
           await electronPrefs.set('BinEditorEnabled', value);
@@ -673,7 +667,7 @@ const Settings = () => {
       }
 
       // Dispatch settings changed event for navigation updates
-      if (['themeVariant', 'paintEnabled', 'portEnabled', 'vfxHubEnabled', 'rgbaEnabled', 'frogImgEnabled', 'binEditorEnabled', 'toolsEnabled', 'fileRandomizerEnabled', 'bumpathEnabled', 'aniportEnabled', 'frogchangerEnabled', 'navExpandEnabled', 'UpscaleEnabled'].includes(key)) {
+      if (['themeVariant', 'paintEnabled', 'portEnabled', 'vfxHubEnabled', 'rgbaEnabled', 'imgRecolorEnabled', 'binEditorEnabled', 'toolsEnabled', 'fileRandomizerEnabled', 'bumpathEnabled', 'aniportEnabled', 'frogchangerEnabled', 'navExpandEnabled', 'UpscaleEnabled'].includes(key)) {
         window.dispatchEvent(new CustomEvent('settingsChanged'));
       }
     } catch (error) {
@@ -745,7 +739,7 @@ const Settings = () => {
         applyThemeFromObject(customThemeValues);
       } else {
         // Restore current theme from settings
-        themeManager.applyThemeVariables(settings.themeVariant || 'amethyst');
+        themeManager.applyThemeVariables(settings.themeVariant || 'onyx');
       }
     } catch {}
   };
@@ -1301,7 +1295,8 @@ const Settings = () => {
   return (
     <Box sx={{ 
       width: '100%',
-      height: '100vh',
+      height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
+      minHeight: '100%',
       overflow: 'hidden',
       background: 'linear-gradient(135deg, var(--bg-2) 0%, var(--bg) 100%)',
       color: 'var(--text)',
@@ -1469,9 +1464,9 @@ const Settings = () => {
                        fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.875rem' }
                      }}
                    >
+                      <MenuItem value="onyx" sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.875rem' } }}>Onyx (Neutral)</MenuItem>
                       <MenuItem value="amethyst" sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.875rem' } }}>Amethyst (Purple + Gold)</MenuItem>
                       {/* BluePurple removed */}
-                      <MenuItem value="onyx" sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.875rem' } }}>Onyx (Neutral)</MenuItem>
                       <MenuItem value="neon" sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.875rem' } }}>Neon (Cyan + Pink)</MenuItem>
                       <MenuItem value="aurora" sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.875rem' } }}>Aurora (Mint + Lime)</MenuItem>
                       <MenuItem value="solar" sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.875rem' } }}>Solar (Orange + Gold)</MenuItem>
@@ -1480,6 +1475,7 @@ const Settings = () => {
                     <MenuItem value="quartz" sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.875rem' } }}>Quartz (Flask + Galaxy)</MenuItem>
                     <MenuItem value="futuristQuartz" sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.875rem' } }}>Futurist Quartz (Rose + Smoky)</MenuItem>
                     <MenuItem value="cyberQuartz" sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.875rem' } }}>Cyber Quartz (Cyan + Purple)</MenuItem>
+                    <MenuItem value="crystal" sx={{ fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.875rem' } }}>Crystal (White + Blue Iridescent)</MenuItem>
                       {Object.keys(customThemesMap).length > 0 && (
                         <MenuItem disabled divider sx={{ opacity: 0.7, fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.8rem' } }}>
                           Custom Themes
@@ -2056,8 +2052,8 @@ const Settings = () => {
                       <FormControlLabel
                         control={
                           <Switch
-                            checked={settings.frogImgEnabled}
-                            onChange={(e) => handleSettingChange('frogImgEnabled', e.target.checked)}
+                            checked={settings.imgRecolorEnabled}
+                            onChange={(e) => handleSettingChange('imgRecolorEnabled', e.target.checked)}
                             sx={{
                               '& .MuiSwitch-switchBase.Mui-checked': {
                                 color: 'var(--accent)',
@@ -2076,7 +2072,7 @@ const Settings = () => {
                             color: 'var(--accent2)',
                             fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.8rem' }
                           }}>
-                            Frog Image
+                            Img Recolor
                           </Typography>
                         }
                       />
@@ -2278,7 +2274,7 @@ const Settings = () => {
         </Grid>
 
         {/* External Tools */}
-        <Grid item xs={12} sm={6} lg={4}>
+        <Grid item xs={12} sm={8} lg={6}>
            <Card sx={{ 
             height: 'fit-content',
             position: 'relative',

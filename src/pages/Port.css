@@ -17,7 +17,8 @@
 
 /* Main Container */
 .port-container {
-  height: 100vh;
+  height: 100%; /* Use 100% of parent container instead of 100vh to account for title bar */
+  min-height: 100%;
   width: 100%;
   overflow: hidden;
   display: flex;
