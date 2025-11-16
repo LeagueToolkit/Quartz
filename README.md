@@ -76,11 +76,11 @@ A comprehensive toolkit for League of Legends modding and visual effects editing
 - **Matrix Bug Fixes**: Useful when matrix transformations don't work properly
 - **Batch Processing**: Apply scaling to multiple elements at once
 
-### Frog Image - Batch Image Processing
-- **Folder Loading**: Load folders containing tex dds files
-- **Batch Recoloring**: Automatically recolor images in batch process
-- **Greyscale Detection**: Automatically detects and filters out greyscale images
-- **Smart Processing**: Optimized for League of Legends texture formats
+### Image Recolor - Advanced Color Manipulation
+- Multi-Format Support: Load and process PNG, JPG, DDS, and TEX files
+- Precise Color Control: Fine-tune hue, saturation, and brightness adjustments
+- Real-Time Preview: See changes instantly before exporting
+- Batch Processing: Apply color transformations to multiple images at once
 
 ### Upscale - AI-Powered Image Enhancement
 - **Upscayl Integration**: Powered by Upscayl for high-quality image upscaling
