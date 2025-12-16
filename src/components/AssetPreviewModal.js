@@ -322,6 +322,11 @@ const CustomExplorer = () => {
     const [originalItems, setOriginalItems] = useState([]);
     const [mode, setMode] = useState('browser'); // 'browser' | 'bin'
     const ScrollContainerRef = useRef(null);
+    
+    // Editable address bar state
+    const [isEditingPath, setIsEditingPath] = useState(false);
+    const [editPath, setEditPath] = useState('');
+    const addressInputRef = useRef(null);
 
     // Context Menu State
     const [contextMenu, setContextMenu] = useState(null);
@@ -785,33 +790,91 @@ const CustomExplorer = () => {
                         </IconButton>
                     </Box>
 
-                    {/* Address Bar */}
-                    <Box sx={{
-                        flex: 1,
-                        display: 'flex',
-                        alignItems: 'center',
-                        background: 'rgba(0,0,0,0.2)',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        borderRadius: '4px',
-                        px: 1,
-                        py: 0.5,
-                        mr: 1
-                    }}>
-                        <FolderIcon sx={{ fontSize: 16, mr: 1, color: "var(--accent-muted)" }} />
-                        <Typography
-                            variant="body2"
-                            sx={{
-                                fontFamily: 'JetBrains Mono, monospace',
-                                color: 'var(--text)',
-                                width: '100%',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                            }}
-                            title={currentPath} // Full path on hover
-                        >
-                            {getShortPath(currentPath)}
-                        </Typography>
+                    {/* Address Bar - Click to edit like Windows Explorer */}
+                    <Box 
+                        onClick={() => {
+                            if (!isEditingPath) {
+                                setEditPath(currentPath);
+                                setIsEditingPath(true);
+                                setTimeout(() => addressInputRef.current?.select(), 10);
+                            }
+                        }}
+                        sx={{
+                            flex: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            background: isEditingPath ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.2)',
+                            border: isEditingPath ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: '4px',
+                            px: 1,
+                            py: 0.5,
+                            mr: 1,
+                            cursor: isEditingPath ? 'text' : 'pointer',
+                            transition: 'all 0.15s ease',
+                            '&:hover': {
+                                border: isEditingPath ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.2)',
+                                background: 'rgba(0,0,0,0.25)'
+                            }
+                        }}
+                    >
+                        <FolderIcon sx={{ fontSize: 16, mr: 1, color: isEditingPath ? "var(--accent)" : "var(--accent-muted)" }} />
+                        {isEditingPath ? (
+                            <input
+                                ref={addressInputRef}
+                                type="text"
+                                value={editPath}
+                                onChange={(e) => setEditPath(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        if (editPath && fs && fs.existsSync(editPath)) {
+                                            const stats = fs.statSync(editPath);
+                                            if (stats.isDirectory()) {
+                                                handleNavigateRequest(editPath);
+                                            } else {
+                                                // It's a file - navigate to parent and select file
+                                                const dir = pathModule.dirname(editPath);
+                                                const file = pathModule.basename(editPath);
+                                                handleNavigateRequest(dir);
+                                                setTimeout(() => setSelectedItem(file), 100);
+                                            }
+                                        }
+                                        setIsEditingPath(false);
+                                    } else if (e.key === 'Escape') {
+                                        setIsEditingPath(false);
+                                    }
+                                }}
+                                onBlur={() => {
+                                    // Small delay to allow click events to process
+                                    setTimeout(() => setIsEditingPath(false), 150);
+                                }}
+                                autoFocus
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: 'var(--text)',
+                                    width: '100%',
+                                    outline: 'none',
+                                    fontFamily: 'JetBrains Mono, monospace',
+                                    fontSize: '0.875rem'
+                                }}
+                            />
+                        ) : (
+                            <Typography
+                                variant="body2"
+                                sx={{
+                                    fontFamily: 'JetBrains Mono, monospace',
+                                    color: 'var(--text)',
+                                    width: '100%',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                }}
+                                title={currentPath + " (Click to edit)"}
+                            >
+                                {getShortPath(currentPath)}
+                            </Typography>
+                        )}
                     </Box>
 
                     {/* Search Bar */}
