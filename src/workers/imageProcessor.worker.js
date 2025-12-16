@@ -1,6 +1,7 @@
 /**
  * Web Worker for image processing
  * Handles HSL adjustments off the main thread
+ * Updated: 2025-01-16
  */
 
 function rgbToHsl(r, g, b) {
@@ -63,11 +64,12 @@ function hslToRgb(h, s, l) {
 }
 
 self.onmessage = (event) => {
-  const { pixelData, width, height, targetHue, saturationBoost, lightnessAdjust, id } = event.data;
+  const { pixelData, width, height, targetHue, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors = false, id } = event.data;
 
   const pixels = new Uint8ClampedArray(pixelData);
   const lightnessAdjustment = lightnessAdjust / 100;
   const saturationMultiplier = saturationBoost / 100; // 0-100 maps to 0-1
+  const opacityMultiplier = opacity / 100; // 0-100 maps to 0-1
 
   // Process each pixel
   for (let i = 0; i < pixels.length; i += 4) {
@@ -83,9 +85,21 @@ self.onmessage = (event) => {
     const hsl = rgbToHsl(r, g, b);
     
     // Apply adjustments
-    let newHue = targetHue; // Already in degrees (0-360)
-    let newSaturation = Math.max(0, Math.min(1, saturationMultiplier)); // Direct value 0-1
-    let newLightness = Math.max(0, Math.min(1, (hsl.l / 100) + lightnessAdjustment));
+    let newHue, newSaturation, newLightness;
+    
+    if (preserveOriginalColors) {
+      // Hue SHIFT mode (like GIMP): 180° = no change, slider rotates the color wheel
+      const hueShift = targetHue - 180; // -180 to +180 range
+      newHue = ((hsl.h + hueShift) % 360 + 360) % 360; // Wrap around 0-360
+      // Saturation slider: 50% = original, 0% = grayscale, 100% = 2x boost
+      newSaturation = Math.max(0, Math.min(1, (hsl.s / 100) * (saturationMultiplier * 2)));
+      newLightness = Math.max(0, Math.min(1, (hsl.l / 100) + lightnessAdjustment));
+    } else {
+      // Normal mode: replace hue, set saturation directly
+      newHue = targetHue;
+      newSaturation = Math.max(0, Math.min(1, saturationMultiplier));
+      newLightness = Math.max(0, Math.min(1, (hsl.l / 100) + lightnessAdjustment));
+    }
 
     // Convert back to RGB
     const rgb = hslToRgb(newHue, newSaturation * 100, newLightness * 100);
@@ -93,6 +107,8 @@ self.onmessage = (event) => {
     pixels[i] = Math.ceil(Math.max(0, Math.min(255, rgb.r)));
     pixels[i + 1] = Math.ceil(Math.max(0, Math.min(255, rgb.g)));
     pixels[i + 2] = Math.ceil(Math.max(0, Math.min(255, rgb.b)));
+    // Apply opacity to alpha channel
+    pixels[i + 3] = Math.ceil(Math.max(0, Math.min(255, a * opacityMultiplier)));
   }
 
   self.postMessage({ pixelData: pixels.buffer, width, height, id }, [pixels.buffer]);

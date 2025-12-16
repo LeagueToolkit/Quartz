@@ -34,6 +34,41 @@ const celestialButtonStyle = {
   }
 };
 
+// Thumbnail loading queue - processes sequentially with UI yielding
+const thumbnailQueue = {
+  queue: [],
+  isProcessing: false,
+
+  add(task) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ task, resolve, reject });
+      this.process();
+    });
+  },
+
+  async process() {
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+
+    while (this.queue.length > 0) {
+      const job = this.queue.shift();
+
+      try {
+        // Critical: Yield to event loop every frame to keep UI responsive
+        await new Promise(r => setTimeout(r, 16));
+
+        if (job.task) {
+          const result = await job.task();
+          job.resolve(result);
+        }
+      } catch (e) {
+        job.reject(e);
+      }
+    }
+    this.isProcessing = false;
+  }
+};
+
 // Image Thumbnail Component - Memoized for performance
 const ImageThumbnail = memo(({ image, isSelected, onImageClick }) => {
   const [thumbnail, setThumbnail] = useState(null);
@@ -59,20 +94,53 @@ const ImageThumbnail = memo(({ image, isSelected, onImageClick }) => {
     return () => observer.disconnect();
   }, []);
 
-  // Load thumbnail only when visible
+  // Load thumbnail only when visible - queued with UI yielding and downscaled
   useEffect(() => {
     if (!isVisible) return;
+    
+    let cancelled = false;
 
-    loadSingleImage(image.path).then(imageData => {
-      if (imageData) {
-        const canvas = document.createElement('canvas');
-        canvas.width = imageData.width;
-        canvas.height = imageData.height;
-        const ctx = canvas.getContext('2d');
-        ctx.putImageData(imageData, 0, 0);
-        setThumbnail(canvas.toDataURL());
+    thumbnailQueue.add(async () => {
+      // Check if still mounted before doing work
+      if (cancelled) return null;
+      
+      const imageData = await loadSingleImage(image.path);
+      if (!imageData || cancelled) return null;
+      
+      const { width, height } = imageData;
+      const maxSize = 128; // Small thumbnail size
+      
+      // Calculate scale
+      const scale = Math.min(maxSize / width, maxSize / height, 1);
+      const newWidth = Math.round(width * scale);
+      const newHeight = Math.round(height * scale);
+      
+      // Create full size canvas first
+      const fullCanvas = document.createElement('canvas');
+      fullCanvas.width = width;
+      fullCanvas.height = height;
+      const fullCtx = fullCanvas.getContext('2d');
+      fullCtx.putImageData(imageData, 0, 0);
+      
+      // Downscale to thumbnail
+      const thumbCanvas = document.createElement('canvas');
+      thumbCanvas.width = newWidth;
+      thumbCanvas.height = newHeight;
+      const thumbCtx = thumbCanvas.getContext('2d');
+      thumbCtx.drawImage(fullCanvas, 0, 0, newWidth, newHeight);
+      
+      return thumbCanvas.toDataURL();
+    }).then(dataUrl => {
+      if (dataUrl && !cancelled) {
+        setThumbnail(dataUrl);
       }
+    }).catch(() => {
+      // Ignore errors for cancelled loads
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, [isVisible, image.path]);
 
   return (
@@ -204,6 +272,8 @@ const ImgRecolor = () => {
   const [hueShift, setHueShift] = useState(0);
   const [saturationBoost, setSaturationBoost] = useState(0);
   const [lightnessAdjust, setLightnessAdjust] = useState(0);
+  const [opacity, setOpacity] = useState(100);
+  const [preserveOriginalColors, setPreserveOriginalColors] = useState(false);
 
   // Save result toast
   const [showToast, setShowToast] = useState(false);
@@ -284,6 +354,40 @@ const ImgRecolor = () => {
   }, [location.state]);
 
 
+  // Create a downscaled preview for fast processing
+  const createPreview = useCallback((imageData, maxSize = 256) => {
+    const { width, height } = imageData;
+    
+    // If already small enough, return as-is
+    if (width <= maxSize && height <= maxSize) {
+      return { preview: imageData, scale: 1 };
+    }
+    
+    // Calculate scale to fit within maxSize
+    const scale = Math.min(maxSize / width, maxSize / height);
+    const newWidth = Math.round(width * scale);
+    const newHeight = Math.round(height * scale);
+    
+    // Create canvas for downscaling
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.putImageData(imageData, 0, 0);
+    
+    // Create smaller canvas
+    const smallCanvas = document.createElement('canvas');
+    smallCanvas.width = newWidth;
+    smallCanvas.height = newHeight;
+    const smallCtx = smallCanvas.getContext('2d');
+    smallCtx.drawImage(canvas, 0, 0, newWidth, newHeight);
+    
+    return {
+      preview: smallCtx.getImageData(0, 0, newWidth, newHeight),
+      scale
+    };
+  }, []);
+
   // Initialize Web Worker
   useEffect(() => {
     workerRef.current = new Worker(new URL('../workers/imageProcessor.worker.js', import.meta.url));
@@ -298,7 +402,7 @@ const ImgRecolor = () => {
         const newMap = new Map(prev);
         const entry = newMap.get(id);
         if (entry) {
-          newMap.set(id, { ...entry, adjusted: imageData });
+          newMap.set(id, { ...entry, adjustedPreview: imageData });
         }
         return newMap;
       });
@@ -312,8 +416,8 @@ const ImgRecolor = () => {
     };
   }, []);
 
-  // Debounced color adjustment
-  const updateColorAdjustments = (hue, sat, light) => {
+  // Debounced color adjustment - uses small preview for fast UI updates
+  const updateColorAdjustments = (hue, sat, light, opac, preserveColors) => {
     if (loadedImages.size === 0) return;
 
     // Clear previous timer
@@ -326,15 +430,19 @@ const ImgRecolor = () => {
       processingCountRef.current = 0;
 
       for (const [imagePath, data] of loadedImages.entries()) {
+        // Use preview (small) image for fast processing during slider adjustment
+        const sourceImage = data.preview || data.original;
         processingCountRef.current++;
-        const pixelDataCopy = new Uint8ClampedArray(data.original.data);
+        const pixelDataCopy = new Uint8ClampedArray(sourceImage.data);
         workerRef.current.postMessage({
           pixelData: pixelDataCopy.buffer,
-          width: data.original.width,
-          height: data.original.height,
+          width: sourceImage.width,
+          height: sourceImage.height,
           targetHue: hue,
           saturationBoost: sat,
           lightnessAdjust: light,
+          opacity: opac,
+          preserveOriginalColors: preserveColors,
           id: imagePath
         }, [pixelDataCopy.buffer]);
       }
@@ -392,9 +500,12 @@ const ImgRecolor = () => {
       for (const imagePath of previewPaths) {
         const imageData = await loadSingleImage(imagePath);
         if (imageData) {
+          // Create small preview for fast slider adjustments
+          const { preview } = createPreview(imageData, 256);
           newLoadedImages.set(imagePath, {
             original: imageData,
-            adjusted: imageData // Will be processed by worker
+            preview: preview,
+            adjustedPreview: preview // Will be processed by worker
           });
         }
       }
@@ -408,22 +519,24 @@ const ImgRecolor = () => {
   // Apply adjustments when images are loaded
   useEffect(() => {
     if (loadedImages.size > 0) {
-      updateColorAdjustments(hueShift, saturationBoost, lightnessAdjust);
+      updateColorAdjustments(hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors);
     }
   }, [loadedImages]);
 
   // Apply adjustments when sliders change
   useEffect(() => {
     if (loadedImages.size > 0) {
-      updateColorAdjustments(hueShift, saturationBoost, lightnessAdjust);
+      updateColorAdjustments(hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors);
     }
-  }, [hueShift, saturationBoost, lightnessAdjust]);
+  }, [hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors]);
 
   // Reset
   const handleReset = () => {
     setHueShift(0);
     setSaturationBoost(0);
     setLightnessAdjust(0);
+    setOpacity(100);
+    setPreserveOriginalColors(false);
   };
 
   // Back to selection
@@ -461,6 +574,30 @@ const ImgRecolor = () => {
     }
   };
 
+  // Process full-resolution image for saving
+  const processFullResolution = useCallback((original, hue, sat, light, opac, preserveColors) => {
+    return new Promise((resolve) => {
+      const worker = new Worker(new URL('../workers/imageProcessor.worker.js', import.meta.url));
+      worker.onmessage = (event) => {
+        const { pixelData, width, height } = event.data;
+        resolve(new ImageData(new Uint8ClampedArray(pixelData), width, height));
+        worker.terminate();
+      };
+      const pixelDataCopy = new Uint8ClampedArray(original.data);
+      worker.postMessage({
+        pixelData: pixelDataCopy.buffer,
+        width: original.width,
+        height: original.height,
+        targetHue: hue,
+        saturationBoost: sat,
+        lightnessAdjust: light,
+        opacity: opac,
+        preserveOriginalColors: preserveColors,
+        id: 'save'
+      }, [pixelDataCopy.buffer]);
+    });
+  }, []);
+
   // Save all selected images (not just previewed ones)
   const handleSaveAll = async () => {
     setIsLoading(true);
@@ -468,41 +605,30 @@ const ImgRecolor = () => {
     let failedCount = 0;
 
     try {
-      // Process all selected images
+      // Process all selected images at FULL resolution
       for (const imagePath of selectedImages) {
-        // Load image if not already loaded
-        let imageData;
+        let original;
+        
+        // Get original full-resolution image
         if (loadedImages.has(imagePath)) {
-          imageData = loadedImages.get(imagePath).adjusted;
+          original = loadedImages.get(imagePath).original;
         } else {
-          // Load and process in background
-          const original = await loadSingleImage(imagePath);
-          if (original) {
-            // Apply same adjustments
-            const adjusted = await new Promise((resolve) => {
-              const worker = new Worker(new URL('../workers/imageProcessor.worker.js', import.meta.url));
-              worker.onmessage = (event) => {
-                const { pixelData, width, height } = event.data;
-                resolve(new ImageData(new Uint8ClampedArray(pixelData), width, height));
-                worker.terminate();
-              };
-              const pixelDataCopy = new Uint8ClampedArray(original.data);
-              worker.postMessage({
-                pixelData: pixelDataCopy.buffer,
-                width: original.width,
-                height: original.height,
-                targetHue: hueShift,
-                saturationBoost: saturationBoost,
-                lightnessAdjust: lightnessAdjust,
-                id: imagePath
-              }, [pixelDataCopy.buffer]);
-            });
-            imageData = adjusted;
-          }
+          // Load from disk if not in memory
+          original = await loadSingleImage(imagePath);
         }
 
-        if (imageData) {
-          const success = await saveImageFile(imageData, imagePath);
+        if (original) {
+          // Process at full resolution for saving
+          const adjusted = await processFullResolution(
+            original,
+            hueShift,
+            saturationBoost,
+            lightnessAdjust,
+            opacity,
+            preserveOriginalColors
+          );
+          
+          const success = await saveImageFile(adjusted, imagePath);
           if (success) {
             savedCount++;
           } else {
@@ -661,11 +787,13 @@ const ImgRecolor = () => {
                 gap: 2
               }}>
                 {Array.from(loadedImages.entries()).map(([imagePath, data]) => {
+                  // Use adjustedPreview for display (small, fast)
+                  const displayImage = data.adjustedPreview || data.preview || data.original;
                   const canvas = document.createElement('canvas');
-                  canvas.width = data.adjusted.width;
-                  canvas.height = data.adjusted.height;
+                  canvas.width = displayImage.width;
+                  canvas.height = displayImage.height;
                   const ctx = canvas.getContext('2d');
-                  ctx.putImageData(data.adjusted, 0, 0);
+                  ctx.putImageData(displayImage, 0, 0);
                   const dataURL = canvas.toDataURL();
 
                   return (
@@ -938,6 +1066,102 @@ const ImgRecolor = () => {
                   }
                 }}
               />
+            </Box>
+
+            {/* Opacity Slider */}
+            <Box sx={{ marginBottom: '20px', flexShrink: 0 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <Typography sx={{
+                  color: 'var(--accent)',
+                  fontWeight: '600',
+                  fontSize: '14px',
+                  fontFamily: 'JetBrains Mono, monospace'
+                }}>
+                  Opacity
+                </Typography>
+                <Typography sx={{
+                  color: 'var(--accent-muted)',
+                  fontWeight: '600',
+                  fontSize: '14px',
+                  fontFamily: 'JetBrains Mono, monospace',
+                  background: 'rgba(255,255,255,0.05)',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  minWidth: '50px',
+                  textAlign: 'center'
+                }}>
+                  {opacity}%
+                </Typography>
+              </Box>
+              <Slider
+                value={opacity}
+                onChange={(_, value) => setOpacity(value)}
+                min={0}
+                max={100}
+                disabled={loadedImages.size === 0}
+                sx={{
+                  width: '100%',
+                  height: '8px',
+                  color: 'var(--accent)',
+                  '& .MuiSlider-track': {
+                    background: 'linear-gradient(90deg, var(--accent-muted), var(--accent))',
+                    border: 'none',
+                    height: '8px',
+                    borderRadius: '4px'
+                  },
+                  '& .MuiSlider-rail': {
+                    backgroundColor: 'rgba(255,255,255,0.1)',
+                    height: '8px',
+                    borderRadius: '4px'
+                  },
+                  '& .MuiSlider-thumb': {
+                    width: '20px',
+                    height: '20px',
+                    backgroundColor: 'var(--accent)',
+                    border: '3px solid #fff',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    transition: 'box-shadow 0.2s ease',
+                    '&:hover, &.Mui-active': {
+                      boxShadow: '0 6px 16px color-mix(in srgb, var(--accent), transparent 60%)'
+                    }
+                  }
+                }}
+              />
+            </Box>
+
+            {/* Preserve Original Colors Checkbox */}
+            <Box sx={{ 
+              marginBottom: '20px',
+              display: 'flex', 
+              alignItems: 'center',
+              paddingLeft: '4px'
+            }}>
+              <Checkbox
+                checked={preserveOriginalColors}
+                onChange={(e) => setPreserveOriginalColors(e.target.checked)}
+                sx={{
+                  color: 'var(--accent-muted)',
+                  padding: '4px',
+                  marginRight: '4px',
+                  '&.Mui-checked': {
+                    color: 'var(--accent)',
+                  },
+                  '&:hover': {
+                    background: 'rgba(255,255,255,0.05)'
+                  }
+                }}
+              />
+              <Typography sx={{
+                color: 'var(--text)',
+                fontSize: '13px',
+                fontFamily: 'JetBrains Mono, monospace',
+                cursor: 'pointer',
+                userSelect: 'none'
+              }}
+              onClick={() => setPreserveOriginalColors(!preserveOriginalColors)}
+              >
+                Preserve original colors
+              </Typography>
             </Box>
           </Box>
         </Box>
