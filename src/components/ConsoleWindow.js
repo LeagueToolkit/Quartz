@@ -120,11 +120,12 @@ const ConsoleWindow = ({ open, onClose, logs = [], onRefresh }) => {
         justifyContent: 'space-between', 
         alignItems: 'center',
         color: '#ffffff',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: '1.25rem',
+        fontWeight: 600
       }}>
-        <Typography variant="h6" sx={{ color: '#ffffff' }}>
-          🖥️ Bumpath Console
-        </Typography>
+        🖥️ Bumpath Console
         <IconButton onClick={onClose} sx={{ color: '#ffffff' }}>
           <CloseIcon />
         </IconButton>

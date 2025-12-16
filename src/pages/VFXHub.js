@@ -4,7 +4,7 @@ import './Port.css'; // Reuse existing styles
 import themeManager from '../utils/themeManager.js';
 import electronPrefs from '../utils/electronPrefs.js';
 import { Box, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Select, MenuItem, FormControl, Checkbox, FormControlLabel, Menu } from '@mui/material';
-import { Apps as AppsIcon, Add as AddIcon, Folder as FolderIcon, Warning as WarningIcon, ChevronRight as ChevronRightIcon, ChevronLeft as ChevronLeftIcon } from '@mui/icons-material';
+import { Apps as AppsIcon, Add as AddIcon, Folder as FolderIcon, Warning as WarningIcon, ChevronRight as ChevronRightIcon, ChevronLeft as ChevronLeftIcon, MoreHoriz as MoreHorizIcon } from '@mui/icons-material';
 import GlowingSpinner from '../components/GlowingSpinner';
 import { ToPyWithPath } from '../utils/fileOperations.js';
 import { loadFileWithBackup, createBackup } from '../utils/backupManager.js';
@@ -23,6 +23,7 @@ import { addIdleParticleEffect, hasIdleParticleEffect, extractParticleName, BONE
 import MatrixEditor from '../components/MatrixEditor';
 import { parseSystemMatrix, upsertSystemMatrix, replaceSystemBlockInFile } from '../utils/matrixUtils.js';
 import { scanEffectKeys, extractSubmeshes, insertOrUpdatePersistentEffect, insertMultiplePersistentEffects, ensureResolverMapping, resolveEffectKey, extractExistingPersistentConditions } from '../utils/persistentEffectsManager.js';
+import { openAssetPreview } from '../utils/assetPreviewEvent';
 import githubApi from '../utils/githubApi.js';
 import { themeStyles } from '../utils/themeUtils.js';
 
@@ -145,21 +146,24 @@ const MemoizedInput = React.memo(({
   );
 });
 
-  const VFXHub = () => {
-    // Apply saved theme variant (do not force-reset to default)
-    React.useEffect(() => {
-      try {
-        const saved = electronPrefs?.obj?.ThemeVariant;
-        if (saved) {
-          themeManager.applyThemeVariables?.(saved);
-        }
-      } catch {}
-    }, []);
+const VFXHub = () => {
+  // Apply saved theme variant and style (don't override with defaults)
+  React.useEffect(() => {
+    try {
+      const savedTheme = electronPrefs?.obj?.ThemeVariant;
+      const savedStyle = electronPrefs?.obj?.InterfaceStyle;
 
-    // Add CSS for VFX preview click effects
-    React.useEffect(() => {
-      const style = document.createElement('style');
-      style.textContent = `
+      // Only apply if we have saved preferences, otherwise let App.js handle it
+      if (savedTheme && savedStyle) {
+        themeManager.applyThemeVariables?.(savedTheme, savedStyle);
+      }
+    } catch { }
+  }, []);
+
+  // Add CSS for VFX preview click effects
+  React.useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
         .vfx-preview-container:hover .vfx-preview-overlay {
           opacity: 0.7 !important;
         }
@@ -174,28 +178,66 @@ const MemoizedInput = React.memo(({
           transform: scale(1.02);
         }
       `;
-      document.head.appendChild(style);
-      return () => {
-        try {
-          if (style && style.parentNode === document.head) {
-            document.head.removeChild(style);
-          }
-        } catch (e) {
-          // Ignore - may already be removed
+    document.head.appendChild(style);
+    return () => {
+      try {
+        if (style && style.parentNode === document.head) {
+          document.head.removeChild(style);
         }
-      };
-    }, []);
-
-    // Match RGBA deep purple glass styling for main containers
-    const glassSection = {
-      background: 'var(--glass-bg)',
-      border: '1px solid var(--glass-border)',
-      borderRadius: 12,
-      backdropFilter: 'saturate(220%) blur(18px)',
-      WebkitBackdropFilter: 'saturate(220%) blur(18px)',
-      boxShadow: 'var(--glass-shadow)'
+      } catch (e) {
+        // Ignore - may already be removed
+      }
     };
-    
+  }, []);
+
+  // Celestial section style (no glass effects)
+  const sectionStyle = {
+    background: 'transparent',
+    border: '1px solid rgba(255, 255, 255, 0.06)',
+    borderRadius: '5px'
+  };
+
+  // Celestial minimalistic button style (matching Bumpath/ImgRecolor)
+  const celestialButtonStyle = {
+    background: 'var(--bg-2)',
+    border: '1px solid var(--accent-muted)',
+    color: 'var(--text)',
+    borderRadius: '5px',
+    transition: 'all 200ms ease',
+    textTransform: 'none',
+    fontFamily: 'JetBrains Mono, monospace',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+    '&:hover': {
+      background: 'var(--surface-2)',
+      borderColor: 'var(--accent)',
+      boxShadow: '0 0 15px color-mix(in srgb, var(--accent), transparent 60%)'
+    },
+    '&:disabled': {
+      background: 'var(--bg-2)',
+      borderColor: 'var(--text-2)',
+      color: 'var(--text-2)',
+      opacity: 0.6,
+      cursor: 'not-allowed'
+    },
+    '&:active': {
+      transform: 'translateY(1px)'
+    }
+  };
+
+  // Primary button style (accented version)
+  const primaryButtonStyle = {
+    ...celestialButtonStyle,
+    background: 'var(--bg-2)',
+    border: '1px solid var(--accent)',
+    color: 'var(--accent)',
+    fontWeight: 'bold',
+    boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent), transparent 70%), 0 2px 4px rgba(0,0,0,0.2)',
+    '&:hover': {
+      ...celestialButtonStyle['&:hover'],
+      boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent), transparent 50%), 0 2px 4px rgba(0,0,0,0.3)'
+    }
+  };
+
   const [targetPath, setTargetPath] = useState('This will show target bin');
   const [donorPath, setDonorPath] = useState('VFX Hub - GitHub Collections');
   const [targetFilter, setTargetFilter] = useState('');
@@ -211,8 +253,101 @@ const MemoizedInput = React.memo(({
   const [statusMessage, setStatusMessage] = useState('Ready - Open target bin and browse VFX Hub');
   const [fileSaved, setFileSaved] = useState(true);
   const [selectedTargetSystem, setSelectedTargetSystem] = useState(null);
+  const [collapsedSystems, setCollapsedSystems] = useState(new Set());
   const [deletedEmitters, setDeletedEmitters] = useState(new Map());
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [showRitoBinErrorDialog, setShowRitoBinErrorDialog] = useState(false);
+
+  // Toggle system collapse state
+  const toggleSystemCollapse = (systemKey) => {
+    setCollapsedSystems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(systemKey)) {
+        newSet.delete(systemKey);
+      } else {
+        newSet.add(systemKey);
+      }
+      return newSet;
+    });
+  };
+
+  const prevTargetKeysRef = useRef(new Set());
+  const prevDonorKeysRef = useRef(new Set());
+
+  // Collapse all systems when target systems keys change (load)
+  useEffect(() => {
+    const currentKeys = Object.keys(targetSystems);
+    if (currentKeys.length > 0) {
+      const currentKeysSet = new Set(currentKeys);
+      let changed = false;
+      if (currentKeysSet.size !== prevTargetKeysRef.current.size) {
+        changed = true;
+      } else {
+        for (let k of currentKeysSet) {
+          if (!prevTargetKeysRef.current.has(k)) {
+            changed = true;
+            break;
+          }
+        }
+      }
+
+      if (changed) {
+        // Check if systems should be expanded on load
+        electronPrefs.get('ExpandSystemsOnLoad').then(expandOnLoad => {
+          if (!expandOnLoad) {
+            // Default: collapse all systems
+            setCollapsedSystems(new Set(currentKeys));
+          }
+        }).catch(() => {
+          // Default to collapsed if setting can't be read
+          setCollapsedSystems(new Set(currentKeys));
+        });
+        prevTargetKeysRef.current = currentKeysSet;
+      }
+    }
+  }, [targetSystems]);
+
+  // Collapse donor systems when keys change
+  useEffect(() => {
+    const currentKeys = Object.keys(donorSystems);
+    if (currentKeys.length > 0) {
+      const currentKeysSet = new Set(currentKeys);
+      let changed = false;
+      if (currentKeysSet.size !== prevDonorKeysRef.current.size) {
+        changed = true;
+      } else {
+        for (let k of currentKeysSet) {
+          if (!prevDonorKeysRef.current.has(k)) {
+            changed = true;
+            break;
+          }
+        }
+      }
+
+      if (changed) {
+        // Check if systems should be expanded on load
+        electronPrefs.get('ExpandSystemsOnLoad').then(expandOnLoad => {
+          if (!expandOnLoad) {
+            // Default: collapse all systems
+            setCollapsedSystems(prev => {
+              const newSet = new Set(prev);
+              currentKeys.forEach(k => newSet.add(k));
+              return newSet;
+            });
+          }
+        }).catch(() => {
+          // Default to collapsed if setting can't be read
+          setCollapsedSystems(prev => {
+            const newSet = new Set(prev);
+            currentKeys.forEach(k => newSet.add(k));
+            return newSet;
+          });
+        });
+        prevDonorKeysRef.current = currentKeysSet;
+      }
+    }
+  }, [donorSystems]);
+
   const pendingNavigationPathRef = useRef(null);
   const navigate = useNavigate();
 
@@ -221,6 +356,10 @@ const MemoizedInput = React.memo(({
   // Capability flags based on targetPyContent
   const [hasResourceResolver, setHasResourceResolver] = useState(false);
   const [hasSkinCharacterData, setHasSkinCharacterData] = useState(false);
+
+  // Trimming options
+  const [trimTargetNames, setTrimTargetNames] = useState(true);
+  const [trimDonorNames, setTrimDonorNames] = useState(true);
 
   // Modal resizing state
   const [modalSize, setModalSize] = useState({ width: 1000, height: 700 });
@@ -232,7 +371,7 @@ const MemoizedInput = React.memo(({
 
   // Reflect unsaved state globally for cross-page guard
   useEffect(() => {
-    try { window.__DL_unsavedBin = !fileSaved; } catch {}
+    try { window.__DL_unsavedBin = !fileSaved; } catch { }
   }, [fileSaved]);
 
   // Clean up large state objects on unmount to prevent memory leaks
@@ -247,7 +386,7 @@ const MemoizedInput = React.memo(({
       setSelectedCollection(null);
       setSelectedDonorSystems(new Set());
       setSelectedTargetSystems(new Set());
-      
+
       console.log('🧹 Cleaned up VFXHub.js memory on unmount');
     };
   }, []);
@@ -261,15 +400,15 @@ const MemoizedInput = React.memo(({
 
   const handleMouseMove = (e) => {
     if (!isResizing) return;
-    
+
     const newSize = { ...modalSize };
-    
+
     // Get the modal element's position from the initial mouse down event
     const modalElement = document.querySelector('[data-modal="vfx-hub-collections"]');
     if (!modalElement) return;
-    
+
     const rect = modalElement.getBoundingClientRect();
-    
+
     if (resizeHandle === 'se') { // Southeast corner
       newSize.width = Math.max(400, Math.min(1200, e.clientX - rect.left));
       newSize.height = Math.max(300, Math.min(800, e.clientY - rect.top));
@@ -278,7 +417,7 @@ const MemoizedInput = React.memo(({
     } else if (resizeHandle === 's') { // South edge
       newSize.height = Math.max(300, Math.min(800, e.clientY - rect.top));
     }
-    
+
     setModalSize(newSize);
   };
 
@@ -314,22 +453,22 @@ const MemoizedInput = React.memo(({
 
   // Reflect unsaved state globally for navigation guard
   useEffect(() => {
-    try { window.__DL_unsavedBin = !fileSaved; } catch {}
+    try { window.__DL_unsavedBin = !fileSaved; } catch { }
   }, [fileSaved]);
 
   // Intercept navigation when unsaved changes exist
   useEffect(() => {
     const handleNavigationBlock = (e) => {
       console.log('🔒 Navigation blocked event received:', e.detail);
-      
+
       if (!fileSaved && !window.__DL_forceClose) {
         // Prevent default and stop propagation
         if (e.preventDefault) e.preventDefault();
         if (e.stopPropagation) e.stopPropagation();
-        
+
         const targetPath = e.detail?.path;
         console.log('🔒 Target path:', targetPath, 'File saved:', fileSaved);
-        
+
         if (targetPath) {
           // Store navigation path in ref (not state) to avoid render issues
           pendingNavigationPathRef.current = targetPath;
@@ -351,13 +490,13 @@ const MemoizedInput = React.memo(({
     const targetPath = pendingNavigationPathRef.current;
     setShowUnsavedDialog(false);
     pendingNavigationPathRef.current = null;
-    
+
     try {
       await handleSave();
       // After save, allow navigation
       window.__DL_forceClose = true;
       window.__DL_unsavedBin = false;
-      
+
       if (targetPath) {
         // Execute navigation after state updates
         setTimeout(() => {
@@ -377,12 +516,12 @@ const MemoizedInput = React.memo(({
     const targetPath = pendingNavigationPathRef.current;
     setShowUnsavedDialog(false);
     pendingNavigationPathRef.current = null;
-    
+
     // Clear the unsaved flag to allow navigation
     setFileSaved(true);
     window.__DL_forceClose = true;
     window.__DL_unsavedBin = false;
-    
+
     if (targetPath) {
       // Execute navigation after state updates
       setTimeout(() => {
@@ -443,18 +582,18 @@ const MemoizedInput = React.memo(({
       try {
         await electronPrefs.initPromise;
         const lastBinPath = await electronPrefs.get('SharedLastBinPath');
-        
+
         if (lastBinPath && fs?.existsSync(lastBinPath)) {
           console.log('🔄 Auto-reloading shared bin:', lastBinPath);
           setStatusMessage('Auto-reloading last bin file...');
-          
+
           setIsProcessing(true);
           setTargetPath(lastBinPath);
-          
+
           const binDir = path.dirname(lastBinPath);
           const binName = path.basename(lastBinPath, '.bin');
           const pyFilePath = path.join(binDir, `${binName}.py`);
-          
+
           let pyContent;
           if (fs?.existsSync(pyFilePath)) {
             setProcessingText('Loading existing .py file...');
@@ -469,12 +608,20 @@ const MemoizedInput = React.memo(({
               createBackup(pyFilePath, pyContent, 'VFXHub');
             }
           }
-          
+
           setTargetPyContent(pyContent);
-          try { setFileSaved(true); } catch {} // File is loaded from disk, so it's saved
-          
+          try { setFileSaved(true); } catch { } // File is loaded from disk, so it's saved
+
           const systems = parseVfxEmitters(pyContent);
           setTargetSystems(systems);
+          
+          // Check if systems should be expanded on load
+          const expandOnLoad = await electronPrefs.get('ExpandSystemsOnLoad');
+          if (!expandOnLoad) {
+            // Default: collapse all systems
+            setCollapsedSystems(new Set(Object.keys(systems)));
+          }
+          
           setStatusMessage(`Target bin auto-reloaded: ${Object.keys(systems).length} systems found`);
           setDeletedEmitters(new Map());
         } else if (lastBinPath) {
@@ -537,7 +684,7 @@ const MemoizedInput = React.memo(({
   const [idleBonesList, setIdleBonesList] = useState([]);
   const [isEditingIdle, setIsEditingIdle] = useState(false);
   const [existingIdleBones, setExistingIdleBones] = useState([]);
-  
+
   // Matrix and persistent states
   const [showMatrixModal, setShowMatrixModal] = useState(false);
   const [actionsMenuAnchor, setActionsMenuAnchor] = useState(null);
@@ -559,41 +706,41 @@ const MemoizedInput = React.memo(({
   const [existingConditions, setExistingConditions] = useState([]);
   const [showExistingConditions, setShowExistingConditions] = useState(false);
   const [editingConditionIndex, setEditingConditionIndex] = useState(null);
-  
+
   // Type options for the dropdown
   const typeOptions = [
-    { 
-      value: 'IsAnimationPlaying', 
-      label: 'Animation Playing', 
-      description: 'Trigger when specific animation is playing' 
+    {
+      value: 'IsAnimationPlaying',
+      label: 'Animation Playing',
+      description: 'Trigger when specific animation is playing'
     },
-    { 
-      value: 'HasBuffScript', 
-      label: 'Has Buff', 
-      description: 'Trigger when character has a specific buff' 
+    {
+      value: 'HasBuffScript',
+      label: 'Has Buff',
+      description: 'Trigger when character has a specific buff'
     },
-    { 
-      value: 'LearnedSpell', 
-      label: 'Learned Spell', 
-      description: 'Trigger when character has learned a spell' 
+    {
+      value: 'LearnedSpell',
+      label: 'Learned Spell',
+      description: 'Trigger when character has learned a spell'
     },
-    { 
-      value: 'HasGear', 
-      label: 'Has Gear', 
-      description: 'Trigger when character has specific gear equipped' 
+    {
+      value: 'HasGear',
+      label: 'Has Gear',
+      description: 'Trigger when character has specific gear equipped'
     },
-    { 
-      value: 'FloatComparison', 
-      label: 'Spell Rank Comparison', 
-      description: 'Compare spell rank with a value' 
+    {
+      value: 'FloatComparison',
+      label: 'Spell Rank Comparison',
+      description: 'Compare spell rank with a value'
     },
-    { 
-      value: 'BuffCounterFloatComparison', 
-      label: 'Buff Counter Comparison', 
-      description: 'Compare buff counter with a value' 
+    {
+      value: 'BuffCounterFloatComparison',
+      label: 'Buff Counter Comparison',
+      description: 'Compare buff counter with a value'
     }
   ];
-  
+
   // Backup viewer state
   const [showBackupViewer, setShowBackupViewer] = useState(false);
 
@@ -702,7 +849,7 @@ const MemoizedInput = React.memo(({
       });
 
       setTargetPyContent(updated);
-      try { setFileSaved(false); } catch {}
+      try { setFileSaved(false); } catch { }
       // Don't re-parse systems here - it will reset the state and lose ported emitters
       // The systems are already loaded in targetSystems state
       setShowPersistentModal(false);
@@ -739,25 +886,25 @@ const MemoizedInput = React.memo(({
   const performBackupRestore = () => {
     try {
       setStatusMessage('Backup restored - reloading file...');
-      
+
       // Reload the restored file content
       const pyFilePath = targetPath.replace('.bin', '.py');
       if (fs?.existsSync(pyFilePath)) {
         const restoredContent = fs.readFileSync(pyFilePath, 'utf8');
-        
+
         // Clear any existing state that might cause issues
         setSelectedTargetSystem(null);
         setDeletedEmitters(new Map());
         setUndoHistory([]);
-        
+
         // Update the content and systems
         setTargetPyContent(restoredContent);
         const systems = parseVfxEmitters(restoredContent);
         setTargetSystems(systems);
-        
+
         // Reset file saved state since we're loading from disk
-        try { setFileSaved(true); } catch {}
-        
+        try { setFileSaved(true); } catch { }
+
         setStatusMessage(`Backup restored - ${Object.keys(systems).length} systems reloaded`);
       }
     } catch (error) {
@@ -776,13 +923,13 @@ const MemoizedInput = React.memo(({
       timestamp: Date.now(),
       action: action
     };
-    
+
     setUndoHistory(prev => {
       const newHistory = [...prev, currentState];
       // Keep only last 20 actions to prevent memory issues
       return newHistory.slice(-20);
     });
-    
+
     console.log(`[Undo] Saved state: ${action}`);
   };
 
@@ -794,29 +941,29 @@ const MemoizedInput = React.memo(({
 
     // Get the last state from undo history
     const lastState = undoHistory[undoHistory.length - 1];
-    
+
     // Restore the complete state
     setTargetSystems(lastState.targetSystems);
     setTargetPyContent(lastState.targetPyContent);
-    try { setFileSaved(false); } catch {}
+    try { setFileSaved(false); } catch { }
     setSelectedTargetSystem(lastState.selectedTargetSystem);
     setDeletedEmitters(lastState.deletedEmitters);
-    
+
     // Remove the restored state from undo history
     setUndoHistory(prev => prev.slice(0, -1));
-    
+
     setStatusMessage(`Undone: ${lastState.action} - Saving to file...`);
     console.log(`[Undo] Restored state: ${lastState.action}`);
-    
+
     // Automatically save the undone state to the Python file
     try {
       const fs = window.require('fs');
       const path = window.require('path');
-      
+
       const targetDir = path.dirname(targetPath);
       const targetName = path.basename(targetPath, '.bin');
       const outputPyPath = path.join(targetDir, `${targetName}.py`);
-      
+
       // Write the undone content directly to the .py file
       fs.writeFileSync(outputPyPath, lastState.targetPyContent);
       setStatusMessage(`Undone: ${lastState.action} - Saved to ${outputPyPath}`);
@@ -842,8 +989,8 @@ const MemoizedInput = React.memo(({
 
       const updated = insertVFXSystemIntoFile(targetPyContent, minimalSystem, name);
       setTargetPyContent(updated);
-      try { setFileSaved(false); } catch {}
-      
+      try { setFileSaved(false); } catch { }
+
       // Create the new system object directly without re-parsing the file
       const newSystemKey = `"${name}"`;
       const newSystem = {
@@ -855,23 +1002,23 @@ const MemoizedInput = React.memo(({
         endLine: -1,
         key: newSystemKey
       };
-      
+
       // Preserve existing systems and add the new one
       const updatedTargetSystems = { ...targetSystems };
       updatedTargetSystems[newSystemKey] = newSystem;
-      
+
       // Update pinned systems
       const pinned = [newSystemKey, ...recentCreatedSystemKeys.filter(k => k !== newSystemKey)];
       setRecentCreatedSystemKeys(pinned);
-      
+
       // Build ordered map: pinned first (if present), then others in file order
       const pinnedSet = new Set(pinned);
       const ordered = {};
-      for (const key of pinned) { 
-        if (updatedTargetSystems[key]) ordered[key] = updatedTargetSystems[key]; 
+      for (const key of pinned) {
+        if (updatedTargetSystems[key]) ordered[key] = updatedTargetSystems[key];
       }
-      for (const [k, v] of Object.entries(updatedTargetSystems)) { 
-        if (!pinnedSet.has(k)) ordered[k] = v; 
+      for (const [k, v] of Object.entries(updatedTargetSystems)) {
+        if (!pinnedSet.has(k)) ordered[k] = v;
       }
       setTargetSystems(ordered);
       setShowNewSystemModal(false);
@@ -906,36 +1053,26 @@ const MemoizedInput = React.memo(({
 
   // Copy all the existing helper functions from Port.js (for now, we'll add them later)
   const handleOpenTargetBin = async () => {
-    try {
-      setStatusMessage('Opening target bin...');
-
-      const { ipcRenderer } = window.require('electron');
-      // Guard: require Ritobin configured first
+    let path = targetPath !== 'This will show target bin' ? targetPath : undefined;
+    if (!path) {
       try {
-        const ritobin = await electronPrefs.get('RitoBinPath');
-        if (!ritobin) {
-          setStatusMessage('Configure Ritobin in Settings');
-          window.dispatchEvent(new CustomEvent('celestia:navigate', { detail: { path: '/settings' } }));
-          return;
-        }
-      } catch { }
-      const filePath = ipcRenderer.sendSync("FileSelect", ["Select Target Bin File", "Bin"]);
+        path = await electronPrefs.get('SharedLastBinPath');
+      } catch (e) { console.error(e); }
+    }
+    openAssetPreview(path, null, 'vfxhub-target');
+  };
 
-      if (!filePath || filePath === '') {
-        setIsProcessing(false);
-        setProcessingText('');
-        setStatusMessage('File selection cancelled');
-        return;
-      }
-
+  const processTargetBin = async (filePath) => {
+    try {
+      setStatusMessage('Loading target bin...');
       setIsProcessing(true);
       setTargetPath(filePath);
-      
+
       // Check if .py file already exists
       const binDir = path.dirname(filePath);
       const binName = path.basename(filePath, '.bin');
       const pyFilePath = path.join(binDir, `${binName}.py`);
-      
+
       let pyContent;
       if (fs?.existsSync(pyFilePath)) {
         setProcessingText('Loading existing .py file...');
@@ -954,7 +1091,7 @@ const MemoizedInput = React.memo(({
         }
       }
       setTargetPyContent(pyContent);
-      try { setFileSaved(false); } catch {}
+      try { setFileSaved(false); } catch { }
 
       const systems = parseVfxEmitters(pyContent);
 
@@ -963,7 +1100,7 @@ const MemoizedInput = React.memo(({
       setTargetSystems(systems);
 
       setStatusMessage(`Target bin loaded: ${Object.keys(systems).length} systems found`);
-      
+
       // Save the bin path for auto-reload on next visit (shared across Paint, Port, and VFXHub)
       try {
         await electronPrefs.set('SharedLastBinPath', filePath);
@@ -971,7 +1108,7 @@ const MemoizedInput = React.memo(({
       } catch (error) {
         console.warn('Failed to save shared bin path:', error);
       }
-      
+
       setDeletedEmitters(new Map());
     } catch (error) {
       console.error('Error opening target bin:', error);
@@ -981,6 +1118,21 @@ const MemoizedInput = React.memo(({
       setProcessingText('');
     }
   };
+
+  // Listen for file selection
+  useEffect(() => {
+    const handleAssetSelected = (e) => {
+      const { path: filePath, mode } = e.detail || {};
+      if (!filePath) return;
+
+      if (mode === 'vfxhub-target') {
+        processTargetBin(filePath);
+      }
+    };
+
+    window.addEventListener('asset-preview-selected', handleAssetSelected);
+    return () => window.removeEventListener('asset-preview-selected', handleAssetSelected);
+  }, []);
 
   // Download VFX system and add to donor list
   const handleDownloadVFXSystem = async (system) => {
@@ -1057,7 +1209,7 @@ const MemoizedInput = React.memo(({
       }
     } catch (error) {
       console.error('Error downloading VFX system:', error);
-      
+
       // Check for rate limiting
       if (error.message.includes('rate limit') || error.message.includes('429') || error.status === 429) {
         const resetTime = error.headers?.['x-ratelimit-reset'] || Date.now() + 3600000;
@@ -1126,7 +1278,7 @@ const MemoizedInput = React.memo(({
         console.log('✅ Loaded collections using authenticated API');
       } catch (authError) {
         console.warn('❌ Authenticated API failed, trying public access:', authError.message);
-        
+
         // Check for rate limiting
         if (authError.message.includes('rate limit') || authError.message.includes('429') || authError.status === 429) {
           const resetTime = authError.headers?.['x-ratelimit-reset'] || Date.now() + 3600000; // Default to 1 hour
@@ -1134,14 +1286,14 @@ const MemoizedInput = React.memo(({
           setStatusMessage(`GitHub rate limit exceeded. Please authenticate in Settings or wait ${minutesUntilReset} minutes.`);
           throw new Error(`Rate limited. Try authenticating in Settings or wait ${minutesUntilReset} minutes.`);
         }
-        
+
         try {
           const result = await githubApi.getVFXCollectionsPublic();
           collections = result.collections;
           console.log('✅ Loaded collections using public API');
         } catch (publicError) {
           console.error('❌ Both authenticated and public access failed:', publicError.message);
-          
+
           // Check for rate limiting in public API too
           if (publicError.message.includes('rate limit') || publicError.message.includes('429') || publicError.status === 429) {
             const resetTime = publicError.headers?.['x-ratelimit-reset'] || Date.now() + 3600000;
@@ -1149,11 +1301,11 @@ const MemoizedInput = React.memo(({
             setStatusMessage(`GitHub rate limit exceeded. Please authenticate in Settings or wait ${minutesUntilReset} minutes.`);
             throw new Error(`Rate limited. Try authenticating in Settings or wait ${minutesUntilReset} minutes.`);
           }
-          
+
           throw new Error('Unable to load VFX collections. Please check your internet connection and repository access.');
         }
       }
-      
+
       setVfxCollections(collections);
 
       // Flatten all VFX systems for easy searching
@@ -1230,7 +1382,7 @@ const MemoizedInput = React.memo(({
 
     } catch (error) {
       console.error('Error downloading VFX system:', error);
-      
+
       // Check for rate limiting
       if (error.message.includes('rate limit') || error.message.includes('429') || error.status === 429) {
         const resetTime = error.headers?.['x-ratelimit-reset'] || Date.now() + 3600000;
@@ -1404,7 +1556,7 @@ const MemoizedInput = React.memo(({
         // Handle downloaded assets (from GitHub)
         if (donorSystem.assets && donorSystem.assets.length > 0) {
           setStatusMessage(`Copying ${donorSystem.assets.length} downloaded assets for "${donorSystem.name}"...`);
-          
+
           try {
             const copiedAssets = await downloadAndCopyAssets(donorSystem.assets, donorSystem.name);
             assetMessage = ` and copied ${copiedAssets.length} assets`;
@@ -1600,8 +1752,8 @@ const MemoizedInput = React.memo(({
     try {
       // Build bone configs from the list
       const boneConfigs = idleBonesList.map(item => ({
-        boneName: (item.customBoneName && item.customBoneName.trim()) 
-          ? item.customBoneName.trim() 
+        boneName: (item.customBoneName && item.customBoneName.trim())
+          ? item.customBoneName.trim()
           : item.boneName
       }));
 
@@ -1615,13 +1767,13 @@ const MemoizedInput = React.memo(({
       // If user removed all entries, just remove idle particles and don't add any
       if (boneConfigs.length === 0) {
         setTargetPyContent(updatedContent);
-        try { setFileSaved(false); } catch {}
+        try { setFileSaved(false); } catch { }
         setStatusMessage(`Removed all idle particles from "${selectedSystemForIdle.name}"`);
       } else {
         // Add all the bones from the list (edited + new)
         updatedContent = addIdleParticleEffect(updatedContent, selectedSystemForIdle.key, boneConfigs);
         setTargetPyContent(updatedContent);
-        try { setFileSaved(false); } catch {}
+        try { setFileSaved(false); } catch { }
 
         const boneNames = boneConfigs.map(c => c.boneName).join(', ');
         setStatusMessage(`${isEditingIdle ? 'Updated' : 'Added'} ${boneConfigs.length} idle particle(s) for "${selectedSystemForIdle.name}" on bones: ${boneNames}`);
@@ -1875,7 +2027,7 @@ const MemoizedInput = React.memo(({
           console.log(`✅ Downloaded ${assetBuffer.length} bytes for ${asset.name} using authenticated API`);
         } catch (apiError) {
           console.warn(`❌ Failed to download via API, trying public URL: ${apiError.message}`);
-          
+
           // Fallback to public URL download if API fails
           console.log(`🌐 Attempting public URL download for: ${asset.downloadUrl}`);
           const response = await fetch(asset.downloadUrl);
@@ -1911,7 +2063,7 @@ const MemoizedInput = React.memo(({
     return copiedAssets;
   };
 
-      // Remove deleted emitters from content (from Port)
+  // Remove deleted emitters from content (from Port)
   const removeDeletedEmittersFromContent = (lines, deletedEmittersMap) => {
     console.log('=== DELETE FUNCTION DEBUG ===');
     console.log('Deleted emitters map:', deletedEmittersMap);
@@ -2089,7 +2241,7 @@ const MemoizedInput = React.memo(({
     return modifiedLines;
   };
 
-      // Generate modified Python content (from Port)
+  // Generate modified Python content (from Port)
   const generateModifiedPyContent = async (originalContent, systems) => {
     console.log('Generating modified content - port APPROACH');
 
@@ -2227,11 +2379,11 @@ const MemoizedInput = React.memo(({
                       console.log(`    Found particleName: "${particleName}" vs system name: "${system.name}"`);
 
                       // Check if particleName matches system name - be more strict
-                      const particleMatchesSystem = particleName === system.name || 
-                                                   particleName === system.particleName ||
-                                                   particleName.includes(system.name) ||
-                                                   (system.particleName && particleName.includes(system.particleName));
-                      
+                      const particleMatchesSystem = particleName === system.name ||
+                        particleName === system.particleName ||
+                        particleName.includes(system.name) ||
+                        (system.particleName && particleName.includes(system.particleName));
+
                       if (!particleMatchesSystem) {
                         console.log(`    ⚠️ WARNING: particleName "${particleName}" doesn't match system name "${system.name}"`);
                         console.log(`    This might be the wrong system - checking if we should continue...`);
@@ -2623,7 +2775,7 @@ const MemoizedInput = React.memo(({
     return modifiedLines.join('\n');
   };
 
-      // Handle save functionality (from Port)
+  // Handle save functionality (from Port)
   const handleSave = async () => {
     try {
       setIsProcessing(true);
@@ -2637,10 +2789,10 @@ const MemoizedInput = React.memo(({
 
       // Extract existing persistent effects before generating modified content
       const existingPersistentConditions = extractExistingPersistentConditions(targetPyContent);
-      
+
       // Use the original content directly instead of regenerating
       let modifiedContent = targetPyContent;
-      
+
       // Regenerate if there are deleted emitters OR if emitters were ported in (like port)
       const hasDeletedEmitters = deletedEmitters.size > 0;
       const hasPortedEmitters = Object.values(targetSystems).some(system =>
@@ -2659,7 +2811,7 @@ const MemoizedInput = React.memo(({
 
         modifiedContent = await generateModifiedPyContent(targetPyContent, targetSystems);
       }
-      
+
       // Re-insert persistent effects if they existed
       let finalContent = modifiedContent;
       if (existingPersistentConditions.length > 0) {
@@ -2742,8 +2894,9 @@ const MemoizedInput = React.memo(({
         const hasError = code !== 0 || hasStderrError;
 
         if (!hasError) {
-          setStatusMessage(`Successfully saved: ${outputBinPath}\nUpdated .py file: ${outputPyPath}`);
-          try { setFileSaved(true); } catch {}
+          setStatusMessage(`Successfully saved: ${outputBinPath}`);
+          setTimeout(() => setStatusMessage(''), 3000);
+          try { setFileSaved(true); } catch { }
           setIsProcessing(false);
           setProcessingText('');
 
@@ -2765,7 +2918,7 @@ const MemoizedInput = React.memo(({
               console.log(`RitoBin bin->py process exited with code: ${binToPyCode}`);
               if (binToPyCode === 0) {
                 console.log(`✅ Indentation fix completed successfully`);
-                
+
                 // No need to refresh anything - we check on-demand when user clicks Idle button
 
                 // DON'T clear deleted emitters - they need to persist for future operations
@@ -2779,17 +2932,20 @@ const MemoizedInput = React.memo(({
           }
         } else {
           console.error('RitoBin conversion failed:', stderrContent);
-          setStatusMessage(`Error converting .py to .bin: ${stderrContent}`);
-          try { setFileSaved(false); } catch {}
+          const errorReason = hasStderrError ? 'RitoBin reported errors in stderr' : `exit code: ${code}`;
+          setStatusMessage(`❌ Error converting to .bin format (${errorReason})\n⚠️ Skipping .py indentation fix due to RitoBin error`);
+          try { setFileSaved(false); } catch { }
           setIsProcessing(false);
           setProcessingText('');
+
+          setShowRitoBinErrorDialog(true);
         }
       });
 
       convertProcess.on('error', (error) => {
         console.error('Error spawning RitoBin process:', error);
         setStatusMessage(`Error running RitoBin: ${error.message}`);
-        try { setFileSaved(false); } catch {}
+        try { setFileSaved(false); } catch { }
         setIsProcessing(false);
         setProcessingText('');
       });
@@ -2797,7 +2953,7 @@ const MemoizedInput = React.memo(({
     } catch (error) {
       console.error('Error saving file:', error);
       setStatusMessage(`Error saving file: ${error.message}`);
-      try { setFileSaved(false); } catch {}
+      try { setFileSaved(false); } catch { }
       setIsProcessing(false);
       setProcessingText('');
     }
@@ -2844,33 +3000,33 @@ const MemoizedInput = React.memo(({
             console.log(`Extracted complete system content (${extractedSystem.fullContent.length} characters)`);
             const updatedContent = insertVFXSystemIntoFile(targetPyContent, extractedSystem.fullContent, donorSystem.name);
             setTargetPyContent(updatedContent);
-            try { setFileSaved(false); } catch {}
+            try { setFileSaved(false); } catch { }
 
             // Re-parse target systems so keys and particleName reflect the actual file state
             try {
               const systems = parseVfxEmitters(updatedContent);
-              
+
               // Debug: Log existing systems before preservation
               console.log('Existing target systems before preservation:', Object.keys(targetSystems));
               console.log('Newly parsed systems:', Object.keys(systems));
-              
+
               // Preserve existing custom systems that might not be parsed correctly
               const preserved = { ...targetSystems };
-              
+
               // Update with newly parsed systems, but preserve existing ones
               Object.entries(systems).forEach(([k, v]) => {
                 // Check if this is the system we just ported
                 const isNewlyPorted = v.name === donorSystem.name || v.particleName === donorSystem.name;
                 preserved[k] = isNewlyPorted ? { ...v, ported: true, portedAt: Date.now() } : v;
               });
-              
+
               // Remove duplicate manual entries that were created before re-parsing
               // Keep only the parsed versions to avoid UI duplicates
               Object.keys(preserved).forEach(key => {
                 if (key.includes('_downloaded_')) {
                   // This is a manual entry, check if we have a parsed version
                   const system = preserved[key];
-                  const parsedKey = Object.keys(systems).find(k => 
+                  const parsedKey = Object.keys(systems).find(k =>
                     systems[k].name === system.name || systems[k].particleName === system.particleName
                   );
                   if (parsedKey) {
@@ -2880,7 +3036,7 @@ const MemoizedInput = React.memo(({
                   }
                 }
               });
-              
+
               // Ensure we don't lose any existing systems that might not have been re-parsed
               console.log(`Preserved ${Object.keys(targetSystems).length} existing systems, parsed ${Object.keys(systems).length} systems from file`);
               console.log('Final preserved systems:', Object.keys(preserved));
@@ -2898,7 +3054,7 @@ const MemoizedInput = React.memo(({
             const { addToResourceResolver } = await import('../utils/vfxSystemParser.js');
             const updatedContent = addToResourceResolver(targetPyContent, donorSystem.name);
             setTargetPyContent(updatedContent);
-            try { setFileSaved(false); } catch {}
+            try { setFileSaved(false); } catch { }
             setStatusMessage(`Ported system "${donorSystem.name}" and added to ResourceResolver (could not extract full system)`);
           }
         } catch (insertError) {
@@ -2915,7 +3071,7 @@ const MemoizedInput = React.memo(({
           const { addToResourceResolver } = await import('../utils/vfxSystemParser.js');
           const updatedContent = addToResourceResolver(targetPyContent, donorSystem.name);
           setTargetPyContent(updatedContent);
-          try { setFileSaved(false); } catch {}
+          try { setFileSaved(false); } catch { }
           setStatusMessage(`Ported system "${donorSystem.name}" and added to ResourceResolver (no donor content available)`);
         } catch (resolverError) {
           console.error('Error adding to ResourceResolver:', resolverError);
@@ -3170,276 +3326,315 @@ const MemoizedInput = React.memo(({
       });
     }
 
-    return filteredSystems.map(system => (
-      <div
-        key={system.key}
-        draggable={!isTarget}
-        title={!isTarget ? 'Drag into Target to add full system' : undefined}
-        onDragStart={(e) => !isTarget && handleDragStart(e, system.key)}
-        className={`particle-div ${isTarget && selectedTargetSystem === system.key ? 'selected-system' : ''}`}
-        style={{ 
-          cursor: isTarget ? 'pointer' : 'default',
-          // Whole tile green when ported (no glow) and theme-variable driven
-          background: system.ported
-            ? `linear-gradient(180deg, color-mix(in srgb, var(--accent-green, #22c55e), transparent 65%), color-mix(in srgb, var(--accent-green, #22c55e), transparent 78%))`
-            : undefined,
-          border: system.ported ? '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)' : undefined,
-          boxShadow: undefined
-        }}
-        onClick={() => isTarget && setSelectedTargetSystem(selectedTargetSystem === system.key ? null : system.key)}
-      >
-        <div className="particle-title-div" style={system.ported ? { background: 'color-mix(in srgb, var(--accent-green, #22c55e), transparent 75%)', borderBottom: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)' } : undefined}>
-          {!isTarget && (
-            <button
-              className="port-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                handlePortAllEmitters(system.key);
-              }}
-              title="Port all emitters from this system to selected target system"
-              disabled={!selectedTargetSystem}
-              style={{ flexShrink: 0, minWidth: '15px', height: '30px', marginRight: '4px', fontSize: '15px', padding: '2px' }}
-            >
-              ◄
-            </button>
-          )}
-          {isTarget && system.emitters && system.emitters.length > 0 && (
-            <button
-              className="delete-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeleteAllEmitters(system.key);
-              }}
-              title="Delete all emitters from this system"
-              style={{ 
-                flexShrink: 0, 
-                minWidth: '15px', 
-                height: '50px', 
-                marginRight: '4px', 
-                fontSize: '25px', 
-                padding: '1px',
-                background: 'transparent',
-                border: 'none',
-                color: '#ef4444',
-                cursor: 'pointer'
-              }}
-            >
-              🗑
-            </button>
-          )}
-          <div className="label ellipsis flex-1" title={system.particleName || system.name} style={{
-            color: 'var(--accent)',
-            fontWeight: '600',
-            fontSize: '1rem',
-            textShadow: '0 1px 2px rgba(0,0,0,0.5)'
-          }}>
-            {(system.particleName || system.name || system.key).length > 25 ? 
-              (system.particleName || system.name || system.key).substring(0, 22) + '...' : 
-              (system.particleName || system.name || system.key)
+    return filteredSystems.map(system => {
+      const isCollapsed = collapsedSystems.has(system.key);
+      const emitterCount = system.emitters ? system.emitters.length : 0;
+
+      const shouldTrim = isTarget ? trimTargetNames : trimDonorNames;
+      const rawName = system.particleName || system.name || system.key;
+      const displayName = shouldTrim ? getShortSystemName(rawName) : rawName;
+
+      return (
+        <div
+          key={system.key}
+          draggable={!isTarget}
+          title={!isTarget ? 'Drag into Target to add full system' : undefined}
+          onDragStart={(e) => !isTarget && handleDragStart(e, system.key)}
+          className={`particle-div ${isTarget && selectedTargetSystem === system.key ? 'selected-system' : ''}`}
+          style={{
+            cursor: isTarget ? 'pointer' : 'default',
+            // Neutral styling - subtle border for ported systems
+            // Let CSS handle the gradient background
+            border: system.ported ? '1px solid rgba(34, 197, 94, 0.3)' : undefined,
+          }}
+          onClick={() => {
+            if (isTarget) {
+              setSelectedTargetSystem(selectedTargetSystem === system.key ? null : system.key);
             }
-          </div>
-          {isTarget && selectedTargetSystem === system.key && (
-            <div className="selection-indicator"></div>
-          )}
-          {isTarget && (
-            <>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  const isOpen = actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key;
-                  if (isOpen) {
-                    setActionsMenuAnchor(null);
-                  } else {
-                    setActionsMenuAnchor({ element: e.currentTarget, systemKey: system.key });
-                  }
-                }}
-                disabled={!hasResourceResolver || !hasSkinCharacterData}
-                title="Actions menu"
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                }}
-                sx={{
-                  color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : 'var(--accent2)',
-                  padding: '4px',
-                  minWidth: '24px',
-                  width: '24px',
-                  height: '24px',
-                  marginLeft: 'auto',
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                  transform: actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? 'rotate(90deg)' : 'rotate(0deg)',
-                  '&:hover': { 
-                    color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : 'var(--accent)', 
-                    backgroundColor: 'rgba(255,255,255,0.05)' 
-                  },
-                  '&.Mui-disabled': {
-                    opacity: 0.5
-                  }
-                }}
-              >
-                {actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? (
-                  <ChevronLeftIcon fontSize="small" />
-                ) : (
-                  <ChevronRightIcon fontSize="small" />
-                )}
-              </IconButton>
-              <Menu
-                anchorEl={actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? actionsMenuAnchor.element : null}
-                open={Boolean(actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key)}
-                onClose={(e) => {
-                  if (e) {
-                    e.stopPropagation();
-                  }
-                  setActionsMenuAnchor(null);
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                }}
-                anchorOrigin={{
-                  vertical: 'bottom',
-                  horizontal: 'right',
-                }}
-                transformOrigin={{
-                  vertical: 'top',
-                  horizontal: 'right',
-                }}
-                TransitionProps={{
-                  timeout: 200,
-                  enter: true,
-                  exit: true,
-                }}
-                PaperProps={{
-                  onClick: (e) => {
-                    e.stopPropagation();
-                  },
-                  onMouseDown: (e) => {
-                    e.stopPropagation();
-                  },
-                  sx: {
-                    background: 'var(--surface-2)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '6px',
-                    minWidth: '180px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                    mt: 0.5,
-                    transition: 'opacity 0.2s ease-in-out, transform 0.2s ease-in-out',
-                    '&.MuiMenu-paper': {
-                      transformOrigin: 'top right',
-                    }
-                  }
-                }}
-              >
-                <MenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleAddIdleParticles(system.key, system.name);
-                    setActionsMenuAnchor(null);
-                  }}
-                  disabled={!hasResourceResolver || !hasSkinCharacterData}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                  }}
-                  sx={{
-                    color: 'var(--accent)',
-                    fontSize: '0.875rem',
-                    transition: 'background-color 0.15s ease',
-                    '&:hover': {
-                      backgroundColor: 'rgba(255,255,255,0.05)'
-                    },
-                    '&.Mui-disabled': {
-                      opacity: 0.5
-                    }
-                  }}
-                >
-                  Add Idle
-                </MenuItem>
-                <MenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    try {
-                      const sysText = system.rawContent || system.fullContent || (Array.isArray(system.content) ? system.content.join('\n') : '') || '';
-                      const parsed = parseSystemMatrix(sysText);
-                      setMatrixModalState({ systemKey: system.key, initial: parsed.matrix || [
-                        1,0,0,0,
-                        0,1,0,0,
-                        0,0,1,0,
-                        0,0,0,1
-                      ]});
-                      setShowMatrixModal(true);
-                    } catch (err) {
-                      console.error('Open matrix editor failed:', err);
-                    }
-                    setActionsMenuAnchor(null);
-                  }}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                  }}
-                  sx={{
-                    color: 'var(--accent)',
-                    fontSize: '0.875rem',
-                    transition: 'background-color 0.15s ease',
-                    '&:hover': {
-                      backgroundColor: 'rgba(255,255,255,0.05)'
-                    }
-                  }}
-                >
-                  Add Matrix
-                </MenuItem>
-              </Menu>
-            </>
-          )}
-        </div>
-        {system.emitters && system.emitters.map((emitter, index) => (
-          <div key={index} className="emitter-div">
+          }}
+        >
+          <div
+            className="particle-title-div"
+            style={{
+              cursor: 'pointer',
+              ...(system.ported ? { background: 'color-mix(in srgb, var(--accent-green, #22c55e), transparent 75%)', borderBottom: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)' } : {})
+            }}
+          >
+            {/* Arrow indicator for collapse state - clicking it toggles collapse */}
+            <div 
+              style={{ 
+                marginRight: '4px',
+                display: 'flex', 
+                alignItems: 'center', 
+                opacity: 0.7, 
+                cursor: 'pointer',
+                position: 'relative',
+                padding: 0
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleSystemCollapse(system.key);
+              }}
+            >
+              {/* Invisible larger clickable area */}
+              <div style={{ 
+                position: 'absolute', 
+                inset: '-12px', 
+                zIndex: 1 
+              }} />
+              {isCollapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" style={{ transform: 'rotate(-90deg)' }} />}
+            </div>
+
             {!isTarget && (
               <button
                 className="port-btn"
-                onClick={() => handlePortEmitter(system.key, index)}
-                title="Port emitter to selected target system"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePortAllEmitters(system.key);
+                }}
+                title="Port all emitters from this system to selected target system"
                 disabled={!selectedTargetSystem}
-                style={{ flexShrink: 0, minWidth: '24px' }}
+                style={{ flexShrink: 0, minWidth: '15px', height: '30px', marginRight: '4px', fontSize: '15px', padding: '2px' }}
               >
                 ◄
               </button>
             )}
-            <div className="label flex-1 ellipsis" style={{ 
-              minWidth: 0,
-              color: 'var(--accent)',
+
+            <div className="label flex-1" title={rawName} style={{
+              color: 'var(--text)',
               fontWeight: '600',
-              fontSize: '0.95rem',
-              textShadow: '0 1px 2px rgba(0,0,0,0.5)'
+              fontSize: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              minWidth: 0
             }}>
-              {emitter.name || `Emitter ${index + 1}`}
+              <span style={{
+                flex: 1,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}>
+                {displayName}
+              </span>
+              {isCollapsed && <span style={{ opacity: 0.6, fontSize: '0.85em', fontWeight: 'normal', paddingLeft: '8px', flexShrink: 0 }}>({emitterCount})</span>}
             </div>
+
+            {isTarget && selectedTargetSystem === system.key && (
+              <div className="selection-indicator"></div>
+            )}
+
             {isTarget && (
-              <button
-                className="delete-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteEmitter(system.key, index);
-                }}
-                title="Delete emitter"
-                style={{ 
-                  flexShrink: 0,
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#ef4444',
-                  cursor: 'pointer',
-                  fontSize: '25px',
-                  padding: '2px 4px'
-                }}
-              >
-                🗑
-              </button>
+              <>
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    // Open menu
+                    const isOpen = actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key;
+                    if (isOpen) {
+                      setActionsMenuAnchor(null);
+                    } else {
+                      setActionsMenuAnchor({ element: e.currentTarget, systemKey: system.key });
+                    }
+                  }}
+                  title="Actions menu"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                  }}
+                  sx={{
+                    color: 'var(--accent2)',
+                    padding: '4px',
+                    minWidth: '24px',
+                    width: '24px',
+                    height: '24px',
+                    marginLeft: 'auto',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    transform: actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? 'rotate(90deg)' : 'rotate(0deg)',
+                    '&:hover': {
+                      color: 'var(--accent)',
+                      backgroundColor: 'rgba(255,255,255,0.05)'
+                    }
+                  }}
+                >
+                  <MoreHorizIcon fontSize="small" />
+                </IconButton>
+                <Menu
+                  anchorEl={actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? actionsMenuAnchor.element : null}
+                  open={Boolean(actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key)}
+                  onClose={(e) => {
+                    if (e) {
+                      e.stopPropagation();
+                    }
+                    setActionsMenuAnchor(null);
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                  }}
+                  anchorOrigin={{
+                    vertical: 'bottom',
+                    horizontal: 'right',
+                  }}
+                  transformOrigin={{
+                    vertical: 'top',
+                    horizontal: 'right',
+                  }}
+                  TransitionProps={{
+                    timeout: 200,
+                    enter: true,
+                    exit: true,
+                  }}
+                  PaperProps={{
+                    onClick: (e) => {
+                      e.stopPropagation();
+                    },
+                    onMouseDown: (e) => {
+                      e.stopPropagation();
+                    },
+                    sx: {
+                      background: 'var(--surface-2)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: '6px',
+                      minWidth: '180px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                      mt: 0.5,
+                      transition: 'opacity 0.2s ease-in-out, transform 0.2s ease-in-out',
+                      '&.MuiMenu-paper': {
+                        transformOrigin: 'top right',
+                      }
+                    }
+                  }}
+                >
+                  <MenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAddIdleParticles(system.key, system.name);
+                      setActionsMenuAnchor(null);
+                    }}
+                    disabled={!hasResourceResolver || !hasSkinCharacterData}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                    }}
+                    sx={{
+                      color: 'var(--accent)',
+                      fontSize: '0.875rem',
+                      transition: 'background-color 0.15s ease',
+                      '&:hover': {
+                        backgroundColor: 'rgba(255,255,255,0.05)'
+                      },
+                      '&.Mui-disabled': {
+                        opacity: 0.5
+                      }
+                    }}
+                  >
+                    Add Idle
+                  </MenuItem>
+                  <MenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      try {
+                        const sysText = system.rawContent || system.fullContent || (Array.isArray(system.content) ? system.content.join('\n') : '') || '';
+                        const parsed = parseSystemMatrix(sysText);
+                        setMatrixModalState({
+                          systemKey: system.key, initial: parsed.matrix || [
+                            1, 0, 0, 0,
+                            0, 1, 0, 0,
+                            0, 0, 1, 0,
+                            0, 0, 0, 1
+                          ]
+                        });
+                        setShowMatrixModal(true);
+                      } catch (err) {
+                        console.error('Open matrix editor failed:', err);
+                      }
+                      setActionsMenuAnchor(null);
+                    }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                    }}
+                    sx={{
+                      color: 'var(--accent)',
+                      fontSize: '0.875rem',
+                      transition: 'background-color 0.15s ease',
+                      '&:hover': {
+                        backgroundColor: 'rgba(255,255,255,0.05)'
+                      }
+                    }}
+                  >
+                    Add Matrix
+                  </MenuItem>
+                  <MenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteAllEmitters(system.key);
+                      setActionsMenuAnchor(null);
+                    }}
+                    sx={{
+                      color: '#ef4444',
+                      fontSize: '0.875rem',
+                      transition: 'background-color 0.15s ease',
+                      '&:hover': {
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)'
+                      }
+                    }}
+                  >
+                    Delete All Emitters
+                  </MenuItem>
+                </Menu>
+              </>
             )}
           </div>
-        ))}
-      </div>
-    ));
+
+          {!isCollapsed && system.emitters && system.emitters.map((emitter, index) => (
+            <div key={index} className="emitter-div">
+              {!isTarget && (
+                <button
+                  className="port-btn"
+                  onClick={() => handlePortEmitter(system.key, index)}
+                  title="Port emitter to selected target system"
+                  disabled={!selectedTargetSystem}
+                  style={{ flexShrink: 0, minWidth: '24px' }}
+                >
+                  ◄
+                </button>
+              )}
+              <div className="label flex-1 ellipsis" style={{
+                minWidth: 0,
+                color: 'var(--text)',
+                fontWeight: '500',
+                fontSize: '0.9rem'
+              }}>
+                {emitter.name || `Emitter ${index + 1}`}
+              </div>
+              {isTarget && (
+                <button
+                  className="delete-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteEmitter(system.key, index);
+                  }}
+                  title="Delete emitter"
+                  style={{
+                    flexShrink: 0,
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#ef4444',
+                    cursor: 'pointer',
+                    fontSize: '25px',
+                    padding: '2px 4px'
+                  }}
+                >
+                  🗑
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    });
   };
 
   const getShortSystemName = (fullPath) => {
@@ -3454,8 +3649,8 @@ const MemoizedInput = React.memo(({
       shortName = shortName.substring(match[0].length);
     }
 
-    if (shortName.length > 30) {
-      return shortName.substring(0, 27) + '...';
+    if (shortName.length > 45) {
+      return shortName.substring(0, 42) + '...';
     }
 
     return shortName;
@@ -3529,19 +3724,17 @@ const MemoizedInput = React.memo(({
         right: 0,
         bottom: 0,
         background: 'rgba(0, 0, 0, 0.6)',
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
         zIndex: 1000,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center'
       }}>
-        <div 
+        <div
           data-modal="vfx-hub-collections"
           style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.14)',
-            borderRadius: '10px',
+            background: 'var(--bg-2)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            borderRadius: '5px',
             width: `${modalSize.width}px`,
             height: `${modalSize.height}px`,
             display: 'flex',
@@ -3753,18 +3946,18 @@ const MemoizedInput = React.memo(({
                     e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
                   }}
                 >
-                  <div 
+                  <div
                     className="vfx-preview-container"
-                    style={{ 
-                      height: '120px', 
-                      background: 'var(--surface-2)', 
-                      border: '1px solid rgba(255,255,255,0.12)', 
-                      borderRadius: '0.6rem', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center', 
-                      marginBottom: '0.5rem', 
-                      overflow: 'hidden', 
+                    style={{
+                      height: '120px',
+                      background: 'var(--surface-2)',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      borderRadius: '0.6rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: '0.5rem',
+                      overflow: 'hidden',
                       position: 'relative',
                       cursor: system.previewUrl ? 'pointer' : 'default'
                     }}
@@ -3776,8 +3969,8 @@ const MemoizedInput = React.memo(({
                   >
                     {system.previewUrl ? (
                       <>
-                        <img 
-                          src={system.previewUrl} 
+                        <img
+                          src={system.previewUrl}
                           alt={system.displayName || system.name}
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                           onError={(e) => {
@@ -3957,9 +4150,7 @@ const MemoizedInput = React.memo(({
                   right: 0,
                   bottom: 0,
                   background: 'rgba(0, 0, 0, 0.5)',
-                  zIndex: 1999,
-                  backdropFilter: 'blur(4px)',
-                  WebkitBackdropFilter: 'blur(4px)'
+                  zIndex: 1999
                 }}
                 onClick={() => setHoveredPreview(null)}
               />
@@ -3980,71 +4171,65 @@ const MemoizedInput = React.memo(({
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  backdropFilter: 'saturate(180%) blur(20px)',
-                  WebkitBackdropFilter: 'saturate(180%) blur(20px)',
-                  boxShadow: `
-                    0 8px 32px rgba(0, 0, 0, 0.3),
-                    0 2px 8px rgba(0, 0, 0, 0.2),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.1)
-                  `
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                width: '100%',
-                marginBottom: '15px'
-              }}>
-                <h3 style={{ margin: 0, color: 'var(--accent)', fontSize: '1.2rem' }}>
-                  Full Preview
-                </h3>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  width: '100%',
+                  marginBottom: '15px'
+                }}>
+                  <h3 style={{ margin: 0, color: 'var(--accent)', fontSize: '1.2rem' }}>
+                    Full Preview
+                  </h3>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setHoveredPreview(null);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid rgba(255,255,255,0.3)',
+                      color: 'white',
+                      borderRadius: '50%',
+                      width: '32px',
+                      height: '32px',
+                      cursor: 'pointer',
+                      fontSize: '18px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = 'rgba(255,255,255,0.1)';
+                      e.target.style.borderColor = 'rgba(255,255,255,0.6)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = 'transparent';
+                      e.target.style.borderColor = 'rgba(255,255,255,0.3)';
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <img
+                  src={hoveredPreview}
+                  alt="Full preview"
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '60vh',
+                    objectFit: 'contain',
+                    borderRadius: '8px'
+                  }}
+                  onError={(e) => {
+                    console.warn('Failed to load full preview:', e.target.src);
                     setHoveredPreview(null);
                   }}
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    color: 'white',
-                    borderRadius: '50%',
-                    width: '32px',
-                    height: '32px',
-                    cursor: 'pointer',
-                    fontSize: '18px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.background = 'rgba(255,255,255,0.1)';
-                    e.target.style.borderColor = 'rgba(255,255,255,0.6)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.background = 'transparent';
-                    e.target.style.borderColor = 'rgba(255,255,255,0.3)';
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-              <img
-                src={hoveredPreview}
-                alt="Full preview"
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '60vh',
-                  objectFit: 'contain',
-                  borderRadius: '8px'
-                }}
-                onError={(e) => {
-                  console.warn('Failed to load full preview:', e.target.src);
-                  setHoveredPreview(null);
-                }}
-              />
+                />
               </div>
             </>
           )}
@@ -4066,7 +4251,7 @@ const MemoizedInput = React.memo(({
             }}
             onMouseDown={(e) => handleMouseDown(e, 'se')}
           />
-          
+
           {/* East edge resize handle */}
           <div
             style={{
@@ -4082,7 +4267,7 @@ const MemoizedInput = React.memo(({
             }}
             onMouseDown={(e) => handleMouseDown(e, 'e')}
           />
-          
+
           {/* South edge resize handle */}
           <div
             style={{
@@ -4123,19 +4308,19 @@ const MemoizedInput = React.memo(({
         const fs = window.require('fs');
         const fileBuffer = fs.readFileSync(filePath);
         const fileSizeMB = fileBuffer.length / (1024 * 1024);
-        
+
         // Check file size limits
         if (fileSizeMB > 25) {
           throw new Error(`File too large: ${fileSizeMB.toFixed(1)}MB. GitHub has a 25MB limit for individual files.`);
         }
-        
+
         if (fileSizeMB > 10) {
           console.warn(`Large file detected: ${fileSizeMB.toFixed(1)}MB. This may cause upload issues.`);
         }
-        
+
         const content = fileBuffer.toString('base64');
         const pathInRepo = `collection/previews/${cleanName}.${finalExt}`;
-        
+
         console.log(`Uploading preview: ${pathInRepo} (${fileSizeMB.toFixed(1)}MB)`);
         await githubApi.updateFile(pathInRepo, content, `Add preview for ${uploadMetadata.name}`, true);
         setStatusMessage(`Preview uploaded: ${pathInRepo}`);
@@ -4219,8 +4404,6 @@ const MemoizedInput = React.memo(({
         right: 0,
         bottom: 0,
         background: 'rgba(0, 0, 0, 0.5)',
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
         zIndex: 9999,
         display: 'flex',
         alignItems: 'center',
@@ -4598,20 +4781,14 @@ const MemoizedInput = React.memo(({
   return (
     <div className="port-container" style={{
       minHeight: '100%',
-      height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
-      background: 'linear-gradient(135deg, var(--bg-2) 0%, var(--bg) 100%)',
+      height: '100%',
+      background: 'var(--bg)',
       position: 'relative',
       overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column',
     }}>
       {isProcessing && <GlowingSpinner text={processingText || 'Working...'} />}
-      {/* Background lights to match MainPage/Port */}
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
-        <div style={{ position: 'absolute', top: -120, left: -80, width: 600, height: 600, filter: 'blur(60px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent), transparent 82%), transparent 70%)' }} />
-        <div style={{ position: 'absolute', top: -60, right: -120, width: 700, height: 700, filter: 'blur(80px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent2), transparent 84%), transparent 70%)' }} />
-        <div style={{ position: 'absolute', bottom: -160, left: '20%', width: 800, height: 800, filter: 'blur(90px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent), transparent 88%), transparent 70%)' }} />
-      </div>
       {/* Top Controls - Glass buttons with color */}
       <div style={{
         display: 'flex',
@@ -4621,104 +4798,114 @@ const MemoizedInput = React.memo(({
         position: 'relative',
         zIndex: 1,
       }}>
-        <button
+        <Button
           onClick={handleOpenTargetBin}
           disabled={isProcessing}
-          style={{
+          sx={{
             flex: 1,
-            padding: '8px 20px',
-            background: 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 78%), color-mix(in srgb, var(--accent-muted), transparent 82%))',
-            border: '1px solid color-mix(in srgb, var(--accent), transparent 68%)',
-            color: 'var(--accent)',
-            borderRadius: '8px',
+            padding: '0 16px',
             fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '14px',
-            fontWeight: '600',
-            cursor: isProcessing ? 'not-allowed' : 'pointer',
-            transition: 'all 0.2s ease',
-            opacity: isProcessing ? 0.7 : 1,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            fontSize: '13px',
+            fontWeight: 700,
+            height: '36px',
+            background: 'color-mix(in srgb, var(--accent), var(--bg) 85%)',
+            border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)',
+            color: 'var(--accent)',
+            borderRadius: '4px',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
             position: 'relative',
-            overflow: 'hidden'
-          }}
-          onMouseEnter={(e) => {
-            if (!isProcessing) {
-              e.target.style.transform = 'translateY(-1px)';
-              e.target.style.boxShadow = '0 4px 8px rgba(0,0,0,0.15)';
+            '&:hover': {
+              background: 'color-mix(in srgb, var(--accent), var(--bg) 75%)',
+              borderColor: 'var(--accent)',
+              textShadow: '0 0 8px color-mix(in srgb, var(--accent), transparent 50%)',
+            },
+            '&:disabled': {
+              opacity: 0.5,
+              cursor: 'not-allowed',
+              borderColor: 'rgba(255,255,255,0.1)',
+              color: 'rgba(255,255,255,0.3)'
             }
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.transform = 'translateY(0)';
-            e.target.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
           }}
         >
           {isProcessing ? 'Processing...' : 'Open Target Bin'}
-        </button>
+        </Button>
 
-        <button
+        <Button
           onClick={handleOpenVFXHub}
           disabled={isProcessing || isLoadingCollections}
-          style={{
+          sx={{
             flex: 1,
-            padding: '8px 20px',
-            background: 'rgba(34,197,94,0.2)',
-            border: '1px solid rgba(34,197,94,0.32)',
-            color: '#eaffef',
-            borderRadius: '8px',
+            padding: '0 16px',
             fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '14px',
-            fontWeight: '600',
-            cursor: (isProcessing || isLoadingCollections) ? 'not-allowed' : 'pointer',
-            transition: 'all 0.2s ease',
-            opacity: (isProcessing || isLoadingCollections) ? 0.7 : 1,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-          }}
-          onMouseEnter={(e) => {
-            if (!isProcessing && !isLoadingCollections) {
-              e.target.style.transform = 'translateY(-1px)';
-              e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+            fontSize: '13px',
+            fontWeight: 700,
+            height: '36px',
+            background: 'color-mix(in srgb, #22c55e, var(--bg) 85%)',
+            border: '1px solid rgba(34, 197, 94, 0.3)',
+            color: '#22c55e',
+            borderRadius: '4px',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            position: 'relative',
+            '&:hover': {
+              background: 'color-mix(in srgb, #22c55e, var(--bg) 75%)',
+              borderColor: '#22c55e',
+              textShadow: '0 0 8px color-mix(in srgb, #22c55e, transparent 50%)',
+            },
+            '&:disabled': {
+              opacity: 0.5,
+              cursor: 'not-allowed',
+              borderColor: 'rgba(34, 197, 94, 0.3)',
+              color: 'rgba(34, 197, 94, 0.3)'
             }
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.transform = 'translateY(0)';
-            e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
           }}
         >
           VFX Hub
-        </button>
+        </Button>
 
-        <button
+        <Button
           onClick={handleUploadToVFXHub}
           disabled={isProcessing || !githubAuthenticated}
-          style={{
+          sx={{
             flex: 1,
-            padding: '8px 20px',
-            background: githubAuthenticated ? 'linear-gradient(180deg, rgba(249,115,22,0.22), rgba(234,88,12,0.18))' : 'rgba(156,163,175,0.2)',
-            border: githubAuthenticated ? '1px solid rgba(249,115,22,0.32)' : '1px solid rgba(156,163,175,0.32)',
-            color: githubAuthenticated ? '#fff2e8' : '#9ca3af',
-            borderRadius: '8px',
+            padding: '0 16px',
             fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '14px',
-            fontWeight: '600',
-            cursor: (isProcessing || !githubAuthenticated) ? 'not-allowed' : 'pointer',
-            transition: 'all 0.2s ease',
-            opacity: (isProcessing || !githubAuthenticated) ? 0.7 : 1,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-          }}
-          onMouseEnter={(e) => {
-            if (!isProcessing && githubAuthenticated) {
-              e.target.style.transform = 'translateY(-1px)';
-              e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+            fontSize: '13px',
+            fontWeight: 700,
+            height: '36px',
+            background: githubAuthenticated
+              ? 'color-mix(in srgb, #22c55e, var(--bg) 85%)'
+              : 'color-mix(in srgb, #9ca3af, var(--bg) 85%)',
+            border: githubAuthenticated ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(156, 163, 175, 0.3)',
+            color: githubAuthenticated ? '#22c55e' : '#9ca3af',
+            borderRadius: '4px',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            position: 'relative',
+            '&:hover': {
+              background: githubAuthenticated
+                ? 'color-mix(in srgb, #22c55e, var(--bg) 75%)'
+                : 'color-mix(in srgb, #9ca3af, var(--bg) 75%)',
+              borderColor: githubAuthenticated ? '#22c55e' : '#9ca3af',
+              textShadow: githubAuthenticated
+                ? '0 0 8px color-mix(in srgb, #22c55e, transparent 50%)'
+                : '0 0 8px color-mix(in srgb, #9ca3af, transparent 50%)',
+            },
+            '&:disabled': {
+              opacity: 0.5,
+              cursor: 'not-allowed',
+              borderColor: 'rgba(156,163,175,0.32)',
+              color: '#9ca3af'
             }
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.transform = 'translateY(0)';
-            e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
           }}
           title={!githubAuthenticated ? 'Authentication required - Configure GitHub credentials in Settings' : 'Upload VFX system to VFX Hub'}
         >
           {!githubAuthenticated ? 'Upload (Auth Required)' : 'Upload to VFX Hub'}
-        </button>
+        </Button>
       </div>
 
       {/* Main Content Area - Match port Style */}
@@ -4747,7 +4934,7 @@ const MemoizedInput = React.memo(({
             onChange={(e) => filterTargetParticles(e.target.value)}
             style={{
               padding: '8px 16px',
-              background: 'rgba(15, 13, 20, 0.8)',
+              background: 'var(--surface-2)',
               border: '1px solid #444',
               borderRadius: '6px',
               color: 'var(--accent)',
@@ -4765,7 +4952,7 @@ const MemoizedInput = React.memo(({
             style={{
               flex: 1,
               height: '400px',
-              ...glassSection,
+              ...sectionStyle,
               borderRadius: '8px',
               padding: '0',
               overflow: 'hidden',
@@ -4775,7 +4962,7 @@ const MemoizedInput = React.memo(({
             }}
           >
             {Object.keys(targetSystems).length > 0 ? (
-              <div className="with-scrollbars" style={{ width: '100%', height: '100%', overflow: 'auto' }}>
+              <div className="with-scrollbars" style={{ width: '100%', height: '100%', overflow: 'auto', background: 'rgba(255, 255, 255, 0.03)' }}>
                 {renderParticleSystems(targetSystems, targetFilter, true)}
               </div>
             ) : (
@@ -4811,7 +4998,7 @@ const MemoizedInput = React.memo(({
             onChange={(e) => filterDonorParticles(e.target.value)}
             style={{
               padding: '8px 16px',
-              background: 'rgba(15, 13, 20, 0.8)',
+              background: 'var(--surface-2)',
               border: '1px solid #444',
               borderRadius: '6px',
               color: 'var(--accent)',
@@ -4825,7 +5012,7 @@ const MemoizedInput = React.memo(({
           {/* Donor Content Area */}
           <div style={{
             flex: 1,
-            ...glassSection,
+            ...sectionStyle,
             borderRadius: '8px',
             padding: '0',
             overflow: 'hidden',
@@ -4834,7 +5021,7 @@ const MemoizedInput = React.memo(({
             justifyContent: 'stretch'
           }}>
             {Object.keys(donorSystems).length > 0 ? (
-              <div className="with-scrollbars" style={{ width: '100%', height: '100%', overflow: 'auto' }}>
+              <div className="with-scrollbars" style={{ width: '100%', height: '100%', overflow: 'auto', background: 'rgba(255, 255, 255, 0.03)' }}>
                 {renderParticleSystems(donorSystems, donorFilter, false)}
               </div>
             ) : (
@@ -4856,19 +5043,60 @@ const MemoizedInput = React.memo(({
         </div>
       </div>
 
-      {/* Status Bar - Match port Style */}
+      {/* Status Bar - Celestial Style */}
       <div style={{
         padding: '6px 20px',
-        background: 'rgba(255,255,255,0.06)',
-        borderTop: '1px solid rgba(255,255,255,0.12)',
-        borderBottom: '1px solid rgba(255,255,255,0.12)',
+        background: 'transparent',
+        borderTop: '1px solid rgba(255, 255, 255, 0.06)',
         color: 'var(--accent)',
         fontFamily: 'JetBrains Mono, monospace',
         fontSize: '12px',
         display: 'flex',
-        alignItems: 'center'
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '20px'
       }}>
-        {statusMessage}
+        <span style={{ flex: 1 }}>{statusMessage}</span>
+
+        {/* Trim options */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px',
+          fontSize: '11px',
+          color: 'rgba(255,255,255,0.7)'
+        }}>
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap'
+          }}>
+            <input
+              type="checkbox"
+              checked={trimTargetNames}
+              onChange={(e) => setTrimTargetNames(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            <span>Trim Target Names</span>
+          </label>
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap'
+          }}>
+            <input
+              type="checkbox"
+              checked={trimDonorNames}
+              onChange={(e) => setTrimDonorNames(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            <span>Trim Donor Names</span>
+          </label>
+        </div>
       </div>
 
       {/* Bottom Controls - Match port Style */}
@@ -4878,53 +5106,74 @@ const MemoizedInput = React.memo(({
         padding: '12px 20px',
         background: 'transparent'
       }}>
-        <button 
+        <Button
           onClick={handleUndo}
           disabled={undoHistory.length === 0}
-          style={{
+          sx={{
             flex: 1,
-            padding: '8px 16px',
-            background: undoHistory.length === 0 
-              ? 'linear-gradient(180deg, rgba(80,80,80,0.16), rgba(60,60,60,0.10))'
-              : 'linear-gradient(180deg, rgba(160,160,160,0.16), rgba(120,120,120,0.10))',
-            border: '1px solid rgba(200,200,200,0.24)',
-            backdropFilter: 'saturate(180%) blur(16px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(16px)',
-            color: undoHistory.length === 0 ? 'rgba(255,255,255,0.4)' : 'var(--accent)',
-            borderRadius: '8px',
+            padding: '0 16px',
             fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '14px',
-            fontWeight: '600',
-            cursor: undoHistory.length === 0 ? 'not-allowed' : 'pointer',
-            transition: 'all 0.2s ease',
+            fontSize: '13px',
+            fontWeight: 700,
+            height: '36px',
+            background: 'color-mix(in srgb, #9ca3af, var(--bg) 85%)',
+            border: '1px solid rgba(156, 163, 175, 0.3)',
+            color: '#9ca3af',
+            borderRadius: '4px',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            position: 'relative',
+            '&:hover': {
+              background: 'color-mix(in srgb, #9ca3af, var(--bg) 75%)',
+              borderColor: '#9ca3af',
+              textShadow: '0 0 8px color-mix(in srgb, #9ca3af, transparent 50%)',
+            },
+            '&:disabled': {
+              opacity: 0.5,
+              cursor: 'not-allowed',
+              borderColor: 'rgba(156,163,175,0.32)',
+              color: 'rgba(156,163,175,0.32)'
+            }
           }}
           title={undoHistory.length > 0 ? `Undo: ${undoHistory[undoHistory.length - 1]?.action}` : 'Nothing to undo'}
         >
           Undo ({undoHistory.length})
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={handleSave}
           disabled={isProcessing || !hasChangesToSave()}
-          style={{
+          sx={{
             flex: 1,
-            padding: '8px 20px',
-            background: hasChangesToSave() ? 'linear-gradient(180deg, rgba(34,197,94,0.22), rgba(22,163,74,0.18))' : 'rgba(160,160,160,0.16)',
-            border: hasChangesToSave() ? '1px solid rgba(34,197,94,0.32)' : '1px solid rgba(200,200,200,0.24)',
-            backdropFilter: 'saturate(180%) blur(16px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(16px)',
-            color: hasChangesToSave() ? '#eaffef' : 'var(--accent)',
-            borderRadius: '8px',
+            padding: '0 16px',
             fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '14px',
-            fontWeight: hasChangesToSave() ? '600' : 'normal',
-            cursor: hasChangesToSave() && !isProcessing ? 'pointer' : 'not-allowed',
-            transition: 'all 0.2s ease',
-            opacity: hasChangesToSave() ? 1 : 0.7
+            fontSize: '13px',
+            fontWeight: 700,
+            height: '36px',
+            background: 'color-mix(in srgb, #22c55e, var(--bg) 85%)',
+            border: '1px solid rgba(34, 197, 94, 0.3)',
+            color: '#22c55e',
+            borderRadius: '4px',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            position: 'relative',
+            '&:hover': {
+              background: 'color-mix(in srgb, #22c55e, var(--bg) 75%)',
+              borderColor: '#22c55e',
+              textShadow: '0 0 8px color-mix(in srgb, #22c55e, transparent 50%)',
+            },
+            '&:disabled': {
+              opacity: 0.5,
+              cursor: 'not-allowed',
+              borderColor: 'rgba(34, 197, 94, 0.3)',
+              color: 'rgba(34, 197, 94, 0.3)'
+            }
           }}
           title={hasChangesToSave() ? 'Save changes to file' : 'No changes to save'}
         >
           Save
-        </button>
+        </Button>
 
       </div>
 
@@ -4939,8 +5188,6 @@ const MemoizedInput = React.memo(({
             right: 0,
             bottom: 0,
             background: 'rgba(0,0,0,0.4)',
-            backdropFilter: 'blur(4px)',
-            WebkitBackdropFilter: 'blur(4px)',
             zIndex: 1000,
             display: 'flex',
             alignItems: 'center',
@@ -4951,10 +5198,8 @@ const MemoizedInput = React.memo(({
         >
           <div
             style={{
-              background: 'linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))',
-              border: '1px solid rgba(255,255,255,0.14)',
-              backdropFilter: 'saturate(200%) blur(20px)',
-              WebkitBackdropFilter: 'saturate(200%) blur(20px)',
+              background: 'var(--bg-2)',
+              border: '1px solid rgba(255,255,255,0.06)',
               borderRadius: 12,
               width: '90%',
               maxWidth: 1000,
@@ -4963,7 +5208,7 @@ const MemoizedInput = React.memo(({
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -4987,7 +5232,6 @@ const MemoizedInput = React.memo(({
                   borderRadius: '50%',
                   color: 'var(--accent)',
                   cursor: 'pointer',
-                  backdropFilter: 'saturate(180%) blur(12px)',
                   fontSize: '18px',
                   display: 'flex',
                   alignItems: 'center',
@@ -5039,8 +5283,6 @@ const MemoizedInput = React.memo(({
                           justifyContent: 'space-between',
                           alignItems: 'center',
                           transition: 'all 0.2s ease',
-                          backdropFilter: 'blur(10px)',
-                          WebkitBackdropFilter: 'blur(10px)'
                         }}
                         onMouseEnter={(e) => {
                           e.target.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))';
@@ -5052,13 +5294,13 @@ const MemoizedInput = React.memo(({
                         }}
                       >
                         <span>{typeOptions.find(opt => opt.value === persistentPreset.type)?.label || persistentPreset.type}</span>
-                        <span style={{ 
+                        <span style={{
                           transform: typeDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.2s ease',
                           fontSize: '0.8rem'
                         }}>▼</span>
                       </button>
-                      
+
                       {typeDropdownOpen && (
                         <div style={{
                           position: 'absolute',
@@ -5070,8 +5312,6 @@ const MemoizedInput = React.memo(({
                           borderRadius: 8,
                           marginTop: 4,
                           zIndex: 1000,
-                          backdropFilter: 'blur(20px)',
-                          WebkitBackdropFilter: 'blur(20px)',
                           boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
                           overflow: 'hidden'
                         }}>
@@ -5107,10 +5347,10 @@ const MemoizedInput = React.memo(({
                                 {option.label}
                               </div>
                               {option.description && (
-                                <div style={{ 
-                                  fontSize: '0.75rem', 
-                                  color: 'rgba(255,255,255,0.8)', 
-                                  marginTop: 2 
+                                <div style={{
+                                  fontSize: '0.75rem',
+                                  color: 'rgba(255,255,255,0.8)',
+                                  marginTop: 2
                                 }}>
                                   {option.description}
                                 </div>
@@ -5512,7 +5752,6 @@ const MemoizedInput = React.memo(({
                                 maxHeight: '120px',
                                 overflow: 'auto',
                                 zIndex: 9999,
-                                backdropFilter: 'blur(15px)',
                                 boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
                               }}>
                                 {effectKeyOptions
@@ -5715,7 +5954,6 @@ const MemoizedInput = React.memo(({
                     maxHeight: '200px',
                     overflow: 'auto',
                     zIndex: 10000,
-                    backdropFilter: 'blur(15px)',
                     boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
                   }}>
                     {existingConditions.length === 0 ? (
@@ -5815,11 +6053,9 @@ const MemoizedInput = React.memo(({
         fullWidth
         PaperProps={{
           sx: {
-            background: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
-            backdropFilter: 'saturate(180%) blur(20px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(20px)',
-            boxShadow: 'var(--glass-shadow)',
+            background: 'transparent',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
             borderRadius: 3,
             overflow: 'hidden',
           }
@@ -5841,15 +6077,15 @@ const MemoizedInput = React.memo(({
             },
           }}
         />
-        <DialogTitle sx={{ 
-          color: 'var(--accent)', 
-          display: 'flex', 
-          alignItems: 'center', 
+        <DialogTitle sx={{
+          color: 'var(--accent)',
+          display: 'flex',
+          alignItems: 'center',
           gap: 1.5,
           pb: 1.5,
           pt: 2.5,
           px: 3,
-          borderBottom: '1px solid var(--glass-border)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
         }}>
           <Box
             sx={{
@@ -5865,8 +6101,8 @@ const MemoizedInput = React.memo(({
           >
             <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
           </Box>
-          <Typography variant="h6" sx={{ 
-            fontWeight: 600, 
+          <Typography variant="h6" sx={{
+            fontWeight: 600,
             color: 'var(--accent)',
             fontFamily: 'JetBrains Mono, monospace',
             fontSize: '1rem',
@@ -5877,8 +6113,8 @@ const MemoizedInput = React.memo(({
         <DialogContent sx={{ px: 3, py: 2.5 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
               }}>
@@ -5894,15 +6130,15 @@ const MemoizedInput = React.memo(({
                   padding: '8px 12px',
                   background: 'var(--surface)',
                   color: 'var(--accent)',
-                  border: '1px solid var(--glass-border)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
                   borderRadius: '6px',
                   fontSize: '0.875rem',
                   fontFamily: 'JetBrains Mono, monospace',
                 }}
               />
             </Box>
-            <Typography variant="body2" sx={{ 
-              color: 'var(--accent-muted)', 
+            <Typography variant="body2" sx={{
+              color: 'var(--accent-muted)',
               fontSize: '0.75rem',
               fontStyle: 'italic',
             }}>
@@ -5910,10 +6146,10 @@ const MemoizedInput = React.memo(({
             </Typography>
           </Box>
         </DialogContent>
-        <DialogActions sx={{ 
-          p: 2.5, 
+        <DialogActions sx={{
+          p: 2.5,
           pt: 2,
-          borderTop: '1px solid var(--glass-border)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
           gap: 1.5,
         }}>
           <Button
@@ -5921,7 +6157,7 @@ const MemoizedInput = React.memo(({
             variant="outlined"
             sx={{
               color: 'var(--accent2)',
-              borderColor: 'var(--glass-border)',
+              borderColor: 'rgba(255, 255, 255, 0.06)',
               textTransform: 'none',
               fontFamily: 'JetBrains Mono, monospace',
               fontSize: '0.8rem',
@@ -5971,11 +6207,9 @@ const MemoizedInput = React.memo(({
         fullWidth
         PaperProps={{
           sx: {
-            background: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
-            backdropFilter: 'saturate(180%) blur(20px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(20px)',
-            boxShadow: 'var(--glass-shadow)',
+            background: 'transparent',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
             borderRadius: 3,
             overflow: 'hidden',
           }
@@ -5997,15 +6231,15 @@ const MemoizedInput = React.memo(({
             },
           }}
         />
-        <DialogTitle sx={{ 
-          color: 'var(--accent)', 
-          display: 'flex', 
-          alignItems: 'center', 
+        <DialogTitle sx={{
+          color: 'var(--accent)',
+          display: 'flex',
+          alignItems: 'center',
           gap: 1.5,
           pb: 1.5,
           pt: 2.5,
           px: 3,
-          borderBottom: '1px solid var(--glass-border)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
         }}>
           <Box
             sx={{
@@ -6021,8 +6255,8 @@ const MemoizedInput = React.memo(({
           >
             <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
           </Box>
-          <Typography variant="h6" sx={{ 
-            fontWeight: 600, 
+          <Typography variant="h6" sx={{
+            fontWeight: 600,
             color: 'var(--accent)',
             fontFamily: 'JetBrains Mono, monospace',
             fontSize: '1rem',
@@ -6032,16 +6266,16 @@ const MemoizedInput = React.memo(({
         </DialogTitle>
         <DialogContent sx={{ px: 3, py: 2.5 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Typography variant="body2" sx={{ 
-              color: 'var(--accent2)', 
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
               lineHeight: 1.6,
               fontSize: '0.875rem',
             }}>
               VFX System: <strong style={{ color: 'var(--accent)' }}>{selectedSystemForIdle?.name}</strong>
             </Typography>
-            
-            <Typography variant="body2" sx={{ 
-              color: 'var(--accent2)', 
+
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
               fontSize: '0.875rem',
               fontWeight: 600,
             }}>
@@ -6049,15 +6283,15 @@ const MemoizedInput = React.memo(({
             </Typography>
 
             {idleBonesList.length === 0 && (
-              <Box sx={{ 
+              <Box sx={{
                 backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
-                border: '1px dashed var(--glass-border)',
+                border: '1px dashed rgba(255, 255, 255, 0.06)',
                 borderRadius: 1.5,
                 p: 3,
                 textAlign: 'center',
               }}>
-                <Typography variant="body2" sx={{ 
-                  color: 'var(--accent2)', 
+                <Typography variant="body2" sx={{
+                  color: 'var(--accent2)',
                   fontSize: '0.8rem',
                 }}>
                   No idle particles yet. Click "Add Another Bone" below to add one.
@@ -6066,18 +6300,18 @@ const MemoizedInput = React.memo(({
             )}
 
             {idleBonesList.map((item, index) => (
-              <Box key={item.id} sx={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
+              <Box key={item.id} sx={{
+                display: 'flex',
+                flexDirection: 'column',
                 gap: 1.5,
                 p: 2,
                 backgroundColor: 'rgba(var(--accent-rgb), 0.03)',
                 borderRadius: 1.5,
-                border: '1px solid var(--glass-border)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
               }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" sx={{ 
-                    color: 'var(--accent)', 
+                  <Typography variant="body2" sx={{
+                    color: 'var(--accent)',
                     fontSize: '0.8rem',
                     fontWeight: 600,
                     minWidth: '60px',
@@ -6108,8 +6342,8 @@ const MemoizedInput = React.memo(({
                 </Box>
 
                 <Box>
-                  <Typography variant="body2" sx={{ 
-                    color: 'var(--accent2)', 
+                  <Typography variant="body2" sx={{
+                    color: 'var(--accent2)',
                     mb: 0.5,
                     fontSize: '0.75rem',
                   }}>
@@ -6119,7 +6353,7 @@ const MemoizedInput = React.memo(({
                     <Select
                       value={item.boneName}
                       onChange={(e) => {
-                        const newList = idleBonesList.map(bone => 
+                        const newList = idleBonesList.map(bone =>
                           bone.id === item.id ? { ...bone, boneName: e.target.value } : bone
                         );
                         setIdleBonesList(newList);
@@ -6128,7 +6362,7 @@ const MemoizedInput = React.memo(({
                         color: 'var(--accent)',
                         backgroundColor: 'var(--surface)',
                         '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'var(--glass-border)',
+                          borderColor: 'rgba(255, 255, 255, 0.06)',
                         },
                         '&:hover .MuiOutlinedInput-notchedOutline': {
                           borderColor: 'var(--accent)',
@@ -6151,8 +6385,8 @@ const MemoizedInput = React.memo(({
                 </Box>
 
                 <Box>
-                  <Typography variant="body2" sx={{ 
-                    color: 'var(--accent2)', 
+                  <Typography variant="body2" sx={{
+                    color: 'var(--accent2)',
                     mb: 0.5,
                     fontSize: '0.75rem',
                   }}>
@@ -6162,7 +6396,7 @@ const MemoizedInput = React.memo(({
                     type="text"
                     value={item.customBoneName}
                     onChange={(e) => {
-                      const newList = idleBonesList.map(bone => 
+                      const newList = idleBonesList.map(bone =>
                         bone.id === item.id ? { ...bone, customBoneName: e.target.value } : bone
                       );
                       setIdleBonesList(newList);
@@ -6173,7 +6407,7 @@ const MemoizedInput = React.memo(({
                       padding: '8px 12px',
                       background: 'var(--surface)',
                       color: 'var(--accent)',
-                      border: '1px solid var(--glass-border)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
                       borderRadius: '6px',
                       fontSize: '0.75rem',
                       fontFamily: 'JetBrains Mono, monospace',
@@ -6191,7 +6425,7 @@ const MemoizedInput = React.memo(({
               startIcon={<AddIcon />}
               sx={{
                 color: 'var(--accent)',
-                borderColor: 'var(--glass-border)',
+                borderColor: 'rgba(255, 255, 255, 0.06)',
                 textTransform: 'none',
                 fontFamily: 'JetBrains Mono, monospace',
                 fontSize: '0.75rem',
@@ -6205,10 +6439,10 @@ const MemoizedInput = React.memo(({
             </Button>
           </Box>
         </DialogContent>
-        <DialogActions sx={{ 
-          p: 2.5, 
+        <DialogActions sx={{
+          p: 2.5,
           pt: 2,
-          borderTop: '1px solid var(--glass-border)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
           gap: 1.5,
         }}>
           <Button
@@ -6222,7 +6456,7 @@ const MemoizedInput = React.memo(({
             variant="outlined"
             sx={{
               color: 'var(--accent2)',
-              borderColor: 'var(--glass-border)',
+              borderColor: 'rgba(255, 255, 255, 0.06)',
               textTransform: 'none',
               fontFamily: 'JetBrains Mono, monospace',
               fontSize: '0.8rem',
@@ -6268,17 +6502,17 @@ const MemoizedInput = React.memo(({
               const sys = systems[matrixModalState.systemKey];
               if (!sys) { setShowMatrixModal(false); return; }
               saveStateToHistory(`Update matrix for "${sys.name}"`);
-              
+
               const sysText = sys.rawContent;
               const updatedSystemText = upsertSystemMatrix(sysText, mat);
               const updatedFile = replaceSystemBlockInFile(targetPyContent || '', sys.key, updatedSystemText);
               setTargetPyContent(updatedFile);
-              try { setFileSaved(false); } catch {}
+              try { setFileSaved(false); } catch { }
               // Optional: refresh targetSystems for UI consistency
               try {
                 const refreshed = parseVfxEmitters(updatedFile);
                 setTargetSystems(refreshed);
-              } catch {}
+              } catch { }
             } catch (err) {
               console.error('Apply matrix failed:', err);
             } finally {
@@ -6311,8 +6545,6 @@ const MemoizedInput = React.memo(({
               color: '#c084fc',
               border: '1px solid rgba(147, 51, 234, 0.3)',
               boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(147, 51, 234, 0.2)',
-              backdropFilter: 'blur(15px)',
-              WebkitBackdropFilter: 'blur(15px)',
               '&:hover': {
                 transform: 'translateY(-2px)',
                 boxShadow: '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(147, 51, 234, 0.3)',
@@ -6346,8 +6578,6 @@ const MemoizedInput = React.memo(({
               color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : '#4ade80',
               border: '1px solid rgba(34, 197, 94, 0.3)',
               boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(34, 197, 94, 0.2)',
-              backdropFilter: 'blur(15px)',
-              WebkitBackdropFilter: 'blur(15px)',
               '&:hover': {
                 transform: (!hasResourceResolver || !hasSkinCharacterData) ? 'none' : 'translateY(-2px)',
                 boxShadow: (!hasResourceResolver || !hasSkinCharacterData) ? '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(34, 197, 94, 0.2)' : '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(34, 197, 94, 0.3)',
@@ -6381,8 +6611,6 @@ const MemoizedInput = React.memo(({
               color: !hasResourceResolver ? 'rgba(255,255,255,0.35)' : '#fbbf24',
               border: '1px solid rgba(236, 185, 106, 0.3)',
               boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(236, 185, 106, 0.2)',
-              backdropFilter: 'blur(15px)',
-              WebkitBackdropFilter: 'blur(15px)',
               '&:hover': {
                 transform: !hasResourceResolver ? 'none' : 'translateY(-2px)',
                 boxShadow: !hasResourceResolver ? '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(236, 185, 106, 0.2)' : '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(236, 185, 106, 0.3)',
@@ -6428,41 +6656,72 @@ const MemoizedInput = React.memo(({
         fullWidth
         PaperProps={{
           sx: {
-            background: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
-            backdropFilter: 'saturate(180%) blur(16px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(16px)',
+            background: 'transparent',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            borderRadius: '5px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            overflow: 'hidden'
           },
         }}
       >
-        <DialogTitle sx={{ 
-          color: 'var(--accent)', 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 1,
-          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-          fontWeight: 600
+        {/* Animated Top Bar */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '4px',
+            background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+            backgroundSize: '200% 100%',
+            animation: 'shimmer 3s ease-in-out infinite',
+            '@keyframes shimmer': {
+              '0%': { backgroundPosition: '200% 0' },
+              '100%': { backgroundPosition: '-200% 0' },
+            },
+          }}
+        />
+        {/* Header Bar */}
+        <Box sx={{
+          padding: '1.5rem',
+          borderBottom: '1px solid rgba(255,255,255,0.12)',
+          display: 'flex',
+          alignItems: 'center',
+          background: 'rgba(255,255,255,0.02)'
         }}>
-          ⚠️ Unsaved Changes
-        </DialogTitle>
-        
-        <DialogContent sx={{ pt: 2 }}>
-          <div style={{ 
-            color: '#e5e7eb', 
-            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-            lineHeight: 1.5
+          <Typography sx={{
+            margin: 0,
+            color: 'var(--accent)',
+            fontSize: '1.5rem',
+            fontWeight: 600,
+            fontFamily: 'JetBrains Mono, monospace'
+          }}>
+            ⚠️ Unsaved Changes
+          </Typography>
+        </Box>
+
+        <DialogContent sx={{ pt: 2, background: 'transparent' }}>
+          <Typography sx={{
+            color: 'var(--text)',
+            fontFamily: 'JetBrains Mono, monospace',
+            lineHeight: 1.5,
+            fontSize: '0.9rem'
           }}>
             You have unsaved changes. What would you like to do?
-          </div>
+          </Typography>
         </DialogContent>
 
-        <DialogActions sx={{ p: 2, gap: 1 }}>
+        <DialogActions sx={{ p: 2, gap: 1, borderTop: '1px solid rgba(255, 255, 255, 0.06)', background: 'transparent' }}>
           <Button
             onClick={handleUnsavedCancel}
-            sx={{ 
-              color: 'var(--accent2)',
+            sx={{
+              ...celestialButtonStyle,
+              color: 'var(--text-2)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
               '&:hover': {
-                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderColor: 'var(--text)',
+                color: 'var(--text)'
               }
             }}
           >
@@ -6471,29 +6730,131 @@ const MemoizedInput = React.memo(({
           <Button
             onClick={handleUnsavedDiscard}
             sx={{
-              color: 'var(--accent2)',
+              ...celestialButtonStyle,
+              borderColor: '#ef4444',
+              color: '#ef4444',
+              background: 'rgba(239, 68, 68, 0.05)',
               '&:hover': {
-                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                color: '#ef4444',
+                background: 'rgba(239, 68, 68, 0.15)',
+                borderColor: '#ef4444',
+                boxShadow: '0 0 15px rgba(239, 68, 68, 0.25)'
               }
             }}
           >
             Discard Changes
           </Button>
           <Button
-            variant="contained"
             onClick={handleUnsavedSave}
             sx={{
-              background: 'var(--accent)',
-              color: 'var(--bg)',
-              borderRadius: '4px',
+              ...celestialButtonStyle,
+              borderColor: '#22c55e',
+              color: '#22c55e',
+              background: 'rgba(34, 197, 94, 0.05)',
+              fontWeight: 'bold',
               px: 2,
               '&:hover': {
-                background: 'var(--accent2)',
-              },
+                background: 'rgba(34, 197, 94, 0.15)',
+                borderColor: '#22c55e',
+                boxShadow: '0 0 15px rgba(34, 197, 94, 0.25)'
+              }
             }}
           >
             Save & Leave
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* RitoBin Error Dialog */}
+      <Dialog
+        open={showRitoBinErrorDialog}
+        onClose={() => setShowRitoBinErrorDialog(false)}
+        PaperProps={{
+          sx: {
+            background: 'var(--bg-primary)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            minWidth: '450px',
+            borderRadius: '12px',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
+          }
+        }}
+      >
+        <Box sx={{
+          padding: '1.5rem',
+          borderBottom: '1px solid rgba(255,255,255,0.12)',
+          display: 'flex',
+          alignItems: 'center',
+          background: 'rgba(239, 68, 68, 0.05)'
+        }}>
+          <Typography sx={{
+            margin: 0,
+            color: '#ef4444',
+            fontSize: '1.5rem',
+            fontWeight: 600,
+            fontFamily: 'JetBrains Mono, monospace',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5
+          }}>
+            <WarningIcon sx={{ fontSize: '1.75rem' }} />
+            Conversion Failed
+          </Typography>
+        </Box>
+
+        <DialogContent sx={{ pt: 2.5, background: 'transparent' }}>
+          <Typography sx={{
+            color: 'var(--text)',
+            fontFamily: 'JetBrains Mono, monospace',
+            lineHeight: 1.6,
+            fontSize: '0.9rem',
+            mb: 2
+          }}>
+            RitoBin failed to convert the file. This usually means the App broke the code or the Python code was invalid before
+          </Typography>
+          <Typography sx={{
+            color: 'var(--text-2)',
+            fontFamily: 'JetBrains Mono, monospace',
+            lineHeight: 1.6,
+            fontSize: '0.9rem'
+          }}>
+            Would you like to restore the file to its previous state from the latest backup?
+          </Typography>
+        </DialogContent>
+
+        <DialogActions sx={{ p: 2, gap: 1, borderTop: '1px solid rgba(255, 255, 255, 0.06)', background: 'transparent' }}>
+          <Button
+            onClick={() => setShowRitoBinErrorDialog(false)}
+            sx={{
+              ...celestialButtonStyle,
+              color: 'var(--text-2)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+              '&:hover': {
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderColor: 'var(--text)',
+                color: 'var(--text)'
+              }
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              performBackupRestore();
+              setShowRitoBinErrorDialog(false);
+            }}
+            sx={{
+              ...celestialButtonStyle,
+              borderColor: '#ef4444',
+              color: '#ef4444',
+              background: 'rgba(239, 68, 68, 0.05)',
+              '&:hover': {
+                background: 'rgba(239, 68, 68, 0.15)',
+                borderColor: '#ef4444',
+                boxShadow: '0 0 15px rgba(239, 68, 68, 0.25)'
+              }
+            }}
+          >
+            Restore Backup
           </Button>
         </DialogActions>
       </Dialog>

@@ -26,7 +26,6 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
-import { glassButton } from '../utils/glassStyles';
 import { CreatePicker, cleanupColorPickers } from '../utils/colorUtils';
 
 const RGBA = () => {
@@ -225,14 +224,31 @@ const RGBA = () => {
     };
   }, []);
 
-  // Unified glass section style using theme variables
-  const glassSection = {
-    background: 'var(--glass-bg)',
-    border: '1px solid var(--glass-border)',
-    borderRadius: 12,
-    backdropFilter: 'saturate(220%) blur(18px)',
-    WebkitBackdropFilter: 'saturate(220%) blur(18px)',
-    boxShadow: 'var(--glass-shadow)'
+  // Celestial minimalistic button style (matching Bumpath/ImgRecolor)
+  const celestialButtonStyle = {
+    background: 'var(--bg-2)',
+    border: '1px solid var(--accent-muted)',
+    color: 'var(--text)',
+    borderRadius: '5px',
+    transition: 'all 200ms ease',
+    textTransform: 'none',
+    fontFamily: 'JetBrains Mono, monospace',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+    '&:hover': {
+      background: 'var(--surface-2)',
+      borderColor: 'var(--accent)',
+      boxShadow: '0 0 15px color-mix(in srgb, var(--accent), transparent 60%)'
+    },
+    '&:disabled': {
+      background: 'var(--bg-2)',
+      borderColor: 'var(--text-2)',
+      color: 'var(--text-2)',
+      opacity: 0.6,
+      cursor: 'not-allowed'
+    },
+    '&:active': {
+      transform: 'translateY(1px)'
+    }
   };
 
   return (
@@ -243,68 +259,16 @@ const RGBA = () => {
       overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column',
-       background: 'linear-gradient(135deg, var(--bg-2) 0%, var(--bg) 100%)',
-       color: 'var(--text)',
+      background: 'var(--bg)',
+      color: 'var(--text)',
       fontFamily: 'JetBrains Mono, monospace',
       p: { xs: 2, sm: 3 },
       boxSizing: 'border-box'
     }}>
-      {/* Background lights */}
-      <Box sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
-        <Box sx={{ position: 'absolute', top: -120, left: -80, width: 600, height: 600, filter: 'blur(60px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent), transparent 82%), transparent 70%)' }} />
-        <Box sx={{ position: 'absolute', top: -60, right: -120, width: 700, height: 700, filter: 'blur(80px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent-muted), transparent 84%), transparent 70%)' }} />
-        <Box sx={{ position: 'absolute', bottom: -160, left: '20%', width: 800, height: 800, filter: 'blur(90px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent), transparent 88%), transparent 70%)' }} />
-      </Box>
-
-      {/* Header */}
-      <Box sx={{
-        mb: 2,
-        textAlign: 'center',
-        flexShrink: 0,
-        ...glassSection,
-        borderRadius: '1.5vw',
-        p: '2vw',
-        position: 'relative',
-        zIndex: 1,
-        boxShadow: '0 16px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04)'
-      }}>
-        <Typography 
-          variant="h4" 
-          gutterBottom 
-          sx={{ 
-            fontWeight: 'bold', 
-            color: 'var(--accent)',
-            textShadow: '0 0 20px color-mix(in srgb, var(--accent), transparent 70%)',
-            mb: 0.5
-          }}
-        >
-          RGBA Color Studio
-        </Typography>
-        <Typography 
-          variant="body2" 
-          sx={{ 
-            color: 'var(--accent-muted)',
-            opacity: 0.8,
-            fontFamily: 'JetBrains Mono, monospace'
-          }}
-        >
-          Advanced color picker for League of Legends modding
-        </Typography>
-      </Box>
-
       {/* Main Content - Compact Layout */}
       <Box sx={{ flex: 1, display: 'flex', gap: 2, position: 'relative', zIndex: 1 }}>
         {/* Left Side - Color Selection */}
-        <Box sx={{ flex: 1 }}>
-          <Box sx={{ 
-            position: 'relative',
-            overflow: 'hidden',
-            ...glassSection,
-            borderRadius: '1.5vw',
-            boxShadow: '0 16px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04)',
-            height: '100%'
-          }}>
-            <Box sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <ColorizeIcon sx={{ color: 'var(--accent)', mr: 1, fontSize: 20 }} />
                 <Typography variant="h6" sx={{ color: 'var(--accent)', fontWeight: 'bold' }}>
@@ -382,21 +346,21 @@ const RGBA = () => {
                       '& .MuiOutlinedInput-root': {
                         fontFamily: 'JetBrains Mono, monospace',
                         fontSize: '0.9rem',
-                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        borderRadius: 2,
+                        backgroundColor: 'var(--bg-2)',
+                        border: '1px solid var(--accent-muted)',
+                        borderRadius: '5px',
                         '& fieldset': {
                           border: 'none',
                         },
-                        '&:hover fieldset': {
-                          border: '1px solid rgba(255, 255, 255, 0.2)',
+                        '&:hover': {
+                          borderColor: 'var(--accent)',
                         },
                         '&.Mui-focused fieldset': {
                           border: '1px solid var(--accent)',
                         },
                       },
                       '& .MuiInputBase-input': {
-                        color: 'var(--accent)',
+                        color: 'var(--text)',
                         padding: '8px 12px',
                       },
                     }}
@@ -475,7 +439,7 @@ const RGBA = () => {
                   onClick={handleCopyVec4}
                   size="small"
                   sx={{ 
-                    ...glassButton,
+                    ...celestialButtonStyle,
                     flex: 1,
                     minHeight: 36,
                     fontWeight: 'bold',
@@ -491,7 +455,7 @@ const RGBA = () => {
                   onClick={handleReset}
                   size="small"
                   sx={{ 
-                    ...glassButton,
+                    ...celestialButtonStyle,
                     flex: 1,
                     minHeight: 36,
                     fontWeight: 'bold',
@@ -501,93 +465,82 @@ const RGBA = () => {
                   Reset
                 </Button>
               </Box>
-            </Box>
-          </Box>
         </Box>
 
-        {/* Right Side - Color Information and Preview */}
-        <Box sx={{ flex: 1 }}>
-          <Box sx={{ 
-            position: 'relative',
-            overflow: 'hidden',
-            ...glassSection,
-            borderRadius: '1.5vw',
-            boxShadow: '0 16px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04)',
-            height: '100%'
-          }}>
-            <Box sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <Typography variant="h6" sx={{ color: 'var(--accent)', mb: 2, fontWeight: 'bold' }}>
-                Color Information
-              </Typography>
-              
-              <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={6}>
-                  <Box sx={{ 
-                    p: 1.5, 
-                    ...glassSection,
-                    borderRadius: 2
-                  }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
-                      Hex Color
-                    </Typography>
-                     <Typography variant="body2" sx={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--accent-muted)' }}>
-                      {hexColor}
-                    </Typography>
-                  </Box>
-                </Grid>
-                
-                <Grid item xs={6}>
-                  <Box sx={{ 
-                    p: 1.5, 
-                    ...glassSection,
-                    borderRadius: 2
-                  }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
-                      RGB (0-255)
-                    </Typography>
-                     <Typography variant="body2" sx={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--accent-muted)' }}>
-                      {formatRGB}
-                    </Typography>
-                  </Box>
-                </Grid>
-                
-                <Grid item xs={6}>
-                  <Box sx={{ 
-                    p: 1.5, 
-                    ...glassSection,
-                    borderRadius: 2
-                  }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
-                      RGBA (0-1)
-                    </Typography>
-                     <Typography variant="body2" sx={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--accent-muted)' }}>
-                      {formatRGBA}
-                    </Typography>
-                  </Box>
-                </Grid>
-                
-                <Grid item xs={6}>
-                  <Box sx={{ 
-                    p: 1.5, 
-                    ...glassSection,
-                    borderRadius: 2
-                  }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
-                      Alpha
-                    </Typography>
-                     <Typography variant="body2" sx={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--accent-muted)' }}>
-                      {alphaPercent.toFixed(1)}%
-                    </Typography>
-                  </Box>
-                </Grid>
-              </Grid>
+        {/* Vertical Divider */}
+        <Box sx={{
+          width: '1px',
+          background: 'rgba(255, 255, 255, 0.06)',
+          flexShrink: 0,
+          margin: '0 1rem'
+        }} />
 
-              {/* Color Preview */}
-              <Typography variant="h6" sx={{ color: 'var(--accent)', mb: 2, fontWeight: 'bold' }}>
-                Color Preview
-              </Typography>
-              
-              <Grid container spacing={2} sx={{ flex: 1 }}>
+        {/* Right Side - Color Information and Preview */}
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: 2 }}>
+          <Typography variant="h6" sx={{ color: 'var(--accent)', mb: 2, fontWeight: 'bold' }}>
+            Color Information
+          </Typography>
+          
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            <Grid item xs={6}>
+              <Box sx={{ 
+                p: 1.5
+              }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+                  Hex Color
+                </Typography>
+                <Typography variant="body2" sx={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--accent-muted)' }}>
+                  {hexColor}
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={6}>
+              <Box sx={{ 
+                p: 1.5
+              }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+                  RGB (0-255)
+                </Typography>
+                <Typography variant="body2" sx={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--accent-muted)' }}>
+                  {formatRGB}
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={6}>
+              <Box sx={{ 
+                p: 1.5
+              }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+                  RGBA (0-1)
+                </Typography>
+                <Typography variant="body2" sx={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--accent-muted)' }}>
+                  {formatRGBA}
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={6}>
+              <Box sx={{ 
+                p: 1.5
+              }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+                  Alpha
+                </Typography>
+                <Typography variant="body2" sx={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--accent-muted)' }}>
+                  {alphaPercent.toFixed(1)}%
+                </Typography>
+              </Box>
+            </Grid>
+          </Grid>
+
+          {/* Color Preview */}
+          <Typography variant="h6" sx={{ color: 'var(--accent)', mb: 2, fontWeight: 'bold' }}>
+            Color Preview
+          </Typography>
+          
+          <Grid container spacing={2} sx={{ flex: 1 }}>
                 <Grid item xs={6}>
                   <Typography variant="body2" sx={{ color: 'var(--accent-muted)', mb: 1, fontWeight: 'bold' }}>
                     Solid Color
@@ -622,9 +575,9 @@ const RGBA = () => {
                       background: `linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)`,
                       backgroundSize: '20px 20px',
                       backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
-                      border: '1px solid rgba(255,255,255,0.10)',
-                      borderRadius: 2,
-                      boxShadow: '0 8px 18px rgba(0,0,0,0.35)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
+                      borderRadius: '5px',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                       position: 'relative',
                       overflow: 'hidden'
                     }}
@@ -647,9 +600,7 @@ const RGBA = () => {
                     </Box>
                   </Paper>
                 </Grid>
-              </Grid>
-            </Box>
-          </Box>
+          </Grid>
         </Box>
       </Box>
     </Box>

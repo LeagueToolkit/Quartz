@@ -1,0 +1,112 @@
+.app-grid-statusbar {
+  width: 100%;
+  height: 48px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  box-sizing: border-box;
+  background: var(--bg, #0b0a0f);
+  border-bottom: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+  -webkit-user-select: none;
+  user-select: none;
+  backdrop-filter: blur(10px);
+}
+
+/* Only the logo section should be draggable */
+.figma-logo-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  -webkit-app-region: drag;
+  height: 100%;
+  flex: 1;
+  padding-left: 2px; /* Start from left edge */
+}
+
+.header-logo-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag; /* Make the button clickable */
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+  position: relative;
+}
+
+.header-logo-container:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.header-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  pointer-events: none;
+  display: block;
+  border-radius: 6px;
+  transition: transform 0.2s ease;
+}
+
+.header-logo-container:hover .header-logo {
+  transform: scale(1.05);
+}
+
+.figma-window-controls-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.figma-window-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.figma-window-control {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-2, #c084fc);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  -webkit-app-region: no-drag;
+}
+
+.figma-window-control:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--text, #ecb96a);
+}
+
+.figma-window-control.close:hover {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.figma-window-control svg {
+  width: 18px;
+  height: 18px;
+}
+
+.app-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text, #ecb96a);
+  white-space: nowrap;
+}
+

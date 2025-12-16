@@ -2,10 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme Variables */
+@import './styles/theme-variables.css';
+
+
+
 /* App-level defaults */
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
 }
-
-
-

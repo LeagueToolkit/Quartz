@@ -240,6 +240,67 @@ function ensureRitobinCli() {
   }
 }
 
+// Copy default assets to AppData/Roaming/Quartz/assets on first run
+// This allows users to customize assets and they persist across reinstalls
+function ensureDefaultAssets() {
+  try {
+    const userDataPath = app.getPath('userData');
+    const assetsDestDir = path.join(userDataPath, 'assets');
+    
+    // Get path to bundled assets (in app resources)
+    let assetsSrcDir;
+    if (app.isPackaged) {
+      // In production: it's in resources/assets
+      assetsSrcDir = path.join(process.resourcesPath, 'assets');
+    } else {
+      // In development: use the public directory
+      assetsSrcDir = path.join(__dirname, 'public');
+    }
+    
+    // Ensure assets directory exists
+    if (!fs.existsSync(assetsDestDir)) {
+      fs.mkdirSync(assetsDestDir, { recursive: true });
+    }
+    
+    // List of default assets to copy (only if they don't already exist)
+    // Map source filename to destination filename
+    const defaultAssets = [
+      { src: 'celestia.webp', dest: 'celestia.webp' },
+      { src: 'your-logo.gif', dest: 'navbar.gif' }
+    ];
+    
+    if (!fs.existsSync(assetsSrcDir)) {
+      logToFile(`Assets source directory not found at ${assetsSrcDir}, skipping asset copy`, 'WARN');
+      return;
+    }
+    
+    let copiedCount = 0;
+    for (const asset of defaultAssets) {
+      const srcPath = path.join(assetsSrcDir, asset.src);
+      const destPath = path.join(assetsDestDir, asset.dest);
+      
+      // Only copy if source exists and destination doesn't exist (don't overwrite user customizations)
+      if (fs.existsSync(srcPath) && !fs.existsSync(destPath)) {
+        try {
+          fs.copyFileSync(srcPath, destPath);
+          copiedCount++;
+          logToFile(`Copied default asset: ${asset.src} -> ${asset.dest} to ${destPath}`, 'INFO');
+        } catch (error) {
+          logToFile(`Error copying asset ${asset.src}: ${error.message}`, 'WARN');
+        }
+      }
+    }
+    
+    if (copiedCount > 0) {
+      logToFile(`Copied ${copiedCount} default asset(s) to AppData/Roaming/Quartz/assets`, 'INFO');
+    } else {
+      logToFile('Default assets already exist or not found, skipping copy', 'INFO');
+    }
+  } catch (error) {
+    logToFile(`Error ensuring default assets: ${error.message}`, 'ERROR');
+  }
+}
+
 logToFile(`Version: ${app.getVersion()}`, 'INFO');
 logToFile(`Electron: ${process.versions.electron}`, 'INFO');
 logToFile(`Node: ${process.versions.node}`, 'INFO');
@@ -257,6 +318,7 @@ function createWindow() {
     frame: false, // Remove default Windows title bar completely
     titleBarStyle: 'hidden', // macOS only, but harmless on Windows
     transparent: false, // Keep opaque for better performance
+    backgroundColor: '#0f0e13', // Dark background to prevent white flash on startup
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -370,14 +432,7 @@ function createWindow() {
         mainWindow.webContents.send('app:closing');
       } catch {}
 
-      // Stop the backend service gracefully
-      console.log('🔄 Gracefully shutting down backend service...');
-      try {
-        await stopBackendService();
-        console.log('✅ Backend service stopped');
-      } catch (error) {
-        console.error('❌ Error stopping backend:', error);
-      }
+      // Backend service removed - no cleanup needed
 
       // Wait a moment for cleanup
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -1012,6 +1067,9 @@ app.whenReady().then(() => {
   // Copy ritobin_cli.exe to FrogTools (if needed)
   ensureRitobinCli();
   
+  // Copy default assets to AppData/Roaming/Quartz/assets on first run (if needed)
+  ensureDefaultAssets();
+  
   // Check for hash files (in background, non-blocking)
   setTimeout(() => {
     try {
@@ -1026,13 +1084,14 @@ app.whenReady().then(() => {
     }
   }, 1000);
   
-  // Start backend service after window is created
-  logToFile('APP: Scheduling backend service startup', 'INFO');
-  const delay = isDev && !app.isPackaged ? 2000 : 5000;
-  setTimeout(() => {
-    logToFile(`APP: Starting backend service (delay: ${delay}ms)`, 'INFO');
-    ensureBackendService();
-  }, delay);
+  // Backend service startup disabled - using JavaScript implementations instead
+  // logToFile('APP: Scheduling backend service startup', 'INFO');
+  // const delay = isDev && !app.isPackaged ? 2000 : 5000;
+  // setTimeout(() => {
+  //   logToFile(`APP: Starting backend service (delay: ${delay}ms)`, 'INFO');
+  //   ensureBackendService();
+  // }, delay);
+  logToFile('APP: Backend service startup disabled - using JavaScript implementations', 'INFO');
 });
 
 // LtMAO related IPC
@@ -1193,9 +1252,6 @@ app.on('window-all-closed', async () => {
   // Clear texture cache before closing
   clearTextureCacheOnQuit();
   
-  // Stop the backend service when all windows are closed
-  await stopBackendService();
-  
   // Clean up _MEI* folders on app close
   cleanupMeiFolders();
   
@@ -1228,7 +1284,6 @@ app.on('before-quit', async (e) => {
       isShuttingDown = true;
       // Clear texture cache before quitting
       clearTextureCacheOnQuit();
-      await stopBackendService();
       // Clean up _MEI* folders on app close
       cleanupMeiFolders();
       // Clear saved bin paths before quitting (only when actually shutting down)
@@ -1249,8 +1304,6 @@ app.on('before-quit', async (e) => {
       try { await win.webContents.executeJavaScript('window.__DL_forceClose = true;'); } catch {}
       // Clear texture cache before quitting
       clearTextureCacheOnQuit();
-      // Stop backend service before quitting
-      await stopBackendService();
       // Clean up _MEI* folders on app close
       cleanupMeiFolders();
       // Clear saved bin paths before quitting (only when actually shutting down)
@@ -1277,8 +1330,6 @@ app.on('before-quit', async (e) => {
       try { await win.webContents.executeJavaScript('window.__DL_forceClose = true;'); } catch {}
       // Clear texture cache before quitting
       clearTextureCacheOnQuit();
-      // Stop backend service before quitting
-      await stopBackendService();
       // Clean up _MEI* folders on app close
       cleanupMeiFolders();
       // Clear saved bin paths before quitting (only when actually shutting down)
@@ -1297,7 +1348,6 @@ app.on('before-quit', async (e) => {
     isShuttingDown = true;
     // Clear texture cache before quitting
     clearTextureCacheOnQuit();
-    await stopBackendService();
     // Clean up _MEI* folders on app close
     cleanupMeiFolders();
     // Clear saved bin paths before quitting (only when actually shutting down)
@@ -2649,656 +2699,9 @@ ipcMain.handle('filerandomizer:renameFiles', async (event, { targetFolder, textT
   }
 });
 
-// ---------------- Bumpath Backend Service ----------------
-let backendService = null;
-let isBackendRunning = false;
-let backendStartTime = null;
-let isBackendStarting = false; // NEW: Prevent concurrent start attempts
-let backendStartCount = 0; // NEW: Track how many times we've tried to start
+// Backend service removed - using JavaScript implementations instead
 
-// File-based mutex to prevent multiple backends
-const BACKEND_LOCK_FILE = path.join(__dirname, '.backend.lock');
-const BACKEND_PORT = 5001;
-
-// Log backend state changes
-function logBackendState(action, details = {}) {
-  const state = {
-    action,
-    isBackendRunning,
-    isBackendStarting,
-    backendStartCount,
-    hasProcess: backendService !== null,
-    pid: backendService?.pid || null,
-    ...details
-  };
-  logToFile(`BACKEND: ${action} - ${JSON.stringify(state)}`, 'INFO');
-}
-
-// Check if port is available
-async function isPortAvailable(port) {
-  return new Promise((resolve) => {
-    const { spawn } = require('child_process');
-    const netstat = spawn('netstat', ['-ano'], { shell: true, windowsHide: true });
-    let output = '';
-    
-    netstat.stdout.on('data', (data) => {
-      output += data.toString();
-    });
-    
-    netstat.on('close', () => {
-      const isListening = output.includes(`:${port}`) && output.includes('LISTENING');
-      resolve(!isListening);
-    });
-    
-    netstat.on('error', () => resolve(true)); // Assume available if netstat fails
-    
-    setTimeout(() => resolve(true), 1000); // Timeout fallback (reduced from 2000ms)
-  });
-}
-
-// Clean up any existing backend processes
-async function cleanupExistingBackends() {
-  console.log('🧹 Cleaning up any existing backend processes...');
-  
-  // Quick check - if port is already available, skip cleanup
-  if (await isPortAvailable(BACKEND_PORT)) {
-    console.log('✅ Port already available, skipping cleanup');
-    return;
-  }
-  
-  if (process.platform === 'win32') {
-    const cleanupCommands = [
-      ['taskkill', ['/f', '/im', 'bumpath_backend.exe']],
-      ['taskkill', ['/f', '/im', 'python.exe']]
-    ];
-    
-    for (const [cmd, args] of cleanupCommands) {
-      try {
-        await new Promise((resolve) => {
-          const killProcess = spawn(cmd, args, { windowsHide: true, shell: false });
-          killProcess.on('close', () => resolve());
-          killProcess.on('error', () => resolve());
-          setTimeout(() => resolve(), 1500);
-        });
-      } catch (e) {
-        console.log(`❌ Cleanup command failed: ${cmd}`, e.message);
-      }
-    }
-  }
-  
-  // Wait for port to be free (with faster checks)
-  let attempts = 0;
-  while (!await isPortAvailable(BACKEND_PORT) && attempts < 5) {
-    console.log(`⏳ Waiting for port ${BACKEND_PORT} to be free... (attempt ${attempts + 1})`);
-    await new Promise(resolve => setTimeout(resolve, 500)); // Reduced from 1000ms to 500ms
-    attempts++;
-  }
-  
-  if (await isPortAvailable(BACKEND_PORT)) {
-    console.log('✅ Port is now available');
-  } else {
-    console.log('⚠️ Port still occupied after cleanup');
-  }
-}
-
-// Check if backend lock file exists and if process is still running
-async function checkBackendLock() {
-  try {
-    if (fs.existsSync(BACKEND_LOCK_FILE)) {
-      const lockData = fs.readFileSync(BACKEND_LOCK_FILE, 'utf8');
-      const { pid, port } = JSON.parse(lockData);
-      
-      // Check if process is still running
-      try {
-        process.kill(pid, 0); // Signal 0 checks if process exists
-        console.log(`🔒 Backend lock found: PID ${pid} on port ${port}`);
-        return { exists: true, pid, port };
-      } catch (e) {
-        // Process doesn't exist, remove stale lock
-        fs.unlinkSync(BACKEND_LOCK_FILE);
-        console.log('🗑️ Removed stale backend lock file');
-        return { exists: false };
-      }
-    }
-    return { exists: false };
-  } catch (error) {
-    console.log('❌ Error checking backend lock:', error.message);
-    return { exists: false };
-  }
-}
-
-// Create backend lock file
-function createBackendLock(pid) {
-  try {
-    const lockData = JSON.stringify({ pid, port: BACKEND_PORT, timestamp: Date.now() });
-    fs.writeFileSync(BACKEND_LOCK_FILE, lockData);
-    console.log(`🔒 Created backend lock for PID ${pid}`);
-  } catch (error) {
-    console.log('❌ Error creating backend lock:', error.message);
-  }
-}
-
-// Remove backend lock file
-function removeBackendLock() {
-  try {
-    if (fs.existsSync(BACKEND_LOCK_FILE)) {
-      fs.unlinkSync(BACKEND_LOCK_FILE);
-      console.log('🔓 Removed backend lock file');
-    }
-  } catch (error) {
-    console.log('❌ Error removing backend lock:', error.message);
-  }
-}
-
-// Health check function to verify backend is responding
-async function checkBackendHealth() {
-  try {
-    // Use a promise-based timeout to avoid hanging
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
-    
-    try {
-      // First try the simple health endpoint
-      const healthResponse = await fetch('http://127.0.0.1:5001/health', {
-        method: 'GET',
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      
-      if (healthResponse.ok) {
-        const data = await healthResponse.json();
-        console.log('✅ Backend health check passed:', data);
-        return true;
-      }
-    } catch (fetchError) {
-      clearTimeout(timeoutId);
-      // If health endpoint fails, try the logs endpoint as fallback
-      console.log('⚠️ Health endpoint failed, trying logs endpoint:', fetchError.message);
-      
-      const controller2 = new AbortController();
-      const timeoutId2 = setTimeout(() => controller2.abort(), 2000);
-      
-      try {
-        const response = await fetch('http://127.0.0.1:5001/api/bumpath/logs', {
-          method: 'GET',
-          signal: controller2.signal
-        });
-        clearTimeout(timeoutId2);
-        return response.ok;
-      } catch (logsError) {
-        clearTimeout(timeoutId2);
-        console.log('⚠️ Logs endpoint also failed:', logsError.message);
-        return false;
-      }
-    }
-    
-    return false;
-  } catch (error) {
-    console.log('❌ Backend health check error:', error.message);
-    return false;
-  }
-}
-
-// Ensure backend service is running (reuse existing or start new)
-async function ensureBackendService() {
-  logBackendState('ensureBackendService called');
-  
-  // CRITICAL: Prevent concurrent start attempts
-  if (isBackendStarting) {
-    logToFile('BACKEND: Already starting, waiting...', 'WARN');
-    // Wait for the current start attempt to complete
-    let attempts = 0;
-    while (isBackendStarting && attempts < 30) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-      attempts++;
-    }
-    logBackendState('ensureBackendService waited', { waitedMs: attempts * 200 });
-    return isBackendRunning;
-  }
-  
-  // Step 1: Check for existing lock file
-  const lockInfo = await checkBackendLock();
-  if (lockInfo.exists) {
-    logToFile(`BACKEND: Found existing lock (PID: ${lockInfo.pid})`, 'INFO');
-    
-    // Verify the locked process is still healthy
-    if (await checkBackendHealth()) {
-      logToFile('BACKEND: Existing backend is healthy, reusing', 'INFO');
-      isBackendRunning = true;
-      return true;
-    } else {
-      logToFile('BACKEND: Locked backend not responding, cleaning up', 'WARN');
-      removeBackendLock();
-    }
-  }
-  
-  // Step 2: Check if our own service is running
-  if (isBackendRunning && backendService && !backendService.killed) {
-    if (await checkBackendHealth()) {
-      logToFile('BACKEND: Our backend service is healthy, reusing', 'INFO');
-      return true;
-    } else {
-      logToFile('BACKEND: Our backend service not responding, restarting', 'WARN');
-      await stopBackendService();
-    }
-  }
-  
-  // Step 3: Clean up any zombie processes
-  await cleanupExistingBackends();
-  
-  // Step 4: Start new backend service
-  logToFile('BACKEND: Starting new backend service', 'INFO');
-  return await startBackendService();
-}
-
-async function startBackendService() {
-  try {
-    // CRITICAL: Set flag to prevent concurrent starts
-    if (isBackendStarting) {
-      logToFile('BACKEND: startBackendService called while already starting!', 'ERROR');
-      return false;
-    }
-    
-    if (isBackendRunning) {
-      logToFile('BACKEND: Backend service already marked as running', 'WARN');
-      return false;
-    }
-
-    isBackendStarting = true;
-    backendStartCount++;
-    logBackendState('startBackendService BEGIN', { attempt: backendStartCount });
-    
-    const isDevelopment = isDev && !app.isPackaged;
-    logToFile(`BACKEND: Environment: ${isDevelopment ? 'Development' : 'Production'}`, 'INFO');
-    logToFile(`BACKEND: isDev=${isDev}, isPackaged=${app.isPackaged}`, 'INFO');
-    logToFile(`BACKEND: resourcesPath=${process.resourcesPath}`, 'INFO');
-    logToFile(`BACKEND: __dirname=${__dirname}`, 'INFO');
-    logToFile(`BACKEND: cwd=${process.cwd()}`, 'INFO');
-    
-    let backendPath, spawnArgs;
-    
-    if (isDevelopment) {
-      // Development mode: use Python script
-      backendPath = path.join(__dirname, 'bumpath_backend_standalone_final.py');
-      logToFile(`BACKEND: Checking dev path: ${backendPath}`, 'INFO');
-      
-      if (!fs.existsSync(backendPath)) {
-        logToFile(`BACKEND: ERROR - Backend script not found: ${backendPath}`, 'ERROR');
-        isBackendStarting = false;
-        return false;
-      }
-      
-      spawnArgs = ['python', [`"${backendPath}"`]];
-      logToFile('BACKEND: Using system Python for Bumpath Backend (Development)', 'INFO');
-    } else {
-      // Production mode: use bundled executable
-      const possiblePaths = [
-        path.join(process.resourcesPath, 'bumpath_backend.exe'),
-        path.join(__dirname, 'bumpath_backend.exe'),
-        path.join(process.cwd(), 'bumpath_backend.exe'),
-        path.join(process.resourcesPath, '..', 'bumpath_backend.exe')
-      ];
-      
-      logToFile(`BACKEND: Searching for executable in ${possiblePaths.length} locations`, 'INFO');
-      possiblePaths.forEach((p, i) => {
-        const exists = fs.existsSync(p);
-        logToFile(`BACKEND: [${i+1}/${possiblePaths.length}] ${exists ? 'FOUND' : 'NOT FOUND'}: ${p}`, exists ? 'INFO' : 'WARN');
-      });
-      
-      backendPath = possiblePaths.find(p => fs.existsSync(p));
-      
-      if (!backendPath) {
-        logToFile('BACKEND: ERROR - Bumpath backend executable not found in ANY location!', 'ERROR');
-        isBackendStarting = false;
-        return false;
-      }
-      
-      logToFile(`BACKEND: Using executable: ${backendPath}`, 'INFO');
-      spawnArgs = [`"${backendPath}"`, []];
-      logToFile('BACKEND: Using bundled executable for Bumpath Backend (Production)', 'INFO');
-    }
-
-    // Set correct working directory
-    const workingDir = isDevelopment ? __dirname : process.resourcesPath;
-    
-    logToFile(`BACKEND: Working directory: ${workingDir}`, 'INFO');
-    logToFile(`BACKEND: Spawn command: ${spawnArgs[0]}`, 'INFO');
-    logToFile(`BACKEND: Spawn args: ${JSON.stringify(spawnArgs[1])}`, 'INFO');
-    logToFile(`BACKEND: Spawning process...`, 'INFO');
-    
-    try {
-      backendService = spawn(spawnArgs[0], spawnArgs[1], {
-        cwd: workingDir,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        shell: true,
-        windowsHide: true,
-        detached: false
-      });
-      
-      backendStartTime = Date.now(); // Set start time when spawned, not when healthy
-      logToFile(`BACKEND: Process spawned successfully, PID: ${backendService.pid}`, 'INFO');
-    } catch (spawnError) {
-      logToFile(`BACKEND: SPAWN ERROR: ${spawnError.message}`, 'ERROR');
-      logToFile(`BACKEND: SPAWN ERROR STACK: ${spawnError.stack}`, 'ERROR');
-      isBackendStarting = false;
-      throw spawnError;
-    }
-
-    backendService.stdout.on('data', (data) => {
-      const output = data.toString().trim();
-      console.log(`[Backend Service] ${output}`);
-      logToFile(`BACKEND STDOUT: ${output}`, 'INFO');
-    });
-
-    backendService.stderr.on('data', (data) => {
-      const output = data.toString().trim();
-      // Check if this is Flask's HTTP request logging or development server warnings
-      if (output.includes('HTTP/1.1"') && output.includes(' - - [')) {
-        // This is Flask's normal HTTP request logging, not an error
-        console.log(`[Backend Service] ${output}`);
-        logToFile(`BACKEND: ${output}`, 'INFO');
-      } else if (output.includes('WARNING: This is a development server') || 
-                 output.includes('Use a production WSGI server instead')) {
-        // This is Flask's development server warning, not an error
-        console.log(`[Backend Service] ${output}`);
-        logToFile(`BACKEND: ${output}`, 'INFO');
-      } else {
-        // This is an actual error - log with more detail
-        console.error(`[Backend Service Error] ${output}`);
-        logToFile(`BACKEND STDERR: ${output}`, 'ERROR');
-      }
-    });
-
-    backendService.on('close', (code) => {
-      const uptime = backendStartTime ? Date.now() - backendStartTime : 0;
-      logToFile(`BACKEND: Process exited with code ${code} (uptime: ${uptime}ms)`, code === 0 ? 'INFO' : 'ERROR');
-      logBackendState('BACKEND CLOSED', { exitCode: code, uptime });
-      
-      // Detect crash (non-zero exit code or very short uptime)
-      if (code !== 0 || uptime < 5000) {
-        logToFile(`BACKEND: Detected abnormal termination (crash)!`, 'ERROR');
-        
-        // Notify all windows about backend crash
-        const allWindows = BrowserWindow.getAllWindows();
-        allWindows.forEach(win => {
-          try {
-            win.webContents.send('backend:crashed', { code, uptime });
-          } catch (e) {
-            logToFile(`Failed to notify window about backend crash: ${e.message}`, 'WARN');
-          }
-        });
-      }
-      
-      backendService = null;
-      isBackendRunning = false;
-      isBackendStarting = false; // Clear flag in case it crashed during startup
-      backendStartTime = null;
-      removeBackendLock(); // Clean up lock file when process exits
-    });
-
-    backendService.on('error', (error) => {
-      console.error('[Backend Service] Failed to start:', error.message);
-      logToFile(`BACKEND: Failed to start - ${error.message}`, 'ERROR');
-      logToFile(`BACKEND: Error stack: ${error.stack}`, 'ERROR');
-      backendService = null;
-      isBackendRunning = false;
-      isBackendStarting = false; // Clear flag
-      backendStartTime = null;
-      removeBackendLock(); // Clean up lock file on error
-    });
-
-    // Smart health check with retries - EXTENDED for PyInstaller startup time
-    let healthCheckAttempts = 0;
-    const maxHealthAttempts = 20; // Increased from 10 to 20 for slower PyInstaller startup
-    
-    while (healthCheckAttempts < maxHealthAttempts) {
-      // Wait incrementally longer each attempt (up to 15 seconds total)
-      await new Promise(resolve => setTimeout(resolve, 300 + (healthCheckAttempts * 150)));
-      
-      if (backendService && !backendService.killed) {
-        // Try health check
-        if (await checkBackendHealth()) {
-          isBackendRunning = true;
-          isBackendStarting = false; // CRITICAL: Clear flag on success
-          
-          // Create lock file for this backend instance
-          createBackendLock(backendService.pid);
-          
-          const startupTime = Date.now() - backendStartTime;
-          logBackendState('startBackendService SUCCESS', { 
-            pid: backendService.pid, 
-            healthAttempt: healthCheckAttempts + 1,
-            startupTimeMs: startupTime
-          });
-          logToFile(`BACKEND: Health check succeeded after ${healthCheckAttempts + 1} attempts (${startupTime}ms startup time)`, 'INFO');
-          return true;
-        }
-        
-        healthCheckAttempts++;
-        if (healthCheckAttempts < maxHealthAttempts) {
-          logToFile(`BACKEND: Health check ${healthCheckAttempts}/${maxHealthAttempts} failed, retrying...`, 'WARN');
-        }
-      } else {
-        isBackendStarting = false; // CRITICAL: Clear flag on failure
-        logToFile('BACKEND: Backend Service failed to start or crashed immediately', 'ERROR');
-        logBackendState('startBackendService FAILED - immediate crash');
-        return false;
-      }
-    }
-    
-    // DON'T kill the backend on timeout - it might still be starting up
-    // PyInstaller can take 10+ seconds to unpack and start
-    isBackendStarting = false; // Clear flag but keep process running
-    isBackendRunning = true; // Assume it will work
-    createBackendLock(backendService.pid);
-    
-    logToFile('BACKEND: Health check timeout reached, but keeping backend alive (PyInstaller may need more time)', 'WARN');
-    logBackendState('startBackendService TIMEOUT - keeping alive', { pid: backendService.pid });
-    
-    // Start a background health check monitor
-    setTimeout(async () => {
-      if (await checkBackendHealth()) {
-        logToFile('BACKEND: Backend became healthy after timeout - success!', 'INFO');
-      } else {
-        logToFile('BACKEND: Backend still not healthy after extended wait', 'ERROR');
-      }
-    }, 5000);
-    
-    return true; // Return success and let it keep trying
-
-  } catch (error) {
-    isBackendStarting = false; // CRITICAL: Clear flag on exception
-    logToFile(`BACKEND: ERROR: Failed to start Backend Service: ${error.message}`, 'ERROR');
-    logBackendState('startBackendService EXCEPTION', { error: error.message });
-    return false;
-  }
-}
-
-// Add a flag to prevent multiple simultaneous shutdown attempts
-let isShuttingDown = false;
-
-async function stopBackendService() {
-  if (!isBackendRunning && !backendService) {
-    console.log('ℹ️ No backend service to stop');
-    return;
-  }
-  
-  console.log('🛑 Stopping Backend Service...');
-  
-  try {
-    if (backendService) {
-      console.log(`🔄 Stopping backend service (PID: ${backendService.pid})...`);
-      
-      // Try graceful termination first
-      backendService.kill('SIGTERM');
-      console.log('📤 Sent SIGTERM signal');
-      
-      // Wait for graceful shutdown
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Check if process is still running
-      if (backendService && !backendService.killed) {
-        console.log('⚡ Process still running, force killing...');
-        backendService.kill('SIGKILL');
-        
-        // Wait a bit more
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-      
-      // On Windows, force kill the process tree
-      if (process.platform === 'win32' && backendService.pid) {
-        console.log(`🔨 Force killing process tree for PID ${backendService.pid}...`);
-        try {
-          await new Promise((resolve) => {
-            const { spawn } = require('child_process');
-            const killProcess = spawn('taskkill', ['/f', '/t', '/pid', backendService.pid], {
-              windowsHide: true,
-              shell: false
-            });
-            killProcess.on('close', (code) => {
-              console.log(`✅ Process tree kill completed with code: ${code}`);
-              resolve();
-            });
-            killProcess.on('error', (err) => {
-              console.log(`❌ Process tree kill error: ${err.message}`);
-              resolve();
-            });
-            // Timeout after 2 seconds
-            setTimeout(() => {
-              console.log('⏰ Process tree kill timeout');
-              resolve();
-            }, 2000);
-          });
-        } catch (e) {
-          console.log('❌ Failed to force kill backend process tree:', e.message);
-        }
-      }
-      
-      backendService = null;
-    }
-    
-    // Reset service state
-    isBackendRunning = false;
-    backendStartTime = null;
-    
-    // Remove lock file
-    removeBackendLock();
-    
-    // Clean up any remaining backend processes
-    if (process.platform === 'win32') {
-      console.log('🧹 Cleaning up any remaining backend processes...');
-      
-      // Kill bumpath_backend.exe processes
-      try {
-        await new Promise((resolve) => {
-          const { spawn } = require('child_process');
-          const killBackend = spawn('taskkill', ['/f', '/im', 'bumpath_backend.exe'], {
-            windowsHide: true,
-            shell: false
-          });
-          killBackend.on('close', (code) => {
-            console.log(`✅ Backend cleanup completed with code: ${code}`);
-            resolve();
-          });
-          killBackend.on('error', (err) => {
-            console.log(`❌ Backend cleanup error: ${err.message}`);
-            resolve();
-          });
-          setTimeout(() => {
-            console.log('⏰ Backend cleanup timeout');
-            resolve();
-          }, 1500);
-        });
-      } catch (e) {
-        console.log('❌ Failed to cleanup backend processes:', e.message);
-      }
-      
-      // Kill any Python processes that might be running the backend
-      try {
-        await new Promise((resolve) => {
-          const { spawn } = require('child_process');
-          const killPython = spawn('taskkill', ['/f', '/im', 'python.exe'], {
-            windowsHide: true,
-            shell: false
-          });
-          killPython.on('close', (code) => {
-            console.log(`✅ Python cleanup completed with code: ${code}`);
-            resolve();
-          });
-          killPython.on('error', (err) => {
-            console.log(`❌ Python cleanup error: ${err.message}`);
-            resolve();
-          });
-          setTimeout(() => {
-            console.log('⏰ Python cleanup timeout');
-            resolve();
-          }, 1500);
-        });
-      } catch (e) {
-        console.log('❌ Failed to cleanup Python processes:', e.message);
-      }
-    }
-    
-    console.log('✅ Backend Service stopped successfully');
-  } catch (error) {
-    console.error('❌ Error stopping Backend Service:', error);
-  }
-}
-
-// Backend service startup is now handled in the main app.whenReady() block above
-// Backend service cleanup is handled in the existing before-quit handler above
-
-// IPC handler to check backend service status
-ipcMain.handle('bumpath:status', async () => {
-  return {
-    running: isBackendRunning && backendService !== null,
-    pid: backendService?.pid || null,
-    startTime: backendStartTime,
-    healthy: await checkBackendHealth()
-  };
-});
-
-// IPC handler to start backend service
-ipcMain.handle('bumpath:start', async () => {
-  try {
-    const result = await ensureBackendService();
-    return { success: result, message: result ? 'Backend started successfully' : 'Failed to start backend' };
-  } catch (error) {
-    console.error('Error starting backend:', error);
-    return { success: false, message: error.message };
-  }
-});
-
-// IPC handler to stop backend service
-ipcMain.handle('bumpath:stop', async () => {
-  try {
-    await stopBackendService();
-    return { success: true, message: 'Backend stopped successfully' };
-  } catch (error) {
-    console.error('Error stopping backend:', error);
-    return { success: false, message: error.message };
-  }
-});
-
-// IPC handler to restart backend service
-ipcMain.handle('bumpath:restart', async () => {
-  await stopBackendService();
-  setTimeout(ensureBackendService, 1000);
-  return { success: true };
-});
-
-// IPC handler to ensure backend service is running
-ipcMain.handle('bumpath:ensure', async () => {
-  try {
-    const success = await ensureBackendService();
-    return { success, running: isBackendRunning, healthy: await checkBackendHealth() };
-  } catch (error) {
-    console.error('❌ Error ensuring backend service:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// WAD extraction handler
+// WAD extraction handler - Using JavaScript implementation instead of Python backend
 ipcMain.handle('wad:extract', async (event, data) => {
   try {
     console.log('🎯 WAD extraction request received:', JSON.stringify(data, null, 2));
@@ -3313,44 +2716,72 @@ ipcMain.handle('wad:extract', async (event, data) => {
       return { error: 'Missing required parameters: wadPath, outputDir, skinId' };
     }
     
-    // Use integrated hash location if not provided
-    data.hashPath = getHashPath(data.hashPath);
-    console.log('📁 Using hash path:', data.hashPath);
-    
-    // Ensure backend is running
-    const backendStatus = await ensureBackendService();
-    if (!backendStatus) {
-      throw new Error('Backend service is not available');
+    // Validate WAD file exists
+    if (!fs.existsSync(data.wadPath)) {
+      return { error: `WAD file not found: ${data.wadPath}` };
     }
     
-    console.log('📤 Sending request to backend with data:', JSON.stringify(data, null, 2));
+    // Use integrated hash location if not provided
+    const hashPath = getHashPath(data.hashPath);
+    console.log('📁 Using hash path:', hashPath);
     
-    // Make HTTP request to the backend
-    const response = await fetch('http://127.0.0.1:5001/api/extract-wad', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
+    // Import ES modules using relative paths (they're part of the project)
+    const { unpackWAD } = await import('./src/utils/wad/index.js');
+    const { loadHashtables } = await import('./src/jsritofile/index.js');
+    
+    // Load hashtables if hash path exists
+    let hashtables = null;
+    if (hashPath && fs.existsSync(hashPath)) {
+      try {
+        console.log('📚 Loading hashtables from:', hashPath);
+        hashtables = await loadHashtables(hashPath);
+        console.log('✅ Hashtables loaded successfully');
+      } catch (hashError) {
+        console.warn('⚠️ Failed to load hashtables, continuing without them:', hashError.message);
+      }
+    } else {
+      console.log('ℹ️ No hashtables path provided, files will use hash names');
+    }
+    
+    // Progress callback
+    let lastProgress = 0;
+    const progressCallback = (count, message) => {
+      if (count > lastProgress + 50 || message) {
+        console.log(`[WAD Progress] ${message || `Extracted ${count} files...`}`);
+        lastProgress = count;
+      }
+    };
+    
+    // Extract WAD file using JavaScript implementation
+    console.log('🚀 Starting WAD extraction with JavaScript implementation...');
+    const result = await unpackWAD(
+      data.wadPath,
+      data.outputDir,
+      hashtables,
+      null, // no filter
+      progressCallback
+    );
+    
+    console.log('✅ WAD extraction completed:', {
+      extractedCount: result.extractedCount,
+      outputDir: result.outputDir,
+      hashedFilesCount: Object.keys(result.hashedFiles || {}).length
     });
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Backend response error:', response.status, errorText);
-      throw new Error(`Backend error: ${response.status} ${errorText}`);
-    }
-    
-    const result = await response.json();
-    console.log('✅ WAD extraction completed:', result);
-    return result;
+    return {
+      success: true,
+      extractedCount: result.extractedCount,
+      outputDir: result.outputDir,
+      hashedFiles: result.hashedFiles || {}
+    };
     
   } catch (error) {
     console.error('❌ WAD extraction error:', error);
-    return { error: error.message };
+    return { error: error.message, stack: error.stack };
   }
 });
 
-// Bumpath repath handler
+// Bumpath repath handler - Using JavaScript implementation instead of Python backend
 ipcMain.handle('bumpath:repath', async (event, data) => {
   try {
     console.log('🎯 Bumpath repath request received:', JSON.stringify(data, null, 2));
@@ -3365,40 +2796,170 @@ ipcMain.handle('bumpath:repath', async (event, data) => {
       return { error: 'Missing required parameters: sourceDir, outputDir, selectedSkinIds' };
     }
     
+    // Validate source directory exists
+    if (!fs.existsSync(data.sourceDir)) {
+      return { error: `Source directory not found: ${data.sourceDir}` };
+    }
+    
     // Use integrated hash location if not provided
-    data.hashPath = getHashPath(data.hashPath);
-    console.log('📁 Using hash path:', data.hashPath);
+    const hashPath = getHashPath(data.hashPath);
+    console.log('📁 Using hash path:', hashPath);
     
-    // Ensure backend is running
-    const backendStatus = await ensureBackendService();
-    if (!backendStatus) {
-      throw new Error('Backend service is not available');
+    const ignoreMissing = data.ignoreMissing !== false; // Default true
+    const combineLinked = data.combineLinked !== false; // Default true
+    const customPrefix = data.customPrefix || 'bum';
+    const processTogether = data.processTogether || false;
+    
+    // Import ES modules using relative paths (they're part of the project)
+    const { BumpathCore } = await import('./src/utils/bumpath/bumpathCore.js');
+    
+    // Progress callback
+    let lastProgress = 0;
+    const progressCallback = (count, message) => {
+      if (count > lastProgress + 10 || message) {
+        console.log(`[Bumpath Progress] ${message || `Processed ${count} files...`}`);
+        lastProgress = count;
+      }
+    };
+    
+    if (processTogether) {
+      // Process all skins together
+      console.log(`🚀 Processing ${data.selectedSkinIds.length} skins together...`);
+      
+      const bumInstance = new BumpathCore();
+      
+      // Add source directory
+      console.log(`📂 Adding source directory: ${data.sourceDir}`);
+      await bumInstance.addSourceDirs([data.sourceDir]);
+      
+      // Reset all BIN files to unselected
+      const binSelections = {};
+      for (const unifyFile in bumInstance.sourceBins) {
+        binSelections[unifyFile] = false;
+      }
+      
+      // Select BIN files matching selected skin IDs
+      let selectedCount = 0;
+      for (const unifyFile in bumInstance.sourceBins) {
+        const fileInfo = bumInstance.sourceFiles[unifyFile];
+        if (fileInfo && fileInfo.relPath.toLowerCase().endsWith('.bin')) {
+          const relPath = fileInfo.relPath.toLowerCase();
+          if (relPath.includes('skin')) {
+            // Extract skin ID from path (e.g., /skins/skin0.bin -> 0)
+            const skinMatch = relPath.match(/\/skins\/skin(\d+)\.bin/);
+            if (skinMatch) {
+              const skinId = parseInt(skinMatch[1]);
+              if (data.selectedSkinIds.includes(skinId)) {
+                binSelections[unifyFile] = true;
+                selectedCount++;
+                console.log(`  ✅ Selected: ${fileInfo.relPath} (skin ${skinId})`);
+              }
+            }
+          }
+        }
+      }
+      
+      bumInstance.updateBinSelection(binSelections);
+      console.log(`📋 Marked ${selectedCount} BIN files for skins ${data.selectedSkinIds.join(', ')}`);
+      
+      // Scan
+      console.log('🔍 Scanning BIN files...');
+      await bumInstance.scan(hashPath);
+      console.log(`✅ Found ${Object.keys(bumInstance.scannedTree).length} entries`);
+      
+      // Apply custom prefix if provided
+      if (customPrefix !== 'bum') {
+        console.log(`🏷️  Applying custom prefix '${customPrefix}' to all entries...`);
+        const allEntryHashes = Object.keys(bumInstance.entryPrefix).filter(hash => hash !== 'All_BINs');
+        bumInstance.applyPrefix(allEntryHashes, customPrefix);
+        console.log(`✅ Applied prefix to ${allEntryHashes.length} entries`);
+      }
+      
+      // Process
+      console.log('⚙️  Starting Bumpath process...');
+      await bumInstance.process(data.outputDir, ignoreMissing, combineLinked, progressCallback);
+      console.log('✅ Bumpath repath completed');
+      
+      return {
+        success: true,
+        message: `Processed ${data.selectedSkinIds.length} skins together`
+      };
+      
+    } else {
+      // Process each skin individually
+      console.log(`🚀 Processing ${data.selectedSkinIds.length} skins individually...`);
+      
+      const results = [];
+      
+      for (let i = 0; i < data.selectedSkinIds.length; i++) {
+        const skinId = data.selectedSkinIds[i];
+        console.log(`\n--- Processing skin ${skinId} (${i + 1}/${data.selectedSkinIds.length}) ---`);
+        
+        const bumInstance = new BumpathCore();
+        
+        // Add source directory
+        await bumInstance.addSourceDirs([data.sourceDir]);
+        
+        // Reset all BIN files to unselected
+        const binSelections = {};
+        for (const unifyFile in bumInstance.sourceBins) {
+          binSelections[unifyFile] = false;
+        }
+        
+        // Select only the current skin's BIN file
+        let selectedCount = 0;
+        for (const unifyFile in bumInstance.sourceBins) {
+          const fileInfo = bumInstance.sourceFiles[unifyFile];
+          if (fileInfo && fileInfo.relPath.toLowerCase().endsWith('.bin')) {
+            const relPath = fileInfo.relPath.toLowerCase();
+            if (relPath.includes('skin')) {
+              const skinMatch = relPath.match(/\/skins\/skin(\d+)\.bin/);
+              if (skinMatch) {
+                const currentSkinId = parseInt(skinMatch[1]);
+                if (currentSkinId === skinId) {
+                  binSelections[unifyFile] = true;
+                  selectedCount++;
+                  console.log(`  ✅ Selected: ${fileInfo.relPath} (skin ${currentSkinId})`);
+                }
+              }
+            }
+          }
+        }
+        
+        bumInstance.updateBinSelection(binSelections);
+        console.log(`📋 Marked ${selectedCount} BIN files for skin ${skinId}`);
+        
+        // Scan
+        console.log(`🔍 Scanning BIN files for skin ${skinId}...`);
+        await bumInstance.scan(hashPath);
+        console.log(`✅ Found ${Object.keys(bumInstance.scannedTree).length} entries`);
+        
+        // Apply custom prefix if provided
+        if (customPrefix !== 'bum') {
+          console.log(`🏷️  Applying custom prefix '${customPrefix}' to all entries...`);
+          const allEntryHashes = Object.keys(bumInstance.entryPrefix).filter(hash => hash !== 'All_BINs');
+          bumInstance.applyPrefix(allEntryHashes, customPrefix);
+        }
+        
+        // Process
+        console.log(`⚙️  Starting Bumpath process for skin ${skinId}...`);
+        await bumInstance.process(data.outputDir, ignoreMissing, combineLinked, progressCallback);
+        console.log(`✅ Completed skin ${skinId}`);
+        
+        results.push({ skinId, success: true });
+      }
+      
+      console.log('✅ Bumpath repath completed for all skins');
+      return {
+        success: true,
+        message: `Processed ${data.selectedSkinIds.length} skins individually`,
+        results
+      };
     }
-    
-    console.log('📤 Sending repath request to backend with data:', JSON.stringify(data, null, 2));
-    
-    // Make HTTP request to the backend
-    const response = await fetch('http://127.0.0.1:5001/api/bumpath/repath', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Backend response error:', response.status, errorText);
-      throw new Error(`Backend error: ${response.status} ${errorText}`);
-    }
-    
-    const result = await response.json();
-    console.log('✅ Bumpath repath completed:', result);
-    return result;
     
   } catch (error) {
     console.error('❌ Bumpath repath error:', error);
-    return { error: error.message };
+    return { error: error.message, stack: error.stack };
   }
 });
 
@@ -3434,8 +2995,33 @@ ipcMain.handle('hashes:download', async (event, progressCallback) => {
 
 ipcMain.handle('hashes:get-directory', async () => {
   try {
-    return { hashDir: hashManager.getHashDirectory() };
+    const hashDir = hashManager.getHashDirectory();
+    logToFile(`Hash directory requested: ${hashDir}`, 'INFO');
+    logToFile(`  - process.env.APPDATA: ${process.env.APPDATA || 'undefined'}`, 'INFO');
+    logToFile(`  - process.env.HOME: ${process.env.HOME || 'undefined'}`, 'INFO');
+    logToFile(`  - process.platform: ${process.platform}`, 'INFO');
+    logToFile(`  - os.homedir(): ${require('os').homedir()}`, 'INFO');
+    
+    // Verify directory exists and is writable
+    const fs = require('fs');
+    if (fs.existsSync(hashDir)) {
+      try {
+        // Test write access
+        const testFile = path.join(hashDir, '.write-test');
+        fs.writeFileSync(testFile, 'test');
+        fs.unlinkSync(testFile);
+        logToFile(`  - Directory is writable: YES`, 'INFO');
+      } catch (writeError) {
+        logToFile(`  - Directory is writable: NO - ${writeError.message}`, 'WARN');
+      }
+    } else {
+      logToFile(`  - Directory exists: NO`, 'WARN');
+    }
+    
+    return { hashDir };
   } catch (error) {
+    logToFile(`❌ Get hash directory error: ${error.message}`, 'ERROR');
+    logToFile(`  - Stack: ${error.stack}`, 'ERROR');
     console.error('❌ Get hash directory error:', error);
     return { hashDir: '', error: error.message };
   }

@@ -3,6 +3,9 @@ import './FrogChanger.css';
 import electronPrefs from '../utils/electronPrefs.js';
 import { IconButton, Tooltip, Box } from '@mui/material';
 import CelestiaGuide from '../components/CelestiaGuide';
+import { unpackWAD } from '../utils/wad/index.js';
+import { loadHashtables } from '../jsritofile/index.js';
+import { BumpathCore } from '../utils/bumpath/index.js';
 
 // API Configuration
 const DDRAGON_BASE_URL = 'https://ddragon.leagueoflegends.com';
@@ -101,13 +104,13 @@ const fetchAllChromaData = async () => {
   try {
     console.log('Fetching all chroma data from Community Dragon...');
     const url = `${CDRAGON_BASE_URL}/v1/skins.json`;
-    
+
     const response = await fetch(url, {
       headers: {
         'Accept': 'application/json',
       }
     });
-    
+
     if (response.ok) {
       const skinsJson = await response.json();
       globalChromaData = skinsJson;
@@ -127,12 +130,12 @@ const fetchAllChromaData = async () => {
 const getChromaDataForSkin = async (championId, skinId) => {
   const skinsData = await fetchAllChromaData();
   const fullSkinId = `${championId}${skinId.toString().padStart(3, '0')}`;
-  
+
   console.log(`Looking for chroma data with fullSkinId: ${fullSkinId}`);
   console.log(`Available skin IDs (first 10):`, Object.keys(skinsData).slice(0, 10));
-  
+
   const skinData = skinsData[fullSkinId];
-  
+
   if (skinData && skinData.chromas && skinData.chromas.length > 0) {
     console.log(`Found chromas for ${fullSkinId}:`, skinData.chromas);
     return skinData.chromas.map((chroma, index) => ({
@@ -142,9 +145,9 @@ const getChromaDataForSkin = async (championId, skinId) => {
       image_url: `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-chroma-images/${championId}/${chroma.id}.png`
     }));
   }
-  
+
   console.log(`No chromas found for ${fullSkinId}`);
-    return [];
+  return [];
 };
 
 // API functions
@@ -155,17 +158,17 @@ const api = {
       console.log('Fetching champions from Community Dragon...');
       const champResponse = await fetch(`${CDRAGON_BASE_URL}/v1/champion-summary.json`);
       const champJson = await champResponse.json();
-      
+
       if (champJson && champJson.length > 0) {
         champJson.shift(); // Remove the None character
       }
-      
+
       const champions = champJson.map(champ => ({
         id: champ.id.toString(),
         name: champ.name,
         alias: champ.alias
       })).sort((a, b) => a.name.localeCompare(b.name));
-      
+
       console.log('Champions loaded from Community Dragon:', champions.slice(0, 3));
       return champions;
     } catch (error) {
@@ -173,25 +176,25 @@ const api = {
       throw error;
     }
   },
-  
+
   getChampionSkins: async (championName, championsList) => {
     try {
       // Get skins from Community Dragon's skins.json
       const skinsData = await fetchAllChromaData();
       const champion = championsList.find(c => c.name === championName);
-      
+
       if (!champion) {
         console.log(`Champion ${championName} not found in champions list`);
         return [];
       }
-      
+
       const championSkins = [];
-      
+
       // Find all skins for this champion
       for (const [skinId, skinData] of Object.entries(skinsData)) {
         const championId = skinId.slice(0, -3);
         const skinNum = parseInt(skinId.slice(-3));
-        
+
         if (championId === champion.id) {
           championSkins.push({
             id: skinNum,
@@ -201,10 +204,10 @@ const api = {
           });
         }
       }
-      
+
       // Sort skins by ID
       championSkins.sort((a, b) => a.id - b.id);
-      
+
       console.log(`Found ${championSkins.length} skins for ${championName}:`, championSkins);
       return championSkins;
     } catch (error) {
@@ -212,12 +215,12 @@ const api = {
       return [];
     }
   },
-  
+
   getChampionIcon: async (championId) => {
     // Use Community Dragon's champion icons like original FrogChanger
     return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${championId}.png`;
   },
-  
+
   getSkinSplash: (championAlias, skinId) => {
     return `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${championAlias}_${skinId}.jpg`;
   }
@@ -254,7 +257,7 @@ const FrogChanger = () => {
   const cancelOperations = async () => {
     setIsCancelling(true);
     addConsoleLog('Cancelling all operations...', 'warning');
-    
+
     try {
       // Send cancel request to backend
       if (window.require) {
@@ -269,26 +272,26 @@ const FrogChanger = () => {
           },
         });
       }
-      
+
       addConsoleLog('Backend operations cancelled', 'warning');
     } catch (error) {
       console.error('Error cancelling backend operations:', error);
       addConsoleLog('Failed to cancel backend operations', 'error');
     }
-    
+
     // Reset all operation states
     setIsExtracting(false);
     setIsRepathing(false);
     setExtractingSkins({});
     setExtractionProgress({});
     setCancellationToken(null);
-    
+
     // Clear selected skins and chromas
     setSelectedSkins([]);
     setSelectedChromas({});
-    
+
     addConsoleLog('Operations cancelled', 'warning');
-    
+
     // Reset cancelling state after a brief delay
     setTimeout(() => {
       setIsCancelling(false);
@@ -330,27 +333,27 @@ const FrogChanger = () => {
   // Get user Desktop path (handles OneDrive)
   const getUserDesktopPath = () => {
     if (!window.require) return null;
-    
+
     try {
       const path = window.require('path');
       const os = window.require('os');
       const fs = window.require('fs');
-      
+
       const homeDir = os.homedir();
-      
+
       // Check standard Desktop locations
       const desktopPaths = [
         path.join(homeDir, 'Desktop'),
         path.join(homeDir, 'OneDrive', 'Desktop'),
         path.join(homeDir, 'OneDrive - Personal', 'Desktop'),
       ];
-      
+
       // Also check for OneDrive business
       const onedriveBusiness = process.env.ONEDRIVE || '';
       if (onedriveBusiness) {
         desktopPaths.push(path.join(onedriveBusiness, 'Desktop'));
       }
-      
+
       // Find first existing Desktop folder
       for (const desktopPath of desktopPaths) {
         try {
@@ -365,7 +368,7 @@ const FrogChanger = () => {
           continue;
         }
       }
-      
+
       // Fallback to standard Desktop
       return path.join(homeDir, 'Desktop');
     } catch (error) {
@@ -380,27 +383,27 @@ const FrogChanger = () => {
       console.log('⚠️ window.require not available');
       return null;
     }
-    
+
     try {
       const path = window.require('path');
       const fs = window.require('fs');
-      
+
       // Build list of paths to check
       const commonPaths = [];
-      
+
       // Standard paths on C drive
       commonPaths.push(path.join('C:\\', 'Riot Games', 'League of Legends', 'Game', 'DATA', 'FINAL', 'Champions'));
       commonPaths.push(path.join('C:\\', 'Program Files', 'Riot Games', 'League of Legends', 'Game', 'DATA', 'FINAL', 'Champions'));
       commonPaths.push(path.join('C:\\', 'Program Files (x86)', 'Riot Games', 'League of Legends', 'Game', 'DATA', 'FINAL', 'Champions'));
       commonPaths.push(path.join('C:\\', 'Apps', 'Riot Games', 'League of Legends', 'Game', 'DATA', 'FINAL', 'Champions'));
-      
+
       // Check other drives for custom installations
       const drives = ['C:', 'D:', 'E:', 'F:', 'G:', 'H:'];
       for (const drive of drives) {
         commonPaths.push(path.join(drive, 'Riot Games', 'League of Legends', 'Game', 'DATA', 'FINAL', 'Champions'));
         commonPaths.push(path.join(drive, 'Apps', 'Riot Games', 'League of Legends', 'Game', 'DATA', 'FINAL', 'Champions'));
       }
-      
+
       // Also check alternative structure (some installs might be different)
       for (const drive of drives) {
         commonPaths.push(path.join(drive, 'Riot Games', 'League of Legends', 'Game', 'Champions'));
@@ -408,9 +411,9 @@ const FrogChanger = () => {
         commonPaths.push(path.join(drive, 'Apps', 'Riot Games', 'League of Legends', 'Game', 'Champions'));
         commonPaths.push(path.join(drive, 'Apps', 'Riot Games', 'League of Legends', 'DATA', 'FINAL', 'Champions'));
       }
-      
+
       console.log('🔍 Checking', commonPaths.length, 'possible paths for Champions folder...');
-      
+
       // Check each path
       for (const testPath of commonPaths) {
         try {
@@ -419,7 +422,7 @@ const FrogChanger = () => {
             // Verify it's actually a champions folder (check for at least one champion folder)
             const files = fs.readdirSync(testPath);
             console.log('📁 Contents of Champions folder:', files.slice(0, 10));
-            
+
             const hasChampionFolders = files.some(file => {
               try {
                 const fullPath = path.join(testPath, file);
@@ -434,7 +437,7 @@ const FrogChanger = () => {
                 return false;
               }
             });
-            
+
             if (hasChampionFolders) {
               console.log('✅ Auto-detected Champions folder:', testPath);
               const dirs = files.filter(f => {
@@ -460,11 +463,11 @@ const FrogChanger = () => {
                   return testPath;
                 }
               }
-              
+
               // If the path is the correct Champions path structure and exists, accept it anyway
               // (might be empty or have different structure)
-              if (testPath.toLowerCase().includes('champions') && 
-                  testPath.toLowerCase().includes('league of legends')) {
+              if (testPath.toLowerCase().includes('champions') &&
+                testPath.toLowerCase().includes('league of legends')) {
                 console.log('✅ Path matches Champions folder structure, accepting:', testPath);
                 return testPath;
               }
@@ -475,7 +478,7 @@ const FrogChanger = () => {
           continue;
         }
       }
-      
+
       // If direct path doesn't work, try searching from League root
       console.log('🔍 Trying to find League installation root...');
       for (const drive of drives) {
@@ -485,7 +488,7 @@ const FrogChanger = () => {
           path.join(drive, 'Program Files (x86)', 'Riot Games', 'League of Legends'),
           path.join(drive, 'Apps', 'Riot Games', 'League of Legends'),
         ];
-        
+
         for (const root of leagueRoots) {
           try {
             if (fs.existsSync(root)) {
@@ -497,7 +500,7 @@ const FrogChanger = () => {
                 path.join(root, 'DATA', 'FINAL', 'Champions'),
                 path.join(root, 'Champions'),
               ];
-              
+
               for (const championsPath of possibleChampionsPaths) {
                 try {
                   if (fs.existsSync(championsPath)) {
@@ -509,7 +512,7 @@ const FrogChanger = () => {
                         return false;
                       }
                     });
-                    
+
                     if (hasChampionFolders) {
                       console.log('✅ Auto-detected Champions folder:', championsPath);
                       return championsPath;
@@ -525,7 +528,7 @@ const FrogChanger = () => {
           }
         }
       }
-      
+
       console.log('⚠️ Could not auto-detect Champions folder after checking all paths');
       return null;
     } catch (error) {
@@ -547,15 +550,15 @@ const FrogChanger = () => {
       if (!settingsLoaded) {
         return;
       }
-      
+
       const validation = await validateSetup();
       setIsSetupValid(validation.isValid);
-      
+
       // Show warning only if paths are missing (not hash issues) and user hasn't dismissed it
       // Hash issues should only show when user tries to use buttons, not on page load
-      const hasPathIssues = (!leaguePath || leaguePath.trim() === '') || 
-                            (!extractionPath || extractionPath.trim() === '');
-      
+      const hasPathIssues = (!leaguePath || leaguePath.trim() === '') ||
+        (!extractionPath || extractionPath.trim() === '');
+
       if (hasPathIssues && settingsLoaded) {
         await electronPrefs.initPromise;
         const dismissed = electronPrefs.obj.FrogChangerWarningDismissed === true;
@@ -564,7 +567,7 @@ const FrogChanger = () => {
         }
       }
     };
-    
+
     checkSetup();
   }, [leaguePath, extractionPath, settingsLoaded, hashStatus]);
 
@@ -604,7 +607,7 @@ const FrogChanger = () => {
       } else {
         setLeaguePath(savedPath);
       }
-      
+
       // Auto-set extraction path to Desktop if not set
       let savedExtractionPath = electronPrefs.obj.FrogChangerExtractionPath || '';
       if (!savedExtractionPath && window.require) {
@@ -626,7 +629,7 @@ const FrogChanger = () => {
         extractionPath: electronPrefs.obj.FrogChangerExtractionPath,
         extractVoiceover: electronPrefs.obj.FrogChangerExtractVoiceover
       });
-      
+
       // Check hash status after loading settings
       if (window.require) {
         try {
@@ -637,7 +640,7 @@ const FrogChanger = () => {
           console.error('Error checking hashes:', error);
         }
       }
-      
+
       // Mark settings as loaded
       setSettingsLoaded(true);
     } catch (error) {
@@ -668,46 +671,46 @@ const FrogChanger = () => {
     try {
       const searchTermLower = skinlineSearchTerm.toLowerCase();
       console.log(`🔍 Searching for "${skinlineSearchTerm}" in Community Dragon skins data...`);
-      
+
       // Fetch all skins data from Community Dragon
       const skinsResponse = await fetch(`${CDRAGON_BASE_URL}/v1/skins.json`);
       if (!skinsResponse.ok) {
         throw new Error(`Failed to fetch skins data: ${skinsResponse.status}`);
       }
-      
+
       const allSkinsData = await skinsResponse.json();
       console.log(`📊 Loaded ${Object.keys(allSkinsData).length} skins from Community Dragon`);
-      
-       // Find all skins that match the search term (skinline or rarity matching)
-       const matchingSkins = [];
-       for (const [skinId, skinData] of Object.entries(allSkinsData)) {
-         let isMatch = false;
-         
-         // Check for skinline name match
-         if (skinData.name && skinData.name.toLowerCase().includes(searchTermLower)) {
-           // More precise matching to avoid false positives like "Covenant" matching "Coven"
-           const skinNameLower = skinData.name.toLowerCase();
-           
-           // Check if the search term appears as a complete word or at the start of the skin name
-           const isExactMatch = 
-             skinNameLower.startsWith(searchTermLower + ' ') || // "Coven Ahri"
-             skinNameLower.includes(' ' + searchTermLower + ' ') || // "Prestige Coven Akali"
-             skinNameLower.endsWith(' ' + searchTermLower) || // "Some Coven"
-             skinNameLower === searchTermLower; // Exact match
-           
-           // Additional filtering to avoid false positives
-           const isFalsePositive = 
-             (searchTermLower === 'coven' && skinNameLower.includes('covenant')) ||
-             (searchTermLower === 'star' && skinNameLower.includes('starguardian') && !skinNameLower.includes('star guardian')) ||
-             (searchTermLower === 'project' && skinNameLower.includes('projection'));
-           
-           if (!isFalsePositive && isExactMatch) {
-             isMatch = true;
-           }
-         }
-         
-         // Check for rarity match (only if no skinline match found yet)
-         if (!isMatch && skinData.rarity) {
+
+      // Find all skins that match the search term (skinline or rarity matching)
+      const matchingSkins = [];
+      for (const [skinId, skinData] of Object.entries(allSkinsData)) {
+        let isMatch = false;
+
+        // Check for skinline name match
+        if (skinData.name && skinData.name.toLowerCase().includes(searchTermLower)) {
+          // More precise matching to avoid false positives like "Covenant" matching "Coven"
+          const skinNameLower = skinData.name.toLowerCase();
+
+          // Check if the search term appears as a complete word or at the start of the skin name
+          const isExactMatch =
+            skinNameLower.startsWith(searchTermLower + ' ') || // "Coven Ahri"
+            skinNameLower.includes(' ' + searchTermLower + ' ') || // "Prestige Coven Akali"
+            skinNameLower.endsWith(' ' + searchTermLower) || // "Some Coven"
+            skinNameLower === searchTermLower; // Exact match
+
+          // Additional filtering to avoid false positives
+          const isFalsePositive =
+            (searchTermLower === 'coven' && skinNameLower.includes('covenant')) ||
+            (searchTermLower === 'star' && skinNameLower.includes('starguardian') && !skinNameLower.includes('star guardian')) ||
+            (searchTermLower === 'project' && skinNameLower.includes('projection'));
+
+          if (!isFalsePositive && isExactMatch) {
+            isMatch = true;
+          }
+        }
+
+        // Check for rarity match (only if no skinline match found yet)
+        if (!isMatch && skinData.rarity) {
           const rarityLower = skinData.rarity.toLowerCase();
           const rarityNameMap = {
             'kepic': 'epic',
@@ -718,45 +721,45 @@ const FrogChanger = () => {
             'ktranscendent': 'transcendent',
             'knorarity': 'base'
           };
-          
+
           // Check if search term matches rarity name
           const rarityName = rarityNameMap[rarityLower];
           if (rarityName && rarityName.includes(searchTermLower)) {
             isMatch = true;
           }
-          
+
           // Also check direct rarity enum match
           if (rarityLower.includes(searchTermLower)) {
             isMatch = true;
           }
         }
-         
-         if (isMatch) {
-           matchingSkins.push({
-             id: parseInt(skinId),
-             name: skinData.name,
-             skinData: skinData
-           });
-         }
-       }
-      
+
+        if (isMatch) {
+          matchingSkins.push({
+            id: parseInt(skinId),
+            name: skinData.name,
+            skinData: skinData
+          });
+        }
+      }
+
       console.log(`🎯 Found ${matchingSkins.length} skins matching "${skinlineSearchTerm}":`, matchingSkins.map(s => s.name));
-      
+
       // Group skins by champion
       const results = [];
       const championMap = new Map();
-      
+
       // Create a map of champion names to champion objects
       champions.forEach(champion => {
         championMap.set(champion.name.toLowerCase(), champion);
       });
-      
+
       // Group matching skins by champion
       for (const skin of matchingSkins) {
         // Extract champion name from skin name (e.g., "Coven Ahri" -> "Ahri")
         const skinNameParts = skin.name.split(' ');
         const championName = skinNameParts[skinNameParts.length - 1]; // Last part is usually champion name
-        
+
         const champion = championMap.get(championName.toLowerCase());
         if (champion) {
           // Find existing champion group or create new one
@@ -765,7 +768,7 @@ const FrogChanger = () => {
             championGroup = { champion, skins: [] };
             results.push(championGroup);
           }
-          
+
           // Add skin to champion group
           const skinObject = {
             id: skin.id,
@@ -777,21 +780,21 @@ const FrogChanger = () => {
             // Include rarity from Community Dragon data
             rarity: skin.skinData.rarity
           };
-          
+
           championGroup.skins.push(skinObject);
         }
       }
-      
+
       // Sort skins by ID within each champion group
       results.forEach(group => {
         group.skins.sort((a, b) => a.id - b.id);
       });
-      
+
       setSkinlineSearchResults(results);
       setShowSkinlineSearch(true);
       addConsoleLog(`Found ${results.length} champions with "${skinlineSearchTerm}" skins`, 'success');
       console.log(`🎯 Search complete! Found ${results.length} champions with "${skinlineSearchTerm}" skins:`, results);
-      
+
       // Load chroma data for all found skins
       loadChromaDataForSkinlineResults(results);
     } catch (error) {
@@ -807,16 +810,16 @@ const FrogChanger = () => {
   const loadChromaDataForSkinlineResults = async (results) => {
     try {
       console.log('🎨 Loading chroma data for skinline search results...');
-      
+
       for (const { champion, skins } of results) {
         for (const skin of skins) {
           const skinKey = `${champion.name}_${skin.skinNumber}`;
-          
+
           // Check if we already have chroma data for this skin
           if (chromaCache.has(skinKey)) {
             continue;
           }
-          
+
           try {
             const chromas = await getChromaDataForSkin(champion.id, skin.skinNumber);
             if (chromas.length > 0) {
@@ -860,12 +863,12 @@ const FrogChanger = () => {
       setLoadingSkins(prev => ({ ...prev, [championName]: true }));
       const skins = await api.getChampionSkins(championName, champions);
       setChampionSkins(skins);
-      
+
       // Load chroma data in the background (truly non-blocking)
       setTimeout(() => {
-      loadChromaData(championName, skins).catch(err => {
-        console.warn('Chroma data loading failed (non-critical):', err);
-      });
+        loadChromaData(championName, skins).catch(err => {
+          console.warn('Chroma data loading failed (non-critical):', err);
+        });
       }, 100); // Small delay to let UI update first
     } catch (err) {
       setError('Failed to load champion skins');
@@ -889,24 +892,24 @@ const FrogChanger = () => {
       // Load all chroma data at once from Community Dragon
       const skinsData = await fetchAllChromaData();
       let foundChromas = 0;
-      
+
       // Check all skins for chromas
       for (const skin of skins) {
         const skinKey = `${championName}_${skin.id}`;
-        
+
         // Skip if we've already checked this skin
         if (chromaCache.has(skinKey)) {
           continue;
         }
-        
+
         try {
           const chromas = await getChromaDataForSkin(championId, skin.id);
-          
+
           // Mark this skin as checked
           setChromaCache(prev => new Set([...prev, skinKey]));
-          
+
           if (chromas && chromas.length > 0) {
-            console.log(`Found ${chromas.length} chromas for ${skinKey}:`, chromas);
+            // Removed spammy chroma logging
             setChromaData(prev => ({
               ...prev,
               [skinKey]: chromas
@@ -959,7 +962,7 @@ const FrogChanger = () => {
       name: skin.name,
       champion: champion // Store champion info for extraction
     };
-    
+
     // Toggle skin selection
     setSelectedSkins(prev => {
       if (prev.some(s => s.name === skin.name && s.champion?.name === champion.name)) {
@@ -998,17 +1001,17 @@ const FrogChanger = () => {
   // Check if league path and hashes are valid
   const validateSetup = async () => {
     const issues = [];
-    
+
     // Check league path - only if it's actually empty (not just undefined during loading)
     if (!leaguePath || (typeof leaguePath === 'string' && leaguePath.trim() === '')) {
       issues.push('leaguePath');
     }
-    
+
     // Check extraction path - only if it's actually empty (not just undefined during loading)
     if (!extractionPath || (typeof extractionPath === 'string' && extractionPath.trim() === '')) {
       issues.push('extractionPath');
     }
-    
+
     // Check hash files - only if we can check them
     if (window.require) {
       try {
@@ -1024,7 +1027,7 @@ const FrogChanger = () => {
         // Only add if we're sure hashes are missing
       }
     }
-    
+
     return {
       isValid: issues.length === 0,
       issues
@@ -1045,24 +1048,24 @@ const FrogChanger = () => {
       }
       return;
     }
-    
+
     if (selectedSkins.length > 0) {
       setIsExtracting(true);
       const token = Date.now().toString();
       setCancellationToken(token);
       addConsoleLog(`Extracting ${selectedSkins.length} skin(s)...`, 'info');
       try {
-      // Extract WAD files for all selected skins
+        // Extract WAD files for all selected skins
         for (let i = 0; i < selectedSkins.length; i++) {
           // Check for cancellation (but not immediately)
           if (isCancelling) {
             addConsoleLog('Extraction cancelled by user', 'warning');
             break;
           }
-          
+
           const skin = selectedSkins[i];
           let championName, skinId, skinName;
-          
+
           if (typeof skin === 'string') {
             // Old format - need selectedChampion
             if (!selectedChampion) continue;
@@ -1077,17 +1080,17 @@ const FrogChanger = () => {
             skinId = skin.id;
             skinName = skin.name;
           }
-          
+
           const progress = `${i + 1}/${selectedSkins.length}`;
           if (extractVoiceover) {
             addConsoleLog(`${progress} Extracting ${skinName} (${championName}) - Normal & Voiceover WADs...`, 'info');
           } else {
             addConsoleLog(`${progress} Extracting ${skinName} (${championName}) - Normal WAD only (Voiceover disabled)...`, 'info');
           }
-          
+
           const skinKey = `${championName}_${skinId}`;
           const selectedChroma = selectedChromas[skinKey];
-          
+
           // Extract with chroma if one is selected
           if (selectedChroma) {
             addConsoleLog(`${progress} Extracting with chroma ${selectedChroma.id}...`, 'info');
@@ -1095,11 +1098,11 @@ const FrogChanger = () => {
           } else {
             await extractWadFile(championName, skinId, skinName);
           }
-          
+
           addConsoleLog(`${progress} Successfully extracted ${skinName} (${championName})`, 'success');
-      }
-      setSelectedSkins([]);
-      setSelectedChromas({});
+        }
+        setSelectedSkins([]);
+        setSelectedChromas({});
         addConsoleLog(`All extractions completed successfully!`, 'success');
       } catch (error) {
         console.error('Error during WAD extraction:', error);
@@ -1125,15 +1128,15 @@ const FrogChanger = () => {
       }
       return;
     }
-    
+
     if (selectedSkins.length > 0) {
       // Prepare repath data with flattened skin list
       const skinsByChampion = {};
       const allSkins = [];
-      
+
       for (const skin of selectedSkins) {
         let championName, skinId, skinName;
-        
+
         if (typeof skin === 'string') {
           // Old format - need selectedChampion
           if (!selectedChampion) continue;
@@ -1148,16 +1151,16 @@ const FrogChanger = () => {
           skinId = skin.id;
           skinName = skin.name;
         }
-        
+
         if (!skinsByChampion[championName]) {
           skinsByChampion[championName] = [];
         }
         skinsByChampion[championName].push({ skinId, skinName });
-        
+
         // Add to flattened list for individual prefix selection
         allSkins.push({ championName, skinId, skinName });
       }
-      
+
       // Store the repath data and show prefix modal
       setPendingRepathData({ skinsByChampion, allSkins });
       setCurrentSkinIndex(0);
@@ -1169,20 +1172,20 @@ const FrogChanger = () => {
 
   const executeRepath = async (finalPrefixes = null) => {
     if (!pendingRepathData) return;
-    
+
     setIsRepathing(true);
     const token = Date.now().toString();
     setCancellationToken(token);
     addConsoleLog(`Repathing ${selectedSkins.length} skin(s) with individual prefixes...`, 'info');
-    
+
     try {
       const { skinsByChampion, allSkins } = pendingRepathData;
       const championNames = Object.keys(skinsByChampion);
-      
+
       // Use the passed prefixes or fall back to state
       const prefixesToUse = finalPrefixes || skinPrefixes;
       console.log('🔍 Using prefixes:', prefixesToUse);
-      
+
       // Process each champion separately
       for (let i = 0; i < championNames.length; i++) {
         // Check for cancellation (but not immediately)
@@ -1190,17 +1193,17 @@ const FrogChanger = () => {
           addConsoleLog('Repath cancelled by user', 'warning');
           break;
         }
-        
+
         const championName = championNames[i];
         const championSkins = skinsByChampion[championName];
         const progress = `${i + 1}/${championNames.length}`;
-        
+
         addConsoleLog(`${progress} Processing ${championName} (${championSkins.length} skins)...`, 'info');
-        
+
         // Use first skin for extraction (all skins of same champion share the same WAD)
         const firstSkin = championSkins[0];
         const firstSkinId = firstSkin.skinId;
-        
+
         if (extractVoiceover) {
           addConsoleLog(`${progress} Extracting ${firstSkin.skinName} (${championName}) - Normal & Voiceover WADs for repath...`, 'info');
         } else {
@@ -1208,55 +1211,68 @@ const FrogChanger = () => {
         }
         // Extract WAD file (only once per champion)
         await extractWadFile(championName, firstSkinId, firstSkin.skinName);
-        
+
         // Check for cancellation after extraction
         if (isCancelling) {
           addConsoleLog('Repath cancelled by user', 'warning');
           break;
         }
-      
-      // Wait a moment for extraction to complete
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Now run repath using the extracted folder as source
+
+        // Wait a moment for extraction to complete
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Now run repath using the extracted folder as source
         const skinNameSafe = firstSkin.skinName.replace(/[^a-zA-Z0-9]/g, '_');
         const championFileName = getChampionFileName(championName);
         const sourceDir = `${extractionPath}\\${championFileName}_extracted_${skinNameSafe}`;
         const outputDir = `${extractionPath}\\${championFileName}_repathed_${skinNameSafe}`;
-        
+
         // Get ALL skin IDs for this champion (not just first skin)
         const championSkinIds = championSkins.map(s => s.skinId);
         const prefixes = championSkinIds.map(skinId => prefixesToUse[skinId] || 'bum');
         const uniquePrefixes = [...new Set(prefixes)];
-        
+
         console.log(`🔍 Champion ${championName} ALL skin IDs:`, championSkinIds);
         console.log(`🔍 Champion ${championName} prefixes:`, prefixes);
         console.log(`🔍 Champion ${championName} unique prefixes:`, uniquePrefixes);
-        
+
         if (uniquePrefixes.length === 1) {
           addConsoleLog(`${progress} Running repath for ${championName} with ${championSkinIds.length} skins using prefix "${uniquePrefixes[0]}"...`, 'info');
         } else {
           addConsoleLog(`${progress} Running repath for ${championName} with ${championSkinIds.length} skins using mixed prefixes: ${uniquePrefixes.join(', ')}...`, 'info');
         }
-        
-      // Run repath through Bumpath backend with ALL skin IDs for this champion
+
+        // Run repath through Bumpath backend with ALL skin IDs for this champion
         // If multiple skins from same champion, process them together
         const processTogether = championSkinIds.length > 1;
         const repathResult = await runBumpathRepath(sourceDir, outputDir, championSkinIds, uniquePrefixes[0], processTogether);
-      
-      if (repathResult.success) {
+
+        if (repathResult.success) {
           addConsoleLog(`${progress} Successfully repathed ${championName} (${championSkinIds.length} skins) to: ${outputDir}`, 'success');
           console.log(`Successfully repathed ${championName} (${championSkinIds.length} skins) to: ${outputDir}`);
+          
+          // Clean up extracted folder after successful repath
+          try {
+            const fs = window.require('fs');
+            if (fs.existsSync(sourceDir)) {
+              fs.rmSync(sourceDir, { recursive: true, force: true });
+              addConsoleLog(`${progress} Cleaned up extracted folder for ${championName}`, 'info');
+              console.log(`Cleaned up extracted folder: ${sourceDir}`);
+            }
+          } catch (cleanupError) {
+            console.warn(`Failed to clean up extracted folder: ${cleanupError.message}`);
+            // Don't fail the whole operation if cleanup fails
+          }
         } else if (repathResult.cancelled) {
           addConsoleLog(`${progress} Repath cancelled for ${championName}`, 'warning');
           console.log(`Repath cancelled for ${championName}`);
           break; // Stop processing remaining champions
-      } else {
+        } else {
           addConsoleLog(`${progress} Failed to repath ${championName}: ${repathResult.error}`, 'error');
           console.error(`Repath failed for ${championName}: ${repathResult.error}`);
         }
       }
-      
+
       addConsoleLog(`All repath operations completed!`, 'success');
       setSelectedSkins([]);
     } catch (error) {
@@ -1272,58 +1288,172 @@ const FrogChanger = () => {
 
   const runBumpathRepath = async (sourceDir, outputDir, selectedSkinIds, prefix = 'bum', processTogether = false) => {
     try {
-      // Use Electron IPC to call the Bumpath backend
-      let result;
-      if (window.require) {
-        const { ipcRenderer } = window.require('electron');
-        const requestData = {
-          sourceDir: sourceDir,
-          outputDir: outputDir,
-          selectedSkinIds: selectedSkinIds,
-          hashPath: hashPath,
-          ignoreMissing: true, // Auto-ignore missing files
-          combineLinked: true,  // Auto-combine linked bins
-          customPrefix: prefix,  // Add custom prefix parameter
-          processTogether: processTogether  // Add process together parameter
-        };
-        console.log('🎯 Sending Bumpath repath request:', requestData);
-        result = await ipcRenderer.invoke('bumpath:repath', requestData);
-      } else {
-        // Fallback to direct HTTP request for development
-        const response = await fetch('http://localhost:5001/api/bumpath/repath', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            sourceDir: sourceDir,
-            outputDir: outputDir,
-            selectedSkinIds: selectedSkinIds,
-            hashPath: hashPath,
-            ignoreMissing: true,
-            combineLinked: true,
-            customPrefix: prefix,
-            processTogether: processTogether
-          }),
-        });
+      console.log('🎯 Starting Bumpath repath with native JS implementation:', {
+        sourceDir,
+        outputDir,
+        selectedSkinIds,
+        prefix,
+        processTogether
+      });
 
-        if (!response.ok) {
-          throw new Error(`Repath failed: ${response.statusText}`);
+      // Validate source directory exists
+      if (window.require) {
+        const fs = window.require('fs');
+        if (!fs.existsSync(sourceDir)) {
+          return { success: false, error: `Source directory not found: ${sourceDir}` };
+        }
+      }
+
+      const ignoreMissing = true; // Auto-ignore missing files
+      const combineLinked = true; // Auto-combine linked bins
+      const customPrefix = prefix;
+
+      // Progress callback
+      let lastProgress = 0;
+      const progressCallback = (count, message) => {
+        if (count > lastProgress + 10 || message) {
+          console.log(`[Bumpath Progress] ${message || `Processed ${count} files...`}`);
+          lastProgress = count;
+        }
+      };
+
+      if (processTogether) {
+        // Process all skins together
+        console.log(`🚀 Processing ${selectedSkinIds.length} skins together...`);
+
+        const bumInstance = new BumpathCore();
+
+        // Add source directory
+        console.log(`📂 Adding source directory: ${sourceDir}`);
+        await bumInstance.addSourceDirs([sourceDir]);
+
+        // Reset all BIN files to unselected
+        const binSelections = {};
+        for (const unifyFile in bumInstance.sourceBins) {
+          binSelections[unifyFile] = false;
         }
 
-        result = await response.json();
-      }
+        // Select BIN files matching selected skin IDs
+        let selectedCount = 0;
+        for (const unifyFile in bumInstance.sourceBins) {
+          const fileInfo = bumInstance.sourceFiles[unifyFile];
+          if (fileInfo && fileInfo.relPath.toLowerCase().endsWith('.bin')) {
+            const relPath = fileInfo.relPath.toLowerCase();
+            if (relPath.includes('skin')) {
+              // Extract skin ID from path (e.g., /skins/skin0.bin -> 0)
+              const skinMatch = relPath.match(/\/skins\/skin(\d+)\.bin/);
+              if (skinMatch) {
+                const skinId = parseInt(skinMatch[1]);
+                if (selectedSkinIds.includes(skinId)) {
+                  binSelections[unifyFile] = true;
+                  selectedCount++;
+                  console.log(`  ✅ Selected: ${fileInfo.relPath} (skin ${skinId})`);
+                }
+              }
+            }
+          }
+        }
 
-      // Check if operation was cancelled
-      if (result.cancelled) {
-        console.log('Repath operation was cancelled');
-        return { success: false, cancelled: true, message: 'Operation cancelled by user' };
-      }
+        bumInstance.updateBinSelection(binSelections);
+        console.log(`📋 Marked ${selectedCount} BIN files for skins ${selectedSkinIds.join(', ')}`);
 
-      return result;
+        // Scan
+        console.log('🔍 Scanning BIN files...');
+        await bumInstance.scan(hashPath);
+        console.log(`✅ Found ${Object.keys(bumInstance.scannedTree).length} entries`);
+
+        // Apply custom prefix if provided
+        if (customPrefix !== 'bum') {
+          console.log(`🏷️  Applying custom prefix '${customPrefix}' to all entries...`);
+          const allEntryHashes = Object.keys(bumInstance.entryPrefix).filter(hash => hash !== 'All_BINs');
+          bumInstance.applyPrefix(allEntryHashes, customPrefix);
+          console.log(`✅ Applied prefix to ${allEntryHashes.length} entries`);
+        }
+
+        // Process
+        console.log('⚙️  Starting Bumpath process...');
+        await bumInstance.process(outputDir, ignoreMissing, combineLinked, progressCallback);
+        console.log('✅ Bumpath repath completed');
+
+        return {
+          success: true,
+          message: `Processed ${selectedSkinIds.length} skins together`
+        };
+
+      } else {
+        // Process each skin individually
+        console.log(`🚀 Processing ${selectedSkinIds.length} skins individually...`);
+
+        const results = [];
+
+        for (let i = 0; i < selectedSkinIds.length; i++) {
+          const skinId = selectedSkinIds[i];
+          console.log(`\n--- Processing skin ${skinId} (${i + 1}/${selectedSkinIds.length}) ---`);
+
+          const bumInstance = new BumpathCore();
+
+          // Add source directory
+          await bumInstance.addSourceDirs([sourceDir]);
+
+          // Reset all BIN files to unselected
+          const binSelections = {};
+          for (const unifyFile in bumInstance.sourceBins) {
+            binSelections[unifyFile] = false;
+          }
+
+          // Select only the current skin's BIN file
+          let selectedCount = 0;
+          for (const unifyFile in bumInstance.sourceBins) {
+            const fileInfo = bumInstance.sourceFiles[unifyFile];
+            if (fileInfo && fileInfo.relPath.toLowerCase().endsWith('.bin')) {
+              const relPath = fileInfo.relPath.toLowerCase();
+              if (relPath.includes('skin')) {
+                const skinMatch = relPath.match(/\/skins\/skin(\d+)\.bin/);
+                if (skinMatch) {
+                  const currentSkinId = parseInt(skinMatch[1]);
+                  if (currentSkinId === skinId) {
+                    binSelections[unifyFile] = true;
+                    selectedCount++;
+                    console.log(`  ✅ Selected: ${fileInfo.relPath} (skin ${currentSkinId})`);
+                  }
+                }
+              }
+            }
+          }
+
+          bumInstance.updateBinSelection(binSelections);
+          console.log(`📋 Marked ${selectedCount} BIN files for skin ${skinId}`);
+
+          // Scan
+          console.log(`🔍 Scanning BIN files for skin ${skinId}...`);
+          await bumInstance.scan(hashPath);
+          console.log(`✅ Found ${Object.keys(bumInstance.scannedTree).length} entries`);
+
+          // Apply custom prefix if provided
+          if (customPrefix !== 'bum') {
+            console.log(`🏷️  Applying custom prefix '${customPrefix}' to all entries...`);
+            const allEntryHashes = Object.keys(bumInstance.entryPrefix).filter(hash => hash !== 'All_BINs');
+            bumInstance.applyPrefix(allEntryHashes, customPrefix);
+          }
+
+          // Process
+          console.log(`⚙️  Starting Bumpath process for skin ${skinId}...`);
+          await bumInstance.process(outputDir, ignoreMissing, combineLinked, progressCallback);
+          console.log(`✅ Completed skin ${skinId}`);
+
+          results.push({ skinId, success: true });
+        }
+
+        console.log('✅ Bumpath repath completed for all skins');
+        return {
+          success: true,
+          message: `Processed ${selectedSkinIds.length} skins individually`,
+          results
+        };
+      }
     } catch (error) {
-      console.error('Bumpath repath error:', error);
-      return { success: false, error: error.message };
+      console.error('❌ Bumpath repath error:', error);
+      return { success: false, error: error.message, stack: error.stack };
     }
   };
 
@@ -1337,29 +1467,29 @@ const FrogChanger = () => {
     try {
       const splashUrl = `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${championAlias}_${skinId}.jpg`;
       const response = await fetch(splashUrl);
-      
+
       if (!response.ok) {
         throw new Error(`Failed to fetch splash art: ${response.status}`);
       }
-      
+
       const blob = await response.blob();
       const fileName = `${championName}_${skinName.replace(/[^a-zA-Z0-9]/g, '_')}_splash.jpg`;
       const filePath = `${extractionPath}\\${fileName}`;
-      
+
       // Use Node.js fs module directly (since nodeIntegration is enabled)
       const arrayBuffer = await blob.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-      
+
       if (window.require) {
         const fs = window.require('fs');
         fs.writeFileSync(filePath, buffer);
       } else {
         throw new Error('Node.js fs module not available');
       }
-      
+
       console.log(`Splash art downloaded: ${filePath}`);
       alert(`Splash art downloaded successfully!\nSaved to: ${filePath}`);
-      
+
     } catch (error) {
       console.error('Splash art download error:', error);
       alert(`Failed to download splash art: ${error.message}`);
@@ -1375,12 +1505,12 @@ const FrogChanger = () => {
       'nunu & willump': 'nunu',
       'nunu': 'nunu' // In case someone searches for nunu directly
     };
-    
+
     const lowerName = championName.toLowerCase();
     if (specialCases[lowerName]) {
       return specialCases[lowerName];
     }
-    
+
     // Default: remove apostrophes, quotes, and spaces from all champion names
     return lowerName.replace(/['"\s]/g, '');
   };
@@ -1391,26 +1521,26 @@ const FrogChanger = () => {
       try {
         const fs = window.require('fs');
         const path = window.require('path');
-        
+
         // Read the directory and find all WAD files that start with the champion name
         const files = fs.readdirSync(leaguePath);
         console.log(`All WAD files in directory:`, files.filter(f => f.endsWith('.wad.client')));
-        
+
         // Use file-safe name for matching
         const championFileName = getChampionFileName(championName);
         console.log(`Looking for files starting with: ${championFileName} (from display name: ${championName})`);
-        
+
         const championWadFiles = files.filter(file => {
           const lowerCaseFile = file.toLowerCase();
-          return lowerCaseFile.startsWith(championFileName) && 
-                 lowerCaseFile.endsWith('.wad.client') &&
-                 lowerCaseFile !== `${championFileName}.wad.client` && // Exclude the main WAD file
-                 // Ensure the champion name is followed by a dot or underscore (not just any character)
-                 (file.charAt(championFileName.length) === '.' || file.charAt(championFileName.length) === '_');
+          return lowerCaseFile.startsWith(championFileName) &&
+            lowerCaseFile.endsWith('.wad.client') &&
+            lowerCaseFile !== `${championFileName}.wad.client` && // Exclude the main WAD file
+            // Ensure the champion name is followed by a dot or underscore (not just any character)
+            (file.charAt(championFileName.length) === '.' || file.charAt(championFileName.length) === '_');
         });
-        
+
         console.log(`Filtered voiceover WAD files:`, championWadFiles);
-        
+
         if (championWadFiles.length > 0) {
           console.log(`Found ${championWadFiles.length} voiceover WAD(s) for ${championName}:`, championWadFiles);
           return championWadFiles; // Return array of all voiceover WAD files
@@ -1426,29 +1556,32 @@ const FrogChanger = () => {
       // Fallback: try common language patterns
       const commonLanguages = ['en_US', 'en_GB', 'de_DE', 'es_ES', 'fr_FR'];
       const fallbackFiles = [];
-      
+
       for (const lang of commonLanguages) {
         const voiceoverFileName = `${championName}.${lang}.wad.client`;
         fallbackFiles.push(voiceoverFileName);
       }
-      
+
       console.log(`Using fallback voiceover files for ${championName}:`, fallbackFiles);
       return fallbackFiles;
     }
   };
 
   const extractWadFile = async (championName, skinId, skinName = null, chromaId = null) => {
+    console.log('🎯 extractWadFile called:', { championName, skinId, skinName, chromaId });
+
     if (!leaguePath) {
       alert('Please set the League of Legends Games folder path in settings first!');
       return;
     }
-    
+
     if (!extractionPath) {
       alert('Please set the WAD extraction output path in settings first!');
       return;
     }
 
     const skinKey = `${championName}_${skinId}`;
+    console.log('📝 Setting extraction state for:', skinKey);
     setExtractingSkins(prev => ({ ...prev, [skinKey]: true }));
     setExtractionProgress(prev => ({ ...prev, [skinKey]: 'Starting extraction...' }));
 
@@ -1458,135 +1591,121 @@ const FrogChanger = () => {
       const championFileName = getChampionFileName(championName);
       const wadFileName = `${championFileName}.wad.client`;
       const wadFilePath = `${leaguePath}\\${wadFileName}`;
-      
+
       // Find all voiceover WAD files for this champion
       const voiceoverWadFiles = await findChampionWadFiles(championName, leaguePath);
-      
+
       // Construct the output directory path (include chroma ID if specified)
       const skinNameSafe = skinName ? skinName.replace(/[^a-zA-Z0-9]/g, '_') : skinId;
-      const outputDir = chromaId 
+      const outputDir = chromaId
         ? `${extractionPath}\\${championFileName}_extracted_${skinNameSafe}_chroma_${chromaId}`
         : `${extractionPath}\\${championFileName}_extracted_${skinNameSafe}`;
 
       setExtractionProgress(prev => ({ ...prev, [skinKey]: 'Reading WAD files...' }));
 
-      // Use Electron IPC to call the backend (same as Bumpath)
-      let result;
-      if (window.require) {
-        const { ipcRenderer } = window.require('electron');
-        const requestData = {
-          wadPath: wadFilePath,
-          outputDir: outputDir,
-          skinId: skinId,
-          chromaId: chromaId,
-          hashPath: hashPath
-        };
-        console.log('🎯 Sending WAD extraction request:', requestData);
-        console.log('🎯 Hash path being sent:', hashPath);
-        result = await ipcRenderer.invoke('wad:extract', requestData);
-      } else {
-        // Fallback to direct HTTP request for development
-        const response = await fetch('http://localhost:5001/api/extract-wad', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            wadPath: wadFilePath,
-            outputDir: outputDir,
-            skinId: skinId,
-            hashPath: hashPath
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`Extraction failed: ${response.statusText}`);
+      // Load hashtables if hash path is available
+      let hashtables = null;
+      if (hashPath && window.require) {
+        const fs = window.require('fs');
+        try {
+          await fs.promises.access(hashPath);
+          // Path exists, load hashtables
+          try {
+            console.log('📚 Loading hashtables from:', hashPath);
+            hashtables = await loadHashtables(hashPath);
+            console.log('✅ Hashtables loaded successfully');
+          } catch (hashError) {
+            console.warn('⚠️ Failed to load hashtables, continuing without them:', hashError.message);
+            console.error('Hashtable error details:', hashError);
+          }
+        } catch (accessError) {
+          console.log('ℹ️ Hashtable path does not exist, continuing without hashtables');
         }
-
-        result = await response.json();
       }
 
-      if (result.error) {
-        throw new Error(result.error);
+      // Progress callback - throttled to reduce React re-renders
+      let lastProgressUpdate = 0;
+      const progressCallback = (count, message) => {
+        const now = Date.now();
+        // Only update UI every 500ms to reduce re-renders
+        if (message && (now - lastProgressUpdate > 500 || message.includes('Complete') || message.includes('Starting'))) {
+          lastProgressUpdate = now;
+          setExtractionProgress(prev => ({ ...prev, [skinKey]: message }));
+        }
+      };
+
+      // Verify WAD file exists before extraction
+      if (window.require) {
+        const fs = window.require('fs');
+        try {
+          await fs.promises.access(wadFilePath);
+          console.log('✅ WAD file found:', wadFilePath);
+        } catch (error) {
+          throw new Error(`WAD file not found: ${wadFilePath}`);
+        }
       }
-      
-      // Check if operation was cancelled
-      if (result.cancelled) {
-        console.log('WAD extraction was cancelled');
-        setExtractionProgress(prev => ({ ...prev, [skinKey]: 'Cancelled' }));
-        return; // Don't throw error for cancellation
+
+      // Extract WAD file using JavaScript implementation
+      console.log('🚀 Starting WAD extraction with JavaScript implementation...');
+      console.log('📁 WAD file:', wadFilePath);
+      console.log('📁 Output directory:', outputDir);
+      console.log('📁 Has hashtables:', !!hashtables);
+      setExtractionProgress(prev => ({ ...prev, [skinKey]: 'Extracting WAD file...' }));
+
+      let result;
+      try {
+        console.log('📦 Calling unpackWAD...');
+        result = await unpackWAD(
+          wadFilePath,
+          outputDir,
+          hashtables,
+          null, // no filter
+          progressCallback
+        );
+        console.log('✅ unpackWAD returned:', result);
+      } catch (unpackError) {
+        console.error('❌ unpackWAD threw an error:', unpackError);
+        console.error('Error stack:', unpackError.stack);
+        throw unpackError; // Re-throw to be caught by outer catch
       }
-      
+
+      console.log('✅ WAD extraction completed:', {
+        extractedCount: result.extractedCount,
+        outputDir: result.outputDir
+      });
+
+      setExtractionProgress(prev => ({ ...prev, [skinKey]: `Extracted ${result.extractedCount} files successfully!` }));
+
       // Extract all voiceover WAD files if they exist and voiceover extraction is enabled
       if (voiceoverWadFiles.length > 0 && extractVoiceover) {
         console.log(`Processing ${voiceoverWadFiles.length} voiceover WAD files:`, voiceoverWadFiles);
         setExtractionProgress(prev => ({ ...prev, [skinKey]: `Normal WAD extracted, extracting ${voiceoverWadFiles.length} voiceover WAD(s)...` }));
-        
+
         let successfulExtractions = 0;
         let failedExtractions = 0;
-        
+
         for (const voiceoverWadFileName of voiceoverWadFiles) {
           const voiceoverWadFilePath = `${leaguePath}\\${voiceoverWadFileName}`;
-          
-          try {
-            if (window.require) {
-              const { ipcRenderer } = window.require('electron');
-              const voiceoverRequestData = {
-                wadPath: voiceoverWadFilePath,
-                outputDir: outputDir, // Same output directory
-                skinId: skinId,
-                chromaId: chromaId,
-                hashPath: hashPath
-              };
-              console.log('🎯 Sending voiceover WAD extraction request:', voiceoverRequestData);
-              const voiceoverResult = await ipcRenderer.invoke('wad:extract', voiceoverRequestData);
-              
-              if (voiceoverResult.error) {
-                console.warn(`Voiceover WAD extraction failed for ${voiceoverWadFileName}:`, voiceoverResult.error);
-                failedExtractions++;
-              } else if (voiceoverResult.cancelled) {
-                console.log(`Voiceover WAD extraction was cancelled for ${voiceoverWadFileName}`);
-                break; // Stop processing remaining files
-              } else {
-                console.log(`Successfully extracted voiceover WAD: ${voiceoverWadFileName}`);
-                successfulExtractions++;
-              }
-            } else {
-              // Fallback to direct HTTP request for development
-              const voiceoverResponse = await fetch('http://localhost:5001/api/extract-wad', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  wadPath: voiceoverWadFilePath,
-                  outputDir: outputDir, // Same output directory
-                  skinId: skinId,
-                  chromaId: chromaId,
-                  hashPath: hashPath
-                }),
-              });
 
-              if (voiceoverResponse.ok) {
-                const voiceoverResult = await voiceoverResponse.json();
-                if (voiceoverResult.error) {
-                  console.warn(`Voiceover WAD extraction failed for ${voiceoverWadFileName}:`, voiceoverResult.error);
-                  failedExtractions++;
-                } else {
-                  console.log(`Successfully extracted voiceover WAD: ${voiceoverWadFileName}`);
-                  successfulExtractions++;
-                }
-              } else {
-                console.warn(`Voiceover WAD extraction failed for ${voiceoverWadFileName}:`, voiceoverResponse.statusText);
-                failedExtractions++;
-              }
-            }
+          try {
+            // Extract voiceover WAD using JavaScript implementation
+            console.log(`🚀 Extracting voiceover WAD: ${voiceoverWadFileName}`);
+            const voiceoverResult = await unpackWAD(
+              voiceoverWadFilePath,
+              outputDir, // Same output directory
+              hashtables, // Reuse same hashtables
+              null, // no filter
+              progressCallback
+            );
+
+            console.log(`✅ Successfully extracted voiceover WAD: ${voiceoverWadFileName}`);
+            successfulExtractions++;
           } catch (voiceoverError) {
             console.warn(`Voiceover WAD extraction failed for ${voiceoverWadFileName}:`, voiceoverError);
             failedExtractions++;
           }
         }
-        
+
         // Update progress based on results
         if (successfulExtractions > 0 && failedExtractions === 0) {
           setExtractionProgress(prev => ({ ...prev, [skinKey]: `Normal WAD + ${successfulExtractions} voiceover WAD(s) extracted successfully!` }));
@@ -1600,11 +1719,19 @@ const FrogChanger = () => {
       } else {
         setExtractionProgress(prev => ({ ...prev, [skinKey]: 'Normal WAD extracted successfully!' }));
       }
-      
+
     } catch (error) {
-      console.error('WAD extraction error:', error);
+      console.error('❌ WAD extraction error:', error);
+      console.error('Error stack:', error.stack);
+      console.error('Error details:', {
+        message: error.message,
+        name: error.name,
+        championName,
+        skinId,
+        wadFilePath: `${leaguePath}\\${getChampionFileName(championName)}.wad.client`
+      });
       setExtractionProgress(prev => ({ ...prev, [skinKey]: `Error: ${error.message}` }));
-      alert(`Failed to extract WAD file: ${error.message}`);
+      alert(`Failed to extract WAD file: ${error.message}\n\nCheck console for details.`);
     } finally {
       setExtractingSkins(prev => ({ ...prev, [skinKey]: false }));
     }
@@ -1612,27 +1739,26 @@ const FrogChanger = () => {
 
   const getChampionIconUrl = (championId) => {
     const url = `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${championId}.png`;
-    console.log(`Champion icon URL for ID ${championId}:`, url);
     return url;
   };
 
   // Get rarity icon URL based on skin rarity
   const getRarityIconUrl = (skin) => {
     const rarity = skin?.rarity;
-    
+
     if (!rarity || rarity === 'kNoRarity') {
       return 'https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/rarity-gem-icons/cn-gem-1.png';
     }
-    
+
     const rarityIconMap = {
       'kEpic': 'epic.png',
-      'kLegendary': 'legendary.png', 
+      'kLegendary': 'legendary.png',
       'kMythic': 'mythic.png',
       'kUltimate': 'ultimate.png',
       'kExalted': 'exalted.png',
       'kTranscendent': 'transcendent.png'
     };
-    
+
     const iconFile = rarityIconMap[rarity] || 'cn-gem-1.png';
     return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/rarity-gem-icons/${iconFile}`;
   };
@@ -1642,7 +1768,7 @@ const FrogChanger = () => {
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
-                  <p className="text-green-400">Loading Asset Extractor...</p>
+          <p className="text-green-400">Loading Asset Extractor...</p>
         </div>
       </div>
     );
@@ -1655,7 +1781,7 @@ const FrogChanger = () => {
           <div className="w-16 h-16 text-red-500 mx-auto mb-4">⚠️</div>
           <h2 className="text-2xl font-bold mb-2 text-red-400">Connection Error</h2>
           <p className="text-gray-400 mb-4">{error}</p>
-          <button 
+          <button
             onClick={loadChampions}
             className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all duration-200"
           >
@@ -1683,7 +1809,7 @@ const FrogChanger = () => {
                 ✕
               </button>
             </div>
-            
+
             <div className="space-y-4 text-sm text-gray-300">
               <div>
                 <h4 className="font-semibold text-green-400 mb-2">🔍 Search by Skinline:</h4>
@@ -1695,7 +1821,7 @@ const FrogChanger = () => {
                   <li>• <span className="text-blue-400">Project:</span> - Find all Project skins</li>
                 </ul>
               </div>
-              
+
               <div>
                 <h4 className="font-semibold text-purple-400 mb-2">💎 Search by Rarity:</h4>
                 <ul className="space-y-1 ml-4">
@@ -1706,10 +1832,10 @@ const FrogChanger = () => {
                   <li>• <span className="text-cyan-400">Base</span> - Find all base tier skins</li>
                 </ul>
               </div>
-              
+
               <div className="bg-gray-800 p-3 rounded border-l-4 border-green-400">
                 <p className="text-xs text-gray-400">
-                  <strong>Tip:</strong> You can search for skinlines OR rarities in the same search bar. 
+                  <strong>Tip:</strong> You can search for skinlines OR rarities in the same search bar.
                   The search will find skins that match either the skinline name OR the rarity tier.
                 </p>
               </div>
@@ -1771,9 +1897,8 @@ const FrogChanger = () => {
               <button
                 key={champion.id}
                 onClick={() => handleChampionSelect(champion)}
-                className={`w-full flex items-center gap-3 p-2 rounded-lg text-left transition-all duration-200 hover:bg-gray-800 hover:border-l-4 hover:border-green-400 group ${
-                  selectedChampion?.id === champion.id ? "bg-gray-800 border-l-4 border-green-400" : ""
-                }`}
+                className={`w-full flex items-center gap-3 p-2 rounded-lg text-left transition-all duration-200 hover:bg-gray-800 hover:border-l-4 hover:border-green-400 group ${selectedChampion?.id === champion.id ? "bg-gray-800 border-l-4 border-green-400" : ""
+                  }`}
               >
                 <img
                   src={getChampionIconUrl(champion.id)}
@@ -1809,7 +1934,7 @@ const FrogChanger = () => {
                 </div>
               </div>
             </div>
-            
+
             {/* Search Info Button */}
             <button
               className="p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-900/20 rounded-lg transition-all duration-200"
@@ -1818,7 +1943,7 @@ const FrogChanger = () => {
             >
               ℹ️
             </button>
-            
+
             {/* Stop Button */}
             {(isExtracting || isRepathing) && (
               <button
@@ -1830,7 +1955,7 @@ const FrogChanger = () => {
                 {isCancelling ? '⏳' : '⏹️'}
               </button>
             )}
-            
+
             <button
               className="p-2 text-gray-400 hover:text-green-400 hover:bg-gray-800 rounded-lg transition-all duration-200"
               onClick={() => setShowSettings(true)}
@@ -1866,16 +1991,15 @@ const FrogChanger = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {skinlineSearchResults.flatMap(({ champion, skins }) => 
+                  {skinlineSearchResults.flatMap(({ champion, skins }) =>
                     skins.map((skin) => (
                       <div
                         key={`${champion.name}-${skin.id}`}
                         onClick={() => handleSkinlineSkinClick(champion, skin)}
-                        className={`group relative bg-gray-800 rounded-lg overflow-visible border cursor-pointer transition-all duration-75 ${
-                          selectedSkins.some(s => s.name === skin.name && s.champion?.name === champion.name)
+                        className={`group relative bg-gray-800 rounded-lg overflow-visible border cursor-pointer transition-all duration-75 ${selectedSkins.some(s => s.name === skin.name && s.champion?.name === champion.name)
                             ? "border-green-400 shadow-lg shadow-green-400/25"
                             : "border-gray-700 hover:border-green-400 hover:shadow-lg hover:shadow-green-400/25"
-                        }`}
+                          }`}
                       >
                         <div className="aspect-[3/4] relative overflow-hidden">
                           <img
@@ -1932,21 +2056,21 @@ const FrogChanger = () => {
                             {skin.name}
                           </h3>
                           <p className="text-xs text-gray-400 mt-1">Skin ID: {skin.skinNumber}</p>
-                          
+
                           {/* Chroma dots */}
                           {(() => {
                             const skinKey = `${champion.name}_${skin.skinNumber}`;
                             const chromas = chromaData[skinKey] || [];
-                            
+
                             if (chromas.length === 0) {
                               return null;
                             }
-                            
+
                             return (
                               <div className="chroma-container mt-2">
                                 {chromas.map((chroma, index) => {
                                   const isSelected = selectedChromas[skinKey]?.id === chroma.id;
-                                  
+
                                   return (
                                     <div
                                       key={chroma.id}
@@ -1964,8 +2088,8 @@ const FrogChanger = () => {
                                       >
                                         <div className="chroma-tooltip">
                                           <div className="chroma-preview-image">
-                                            <img 
-                                              src={chroma.image_url} 
+                                            <img
+                                              src={chroma.image_url}
                                               alt={chroma.name || `Chroma ${index + 1}`}
                                               className="w-32 h-32 object-cover rounded"
                                               onError={(e) => {
@@ -2020,11 +2144,10 @@ const FrogChanger = () => {
                     <div
                       key={`${selectedChampion?.name}-${skin.id}`}
                       onClick={() => handleSkinClick(skin.name)}
-                      className={`group relative bg-gray-900 rounded-lg overflow-visible border cursor-pointer transition-all duration-75 ${
-                        selectedSkins.some(s => typeof s === 'string' ? s === skin.name : s.name === skin.name)
+                      className={`group relative bg-gray-900 rounded-lg overflow-visible border cursor-pointer transition-all duration-75 ${selectedSkins.some(s => typeof s === 'string' ? s === skin.name : s.name === skin.name)
                           ? "border-green-400 shadow-lg shadow-green-400/25"
                           : "border-gray-700 hover:border-green-400 hover:shadow-lg hover:shadow-green-400/25"
-                      }`}
+                        }`}
                     >
                       <div className="aspect-[3/4] relative overflow-hidden">
                         <img
@@ -2051,20 +2174,20 @@ const FrogChanger = () => {
                             SELECTED
                           </div>
                         )}
-                        
+
                         {/* Extraction status indicators */}
                         {extractingSkins[`${selectedChampion?.name}_${skin.id}`] && (
                           <div className="absolute top-10 left-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-bold">
                             EXTRACTING...
                           </div>
                         )}
-                        
+
                         {extractionProgress[`${selectedChampion?.name}_${skin.id}`] && !extractingSkins[`${selectedChampion?.name}_${skin.id}`] && (
                           <div className="absolute bottom-2 left-2 right-2 bg-gray-800 text-green-400 px-2 py-1 rounded text-xs">
                             {extractionProgress[`${selectedChampion?.name}_${skin.id}`]}
                           </div>
                         )}
-                        
+
                         {/* Download Splash Art Button - Bottom Right */}
                         <button
                           onClick={(e) => {
@@ -2085,26 +2208,25 @@ const FrogChanger = () => {
                           {skin.name}
                         </h3>
                         <p className="text-xs text-gray-400 mt-1">ID: {skin.id}</p>
-                        
+
                         {/* Chroma dots */}
                         {(() => {
                           const skinKey = `${selectedChampion?.name}_${skin.id}`;
                           const chromas = chromaData[skinKey] || [];
-                          
+
                           // Debug logging
                           if (chromas.length > 0) {
-                            console.log(`Found ${chromas.length} chromas for ${skinKey}:`, chromas);
                           }
-                          
+
                           if (chromas.length === 0) {
                             return null;
                           }
-                          
+
                           return (
                             <div className="chroma-container">
                               {chromas.map((chroma, index) => {
                                 const isSelected = selectedChromas[skinKey]?.id === chroma.id;
-                                
+
                                 return (
                                   <div
                                     key={chroma.id}
@@ -2122,8 +2244,8 @@ const FrogChanger = () => {
                                     >
                                       <div className="chroma-tooltip">
                                         <div className="chroma-preview-image">
-                                          <img 
-                                            src={chroma.image_url} 
+                                          <img
+                                            src={chroma.image_url}
                                             alt={chroma.name || `Chroma ${index + 1}`}
                                             className="w-32 h-32 object-cover rounded"
                                             onError={(e) => {
@@ -2132,7 +2254,7 @@ const FrogChanger = () => {
                                           />
                                         </div>
                                         <div className="chroma-preview-name">
-                                        {chroma.name || `Chroma ${index + 1}`}
+                                          {chroma.name || `Chroma ${index + 1}`}
                                         </div>
                                         <div className="chroma-preview-ids">
                                           <div className="text-xs text-gray-300">
@@ -2147,7 +2269,7 @@ const FrogChanger = () => {
                             </div>
                           );
                         })()}
-                        
+
                       </div>
                     </div>
                   ))}
@@ -2178,8 +2300,8 @@ const FrogChanger = () => {
                 <div className="text-white text-sm">
                   {selectedSkins.map((skin, index) => (
                     <span key={index}>
-                      {typeof skin === 'string' 
-                        ? skin 
+                      {typeof skin === 'string'
+                        ? skin
                         : `${skin.name}${skin.champion?.name ? ` (${skin.champion.name})` : ''}`
                       }
                       {index < selectedSkins.length - 1 && ', '}
@@ -2268,7 +2390,7 @@ const FrogChanger = () => {
                     </button>
                     {showLeaguePathTooltip && (
                       <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg z-10 border border-gray-600 shadow-lg max-w-xs">
-                        Select the Champions folder inside your League of Legends directory<br/>
+                        Select the Champions folder inside your League of Legends directory<br />
                         Example: C:\Riot Games\League of Legends\Game\DATA\FINAL\Champions
                       </div>
                     )}
@@ -2276,7 +2398,7 @@ const FrogChanger = () => {
                 </h3>
                 <div className="flex flex-col gap-2">
                   <div className="flex gap-2">
-                    <button 
+                    <button
                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm flex items-center gap-1"
                       onClick={async () => {
                         try {
@@ -2299,7 +2421,7 @@ const FrogChanger = () => {
                     >
                       🔍 Auto-Detect
                     </button>
-                    <button 
+                    <button
                       className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-sm flex items-center gap-1"
                       onClick={async () => {
                         try {
@@ -2340,14 +2462,14 @@ const FrogChanger = () => {
                     </button>
                     {showExtractionPathTooltip && (
                       <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg z-10 border border-gray-600 shadow-lg max-w-xs">
-                        Select where extracted WAD files should be saved<br/>
+                        Select where extracted WAD files should be saved<br />
                         Example: C:\Users\YourName\Desktop\ExtractedWADs
                       </div>
                     )}
                   </div>
                 </h3>
                 <div className="flex gap-2">
-                  <button 
+                  <button
                     className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-sm flex items-center gap-1"
                     onClick={async () => {
                       try {
@@ -2413,17 +2535,16 @@ const FrogChanger = () => {
                       await electronPrefs.save();
                       console.log('Voiceover extraction setting saved:', newValue);
                     }}
-                    className={`px-3 py-1.5 rounded text-sm flex items-center gap-1 transition-all duration-200 ${
-                      extractVoiceover 
-                        ? 'bg-green-600 hover:bg-green-700 text-white' 
+                    className={`px-3 py-1.5 rounded text-sm flex items-center gap-1 transition-all duration-200 ${extractVoiceover
+                        ? 'bg-green-600 hover:bg-green-700 text-white'
                         : 'bg-gray-600 hover:bg-gray-700 text-gray-300'
-                    }`}
+                      }`}
                   >
                     {extractVoiceover ? '✅ Enabled' : '❌ Disabled'}
                   </button>
                   <div className="text-xs text-gray-400">
-                    {extractVoiceover 
-                      ? 'Voiceover files will be extracted' 
+                    {extractVoiceover
+                      ? 'Voiceover files will be extracted'
                       : 'Only normal WAD files will be extracted'
                     }
                   </div>
@@ -2444,7 +2565,7 @@ const FrogChanger = () => {
               </button>
             </div>
           </div>
-          
+
           {/* Floating Celestia trigger button */}
           {!showCelestiaGuide && (
             <Tooltip title="Celestia guide" placement="left" arrow>
@@ -2528,7 +2649,7 @@ const FrogChanger = () => {
                   <div className="relative group">
                     <span className="text-blue-400 cursor-help text-xs">ℹ️</span>
                     <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10 border border-gray-600">
-                      Enter a custom prefix for this skin's entries<br/>
+                      Enter a custom prefix for this skin's entries<br />
                       Leave empty to use default "bum" prefix
                     </div>
                   </div>
@@ -2659,7 +2780,7 @@ const FrogChanger = () => {
               <div className="absolute inset-0 bg-gradient-to-r from-red-500/20 via-orange-500/20 to-red-500/20 animate-pulse" />
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 via-orange-500 to-red-500 animate-shimmer" />
             </div>
-            
+
             <div className="relative z-10">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center animate-bounce">
@@ -2667,7 +2788,7 @@ const FrogChanger = () => {
                 </div>
                 <h2 className="text-2xl font-bold text-white">Setup Required</h2>
               </div>
-              
+
               <div className="mb-4 space-y-2">
                 <p className="text-white/90 text-sm">
                   Before you can extract or repath skins, you need to configure:
@@ -2684,7 +2805,7 @@ const FrogChanger = () => {
                   )}
                 </ul>
               </div>
-              
+
               <div className="flex items-center gap-2 mb-4">
                 <input
                   type="checkbox"
@@ -2697,7 +2818,7 @@ const FrogChanger = () => {
                   Don't show this warning again
                 </label>
               </div>
-              
+
               <div className="flex gap-3">
                 <button
                   onClick={() => {

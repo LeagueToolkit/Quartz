@@ -1,5 +1,11 @@
 // Comprehensive theme manager that applies CSS variables to :root and provides MUI theme generation
 
+export const STYLES = {
+  QUARTZ: 'quartz',
+  WINFORMS: 'winforms',
+  CS16: 'cs16'
+};
+
 const THEMES = {
   // Current main theme (purple + gold)
   amethyst: {
@@ -31,7 +37,6 @@ const THEMES = {
     accentGreen: '#22c55e',
     accentGreenMuted: '#166534'
   },
-  // bluePurple removed
   // Neutral theme
   onyx: {
     accent: '#c3cedaff',
@@ -61,8 +66,7 @@ const THEMES = {
     muiDivider: '#2b3340',
     accentGreen: '#22c55e',
     accentGreenMuted: '#14532d'
-  }
-  ,
+  },
   // Neon theme (cyan + pink)
   neon: {
     accent: '#06b6d4',
@@ -147,7 +151,6 @@ const THEMES = {
     accentGreen: '#84cc16',
     accentGreenMuted: '#3f6212'
   },
-  // midnight removed
   // Charcoal Olive theme (graphite → olive gradient)
   charcoalOlive: {
     accent: '#b7bdbd',
@@ -299,7 +302,68 @@ const THEMES = {
     // Success accents
     accentGreen: '#22c55e',
     accentGreenMuted: '#166534'
+  },
+  // Classic Gray (Windows Dark Mode Style)
+  classicGray: {
+    accent: '#60cdff', // Windows 11 Blue
+    accent2: '#a0a0a0', // Light Gray
+    accentMuted: '#4cc2ff', // Muted Blue
+    bg: '#202020', // Dark Gray Background
+    bg2: '#2b2b2b', // Slightly lighter
+    surface: '#2b2b2b', // Dark Surface (Card/Window)
+    surface2: '#323232', // Lighter Surface
+    text: '#ffffff', // White Text
+    text2: '#d0d0d0', // Off-white Text
+    glassBg: '#202020', // Opaque
+    glassBorder: '#404040', // Dark Border
+    glassShadow: 'none',
+    // MUI
+    muiPrimary: '#60cdff',
+    muiPrimaryLight: '#8ad8ff',
+    muiPrimaryDark: '#0094d8',
+    muiSecondary: '#a0a0a0',
+    muiSecondaryLight: '#bfbfbf',
+    muiSecondaryDark: '#707070',
+    muiBackground: '#202020',
+    muiPaper: '#2b2b2b',
+    muiTextPrimary: '#ffffff',
+    muiTextSecondary: '#d0d0d0',
+    muiDivider: '#454545',
+    // Accents
+    accentGreen: '#6cc200',
+    accentGreenMuted: '#529400'
   }
+};
+
+// CS 1.6 Hardcoded Palette (Locked)
+const CS16_PALETTE = {
+  accent: '#c4b550', // Gold
+  accent2: '#958831', // Darker Gold
+  accentMuted: '#75806f', // Muted/Disabled
+  bg: '#4a5942', // Olive Green
+  bg2: '#3e4637', // Darker Olive
+  surface: '#3e4637', // Darker Olive
+  surface2: '#292c21', // Darkest Olive/Black
+  text: '#dedfd6', // Off-white
+  text2: '#a0aa95', // Muted Text
+  glassBg: '#4a5942', // Opaque
+  glassBorder: '#8c9284', // Light Border
+  glassShadow: 'none',
+  // MUI Colors
+  muiPrimary: '#c4b550',
+  muiPrimaryLight: '#e0d478',
+  muiPrimaryDark: '#958831',
+  muiSecondary: '#d8ded3',
+  muiSecondaryLight: '#edf2e9',
+  muiSecondaryDark: '#a0aa95',
+  muiBackground: '#4a5942',
+  muiPaper: '#3e4637',
+  muiTextPrimary: '#dedfd6',
+  muiTextSecondary: '#a0aa95',
+  muiDivider: '#292c21',
+  // Accents
+  accentGreen: '#c4b550',
+  accentGreenMuted: '#958831'
 };
 
 // Optional Electron preferences import (guarded)
@@ -395,22 +459,42 @@ export function applyThemeFromObject(themeObject = {}) {
   root.style.setProperty('--surface-gradient', `linear-gradient(135deg, ${t.surface2} 0%, ${t.bg} 100%)`);
 }
 
-export function applyThemeVariables(variant = 'onyx') {
-  // Handle custom variant reference like 'custom:MyTheme'
-  if (typeof variant === 'string' && variant.startsWith('custom:') && electronPrefs && electronPrefs.obj) {
-    const name = variant.slice('custom:'.length);
-    const all = electronPrefs.obj.CustomThemes || {};
-    const t = all[name];
-    if (t) {
-      applyThemeFromObject(t);
-      return;
-    }
-  }
-  const theme = THEMES[variant] || THEMES.onyx;
+/**
+ * Applies both Interface Style and Color Theme
+ * @param {string} themeName - Name of the color theme (onyx, amethyst, etc.)
+ * @param {string} styleName - Name of the style (quartz, winforms, cs16)
+ */
+export function applyThemeVariables(themeName = 'onyx', styleName = STYLES.QUARTZ) {
   const root = document.documentElement;
-  const appliedVariant = THEMES[variant] ? variant : 'onyx';
-  root.setAttribute('data-theme', appliedVariant);
-  
+
+  // Set Interface Style
+  root.setAttribute('data-style', styleName);
+
+  let theme;
+
+  // 1. Check if CS1.6 Style is active -> Enforce Locked Palette
+  if (styleName === STYLES.CS16) {
+    theme = CS16_PALETTE;
+    // We still set data-theme for consistency, but colors are overridden by the palette below
+    root.setAttribute('data-theme', 'cs16');
+  } else {
+    // 2. Handle Custom Theme
+    if (typeof themeName === 'string' && themeName.startsWith('custom:') && electronPrefs && electronPrefs.obj) {
+      const name = themeName.slice('custom:'.length);
+      const all = electronPrefs.obj.CustomThemes || {};
+      const t = all[name];
+      if (t) {
+        applyThemeFromObject(t);
+        return;
+      }
+    }
+
+    // 3. Fallback to built-in theme
+    theme = THEMES[themeName] || THEMES.onyx;
+    const appliedTheme = THEMES[themeName] ? themeName : 'onyx';
+    root.setAttribute('data-theme', appliedTheme);
+  }
+
   // Core theme variables
   root.style.setProperty('--accent', theme.accent);
   root.style.setProperty('--accent2', theme.accent2);
@@ -426,7 +510,7 @@ export function applyThemeVariables(variant = 'onyx') {
   root.style.setProperty('--glass-bg', theme.glassBg);
   root.style.setProperty('--glass-border', theme.glassBorder);
   root.style.setProperty('--glass-shadow', theme.glassShadow);
-  
+
   // MUI specific variables
   root.style.setProperty('--mui-primary', theme.muiPrimary);
   root.style.setProperty('--mui-primary-light', theme.muiPrimaryLight);
@@ -439,7 +523,7 @@ export function applyThemeVariables(variant = 'onyx') {
   root.style.setProperty('--mui-text-primary', theme.muiTextPrimary);
   root.style.setProperty('--mui-text-secondary', theme.muiTextSecondary);
   root.style.setProperty('--mui-divider', theme.muiDivider);
-  
+
   // Gradients
   root.style.setProperty('--accent-gradient', `linear-gradient(135deg, ${theme.accent}, ${theme.accentMuted})`);
   root.style.setProperty('--accent-gradient-subtle', `linear-gradient(135deg, ${theme.accent}33, ${theme.accentMuted}33)`);
@@ -447,8 +531,8 @@ export function applyThemeVariables(variant = 'onyx') {
 }
 
 // Get current theme object
-export function getCurrentTheme(variant = 'onyx') {
-  return THEMES[variant] || THEMES.onyx;
+export function getCurrentTheme(themeName = 'onyx') {
+  return THEMES[themeName] || THEMES.onyx;
 }
 
 // Get all available theme names
@@ -461,7 +545,7 @@ export function getCustomThemes() {
     if (electronPrefs && electronPrefs.obj) {
       return electronPrefs.obj.CustomThemes || {};
     }
-  } catch {}
+  } catch { }
   return {};
 }
 
@@ -494,6 +578,7 @@ export async function deleteCustomTheme(name) {
   }
 }
 
-export default { applyThemeVariables, applyThemeFromObject, getCustomThemes, setCustomTheme, deleteCustomTheme };
+export default { applyThemeVariables, applyThemeFromObject, getCustomThemes, setCustomTheme, deleteCustomTheme, STYLES };
+
 
 

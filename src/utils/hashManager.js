@@ -31,26 +31,42 @@ const BASE_URL = 'https://raw.githubusercontent.com/CommunityDragon/Data/master/
  * @returns {string} Path to hash directory
  */
 function getHashDirectory() {
-  const appDataPath = process.env.APPDATA || 
-    (process.platform === 'darwin' 
-      ? path.join(process.env.HOME, 'Library', 'Application Support')
-      : process.platform === 'linux'
-        ? path.join(process.env.HOME, '.local', 'share')
-        : path.join(process.env.HOME, 'AppData', 'Roaming'));
-  
-  // Create FrogTools directory first
-  const frogToolsDir = path.join(appDataPath, 'FrogTools');
-  if (!fs.existsSync(frogToolsDir)) {
-    fs.mkdirSync(frogToolsDir, { recursive: true });
+  try {
+    const appDataPath = process.env.APPDATA || 
+      (process.platform === 'darwin' 
+        ? path.join(process.env.HOME, 'Library', 'Application Support')
+        : process.platform === 'linux'
+          ? path.join(process.env.HOME, '.local', 'share')
+          : path.join(process.env.HOME, 'AppData', 'Roaming'));
+    
+    console.log('[hashManager] Resolving hash directory...');
+    console.log(`[hashManager]   - APPDATA: ${process.env.APPDATA || 'undefined'}`);
+    console.log(`[hashManager]   - HOME: ${process.env.HOME || 'undefined'}`);
+    console.log(`[hashManager]   - platform: ${process.platform}`);
+    console.log(`[hashManager]   - Resolved appDataPath: ${appDataPath}`);
+    
+    // Create FrogTools directory first
+    const frogToolsDir = path.join(appDataPath, 'FrogTools');
+    if (!fs.existsSync(frogToolsDir)) {
+      console.log(`[hashManager] Creating FrogTools directory: ${frogToolsDir}`);
+      fs.mkdirSync(frogToolsDir, { recursive: true });
+    }
+    
+    // Create hashes subfolder inside FrogTools
+    const hashDir = path.join(frogToolsDir, 'hashes');
+    if (!fs.existsSync(hashDir)) {
+      console.log(`[hashManager] Creating hashes directory: ${hashDir}`);
+      fs.mkdirSync(hashDir, { recursive: true });
+    }
+    
+    console.log(`[hashManager] ✓ Hash directory resolved: ${hashDir}`);
+    return hashDir;
+  } catch (error) {
+    console.error('[hashManager] ❌ Error getting hash directory:', error);
+    console.error('[hashManager]   - Error message:', error.message);
+    console.error('[hashManager]   - Error stack:', error.stack);
+    throw error;
   }
-  
-  // Create hashes subfolder inside FrogTools
-  const hashDir = path.join(frogToolsDir, 'hashes');
-  if (!fs.existsSync(hashDir)) {
-    fs.mkdirSync(hashDir, { recursive: true });
-  }
-  
-  return hashDir;
 }
 
 /**

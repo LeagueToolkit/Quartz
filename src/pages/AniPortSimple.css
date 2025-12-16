@@ -2,7 +2,8 @@
 
 /* Main Container */
 .aniport-container {
-  height: 100%; /* Use 100% of parent container instead of 100vh to account for title bar */
+  height: 100%;
+  /* Use 100% of parent container instead of 100vh to account for title bar */
   min-height: 100%;
   width: 100%;
   overflow: hidden;
@@ -22,11 +23,30 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: 
+  background:
     radial-gradient(circle at 20% 20%, var(--accent-gradient-subtle) 0%, transparent 50%),
     radial-gradient(circle at 80% 80%, var(--accent-gradient-subtle) 0%, transparent 50%);
   pointer-events: none;
   z-index: 0;
+}
+
+/* WinForms Overrides for Container */
+[data-style="winforms"] .aniport-container {
+  background: var(--surface) !important;
+}
+
+[data-style="winforms"] .aniport-container::before {
+  display: none !important;
+}
+
+/* CS 1.6 Overrides for Container */
+[data-style="cs16"] .aniport-container {
+  background: var(--bg) !important;
+  font-family: 'ArialPixel', system-ui, sans-serif !important;
+}
+
+[data-style="cs16"] .aniport-container::before {
+  display: none !important;
 }
 
 /* Loading Overlay */
@@ -131,7 +151,9 @@
   margin: 0.2rem 0;
 }
 
-.file-button, .combined-button, .load-button {
+.file-button,
+.combined-button,
+.load-button {
   flex: 1;
   background: color-mix(in srgb, var(--accent2), transparent 88%);
   border: 1px solid color-mix(in srgb, var(--accent2), transparent 72%);
@@ -156,11 +178,12 @@
   min-height: 48px;
 }
 
-.file-button:hover, .combined-button:hover {
+.file-button:hover,
+.combined-button:hover {
   background: color-mix(in srgb, var(--accent2), transparent 82%);
   border-color: color-mix(in srgb, var(--accent2), transparent 66%);
   transform: translateY(-2px);
-  box-shadow: 0 14px 34px rgba(0,0,0,0.45);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
 }
 
 .combined-button {
@@ -181,7 +204,7 @@
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
   transition: left 0.5s ease;
   z-index: 1;
 }
@@ -192,14 +215,14 @@
 
 .combined-button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 14px 34px rgba(0,0,0,0.45);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
   background: color-mix(in srgb, var(--accent2), transparent 80%);
   border-color: color-mix(in srgb, var(--accent2), transparent 50%);
 }
 
 .combined-button:active {
   transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
 }
 
 .load-section {
@@ -343,11 +366,11 @@
   padding: 5px 0;
 }
 
-.animation-list > * {
+.animation-list>* {
   margin-bottom: 8px;
 }
 
-.animation-list > *:last-child {
+.animation-list>*:last-child {
   margin-bottom: 0;
 }
 
@@ -695,7 +718,8 @@
   background: transparent;
 }
 
-.undo-button, .save-button {
+.undo-button,
+.save-button {
   flex: 1;
   padding: 8px 16px;
   border-radius: 0.4rem;
@@ -733,13 +757,13 @@
 }
 
 .save-button.has-changes {
-  background: linear-gradient(180deg, rgba(34,197,94,0.22), rgba(22,163,74,0.18));
-  border-color: rgba(34,197,94,0.32);
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.22), rgba(22, 163, 74, 0.18));
+  border-color: rgba(34, 197, 94, 0.32);
   color: #eaffef;
 }
 
 .save-button.has-changes:hover:not(.processing) {
-  background: linear-gradient(180deg, rgba(34,197,94,0.32), rgba(22,163,74,0.28));
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.32), rgba(22, 163, 74, 0.28));
   transform: translateY(-1px);
 }
 
@@ -793,26 +817,108 @@
     grid-template-columns: 1fr;
     gap: 20px;
   }
-  
+
   .split-container {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr 1fr;
   }
 }
 
+/* WinForms Overrides - Disable Fancy Animations */
+[data-style="winforms"] .file-button,
+[data-style="winforms"] .combined-button,
+[data-style="winforms"] .load-button {
+  transition: background-color 0s !important;
+  /* Instant color change only */
+  transform: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  animation: none !important;
+}
+
+[data-style="winforms"] .file-button:hover,
+[data-style="winforms"] .combined-button:hover,
+[data-style="winforms"] .load-button:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+[data-style="winforms"] .file-button:active,
+[data-style="winforms"] .combined-button:active,
+[data-style="winforms"] .load-button:active {
+  transform: translateY(1px) !important;
+  /* Simple click depress */
+}
+
+/* Remove shiny effect on combined button for WinForms */
+[data-style="winforms"] .combined-button::before {
+  display: none !important;
+}
+
+/* CS 1.6 Overrides - Strict Styling */
+[data-style="cs16"] .file-button,
+[data-style="cs16"] .combined-button,
+[data-style="cs16"] .load-button {
+  background: var(--bg) !important;
+  color: #fff !important;
+  border: 1px solid !important;
+  border-color: var(--border-light) var(--border-dark) var(--border-dark) var(--border-light) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 4px 12px !important;
+  font-size: 1rem !important;
+  line-height: normal !important;
+  height: auto !important;
+  min-height: 24px !important;
+  text-transform: none !important;
+  font-weight: normal !important;
+  font-family: 'ArialPixel', system-ui, sans-serif !important;
+  transition: none !important;
+  transform: none !important;
+  animation: none !important;
+  margin: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Remove shiny effect on combined button for CS 1.6 */
+[data-style="cs16"] .combined-button::before {
+  display: none !important;
+}
+
+[data-style="cs16"] .file-button:hover,
+[data-style="cs16"] .combined-button:hover,
+[data-style="cs16"] .load-button:hover {
+  background: var(--bg) !important;
+  transform: none !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+}
+
+[data-style="cs16"] .file-button:active,
+[data-style="cs16"] .combined-button:active,
+[data-style="cs16"] .load-button:active {
+  border-color: var(--border-dark) var(--border-light) var(--border-light) var(--border-dark) !important;
+  transform: translate(1px, 1px) !important;
+  /* Physical click effect */
+}
+
 @media (max-width: 768px) {
   .file-section {
     padding: 15px;
   }
-  
+
   .panel {
     padding: 12px;
   }
-  
+
   .clip-header {
     padding: 6px 10px;
   }
-  
+
   .event-content {
     padding: 4px 6px;
   }
@@ -1254,7 +1360,8 @@
   gap: 2px;
 }
 
-.save-name-btn, .cancel-name-btn {
+.save-name-btn,
+.cancel-name-btn {
   background: none;
   border: none;
   color: white;
@@ -1342,8 +1449,10 @@
   top: 0;
   right: -100%;
   width: 50%;
-  height: calc(100vh - 32px); /* Account for title bar height */
-  top: 32px; /* Start below title bar */
+  height: calc(100vh - 32px);
+  /* Account for title bar height */
+  top: 32px;
+  /* Start below title bar */
   background: var(--surface);
   border-left: 2px solid var(--accent);
   z-index: 1000;

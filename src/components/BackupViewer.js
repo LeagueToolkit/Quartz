@@ -29,7 +29,7 @@ import {
 import { listBackups, restoreBackup, formatFileSize } from '../utils/backupManager.js';
 import { glassButton, glassButtonOutlined, glassPanel } from '../utils/glassStyles';
 
-const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, trimDonorNames, onTrimTargetNamesChange, onTrimDonorNamesChange }) => {
+const BackupViewer = ({ open, onClose, filePath, component }) => {
   const [backups, setBackups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -85,8 +85,8 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
   };
 
   return (
-    <Dialog 
-      open={open} 
+    <Dialog
+      open={open}
       onClose={() => onClose(false)}
       maxWidth="md"
       fullWidth
@@ -118,7 +118,7 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
       }}>
         <Box display="flex" alignItems="center" gap={1}>
           <FolderIcon sx={{ color: '#c084fc' }} />
-          <Typography variant="h6" sx={{ 
+          <Typography variant="h6" sx={{
             color: '#c084fc',
             fontFamily: 'JetBrains Mono, monospace',
             fontWeight: 'bold'
@@ -126,8 +126,8 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
             Backup History
           </Typography>
           {component && (
-            <Chip 
-              label={component} 
+            <Chip
+              label={component}
               color={getComponentColor(component)}
               size="small"
               sx={{
@@ -140,7 +140,7 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
             />
           )}
         </Box>
-        <Typography variant="body2" sx={{ 
+        <Typography variant="body2" sx={{
           color: 'rgba(255,255,255,0.7)',
           fontFamily: 'JetBrains Mono, monospace',
           fontSize: '0.85rem',
@@ -148,78 +148,6 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
         }}>
           {filePath ? `File: ${filePath.split('\\').pop() || filePath.split('/').pop()}` : 'No file selected'}
         </Typography>
-        {component === 'port' && (onTrimTargetNamesChange || onTrimDonorNamesChange) && (
-          <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid rgba(147,51,234,0.2)' }}>
-            <Typography variant="body2" sx={{ 
-              color: 'rgba(255,255,255,0.8)',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.8rem',
-              mb: 1,
-              fontWeight: 'bold'
-            }}>
-              Display Options:
-            </Typography>
-            <FormGroup>
-              {onTrimTargetNamesChange && (
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={trimTargetNames !== false}
-                      onChange={(e) => onTrimTargetNamesChange(e.target.checked)}
-                      size="small"
-                      sx={{
-                        '& .MuiSwitch-switchBase.Mui-checked': {
-                          color: '#c084fc',
-                        },
-                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                          backgroundColor: '#c084fc',
-                        },
-                      }}
-                    />
-                  }
-                  label={
-                    <Typography sx={{ 
-                      fontFamily: 'JetBrains Mono, monospace',
-                      fontSize: '0.75rem',
-                      color: 'rgba(255,255,255,0.7)'
-                    }}>
-                      Trim Target Container Names
-                    </Typography>
-                  }
-                  sx={{ mb: 0.5 }}
-                />
-              )}
-              {onTrimDonorNamesChange && (
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={trimDonorNames !== false}
-                      onChange={(e) => onTrimDonorNamesChange(e.target.checked)}
-                      size="small"
-                      sx={{
-                        '& .MuiSwitch-switchBase.Mui-checked': {
-                          color: '#c084fc',
-                        },
-                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                          backgroundColor: '#c084fc',
-                        },
-                      }}
-                    />
-                  }
-                  label={
-                    <Typography sx={{ 
-                      fontFamily: 'JetBrains Mono, monospace',
-                      fontSize: '0.75rem',
-                      color: 'rgba(255,255,255,0.7)'
-                    }}>
-                      Trim Donor Container Names
-                    </Typography>
-                  }
-                />
-              )}
-            </FormGroup>
-          </Box>
-        )}
       </DialogTitle>
 
       <DialogContent sx={{
@@ -230,9 +158,9 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)'
       }}>
         {error && (
-          <Alert severity="error" sx={{ 
-            mb: 2, 
-            mx: 2, 
+          <Alert severity="error" sx={{
+            mb: 2,
+            mx: 2,
             mt: 2,
             background: 'rgba(239,68,68,0.1)',
             border: '1px solid rgba(239,68,68,0.3)',
@@ -245,8 +173,8 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
 
         {loading ? (
           <Box display="flex" flexDirection="column" alignItems="center" p={4} gap={2}>
-            <LinearProgress sx={{ 
-              width: '100%', 
+            <LinearProgress sx={{
+              width: '100%',
               height: 4,
               borderRadius: 2,
               background: 'rgba(147,51,234,0.1)',
@@ -255,7 +183,7 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
                 borderRadius: 2
               }
             }} />
-            <Typography sx={{ 
+            <Typography sx={{
               color: '#c084fc',
               fontFamily: 'JetBrains Mono, monospace'
             }}>
@@ -264,18 +192,18 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
           </Box>
         ) : backups.length === 0 ? (
           <Box display="flex" flexDirection="column" alignItems="center" p={4} gap={2}>
-            <InfoIcon sx={{ 
-              fontSize: 48, 
-              color: 'rgba(255,255,255,0.4)', 
-              mb: 1 
+            <InfoIcon sx={{
+              fontSize: 48,
+              color: 'rgba(255,255,255,0.4)',
+              mb: 1
             }} />
-            <Typography variant="h6" sx={{ 
+            <Typography variant="h6" sx={{
               color: 'rgba(255,255,255,0.6)',
               fontFamily: 'JetBrains Mono, monospace'
             }}>
               No backups found
             </Typography>
-            <Typography variant="body2" sx={{ 
+            <Typography variant="body2" sx={{
               color: 'rgba(255,255,255,0.5)',
               textAlign: 'center',
               fontFamily: 'JetBrains Mono, monospace',
@@ -287,22 +215,22 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
         ) : (
           <List sx={{ p: 0 }}>
             {backups.map((backup, index) => (
-                             <ListItem 
-                 key={backup.path} 
-                 sx={{
-                   background: index % 2 === 0 ? 'rgba(147,51,234,0.08)' : 'rgba(147,51,234,0.03)',
-                   borderBottom: index < backups.length - 1 ? '1px solid rgba(147,51,234,0.15)' : 'none',
-                   backdropFilter: 'blur(10px)',
-                   WebkitBackdropFilter: 'blur(10px)',
-                   '&:hover': {
-                     background: 'rgba(147,51,234,0.15)',
-                     backdropFilter: 'blur(15px)',
-                     WebkitBackdropFilter: 'blur(15px)',
-                     boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1)'
-                   },
-                   transition: 'all 0.3s ease'
-                 }}
-               >
+              <ListItem
+                key={backup.path}
+                sx={{
+                  background: index % 2 === 0 ? 'rgba(147,51,234,0.08)' : 'rgba(147,51,234,0.03)',
+                  borderBottom: index < backups.length - 1 ? '1px solid rgba(147,51,234,0.15)' : 'none',
+                  backdropFilter: 'blur(10px)',
+                  WebkitBackdropFilter: 'blur(10px)',
+                  '&:hover': {
+                    background: 'rgba(147,51,234,0.15)',
+                    backdropFilter: 'blur(15px)',
+                    WebkitBackdropFilter: 'blur(15px)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1)'
+                  },
+                  transition: 'all 0.3s ease'
+                }}
+              >
                 <ListItemText
                   primary={
                     <Typography sx={{
@@ -320,14 +248,14 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
                   }
                   secondary={
                     <Box sx={{ mt: 0.5 }}>
-                      <Typography variant="body2" sx={{ 
+                      <Typography variant="body2" sx={{
                         color: 'rgba(255,255,255,0.6)',
                         fontFamily: 'JetBrains Mono, monospace',
                         fontSize: '0.75rem'
                       }}>
                         Created: {formatDate(backup.modified)} - {backup.component}
                       </Typography>
-                      <Typography variant="body2" sx={{ 
+                      <Typography variant="body2" sx={{
                         color: 'rgba(255,255,255,0.6)',
                         fontFamily: 'JetBrains Mono, monospace',
                         fontSize: '0.75rem'
@@ -359,27 +287,27 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
                       edge="end"
                       onClick={() => handleRestore(backup.path)}
                       disabled={restoring}
-                                             sx={{
-                         background: 'rgba(34,197,94,0.2)',
-                         border: '1px solid rgba(34,197,94,0.4)',
-                         color: '#4ade80',
-                         backdropFilter: 'blur(15px)',
-                         WebkitBackdropFilter: 'blur(15px)',
-                         boxShadow: '0 4px 12px rgba(34,197,94,0.2)',
-                         '&:hover': {
-                           background: 'rgba(34,197,94,0.3)',
-                           border: '1px solid rgba(34,197,94,0.6)',
-                           transform: 'scale(1.05)',
-                           boxShadow: '0 6px 16px rgba(34,197,94,0.3)'
-                         },
-                         '&:disabled': {
-                           background: 'rgba(255,255,255,0.06)',
-                           border: '1px solid rgba(255,255,255,0.1)',
-                           color: 'rgba(255,255,255,0.3)',
-                           boxShadow: 'none'
-                         },
-                         transition: 'all 0.3s ease'
-                       }}
+                      sx={{
+                        background: 'rgba(34,197,94,0.2)',
+                        border: '1px solid rgba(34,197,94,0.4)',
+                        color: '#4ade80',
+                        backdropFilter: 'blur(15px)',
+                        WebkitBackdropFilter: 'blur(15px)',
+                        boxShadow: '0 4px 12px rgba(34,197,94,0.2)',
+                        '&:hover': {
+                          background: 'rgba(34,197,94,0.3)',
+                          border: '1px solid rgba(34,197,94,0.6)',
+                          transform: 'scale(1.05)',
+                          boxShadow: '0 6px 16px rgba(34,197,94,0.3)'
+                        },
+                        '&:disabled': {
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          color: 'rgba(255,255,255,0.3)',
+                          boxShadow: 'none'
+                        },
+                        transition: 'all 0.3s ease'
+                      }}
                     >
                       <RestoreIcon />
                     </IconButton>
@@ -391,19 +319,19 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
         )}
 
         {backups.length > 0 && (
-                     <Box sx={{
-             mt: 2, 
-             mx: 2, 
-             mb: 2,
-             p: 2, 
-             background: 'rgba(147,51,234,0.12)',
-             border: '1px solid rgba(147,51,234,0.3)',
-             borderRadius: 2,
-             backdropFilter: 'blur(15px)',
-             WebkitBackdropFilter: 'blur(15px)',
-             boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1)'
-           }}>
-            <Typography variant="body2" sx={{ 
+          <Box sx={{
+            mt: 2,
+            mx: 2,
+            mb: 2,
+            p: 2,
+            background: 'rgba(147,51,234,0.12)',
+            border: '1px solid rgba(147,51,234,0.3)',
+            borderRadius: 2,
+            backdropFilter: 'blur(15px)',
+            WebkitBackdropFilter: 'blur(15px)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1)'
+          }}>
+            <Typography variant="body2" sx={{
               color: 'rgba(255,255,255,0.7)',
               fontFamily: 'JetBrains Mono, monospace',
               fontSize: '0.8rem',
@@ -423,7 +351,7 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
         p: 2,
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)'
       }}>
-        <Button 
+        <Button
           onClick={() => onClose(false)}
           sx={{
             ...glassButtonOutlined,
@@ -440,7 +368,7 @@ const BackupViewer = ({ open, onClose, filePath, component, trimTargetNames, tri
           Close
         </Button>
         {backups.length > 0 && (
-          <Button 
+          <Button
             onClick={loadBackups}
             disabled={loading}
             sx={{

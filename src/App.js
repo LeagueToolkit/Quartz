@@ -13,7 +13,7 @@ import VFXHub from './pages/VFXHub';
 import RGBA from './pages/RGBA';
 
 import ImgRecolor from './pages/ImgRecolor';
-import BinEditor from './pages/BinEditor';
+import BinEditorV2 from './pages/BinEditorV2';
 import Tools from './pages/Tools';
 import Settings from './pages/Settings';
 // HUD Editor moved to archived/removed-features/hud-editor/
@@ -23,6 +23,7 @@ import Bumpath from './pages/Bumpath';
 import AniPort from './pages/AniPortSimple';
 import FrogChanger from './pages/FrogChanger';
 import HashReminderModal from './components/HashReminderModal';
+import AssetPreviewModal from './components/AssetPreviewModal';
 
 
 import fontManager from './utils/fontManager.js';
@@ -32,21 +33,21 @@ import themeManager from './utils/themeManager.js';
 // Component to handle font persistence on route changes
 const FontPersistenceHandler = () => {
   const location = useLocation();
-  
+
   useEffect(() => {
     // Ensure font persistence when route changes
     console.log('🔄 Route changed to:', location.pathname);
     fontManager.ensureFontPersistence();
-    
+
     // Also check font persistence after a short delay to catch any late resets
     const timeoutId = setTimeout(() => {
       console.log('⏰ Delayed font persistence check for route:', location.pathname);
       fontManager.ensureFontPersistence();
     }, 100);
-    
+
     return () => clearTimeout(timeoutId);
   }, [location]);
-  
+
   return null;
 };
 
@@ -199,7 +200,7 @@ function createDynamicTheme(fontFamily) {
 function App() {
   const [currentFont, setCurrentFont] = useState('system');
   const [fontFamily, setFontFamily] = useState('');
-  const [themeVariant, setThemeVariant] = useState('amethyst');
+  const [themeVariant, setThemeVariant] = useState('onyx');
   const [themeReady, setThemeReady] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
 
@@ -208,17 +209,27 @@ function App() {
     (async () => {
       try {
         await electronPrefs.initPromise;
-        const v = electronPrefs.obj.ThemeVariant || 'amethyst';
-        setThemeVariant(v);
-      } catch {}
+        
+        // If ThemeVariant is not set (first run), set it to onyx and save it
+        if (electronPrefs.obj.ThemeVariant === undefined) {
+          electronPrefs.obj.ThemeVariant = 'onyx';
+          await electronPrefs.save();
+          setThemeVariant('onyx');
+        } else {
+          // Use saved theme (no fallback - if it's saved, use it)
+          setThemeVariant(electronPrefs.obj.ThemeVariant);
+        }
+      } catch { }
     })();
 
     // Listen for settings changes to update theme live
     const onSettingsChanged = () => {
       try {
-        const v = electronPrefs.obj.ThemeVariant || 'amethyst';
-        setThemeVariant(v);
-      } catch {}
+        // Use saved theme directly (no fallback)
+        if (electronPrefs.obj.ThemeVariant) {
+          setThemeVariant(electronPrefs.obj.ThemeVariant);
+        }
+      } catch { }
     };
     window.addEventListener('settingsChanged', onSettingsChanged);
 
@@ -229,28 +240,28 @@ function App() {
       setCurrentFont(fontName);
       setFontFamily(newFontFamily || '');
     };
-    
+
     // Listen for legacy font change events (for backward compatibility)
     const handleFontChange = (event) => {
       console.log('📢 Legacy font change event received:', event.detail);
       setCurrentFont(event.detail.fontName);
     };
-    
+
     window.addEventListener('globalFontChange', handleGlobalFontChange);
     document.addEventListener('fontChanged', handleFontChange);
-    
+
     // Listen for app closing event
     const handleAppClosing = () => {
       console.log('🔄 App is closing, showing shutdown message...');
       setIsClosing(true);
     };
-    
+
     // Add IPC listener for app closing
     if (window.require) {
       const { ipcRenderer } = window.require('electron');
       ipcRenderer.on('app:closing', handleAppClosing);
     }
-    
+
     // Initialize fonts on app startup AFTER listeners are attached
     fontManager.init().then(async () => {
       // Ensure font persistence after initialization
@@ -264,14 +275,14 @@ function App() {
         window.dispatchEvent(new CustomEvent('globalFontChange', {
           detail: { fontName: applied || 'system', fontFamily: appliedFamily }
         }));
-      } catch {}
+      } catch { }
     });
 
     return () => {
       window.removeEventListener('settingsChanged', onSettingsChanged);
       window.removeEventListener('globalFontChange', handleGlobalFontChange);
       document.removeEventListener('fontChanged', handleFontChange);
-      
+
       // Cleanup IPC listener
       if (window.require) {
         const { ipcRenderer } = window.require('electron');
@@ -292,7 +303,7 @@ function App() {
   // Create theme with current font
   const theme = useMemo(() => {
     let themeFontFamily;
-    
+
     if (currentFont === 'system' || !fontFamily) {
       // Use system fonts or CSS variable fallback
       themeFontFamily = 'var(--app-font-family), "Roboto", "Helvetica", "Arial", sans-serif';
@@ -300,108 +311,111 @@ function App() {
       // Use the specific font family from fontManager
       themeFontFamily = fontFamily;
     }
-    
+
     console.log('🎨 Creating theme with variant:', themeVariant, 'font:', currentFont, 'family:', themeFontFamily);
-    
+
     // Ensure variables also applied when theme object rebuilds (idempotent)
-    try { themeManager.applyThemeVariables(themeVariant); } catch {}
+    try { themeManager.applyThemeVariables(themeVariant); } catch { }
 
     return createDynamicTheme(themeFontFamily);
   }, [currentFont, fontFamily, themeVariant]);
 
   return (
     themeReady && (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Router>
-        <HashReminderModal />
-        <FontPersistenceHandler />
-        <CelestiaNavigationBridge />
-        <Box sx={{ 
-          position: 'relative',
-          height: '100vh', 
-          width: '100vw',
-          bgcolor: 'var(--mui-background)',
-          overflow: 'hidden'
-        }}>
-          {/* Custom Title Bar */}
-          <CustomTitleBar />
-          
-          {/* Navbar as floating overlay */}
-          <ModernNavigation />
-          
-          {/* Main content positioned after navbar */}
-          <Box sx={{ 
-            position: 'absolute',
-            top: `${TITLE_BAR_HEIGHT}px`, // Start below title bar
-            left: '64px', // Start after collapsed navbar
-            right: 0,
-            bottom: 0,
-            background: 'var(--mui-background)',
-            overflow: 'auto', // Allow scrolling if content exceeds container
-            zIndex: 1,
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Router>
+          <HashReminderModal />
+          <AssetPreviewModal />
+          <FontPersistenceHandler />
+          <CelestiaNavigationBridge />
+          <Box sx={{
+            position: 'relative',
+            height: '100vh',
+            width: '100vw',
+            bgcolor: 'var(--mui-background)',
+            overflow: 'hidden'
           }}>
-            <Routes>
-              <Route path="/" element={<MainPage />} />
-              <Route path="/main" element={<MainPage />} />
-                      <Route path="/paint" element={<Paint />} />
-        <Route path="/port" element={<Port />} />
-              <Route path="/vfx-hub" element={<VFXHub />} />
-              <Route path="/ " element={<div>  feature removed</div>} />
-              <Route path="/rgba" element={<RGBA />} />
+            {/* Custom Title Bar */}
+            <CustomTitleBar />
 
-              <Route path="/img-recolor" element={<ImgRecolor />} />
-              <Route path="/bineditor" element={<BinEditor />} />
-              <Route path="/upscale" element={<Upscale />} />
-              <Route path="/file-randomizer" element={<UniversalFileRandomizer />} />
-              {/* HUD Editor removed - moved to archived/removed-features/hud-editor/ */}
-              <Route path="/tools" element={<Tools />} />
-              <Route path="/bumpath" element={<Bumpath />} />
-              <Route path="/aniport" element={<AniPort />} />
-              <Route path="/frogchanger" element={<FrogChanger />} />
-      
-      
-              <Route path="/settings" element={<Settings />} />
-            </Routes>
-          </Box>
-          
-          {/* Closing Overlay */}
-          {isClosing && (
+            {/* Navbar as floating overlay */}
+            <ModernNavigation />
+
+            {/* Main content positioned after navbar */}
             <Box sx={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
+              position: 'absolute',
+              top: `${TITLE_BAR_HEIGHT}px`, // Start below title bar
+              left: '60px', // Start after collapsed navbar
               right: 0,
               bottom: 0,
-              background: 'rgba(0, 0, 0, 0.9)',
-              backdropFilter: 'blur(10px)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 9999,
-              color: 'var(--accent)',
-              fontFamily: 'JetBrains Mono, monospace'
+              background: 'var(--mui-background)',
+              overflow: 'auto', // Allow scrolling if content exceeds container
+              zIndex: 1,
             }}>
+              <Routes>
+                <Route path="/" element={<MainPage />} />
+                <Route path="/main" element={<MainPage />} />
+                <Route path="/paint" element={<Paint />} />
+                <Route path="/port" element={<Port />} />
+                <Route path="/vfx-hub" element={<VFXHub />} />
+                <Route path="/ " element={<div>  feature removed</div>} />
+                <Route path="/rgba" element={<RGBA />} />
+
+                <Route path="/img-recolor" element={<ImgRecolor />} />
+                {/* Old BinEditor archived - using BinEditorV2 now */}
+                <Route path="/bineditor" element={<BinEditorV2 />} />
+                <Route path="/bineditor-v2" element={<BinEditorV2 />} />
+                <Route path="/upscale" element={<Upscale />} />
+                <Route path="/file-randomizer" element={<UniversalFileRandomizer />} />
+                {/* HUD Editor removed - moved to archived/removed-features/hud-editor/ */}
+                <Route path="/tools" element={<Tools />} />
+                <Route path="/bumpath" element={<Bumpath />} />
+                <Route path="/aniport" element={<AniPort />} />
+                <Route path="/frogchanger" element={<FrogChanger />} />
+
+
+                <Route path="/settings" element={<Settings />} />
+              </Routes>
+            </Box>
+
+            {/* Closing Overlay */}
+            {isClosing && (
               <Box sx={{
-                textAlign: 'center',
-                animation: 'pulse 1.5s ease-in-out infinite'
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0, 0, 0, 0.9)',
+                backdropFilter: 'blur(10px)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 9999,
+                color: 'var(--accent)',
+                fontFamily: 'JetBrains Mono, monospace'
               }}>
-                <Box sx={{ fontSize: '2rem', mb: 2 }}>
-                  🔄
-                </Box>
-                <Box sx={{ fontSize: '1.5rem', mb: 1, fontWeight: 'bold' }}>
-                  Closing Quartz...
-                </Box>
-                <Box sx={{ fontSize: '1rem', opacity: 0.8 }}>
-                  Stopping backends and cleaning up processes
+                <Box sx={{
+                  textAlign: 'center',
+                  animation: 'pulse 1.5s ease-in-out infinite'
+                }}>
+                  <Box sx={{ fontSize: '2rem', mb: 2 }}>
+                    🔄
+                  </Box>
+                  <Box sx={{ fontSize: '1.5rem', mb: 1, fontWeight: 'bold' }}>
+                    Closing Quartz...
+                  </Box>
+                  <Box sx={{ fontSize: '1rem', opacity: 0.8 }}>
+                    Stopping backends and cleaning up processes
+                  </Box>
                 </Box>
               </Box>
-            </Box>
-          )}
-        </Box>
-      </Router>
-    </ThemeProvider>
+            )}
+          </Box>
+        </Router>
+      </ThemeProvider>
     )
   );
 }

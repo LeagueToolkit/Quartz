@@ -6,9 +6,9 @@ const CelestialWelcome = ({ onClose }) => {
   const [exiting, setExiting] = useState(false);
   const [celestiaSrc, setCelestiaSrc] = useState(`${process.env.PUBLIC_URL}/celestia.webp`);
 
-  // Get celestia image source, checking AppData/FrogTools/assets first
+  // Get celestia image source, checking AppData/Roaming/Quartz/assets first (persists across reinstalls)
   useEffect(() => {
-    const getCelestiaSrc = () => {
+    const getCelestiaSrc = async () => {
       if (!window.require) {
         return `${process.env.PUBLIC_URL}/celestia.webp`;
       }
@@ -16,37 +16,46 @@ const CelestialWelcome = ({ onClose }) => {
       try {
         const path = window.require('path');
         const fs = window.require('fs');
+        const os = window.require('os');
         
-        // Check app installation directory assets folder first (user can replace this file)
-        const appPath = path.dirname(process.execPath);
-        const userCelestiaPath = path.join(appPath, 'assets', 'celestia.webp');
-        
-        if (fs.existsSync(userCelestiaPath)) {
+        // Get AppData/Roaming/Quartz/assets path (persists across reinstalls)
+        let appDataPath;
+        if (window.require) {
           try {
-            const fileBuffer = fs.readFileSync(userCelestiaPath);
-            const ext = path.extname(userCelestiaPath).toLowerCase();
-            const mimeType = ext === '.webp' ? 'image/webp' : 
-                            ext === '.png' ? 'image/png' :
-                            ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/webp';
-            const base64 = fileBuffer.toString('base64');
-            setCelestiaSrc(`data:${mimeType};base64,${base64}`);
-            return;
-          } catch (error) {
-            console.error('Error reading user celestia image:', error);
+            const { ipcRenderer } = window.require('electron');
+            appDataPath = await ipcRenderer.invoke('get-user-data-path');
+          } catch {
+            // Fallback: construct path manually
+            const platform = process.platform;
+            if (platform === 'win32') {
+              appDataPath = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+            } else if (platform === 'darwin') {
+              appDataPath = path.join(os.homedir(), 'Library', 'Application Support');
+            } else {
+              appDataPath = path.join(os.homedir(), '.local', 'share');
+            }
+            // Append app name if not already in path
+            if (!appDataPath.includes('Quartz')) {
+              appDataPath = path.join(appDataPath, 'Quartz');
+            }
           }
         }
         
-        // Check resources/assets (bundled default)
-        if (process.resourcesPath) {
-          const resourcesCelestiaPath = path.join(process.resourcesPath, 'assets', 'celestia.webp');
-          if (fs.existsSync(resourcesCelestiaPath)) {
+        // Check AppData/Roaming/Quartz/assets (user customizations, persists across reinstalls)
+        if (appDataPath) {
+          const roamingAssetsPath = path.join(appDataPath, 'assets', 'celestia.webp');
+          if (fs.existsSync(roamingAssetsPath)) {
             try {
-              const fileBuffer = fs.readFileSync(resourcesCelestiaPath);
+              const fileBuffer = fs.readFileSync(roamingAssetsPath);
+              const ext = path.extname(roamingAssetsPath).toLowerCase();
+              const mimeType = ext === '.webp' ? 'image/webp' : 
+                              ext === '.png' ? 'image/png' :
+                              ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/webp';
               const base64 = fileBuffer.toString('base64');
-              setCelestiaSrc(`data:image/webp;base64,${base64}`);
+              setCelestiaSrc(`data:${mimeType};base64,${base64}`);
               return;
             } catch (error) {
-              console.error('Error reading resources celestia image:', error);
+              console.error('Error reading AppData celestia image:', error);
             }
           }
         }

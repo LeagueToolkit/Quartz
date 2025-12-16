@@ -12,21 +12,25 @@ import { loadTextureRGBA, detectFileType, writeTEX, readTEX, writeDDS, readDDS, 
  * Load a folder and scan for images
  * @returns {Promise<Object|null>} { folderPath, images: [{ path, name, type }] }
  */
-export async function loadFolder() {
+export async function loadFolder(initialPath = null) {
   if (!window.require || !fs || !path) {
     console.error('Electron environment not available');
     return null;
   }
 
   try {
-    const { ipcRenderer } = window.require('electron');
-    const result = await ipcRenderer.invoke('dialog:openDirectory');
+    let folderPath = initialPath;
 
-    if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
-      return null;
+    if (!folderPath) {
+      const { ipcRenderer } = window.require('electron');
+      const result = await ipcRenderer.invoke('dialog:openDirectory');
+
+      if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+        return null;
+      }
+      folderPath = result.filePaths[0];
     }
 
-    const folderPath = result.filePaths[0];
     const images = [];
 
     // Scan folder for image files
@@ -146,7 +150,7 @@ export async function saveImageFile(imageData, originalPath) {
 
   try {
     const ext = path.extname(originalPath).toLowerCase();
-    
+
     // Save directly to original path (overwrite)
     const savePath = originalPath;
 
@@ -173,7 +177,7 @@ export async function saveImageFile(imageData, originalPath) {
         const nodeBuffer = fs.readFileSync(originalPath);
         const arrayBuffer = nodeBuffer.buffer.slice(nodeBuffer.byteOffset, nodeBuffer.byteOffset + nodeBuffer.byteLength);
         const originalTex = readTEX(arrayBuffer);
-        
+
         let data;
         if (originalTex.format === 20) {
           // BGRA8 - uncompressed, convert RGBA to BGRA
@@ -191,7 +195,7 @@ export async function saveImageFile(imageData, originalPath) {
           const format = originalTex.format === 10 ? 'DXT1' : 'DXT5';
           data = [compressToDDS(imageData.data, imageData.width, imageData.height, format)];
         }
-        
+
         // Create TEX with same format as original
         const newTex = {
           width: imageData.width,
@@ -200,7 +204,7 @@ export async function saveImageFile(imageData, originalPath) {
           mipmaps: false,
           data
         };
-        
+
         const encodedBuffer = writeTEX(newTex);
         fs.writeFileSync(savePath, Buffer.from(encodedBuffer));
         console.log('TEX image saved to:', savePath);
@@ -218,7 +222,7 @@ export async function saveImageFile(imageData, originalPath) {
         const nodeBuffer = fs.readFileSync(originalPath);
         const arrayBuffer = nodeBuffer.buffer.slice(nodeBuffer.byteOffset, nodeBuffer.byteOffset + nodeBuffer.byteLength);
         const originalDds = readDDS(arrayBuffer);
-        
+
         let data;
         if (originalDds.format === 'BGRA8') {
           // Uncompressed - just use raw pixel data
@@ -227,13 +231,13 @@ export async function saveImageFile(imageData, originalPath) {
           // DXT1/DXT5 - compress
           data = compressToDDS(imageData.data, imageData.width, imageData.height, originalDds.format);
         }
-        
+
         // Create new DDS with compressed data
         const newDds = {
           ...originalDds,
           data
         };
-        
+
         const encodedBuffer = writeDDS(newDds);
         fs.writeFileSync(savePath, Buffer.from(encodedBuffer));
         console.log('DDS image saved to:', savePath);
@@ -393,18 +397,18 @@ function hslToRgb(h, s, l) {
     const hue2rgb = (p, q, t) => {
       if (t < 0) t += 1;
       if (t > 1) t -= 1;
-      if (t < 1/6) return p + (q - p) * 6 * t;
-      if (t < 1/2) return q;
-      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
       return p;
     };
 
     const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
     const p = 2 * l - q;
 
-    r = hue2rgb(p, q, h + 1/3);
+    r = hue2rgb(p, q, h + 1 / 3);
     g = hue2rgb(p, q, h);
-    b = hue2rgb(p, q, h - 1/3);
+    b = hue2rgb(p, q, h - 1 / 3);
   }
 
   return {
@@ -445,7 +449,7 @@ export function applyHSLAdjustment(imageData, targetHue, saturationBoost, lightn
 
     // Convert to HSL (normalized 0-1)
     const hsl = rgbToHsl(r, g, b);
-    
+
     // Set to target hue (like FrogImg)
     let newHue = targetHueNormalized;
     let newSaturation = hsl.s / 100; // Normalize to 0-1

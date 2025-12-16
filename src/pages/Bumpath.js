@@ -58,6 +58,7 @@ import {
   Source as SourceIcon,
 } from '@mui/icons-material';
 import electronPrefs from '../utils/electronPrefs.js';
+import { BumpathCore } from '../utils/bumpath/index.js';
 
 // Memoized TextField component to prevent parent re-renders on every keystroke
 const MemoizedPrefixInput = React.memo(({
@@ -140,7 +141,91 @@ const MemoizedPrefixInput = React.memo(({
   );
 });
 
+// Memoized TextField component for BIN filter
+const MemoizedBinFilterInput = React.memo(({
+  value,
+  onChange,
+  sx,
+  ...otherProps
+}) => {
+  const [localValue, setLocalValue] = useState(value || '');
+  const valueRef = useRef(value || '');
+  const debounceTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    setLocalValue(value || '');
+    valueRef.current = value || '';
+  }, [value]);
+
+  const handleChange = (e) => {
+    const newValue = e.target.value;
+    setLocalValue(newValue);
+    valueRef.current = newValue;
+
+    // Debounce the onChange call to prevent parent re-renders on every keystroke
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    // Call onChange after user stops typing
+    debounceTimeoutRef.current = setTimeout(() => {
+      onChange(e);
+    }, 150);
+  };
+
+  const handleBlur = () => {
+    // Clear any pending debounced call
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
+    }
+    // Sync with parent on blur
+    if (valueRef.current !== value) {
+      const syntheticEvent = {
+        target: { value: valueRef.current }
+      };
+      onChange(syntheticEvent);
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    // Also sync on Enter
+    if (e.key === 'Enter') {
+      // Clear any pending debounced call
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+        debounceTimeoutRef.current = null;
+      }
+      handleBlur();
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <TextField
+      size="small"
+      value={localValue}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      onKeyPress={handleKeyPress}
+      sx={sx}
+      {...otherProps}
+    />
+  );
+});
+
 const Bumpath = () => {
+  // Create bumpath core instance
+  const bumpathCoreRef = useRef(new BumpathCore());
+
   const [sourceDirs, setSourceDirs] = useState([]);
   const [sourceFiles, setSourceFiles] = useState({});
   const [sourceBins, setSourceBins] = useState({});
@@ -155,6 +240,7 @@ const Bumpath = () => {
   const [appliedPrefixes, setAppliedPrefixes] = useState(new Map()); // Track applied prefixes per entry
   const [ignoreMissing, setIgnoreMissing] = useState(false);
   const [combineLinked, setCombineLinked] = useState(false);
+  const [hideDataFolderBins, setHideDataFolderBins] = useState(false);
   const [hashesPath, setHashesPath] = useState('');
   const [outputPath, setOutputPath] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -162,6 +248,7 @@ const Bumpath = () => {
   const [binFilter, setBinFilter] = useState('');
   const [selectedBins, setSelectedBins] = useState(new Set());
   const [expandedEntries, setExpandedEntries] = useState(new Set());
+  const [expandedFilePaths, setExpandedFilePaths] = useState(new Set()); // Track expanded file paths (for missing file headers)
   const [backendRunning, setBackendRunning] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [consoleLogs, setConsoleLogs] = useState([]);
@@ -209,13 +296,13 @@ const Bumpath = () => {
           setBinListHighlightRect(null);
         }
       };
-      
+
       updateRect();
       const onResize = () => updateRect();
       const onScroll = () => updateRect();
       window.addEventListener('resize', onResize, { passive: true });
       window.addEventListener('scroll', onScroll, true);
-      
+
       return () => {
         window.removeEventListener('resize', onResize);
         window.removeEventListener('scroll', onScroll, true);
@@ -270,41 +357,55 @@ const Bumpath = () => {
     setConsoleLogs([]);
   }, []);
 
-  // Fetch logs from backend
+  // Fetch logs - no longer needed with native implementation
+  // Logs are added directly via addLog callback
   const fetchLogs = useCallback(async () => {
-    try {
-      const response = await fetch('http://localhost:5001/api/bumpath/logs');
-      const result = await response.json();
-      if (result.success && result.logs) {
-        const timestampedLogs = result.logs.map(log => {
-          const timestamp = new Date().toLocaleTimeString();
-          return `[${timestamp}] ${log}`;
-        });
-        setConsoleLogs(timestampedLogs);
-      }
-    } catch (error) {
-      console.error('Failed to fetch logs:', error);
-    }
+    // Native implementation - logs are already in consoleLogs via addLog
+    // This function is kept for compatibility but does nothing
   }, []);
 
   // Load settings on mount
   useEffect(() => {
     const loadSettings = async () => {
       await electronPrefs.initPromise;
-      // Always use integrated hash directory
+      // Always use integrated hash directory - get it natively
       if (window.require) {
-        const { ipcRenderer } = window.require('electron');
-        const hashDirResult = await ipcRenderer.invoke('hashes:get-directory');
-        setHashesPath(hashDirResult.hashDir || '');
+        const path = window.require('path');
+        const fs = window.require('fs');
+        const os = window.require('os');
+
+        // Same logic as hashManager.getHashDirectory() - native implementation
+        // Use os.homedir() and process.platform for cross-platform support
+        let appDataPath;
+        const platform = process.platform;
+        if (platform === 'win32') {
+          appDataPath = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+        } else if (platform === 'darwin') {
+          appDataPath = path.join(os.homedir(), 'Library', 'Application Support');
+        } else {
+          // Linux
+          appDataPath = path.join(os.homedir(), '.local', 'share');
+        }
+
+        const frogToolsDir = path.join(appDataPath, 'FrogTools');
+        if (!fs.existsSync(frogToolsDir)) {
+          fs.mkdirSync(frogToolsDir, { recursive: true });
+        }
+
+        const hashDir = path.join(frogToolsDir, 'hashes');
+        if (!fs.existsSync(hashDir)) {
+          fs.mkdirSync(hashDir, { recursive: true });
+        }
+
+        setHashesPath(hashDir);
       } else {
         // Fallback for development - show placeholder
-        // Old BumpathHashesPath is deprecated, using integrated location
         setHashesPath('AppData\\Roaming\\FrogTools\\hashes (Integrated)');
       }
       // Check if this is the first time (preferences not set)
-      const isFirstTime = electronPrefs.obj.BumpathIgnoreMissing === undefined && 
-                         electronPrefs.obj.BumpathCombineLinked === undefined;
-      
+      const isFirstTime = electronPrefs.obj.BumpathIgnoreMissing === undefined &&
+        electronPrefs.obj.BumpathCombineLinked === undefined;
+
       if (isFirstTime) {
         // First time: set both to true by default
         const defaultIgnoreMissing = true;
@@ -318,36 +419,16 @@ const Bumpath = () => {
         // Not first time: use saved values or default to false
         setIgnoreMissing(electronPrefs.obj.BumpathIgnoreMissing || false);
         setCombineLinked(electronPrefs.obj.BumpathCombineLinked || false);
+        setHideDataFolderBins(electronPrefs.obj.BumpathHideDataFolderBins || false);
       }
     };
     loadSettings();
   }, []);
 
-  // Check backend status
+  // Backend is no longer used - we use native JS implementation
   useEffect(() => {
-    const checkBackendStatus = async () => {
-      try {
-        if (window.require) {
-          const { ipcRenderer } = window.require('electron');
-          const status = await ipcRenderer.invoke('bumpath:status');
-          setBackendRunning(status.running);
-        }
-      } catch (error) {
-        console.error('Failed to check backend status:', error);
-        setBackendRunning(false);
-        // Don't crash the page, just show that backend is not running
-      }
-    };
-
-    // Add a small delay before first check to let backend initialize
-    const initialTimeout = setTimeout(checkBackendStatus, 1000);
-    // Check every 5 seconds after initial delay
-    const interval = setInterval(checkBackendStatus, 5000);
-    
-    return () => {
-      clearTimeout(initialTimeout);
-      clearInterval(interval);
-    };
+    // Set to false since we're using native JS, not Python backend
+    setBackendRunning(false);
   }, []);
 
   // Auto-dismiss success toast after 4 seconds
@@ -356,7 +437,7 @@ const Bumpath = () => {
       const timer = setTimeout(() => {
         setSuccess(null);
       }, 4000);
-      
+
       return () => clearTimeout(timer);
     }
   }, [success]);
@@ -366,7 +447,7 @@ const Bumpath = () => {
     const timer = setTimeout(() => {
       setDebouncedPrefixText(prefixText);
     }, 150);
-    
+
     return () => clearTimeout(timer);
   }, [prefixText]);
 
@@ -385,25 +466,65 @@ const Bumpath = () => {
   };
 
   // API call helper
+  // Native JavaScript implementation - no API calls needed
   const apiCall = async (endpoint, data = {}) => {
+    const core = bumpathCoreRef.current;
+
     try {
-      const response = await fetch(`http://localhost:5001/api/bumpath/${endpoint}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-        timeout: 10000  // 10 second timeout
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      switch (endpoint) {
+        case 'add-source-dirs':
+          const result = await core.addSourceDirs(data.sourceDirs || []);
+          return {
+            success: true,
+            source_files: result.source_files,
+            source_bins: result.source_bins
+          };
+
+        case 'update-bin-selection':
+          core.updateBinSelection(data.binSelections || {});
+          return { success: true };
+
+        case 'scan':
+          const scanned = await core.scan(data.hashtablesPath);
+          return {
+            success: true,
+            data: scanned
+          };
+
+        case 'apply-prefix':
+          core.applyPrefix(data.entryHashes || [], data.prefix || 'bum');
+          return {
+            success: true,
+            data: core._convertScannedData()
+          };
+
+        case 'process':
+          const processResult = await core.process(
+            data.outputPath,
+            data.ignoreMissing || false,
+            data.combineLinked || false,
+            (count, message) => {
+              addLog(message);
+            }
+          );
+          return {
+            success: true,
+            ...processResult
+          };
+
+        case 'reset':
+          core.reset();
+          return { success: true };
+
+        default:
+          throw new Error(`Unknown endpoint: ${endpoint}`);
       }
-      
-      return await response.json();
     } catch (error) {
-      console.error(`API call to ${endpoint} failed:`, error);
-      throw new Error(`API call failed: ${error.message}`);
+      console.error(`Bumpath operation ${endpoint} failed:`, error);
+      return {
+        success: false,
+        error: error.message
+      };
     }
   };
 
@@ -414,22 +535,23 @@ const Bumpath = () => {
       if (result && !sourceDirs.includes(result)) {
         const newDirs = [...sourceDirs, result];
         setSourceDirs(newDirs);
-        
+
         // Automatically discover BIN files when adding source directories
         try {
           const response = await apiCall('add-source-dirs', { sourceDirs: newDirs });
           if (response.success) {
-            setSourceFiles(response.source_files);
-            setSourceBins(response.source_bins);
+            setSourceFiles(response.source_files || {});
+            setSourceBins(response.source_bins || {});
             setError(null);
-            setSuccess(`Added source directory and discovered ${Object.keys(response.source_bins).length} BIN files`);
+            const binCount = response.source_bins ? Object.keys(response.source_bins).length : 0;
+            setSuccess(`Added source directory and discovered ${binCount} BIN files`);
           } else {
             setError(response.error || 'Failed to discover BIN files');
           }
         } catch (apiError) {
           // If backend is not running, just add the directory without discovering BINs
           setError(null);
-          setSuccess(`Added source directory: ${result} (Backend starting up - BIN files will be discovered automatically)`);
+          setSuccess(`Added source directory: ${result}`);
         }
       }
     } catch (error) {
@@ -453,7 +575,7 @@ const Bumpath = () => {
 
   // Handle bin selection
   const handleBinSelect = useCallback(async (unifyPath, selected) => {
-    const newSelections = { ...sourceBins };
+    const newSelections = { ...(sourceBins || {}) };
     newSelections[unifyPath] = { ...newSelections[unifyPath], selected };
     setSourceBins(newSelections);
 
@@ -465,7 +587,7 @@ const Bumpath = () => {
 
     try {
       await apiCall('update-bin-selection', { binSelections });
-      
+
       // Automatically scan when BIN files are selected (like LtMAO)
       if (selected && hashesPath) {
         const selectedBins = Object.values(newSelections).filter(bin => bin.selected);
@@ -473,9 +595,9 @@ const Bumpath = () => {
           setIsScanning(true);
           setError(null);
           setScannedData(null);
-          
+
           try {
-            const result = await apiCall('scan', { 
+            const result = await apiCall('scan', {
               hashesPath,
               ritobinPath: electronPrefs.obj.RitoBinPath || ''
             });
@@ -525,7 +647,7 @@ const Bumpath = () => {
             ...scannedData,
             entries: { ...scannedData.entries }
           };
-          
+
           // Update prefixes for selected entries (preserve all other data including type_name)
           selectedEntries.forEach(entryHash => {
             if (updatedData.entries[entryHash]) {
@@ -536,7 +658,7 @@ const Bumpath = () => {
               };
             }
           });
-          
+
           setScannedData(updatedData);
         } else {
           // If no scanned data exists, try to convert backend response
@@ -545,10 +667,10 @@ const Bumpath = () => {
               entries: {},
               all_bins: {}
             };
-            
+
             for (const [entryHash, entryData] of Object.entries(result.data.entries)) {
               if (entryHash === 'All_BINs') continue;
-              
+
               const referenced_files = [];
               if (typeof entryData === 'object' && entryData !== null) {
                 for (const [unify_file, fileData] of Object.entries(entryData)) {
@@ -562,7 +684,7 @@ const Bumpath = () => {
                   }
                 }
               }
-              
+
               convertedData.entries[entryHash] = {
                 name: result.data.entry_names[entryHash] || scannedData?.entries[entryHash]?.name || `Entry_${entryHash}`,
                 type_name: scannedData?.entries[entryHash]?.type_name,  // Preserve type_name from existing data
@@ -570,18 +692,18 @@ const Bumpath = () => {
                 referenced_files: referenced_files.length > 0 ? referenced_files : (scannedData?.entries[entryHash]?.referenced_files || [])
               };
             }
-            
+
             setScannedData(convertedData);
           }
         }
-        
+
         // Update UI prefix tracking
         const newAppliedPrefixes = new Map(appliedPrefixes);
         selectedEntries.forEach(entryHash => {
           newAppliedPrefixes.set(entryHash, debouncedPrefixText.trim());
         });
         setAppliedPrefixes(newAppliedPrefixes);
-        
+
         setSuccess(`Applied prefix "${debouncedPrefixText}" to ${selectedEntries.size} entries`);
         console.log('Applied prefix result:', result.data); // Debug log
       } else {
@@ -614,20 +736,30 @@ const Bumpath = () => {
     addLog(`⚠️ Ignore missing: ${ignoreMissing}`);
 
     try {
-      const result = await apiCall('process', {
+      const processData = {
         outputPath,
         ignoreMissing,
         combineLinked
-      });
+      };
+      console.log('📤 Sending process request with data:', processData);
+      const result = await apiCall('process', processData);
 
       if (result.success) {
         const message = `Processing completed: ${result.total_files || result.processedFiles || 0} files processed`;
         setSuccess(message);
         addLog(`🎉 ${message}`);
         addLog(`📁 Output: ${result.output_dir || outputPath}`);
+
+        // Check for warnings about skipped files (e.g., path length issues)
+        if (result.warnings && result.warnings.length > 0) {
+          result.warnings.forEach(warning => {
+            addLog(`⚠️ ${warning}`);
+          });
+        }
+
         // Fetch backend logs to show detailed processing
         await fetchLogs();
-        
+
         // Clear frontend state after successful processing
         addLog('🧹 Clearing state after successful processing...');
         setScannedData(null);
@@ -640,11 +772,21 @@ const Bumpath = () => {
         const errorMsg = result.error || 'Processing failed';
         setError(errorMsg);
         addLog(`❌ ${errorMsg}`);
+
+        // If error mentions path length or malformed paths, provide helpful message
+        if (errorMsg.includes('Malformed') || errorMsg.includes('path') || errorMsg.includes('skins_skin')) {
+          addLog('💡 Tip: This may be caused by Windows path length limits (260 chars). Try using shorter folder names or moving files closer to the root drive.');
+        }
       }
     } catch (error) {
       const errorMsg = 'Processing failed: ' + error.message;
       setError(errorMsg);
       addLog(`❌ ${errorMsg}`);
+
+      // Check if it's a path-related error
+      if (error.message.includes('path') || error.message.includes('ENAMETOOLONG')) {
+        addLog('💡 Tip: Windows path length limit (260 chars) may be causing this. Try shorter folder names or move files closer to root.');
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -688,10 +830,23 @@ const Bumpath = () => {
     });
   }, []);
 
+  // Handle file path expansion (for missing file headers)
+  const handleFilePathExpand = useCallback((filePath) => {
+    setExpandedFilePaths(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(filePath)) {
+        newSet.delete(filePath);
+      } else {
+        newSet.add(filePath);
+      }
+      return newSet;
+    });
+  }, []);
+
   // Select all entries
   const handleSelectAll = useCallback(() => {
     if (scannedData) {
-      const allEntries = Object.keys(scannedData.entries).filter(hash => 
+      const allEntries = Object.keys(scannedData.entries).filter(hash =>
         scannedData.entries[hash].prefix !== 'Uneditable'
       );
       setSelectedEntries(new Set(allEntries));
@@ -707,6 +862,7 @@ const Bumpath = () => {
   const handleReset = useCallback(async () => {
     try {
       await apiCall('reset');
+      bumpathCoreRef.current.reset();
       setSourceDirs([]);
       setSourceFiles({});
       setSourceBins({});
@@ -720,20 +876,59 @@ const Bumpath = () => {
     }
   }, []);
 
-  // Glass panel styling
-  const glassPanelSx = {
-    background: 'var(--glass-bg)',
-    border: '1px solid var(--glass-border)',
-    boxShadow: 'var(--glass-shadow)',
-    backdropFilter: 'saturate(220%) blur(18px)',
-    WebkitBackdropFilter: 'saturate(220%) blur(18px)',
-    borderRadius: 6,
+  // Celestial minimalistic style
+  const panelStyle = {
+    background: 'transparent', // Removed background
+    border: 'none', // Removed border
+    boxShadow: 'none', // Removed shadow
+    backdropFilter: 'none',
+    WebkitBackdropFilter: 'none',
+    borderRadius: 0,
   };
 
-  // Filter bins based on search
-  const filteredBins = Object.entries(sourceBins).filter(([unifyPath, data]) =>
-    data.rel_path.toLowerCase().includes(binFilter.toLowerCase())
-  );
+  // Celestial minimalistic button style
+  const celestialButtonStyle = {
+    background: 'var(--bg-2)',
+    border: '1px solid var(--accent-muted)',
+    color: 'var(--text)',
+    borderRadius: '5px',
+    transition: 'all 200ms ease',
+    textTransform: 'none',
+    fontFamily: 'JetBrains Mono, monospace',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+    '&:hover': {
+      background: 'var(--surface-2)',
+      borderColor: 'var(--accent)',
+      boxShadow: '0 0 15px color-mix(in srgb, var(--accent), transparent 60%)'
+    },
+    '&:disabled': {
+      background: 'var(--bg-2)',
+      borderColor: 'var(--text-2)',
+      color: 'var(--text-2)',
+      opacity: 0.6,
+      cursor: 'not-allowed'
+    },
+  };
+
+  // Filter bins based on search (exclude animation BINs from display)
+  const filteredBins = Object.entries(sourceBins || {}).filter(([unifyPath, data]) => {
+    if (!data) return false;
+    const pathToCheck = data?.path || data?.rel_path || unifyPath || '';
+    const pathLower = pathToCheck.toLowerCase();
+    // Filter out animation BINs from the list (but they can still be merged)
+    if (pathLower.includes('/animations/')) return false;
+    // Filter out bins directly in data folder if setting is enabled
+    if (hideDataFolderBins) {
+      // Check if bin is directly in data folder (e.g., "data/something.bin" or "data\\something.bin")
+      // Not "data/characters/..." or "data/particles/..." - those are subdirectories
+      const dataFolderPattern = /^data[\/\\][^\/\\]+\.bin$/i;
+      if (dataFolderPattern.test(pathToCheck)) {
+        return false;
+      }
+    }
+    const filterLower = (binFilter || '').toLowerCase();
+    return pathLower.includes(filterLower);
+  });
 
   // Helper function to clean path by removing prefix and normalizing
   const cleanPath = useCallback((path) => {
@@ -747,38 +942,50 @@ const Bumpath = () => {
   }, []);
 
   // Helper function to get display name for entry
+  // Python: entry_name is the unhashed entry name (filepath like "Characters/Aatrox/Skins/Skin0/Particles/Aatrox_Base_W_mis")
+  // Python: type_name is the entry type (like "VFXSystemDefinitionData")
   const getEntryDisplayName = useCallback((entryHash, entryData) => {
-    // Priority 1: Use entry type name if available (like VFXSystemDefinitionData)
-    if (entryData.type_name) {
-      return entryData.type_name;
+    // Truncate long names (like aatrox_skins_skin0_skins_skin1...)
+    const truncateName = (str, maxLength = 60) => {
+      if (!str) return '';
+      if (str.length <= maxLength) return str;
+      return str.substring(0, maxLength - 3) + '...';
+    };
+
+    // Python: entry_name is the entry name (the filepath like "Characters/Aatrox/Skins/Skin0/Particles/Aatrox_Base_P_Ready")
+    const name = entryData.name || '';
+
+    // If name exists and is not "Entry_hash", use it directly (it's already unhashed)
+    if (name && !name.startsWith('Entry_')) {
+      return truncateName(name);
     }
-    
-    // Priority 2: Try to get a better name from referenced files (show actual file paths)
-    // Referenced files should contain the original paths without prefix
+
+    // If name is "Entry_hash", we need to find the unhashed entry name from referenced files
+    // The unhashed entry name is the missing file path that is NOT a texture (.tex file)
     if (entryData.referenced_files && entryData.referenced_files.length > 0) {
-      // Use the first referenced file path
-      const firstFile = entryData.referenced_files[0];
-      if (firstFile && firstFile.path) {
-        return cleanPath(firstFile.path);
+      // Find the missing file that is NOT a texture path (.tex)
+      // This should be the unhashed entry name (like "Characters/Aatrox/Skins/Skin0/Particles/Aatrox_Base_P_Ready")
+      const unhashedName = entryData.referenced_files.find(file =>
+        !file.exists &&
+        file.path &&
+        !file.path.toLowerCase().endsWith('.tex')
+      );
+
+      if (unhashedName && unhashedName.path) {
+        return truncateName(unhashedName.path);
+      }
+
+      // Fallback: find any missing file
+      const missingFile = entryData.referenced_files.find(file => !file.exists && file.path);
+
+      if (missingFile && missingFile.path) {
+        return truncateName(missingFile.path);
       }
     }
-    
-    // Priority 3: If name is already a proper path (not a hash), use it (but clean prefix)
-    const name = entryData.name || '';
-    
-    // Check if name is just a hash (8 hex characters) or starts with "Entry_"
-    const isHash = /^[0-9a-f]{8}$/i.test(name);
-    const isEntryHash = name.startsWith('Entry_') && /^Entry_[0-9a-f]{8}$/i.test(name);
-    
-    // If name is empty, same as hash, or looks like a hash, use fallback
-    if (isHash || isEntryHash || !name || name === entryHash) {
-      // Final fallback: show the hash but indicate it's an entry
-      return `Entry_${entryHash}`;
-    }
-    
-    // Clean prefix from name if present
-    return cleanPath(name);
-  }, [cleanPath]);
+
+    // Final fallback to entry hash
+    return truncateName(name || `Entry_${entryHash}` || 'Unknown Entry');
+  }, []);
 
   // Filter scanned entries based on missing files only
   const filteredEntries = scannedData ? Object.entries(scannedData.entries).filter(([hash, data]) => {
@@ -787,78 +994,45 @@ const Bumpath = () => {
   }) : [];
 
   return (
-    <Box sx={{ 
+    <Box sx={{
       width: '100%',
-      height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
+      height: '100%',
       minHeight: '100%',
       overflow: 'hidden',
-      background: 'linear-gradient(135deg, var(--bg-2) 0%, var(--bg) 100%)',
+      background: 'var(--bg)',
       color: 'var(--text)',
       fontFamily: 'JetBrains Mono, monospace',
-      '@keyframes slideIn': {
-        '0%': {
-          transform: 'translateX(100%)',
-          opacity: 0
-        },
-        '100%': {
-          transform: 'translateX(0)',
-          opacity: 1
-        }
-      },
       display: 'flex',
       flexDirection: 'column',
       position: 'relative'
     }}>
-      {/* Background lights */}
-      <Box sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
-        <Box sx={{ position: 'absolute', top: -120, left: -80, width: 600, height: 600, filter: 'blur(60px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent), transparent 86%), transparent 70%)' }} />
-        <Box sx={{ position: 'absolute', top: -60, right: -120, width: 700, height: 700, filter: 'blur(80px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent2), transparent 88%), transparent 70%)' }} />
-        <Box sx={{ position: 'absolute', bottom: -160, left: '20%', width: 800, height: 800, filter: 'blur(90px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent), transparent 90%), transparent 70%)' }} />
-      </Box>
 
       <Box sx={{ position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
         {/* Top Bar */}
-        <Box sx={{ 
-          ...glassPanelSx,
+        <Box sx={{
           p: 1.5,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottom: '1px solid var(--glass-border)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
           minHeight: '60px'
         }}>
           <Button
-            variant="outlined"
             startIcon={<FolderIcon />}
             onClick={handleSelectSourceDir}
-            sx={{ 
-              borderColor: '#06b6d4', 
-              color: '#06b6d4',
-              borderWidth: '2px',
-              borderRadius: '6px',
-              background: 'rgba(6, 182, 212, 0.05)',
-              position: 'relative',
-              zIndex: 1,
-              backdropFilter: 'none',
-              WebkitBackdropFilter: 'none',
-              '&:hover': { 
-                borderColor: '#0891b2',
-                color: '#0891b2',
-                backgroundColor: 'rgba(6, 182, 212, 0.1)',
-                boxShadow: '0 2px 8px rgba(6, 182, 212, 0.2)',
-                transform: 'translateY(-1px)'
-              },
-              '&:active': {
-                transform: 'translateY(0px)',
-                boxShadow: '0 1px 4px rgba(6, 182, 212, 0.15)'
-              },
-              textTransform: 'none',
-              fontFamily: 'JetBrains Mono, monospace',
+            sx={{
+              ...celestialButtonStyle,
               fontSize: '0.8rem',
-              fontWeight: '600',
-              px: 2,
-              py: 0.8,
-              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+              height: '34px',
+              padding: '0 12px',
+              borderColor: '#ecb96a !important',
+              color: '#ecb96a !important',
+              '&:hover': {
+                ...celestialButtonStyle['&:hover'],
+                borderColor: '#d4a259 !important',
+                color: '#d4a259 !important',
+                boxShadow: '0 0 15px color-mix(in srgb, #ecb96a, transparent 60%)'
+              }
             }}
           >
             Add Source Folders
@@ -867,83 +1041,45 @@ const Bumpath = () => {
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Button
-              variant="outlined"
               startIcon={<CheckBoxIcon />}
               onClick={handleSelectAll}
               disabled={!scannedData || Object.keys(scannedData.entries).length === 0}
               data-bumpath-select-all
-              sx={{ 
-                borderColor: '#10b981', 
-                color: '#10b981',
-                borderWidth: '2px',
-                borderRadius: '6px',
-                background: 'rgba(16, 185, 129, 0.05)',
-                position: 'relative',
-                zIndex: 1,
-                backdropFilter: 'none',
-                WebkitBackdropFilter: 'none',
-                '&:hover': { 
-                  borderColor: '#059669',
-                  color: '#059669',
-                  backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.2)',
-                  transform: 'translateY(-1px)'
-                },
-                '&:disabled': {
-                  borderColor: '#6b7280',
-                  color: '#6b7280',
-                  backgroundColor: 'rgba(107, 114, 128, 0.05)',
-                  transform: 'none'
-                },
-                textTransform: 'none',
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: '0.75rem',
-                fontWeight: '600',
-                px: 1.5,
-                py: 0.6,
-                minHeight: '36px',
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+              sx={{
+                ...celestialButtonStyle,
+                fontSize: '0.8rem',
+                height: '34px',
+                padding: '0 12px',
+                borderColor: '#10b981 !important',
+                color: '#10b981 !important',
+                '&:hover': {
+                  ...celestialButtonStyle['&:hover'],
+                  borderColor: '#059669 !important',
+                  color: '#059669 !important',
+                  boxShadow: '0 0 15px color-mix(in srgb, #10b981, transparent 60%)'
+                }
               }}
             >
               Select All
             </Button>
 
             <Button
-              variant="outlined"
               startIcon={<ClearIcon />}
               onClick={handleDeselectAll}
               disabled={!scannedData || selectedEntries.size === 0}
-              sx={{ 
-                borderColor: selectedEntries.size > 0 ? '#ef4444' : '#6b7280', 
-                color: selectedEntries.size > 0 ? '#ef4444' : '#6b7280',
-                borderWidth: '2px',
-                borderRadius: '6px',
-                background: selectedEntries.size > 0 ? 'rgba(239, 68, 68, 0.05)' : 'rgba(107, 114, 128, 0.05)',
-                position: 'relative',
-                zIndex: 1,
-                backdropFilter: 'none',
-                WebkitBackdropFilter: 'none',
-                '&:hover': { 
-                  borderColor: selectedEntries.size > 0 ? '#dc2626' : '#4b5563',
-                  color: selectedEntries.size > 0 ? '#dc2626' : '#4b5563',
-                  backgroundColor: selectedEntries.size > 0 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(107, 114, 128, 0.1)',
-                  boxShadow: selectedEntries.size > 0 ? '0 2px 8px rgba(239, 68, 68, 0.2)' : '0 2px 8px rgba(107, 114, 128, 0.2)',
-                  transform: 'translateY(-1px)'
-                },
-                '&:disabled': {
-                  borderColor: '#6b7280',
-                  color: '#6b7280',
-                  backgroundColor: 'rgba(107, 114, 128, 0.05)',
-                  transform: 'none'
-                },
-                textTransform: 'none',
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: '0.75rem',
-                fontWeight: '600',
-                px: 1.5,
-                py: 0.6,
-                minHeight: '36px',
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+              sx={{
+                ...celestialButtonStyle,
+                fontSize: '0.8rem',
+                height: '34px',
+                padding: '0 12px',
+                borderColor: '#ef4444 !important',
+                color: '#ef4444 !important',
+                '&:hover': {
+                  ...celestialButtonStyle['&:hover'],
+                  borderColor: '#dc2626 !important',
+                  color: '#dc2626 !important',
+                  boxShadow: '0 0 15px color-mix(in srgb, #ef4444, transparent 60%)'
+                }
               }}
             >
               Deselect All
@@ -963,8 +1099,8 @@ const Bumpath = () => {
               />
             }
             label={
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 fontSize: '0.7rem',
                 fontWeight: '500'
               }}>
@@ -977,147 +1113,31 @@ const Bumpath = () => {
         {/* Main Content Area */}
         <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
           {/* Left Panel - Source Directories and BINs */}
-          <Box sx={{ 
+          <Box sx={{
             width: '350px',
-            ...glassPanelSx,
-            borderRight: '1px solid var(--glass-border)',
+            borderRight: '1px solid rgba(255, 255, 255, 0.06)',
             display: 'flex',
             flexDirection: 'column'
           }}>
-            {/* Source Directories */}
-            <Box sx={{ p: 2, borderBottom: '1px solid var(--glass-border)' }} data-bumpath-source-dirs>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <SourceIcon sx={{ 
-                  color: 'var(--accent)',
-                  fontSize: '1.2rem'
-                }} />
-                <Typography variant="h6" sx={{ 
-                  color: 'var(--accent)',
-                  fontSize: '1rem'
-                }}>
-                  Source Directories
-                </Typography>
-              </Box>
-              
-              <Box sx={{ maxHeight: '120px', overflow: 'auto' }}>
-                {sourceDirs.map((dir, index) => (
-                  <Box key={index} sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: 1, 
-                    mb: 1,
-                    p: 1,
-                    backgroundColor: 'color-mix(in srgb, var(--accent2), transparent 95%)',
-                    borderRadius: 1
-                  }}>
-                    <IconButton 
-                      size="small"
-                      onClick={() => {
-                        // Move up
-                        if (index > 0) {
-                          const newDirs = [...sourceDirs];
-                          [newDirs[index], newDirs[index - 1]] = [newDirs[index - 1], newDirs[index]];
-                          setSourceDirs(newDirs);
-                        }
-                      }}
-                      disabled={index === 0}
-                      sx={{ 
-                        color: index === 0 ? '#6b7280' : '#06b6d4',
-                        backgroundColor: index === 0 ? 'rgba(107, 114, 128, 0.1)' : 'rgba(6, 182, 212, 0.1)',
-                        borderRadius: '6px',
-                        '&:hover': {
-                          backgroundColor: index === 0 ? 'rgba(107, 114, 128, 0.2)' : 'rgba(6, 182, 212, 0.2)',
-                          transform: 'scale(1.1)',
-                          boxShadow: index === 0 ? 'none' : '0 2px 8px rgba(6, 182, 212, 0.3)'
-                        },
-                        '&:active': {
-                          transform: 'scale(0.95)'
-                        },
-                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
-                      }}
-                    >
-                      <KeyboardArrowUpIcon />
-                    </IconButton>
-                    <IconButton 
-                      size="small"
-                      onClick={() => {
-                        // Move down
-                        if (index < sourceDirs.length - 1) {
-                          const newDirs = [...sourceDirs];
-                          [newDirs[index], newDirs[index + 1]] = [newDirs[index + 1], newDirs[index]];
-                          setSourceDirs(newDirs);
-                        }
-                      }}
-                      disabled={index === sourceDirs.length - 1}
-                      sx={{ 
-                        color: index === sourceDirs.length - 1 ? '#6b7280' : '#06b6d4',
-                        backgroundColor: index === sourceDirs.length - 1 ? 'rgba(107, 114, 128, 0.1)' : 'rgba(6, 182, 212, 0.1)',
-                        borderRadius: '6px',
-                        '&:hover': {
-                          backgroundColor: index === sourceDirs.length - 1 ? 'rgba(107, 114, 128, 0.2)' : 'rgba(6, 182, 212, 0.2)',
-                          transform: 'scale(1.1)',
-                          boxShadow: index === sourceDirs.length - 1 ? 'none' : '0 2px 8px rgba(6, 182, 212, 0.3)'
-                        },
-                        '&:active': {
-                          transform: 'scale(0.95)'
-                        },
-                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
-                      }}
-                    >
-                      <KeyboardArrowDownIcon />
-                    </IconButton>
-                    <Typography variant="body2" sx={{ 
-                      color: 'var(--accent2)',
-                      fontSize: '0.75rem',
-                      flex: 1,
-                      wordBreak: 'break-all'
-                    }}>
-                      {dir}
-                    </Typography>
-                    <IconButton 
-                      size="small"
-                      onClick={() => handleRemoveSourceDir(index)}
-                      sx={{ 
-                        color: '#ef4444',
-                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                        borderRadius: '6px',
-                        '&:hover': {
-                          backgroundColor: 'rgba(239, 68, 68, 0.2)',
-                          transform: 'scale(1.1)',
-                          boxShadow: '0 2px 8px rgba(239, 68, 68, 0.3)'
-                        },
-                        '&:active': {
-                          transform: 'scale(0.95)'
-                        },
-                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
-                      }}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-
             {/* Source BINs */}
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }} data-bumpath-bin-list>
-              <Box sx={{ p: 2, borderBottom: '1px solid var(--glass-border)' }}>
+              <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <FormatListBulletedIcon sx={{ 
+                    <FormatListBulletedIcon sx={{
                       color: 'var(--accent)',
                       fontSize: '1.2rem'
                     }} />
-                    <Typography variant="h6" sx={{ 
+                    <Typography variant="h6" sx={{
                       color: 'var(--accent)',
                       fontSize: '1rem'
                     }}>
                       Source BINs:
                     </Typography>
                   </Box>
-                  <Box sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
+                  <Box sx={{
+                    display: 'flex',
+                    alignItems: 'center',
                     gap: 1,
                     px: 1.5,
                     py: 0.5,
@@ -1125,25 +1145,24 @@ const Bumpath = () => {
                     backgroundColor: 'rgba(139, 92, 246, 0.1)',
                     border: '1px solid rgba(139, 92, 246, 0.2)'
                   }}>
-                    <Typography variant="body2" sx={{ 
+                    <Typography variant="body2" sx={{
                       color: '#8b5cf6',
                       fontSize: '0.7rem',
                       fontWeight: '600'
                     }}>
-                      {Object.values(sourceBins).filter(bin => bin.selected).length} / {Object.keys(sourceBins).length} selected
+                      {Object.values(sourceBins || {}).filter(bin => bin.selected).length} / {Object.keys(sourceBins || {}).length} selected
                     </Typography>
                   </Box>
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <TextField
-                    size="small"
+                  <MemoizedBinFilterInput
                     placeholder="Filter BIN files..."
                     value={binFilter}
                     onChange={(e) => setBinFilter(e.target.value)}
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
-                          <SearchIcon sx={{ 
+                          <SearchIcon sx={{
                             color: 'var(--accent2)',
                             fontSize: '1rem'
                           }} />
@@ -1152,25 +1171,23 @@ const Bumpath = () => {
                     }}
                     sx={{
                       flex: 1,
-                      '& .MuiOutlinedInput-root': { 
-                        color: 'var(--accent)',
+                      '& .MuiOutlinedInput-root': {
+                        color: 'var(--text)',
                         fontSize: '0.8rem',
-                        backgroundColor: 'rgba(139, 92, 246, 0.05)',
+                        backgroundColor: 'var(--bg-2)',
                         borderRadius: '6px',
-                        '& fieldset': { 
-                          borderColor: 'rgba(139, 92, 246, 0.2)',
+                        '& fieldset': {
+                          borderColor: 'var(--glass-border)',
                           borderWidth: '1px'
                         },
-                        '&:hover fieldset': { 
-                          borderColor: 'rgba(139, 92, 246, 0.4)',
-                          backgroundColor: 'rgba(139, 92, 246, 0.08)'
+                        '&:hover fieldset': {
+                          borderColor: 'var(--accent-muted)',
                         },
-                        '&.Mui-focused fieldset': { 
-                          borderColor: '#8b5cf6',
-                          backgroundColor: 'rgba(139, 92, 246, 0.1)'
+                        '&.Mui-focused fieldset': {
+                          borderColor: 'var(--accent)',
                         },
                       },
-                      '& .MuiInputBase-input': { 
+                      '& .MuiInputBase-input': {
                         fontSize: '0.8rem',
                         fontFamily: 'JetBrains Mono, monospace'
                       }
@@ -1193,19 +1210,19 @@ const Bumpath = () => {
                   )}
                 </Box>
                 {binFilter && (
-                  <Typography variant="body2" sx={{ 
-                    color: 'var(--accent2)', 
+                  <Typography variant="body2" sx={{
+                    color: 'var(--accent2)',
                     fontSize: '0.7rem',
                     mt: 0.5
                   }}>
-                    Showing {filteredBins.length} of {Object.keys(sourceBins).length} BINs
+                    Showing {filteredBins.length} of {Object.keys(sourceBins || {}).length} BINs
                   </Typography>
                 )}
               </Box>
 
-              <Box sx={{ 
-                flex: 1, 
-                overflow: 'auto', 
+              <Box sx={{
+                flex: 1,
+                overflow: 'auto',
                 p: 0.5,
                 '&::-webkit-scrollbar': {
                   width: '8px',
@@ -1226,23 +1243,23 @@ const Bumpath = () => {
                 <List dense sx={{ py: 0 }}>
                   {filteredBins.map(([unifyPath, data], index) => {
                     const isEven = index % 2 === 0;
-                    const fileName = data.rel_path.split('/').pop() || data.rel_path.split('\\').pop() || data.rel_path;
+                    const pathToUse = data?.rel_path || data?.path || unifyPath || '';
+                    const fileName = pathToUse.split('/').pop() || pathToUse.split('\\').pop() || pathToUse;
                     const fileExtension = fileName.includes('.') ? fileName.split('.').pop() : '';
-                    const pathWithoutFile = data.rel_path.replace(fileName, '');
-                    
+                    const pathWithoutFile = pathToUse.replace(fileName, '');
+
                     return (
-                      <ListItem 
-                        key={unifyPath} 
-                        sx={{ 
-                          px: 1, 
+                      <ListItem
+                        key={unifyPath}
+                        sx={{
+                          px: 1,
                           py: 0.75,
                           minHeight: 'auto',
-                          backgroundColor: isEven ? 'rgba(139, 92, 246, 0.02)' : 'transparent',
+                          backgroundColor: 'transparent',
                           borderRadius: '4px',
                           mb: 0.25,
                           '&:hover': {
-                            backgroundColor: 'rgba(139, 92, 246, 0.08)',
-                            transform: 'translateX(2px)'
+                            backgroundColor: 'rgba(255, 255, 255, 0.03)',
                           },
                           transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
                         }}
@@ -1250,30 +1267,22 @@ const Bumpath = () => {
                         <Checkbox
                           checked={data.selected}
                           onChange={(e) => handleBinSelect(unifyPath, e.target.checked)}
-                          sx={{ 
-                            color: '#8b5cf6',
-                            '&.Mui-checked': { 
-                              color: '#7c3aed',
-                              '& .MuiSvgIcon-root': {
-                                filter: 'drop-shadow(0 2px 4px rgba(139, 92, 246, 0.3))'
-                              }
+                          sx={{
+                            color: 'var(--text-2)',
+                            '&.Mui-checked': {
+                              color: 'var(--accent)',
                             },
                             p: 0.25,
                             mr: 1,
                             '& .MuiSvgIcon-root': {
                               fontSize: '1.1rem'
                             },
-                            '&:hover': {
-                              backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                              borderRadius: '4px'
-                            },
-                            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
                           }}
                         />
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
-                            <Typography variant="body2" sx={{ 
-                              color: 'var(--accent2)',
+                            <Typography variant="body2" sx={{
+                              color: 'var(--text-2)',
                               fontSize: '0.65rem',
                               opacity: 0.7,
                               fontFamily: 'JetBrains Mono, monospace'
@@ -1282,8 +1291,8 @@ const Bumpath = () => {
                             </Typography>
                           </Box>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Typography variant="body2" sx={{ 
-                              color: 'var(--accent)',
+                            <Typography variant="body2" sx={{
+                              color: 'var(--text)',
                               fontSize: '0.75rem',
                               fontWeight: '600',
                               fontFamily: 'JetBrains Mono, monospace'
@@ -1291,12 +1300,12 @@ const Bumpath = () => {
                               {fileName.replace(`.${fileExtension}`, '')}
                             </Typography>
                             {fileExtension && (
-                              <Typography variant="body2" sx={{ 
-                                color: '#06b6d4',
+                              <Typography variant="body2" sx={{
+                                color: 'var(--accent)',
                                 fontSize: '0.7rem',
                                 fontWeight: '700',
                                 fontFamily: 'JetBrains Mono, monospace',
-                                backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                                backgroundColor: 'rgba(139, 92, 246, 0.1)',
                                 px: 0.5,
                                 py: 0.25,
                                 borderRadius: '3px'
@@ -1315,19 +1324,18 @@ const Bumpath = () => {
           </Box>
 
           {/* Right Panel - Scanned Tree */}
-          <Box sx={{ 
+          <Box sx={{
             flex: 1,
-            ...glassPanelSx,
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden'
           }}>
             <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
               {isScanning ? (
-                <Box sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
+                <Box sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   height: '100%',
                   flexDirection: 'column',
                   gap: 2
@@ -1340,63 +1348,48 @@ const Bumpath = () => {
               ) : scannedData ? (
                 <List dense>
                   {filteredEntries.map(([entryHash, entryData]) => (
-                    <ListItem 
-                      key={entryHash} 
-                      sx={{ 
+                    <ListItem
+                      key={entryHash}
+                      sx={{
                         px: 1,
                         py: 0.5,
-                        borderBottom: '1px solid var(--glass-border)',
-                        '&:hover': { backgroundColor: 'color-mix(in srgb, var(--accent2), transparent 95%)' }
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                        '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.03)' }
                       }}
                     >
                       <Box sx={{ width: '100%' }}>
                         {/* Entry Header */}
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                          <IconButton 
+                          <IconButton
                             size="small"
                             onClick={() => handleEntryExpand(entryHash)}
-                            sx={{ 
-                              color: '#06b6d4',
-                              backgroundColor: 'rgba(6, 182, 212, 0.1)',
-                              borderRadius: '6px',
+                            sx={{
+                              color: 'var(--text-2)',
                               '&:hover': {
-                                backgroundColor: 'rgba(6, 182, 212, 0.2)',
-                                transform: 'scale(1.1)',
-                                boxShadow: '0 2px 8px rgba(6, 182, 212, 0.3)'
-                              },
-                              '&:active': {
-                                transform: 'scale(0.95)'
-                              },
-                              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                                color: 'var(--accent)',
+                                backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                              }
                             }}
                           >
                             {expandedEntries.has(entryHash) ? <ExpandMoreIcon /> : <ChevronRightIcon />}
                           </IconButton>
-                          
+
                           <Checkbox
                             checked={selectedEntries.has(entryHash)}
                             onChange={() => handleEntrySelect(entryHash)}
                             disabled={entryData.prefix === 'Uneditable'}
-                            sx={{ 
-                              color: entryData.prefix === 'Uneditable' ? '#6b7280' : '#10b981',
-                              '&.Mui-checked': { 
-                                color: '#059669',
-                                '& .MuiSvgIcon-root': {
-                                  filter: 'drop-shadow(0 2px 4px rgba(16, 185, 129, 0.3))'
-                                }
+                            sx={{
+                              color: 'var(--text-2)',
+                              '&.Mui-checked': {
+                                color: 'var(--accent)',
                               },
-                              '&:hover': {
-                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                                borderRadius: '4px'
-                              },
-                              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
                             }}
                           />
-                          
+
                           <Box sx={{ flex: 1, minWidth: 0 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25, flexWrap: 'wrap' }}>
-                              <Typography variant="body2" sx={{ 
-                                color: 'var(--accent)',
+                              <Typography variant="body2" sx={{
+                                color: 'var(--text)',
                                 fontSize: '0.7rem',
                                 fontWeight: '600',
                                 fontFamily: 'JetBrains Mono, monospace',
@@ -1405,9 +1398,9 @@ const Bumpath = () => {
                               }}>
                                 {getEntryDisplayName(entryHash, entryData)}
                               </Typography>
-                              <Box sx={{ 
-                                backgroundColor: 'rgba(6, 182, 212, 0.1)',
-                                border: '1px solid rgba(6, 182, 212, 0.2)',
+                              <Box sx={{
+                                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                                border: '1px solid rgba(139, 92, 246, 0.2)',
                                 borderRadius: '3px',
                                 px: 0.5,
                                 py: 0.25,
@@ -1415,8 +1408,8 @@ const Bumpath = () => {
                                 alignItems: 'center',
                                 flex: '0 0 auto'
                               }}>
-                                <Typography variant="body2" sx={{ 
-                                  color: '#06b6d4',
+                                <Typography variant="body2" sx={{
+                                  color: 'var(--accent)',
                                   fontSize: '0.65rem',
                                   fontWeight: '600',
                                   fontFamily: 'JetBrains Mono, monospace',
@@ -1427,46 +1420,206 @@ const Bumpath = () => {
                                 </Typography>
                               </Box>
                             </Box>
-                            <Typography variant="body2" sx={{ 
-                              color: 'var(--accent2)',
-                              fontSize: '0.65rem',
-                              fontFamily: 'JetBrains Mono, monospace',
-                              opacity: 0.7,
-                              display: 'block',
-                              width: '100%'
-                            }}>
-                              ID: {entryHash}
-                            </Typography>
+                            {/* Only show Hash when expanded - Python: type_name is the entry type (VFXSystemDefinitionData), hash is entryHash */}
+                            {expandedEntries.has(entryHash) && (
+                              <Typography variant="body2" sx={{
+                                color: 'var(--text-2)',
+                                fontSize: '0.65rem',
+                                fontFamily: 'JetBrains Mono, monospace',
+                                opacity: 0.7,
+                                display: 'block',
+                                width: '100%'
+                              }}>
+                                {entryData.type_name ? `${entryData.type_name} | Hash: ${entryHash}` : `Hash: ${entryHash}`}
+                              </Typography>
+                            )}
                           </Box>
                         </Box>
 
                         {/* Referenced Files */}
                         {expandedEntries.has(entryHash) && (
                           <Box sx={{ ml: 4 }}>
-                            {entryData.referenced_files.map((file, index) => (
-                              <Box key={index} sx={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: 1, 
-                                mb: 0.5,
-                                opacity: showMissingOnly && file.exists ? 0.3 : 1
-                              }}>
-                                <Box sx={{ 
-                                  width: 8,
-                                  height: 8,
-                                  borderRadius: '50%',
-                                  backgroundColor: file.exists ? '#4ade80' : '#f87171',
-                                  flexShrink: 0
-                                }} />
-                                <Typography variant="body2" sx={{ 
-                                  color: 'var(--accent2)',
-                                  fontSize: '0.7rem',
-                                  wordBreak: 'break-all'
-                                }}>
-                                  {file.path}
-                                </Typography>
-                              </Box>
-                            ))}
+                            {(() => {
+                              // Get the entry name to filter it out from the list
+                              let entryName = entryData.name || '';
+                              if (entryName.startsWith('Entry_') && entryData.referenced_files && entryData.referenced_files.length > 0) {
+                                // Find the missing file that is NOT a texture path (.tex) - this is the unhashed entry name
+                                const unhashedName = entryData.referenced_files.find(file =>
+                                  !file.exists &&
+                                  file.path &&
+                                  !file.path.toLowerCase().endsWith('.tex')
+                                );
+                                if (unhashedName && unhashedName.path) {
+                                  entryName = unhashedName.path;
+                                }
+                              }
+
+                              // Filter out the entry name from referenced files
+                              const filteredFiles = entryData.referenced_files.filter(file =>
+                                file.path && file.path !== entryName
+                              );
+
+                              // Group files: missing files become headers, texture files are children
+                              const missingFiles = new Map(); // Map of missing file path -> array of texture files that reference it
+                              const existingFiles = []; // Regular existing files
+
+                              filteredFiles.forEach((file) => {
+                                if (!file.exists) {
+                                  // Missing file - check if it's a texture path or should be a header
+                                  const isTexture = file.path.toLowerCase().endsWith('.tex');
+                                  if (isTexture) {
+                                    // Texture files that are missing - these should be headers
+                                    if (!missingFiles.has(file.path)) {
+                                      missingFiles.set(file.path, []);
+                                    }
+                                  } else {
+                                    // Non-texture missing file - this should be a header
+                                    if (!missingFiles.has(file.path)) {
+                                      missingFiles.set(file.path, []);
+                                    }
+                                  }
+                                } else {
+                                  // Existing file - check if it's a texture that should be grouped under a missing file
+                                  const isTexture = file.path.toLowerCase().endsWith('.tex');
+                                  if (isTexture) {
+                                    // Find if this texture references a missing file path
+                                    // Check if any missing file path is a parent/related to this texture
+                                    let grouped = false;
+                                    for (const [missingPath] of missingFiles) {
+                                      // If the texture path contains the missing path or vice versa, group them
+                                      const texturePathLower = file.path.toLowerCase();
+                                      const missingPathLower = missingPath.toLowerCase();
+                                      if (texturePathLower.includes(missingPathLower) || missingPathLower.includes(texturePathLower)) {
+                                        missingFiles.get(missingPath).push(file);
+                                        grouped = true;
+                                        break;
+                                      }
+                                    }
+                                    if (!grouped) {
+                                      existingFiles.push(file);
+                                    }
+                                  } else {
+                                    existingFiles.push(file);
+                                  }
+                                }
+                              });
+
+                              // Render missing files as collapsible headers
+                              const result = [];
+
+                              // First, render missing files as headers (red dots)
+                              missingFiles.forEach((textureFiles, missingPath) => {
+                                const isExpanded = expandedFilePaths.has(missingPath);
+                                result.push(
+                                  <Box key={`missing-${missingPath}`} sx={{ mb: 0.5 }}>
+                                    <Box sx={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 1,
+                                      cursor: 'pointer',
+                                      opacity: showMissingOnly ? 1 : 1,
+                                      '&:hover': {
+                                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                        borderRadius: '4px'
+                                      },
+                                      py: 0.25,
+                                      px: 0.5
+                                    }}
+                                      onClick={() => handleFilePathExpand(missingPath)}
+                                    >
+                                      <IconButton
+                                        size="small"
+                                        sx={{
+                                          color: 'var(--text-2)',
+                                          p: 0.25,
+                                          '&:hover': {
+                                            color: 'var(--accent)',
+                                            backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                                          }
+                                        }}
+                                      >
+                                        {isExpanded ? <ExpandMoreIcon sx={{ fontSize: '0.9rem' }} /> : <ChevronRightIcon sx={{ fontSize: '0.9rem' }} />}
+                                      </IconButton>
+                                      <Box sx={{
+                                        width: 8,
+                                        height: 8,
+                                        borderRadius: '50%',
+                                        backgroundColor: '#f87171',
+                                        flexShrink: 0
+                                      }} />
+                                      <Typography variant="body2" sx={{
+                                        color: 'var(--text)',
+                                        fontSize: '0.7rem',
+                                        fontWeight: '600',
+                                        fontFamily: 'JetBrains Mono, monospace',
+                                        wordBreak: 'break-all'
+                                      }}>
+                                        {missingPath}
+                                      </Typography>
+                                    </Box>
+                                    {/* Show texture files under missing file header when expanded */}
+                                    {isExpanded && textureFiles.length > 0 && (
+                                      <Box sx={{ ml: 4, mt: 0.25 }}>
+                                        {textureFiles.map((textureFile, texIndex) => (
+                                          <Box key={`tex-${texIndex}`} sx={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 1,
+                                            mb: 0.5,
+                                            opacity: showMissingOnly && textureFile.exists ? 0.3 : 1
+                                          }}>
+                                            <Box sx={{
+                                              width: 8,
+                                              height: 8,
+                                              borderRadius: '50%',
+                                              backgroundColor: textureFile.exists ? '#4ade80' : '#f87171',
+                                              flexShrink: 0
+                                            }} />
+                                            <Typography variant="body2" sx={{
+                                              color: 'var(--text-2)',
+                                              fontSize: '0.7rem',
+                                              wordBreak: 'break-all'
+                                            }}>
+                                              {textureFile.path}
+                                            </Typography>
+                                          </Box>
+                                        ))}
+                                      </Box>
+                                    )}
+                                  </Box>
+                                );
+                              });
+
+                              // Then render existing files as regular items (green dots)
+                              existingFiles.forEach((file, index) => (
+                                result.push(
+                                  <Box key={`existing-${index}`} sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 1,
+                                    mb: 0.5,
+                                    opacity: showMissingOnly && file.exists ? 0.3 : 1
+                                  }}>
+                                    <Box sx={{
+                                      width: 8,
+                                      height: 8,
+                                      borderRadius: '50%',
+                                      backgroundColor: file.exists ? '#4ade80' : '#f87171',
+                                      flexShrink: 0
+                                    }} />
+                                    <Typography variant="body2" sx={{
+                                      color: 'var(--text-2)',
+                                      fontSize: '0.7rem',
+                                      wordBreak: 'break-all'
+                                    }}>
+                                      {file.path}
+                                    </Typography>
+                                  </Box>
+                                )
+                              ));
+
+                              return result;
+                            })()}
                           </Box>
                         )}
                       </Box>
@@ -1474,18 +1627,18 @@ const Bumpath = () => {
                   ))}
                 </List>
               ) : (
-                <Box sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
+                <Box sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   height: '100%',
                   flexDirection: 'column',
                   gap: 2
                 }}>
-                  <Typography variant="h6" sx={{ color: 'var(--accent2)' }}>
+                  <Typography variant="h6" sx={{ color: 'var(--text-2)' }}>
                     No scanned data
                   </Typography>
-                  <Typography variant="body2" sx={{ color: 'var(--accent2)', textAlign: 'center' }}>
+                  <Typography variant="body2" sx={{ color: 'var(--text-2)', textAlign: 'center' }}>
                     Select BIN files and click "Scan BIN Files" to analyze them
                   </Typography>
                 </Box>
@@ -1495,10 +1648,9 @@ const Bumpath = () => {
         </Box>
 
         {/* Bottom Controls */}
-        <Box sx={{ 
-          ...glassPanelSx,
+        <Box sx={{
           p: 1.5,
-          borderTop: '1px solid var(--glass-border)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
           display: 'flex',
           alignItems: 'center',
           gap: 1.5,
@@ -1506,41 +1658,24 @@ const Bumpath = () => {
           minHeight: '70px'
         }}>
           <Button
-            variant="outlined"
             startIcon={<CloseIcon />}
             onClick={handleReset}
-            sx={{ 
-              borderColor: '#ef4444', 
-              color: '#ef4444',
-              borderWidth: '2px',
-              borderRadius: '6px',
-              background: 'rgba(239, 68, 68, 0.05)',
-              position: 'relative',
-              zIndex: 1,
-              backdropFilter: 'none',
-              WebkitBackdropFilter: 'none',
-              '&:hover': { 
-                borderColor: '#dc2626', 
-                color: '#dc2626',
-                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                boxShadow: '0 2px 8px rgba(239, 68, 68, 0.2)',
-                transform: 'translateY(-1px)'
-              },
-              '&:active': {
-                transform: 'translateY(0px)',
-                boxShadow: '0 1px 4px rgba(239, 68, 68, 0.15)'
-              },
-              textTransform: 'none',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.75rem',
-              fontWeight: '600',
-              px: 1.5,
-              py: 0.6,
-              minHeight: '36px',
-              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+            sx={{
+              ...celestialButtonStyle,
+              fontSize: '0.8rem',
+              height: '34px',
+              padding: '0 12px',
+              borderColor: '#ef4444 !important',
+              color: '#ef4444 !important',
+              '&:hover': {
+                ...celestialButtonStyle['&:hover'],
+                borderColor: '#dc2626 !important',
+                color: '#dc2626 !important',
+                boxShadow: '0 0 15px color-mix(in srgb, #ef4444, transparent 60%)'
+              }
             }}
           >
-            ❌ Reset
+            Reset
           </Button>
 
 
@@ -1550,26 +1685,24 @@ const Bumpath = () => {
             data-bumpath-prefix
             sx={{
               width: '100px',
-              '& .MuiOutlinedInput-root': { 
-                color: 'var(--accent)',
+              '& .MuiOutlinedInput-root': {
+                color: 'var(--text)',
                 fontSize: '0.8rem',
-                backgroundColor: 'rgba(139, 92, 246, 0.05)',
+                backgroundColor: 'var(--bg-2)',
                 borderRadius: '6px',
-                '& fieldset': { 
-                  borderColor: 'rgba(139, 92, 246, 0.2)',
+                '& fieldset': {
+                  borderColor: 'var(--glass-border)',
                   borderWidth: '1px'
                 },
-                '&:hover fieldset': { 
-                  borderColor: 'rgba(139, 92, 246, 0.4)',
-                  backgroundColor: 'rgba(139, 92, 246, 0.08)'
+                '&:hover fieldset': {
+                  borderColor: 'var(--accent-muted)',
                 },
-                '&.Mui-focused fieldset': { 
-                  borderColor: '#8b5cf6',
-                  backgroundColor: 'rgba(139, 92, 246, 0.1)'
+                '&.Mui-focused fieldset': {
+                  borderColor: 'var(--accent)',
                 },
               },
-              '& .MuiInputBase-input': { 
-                fontSize: '0.8rem', 
+              '& .MuiInputBase-input': {
+                fontSize: '0.8rem',
                 textAlign: 'center',
                 fontFamily: 'JetBrains Mono, monospace',
                 fontWeight: '600'
@@ -1579,131 +1712,75 @@ const Bumpath = () => {
 
 
           <Button
-            variant="outlined"
             startIcon={<EditIcon />}
             onClick={handleApplyPrefix}
             disabled={selectedEntries.size === 0 || !debouncedPrefixText.trim()}
-            sx={{ 
-              borderColor: '#8b5cf6', 
-              color: '#8b5cf6',
-              borderWidth: '2px',
-              borderRadius: '6px',
-              background: 'rgba(139, 92, 246, 0.05)',
-              position: 'relative',
-              zIndex: 1,
-              backdropFilter: 'none',
-              WebkitBackdropFilter: 'none',
-              '&:hover': { 
-                borderColor: '#7c3aed',
-                color: '#7c3aed',
-                backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                boxShadow: '0 2px 8px rgba(139, 92, 246, 0.2)',
-                transform: 'translateY(-1px)'
-              },
-              '&:active': {
-                transform: 'translateY(0px)',
-                boxShadow: '0 1px 4px rgba(139, 92, 246, 0.15)'
-              },
-              '&:disabled': {
-                borderColor: '#6b7280',
-                color: '#6b7280',
-                backgroundColor: 'rgba(107, 114, 128, 0.05)',
-                transform: 'none'
-              },
-              textTransform: 'none',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.75rem',
-              fontWeight: '600',
-              px: 1.5,
-              py: 0.6,
-              minHeight: '36px',
-              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+            sx={{
+              ...celestialButtonStyle,
+              fontSize: '0.8rem',
+              height: '34px',
+              padding: '0 12px',
+              borderColor: '#8b5cf6 !important',
+              color: '#8b5cf6 !important',
+              '&:hover': {
+                ...celestialButtonStyle['&:hover'],
+                borderColor: '#7c3aed !important',
+                color: '#7c3aed !important',
+                boxShadow: '0 0 15px color-mix(in srgb, #8b5cf6, transparent 60%)'
+              }
             }}
           >
             Apply Prefix
           </Button>
 
           <Button
-            variant="outlined"
             startIcon={<FolderIcon />}
             onClick={handleSelectOutputDir}
             data-bumpath-output
-            sx={{ 
-              borderColor: '#06b6d4', 
-              color: '#06b6d4',
-              borderWidth: '2px',
-              borderRadius: '6px',
-              background: 'rgba(6, 182, 212, 0.05)',
-              position: 'relative',
-              zIndex: 1,
-              backdropFilter: 'none',
-              WebkitBackdropFilter: 'none',
-              '&:hover': { 
-                borderColor: '#0891b2',
-                color: '#0891b2',
-                backgroundColor: 'rgba(6, 182, 212, 0.1)',
-                boxShadow: '0 2px 8px rgba(6, 182, 212, 0.2)',
-                transform: 'translateY(-1px)'
-              },
-              '&:active': {
-                transform: 'translateY(0px)',
-                boxShadow: '0 1px 4px rgba(6, 182, 212, 0.15)'
-              },
-              textTransform: 'none',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.75rem',
-              fontWeight: '600',
-              px: 1.5,
-              py: 0.6,
-              minHeight: '36px',
-              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+            color="inherit"
+            sx={{
+              ...celestialButtonStyle,
+              fontSize: '0.8rem',
+              height: '34px',
+              padding: '0 12px',
+              borderColor: '#06b6d4 !important',
+              color: '#06b6d4 !important',
+              '&:hover': {
+                background: 'var(--surface-2)',
+                borderColor: '#0891b2 !important',
+                color: '#0891b2 !important',
+                boxShadow: '0 0 15px color-mix(in srgb, #06b6d4, transparent 60%)'
+              }
             }}
           >
             Select Output
           </Button>
 
           <Button
-            variant="outlined"
             startIcon={isProcessing ? <CircularProgress size={16} /> : <PlayArrowIcon />}
             onClick={handleProcess}
             disabled={isProcessing || !scannedData || !outputPath}
             data-bumpath-process
-            sx={{ 
-              borderColor: '#f97316', 
-              color: '#f97316',
-              borderWidth: '2px',
-              borderRadius: '6px',
-              background: 'rgba(249, 115, 22, 0.05)',
-              position: 'relative',
-              zIndex: 1,
-              backdropFilter: 'none',
-              WebkitBackdropFilter: 'none',
-              '&:hover': { 
-                borderColor: '#ea580c',
-                color: '#ea580c',
-                backgroundColor: 'rgba(249, 115, 22, 0.1)',
-                boxShadow: '0 2px 8px rgba(249, 115, 22, 0.2)',
-                transform: 'translateY(-1px)'
-              },
-              '&:active': {
-                transform: 'translateY(0px)',
-                boxShadow: '0 1px 4px rgba(249, 115, 22, 0.15)'
+            sx={{
+              ...celestialButtonStyle,
+              fontSize: '0.8rem',
+              height: '34px',
+              padding: '0 12px',
+              minWidth: '120px',
+              fontWeight: 700,
+              borderColor: '#f97316 !important',
+              color: '#f97316 !important',
+              boxShadow: '0 0 0 2px color-mix(in srgb, #f97316, transparent 70%), 0 2px 4px rgba(0,0,0,0.2)',
+              '&:hover': {
+                ...celestialButtonStyle['&:hover'],
+                borderColor: '#ea580c !important',
+                color: '#ea580c !important',
+                boxShadow: '0 0 0 2px color-mix(in srgb, #f97316, transparent 50%), 0 0 15px color-mix(in srgb, #f97316, transparent 60%)'
               },
               '&:disabled': {
-                borderColor: '#6b7280',
-                color: '#6b7280',
-                backgroundColor: 'rgba(107, 114, 128, 0.05)',
-                transform: 'none'
-              },
-              textTransform: 'none',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.8rem',
-              fontWeight: '700',
-              px: 2.5,
-              py: 0.8,
-              minWidth: '120px',
-              minHeight: '40px',
-              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                ...celestialButtonStyle['&:disabled'],
+                boxShadow: 'none'
+              }
             }}
           >
             {isProcessing ? 'Processing...' : 'Bum'}
@@ -1711,90 +1788,20 @@ const Bumpath = () => {
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, marginLeft: 'auto' }}>
             <Button
-              variant="outlined"
               onClick={() => setConsoleOpen(true)}
-              sx={{ 
-                borderColor: '#6b7280', 
-                color: '#6b7280',
-                borderWidth: '2px',
-                borderRadius: '6px',
-                background: 'rgba(107, 114, 128, 0.05)',
-                position: 'relative',
-                zIndex: 1,
-                backdropFilter: 'none',
-                WebkitBackdropFilter: 'none',
-                '&:hover': { 
-                  borderColor: '#4b5563',
-                  color: '#4b5563',
-                  backgroundColor: 'rgba(107, 114, 128, 0.1)',
-                  boxShadow: '0 2px 8px rgba(107, 114, 128, 0.2)',
-                  transform: 'translateY(-1px)'
-                },
-                '&:active': {
-                  transform: 'translateY(0px)',
-                  boxShadow: '0 1px 4px rgba(107, 114, 128, 0.15)'
-                },
-                textTransform: 'none',
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: '0.75rem',
-                fontWeight: '600',
-                minWidth: '40px',
-                width: '40px',
-                height: '36px',
-                px: 0,
-                py: 0,
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                '& .MuiSvgIcon-root': {
-                  fontSize: '1.2rem'
-                }
-              }}
+              sx={{ ...celestialButtonStyle, fontSize: '0.8rem', height: '36px', minWidth: '40px', width: '40px', px: 0 }}
             >
               <TerminalIcon />
             </Button>
 
             <Button
-              variant="outlined"
               onClick={() => {
                 setSettingsExpanded(!settingsExpanded);
                 // Reset auto-opened flag when manually toggled
                 setSettingsAutoOpened(false);
               }}
               data-bumpath-settings
-              sx={{
-                borderColor: '#6b7280',
-                color: '#6b7280',
-                borderWidth: '2px',
-                borderRadius: '6px',
-                background: 'rgba(107, 114, 128, 0.05)',
-                position: 'relative',
-                zIndex: 1,
-                backdropFilter: 'none',
-                WebkitBackdropFilter: 'none',
-                '&:hover': {
-                  borderColor: '#4b5563',
-                  color: '#4b5563',
-                  backgroundColor: 'rgba(107, 114, 128, 0.1)',
-                  boxShadow: '0 2px 8px rgba(107, 114, 128, 0.2)',
-                  transform: 'translateY(-1px)'
-                },
-                '&:active': {
-                  transform: 'translateY(0px)',
-                  boxShadow: '0 1px 4px rgba(107, 114, 128, 0.15)'
-                },
-                textTransform: 'none',
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: '0.75rem',
-                fontWeight: '600',
-                minWidth: '40px',
-                width: '40px',
-                height: '36px',
-                px: 0,
-                py: 0,
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                '& .MuiSvgIcon-root': {
-                  fontSize: '1.2rem'
-                }
-              }}
+              sx={{ ...celestialButtonStyle, fontSize: '0.8rem', height: '36px', minWidth: '40px', width: '40px', px: 0 }}
             >
               <SettingsIcon />
             </Button>
@@ -1802,48 +1809,23 @@ const Bumpath = () => {
         </Box>
 
         {/* Collapsible Settings Panel */}
-        <Box 
+        <Box
           data-bumpath-settings-panel
-          sx={{ 
-            ...glassPanelSx,
+          sx={{
+            ...panelStyle,
             borderTop: '1px solid var(--glass-border)',
             overflow: 'hidden',
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            maxHeight: settingsExpanded ? '120px' : '0px',
+            maxHeight: settingsExpanded ? '160px' : '0px',
             opacity: settingsExpanded ? 1 : 0
           }}>
-          <Box sx={{ 
+          <Box sx={{
             p: 2,
             display: 'flex',
             alignItems: 'center',
             gap: 3,
             flexWrap: 'wrap'
           }}>
-            <Box sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: 1,
-              px: 1.5,
-              py: 0.5,
-              borderRadius: 1,
-              backgroundColor: backendRunning ? 'color-mix(in srgb, #4ade80, transparent 90%)' : 'color-mix(in srgb, #f87171, transparent 90%)',
-              border: '1px solid rgba(107, 114, 128, 0.2)'
-            }}>
-              <Box sx={{ 
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                backgroundColor: backendRunning ? '#4ade80' : '#f87171'
-              }} />
-              <Typography variant="body2" sx={{ 
-                color: backendRunning ? '#4ade80' : '#f87171',
-                fontSize: '0.7rem',
-                fontWeight: '600',
-                fontFamily: 'JetBrains Mono, monospace'
-              }}>
-                {backendRunning ? 'Backend Running' : 'Backend Starting...'}
-              </Typography>
-            </Box>
             <FormControlLabel
               control={
                 <Switch
@@ -1853,13 +1835,13 @@ const Bumpath = () => {
                     saveSettings('BumpathIgnoreMissing', e.target.checked);
                   }}
                   sx={{
-                    '& .MuiSwitch-switchBase.Mui-checked': { 
+                    '& .MuiSwitch-switchBase.Mui-checked': {
                       color: '#06b6d4',
                       '&:hover': {
                         backgroundColor: 'rgba(6, 182, 212, 0.1)'
                       }
                     },
-                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { 
+                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
                       backgroundColor: '#06b6d4',
                       opacity: 0.8
                     },
@@ -1876,8 +1858,8 @@ const Bumpath = () => {
                 />
               }
               label={
-                <Typography variant="body2" sx={{ 
-                  color: 'var(--accent2)', 
+                <Typography variant="body2" sx={{
+                  color: 'var(--accent2)',
                   fontSize: '0.8rem',
                   fontWeight: '500'
                 }}>
@@ -1895,13 +1877,13 @@ const Bumpath = () => {
                     saveSettings('BumpathCombineLinked', e.target.checked);
                   }}
                   sx={{
-                    '& .MuiSwitch-switchBase.Mui-checked': { 
+                    '& .MuiSwitch-switchBase.Mui-checked': {
                       color: '#06b6d4',
                       '&:hover': {
                         backgroundColor: 'rgba(6, 182, 212, 0.1)'
                       }
                     },
-                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { 
+                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
                       backgroundColor: '#06b6d4',
                       opacity: 0.8
                     },
@@ -1918,12 +1900,54 @@ const Bumpath = () => {
                 />
               }
               label={
-                <Typography variant="body2" sx={{ 
-                  color: 'var(--accent2)', 
+                <Typography variant="body2" sx={{
+                  color: 'var(--accent2)',
                   fontSize: '0.8rem',
                   fontWeight: '500'
                 }}>
                   🧬 Combine Linked BINs to Source BINs
+                </Typography>
+              }
+            />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={hideDataFolderBins}
+                  onChange={(e) => {
+                    setHideDataFolderBins(e.target.checked);
+                    saveSettings('BumpathHideDataFolderBins', e.target.checked);
+                  }}
+                  sx={{
+                    '& .MuiSwitch-switchBase.Mui-checked': {
+                      color: '#06b6d4',
+                      '&:hover': {
+                        backgroundColor: 'rgba(6, 182, 212, 0.1)'
+                      }
+                    },
+                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                      backgroundColor: '#06b6d4',
+                      opacity: 0.8
+                    },
+                    '& .MuiSwitch-track': {
+                      backgroundColor: 'rgba(107, 114, 128, 0.3)',
+                      border: '1px solid rgba(107, 114, 128, 0.2)'
+                    },
+                    '& .MuiSwitch-thumb': {
+                      backgroundColor: '#ffffff',
+                      border: '1px solid rgba(107, 114, 128, 0.2)',
+                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+                    }
+                  }}
+                />
+              }
+              label={
+                <Typography variant="body2" sx={{
+                  color: 'var(--accent2)',
+                  fontSize: '0.8rem',
+                  fontWeight: '500'
+                }}>
+                  Hide path in bin list
                 </Typography>
               }
             />
@@ -1932,9 +1956,9 @@ const Bumpath = () => {
 
         {/* Status Messages */}
         {error && (
-          <Alert severity="error" sx={{ 
-            position: 'absolute',
-            top: 20,
+          <Alert severity="error" sx={{
+            position: 'fixed',
+            top: 80,
             right: 20,
             zIndex: 1000,
             background: 'var(--glass-bg)',
@@ -1949,7 +1973,7 @@ const Bumpath = () => {
         {success && (
           <Box sx={{
             position: 'fixed',
-            top: 20,
+            top: 80,
             right: 20,
             zIndex: 1000,
             display: 'flex',
@@ -1967,7 +1991,7 @@ const Bumpath = () => {
             animation: 'slideIn 0.3s ease-out',
             transition: 'all 0.3s ease-out'
           }}>
-            <CheckCircleIcon sx={{ 
+            <CheckCircleIcon sx={{
               color: '#ffffff',
               fontSize: '1.2rem'
             }} />
@@ -2015,7 +2039,7 @@ const Bumpath = () => {
               helperText="Hash files are automatically managed. Use Settings page to download/update hash files."
               data-bumpath-hash-dir
               sx={{
-                '& .MuiOutlinedInput-root': { 
+                '& .MuiOutlinedInput-root': {
                   color: 'var(--accent)',
                   backgroundColor: 'rgba(0, 0, 0, 0.1)',
                 },
@@ -2025,7 +2049,7 @@ const Bumpath = () => {
               }}
             />
             <Typography variant="body2" sx={{ color: 'var(--accent2)', fontSize: '0.8rem' }}>
-              Hash files are downloaded automatically from CommunityDragon. 
+              Hash files are downloaded automatically from CommunityDragon.
               Go to Settings → Hash Files section to download or update hash files.
             </Typography>
           </Box>
@@ -2053,20 +2077,20 @@ const Bumpath = () => {
             aria-label="Open Celestia guide"
             sx={{
               position: 'fixed',
-              bottom: 90,
+              bottom: settingsExpanded ? 150 : 90,
               right: 24,
               width: 40,
               height: 40,
               borderRadius: '50%',
               zIndex: 4500,
-              background: 'linear-gradient(135deg, var(--accent2), color-mix(in srgb, var(--accent2), transparent 35%))',
+              background: 'var(--bg-2)',
               color: 'var(--text)',
-              border: '1px solid rgba(255,255,255,0.6)',
-              boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px color-mix(in srgb, var(--accent2), transparent 45%)',
+              border: '1px solid var(--accent-muted)',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
               '&:hover': {
-                transform: 'translateY(-2px)',
-                boxShadow: '0 10px 26px rgba(0,0,0,0.45), 0 0 12px color-mix(in srgb, var(--accent2), transparent 30%)',
-                background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent2), transparent 10%), var(--accent2))'
+                background: 'var(--surface-2)',
+                borderColor: 'var(--accent)',
+                boxShadow: '0 0 15px color-mix(in srgb, var(--accent), transparent 60%)'
               },
               transition: 'all 0.2s ease'
             }}
@@ -2098,7 +2122,7 @@ const Bumpath = () => {
                 top: `${binListHighlightRect.top}px`,
                 width: `${binListHighlightRect.width}px`,
                 height: `${binListHighlightRect.height}px`,
-                ...glassPanelSx,
+                ...panelStyle,
                 opacity: 0.95,
                 pointerEvents: 'none',
                 border: '2px solid var(--accent)',
@@ -2114,20 +2138,20 @@ const Bumpath = () => {
                 <Box sx={{ p: 2, borderBottom: '1px solid var(--glass-border)', flexShrink: 0 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <FormatListBulletedIcon sx={{ 
+                      <FormatListBulletedIcon sx={{
                         color: 'var(--accent)',
                         fontSize: '1.2rem'
                       }} />
-                      <Typography variant="h6" sx={{ 
+                      <Typography variant="h6" sx={{
                         color: 'var(--accent)',
                         fontSize: '1rem'
                       }}>
                         Source BINs:
                       </Typography>
                     </Box>
-                    <Box sx={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
+                    <Box sx={{
+                      display: 'flex',
+                      alignItems: 'center',
                       gap: 1,
                       px: 1.5,
                       py: 0.5,
@@ -2135,7 +2159,7 @@ const Bumpath = () => {
                       backgroundColor: 'rgba(139, 92, 246, 0.1)',
                       border: '1px solid rgba(139, 92, 246, 0.2)'
                     }}>
-                      <Typography variant="body2" sx={{ 
+                      <Typography variant="body2" sx={{
                         color: '#8b5cf6',
                         fontSize: '0.7rem',
                         fontWeight: '600'
@@ -2145,126 +2169,126 @@ const Bumpath = () => {
                     </Box>
                   </Box>
                 </Box>
-                
+
                 {/* Simulated BIN list */}
                 <Box sx={{ flex: 1, overflow: 'auto', p: 0.5 }}>
-                <List dense sx={{ py: 0 }}>
-                  {[
-                    { path: 'data\\characters\\aatrox\\skins\\skin0', ext: 'bin', selected: simulatedBinSelected, animateClick: true },
-                    { path: 'data\\characters\\aatrox\\skins\\skin1', ext: 'bin', selected: false, animateClick: false },
-                    { path: 'data\\characters\\aatrox\\skins\\skin3', ext: 'bin', selected: false, animateClick: false },
-                  ].map((bin, idx) => (
-                  <ListItem 
-                    key={idx}
-                    sx={{ 
-                      px: 1, 
-                      py: 0.75,
-                      minHeight: 'auto',
-                      backgroundColor: idx % 2 === 0 ? 'rgba(139, 92, 246, 0.02)' : 'transparent',
-                      borderRadius: '4px',
-                      mb: 0.25,
-                      position: 'relative',
-                    }}
-                  >
-                    {/* Animated click indicator for skin0 */}
-                    {bin.animateClick && !simulatedBinSelected && (
-                      <Box
+                  <List dense sx={{ py: 0 }}>
+                    {[
+                      { path: 'data\\characters\\aatrox\\skins\\skin0', ext: 'bin', selected: simulatedBinSelected, animateClick: true },
+                      { path: 'data\\characters\\aatrox\\skins\\skin1', ext: 'bin', selected: false, animateClick: false },
+                      { path: 'data\\characters\\aatrox\\skins\\skin3', ext: 'bin', selected: false, animateClick: false },
+                    ].map((bin, idx) => (
+                      <ListItem
+                        key={idx}
                         sx={{
-                          position: 'absolute',
-                          left: '8px',
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          width: '24px',
-                          height: '24px',
-                          borderRadius: '50%',
-                          backgroundColor: 'rgba(139, 92, 246, 0.3)',
-                          border: '2px solid var(--accent)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          animation: 'clickPulse 1.5s ease-in-out infinite',
-                          zIndex: 1,
-                          '@keyframes clickPulse': {
-                            '0%, 100%': {
-                              transform: 'translateY(-50%) scale(1)',
-                              opacity: 1,
-                            },
-                            '50%': {
-                              transform: 'translateY(-50%) scale(1.3)',
-                              opacity: 0.6,
-                            },
-                          },
+                          px: 1,
+                          py: 0.75,
+                          minHeight: 'auto',
+                          backgroundColor: idx % 2 === 0 ? 'rgba(139, 92, 246, 0.02)' : 'transparent',
+                          borderRadius: '4px',
+                          mb: 0.25,
+                          position: 'relative',
                         }}
                       >
-                        <Box
+                        {/* Animated click indicator for skin0 */}
+                        {bin.animateClick && !simulatedBinSelected && (
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              left: '8px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              width: '24px',
+                              height: '24px',
+                              borderRadius: '50%',
+                              backgroundColor: 'rgba(139, 92, 246, 0.3)',
+                              border: '2px solid var(--accent)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              animation: 'clickPulse 1.5s ease-in-out infinite',
+                              zIndex: 1,
+                              '@keyframes clickPulse': {
+                                '0%, 100%': {
+                                  transform: 'translateY(-50%) scale(1)',
+                                  opacity: 1,
+                                },
+                                '50%': {
+                                  transform: 'translateY(-50%) scale(1.3)',
+                                  opacity: 0.6,
+                                },
+                              },
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                backgroundColor: 'var(--accent)',
+                              }}
+                            />
+                          </Box>
+                        )}
+                        <Checkbox
+                          checked={bin.selected}
                           sx={{
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%',
-                            backgroundColor: 'var(--accent)',
+                            color: '#8b5cf6',
+                            '&.Mui-checked': {
+                              color: '#7c3aed',
+                            },
+                            p: 0.25,
+                            mr: 1,
+                            position: 'relative',
+                            zIndex: 2,
+                            '& .MuiSvgIcon-root': {
+                              fontSize: '1.1rem'
+                            },
+                            transition: 'all 0.3s ease',
                           }}
                         />
-                      </Box>
-                    )}
-                    <Checkbox
-                      checked={bin.selected}
-                      sx={{ 
-                        color: '#8b5cf6',
-                        '&.Mui-checked': { 
-                          color: '#7c3aed',
-                        },
-                        p: 0.25,
-                        mr: 1,
-                        position: 'relative',
-                        zIndex: 2,
-                        '& .MuiSvgIcon-root': {
-                          fontSize: '1.1rem'
-                        },
-                        transition: 'all 0.3s ease',
-                      }}
-                    />
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
-                        <Typography variant="body2" sx={{ 
-                          color: 'var(--accent2)',
-                          fontSize: '0.65rem',
-                          opacity: 0.7,
-                          fontFamily: 'JetBrains Mono, monospace'
-                        }}>
-                          {bin.path.split('\\').slice(0, -1).join('\\')}
-                        </Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Typography variant="body2" sx={{ 
-                          color: 'var(--accent)',
-                          fontSize: '0.75rem',
-                          fontWeight: '600',
-                          fontFamily: 'JetBrains Mono, monospace'
-                        }}>
-                          {bin.path.split('\\').pop()}
-                        </Typography>
-                        <Typography variant="body2" sx={{ 
-                          color: '#06b6d4',
-                          fontSize: '0.7rem',
-                          fontWeight: '700',
-                          fontFamily: 'JetBrains Mono, monospace',
-                          backgroundColor: 'rgba(6, 182, 212, 0.1)',
-                          px: 0.5,
-                          py: 0.25,
-                          borderRadius: '3px'
-                        }}>
-                          .{bin.ext}
-                        </Typography>
-                      </Box>
-                    </Box>
-                    </ListItem>
-                  ))}
-                </List>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
+                            <Typography variant="body2" sx={{
+                              color: 'var(--accent2)',
+                              fontSize: '0.65rem',
+                              opacity: 0.7,
+                              fontFamily: 'JetBrains Mono, monospace'
+                            }}>
+                              {bin.path.split('\\').slice(0, -1).join('\\')}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Typography variant="body2" sx={{
+                              color: 'var(--accent)',
+                              fontSize: '0.75rem',
+                              fontWeight: '600',
+                              fontFamily: 'JetBrains Mono, monospace'
+                            }}>
+                              {bin.path.split('\\').pop()}
+                            </Typography>
+                            <Typography variant="body2" sx={{
+                              color: '#06b6d4',
+                              fontSize: '0.7rem',
+                              fontWeight: '700',
+                              fontFamily: 'JetBrains Mono, monospace',
+                              backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                              px: 0.5,
+                              py: 0.25,
+                              borderRadius: '3px'
+                            }}>
+                              .{bin.ext}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </ListItem>
+                    ))}
+                  </List>
                 </Box>
               </Box>
             </Box>
           </Box>
-          
+
           {/* Auto-click animation effect - mouse cursor click (matches clickPulse position) */}
           {celestiaStepIndex === 1 && !simulatedBinSelected && binListHighlightRect && (
             <Box
@@ -2336,7 +2360,7 @@ const Bumpath = () => {
               right: 0,
               top: '60px', // Top bar height
               bottom: 0,
-              ...glassPanelSx,
+              ...panelStyle,
               p: 1,
               opacity: 0.95,
               pointerEvents: 'none',
@@ -2359,9 +2383,9 @@ const Bumpath = () => {
                 { id: '2822d7b8', prefix: 'bum' },
                 { id: '2c0d8728', prefix: 'bum' },
               ].map((entry, idx) => (
-                <ListItem 
+                <ListItem
                   key={idx}
-                  sx={{ 
+                  sx={{
                     px: 1,
                     py: 0.5,
                     borderBottom: '1px solid var(--glass-border)',
@@ -2371,9 +2395,9 @@ const Bumpath = () => {
                   <Box sx={{ width: '100%' }}>
                     {/* Entry Header */}
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                      <IconButton 
+                      <IconButton
                         size="small"
-                        sx={{ 
+                        sx={{
                           color: '#06b6d4',
                           backgroundColor: 'rgba(6, 182, 212, 0.1)',
                           borderRadius: '6px',
@@ -2384,12 +2408,12 @@ const Bumpath = () => {
                       >
                         <ChevronRightIcon sx={{ fontSize: '0.9rem' }} />
                       </IconButton>
-                      
+
                       <Checkbox
                         checked={true}
-                        sx={{ 
+                        sx={{
                           color: '#10b981',
-                          '&.Mui-checked': { 
+                          '&.Mui-checked': {
                             color: '#059669',
                           },
                           p: 0.25,
@@ -2399,10 +2423,10 @@ const Bumpath = () => {
                           },
                         }}
                       />
-                      
+
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25, flexWrap: 'wrap' }}>
-                          <Typography variant="body2" sx={{ 
+                          <Typography variant="body2" sx={{
                             color: 'var(--accent)',
                             fontSize: '0.7rem',
                             fontWeight: '600',
@@ -2412,7 +2436,7 @@ const Bumpath = () => {
                           }}>
                             {entry.id}
                           </Typography>
-                          <Box sx={{ 
+                          <Box sx={{
                             backgroundColor: 'rgba(6, 182, 212, 0.1)',
                             border: '1px solid rgba(6, 182, 212, 0.2)',
                             borderRadius: '3px',
@@ -2422,7 +2446,7 @@ const Bumpath = () => {
                             alignItems: 'center',
                             flex: '0 0 auto'
                           }}>
-                            <Typography variant="body2" sx={{ 
+                            <Typography variant="body2" sx={{
                               color: '#06b6d4',
                               fontSize: '0.65rem',
                               fontWeight: '600',
@@ -2434,7 +2458,7 @@ const Bumpath = () => {
                             </Typography>
                           </Box>
                         </Box>
-                        <Typography variant="body2" sx={{ 
+                        <Typography variant="body2" sx={{
                           color: 'var(--accent2)',
                           fontSize: '0.65rem',
                           fontFamily: 'JetBrains Mono, monospace',
@@ -2461,12 +2485,6 @@ const Bumpath = () => {
           onStepChange={(stepIndex) => setCelestiaStepIndex(stepIndex)}
           enableTopRightForSteps={[4, 5, 6]} // Steps 5, 6, and 7 (0-based indices 4, 5, 6)
           steps={[
-            {
-              title: "Source Directories",
-              text: "Add folders containing your mod files here. These are the directories where your modified game files (like .bin files) are located. Bumpath will scan these folders to find files that need to be repathed. You can add multiple source directories and reorder them - files are processed in the order listed.",
-              targetSelector: "[data-bumpath-source-dirs]",
-              padding: 15,
-            },
             {
               title: "Source BINs List",
               text: "After adding source directories, BIN files will appear in this list. Select your main BIN file - this is usually skin0.bin or the primary BIN file for your mod. Click the checkbox next to the BIN file you want to scan. The main BIN file typically contains references to all the other files in your mod.",
@@ -2514,3 +2532,4 @@ const Bumpath = () => {
 };
 
 export default Bumpath;
+

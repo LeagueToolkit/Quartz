@@ -26,6 +26,7 @@ import {
   Snackbar,
   Avatar,
 } from '@mui/material';
+import './Tools.css';
 // Legacy stylesheet removed in favor of inline glass styles
 import {
   Add as AddIcon,
@@ -121,12 +122,12 @@ const Tools = () => {
       // Get the app path - works in both dev and production
       const appPath = process.cwd();
       const rootDir = path.join(appPath, 'tools');
-      
+
       // Ensure directory exists
       if (!fs.existsSync(rootDir)) {
         fs.mkdirSync(rootDir, { recursive: true });
       }
-      
+
       return path.join(rootDir, 'emoji-data.json');
     } catch (error) {
       console.error('Error getting emoji data path:', error);
@@ -479,7 +480,7 @@ const Tools = () => {
       }
       setExes(prev => {
         const updated = prev.filter(e => e.name !== exeName);
-        
+
         // Clean up emoji data
         const emojiData = {};
         updated.forEach(exe => {
@@ -488,7 +489,7 @@ const Tools = () => {
           }
         });
         saveEmojiData(emojiData);
-        
+
         return updated;
       });
       setSnackbar({ open: true, message: `Removed ${exeName}`, severity: 'success' });
@@ -661,47 +662,46 @@ const Tools = () => {
   const popularEmojis = [
     // Gaming & Entertainment
     '🎮', '🎲', '🃏', '🎰', '🎳', '🏹', '⚔️', '🛡️', '🎯', '🎪', '🎭', '🎬', '🎵', '🎤', '🎧', '🎹', '🎸', '🥁', '🎺', '🎻',
-    
+
     // Tools & Technology
     '🔧', '⚙️', '🛠️', '🔨', '🔩', '⚡', '💻', '🖥️', '📱', '📟', '📠', '🖨️', '📡', '🔌', '🔋', '💾', '💿', '📀', '🖱️', '⌨️',
-    
+
     // Files & Organization
     '📁', '📂', '📄', '📋', '📝', '📚', '📖', '📓', '📔', '📒', '📕', '📗', '📘', '📙', '📰', '🗞️', '📑', '🔖', '🏷️', '📎',
-    
+
     // Creative & Art
     '🎨', '🖼️', '🎭', '🎪', '🎟️', '🎫', '🎬', '🎤', '🎧', '🎼', '🎹', '🎸', '🥁', '🎺', '🎻', '🎷', '🪕', '🪘', '🎵', '🎶',
-    
+
     // Success & Achievement
     '🏆', '🥇', '🥈', '🥉', '🎖️', '🏅', '🎗️', '⭐', '🌟', '✨', '💫', '💎', '💍', '👑', '🎊', '🎉', '🎈', '🎁', '🎀', '🎪',
-    
+
     // Nature & Elements
     '🔥', '💧', '🌊', '☀️', '🌙', '⭐', '🌟', '✨', '💫', '⚡', '🌈', '☁️', '🌪️', '❄️', '🌺', '🌸', '🌼', '🌻', '🌹', '🌷',
-    
+
     // Animals & Creatures
     '🐉', '🐲', '🦄', '🦁', '🐯', '🐻', '🐼', '🐨', '🐸', '🐙', '🦋', '🦅', '🦉', '🦊', '🐺', '🐱', '🐶', '🐹', '🐰', '🦊',
-    
+
     // Food & Drinks
     '🍕', '🍔', '🍟', '🌭', '🍿', '🍩', '🍪', '🍰', '🧁', '🍦', '🍧', '🍨', '🍩', '🍪', '🍫', '🍬', '🍭', '🍮', '🍯', '🍼',
-    
+
     // Sports & Activities
     '⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🎱', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🎯', '🎳', '🎮', '🎲', '🎰', '🎪',
-    
+
     // Objects & Items
     '🔮', '💎', '💍', '👑', '🎁', '🎀', '🎈', '🎊', '🎉', '🏆', '🥇', '🥈', '🥉', '🎖️', '🏅', '🎗️', '⭐', '🌟', '✨', '💫',
-    
+
     // Symbols & Shapes
     '❤️', '💙', '💚', '💛', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✌️',
-    
+
     // Fantasy & Magic
     '🔮', '✨', '💫', '🌟', '⭐', '🌙', '☀️', '🌈', '⚡', '🔥', '💧', '🌊', '🌪️', '❄️', '🌺', '🌸', '🌼', '🌻', '🌹', '🌷'
   ];
 
   return (
-    <Box sx={{
+    <Box className="tools-root" sx={{
       minHeight: '100%',
       height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
       width: '100%',
-      background: 'linear-gradient(135deg, var(--bg-2) 0%, var(--bg) 100%)',
       color: 'var(--text)',
       position: 'relative',
       overflow: 'hidden',
@@ -714,7 +714,7 @@ const Tools = () => {
       onDrop={handleDrop}
     >
       {/* Background lights */}
-      <Box sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
+      <Box className="background-lights" sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
         <Box sx={{ position: 'absolute', top: -120, left: -80, width: 600, height: 600, filter: 'blur(60px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent), transparent 82%), transparent 70%)' }} />
         <Box sx={{ position: 'absolute', top: -60, right: -120, width: 700, height: 700, filter: 'blur(80px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent2), transparent 84%), transparent 70%)' }} />
         <Box sx={{ position: 'absolute', bottom: -160, left: '20%', width: 800, height: 800, filter: 'blur(90px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent), transparent 88%), transparent 70%)' }} />

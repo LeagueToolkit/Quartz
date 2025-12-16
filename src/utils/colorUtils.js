@@ -508,14 +508,18 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
 
     const commit = (hex) => {
       try {
+        // Check for onShadesCommit callback first (for filter picker and shades mode)
+        if (mode === 'shades' && options && typeof options.onShadesCommit === 'function') {
+          options.onShadesCommit(hex);
+          try { if (container.parentNode) container.parentNode.removeChild(container); } catch {}
+          return;
+        }
+        
         // Use a function updater to get the latest Palette state
         // This ensures we're working with the current palette, not a stale closure
         if (setPalette) {
           setPalette(currentPalette => {
-            if (mode === 'shades' && options && typeof options.onShadesCommit === 'function') {
-              options.onShadesCommit(hex);
-              return currentPalette; // No change to palette
-            } else if (currentPalette[paletteIndex]) {
+            if (currentPalette[paletteIndex]) {
               // Create a new array to avoid mutation
               const updatedPalette = [...currentPalette];
               updatedPalette[paletteIndex].InputHex(hex);

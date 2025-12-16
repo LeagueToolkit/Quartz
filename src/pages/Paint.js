@@ -22,7 +22,6 @@ import {
   Collapse,
   Menu,
 } from '@mui/material';
-import { glassButton, glassButtonOutlined, glassPanel } from '../utils/glassStyles';
 import CropOriginalIcon from '@mui/icons-material/CropOriginal';
 import { Folder as FolderIcon, ChevronRight as ChevronRightIcon, ChevronLeft as ChevronLeftIcon, Tune as TuneIcon } from '@mui/icons-material';
 import './Paint.css';
@@ -45,7 +44,7 @@ import {
 import { ToPy, ToPyWithPath, ToBin } from '../utils/fileOperations';
 import { loadFileWithBackup, createBackup } from '../utils/backupManager.js';
 import BackupViewer from '../components/BackupViewer';
-import { convertTextureToPNG } from '../utils/textureConverter.js';
+import { convertTextureToPNG, findActualTexturePath } from '../utils/textureConverter.js';
 import { processDataURL } from '../utils/rgbaDataURL.js';
 import { loadEmitterData } from '../utils/vfxEmitterParser.js';
 import { extractVFXSystem } from '../utils/vfxSystemParser.js';
@@ -72,6 +71,7 @@ import {
   restorePaletteForMode,
   handleModeChange
 } from '../utils/stateUtils';
+import { openAssetPreview } from '../utils/assetPreviewEvent';
 import electronPrefs from '../utils/electronPrefs.js';
 import { FixedSizeList } from 'react-window';
 
@@ -185,12 +185,12 @@ const MemoizedSearchInput = React.memo(({
     const newValue = e.target.value;
     setLocalValue(newValue);
     valueRef.current = newValue;
-    
+
     // Debounce the onChange call to trigger filtering while typing, but prevent parent re-renders
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
-    
+
     // Call onChange (which triggers filtering) after user stops typing
     // This allows filtering to happen as they type, but prevents parent re-renders
     debounceTimeoutRef.current = setTimeout(() => {
@@ -251,7 +251,7 @@ const Paint = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [mode, setMode] = useState(Prefs?.obj?.PreferredMode || 'random');
   const [colorCount, setColorCount] = useState(1);
-  
+
   // Consolidated color state using reducer for better performance
   const [colorState, dispatchColor] = useReducer(colorReducer, {
     hueValue: 60,
@@ -263,17 +263,17 @@ const Paint = () => {
     hslValues: { hue: "0", saturation: "0", lightness: "0" },
     hslValuesDebounced: { hue: "0", saturation: "0", lightness: "0" }
   });
-  
+
   // Destructure for easier access
-  const { 
-    hueValue, 
-    shadesColor, 
-    shadesCount, 
-    shadesIntensity, 
-    shadesDirection, 
-    shadesColorDebounced, 
-    hslValues, 
-    hslValuesDebounced 
+  const {
+    hueValue,
+    shadesColor,
+    shadesCount,
+    shadesIntensity,
+    shadesDirection,
+    shadesColorDebounced,
+    hslValues,
+    hslValuesDebounced
   } = colorState;
   const [blendModeFilter, setBlendModeFilter] = useState(0);
   const [blendModeSlider, setBlendModeSlider] = useState(100);
@@ -329,24 +329,43 @@ const Paint = () => {
     try {
       // Build a local, non-mutating palette with ColorHandler entries
       const localPalette = [];
-      const idx = Math.min(activePaletteIndex, Math.max(0, (localPalette.length || 1) - 1));
 
-      // Seed a ColorHandler at index 0
+      // Seed a ColorHandler at index 0 - use provided color or default to neutral gray
       const seed = Array.isArray(initialVec4) && initialVec4.length >= 3
         ? new ColorHandler([initialVec4[0], initialVec4[1], initialVec4[2], initialVec4[3] ?? 1])
-        : new ColorHandler([1, 0, 0, 1]);
+        : new ColorHandler([0.5, 0.5, 0.5, 1]); // Default to neutral gray instead of red
       localPalette[0] = seed;
 
-      const noop = () => {};
+      // Create a proper setPalette function that will trigger the callback
+      const setPaletteWrapper = (updater) => {
+        try {
+          // Get the updated palette
+          const updatedPalette = typeof updater === 'function' ? updater(localPalette) : updater;
+
+          // Extract the hex color from the updated palette
+          if (updatedPalette && updatedPalette[0] && typeof updatedPalette[0].ToHEX === 'function') {
+            const hex = updatedPalette[0].ToHEX();
+            // Convert hex to vec4 and call onCommit
+            const r = parseInt(hex.slice(1, 3), 16) / 255;
+            const g = parseInt(hex.slice(3, 5), 16) / 255;
+            const b = parseInt(hex.slice(5, 7), 16) / 255;
+            if (onCommit) {
+              onCommit([r, g, b, 1]);
+            }
+          }
+        } catch (error) {
+          console.error('Error in setPaletteWrapper:', error);
+        }
+      };
 
       CreatePicker(
         0,
         event,
         localPalette,
-        noop,            // setPalette (do not mutate global state)
-        'shades',        // force shades mode so onShadesCommit is used
-        noop,            // savePaletteForMode
-        noop,            // setColors
+        setPaletteWrapper,  // Use wrapper instead of noop
+        'shades',           // force shades mode so onShadesCommit is used
+        () => { },           // savePaletteForMode (noop)
+        () => { },           // setColors (noop)
         event?.target || null,
         {
           onShadesCommit: (hex) => {
@@ -354,8 +373,12 @@ const Paint = () => {
               const r = parseInt(hex.slice(1, 3), 16) / 255;
               const g = parseInt(hex.slice(3, 5), 16) / 255;
               const b = parseInt(hex.slice(5, 7), 16) / 255;
-              onCommit && onCommit([r, g, b, 1]);
-            } catch {}
+              if (onCommit) {
+                onCommit([r, g, b, 1]);
+              }
+            } catch (error) {
+              console.error('Error in onShadesCommit:', error);
+            }
           }
         }
       );
@@ -371,9 +394,11 @@ const Paint = () => {
             picker.style.top = `${rect.bottom + 6}px`;
             picker.style.zIndex = '9999';
           }
-        } catch {}
+        } catch { }
       }, 10);
-    } catch {}
+    } catch (error) {
+      console.error('Error in openFilterPicker:', error);
+    }
   }, [Palette, activePaletteIndex, mode]);
 
   // Generate color filter predicate
@@ -389,7 +414,7 @@ const Paint = () => {
   // Collect preview colors from current systems
   const collectPreviewColors = () => {
     const colors = [];
-    
+
     Object.values(systems).forEach(system => {
       system.emitters.forEach(emitter => {
         // Collect constant colors
@@ -402,7 +427,7 @@ const Paint = () => {
         if (emitter.fresnelColor?.constantValue) {
           colors.push(emitter.fresnelColor.constantValue);
         }
-        
+
         // Collect dynamic colors
         if (emitter.birthColor?.dynamics?.values) {
           colors.push(...emitter.birthColor.dynamics.values);
@@ -415,7 +440,7 @@ const Paint = () => {
         }
       });
     });
-    
+
     return colors;
   };
 
@@ -429,18 +454,18 @@ const Paint = () => {
 
   // Performance optimization: Cache parsed data and line mappings
   const [pyContentLines, setPyContentLines] = useState([]);
-  
+
   // NEW: Performance caching for parsed data
   const [cachedSystems, setCachedSystems] = useState({});
   const [cachedMaterials, setCachedMaterials] = useState({});
   const [isDataCached, setIsDataCached] = useState(false);
-  
+
   // Progressive lazy loading state (only on first load)
   const [isLazyLoading, setIsLazyLoading] = useState(false);
   const [lazyLoadProgress, setLazyLoadProgress] = useState({ loaded: 0, total: 0 });
   const lazyLoadRef = useRef({ isActive: false, loadedSystems: 0, totalSystems: 0, allSystems: null, allMaterials: null, currentFilePath: null });
   const lazyLoadAnimationFrameRef = useRef(null); // Track pending animation frames
-  
+
   // NEW: CSS to disable all transitions for instant, snappy UI
   useEffect(() => {
     const style = document.createElement('style');
@@ -451,7 +476,7 @@ const Paint = () => {
       }
     `;
     document.head.appendChild(style);
-    
+
     return () => {
       document.head.removeChild(style);
     };
@@ -498,11 +523,11 @@ const Paint = () => {
 
   // Track if we're currently recoloring to prevent palette regeneration
   const [isRecoloring, setIsRecoloring] = useState(false);
-  
+
   // Drag and drop state for palette colors
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
-  
+
   // Backup viewer state
   const [showBackupViewer, setShowBackupViewer] = useState(false);
 
@@ -517,36 +542,93 @@ const Paint = () => {
   const [savedPalettesList, setSavedPalettesList] = useState([]);
   const [paletteName, setPaletteName] = useState('');
 
-  // Match RGBA's deep purple glass styling for containers
-  const glassSection = {
-    background: 'var(--glass-bg)',
-    border: '1px solid var(--glass-overlay-medium)',
-    borderRadius: 12,
-    backdropFilter: 'saturate(220%) blur(18px)',
-    WebkitBackdropFilter: 'saturate(220%) blur(18px)',
-    boxShadow: '0 12px 28px var(--shadow-medium)'
+  // Celestial minimalistic button style (matching Bumpath/ImgRecolor)
+  const celestialButtonStyle = {
+    background: 'var(--bg-2)',
+    border: '1px solid var(--accent-muted)',
+    color: 'var(--text)',
+    borderRadius: '5px',
+    transition: 'all 200ms ease',
+    textTransform: 'none',
+    fontFamily: 'JetBrains Mono, monospace',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+    '&:hover': {
+      background: 'var(--surface-2)',
+      borderColor: 'var(--accent)',
+      boxShadow: '0 0 15px color-mix(in srgb, var(--accent), transparent 60%)'
+    },
+    '&:disabled': {
+      background: 'var(--bg-2)',
+      borderColor: 'var(--text-2)',
+      color: 'var(--text-2)',
+      opacity: 0.6,
+      cursor: 'not-allowed'
+    },
+  };
+
+  // Primary button style (accented version)
+  const primaryButtonStyle = {
+    ...celestialButtonStyle,
+    background: 'var(--bg-2)',
+    border: '1px solid var(--accent)',
+    color: 'var(--accent)',
+    fontWeight: 'bold',
+    boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent), transparent 70%), 0 2px 4px rgba(0,0,0,0.2)',
+    '&:hover': {
+      ...celestialButtonStyle['&:hover'],
+      boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent), transparent 50%), 0 2px 4px rgba(0,0,0,0.3)'
+    }
+  };
+
+  // Simple section style (transparent with subtle borders)
+  const sectionStyle = {
+    background: 'transparent',
+    border: '1px solid rgba(255, 255, 255, 0.06)',
+    borderRadius: '5px'
   };
 
   const navigate = useNavigate();
 
+  // Listen for file selection from Asset Preview
+  useEffect(() => {
+    const handleAssetSelected = (e) => {
+      const detail = e.detail || {};
+      const { path, mode } = detail;
+
+      if (path && (path.toLowerCase().endsWith('.bin'))) {
+        if (!mode || mode === 'paint-bin' || mode === 'bin') {
+          setTimeout(async () => {
+            loadSelectedBin(path);
+            try {
+              await electronPrefs.set('PaintLastBinPath', path);
+            } catch (e) { console.warn(e); }
+          }, 100);
+        }
+      }
+    };
+
+    window.addEventListener('asset-preview-selected', handleAssetSelected);
+    return () => window.removeEventListener('asset-preview-selected', handleAssetSelected);
+  }, []);
+
   // Reflect unsaved state globally for navigation guard
   useEffect(() => {
-    try { window.__DL_unsavedBin = !fileSaved; } catch {}
+    try { window.__DL_unsavedBin = !fileSaved; } catch { }
   }, [fileSaved]);
 
   // Intercept navigation when unsaved changes exist
   useEffect(() => {
     const handleNavigationBlock = (e) => {
       console.log('🔒 Navigation blocked event received:', e.detail);
-      
+
       if (!fileSaved && !window.__DL_forceClose) {
         // Prevent default and stop propagation
         if (e.preventDefault) e.preventDefault();
         if (e.stopPropagation) e.stopPropagation();
-        
+
         const targetPath = e.detail?.path;
         console.log('🔒 Target path:', targetPath, 'File saved:', fileSaved);
-        
+
         if (targetPath) {
           // Store navigation path in ref (not state) to avoid render issues
           pendingNavigationPathRef.current = targetPath;
@@ -568,13 +650,13 @@ const Paint = () => {
     const targetPath = pendingNavigationPathRef.current;
     setShowUnsavedDialog(false);
     pendingNavigationPathRef.current = null;
-    
+
     try {
       await handleSave();
       // After save, allow navigation
       window.__DL_forceClose = true;
       window.__DL_unsavedBin = false;
-      
+
       if (targetPath) {
         // Execute navigation after state updates
         setTimeout(() => {
@@ -594,12 +676,12 @@ const Paint = () => {
     const targetPath = pendingNavigationPathRef.current;
     setShowUnsavedDialog(false);
     pendingNavigationPathRef.current = null;
-    
+
     // Clear the unsaved flag to allow navigation
     setFileSaved(true);
     window.__DL_forceClose = true;
     window.__DL_unsavedBin = false;
-    
+
     if (targetPath) {
       // Execute navigation after state updates
       setTimeout(() => {
@@ -659,75 +741,79 @@ const Paint = () => {
 
       try {
         await electronPrefs.initPromise;
-        const lastBinPath = await electronPrefs.get('SharedLastBinPath');
-        
-        if (lastBinPath && fs?.existsSync(lastBinPath)) {
-          console.log('🔄 Auto-reloading shared bin:', lastBinPath);
-          setStatusMessage('Auto-reloading last bin file...');
-          
-          // Set the file path and trigger the load
-          setFilePath(lastBinPath);
-          setSelectedFile({ name: lastBinPath.split('\\').pop() });
-          
-          // Generate Python file path
-          const binDir = path.dirname(lastBinPath);
-          const binName = path.basename(lastBinPath, '.bin');
-          const pyFilePath = path.join(binDir, `${binName}.py`);
-          setPyPath(pyFilePath);
+        let lastBinPath = await electronPrefs.get('PaintLastBinPath');
 
-          setIsProcessing(true);
-          setProcessingText('Loading last bin file...');
+        if (!lastBinPath) {
+          lastBinPath = await electronPrefs.get('SharedLastBinPath');
+        }
 
-          // Check if .py file already exists
-          if (fs?.existsSync(pyFilePath)) {
-            setProcessingText('Loading existing .py file...');
-            await new Promise(resolve => setTimeout(resolve, 500));
-          } else {
-            setProcessingText('Converting .bin to .py...');
-            await ToPyWithPath(lastBinPath, manualRitobinPath);
-            
-            if (fs?.existsSync(pyFilePath)) {
-              const convertedContent = fs.readFileSync(pyFilePath, 'utf8');
-              createBackup(pyFilePath, convertedContent, 'Paint');
+        if (lastBinPath && lastBinPath !== '') {
+          console.log('🔄 Auto-reloading last bin:', lastBinPath);
+
+          // Check if file exists
+          if (fs && fs.existsSync(lastBinPath)) {
+            // Set as active file
+            setFilePath(lastBinPath);
+            setSelectedFile({ name: path.basename(lastBinPath), path: lastBinPath }); // Mock file object
+            setStartPath(path.dirname(lastBinPath));
+
+            // Load it
+            setIsProcessing(true);
+            setProcessingText('Auto-loading last file...');
+            setStatusMessage('Auto-loading last file...');
+
+            // Logic duplicate from handleLoadBin but for auto-load
+            const binDir = path.dirname(lastBinPath);
+            const binName = path.basename(lastBinPath, '.bin');
+            const pyFilePath = path.join(binDir, `${binName}.py`);
+
+            let pyFileContent;
+            if (fs.existsSync(pyFilePath)) {
+              try {
+                pyFileContent = loadFileWithBackup(pyFilePath, 'Paint');
+              } catch (e) {
+                console.error('Failed to load existing py during auto-load', e);
+                // Try convert if load fails?
+                await ToPyWithPath(lastBinPath); // Ensure manually ritobinpath handling if needed
+                pyFileContent = loadFileWithBackup(pyFilePath, 'Paint');
+              }
+            } else {
+              // Convert
+              await ToPyWithPath(lastBinPath);
+              pyFileContent = loadFileWithBackup(pyFilePath, 'Paint');
+              if (fs.existsSync(pyFilePath)) {
+                createBackup(pyFilePath, pyFileContent, 'Paint');
+              }
             }
-          }
 
-          setProcessingText('Loading converted data...');
-          const pyFileContent = loadFileWithBackup(pyFilePath, 'Paint');
-          setPyContent(pyFileContent);
-          
-          // Hide spinner before loading - LoadPyFile will handle its own loading state
-          setIsProcessing(false);
-          setProcessingText('');
-          
-          LoadPyFile(pyFileContent, lastBinPath);
-          setFileCache([]);
-          setStatusMessage("File auto-reloaded successfully");
-        } else if (lastBinPath) {
-          // File no longer exists, clear the saved path
-          console.log('⚠️ Shared bin file no longer exists, clearing saved path');
-          await electronPrefs.set('SharedLastBinPath', '');
+            setPyContent(pyFileContent);
+            setIsProcessing(false);
+            setProcessingText('');
+
+            LoadPyFile(pyFileContent, lastBinPath);
+            setFileCache([]);
+            setStatusMessage("File auto-reloaded successfully");
+          } else if (lastBinPath) {
+            console.log('⚠️ Bin file no longer exists, clearing saved path');
+            await electronPrefs.set('PaintLastBinPath', '');
+          }
         }
       } catch (error) {
         console.error('Error auto-reloading Paint bin:', error);
-        // Don't show error to user, just silently fail
       } finally {
         setIsProcessing(false);
         setProcessingText('');
       }
     };
-
-    // Small delay to ensure component is fully mounted
     const timer = setTimeout(autoReloadLastBin, 100);
     return () => clearTimeout(timer);
-  }, []); // Only run on mount
+  }, []);
 
   // Button container style without backdrop filter to prevent rendering artifacts
   const buttonContainerStyle = {
-    background: 'var(--glass-bg)',
-    border: '1px solid var(--glass-overlay-medium)',
+    background: 'transparent',
+    border: '1px solid rgba(255, 255, 255, 0.06)',
     borderRadius: 12,
-    boxShadow: '0 12px 28px var(--shadow-medium)'
   };
 
   // Close dropdown when clicking outside
@@ -752,7 +838,7 @@ const Paint = () => {
   useEffect(() => {
     // Skip parsing during recolor operations to prevent conflicts
     if (isRecoloring) return;
-    
+
     if (pyContent && hasStaticMaterials(pyContent)) {
       const materials = parseStaticMaterials(pyContent);
       setStaticMaterials(materials);
@@ -771,7 +857,7 @@ const Paint = () => {
           console.log(`[useEffect pyContent] Parsing content for caching...`);
           const systems = parsePyFile(pyContent);
           const materials = parseStaticMaterials(pyContent);
-          
+
           setCachedSystems(systems);
           setCachedMaterials(materials);
           setIsDataCached(true);
@@ -815,10 +901,10 @@ const Paint = () => {
     if (!(mode === 'shades' && shadesActive && !isRestoringPalette)) return;
     const id = setTimeout(() => {
       try {
-      GenerateShades();
+        GenerateShades();
       } catch (e) {
         console.warn('Shades generation failed:', e);
-    }
+      }
     }, 120);
     return () => clearTimeout(id);
   }, [shadesColorDebounced, shadesCount, shadesIntensity, shadesDirection, mode, shadesActive, isRestoringPalette]);
@@ -830,7 +916,7 @@ const Paint = () => {
       // PERFORMANCE OPTIMIZATION: Use cached data instead of re-parsing
       let updatedSystems;
       let updatedMaterials;
-      
+
       if (updatedPyContent && updatedPyContent !== pyContent) {
         // Only parse if content actually changed
         console.log('[updateColorBlocksOnly] Content changed, parsing updated content...');
@@ -838,7 +924,7 @@ const Paint = () => {
         updatedMaterials = hasStaticMaterials(updatedPyContent)
           ? parseStaticMaterials(updatedPyContent)
           : {};
-        
+
         // Update cache with new data
         setCachedSystems(updatedSystems);
         setCachedMaterials(updatedMaterials);
@@ -855,216 +941,216 @@ const Paint = () => {
         // Update each color block in the existing DOM
         Object.values(updatedSystems).forEach(system => {
           system.emitters.forEach((emitter, emitterIndex) => {
-          // Find the existing emitter div in the DOM
-          const systemDiv = document.getElementById(system.key);
-          if (!systemDiv) return;
+            // Find the existing emitter div in the DOM
+            const systemDiv = document.getElementById(system.key);
+            if (!systemDiv) return;
 
-          // Find the emitter div within the system by stable index to handle duplicate names
-          const emitterDivs = systemDiv.querySelectorAll('.Emitter-Div');
-          const emitterDiv = emitterDivs[emitterIndex];
+            // Find the emitter div within the system by stable index to handle duplicate names
+            const emitterDivs = systemDiv.querySelectorAll('.Emitter-Div');
+            const emitterDiv = emitterDivs[emitterIndex];
 
-          if (!emitterDiv) return;
+            if (!emitterDiv) return;
 
-          // Update main color block
-          const colorBlock = emitterDiv.querySelector('[data-role="color"]');
-          if (colorBlock && emitter.color) {
-            // Prioritize dynamics.values over constantValue when both exist
-            if (emitter.color.dynamics && emitter.color.dynamics.values && emitter.color.dynamics.values.length > 0) {
-              const dynamicColors = emitter.color.dynamics.values;
-              if (dynamicColors.length === 1) {
-                const colorHandler = new ColorHandler(dynamicColors[0]);
-                colorBlock.style.background = colorHandler.ToHEX();
-              } else {
-                const colorHandlers = dynamicColors.map(color => new ColorHandler(color));
-                const gradientColors = colorHandlers.map(handler => handler.ToHEX());
-                colorBlock.style.background = `linear-gradient(90deg, ${gradientColors.join(', ')})`;
-              }
-              colorBlock.classList.remove('Blank-Obj');
-              // Rebind click to use UPDATED emitter color dynamics
-              colorBlock.onclick = (event) => {
-                try {
-                  const values = emitter.color.dynamics.values;
-                  const times = emitter.color.dynamics.times || [];
-                  const newPalette = values.map((c, idx) => {
-                    const handler = new ColorHandler(c);
-                    handler.SetTime(times[idx] ?? (values.length === 1 ? 0 : idx / (values.length - 1)));
-                    return handler;
-                  });
-                  setPalette(newPalette);
-                  MapPalette(newPalette, setColors);
-                  savePaletteForMode(mode, newPalette, setSavedPalettes);
-                  positionColorPicker(event);
-                } catch {}
-              };
-            } else if (emitter.color.constantValue) {
-              const colorHandler = new ColorHandler(emitter.color.constantValue);
-              colorBlock.style.background = colorHandler.ToHEX();
-              colorBlock.classList.remove('Blank-Obj');
-              // Rebind click to use UPDATED emitter color
-              colorBlock.onclick = (event) => {
-                try {
-                  const handler = new ColorHandler(emitter.color.constantValue);
-                  const newPalette = [handler];
-                  newPalette[0].SetTime(0);
-                  setPalette(newPalette);
-                  MapPalette(newPalette, setColors);
-                  savePaletteForMode(mode, newPalette, setSavedPalettes);
-                  positionColorPicker(event);
-                } catch {}
-              };
-            }
-          }
-
-          // Update OC (fresnelColor) block
-          const ocBlock = emitterDiv.querySelector('[data-role="oc"]');
-          if (ocBlock && emitter.fresnelColor) {
-            if (emitter.fresnelColor.constantValue) {
-              const colorHandler = new ColorHandler(emitter.fresnelColor.constantValue);
-              ocBlock.style.background = colorHandler.ToHEX();
-              ocBlock.classList.remove('Blank-Obj');
-              ocBlock.onclick = (event) => {
-                try {
-                  const handler = new ColorHandler(emitter.fresnelColor.constantValue);
-                  const newPalette = [handler];
-                  newPalette[0].SetTime(0);
-                  setPalette(newPalette);
-                  MapPalette(newPalette, setColors);
-                  savePaletteForMode(mode, newPalette, setSavedPalettes);
-                  positionColorPicker(event);
-                } catch {}
-              };
-            } else if (emitter.fresnelColor.dynamics && emitter.fresnelColor.dynamics.values && emitter.fresnelColor.dynamics.values.length > 0) {
-              const dynamicColors = emitter.fresnelColor.dynamics.values;
-              if (dynamicColors.length === 1) {
-                const colorHandler = new ColorHandler(dynamicColors[0]);
-                ocBlock.style.background = colorHandler.ToHEX();
-              } else {
-                const colorHandlers = dynamicColors.map(color => new ColorHandler(color));
-                const gradientColors = colorHandlers.map(handler => handler.ToHEX());
-                ocBlock.style.background = `linear-gradient(90deg, ${gradientColors.join(', ')})`;
-              }
-              ocBlock.classList.remove('Blank-Obj');
-              ocBlock.onclick = (event) => {
-                try {
-                  const values = emitter.fresnelColor.dynamics.values;
-                  const times = emitter.fresnelColor.dynamics.times || [];
-                  const newPalette = values.map((c, idx) => {
-                    const handler = new ColorHandler(c);
-                    handler.SetTime(times[idx] ?? (values.length === 1 ? 0 : idx / (values.length - 1)));
-                    return handler;
-                  });
-                  setPalette(newPalette);
-                  MapPalette(newPalette, setColors);
-                  savePaletteForMode(mode, newPalette, setSavedPalettes);
-                  positionColorPicker(event);
-                } catch {}
-              };
-            }
-          }
-
-          // Update birth color block
-          const birthColorBlock = emitterDiv.querySelector('[data-role="birth"]');
-          if (birthColorBlock && emitter.birthColor) {
-            // Prioritize dynamics.values over constantValue when both exist
-            if (emitter.birthColor.dynamics && emitter.birthColor.dynamics.values && emitter.birthColor.dynamics.values.length > 0) {
-              const dynamicColors = emitter.birthColor.dynamics.values;
-              if (dynamicColors.length === 1) {
-                const colorHandler = new ColorHandler(dynamicColors[0]);
-                birthColorBlock.style.background = colorHandler.ToHEX();
-              } else {
-                const colorHandlers = dynamicColors.map(color => new ColorHandler(color));
-                const gradientColors = colorHandlers.map(handler => handler.ToHEX());
-                birthColorBlock.style.background = `linear-gradient(90deg, ${gradientColors.join(', ')})`;
-              }
-              birthColorBlock.classList.remove('Blank-Obj');
-              birthColorBlock.onclick = (event) => {
-                try {
-                  const values = emitter.birthColor.dynamics.values;
-                  const times = emitter.birthColor.dynamics.times || [];
-                  const newPalette = values.map((c, idx) => {
-                    const handler = new ColorHandler(c);
-                    handler.SetTime(times[idx] ?? (values.length === 1 ? 0 : idx / (values.length - 1)));
-                    return handler;
-                  });
-                  setPalette(newPalette);
-                  MapPalette(newPalette, setColors);
-                  savePaletteForMode(mode, newPalette, setSavedPalettes);
-                  positionColorPicker(event);
-                } catch {}
-              };
-            } else if (emitter.birthColor.constantValue) {
-              const colorHandler = new ColorHandler(emitter.birthColor.constantValue);
-              birthColorBlock.style.background = colorHandler.ToHEX();
-              birthColorBlock.classList.remove('Blank-Obj');
-              birthColorBlock.onclick = (event) => {
-                try {
-                  const handler = new ColorHandler(emitter.birthColor.constantValue);
-                  const newPalette = [handler];
-                  newPalette[0].SetTime(0);
-                  setPalette(newPalette);
-                  MapPalette(newPalette, setColors);
-                  savePaletteForMode(mode, newPalette, setSavedPalettes);
-                  positionColorPicker(event);
-                } catch {}
-              };
-            } else {
-              birthColorBlock.classList.add('Blank-Obj');
-            }
-          }
-        });
-      });
-
-      // Update StaticMaterialDef color blocks
-      Object.entries(updatedMaterials).forEach(([materialKey, material]) => {
-        const materialDiv = document.getElementById(`material_${materialKey}`);
-        if (!materialDiv) return;
-
-        // Each param div starts from index 1 (index 0 is header)
-        material.colorParams.forEach((param, paramIndex) => {
-          const paramDiv = materialDiv.children[paramIndex + 1];
-          if (!paramDiv) return;
-
-          // Update main color block
-          const colorBlock = paramDiv.querySelector('.Prop-Block');
-          if (colorBlock) {
-            if (param.value && param.value.length >= 4) {
-              const [r, g, b, a] = param.value;
-              const valid = [r, g, b, a].every(v => typeof v === 'number' && !isNaN(v) && isFinite(v));
-              if (valid) {
-                const colorHandler = new ColorHandler([r, g, b, a]);
+            // Update main color block
+            const colorBlock = emitterDiv.querySelector('[data-role="color"]');
+            if (colorBlock && emitter.color) {
+              // Prioritize dynamics.values over constantValue when both exist
+              if (emitter.color.dynamics && emitter.color.dynamics.values && emitter.color.dynamics.values.length > 0) {
+                const dynamicColors = emitter.color.dynamics.values;
+                if (dynamicColors.length === 1) {
+                  const colorHandler = new ColorHandler(dynamicColors[0]);
+                  colorBlock.style.background = colorHandler.ToHEX();
+                } else {
+                  const colorHandlers = dynamicColors.map(color => new ColorHandler(color));
+                  const gradientColors = colorHandlers.map(handler => handler.ToHEX());
+                  colorBlock.style.background = `linear-gradient(90deg, ${gradientColors.join(', ')})`;
+                }
+                colorBlock.classList.remove('Blank-Obj');
+                // Rebind click to use UPDATED emitter color dynamics
+                colorBlock.onclick = (event) => {
+                  try {
+                    const values = emitter.color.dynamics.values;
+                    const times = emitter.color.dynamics.times || [];
+                    const newPalette = values.map((c, idx) => {
+                      const handler = new ColorHandler(c);
+                      handler.SetTime(times[idx] ?? (values.length === 1 ? 0 : idx / (values.length - 1)));
+                      return handler;
+                    });
+                    setPalette(newPalette);
+                    MapPalette(newPalette, setColors);
+                    savePaletteForMode(mode, newPalette, setSavedPalettes);
+                    positionColorPicker(event);
+                  } catch { }
+                };
+              } else if (emitter.color.constantValue) {
+                const colorHandler = new ColorHandler(emitter.color.constantValue);
                 colorBlock.style.background = colorHandler.ToHEX();
                 colorBlock.classList.remove('Blank-Obj');
+                // Rebind click to use UPDATED emitter color
+                colorBlock.onclick = (event) => {
+                  try {
+                    const handler = new ColorHandler(emitter.color.constantValue);
+                    const newPalette = [handler];
+                    newPalette[0].SetTime(0);
+                    setPalette(newPalette);
+                    MapPalette(newPalette, setColors);
+                    savePaletteForMode(mode, newPalette, setSavedPalettes);
+                    positionColorPicker(event);
+                  } catch { }
+                };
+              }
+            }
+
+            // Update OC (fresnelColor) block
+            const ocBlock = emitterDiv.querySelector('[data-role="oc"]');
+            if (ocBlock && emitter.fresnelColor) {
+              if (emitter.fresnelColor.constantValue) {
+                const colorHandler = new ColorHandler(emitter.fresnelColor.constantValue);
+                ocBlock.style.background = colorHandler.ToHEX();
+                ocBlock.classList.remove('Blank-Obj');
+                ocBlock.onclick = (event) => {
+                  try {
+                    const handler = new ColorHandler(emitter.fresnelColor.constantValue);
+                    const newPalette = [handler];
+                    newPalette[0].SetTime(0);
+                    setPalette(newPalette);
+                    MapPalette(newPalette, setColors);
+                    savePaletteForMode(mode, newPalette, setSavedPalettes);
+                    positionColorPicker(event);
+                  } catch { }
+                };
+              } else if (emitter.fresnelColor.dynamics && emitter.fresnelColor.dynamics.values && emitter.fresnelColor.dynamics.values.length > 0) {
+                const dynamicColors = emitter.fresnelColor.dynamics.values;
+                if (dynamicColors.length === 1) {
+                  const colorHandler = new ColorHandler(dynamicColors[0]);
+                  ocBlock.style.background = colorHandler.ToHEX();
+                } else {
+                  const colorHandlers = dynamicColors.map(color => new ColorHandler(color));
+                  const gradientColors = colorHandlers.map(handler => handler.ToHEX());
+                  ocBlock.style.background = `linear-gradient(90deg, ${gradientColors.join(', ')})`;
+                }
+                ocBlock.classList.remove('Blank-Obj');
+                ocBlock.onclick = (event) => {
+                  try {
+                    const values = emitter.fresnelColor.dynamics.values;
+                    const times = emitter.fresnelColor.dynamics.times || [];
+                    const newPalette = values.map((c, idx) => {
+                      const handler = new ColorHandler(c);
+                      handler.SetTime(times[idx] ?? (values.length === 1 ? 0 : idx / (values.length - 1)));
+                      return handler;
+                    });
+                    setPalette(newPalette);
+                    MapPalette(newPalette, setColors);
+                    savePaletteForMode(mode, newPalette, setSavedPalettes);
+                    positionColorPicker(event);
+                  } catch { }
+                };
+              }
+            }
+
+            // Update birth color block
+            const birthColorBlock = emitterDiv.querySelector('[data-role="birth"]');
+            if (birthColorBlock && emitter.birthColor) {
+              // Prioritize dynamics.values over constantValue when both exist
+              if (emitter.birthColor.dynamics && emitter.birthColor.dynamics.values && emitter.birthColor.dynamics.values.length > 0) {
+                const dynamicColors = emitter.birthColor.dynamics.values;
+                if (dynamicColors.length === 1) {
+                  const colorHandler = new ColorHandler(dynamicColors[0]);
+                  birthColorBlock.style.background = colorHandler.ToHEX();
+                } else {
+                  const colorHandlers = dynamicColors.map(color => new ColorHandler(color));
+                  const gradientColors = colorHandlers.map(handler => handler.ToHEX());
+                  birthColorBlock.style.background = `linear-gradient(90deg, ${gradientColors.join(', ')})`;
+                }
+                birthColorBlock.classList.remove('Blank-Obj');
+                birthColorBlock.onclick = (event) => {
+                  try {
+                    const values = emitter.birthColor.dynamics.values;
+                    const times = emitter.birthColor.dynamics.times || [];
+                    const newPalette = values.map((c, idx) => {
+                      const handler = new ColorHandler(c);
+                      handler.SetTime(times[idx] ?? (values.length === 1 ? 0 : idx / (values.length - 1)));
+                      return handler;
+                    });
+                    setPalette(newPalette);
+                    MapPalette(newPalette, setColors);
+                    savePaletteForMode(mode, newPalette, setSavedPalettes);
+                    positionColorPicker(event);
+                  } catch { }
+                };
+              } else if (emitter.birthColor.constantValue) {
+                const colorHandler = new ColorHandler(emitter.birthColor.constantValue);
+                birthColorBlock.style.background = colorHandler.ToHEX();
+                birthColorBlock.classList.remove('Blank-Obj');
+                birthColorBlock.onclick = (event) => {
+                  try {
+                    const handler = new ColorHandler(emitter.birthColor.constantValue);
+                    const newPalette = [handler];
+                    newPalette[0].SetTime(0);
+                    setPalette(newPalette);
+                    MapPalette(newPalette, setColors);
+                    savePaletteForMode(mode, newPalette, setSavedPalettes);
+                    positionColorPicker(event);
+                  } catch { }
+                };
+              } else {
+                birthColorBlock.classList.add('Blank-Obj');
+              }
+            }
+          });
+        });
+
+        // Update StaticMaterialDef color blocks
+        Object.entries(updatedMaterials).forEach(([materialKey, material]) => {
+          const materialDiv = document.getElementById(`material_${materialKey}`);
+          if (!materialDiv) return;
+
+          // Each param div starts from index 1 (index 0 is header)
+          material.colorParams.forEach((param, paramIndex) => {
+            const paramDiv = materialDiv.children[paramIndex + 1];
+            if (!paramDiv) return;
+
+            // Update main color block
+            const colorBlock = paramDiv.querySelector('.Prop-Block');
+            if (colorBlock) {
+              if (param.value && param.value.length >= 4) {
+                const [r, g, b, a] = param.value;
+                const valid = [r, g, b, a].every(v => typeof v === 'number' && !isNaN(v) && isFinite(v));
+                if (valid) {
+                  const colorHandler = new ColorHandler([r, g, b, a]);
+                  colorBlock.style.background = colorHandler.ToHEX();
+                  colorBlock.classList.remove('Blank-Obj');
+                } else {
+                  colorBlock.classList.add('Blank-Obj');
+                  colorBlock.title = `Material Color: ${param.name} (Invalid values)`;
+                }
               } else {
                 colorBlock.classList.add('Blank-Obj');
-                colorBlock.title = `Material Color: ${param.name} (Invalid values)`;
+                colorBlock.title = `Material Color: ${param.name} (No value)`;
               }
-            } else {
-              colorBlock.classList.add('Blank-Obj');
-              colorBlock.title = `Material Color: ${param.name} (No value)`;
             }
-          }
 
-          // Update value label (last .Label within paramDiv)
-          const labels = paramDiv.querySelectorAll('.Label');
-          if (labels && labels.length > 0) {
-            const valueLabel = labels[labels.length - 1];
-            if (param.value && param.value.length >= 4) {
-              const [r, g, b, a] = param.value;
-              const valid = [r, g, b, a].every(v => typeof v === 'number' && !isNaN(v) && isFinite(v));
-              if (valid) {
-                valueLabel.textContent = `(${r.toFixed(3)}, ${g.toFixed(3)}, ${b.toFixed(3)}, ${a.toFixed(3)})`;
-                valueLabel.style.color = 'var(--accent-muted)';
+            // Update value label (last .Label within paramDiv)
+            const labels = paramDiv.querySelectorAll('.Label');
+            if (labels && labels.length > 0) {
+              const valueLabel = labels[labels.length - 1];
+              if (param.value && param.value.length >= 4) {
+                const [r, g, b, a] = param.value;
+                const valid = [r, g, b, a].every(v => typeof v === 'number' && !isNaN(v) && isFinite(v));
+                if (valid) {
+                  valueLabel.textContent = `(${r.toFixed(3)}, ${g.toFixed(3)}, ${b.toFixed(3)}, ${a.toFixed(3)})`;
+                  valueLabel.style.color = 'var(--accent-muted)';
+                } else {
+                  valueLabel.textContent = '(Invalid values)';
+                  valueLabel.style.color = 'var(--error-color, var(--error-color))';
+                }
               } else {
-                valueLabel.textContent = '(Invalid values)';
+                valueLabel.textContent = '(No value)';
                 valueLabel.style.color = 'var(--error-color, var(--error-color))';
               }
-            } else {
-              valueLabel.textContent = '(No value)';
-              valueLabel.style.color = 'var(--error-color, var(--error-color))';
             }
-          }
+          });
         });
-      });
       }); // Close requestAnimationFrame
 
       // console.log('[Paint] Updated color blocks efficiently without DOM rebuild');
@@ -1166,6 +1252,131 @@ const Paint = () => {
 
 
   // Core functions for Python-based approach
+  // Extracted logic for loading a bin file (called by AssetPreview or manual selection)
+  const loadSelectedBin = async (selectedPath) => {
+    if (!selectedPath || selectedPath === '') return;
+
+    // Validate that the selected file is a .bin file
+    if (!selectedPath.toLowerCase().endsWith('.bin')) {
+      setStatusMessage("Error: Please select a .bin file");
+      if (CreateMessage) {
+        CreateMessage({
+          type: "error",
+          title: "Invalid File Type",
+          message: "Please select a .bin file to edit."
+        });
+      }
+      return;
+    }
+
+    // Check if the file exists
+    if (fs && !fs.existsSync(selectedPath)) {
+      setStatusMessage("Error: Selected file does not exist");
+      if (CreateMessage) {
+        CreateMessage({
+          type: "error",
+          title: "File Not Found",
+          message: `The selected file does not exist:\n${selectedPath}`
+        });
+      }
+      return;
+    }
+
+    // Set file path immediately and use it directly
+    setFilePath(selectedPath);
+    setSelectedFile({ name: selectedPath.split('\\').pop() });
+    setStatusMessage(`Selected file: ${selectedPath.split('\\').pop()}`);
+
+    // Generate Python file path (clean filename without suffix)
+    const binDir = path.dirname(selectedPath);
+    const binName = path.basename(selectedPath, '.bin');
+    const pyFilePath = path.join(binDir, `${binName}.py`);
+
+    setPyPath(pyFilePath);
+
+    // Guard: Ritobin must be configured before conversion
+    try {
+      if (window.require) {
+        const { ipcRenderer } = window.require('electron');
+        const ritobinPath = await ipcRenderer.invoke('prefs:get', 'RitoBinPath');
+        if (!ritobinPath) {
+          setStatusMessage('Configure Ritobin in Settings');
+          if (CreateMessage) {
+            CreateMessage({
+              type: 'error',
+              buttons: ['Open Settings', 'Cancel'],
+              title: 'Ritobin Not Configured',
+              message: 'Please set the Ritobin path in Settings before opening .bin files.'
+            }, () => {
+              window.dispatchEvent(new CustomEvent('celestia:navigate', { detail: { path: '/settings' } }));
+            });
+          } else {
+            window.dispatchEvent(new CustomEvent('celestia:navigate', { detail: { path: '/settings' } }));
+          }
+          return;
+        }
+      }
+
+      setIsProcessing(true);
+
+      // Check if .py file already exists
+      if (fs?.existsSync(pyFilePath)) {
+        setProcessingText('Loading existing .py file...');
+        setStatusMessage("Loading existing .py file...");
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } else {
+        // Convert .bin to .py using ritobin
+        setProcessingText('Converting .bin to .py...');
+        setStatusMessage("Converting .bin to .py using ritobin...");
+        await ToPyWithPath(selectedPath, manualRitobinPath);
+
+        // Check if .py file was created
+        if (!fs?.existsSync(pyFilePath)) {
+          throw new Error('Failed to create .py file from .bin');
+        }
+
+        // Create backup after conversion
+        if (fs?.existsSync(pyFilePath)) {
+          const convertedContent = fs.readFileSync(pyFilePath, 'utf8');
+          createBackup(pyFilePath, convertedContent, 'Paint');
+        }
+      }
+
+      setProcessingText('Loading converted data...');
+      setStatusMessage("Loading converted data...");
+
+      const pyFileContent = loadFileWithBackup(pyFilePath, 'Paint');
+      setPyContent(pyFileContent);
+
+      setIsProcessing(false);
+      setProcessingText('');
+
+      LoadPyFile(pyFileContent, selectedPath);
+      setFileCache([]);
+
+      setStatusMessage("File loaded successfully");
+
+      // Save the bin path for auto-reload on next visit
+      try {
+        await electronPrefs.set('PaintLastBinPath', selectedPath);
+      } catch (error) {
+        console.warn('Failed to save paint bin path:', error);
+      }
+    } catch (error) {
+      console.error('Error loading Python file:', error);
+      const errorMessage = error.message || 'Unknown error occurred';
+      setStatusMessage(`Error: ${errorMessage}`);
+
+      // Reset file state on error
+      setSelectedFile(null);
+      setFilePath('');
+      setPyPath('');
+      setPyContent('');
+      setSystems({});
+      setIsProcessing(false);
+    }
+  };
+
   const handleFileOpen = async () => {
     setCheckToggle(false);
     if (!fileSaved) {
@@ -1250,68 +1461,17 @@ const Paint = () => {
       return;
     }
 
-    let selectedPath;
-    if (ipcRenderer) {
-      try {
-        selectedPath = ipcRenderer.sendSync("FileSelect", ["Select Bin to edit", "Bin"]);
-        // console.log('File selection result:', selectedPath);
-      } catch (error) {
-        console.error('Error during file selection:', error);
-        setStatusMessage("Error: Failed to open file dialog");
-        return;
+    // Determine start path (e.g., last used bin path or home)
+    let startPath = undefined;
+    try {
+      const lastBin = await electronPrefs.get('PaintLastBinPath');
+      if (lastBin && fs.existsSync(path.dirname(lastBin))) {
+        startPath = lastBin;
       }
-    } else {
-      // Fallback for development
-      selectedPath = "C:\\example\\path\\example.bin";
-    }
+    } catch { }
 
-    if (!selectedPath || selectedPath === '') {
-      // console.log('No file selected or selection cancelled');
-      setStatusMessage("No file selected");
-      return;
-    }
-
-    // Validate that the selected file is a .bin file
-    if (!selectedPath.toLowerCase().endsWith('.bin')) {
-      // console.log('Selected file is not a .bin file:', selectedPath);
-      setStatusMessage("Error: Please select a .bin file");
-      if (CreateMessage) {
-        CreateMessage({
-          type: "error",
-          title: "Invalid File Type",
-          message: "Please select a .bin file to edit."
-        });
-      }
-      return;
-    }
-
-    // Check if the file exists
-    if (!fs?.existsSync(selectedPath)) {
-      // console.log('Selected file does not exist:', selectedPath);
-      setStatusMessage("Error: Selected file does not exist");
-      if (CreateMessage) {
-        CreateMessage({
-          type: "error",
-          title: "File Not Found",
-          message: `The selected file does not exist:\n${selectedPath}`
-        });
-      }
-      return;
-    }
-
-    // Set file path immediately and use it directly
-    // console.log(`[Paint] Setting filePath to: "${selectedPath}"`);
-    setFilePath(selectedPath);
-    setSelectedFile({ name: selectedPath.split('\\').pop() });
-    setStatusMessage(`Selected file: ${selectedPath.split('\\').pop()}`);
-
-    // Generate Python file path (clean filename without suffix)
-    const binDir = path.dirname(selectedPath);
-    const binName = path.basename(selectedPath, '.bin');
-    const pyFilePath = path.join(binDir, `${binName}.py`);
-    const backupPyPath = path.join(binDir, `${binName}_backup.py`);
-
-    setPyPath(pyFilePath);
+    openAssetPreview(startPath, null, 'paint-bin');
+    return;
 
     // Guard: Ritobin must be configured before conversion
     try {
@@ -1357,7 +1517,7 @@ const Paint = () => {
         if (!fs?.existsSync(pyFilePath)) {
           throw new Error('Failed to create .py file from .bin');
         }
-        
+
         // Create backup after conversion
         if (fs?.existsSync(pyFilePath)) {
           const convertedContent = fs.readFileSync(pyFilePath, 'utf8');
@@ -1370,16 +1530,16 @@ const Paint = () => {
       // Load the Python content with backup
       const pyFileContent = loadFileWithBackup(pyFilePath, 'Paint');
       setPyContent(pyFileContent);
-      
+
       // Hide spinner before loading - LoadPyFile will handle its own loading state
       setIsProcessing(false);
       setProcessingText('');
-      
+
       LoadPyFile(pyFileContent, selectedPath);
       setFileCache([]);
 
       setStatusMessage("File loaded successfully");
-      
+
       // Save the bin path for auto-reload on next visit (shared across Paint, Port, and VFXHub)
       try {
         await electronPrefs.set('SharedLastBinPath', selectedPath);
@@ -1436,7 +1596,7 @@ const Paint = () => {
         fragment.appendChild(systemDiv);
       }
     });
-    
+
     // Single DOM update instead of multiple appends
     particleListRef.current.appendChild(fragment);
 
@@ -1476,7 +1636,7 @@ const Paint = () => {
         materialCheckbox.style.transform = 'translateY(1px)';
         materialCheckbox.style.border = '1px solid color-mix(in srgb, var(--accent), transparent 60%)';
         materialCheckbox.style.borderRadius = '4px';
-        materialCheckbox.style.background = 'var(--glass-overlay-light)';
+        materialCheckbox.style.background = 'rgba(255, 255, 255, 0.06)';
         materialCheckbox.onchange = (event) => {
           CheckChildren(materialDiv.children, event.target.checked);
         };
@@ -1535,7 +1695,7 @@ const Paint = () => {
 
         materialsFragment.appendChild(materialDiv);
       });
-      
+
       // Single DOM update for all materials
       particleListRef.current.appendChild(materialsFragment);
 
@@ -1543,7 +1703,7 @@ const Paint = () => {
       lazyLoadRef.current.isActive = false;
       setIsLazyLoading(false);
       setLazyLoadProgress({ loaded: totalSystems, total: totalSystems });
-      
+
       const totalEmitters = Object.values(allSystems).reduce((total, system) => total + system.emitters.length, 0);
       const totalMaterials = Object.keys(allMaterials).length;
       setStatusMessage(`Loaded ${totalSystems} VFX systems with ${totalEmitters} emitters and ${totalMaterials} materials`);
@@ -1554,7 +1714,7 @@ const Paint = () => {
         if (lazyLoadAnimationFrameRef.current) {
           cancelAnimationFrame(lazyLoadAnimationFrameRef.current);
         }
-        
+
         // Use requestAnimationFrame for immediate next frame, or very short timeout
         if (window.requestAnimationFrame) {
           lazyLoadAnimationFrameRef.current = requestAnimationFrame(() => {
@@ -1591,7 +1751,7 @@ const Paint = () => {
         particleListRef.current.removeChild(particleListRef.current.firstChild);
       }
     }
-    
+
     // Clear filter cache since DOM will be rebuilt
     cachedElementsRef.current = null;
 
@@ -1619,7 +1779,7 @@ const Paint = () => {
     // Check if we have any VFX systems or materials
     const systemKeys = Object.keys(parsedSystems);
     const materialKeys = Object.keys(parsedMaterials);
-    
+
     if (systemKeys.length === 0 && materialKeys.length === 0) {
       setStatusMessage("Warning: No VFX systems or materials found in this file");
       if (CreateMessage) {
@@ -1641,7 +1801,7 @@ const Paint = () => {
       // Progressive lazy loading: render first N systems immediately, then load rest in background
       setIsLazyLoading(true);
       setLazyLoadProgress({ loaded: INITIAL_LOAD_COUNT, total: systemKeys.length });
-      
+
       // Store all data for progressive loading
       lazyLoadRef.current = {
         isActive: true,
@@ -1654,7 +1814,7 @@ const Paint = () => {
 
       // Render first N systems immediately
       renderSystems(parsedSystems, {}, currentFilePath, INITIAL_LOAD_COUNT);
-      
+
       // Start progressive loading immediately (reduced delay for faster loading)
       // Cancel any pending animation frame first
       if (lazyLoadAnimationFrameRef.current) {
@@ -1666,7 +1826,7 @@ const Paint = () => {
           progressiveLoadSystems();
         }
       });
-      
+
       setStatusMessage(`Loading ${systemKeys.length} VFX systems... (${INITIAL_LOAD_COUNT} shown, loading rest in background)`);
     } else {
       // Normal loading: render everything at once
@@ -1719,7 +1879,7 @@ const Paint = () => {
     systemCheckbox.style.transform = 'translateY(1px)';
     systemCheckbox.style.border = '1px solid color-mix(in srgb, var(--accent), transparent 60%)';
     systemCheckbox.style.borderRadius = '4px';
-    systemCheckbox.style.background = 'var(--glass-overlay-light)';
+    systemCheckbox.style.background = 'rgba(255, 255, 255, 0.06)';
     systemCheckbox.onchange = (event) => {
       CheckChildren(systemDiv.children, event.target.checked);
     };
@@ -1739,6 +1899,8 @@ const Paint = () => {
     emitterCountLabel.className = 'Label';
     emitterCountLabel.style.fontSize = '0.8rem';
     emitterCountLabel.style.opacity = '0.7';
+    emitterCountLabel.style.color = 'var(--accent-muted)';
+    emitterCountLabel.style.marginLeft = 'auto';
     emitterCountLabel.textContent = `${system.emitters.length} emitters`;
 
     headerContent.appendChild(systemCheckbox);
@@ -1777,7 +1939,7 @@ const Paint = () => {
 
   const renderSystems = (systemsData, materialsData = {}, currentFilePath = null, limit = null) => {
     // Debug info removed for cleaner console
-    
+
     if (!particleListRef.current) return;
 
     // Only clear DOM if not doing progressive loading (limit is null means full render)
@@ -1794,7 +1956,7 @@ const Paint = () => {
 
     // Check if we should use virtualization
     const shouldVirtualize = ENABLE_VIRTUALIZATION && Object.keys(systemsData).length >= VIRTUALIZATION_THRESHOLD;
-    
+
     // TODO: Implement virtualization for Paint.js
     // Note: Paint.js uses DOM manipulation (document.createElement) rather than React components,
     // so virtualization would require a different approach than Port.js
@@ -1815,7 +1977,7 @@ const Paint = () => {
         systemsFragment.appendChild(systemDiv);
       }
     });
-    
+
     // Single DOM update instead of multiple appends
     particleListRef.current.appendChild(systemsFragment);
 
@@ -1824,98 +1986,98 @@ const Paint = () => {
       // Render StaticMaterialDef entries using DocumentFragment for batching
       const materialsFragment = document.createDocumentFragment();
       Object.entries(materialsData).forEach(([materialKey, material]) => {
-      const materialDiv = document.createElement('div');
-      materialDiv.className = 'Particle-Div';
-      materialDiv.id = `material_${materialKey}`;
+        const materialDiv = document.createElement('div');
+        materialDiv.className = 'Particle-Div';
+        materialDiv.id = `material_${materialKey}`;
 
-      // Create header for material
-      const headerDiv = document.createElement('div');
-      headerDiv.className = 'Particle-Title-Div';
+        // Create header for material
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'Particle-Title-Div';
 
-      const headerContent = document.createElement('div');
-      headerContent.style.display = 'flex';
-      headerContent.style.alignItems = 'center';
-      headerContent.style.gap = '8px';
-      headerContent.style.cursor = 'pointer';
-      headerContent.style.padding = '4px';
-      headerContent.style.borderRadius = '4px';
-      headerContent.style.transition = 'background-color 0.2s ease';
+        const headerContent = document.createElement('div');
+        headerContent.style.display = 'flex';
+        headerContent.style.alignItems = 'center';
+        headerContent.style.gap = '8px';
+        headerContent.style.cursor = 'pointer';
+        headerContent.style.padding = '4px';
+        headerContent.style.borderRadius = '4px';
+        headerContent.style.transition = 'background-color 0.2s ease';
 
-      const materialCheckbox = document.createElement('input');
-      materialCheckbox.type = 'checkbox';
-      materialCheckbox.className = 'CheckBox';
-      materialCheckbox.style.accentColor = 'var(--accent)';
-      materialCheckbox.style.width = '18px';
-      materialCheckbox.style.height = '18px';
-      materialCheckbox.style.transform = 'translateY(1px)';
-      materialCheckbox.style.border = '1px solid color-mix(in srgb, var(--accent), transparent 60%)';
-      materialCheckbox.style.borderRadius = '4px';
-      materialCheckbox.style.background = 'var(--glass-overlay-light)';
-      materialCheckbox.onchange = (event) => {
-        CheckChildren(materialDiv.children, event.target.checked);
-      };
+        const materialCheckbox = document.createElement('input');
+        materialCheckbox.type = 'checkbox';
+        materialCheckbox.className = 'CheckBox';
+        materialCheckbox.style.accentColor = 'var(--accent)';
+        materialCheckbox.style.width = '18px';
+        materialCheckbox.style.height = '18px';
+        materialCheckbox.style.transform = 'translateY(1px)';
+        materialCheckbox.style.border = '1px solid color-mix(in srgb, var(--accent), transparent 60%)';
+        materialCheckbox.style.borderRadius = '4px';
+        materialCheckbox.style.background = 'rgba(255, 255, 255, 0.06)';
+        materialCheckbox.onchange = (event) => {
+          CheckChildren(materialDiv.children, event.target.checked);
+        };
 
-      const materialNameLabel = document.createElement('div');
-      materialNameLabel.className = 'Label';
-      materialNameLabel.style.flex = '1';
-      materialNameLabel.style.overflow = 'hidden';
-      materialNameLabel.style.textOverflow = 'ellipsis';
-      materialNameLabel.style.color = 'var(--accent-muted)';
-      materialNameLabel.style.fontWeight = '600';
-      materialNameLabel.style.fontSize = '1rem';
-      materialNameLabel.style.textShadow = '0 1px 2px var(--shadow-dark)';
-      materialNameLabel.textContent = material.name || materialKey;
+        const materialNameLabel = document.createElement('div');
+        materialNameLabel.className = 'Label';
+        materialNameLabel.style.flex = '1';
+        materialNameLabel.style.overflow = 'hidden';
+        materialNameLabel.style.textOverflow = 'ellipsis';
+        materialNameLabel.style.color = 'var(--accent-muted)';
+        materialNameLabel.style.fontWeight = '600';
+        materialNameLabel.style.fontSize = '1rem';
+        materialNameLabel.style.textShadow = '0 1px 2px var(--shadow-dark)';
+        materialNameLabel.textContent = material.name || materialKey;
 
-      const materialTypeLabel = document.createElement('div');
-      materialTypeLabel.className = 'Label';
-      materialTypeLabel.style.fontSize = '0.8rem';
-      materialTypeLabel.style.opacity = '0.7';
-      materialTypeLabel.style.color = 'var(--accent-muted)';
-      materialTypeLabel.textContent = '🎨 Material';
+        const materialTypeLabel = document.createElement('div');
+        materialTypeLabel.className = 'Label';
+        materialTypeLabel.style.fontSize = '0.8rem';
+        materialTypeLabel.style.opacity = '0.7';
+        materialTypeLabel.style.color = 'var(--accent-muted)';
+        materialTypeLabel.textContent = '🎨 Material';
 
-      const colorParamCountLabel = document.createElement('div');
-      colorParamCountLabel.className = 'Label';
-      colorParamCountLabel.style.fontSize = '0.8rem';
-      colorParamCountLabel.style.opacity = '0.7';
-      colorParamCountLabel.textContent = `${material.colorParams.length} colors`;
+        const colorParamCountLabel = document.createElement('div');
+        colorParamCountLabel.className = 'Label';
+        colorParamCountLabel.style.fontSize = '0.8rem';
+        colorParamCountLabel.style.opacity = '0.7';
+        colorParamCountLabel.textContent = `${material.colorParams.length} colors`;
 
-      headerContent.appendChild(materialCheckbox);
-      headerContent.appendChild(materialNameLabel);
-      headerContent.appendChild(materialTypeLabel);
-      headerContent.appendChild(colorParamCountLabel);
+        headerContent.appendChild(materialCheckbox);
+        headerContent.appendChild(materialNameLabel);
+        headerContent.appendChild(materialTypeLabel);
+        headerContent.appendChild(colorParamCountLabel);
 
-      // Make the entire header clickable
-      headerContent.onclick = (event) => {
-        // Don't trigger if clicking on the checkbox itself
-        if (event.target !== materialCheckbox) {
-          materialCheckbox.checked = !materialCheckbox.checked;
-          CheckChildren(materialDiv.children, materialCheckbox.checked);
-        }
-      };
+        // Make the entire header clickable
+        headerContent.onclick = (event) => {
+          // Don't trigger if clicking on the checkbox itself
+          if (event.target !== materialCheckbox) {
+            materialCheckbox.checked = !materialCheckbox.checked;
+            CheckChildren(materialDiv.children, materialCheckbox.checked);
+          }
+        };
 
-      // Add hover effect
-      headerContent.onmouseenter = () => {
-        headerContent.style.backgroundColor = 'color-mix(in srgb, var(--accent), transparent 90%)';
-      };
+        // Add hover effect
+        headerContent.onmouseenter = () => {
+          headerContent.style.backgroundColor = 'color-mix(in srgb, var(--accent), transparent 90%)';
+        };
 
-      headerContent.onmouseleave = () => {
-        headerContent.style.backgroundColor = 'transparent';
-      };
+        headerContent.onmouseleave = () => {
+          headerContent.style.backgroundColor = 'transparent';
+        };
 
-      headerDiv.appendChild(headerContent);
-      materialDiv.appendChild(headerDiv);
+        headerDiv.appendChild(headerContent);
+        materialDiv.appendChild(headerDiv);
 
-      // Create color parameter entries
+        // Create color parameter entries
         material.colorParams.forEach((param, paramIndex) => {
           const paramDiv = createMaterialParamDiv(param, materialKey, paramIndex, currentFilePath);
           materialDiv.appendChild(paramDiv);
         });
 
-      materialsFragment.appendChild(materialDiv);
-    });
-    
-    // Single DOM update for all materials
-    particleListRef.current.appendChild(materialsFragment);
+        materialsFragment.appendChild(materialDiv);
+      });
+
+      // Single DOM update for all materials
+      particleListRef.current.appendChild(materialsFragment);
     }
   };
 
@@ -1935,12 +2097,12 @@ const Paint = () => {
 
     // Calculate position to keep preview on screen
     const left = Math.max(10, Math.min(rect.left - 200, window.innerWidth - 420));
-    
+
     // Check if there's enough space below the emitter
     const previewHeight = 350; // Max height of the preview
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
-    
+
     let top;
     if (spaceBelow >= previewHeight) {
       // Position below the emitter
@@ -1952,7 +2114,7 @@ const Paint = () => {
       // Not enough space above or below, position in the middle of available space
       top = Math.max(10, Math.min(rect.top - previewHeight / 2, window.innerHeight - previewHeight - 10));
     }
-    
+
     // Preview position logging removed for cleaner console
 
     // Create hover preview container
@@ -2001,12 +2163,12 @@ const Paint = () => {
 
     // Calculate position to keep preview on screen
     const left = Math.max(10, Math.min(rect.left - 200, window.innerWidth - 420));
-    
+
     // Check if there's enough space below the emitter
     const previewHeight = 350; // Max height of the preview
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
-    
+
     let top;
     if (spaceBelow >= previewHeight) {
       // Position below the emitter
@@ -2058,7 +2220,7 @@ const Paint = () => {
     emitterDiv.className = 'Emitter-Div';
     emitterDiv.style.cursor = 'pointer';
     emitterDiv.style.transition = 'background-color 0.2s ease';
-    
+
     // Store texture path in dataset for searching
     if (emitter.texturePath) {
       emitterDiv.dataset.texturePath = emitter.texturePath;
@@ -2073,7 +2235,7 @@ const Paint = () => {
     checkbox.style.transform = 'translateY(1px)';
     checkbox.style.border = '1px solid color-mix(in srgb, var(--accent), transparent 60%)';
     checkbox.style.borderRadius = '4px';
-    checkbox.style.background = 'var(--glass-overlay-light)';
+    checkbox.style.background = 'rgba(255, 255, 255, 0.06)';
     checkbox.onchange = () => {
       // Update the system checkbox state when an emitter checkbox changes
       const systemDiv = emitterDiv.parentNode;
@@ -2107,11 +2269,10 @@ const Paint = () => {
     nameLabel.style.flex = '1';
     nameLabel.style.overflow = 'hidden';
     nameLabel.style.textOverflow = 'ellipsis';
-    nameLabel.style.color = 'var(--accent)';
-    nameLabel.style.fontWeight = '600';
-    nameLabel.style.fontSize = '0.95rem';
-    nameLabel.style.textShadow = '0 1px 2px var(--shadow-dark)';
-    
+    nameLabel.style.color = 'var(--accent-muted)';
+    nameLabel.style.fontWeight = '500';
+    nameLabel.style.fontSize = '0.9rem';
+
     nameLabel.textContent = emitter.name || 'Unnamed Emitter';
 
     emitterDiv.appendChild(checkbox);
@@ -2129,21 +2290,174 @@ const Paint = () => {
     previewBtn.style.display = 'flex';
     previewBtn.style.alignItems = 'center';
     previewBtn.style.justifyContent = 'center';
-    
+
     // Create a React element for the CropOriginalIcon
-    const iconElement = React.createElement(CropOriginalIcon, { 
-      sx: { fontSize: 20 } 
+    const iconElement = React.createElement(CropOriginalIcon, {
+      sx: { fontSize: 20 }
     });
-    
+
     // Render the React element into the button
     const root = ReactDOM.createRoot(previewBtn);
     root.render(iconElement);
 
     let hoverTimer = null;
 
+    previewBtn.onclick = async (e) => {
+      e.stopPropagation();
+      const existingPreview = document.getElementById('paint-texture-hover-preview');
+      if (existingPreview) existingPreview.remove();
+      try {
+        // Get texture path - logic mirrored from onmouseenter to ensure consistency
+        let texturePath = emitter && emitter.texturePath ? emitter.texturePath : null;
+
+        // Logic to extract path from rawContent/PyContent if missing
+        if (!texturePath) {
+          const system = systems && systems[systemKey] ? systems[systemKey] : null;
+          if (!system) return;
+
+          let sysForLoad = system;
+          if (!system.rawContent && pyContent) {
+            try {
+              const extracted = extractVFXSystem(pyContent, systemKey);
+              if (extracted) {
+                sysForLoad = { ...system, rawContent: extracted.content };
+              }
+            } catch (err) {
+              console.error('Error extracting system content for click preview:', err);
+            }
+          }
+
+          const fullEmitterData = loadEmitterData(sysForLoad, emitter.name);
+          if (fullEmitterData && fullEmitterData.texturePath) {
+            texturePath = fullEmitterData.texturePath;
+          }
+        }
+
+        if (texturePath) {
+          let resolvedPath = texturePath;
+          const binPath = currentFilePath || filePath;
+
+          // Custom Path Resolution Strategy (Project Root / Data Folder split)
+          if (binPath) {
+            const fs = window.require ? window.require('fs') : null;
+            const path = window.require ? window.require('path') : null;
+
+            if (fs && path) {
+              // 1. "Look before data" Strategy
+              const normalizedBin = binPath.replace(/\\/g, '/');
+              // Regex to match '/data/' case-insensitive
+              const dataMatch = normalizedBin.match(/\/data\//i);
+
+              if (dataMatch) {
+                const dataIndex = dataMatch.index;
+                // Root is everything before the /data/ folder
+                const projectRoot = normalizedBin.substring(0, dataIndex);
+
+                // User says: root + texturePath
+                // Clean texturePath to ensure we join correctly
+                const cleanTexture = texturePath.replace(/\\/g, '/');
+                const candidate1 = path.join(projectRoot, cleanTexture);
+
+                if (fs.existsSync(candidate1)) {
+                  resolvedPath = candidate1;
+                  console.log('[Paint] Resolved path via Project Root Strategy:', resolvedPath);
+                }
+                // Sanity check: sometimes texturePath doesn't start with ASSETS but assumes it?
+                // But user example showed it starting with ASSETS.
+              }
+
+              // 2. Fallback to smart finder if strict strategy failed
+              if (resolvedPath === texturePath) {
+                const smartPath = findActualTexturePath(texturePath, binPath);
+                if (smartPath) resolvedPath = smartPath;
+              }
+            }
+          }
+
+          // Texture Conversion (Try-Catch wrapped)
+          let dataUrl = null;
+          try {
+            if (!activeConversions.current.has(texturePath)) {
+              dataUrl = await convertTextureToPNG(texturePath, binPath);
+            }
+            if (!dataUrl && !activeConversions.current.has(texturePath)) {
+              dataUrl = await convertTextureToPNG(texturePath, binPath);
+            }
+          } catch (e) { console.warn('Conversion failed on click:', e); }
+
+          openAssetPreview(resolvedPath, dataUrl);
+        }
+      } catch (err) {
+        console.error('Error in preview click:', err);
+      }
+    };
+
+    previewBtn.oncontextmenu = async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        let texturePath = emitter && emitter.texturePath ? emitter.texturePath : null;
+
+        if (!texturePath) {
+          const system = systems && systems[systemKey] ? systems[systemKey] : null;
+          if (system) {
+            let sysForLoad = system;
+            if (!system.rawContent && pyContent) {
+              try {
+                const extracted = extractVFXSystem(pyContent, systemKey);
+                // Use content or fullContent depending on what extractVFXSystem returns.
+                // onclick used: if (extracted) { sysForLoad = { ...system, rawContent: extracted.content }; }
+                // onmouseenter used: if (extracted && extracted.fullContent) ...
+                // I will use 'content' as in onclick as a safe bet, or check both.
+                if (extracted && extracted.content) {
+                  sysForLoad = { ...system, rawContent: extracted.content };
+                }
+              } catch (_) { }
+            }
+            const fullEmitterData = loadEmitterData(sysForLoad, emitter.name);
+            if (fullEmitterData && fullEmitterData.texturePath) texturePath = fullEmitterData.texturePath;
+          }
+        }
+
+        if (texturePath) {
+          let resolvedPath = texturePath;
+          const binPath = currentFilePath || filePath;
+
+          if (binPath) {
+            const fs = window.require ? window.require('fs') : null;
+            const path = window.require ? window.require('path') : null;
+            if (fs && path) {
+              const normalizedBin = binPath.replace(/\\/g, '/');
+              const dataMatch = normalizedBin.match(/\/data\//i);
+
+              if (dataMatch) {
+                const projectRoot = normalizedBin.substring(0, dataMatch.index);
+                const cleanTexture = texturePath.replace(/\\/g, '/');
+                const candidate1 = path.join(projectRoot, cleanTexture);
+                if (fs.existsSync(candidate1)) resolvedPath = candidate1;
+              }
+
+              if (resolvedPath === texturePath) {
+                const smartPath = findActualTexturePath(texturePath, binPath);
+                if (smartPath) resolvedPath = smartPath;
+              }
+            }
+          }
+
+          if (window.require) {
+            const { shell } = window.require('electron');
+            if (shell) {
+              await shell.openPath(resolvedPath);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error opening external app:', err);
+      }
+    };
+
     previewBtn.onmouseenter = async (e) => {
       // Clear any existing timer
-      if (hoverTimer) clearTimeout(hoverTimer);
 
       hoverTimer = setTimeout(async () => {
         try {
@@ -2198,7 +2512,7 @@ const Paint = () => {
 
             if (result) {
               let dataUrl;
-              
+
               // Check if result is a data URL (new native format) or file path (old format)
               if (result.startsWith('data:')) {
                 // Native format - already a data URL
@@ -2206,7 +2520,7 @@ const Paint = () => {
               } else {
                 // Old format - file path, read it
                 const fs = window.require('fs');
-                
+
                 if (!fs.existsSync(result)) {
                   showTextureError(texturePath, e.target);
                   return;
@@ -2220,12 +2534,12 @@ const Paint = () => {
               // Show preview immediately after conversion
               const rect = e.target.getBoundingClientRect();
               const left = Math.max(10, rect.left - 300);
-              
+
               // Check if there's enough space below the emitter
               const previewHeight = 280; // Height of this preview (200px image + padding + text)
               const spaceBelow = window.innerHeight - rect.bottom;
               const spaceAbove = rect.top;
-              
+
               let top;
               if (spaceBelow >= previewHeight) {
                 // Position below the emitter
@@ -2277,12 +2591,12 @@ const Paint = () => {
               // Show error immediately
               const rect = e.target.getBoundingClientRect();
               const left = Math.max(10, rect.left - 300);
-              
+
               // Check if there's enough space below the emitter
               const previewHeight = 280; // Height of this preview (error message + padding + text)
               const spaceBelow = window.innerHeight - rect.bottom;
               const spaceAbove = rect.top;
-              
+
               let top;
               if (spaceBelow >= previewHeight) {
                 // Position below the emitter
@@ -2569,7 +2883,7 @@ const Paint = () => {
           for (let i = start; i <= end && i < lines.length; i++) {
             const t = (lines[i] || '').trim();
             if (t.startsWith('blendMode: u8 =')) {
-              const indent = (lines[i].match(/^(\s*)/) || ['',''])[1];
+              const indent = (lines[i].match(/^(\s*)/) || ['', ''])[1];
               lines[i] = `${indent}blendMode: u8 = ${num}`;
               wrote = true;
               break;
@@ -2579,7 +2893,7 @@ const Paint = () => {
             // Insert a blendMode line near the end of the emitter block, before the closing brace
             for (let i = Math.min(end, lines.length - 1); i >= start; i--) {
               if ((lines[i] || '').trim() === '}') {
-                const indent = (lines[i].match(/^(\s*)/) || ['','        '])[1] || '        ';
+                const indent = (lines[i].match(/^(\s*)/) || ['', '        '])[1] || '        ';
                 lines.splice(i, 0, `${indent}blendMode: u8 = ${num}`);
                 wrote = true;
                 break;
@@ -2612,7 +2926,7 @@ const Paint = () => {
     checkbox.style.transform = 'translateY(1px)';
     checkbox.style.border = '1px solid color-mix(in srgb, var(--accent), transparent 60%)';
     checkbox.style.borderRadius = '4px';
-    checkbox.style.background = 'var(--glass-overlay-light)';
+    checkbox.style.background = 'rgba(255, 255, 255, 0.06)';
     checkbox.onchange = () => {
       // Update the material checkbox state when a param checkbox changes
       const materialDiv = paramDiv.parentNode;
@@ -2646,10 +2960,9 @@ const Paint = () => {
     nameLabel.style.flex = '1';
     nameLabel.style.overflow = 'hidden';
     nameLabel.style.textOverflow = 'ellipsis';
-    nameLabel.style.color = 'var(--accent)';
-    nameLabel.style.fontWeight = '600';
-    nameLabel.style.fontSize = '0.95rem';
-    nameLabel.style.textShadow = '0 1px 2px var(--shadow-dark)';
+    nameLabel.style.color = 'var(--accent-muted)';
+    nameLabel.style.fontWeight = '500';
+    nameLabel.style.fontSize = '0.9rem';
     nameLabel.textContent = param.name || 'Unnamed Parameter';
 
     paramDiv.appendChild(checkbox);
@@ -2662,15 +2975,15 @@ const Paint = () => {
 
     if (param.value && param.value.length >= 4) {
       const [r, g, b, a] = param.value;
-      
+
       // Validate color values
-      if (!isNaN(r) && !isNaN(g) && !isNaN(b) && !isNaN(a) && 
-          isFinite(r) && isFinite(g) && isFinite(b) && isFinite(a)) {
-        
+      if (!isNaN(r) && !isNaN(g) && !isNaN(b) && !isNaN(a) &&
+        isFinite(r) && isFinite(g) && isFinite(b) && isFinite(a)) {
+
         const colorHandler = new ColorHandler([r, g, b, a]);
         const bgColor = colorHandler.ToHEX();
         colorDiv.style.background = bgColor;
-        
+
         colorDiv.onclick = (event) => {
           const newPalette = [colorHandler];
           newPalette[0].SetTime(0);
@@ -2702,13 +3015,13 @@ const Paint = () => {
     valueLabel.style.opacity = '0.7';
     valueLabel.style.color = 'var(--accent-muted)';
     valueLabel.style.fontFamily = 'monospace';
-    
+
     if (param.value && param.value.length >= 4) {
       const [r, g, b, a] = param.value;
-      
+
       // Check if values are valid
-      if (!isNaN(r) && !isNaN(g) && !isNaN(b) && !isNaN(a) && 
-          isFinite(r) && isFinite(g) && isFinite(b) && isFinite(a)) {
+      if (!isNaN(r) && !isNaN(g) && !isNaN(b) && !isNaN(a) &&
+        isFinite(r) && isFinite(g) && isFinite(b) && isFinite(a)) {
         valueLabel.textContent = `(${r.toFixed(3)}, ${g.toFixed(3)}, ${b.toFixed(3)}, ${a.toFixed(3)})`;
       } else {
         valueLabel.textContent = '(Invalid values)';
@@ -2784,22 +3097,22 @@ const Paint = () => {
   const performBackupRestore = () => {
     try {
       setStatusMessage('Backup restored - reloading file...');
-      
+
       // Reload the restored file content
       if (fs?.existsSync(pyPath)) {
         const restoredContent = fs.readFileSync(pyPath, 'utf8');
-        
+
         // Clear any existing state that might cause issues
         setFileCache([]);
-        
+
         // Update the content and systems
         setPyContent(restoredContent);
         // LoadPyFile will handle caching automatically
         LoadPyFile(restoredContent, filePath);
-        
+
         // Reset file saved state since we're loading from disk
         setFileSaved(true);
-        
+
         setStatusMessage('Backup restored - file reloaded');
       }
     } catch (error) {
@@ -2811,9 +3124,9 @@ const Paint = () => {
   const handleUndo = () => {
     if (fileCache.length > 0) {
       // Cancel any in-flight recolor job and clear optimistic preview assignments
-      try { currentRecolorJobId.current++; } catch {}
-      try { previewAssignmentsRef.current.clear(); } catch {}
-      try { setIsRecoloring(false); } catch {}
+      try { currentRecolorJobId.current++; } catch { }
+      try { previewAssignmentsRef.current.clear(); } catch { }
+      try { setIsRecoloring(false); } catch { }
 
       const previousContent = fileCache.pop();
 
@@ -2824,18 +3137,18 @@ const Paint = () => {
           block.style.background = '';
           block.style.removeProperty('background');
         });
-      } catch {}
+      } catch { }
 
       // FAST UNDO: Update UI first, then content to avoid re-render conflicts
       // updateColorBlocksOnly will handle caching automatically
       updateColorBlocksOnly(previousContent);
       setPyContent(previousContent);
-      
+
       // CRITICAL FIX: Also update systems state to ensure undo restores original colors for shift mode
       try {
         const restoredSystems = parsePyFile(previousContent);
         const restoredMaterials = parseStaticMaterials(previousContent);
-        
+
         // Update BOTH systems and cachedSystems to ensure consistency after undo
         setSystems(restoredSystems);
         setStaticMaterials(restoredMaterials);
@@ -2852,7 +3165,7 @@ const Paint = () => {
       setFileSaved(false);
       // Ensure any leftover inline styles from optimistic preview are overwritten in next frame
       requestAnimationFrame(() => {
-        try { FilterParticles(filterText); } catch {}
+        try { FilterParticles(filterText); } catch { }
       });
     } else {
       setStatusMessage("No more undo states available");
@@ -3025,7 +3338,7 @@ const Paint = () => {
             block.style.background = hex;
             block.classList.remove('Blank-Obj');
             if (title) block.title = title;
-          } catch {}
+          } catch { }
         };
         const setBlockGradient = (selector, values, title) => {
           const block = emitterDiv.querySelector(selector);
@@ -3040,7 +3353,7 @@ const Paint = () => {
             }
             block.classList.remove('Blank-Obj');
             if (title) block.title = title;
-          } catch {}
+          } catch { }
         };
 
         if (targets.color && emitter.color) {
@@ -3190,7 +3503,7 @@ const Paint = () => {
                   const mkey = `material|${materialKey}|${param.name}`;
                   previewAssignmentsRef.current.set(mkey, { type: 'material', materialKey, paramName: param.name, value: predicted });
                 }
-              } catch {}
+              } catch { }
             }
             break;
           }
@@ -3221,7 +3534,7 @@ const Paint = () => {
         return lines;
       }
       console.log(`[writeEmitterConstantToLines] Found colorProp: startLine=${colorProp.startLine}, endLine=${colorProp.endLine}`);
-      
+
       if (propertyKey === 'oc') {
         for (let i = colorProp.startLine; i <= colorProp.endLine + 10; i++) {
           if (!lines[i]) continue;
@@ -3294,7 +3607,7 @@ const Paint = () => {
           valueIndex++;
         }
       }
-    } catch {}
+    } catch { }
     return lines;
   };
 
@@ -3336,7 +3649,7 @@ const Paint = () => {
 
   const handleDrop = (e, dropIndex) => {
     e.preventDefault();
-    
+
     if (draggedIndex === null || draggedIndex === dropIndex) {
       setDragOverIndex(null);
       return;
@@ -3345,24 +3658,24 @@ const Paint = () => {
     // Reorder the palette colors
     const newPalette = [...Palette];
     const draggedColor = newPalette[draggedIndex];
-    
+
     // Remove the dragged color
     newPalette.splice(draggedIndex, 1);
-    
+
     // Insert at new position
     const insertIndex = draggedIndex < dropIndex ? dropIndex - 1 : dropIndex;
     newPalette.splice(insertIndex, 0, draggedColor);
-    
+
     // Update the palette and colors
     setPalette(newPalette);
     MapPalette(newPalette, setColors);
     savePaletteForMode(mode, newPalette, setSavedPalettes);
-    
+
     // Force update of all color blocks to reflect new palette order
     setTimeout(() => {
       updateEmitterColorBlocks();
     }, 50);
-    
+
     setStatusMessage(`Moved color ${draggedIndex + 1} to position ${insertIndex + 1}`);
     setDragOverIndex(null);
   };
@@ -3402,7 +3715,7 @@ const Paint = () => {
       systemsToUse = parsePyFile(pyContent);
       setCachedSystems(systemsToUse);
       setIsDataCached(true);
-    } catch {}
+    } catch { }
 
     // Instant UI preview (optimistic)
     requestAnimationFrame(() => {
@@ -3554,7 +3867,7 @@ const Paint = () => {
         if (currentRecolorJobId.current !== jobId) return; // cancelled
         const updatedContent = workingLines.join('\n');
         console.log(`[processChunk] Finished processing. colorsUpdated=${colorsUpdated}, contentLength=${updatedContent.length}, originalLength=${pyContent.length}`);
-        
+
         // Verify some changes were made by comparing actual updated lines
         if (colorsUpdated > 0) {
           // Check if content actually changed by comparing specific updated lines
@@ -3576,13 +3889,13 @@ const Paint = () => {
         } else {
           console.warn(`[processChunk] WARNING: No colors were updated!`);
         }
-        
+
         // CRITICAL FIX: Re-parse the systems after recoloring to update originalColor values
         // This ensures that shift mode uses the newly recolored colors as the base, not the original loaded colors
         try {
           const updatedSystems = parsePyFile(updatedContent);
           const updatedMaterials = parseStaticMaterials(updatedContent);
-          
+
           // Update BOTH systems and cachedSystems to ensure consistency
           setSystems(updatedSystems);
           setStaticMaterials(updatedMaterials);
@@ -3593,7 +3906,7 @@ const Paint = () => {
         } catch (error) {
           console.warn('Failed to re-parse systems after recoloring:', error);
         }
-        
+
         console.log(`[processChunk] About to update UI and set pyContent. updatedContent length=${updatedContent.length}`);
         // Verify a specific line was actually changed before setting
         const testLineIndex = 222; // One of the lines we know should be updated
@@ -3602,7 +3915,7 @@ const Paint = () => {
         console.log(`[processChunk] Verification - Line ${testLineIndex} original:`, testLineOriginal?.substring(0, 80));
         console.log(`[processChunk] Verification - Line ${testLineIndex} updated:`, testLineUpdated?.substring(0, 80));
         console.log(`[processChunk] Line ${testLineIndex} changed:`, testLineOriginal !== testLineUpdated);
-        
+
         updateColorBlocksOnly(updatedContent);
         restoreCheckboxStates(savedCheckboxStates, particleListRef);
         console.log(`[processChunk] Setting pyContent to updated content (length=${updatedContent.length})`);
@@ -3629,12 +3942,12 @@ const Paint = () => {
     for (let i = 0; i < systemDivs.length; i++) {
       const systemDiv = systemDivs[i];
       const systemKey = systemDiv.id;
-      
+
       // Skip hidden systems
       if (systemDiv.style.display === "none") {
         continue;
       }
-      
+
       // Handle VFX systems
       if (systemKey && !systemKey.startsWith('material_')) {
         const system = systems[systemKey];
@@ -3659,7 +3972,7 @@ const Paint = () => {
           }
         }
       }
-      
+
       // Handle StaticMaterialDef entries
       if (systemKey && systemKey.startsWith('material_')) {
         const materialKey = systemKey.replace('material_', '');
@@ -3701,8 +4014,8 @@ const Paint = () => {
         CreatePicker(
           tempIdx,
           null,
-          Palette?.length ? Palette : [new ColorHandler([1,0,0,1])],
-          () => {},
+          Palette?.length ? Palette : [new ColorHandler([1, 0, 0, 1])],
+          () => { },
           mode,
           null,
           null,
@@ -3975,11 +4288,11 @@ const Paint = () => {
   // Highly optimized filtering with minimal DOM manipulation
   const FilterParticles = (filterString, currentSearchOptions = null) => {
     if (!particleListRef.current) return;
-    
+
     // Use provided options or fall back to current state
     const options = currentSearchOptions || lastSearchOptionsRef.current;
     console.log('FilterParticles called with:', filterString, 'Search options:', options);
-    
+
     // Skip if already filtering (throttle rapid calls)
     if (isFilteringRef.current) {
       return;
@@ -3989,156 +4302,156 @@ const Paint = () => {
     // Use requestAnimationFrame to batch DOM updates
     requestAnimationFrame(() => {
       const startTime = performance.now(); // Performance tracking
-    
-    // Use cached elements if available, otherwise cache them now
-    if (!cachedElementsRef.current) {
-      console.log('Caching DOM elements for filtering...');
-      cacheFilterElements();
-    }
-    
-    const cachedElements = cachedElementsRef.current;
-    if (!cachedElements) {
-      console.log('No cached elements available for filtering');
-      isFilteringRef.current = false;
-      return;
-    }
-    
-    console.log('Cached elements available:', cachedElements.length);
-    
-    const isEmpty = !filterString.trim();
-    
-    // For very short searches or empty searches, use direct DOM manipulation for maximum speed
-    if (isEmpty || filterString.length <= 2) {
-      if (isEmpty) {
-        // Ultra-fast path for empty search using cached elements
-        for (const system of cachedElements) {
-          system.element.style.display = null;
-          for (const emitter of system.emitters) {
-            emitter.element.style.display = null;
+
+      // Use cached elements if available, otherwise cache them now
+      if (!cachedElementsRef.current) {
+        console.log('Caching DOM elements for filtering...');
+        cacheFilterElements();
+      }
+
+      const cachedElements = cachedElementsRef.current;
+      if (!cachedElements) {
+        console.log('No cached elements available for filtering');
+        isFilteringRef.current = false;
+        return;
+      }
+
+      console.log('Cached elements available:', cachedElements.length);
+
+      const isEmpty = !filterString.trim();
+
+      // For very short searches or empty searches, use direct DOM manipulation for maximum speed
+      if (isEmpty || filterString.length <= 2) {
+        if (isEmpty) {
+          // Ultra-fast path for empty search using cached elements
+          for (const system of cachedElements) {
+            system.element.style.display = null;
+            for (const emitter of system.emitters) {
+              emitter.element.style.display = null;
+            }
+          }
+        } else {
+          // Fast path for short searches using cached elements
+          const searchLower = filterString.toLowerCase();
+
+          for (const system of cachedElements) {
+            const systemNameMatch = options.systems && system.name.includes(searchLower);
+            let emitterNameMatch = false;
+
+            // Check emitters if emitter search OR texture search is enabled
+            if (options.emitters || options.textures) {
+              console.log('Emitter/texture search enabled, checking system:', system.name, 'emitters:', system.emitters?.length);
+              console.log('Checking emitters for system:', system.name, 'with search:', searchLower);
+              // Check emitter names and texture paths
+              for (const emitter of system.emitters) {
+                const emitterMatches = options.emitters && emitter.name.includes(searchLower);
+                const textureMatches = options.textures && emitter.texturePath && emitter.texturePath.includes(searchLower);
+                console.log('Emitter:', emitter.name, 'matches:', emitterMatches, 'texturePath:', emitter.texturePath, 'textureMatches:', textureMatches);
+                // Debug: Log when texture filtering is happening
+                if (options.textures && emitter.texturePath && emitter.texturePath.includes(searchLower)) {
+                  console.log('Texture match found:', emitter.texturePath, 'for search:', searchLower);
+                }
+
+                if (emitterMatches || textureMatches) {
+                  emitterNameMatch = true;
+                  emitter.element.style.display = null;
+                } else if (!systemNameMatch) {
+                  emitter.element.style.display = "none";
+                } else {
+                  emitter.element.style.display = null;
+                }
+              }
+            } else {
+              // When neither emitter nor texture search is enabled, show all emitters if system matches
+              for (const emitter of system.emitters) {
+                if (systemNameMatch) {
+                  emitter.element.style.display = null;
+                } else {
+                  emitter.element.style.display = "none";
+                }
+              }
+            }
+
+            // Show/hide system based on matches
+            if (!systemNameMatch && !emitterNameMatch) {
+              system.element.style.display = "none";
+            } else {
+              system.element.style.display = null;
+            }
           }
         }
-      } else {
-        // Fast path for short searches using cached elements
-        const searchLower = filterString.toLowerCase();
-        
+        const endTime = performance.now();
+        // console.log(`FilterParticles (${isEmpty ? 'clear' : 'search'}): ${(endTime - startTime).toFixed(2)}ms`);
+        isFilteringRef.current = false;
+        return;
+      }
+
+      // For longer searches, use batched updates
+      const updates = [];
+
+      try {
+        // Cache regex to avoid recreating for same pattern
+        let search;
+        if (lastFilterPattern.current === filterString && lastRegex.current) {
+          search = lastRegex.current;
+        } else {
+          search = new RegExp(filterString, "i");
+          lastFilterPattern.current = filterString;
+          lastRegex.current = search;
+        }
+
         for (const system of cachedElements) {
-          const systemNameMatch = options.systems && system.name.includes(searchLower);
+          const systemNameMatch = options.systems && search.test(system.name);
           let emitterNameMatch = false;
 
           // Check emitters if emitter search OR texture search is enabled
           if (options.emitters || options.textures) {
-            console.log('Emitter/texture search enabled, checking system:', system.name, 'emitters:', system.emitters?.length);
-            console.log('Checking emitters for system:', system.name, 'with search:', searchLower);
             // Check emitter names and texture paths
             for (const emitter of system.emitters) {
-              const emitterMatches = options.emitters && emitter.name.includes(searchLower);
-              const textureMatches = options.textures && emitter.texturePath && emitter.texturePath.includes(searchLower);
-              console.log('Emitter:', emitter.name, 'matches:', emitterMatches, 'texturePath:', emitter.texturePath, 'textureMatches:', textureMatches);
-              // Debug: Log when texture filtering is happening
-              if (options.textures && emitter.texturePath && emitter.texturePath.includes(searchLower)) {
-                console.log('Texture match found:', emitter.texturePath, 'for search:', searchLower);
-              }
+              const emitterMatches = options.emitters && search.test(emitter.name);
+              const textureMatches = options.textures && emitter.texturePath && search.test(emitter.texturePath);
+              console.log('Long search - Emitter:', emitter.name, 'texturePath:', emitter.texturePath, 'textureMatches:', textureMatches);
 
               if (emitterMatches || textureMatches) {
                 emitterNameMatch = true;
-                emitter.element.style.display = null;
+                updates.push({ element: emitter.element, display: null });
               } else if (!systemNameMatch) {
-                emitter.element.style.display = "none";
+                updates.push({ element: emitter.element, display: "none" });
               } else {
-                emitter.element.style.display = null;
+                updates.push({ element: emitter.element, display: null });
               }
             }
           } else {
             // When neither emitter nor texture search is enabled, show all emitters if system matches
             for (const emitter of system.emitters) {
               if (systemNameMatch) {
-                emitter.element.style.display = null;
+                updates.push({ element: emitter.element, display: null });
               } else {
-                emitter.element.style.display = "none";
+                updates.push({ element: emitter.element, display: "none" });
               }
             }
           }
 
           // Show/hide system based on matches
           if (!systemNameMatch && !emitterNameMatch) {
-            system.element.style.display = "none";
+            updates.push({ element: system.element, display: "none" });
           } else {
-            system.element.style.display = null;
+            updates.push({ element: system.element, display: null });
           }
         }
-      }
-      const endTime = performance.now();
-      // console.log(`FilterParticles (${isEmpty ? 'clear' : 'search'}): ${(endTime - startTime).toFixed(2)}ms`);
-      isFilteringRef.current = false;
-      return;
-    }
-    
-    // For longer searches, use batched updates
-    const updates = [];
-    
-    try {
-      // Cache regex to avoid recreating for same pattern
-      let search;
-      if (lastFilterPattern.current === filterString && lastRegex.current) {
-        search = lastRegex.current;
-      } else {
-        search = new RegExp(filterString, "i");
-        lastFilterPattern.current = filterString;
-        lastRegex.current = search;
-      }
-      
-      for (const system of cachedElements) {
-        const systemNameMatch = options.systems && search.test(system.name);
-        let emitterNameMatch = false;
-
-        // Check emitters if emitter search OR texture search is enabled
-        if (options.emitters || options.textures) {
-          // Check emitter names and texture paths
-          for (const emitter of system.emitters) {
-            const emitterMatches = options.emitters && search.test(emitter.name);
-            const textureMatches = options.textures && emitter.texturePath && search.test(emitter.texturePath);
-            console.log('Long search - Emitter:', emitter.name, 'texturePath:', emitter.texturePath, 'textureMatches:', textureMatches);
-
-            if (emitterMatches || textureMatches) {
-              emitterNameMatch = true;
-              updates.push({ element: emitter.element, display: null });
-            } else if (!systemNameMatch) {
-              updates.push({ element: emitter.element, display: "none" });
-            } else {
-              updates.push({ element: emitter.element, display: null });
-            }
-          }
-        } else {
-          // When neither emitter nor texture search is enabled, show all emitters if system matches
-          for (const emitter of system.emitters) {
-            if (systemNameMatch) {
-              updates.push({ element: emitter.element, display: null });
-            } else {
-              updates.push({ element: emitter.element, display: "none" });
-            }
-          }
-        }
-
-        // Show/hide system based on matches
-        if (!systemNameMatch && !emitterNameMatch) {
-          updates.push({ element: system.element, display: "none" });
-        } else {
+      } catch (error) {
+        // Invalid regex, show all systems using cached elements
+        for (const system of cachedElements) {
           updates.push({ element: system.element, display: null });
+          for (const emitter of system.emitters) {
+            updates.push({ element: emitter.element, display: null });
+          }
         }
       }
-    } catch (error) {
-      // Invalid regex, show all systems using cached elements
-      for (const system of cachedElements) {
-        updates.push({ element: system.element, display: null });
-        for (const emitter of system.emitters) {
-          updates.push({ element: emitter.element, display: null });
-        }
-      }
-    }
-    
-    // Apply all DOM updates immediately - no delays
-    for (const update of updates) {
-      update.element.style.display = update.display;
+
+      // Apply all DOM updates immediately - no delays
+      for (const update of updates) {
+        update.element.style.display = update.display;
       }
       const endTime = performance.now();
       // console.log(`FilterParticles (immediate): ${(endTime - startTime).toFixed(2)}ms`);
@@ -4154,26 +4467,26 @@ const Paint = () => {
   const cachedElementsRef = useRef(null);
   const inputRef = useRef(null);
   const lastSearchOptionsRef = useRef(searchOptions);
-  
+
   // Cache DOM elements for super-fast filtering
   const cacheFilterElements = () => {
     if (!particleListRef.current) return;
-    
+
     const cache = [];
     const SystemListChildren = particleListRef.current.children;
-    
+
     for (let i = 0; i < SystemListChildren.length; i++) {
       const systemDiv = SystemListChildren[i];
       const systemNameElement = systemDiv.children[0]?.children[0]?.children[1];
       const systemName = (systemNameElement?.textContent || '').toLowerCase();
-      
+
       const emitters = [];
       for (let j = 1; j < systemDiv.children.length; j++) {
         const emitterDiv = systemDiv.children[j];
         if (emitterDiv?.children?.[1]) {
           const emitterNameText = (emitterDiv.children[1].textContent || '').toLowerCase();
           const texturePath = (emitterDiv.dataset.texturePath || '').toLowerCase();
-          
+
           emitters.push({
             element: emitterDiv,
             name: emitterNameText,
@@ -4181,26 +4494,26 @@ const Paint = () => {
           });
         }
       }
-      
+
       cache.push({
         element: systemDiv,
         name: systemName,
         emitters: emitters
       });
     }
-    
+
     cachedElementsRef.current = cache;
   };
-  
+
   const handleFilterChange = useCallback((value) => {
     // Update state (this will be called on blur/Enter from MemoizedSearchInput)
     setFilterText(value);
-    
+
     // Clear existing timeout
     if (filterTimeoutRef.current) {
       clearTimeout(filterTimeoutRef.current);
     }
-    
+
     // Immediate filtering for empty search (when user clears everything)
     if (!value.trim()) {
       // Use requestIdleCallback to avoid blocking the input, with fallback
@@ -4211,7 +4524,7 @@ const Paint = () => {
       }
       return;
     }
-    
+
     // Wait for user to stop typing/backspacing before filtering
     // This makes holding backspace smooth - it waits until they're done
     filterTimeoutRef.current = setTimeout(() => {
@@ -4230,7 +4543,7 @@ const Paint = () => {
     if (searchOptions.systems) options.push('systems');
     if (searchOptions.emitters) options.push('emitters');
     if (searchOptions.textures) options.push('texture paths');
-    
+
     if (options.length === 0) return "No search options enabled";
     if (options.length === 1) return `Filter ${options[0]}...`;
     if (options.length === 2) return `Filter ${options[0]} and ${options[1]}...`;
@@ -4293,12 +4606,12 @@ const Paint = () => {
     try {
       // PERFORMANCE OPTIMIZATION: Use cached data instead of re-parsing
       let updatedSystems;
-      
+
       if (updatedContent && updatedContent !== pyContent) {
         // Only parse if content actually changed
         // console.log('🔄 Content changed in updateEmitterColorBlocksAfterRecolor, parsing...');
         updatedSystems = parsePyFile(updatedContent);
-        
+
         // Update cache with new data
         setCachedSystems(updatedSystems);
         setSystems(updatedSystems);
@@ -4377,7 +4690,7 @@ const Paint = () => {
 
   const updateEmitterColorBlocksWithValues = (hslValuesToUse) => {
     // This function is now only used for debugging - no real-time application
-          // HSL values logging removed for cleaner console
+    // HSL values logging removed for cleaner console
   };
 
   const handleHslChange = (type, value) => {
@@ -4549,13 +4862,13 @@ const Paint = () => {
         const savedPaletteData = await electronPrefs.get('PaintSavedPalette');
         const savedMode = await electronPrefs.get('PaintSavedMode');
         const savedPalettesData = await electronPrefs.get('PaintSavedPalettes');
-        
+
         if (savedPaletteData && Array.isArray(savedPaletteData) && savedPaletteData.length > 0) {
           console.log('🔄 Restoring saved palette from electronPrefs');
-          
+
           // Temporarily suppress auto-palette to prevent overwriting restored palette
           setSuppressAutoPalette(true);
-          
+
           // Restore the palette
           const restoredPalette = savedPaletteData.map(colorData => {
             const colorHandler = new ColorHandler();
@@ -4567,17 +4880,17 @@ const Paint = () => {
             colorHandler.time = colorData.time || 0;
             return colorHandler;
           });
-          
+
           setPalette(restoredPalette);
           setColorCount(restoredPalette.length);
           MapPalette(restoredPalette, setColors);
           setIsPaletteReady(true);
-          
+
           // Restore mode if saved
           if (savedMode) {
             setMode(savedMode);
           }
-          
+
           // Restore saved palettes for all modes if available
           if (savedPalettesData && typeof savedPalettesData === 'object') {
             const restoredSavedPalettes = {};
@@ -4597,7 +4910,7 @@ const Paint = () => {
             }
             setSavedPalettes(prev => ({ ...prev, ...restoredSavedPalettes }));
           }
-          
+
           // Re-enable auto-palette after restoration completes
           // Use a longer delay to ensure it happens after initialization timeout
           setTimeout(() => setSuppressAutoPalette(false), 200);
@@ -4611,25 +4924,25 @@ const Paint = () => {
         setTimeout(() => setSuppressAutoPalette(false), 0);
       }
     };
-    
+
     loadSavedPalette();
   }, []); // Only run on mount
 
   // Save palette to electronPrefs whenever it changes (debounced)
   useEffect(() => {
     if (suppressAutoPalette || Palette.length === 0) return;
-    
+
     const savePaletteToPrefs = async () => {
       try {
         await electronPrefs.initPromise;
-        
+
         // Serialize current palette
         const paletteData = Palette.map(color => ({
           hex: color.ToHEX(),
           vec4: color.vec4,
           time: color.time
         }));
-        
+
         // Serialize saved palettes for all modes
         const savedPalettesData = {};
         for (const [modeKey, modePalette] of Object.entries(savedPalettes)) {
@@ -4641,7 +4954,7 @@ const Paint = () => {
             }));
           }
         }
-        
+
         await electronPrefs.set('PaintSavedPalette', paletteData);
         await electronPrefs.set('PaintSavedMode', mode);
         await electronPrefs.set('PaintSavedPalettes', savedPalettesData);
@@ -4650,7 +4963,7 @@ const Paint = () => {
         console.warn('Failed to save palette to electronPrefs:', error);
       }
     };
-    
+
     // Debounce saves to avoid too many writes
     const timer = setTimeout(savePaletteToPrefs, 500);
     return () => clearTimeout(timer);
@@ -4669,7 +4982,7 @@ const Paint = () => {
               vec4: color.vec4,
               time: color.time
             }));
-            
+
             const savedPalettesData = {};
             for (const [modeKey, modePalette] of Object.entries(savedPalettes)) {
               if (modePalette && Array.isArray(modePalette) && modePalette.length > 0) {
@@ -4680,7 +4993,7 @@ const Paint = () => {
                 }));
               }
             }
-            
+
             await electronPrefs.set('PaintSavedPalette', paletteData);
             await electronPrefs.set('PaintSavedMode', mode);
             await electronPrefs.set('PaintSavedPalettes', savedPalettesData);
@@ -4733,7 +5046,7 @@ const Paint = () => {
       window.removeEventListener('error', handleGlobalError);
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);
       cleanupColorPickers();
-      
+
       // Comprehensive cleanup to prevent memory leaks when switching pages
       // Clear large state objects
       setSystems({});
@@ -4741,7 +5054,7 @@ const Paint = () => {
       setCachedSystems({});
       setCachedMaterials({});
       setIsDataCached(false);
-      
+
       // Clear lazy loading state and cancel pending animation frames
       if (lazyLoadAnimationFrameRef.current) {
         cancelAnimationFrame(lazyLoadAnimationFrameRef.current);
@@ -4757,21 +5070,21 @@ const Paint = () => {
       };
       setIsLazyLoading(false);
       setLazyLoadProgress({ loaded: 0, total: 0 });
-      
+
       // Clear active conversions and timers
       activeConversions.current.clear();
       conversionTimers.current.forEach(timer => {
         if (timer) clearTimeout(timer);
       });
       conversionTimers.current.clear();
-      
+
       // Clear filter cache
       cachedElementsRef.current = null;
-      
+
       // Don't manually clear DOM during unmount - React will handle it
       // Manually clearing can cause conflicts with React's cleanup phase
       // React manages the DOM lifecycle, so we just clear refs and state
-      
+
       // Clear any texture preview (safe to remove as it's not React-managed)
       try {
         const existingPreview = document.getElementById('paint-texture-hover-preview');
@@ -4781,14 +5094,14 @@ const Paint = () => {
       } catch (e) {
         // Ignore - may already be removed
       }
-      
+
       console.log('🧹 Cleaned up Paint.js memory on unmount');
     };
   }, []);
 
   useEffect(() => {
     if (suppressAutoPalette) return;
-    
+
     if (mode !== 'shades') {
       // Don't regenerate colors if we already have a palette with the right count
       // Also don't regenerate if we're in the middle of a recolor operation
@@ -4850,9 +5163,32 @@ const Paint = () => {
 
 
 
+  const formatDisplayPath = (path) => {
+    if (!path) return '<- Select a file';
 
+    // Try .wad.client split first
+    if (path.toLowerCase().includes('.wad.client')) {
+      const parts = path.split(path.toLowerCase().includes('.wad.client') ? '.wad.client' : '.WAD.CLIENT');
+      // Handle case casing issues by just splitting by the known string if possible or using regex
+      // Simpler: just use the raw split if it works, otherwise regex
+      const splitRegex = /\.wad\.client/i;
+      const match = path.match(splitRegex);
+      if (match) {
+        return path.substring(match.index + match[0].length).replace(/^[/\\]/, '');
+      }
+    }
+
+    // Try /data/ or \data\ split
+    // specific check for \data\ to handle the user's case
+    const dataMatch = path.match(/[/\\]data[/\\]/i);
+    if (dataMatch) {
+      return path.substring(dataMatch.index + 1);
+    }
+
+    return path;
+  };
   return (
-    <Box 
+    <Box
       sx={{
         height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
         minHeight: '100%', // Ensure it fills the container
@@ -4861,19 +5197,13 @@ const Paint = () => {
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
-        background: 'radial-gradient(1200px 700px at 30% -10%, color-mix(in srgb, var(--accent), transparent 90%), transparent 60%),\n                  radial-gradient(1000px 600px at 85% 10%, color-mix(in srgb, var(--accent-muted), transparent 92%), transparent 60%),\n                  linear-gradient(135deg, var(--surface-2) 0%, var(--bg) 100%)',
+        background: 'var(--bg)',
         color: 'var(--accent)',
         fontFamily: 'JetBrains Mono, monospace',
         p: 0.5,
         gap: 0.5,
         boxSizing: 'border-box',
       }}>
-      {/* Background lights to match MainPage/Port */}
-      <Box sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
-        <Box sx={{ position: 'absolute', top: -120, left: -80, width: 600, height: 600, filter: 'blur(60px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent), transparent 82%), transparent 70%)' }} />
-        <Box sx={{ position: 'absolute', top: -60, right: -120, width: 700, height: 700, filter: 'blur(80px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent-muted), transparent 84%), transparent 70%)' }} />
-        <Box sx={{ position: 'absolute', bottom: -160, left: '20%', width: 800, height: 800, filter: 'blur(90px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent), transparent 88%), transparent 70%)' }} />
-      </Box>
 
       {/* Loading Spinner - inline like Port.js */}
       {isProcessing && <GlowingSpinner text={processingText || 'Working...'} />}
@@ -4893,22 +5223,22 @@ const Paint = () => {
           variant="contained"
           onClick={handleFileOpen}
           sx={{
-            background: 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 78%), color-mix(in srgb, var(--accent-muted), transparent 82%))',
-            border: '1px solid color-mix(in srgb, var(--accent), transparent 68%)',
+            background: 'color-mix(in srgb, var(--accent), var(--bg) 92%)',
+            border: '1px solid color-mix(in srgb, var(--accent), transparent 80%)',
             color: 'var(--accent)',
-            textTransform: 'none',
-            fontWeight: 'bold',
-            fontFamily: 'JetBrains Mono, monospace',
+            borderRadius: '5px',
             minWidth: '80px',
             height: '28px',
-            borderRadius: '6px',
-            boxShadow: '0 2px 8px var(--shadow-light)',
-            transition: 'all 0.2s ease',
+            fontSize: '0.875rem',
+            fontFamily: 'JetBrains Mono, monospace',
+            textTransform: 'none',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            transition: 'all 200ms ease',
             '&:hover': {
-              background: 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 72%), color-mix(in srgb, var(--accent-muted), transparent 76%))',
-              borderColor: 'color-mix(in srgb, var(--accent), transparent 60%)',
-              transform: 'translateY(-1px)',
-              boxShadow: '0 4px 12px var(--shadow-light)'
+              background: 'color-mix(in srgb, var(--accent), var(--bg) 82%)',
+              borderColor: 'var(--accent)',
+              color: 'var(--accent)',
+              boxShadow: '0 0 15px color-mix(in srgb, var(--accent), transparent 60%)'
             }
           }}
         >
@@ -4920,8 +5250,12 @@ const Paint = () => {
           color: 'var(--accent2)',
           fontFamily: 'JetBrains Mono, monospace',
           fontSize: '0.875rem',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          minWidth: 0,
         }}>
-          <strong>{selectedFile ? filePath.split(".wad.client\\").pop() : '<- Select a file'}</strong>
+          <strong>{selectedFile ? formatDisplayPath(filePath) : '<- Select a file'}</strong>
         </Typography>
 
         <Typography sx={{ color: 'var(--accent-muted)', fontWeight: 'bold', fontSize: '0.875rem' }}>Mode:</Typography>
@@ -4952,7 +5286,7 @@ const Paint = () => {
         alignItems: 'center',
         gap: 1,
         p: 0.5,
-        ...glassSection,
+        ...sectionStyle,
         borderRadius: 1,
         height: '36px',
         minHeight: '36px',
@@ -5010,7 +5344,7 @@ const Paint = () => {
                 backgroundColor: color,
                 border: '1px solid color-mix(in srgb, var(--accent), transparent 65%)',
                 borderRadius: '0.55rem',
-                boxShadow: 'inset 0 0 0 1px var(--glass-overlay-light), 0 6px 14px var(--shadow-medium)',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                 cursor: 'grab',
                 transition: 'all 0.3s ease',
                 flex: 1,
@@ -5032,7 +5366,7 @@ const Paint = () => {
                   borderColor: 'var(--accent)',
                   borderWidth: '2px',
                   transform: 'scale(1.05)',
-                  boxShadow: '0 0 0 2px var(--accent), inset 0 0 0 1px var(--glass-overlay-light), 0 6px 14px var(--shadow-medium)',
+                  boxShadow: '0 0 0 2px var(--accent), 0 4px 8px rgba(0,0,0,0.3)',
                 }),
               }}
               onClick={(event) => { setActivePaletteIndex(index); handleCreatePicker(index, event); }}
@@ -5045,69 +5379,167 @@ const Paint = () => {
         {/* HSL Controls for Shift Mode */}
         <Box sx={{
           display: (mode === 'shift' || mode === 'linear' || mode === 'wrap' || mode === 'semi-override') && mode !== 'shift-hue' ? 'flex' : 'none',
-          gap: 1,
+          gap: 2,
           alignItems: 'center',
           flex: 1,
         }}>
-          <TextField
-            label="H"
-            type="number"
-            size="small"
-            inputProps={{ min: -360, max: 360 }}
-            value={hslValues.hue}
-            onChange={(e) => dispatchColor({ type: 'SET_HSL_VALUES', payload: { ...hslValues, hue: e.target.value } })}
+          {/* HSL Color Picker Button */}
+          {/* HSL Color Picker Button */}
+          <Box
+            component="div"
+            className="hsl-color-picker"
+            onClick={(event) => {
+              try {
+                // Initialize with current HSL color
+                const currentHandler = new ColorHandler();
+                const h = parseInt(hslValues.hue) || 0;
+                const s = parseInt(hslValues.saturation) || 0;
+                const l = parseInt(hslValues.lightness) || 0;
+                currentHandler.InputHSL([h / 360, s / 100, l / 100]);
+
+                const localPalette = [currentHandler];
+
+                const updateHSLFromPalette = (updatedPalette) => {
+                  if (updatedPalette && updatedPalette[0]) {
+                    const hex = updatedPalette[0].ToHEX();
+                    const handler = new ColorHandler();
+                    handler.InputHex(hex);
+                    const [nh, ns, nl] = handler.ToHSL();
+                    dispatchColor({
+                      type: 'SET_HSL_VALUES',
+                      payload: {
+                        hue: Math.round(nh * 360),
+                        saturation: Math.round(ns * 100),
+                        lightness: Math.round(nl * 100)
+                      }
+                    });
+                  }
+                };
+
+                const setPaletteWrapper = (updater) => {
+                  const updated = typeof updater === 'function' ? updater(localPalette) : updater;
+                  updateHSLFromPalette(updated);
+                };
+
+                CreatePicker(
+                  0,
+                  event,
+                  localPalette,
+                  setPaletteWrapper,
+                  'shades',
+                  () => { },
+                  () => { },
+                  event.target,
+                  {
+                    onShadesCommit: (hex) => {
+                      const handler = new ColorHandler();
+                      handler.InputHex(hex);
+                      const [nh, ns, nl] = handler.ToHSL();
+                      dispatchColor({
+                        type: 'SET_HSL_VALUES',
+                        payload: {
+                          hue: Math.round(nh * 360),
+                          saturation: Math.round(ns * 100),
+                          lightness: Math.round(nl * 100)
+                        }
+                      });
+                    }
+                  }
+                );
+
+                // Position picker
+                setTimeout(() => {
+                  try {
+                    const picker = document.querySelector('.color-picker-container');
+                    if (picker && event?.target) {
+                      const rect = event.target.getBoundingClientRect();
+                      picker.style.position = 'fixed';
+                      picker.style.left = `${rect.left}px`;
+                      picker.style.top = `${rect.bottom + 6}px`;
+                      picker.style.zIndex = '9999';
+                    }
+                  } catch { }
+                }, 10);
+              } catch (e) {
+                console.error("Error opening HSL picker:", e);
+              }
+            }}
             sx={{
-              width: '80px',
-              '& .MuiInputLabel-root': { color: 'var(--accent2)', fontSize: '0.75rem' },
-              '& .MuiOutlinedInput-root': {
-                color: 'var(--accent)',
-                height: '32px',
-                '& fieldset': { borderColor: 'var(--bg)' },
-                '&:hover fieldset': { borderColor: 'var(--accent)' },
-                '&.Mui-focused fieldset': { borderColor: 'var(--accent)' },
-              },
+              minWidth: '32px',
+              width: '32px',
+              height: '32px',
+              p: 0,
+              borderRadius: '50%',
+              background: (() => {
+                const h = parseInt(hslValues.hue) || 0;
+                const s = parseInt(hslValues.saturation) || 0;
+                const l = parseInt(hslValues.lightness) || 0;
+                return `hsl(${h}, ${s}%, ${l}%)`;
+              })(),
+              border: '1px solid var(--accent)',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                opacity: 0.9,
+                boxShadow: '0 0 8px var(--accent)',
+                transform: 'scale(1.05)'
+              }
             }}
           />
-          <TextField
-            label="S"
-            type="number"
-            size="small"
-            inputProps={{ min: -100, max: 100 }}
-            value={hslValues.saturation}
-            onChange={(e) => dispatchColor({ type: 'SET_HSL_VALUES', payload: { ...hslValues, saturation: e.target.value } })}
-            sx={{
-              width: '80px',
-              '& .MuiInputLabel-root': { color: 'var(--accent2)', fontSize: '0.75rem' },
-              '& .MuiOutlinedInput-root': {
-                color: 'var(--accent)',
-                height: '32px',
-                '& fieldset': { borderColor: 'var(--bg)' },
-                '&:hover fieldset': { borderColor: 'var(--accent)' },
-                '&.Mui-focused fieldset': { borderColor: 'var(--accent)' },
-              },
-            }}
-          />
-          <TextField
-            label="L"
-            type="number"
-            size="small"
-            inputProps={{ min: -100, max: 100 }}
-            value={hslValues.lightness}
-            onChange={(e) => dispatchColor({ type: 'SET_HSL_VALUES', payload: { ...hslValues, lightness: e.target.value } })}
-            sx={{
-              width: '80px',
-              '& .MuiInputLabel-root': { color: 'var(--accent2)', fontSize: '0.75rem' },
-              '& .MuiOutlinedInput-root': {
-                color: 'var(--accent)',
-                height: '32px',
-                '& fieldset': { borderColor: 'var(--bg)' },
-                '&:hover fieldset': { borderColor: 'var(--accent)' },
-                '&.Mui-focused fieldset': { borderColor: 'var(--accent)' },
-              },
-            }}
-          />
-          {/* ColorShift button removed - shift modes now work directly with "Recolor Selected" */}
+
+          {/* Hue Input */}
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography sx={{ color: 'var(--accent)', fontWeight: 'bold', mr: 1, fontSize: '0.9rem' }}>H</Typography>
+            <input
+              className="hsl-input"
+              type="number"
+              min="-360"
+              max="360"
+              value={hslValues.hue}
+              onChange={(e) => dispatchColor({ type: 'SET_HSL_VALUES', payload: { ...hslValues, hue: e.target.value } })}
+              style={{
+                width: '50px',
+                textAlign: 'center'
+              }}
+            />
+          </Box>
+
+          {/* Saturation Input */}
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography sx={{ color: 'var(--accent)', fontWeight: 'bold', mr: 1, fontSize: '0.9rem' }}>S</Typography>
+            <input
+              className="hsl-input"
+              type="number"
+              min="-100"
+              max="100"
+              value={hslValues.saturation}
+              onChange={(e) => dispatchColor({ type: 'SET_HSL_VALUES', payload: { ...hslValues, saturation: e.target.value } })}
+              style={{
+                width: '50px',
+                textAlign: 'center'
+              }}
+            />
+          </Box>
+
+          {/* Lightness Input */}
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography sx={{ color: 'var(--accent)', fontWeight: 'bold', mr: 1, fontSize: '0.9rem' }}>L</Typography>
+            <input
+              className="hsl-input"
+              type="number"
+              min="-100"
+              max="100"
+              value={hslValues.lightness}
+              onChange={(e) => dispatchColor({ type: 'SET_HSL_VALUES', payload: { ...hslValues, lightness: e.target.value } })}
+              style={{
+                width: '50px',
+                textAlign: 'center'
+              }}
+            />
+          </Box>
         </Box>
+
       </Box>
 
 
@@ -5117,7 +5549,7 @@ const Paint = () => {
         alignItems: 'center',
         gap: 1,
         p: 0.5,
-        ...glassSection,
+        ...sectionStyle,
         position: 'relative',
         zIndex: 10,
         borderRadius: 1,
@@ -5174,16 +5606,14 @@ const Paint = () => {
             variant="outlined"
             size="small"
             sx={{
-              ...glassButtonOutlined,
+              ...celestialButtonStyle,
+              border: 'none',
               minWidth: '80px',
               height: '28px',
               fontSize: '0.75rem',
-              fontFamily: 'JetBrains Mono, monospace',
-              color: 'var(--accent)',
-              borderColor: 'var(--accent-muted)',
               '&:hover': {
-                borderColor: 'var(--accent)',
-                background: 'color-mix(in srgb, var(--accent), transparent 90%)'
+                ...celestialButtonStyle['&:hover'],
+                border: 'none'
               }
             }}
           >
@@ -5199,13 +5629,12 @@ const Paint = () => {
               mt: 0.5,
               zIndex: 3000,
               background: 'var(--surface-2)',
-              border: '1px solid var(--glass-border)',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
               borderRadius: '10px',
-              backdropFilter: 'saturate(220%) blur(18px)',
-              WebkitBackdropFilter: 'saturate(220%) blur(18px)',
-              boxShadow: '0 12px 28px rgba(0,0,0,0.5)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
               p: 0.75,
-              minWidth: '180px'
+              minWidth: '180px',
+              backdropFilter: 'blur(10px)',
             }}>
               <FormControlLabel
                 control={
@@ -5282,16 +5711,14 @@ const Paint = () => {
             variant="outlined"
             size="small"
             sx={{
-              ...glassButtonOutlined,
+              ...celestialButtonStyle,
+              border: 'none',
               minWidth: '80px',
               height: '28px',
               fontSize: '0.75rem',
-              fontFamily: 'JetBrains Mono, monospace',
-              color: 'var(--accent)',
-              borderColor: 'var(--accent-muted)',
               '&:hover': {
-                borderColor: 'var(--accent)',
-                background: 'color-mix(in srgb, var(--accent), transparent 90%)'
+                ...celestialButtonStyle['&:hover'],
+                border: 'none'
               }
             }}
           >
@@ -5306,10 +5733,13 @@ const Paint = () => {
               right: 0,
               mt: 0.5,
               zIndex: 3000,
-              ...glassSection,
+              background: 'var(--surface-2)',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
               borderRadius: '10px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
               p: 0.75,
-              minWidth: '140px'
+              minWidth: '140px',
+              backdropFilter: 'blur(10px)',
             }}>
               <Button
                 disableRipple
@@ -5319,17 +5749,22 @@ const Paint = () => {
                 }}
                 fullWidth
                 sx={{
-                  ...glassButtonOutlined,
+                  background: 'transparent',
+                  border: 'none',
                   justifyContent: 'flex-start',
-                  color: 'var(--accent)',
-                  borderColor: 'var(--accent-muted)',
+                  color: 'var(--text)',
                   fontFamily: 'JetBrains Mono, monospace',
                   fontSize: '0.8rem',
                   textTransform: 'none',
                   minHeight: 32,
                   px: 1.25,
                   py: 0.75,
-                  '&:hover': { background: 'color-mix(in srgb, var(--accent), transparent 90%)', borderColor: 'var(--accent)' }
+                  borderRadius: '5px',
+                  transition: 'all 200ms ease',
+                  '&:hover': {
+                    background: 'var(--bg-2)',
+                    color: 'var(--accent)'
+                  }
                 }}
               >
                 💾 Save
@@ -5342,17 +5777,22 @@ const Paint = () => {
                 }}
                 fullWidth
                 sx={{
-                  ...glassButtonOutlined,
+                  background: 'transparent',
+                  border: 'none',
                   justifyContent: 'flex-start',
-                  color: 'var(--accent)',
-                  borderColor: 'var(--accent-muted)',
+                  color: 'var(--text)',
                   fontFamily: 'JetBrains Mono, monospace',
                   fontSize: '0.8rem',
                   textTransform: 'none',
                   minHeight: 32,
                   px: 1.25,
                   py: 0.75,
-                  '&:hover': { background: 'color-mix(in srgb, var(--accent), transparent 90%)', borderColor: 'var(--accent)' }
+                  borderRadius: '5px',
+                  transition: 'all 200ms ease',
+                  '&:hover': {
+                    background: 'var(--bg-2)',
+                    color: 'var(--accent)'
+                  }
                 }}
               >
                 📁 Load
@@ -5368,7 +5808,7 @@ const Paint = () => {
         alignItems: 'center',
         gap: 1,
         p: 0.5,
-        ...glassSection,
+        ...sectionStyle,
         borderRadius: 1,
         height: '36px',
         minHeight: '36px',
@@ -5434,7 +5874,7 @@ const Paint = () => {
               height: mode === 'shift-hue' ? '24px' : '16px',
               borderRadius: '50%',
               background: mode === 'shift-hue' ? getHueColor(hueValue) : 'var(--accent)',
-                              border: mode === 'shift-hue' ? '2px solid var(--text)' : 'none',
+              border: mode === 'shift-hue' ? '2px solid var(--text)' : 'none',
               boxShadow: mode === 'shift-hue' ? '0 0 8px var(--shadow-dark)' : 'none',
               pointerEvents: 'none',
               zIndex: 1,
@@ -5450,7 +5890,7 @@ const Paint = () => {
         alignItems: 'center',
         gap: 1,
         p: 0.5,
-        ...glassSection,
+        ...sectionStyle,
         position: 'relative',
         zIndex: 10,
         borderRadius: 1,
@@ -5464,7 +5904,7 @@ const Paint = () => {
             CreatePicker(
               idx,
               event,
-              Palette?.length ? Palette : [new ColorHandler([1,0,0,1])],
+              Palette?.length ? Palette : [new ColorHandler([1, 0, 0, 1])],
               setPalette,
               mode,
               savePaletteForMode,
@@ -5543,16 +5983,14 @@ const Paint = () => {
             variant="outlined"
             size="small"
             sx={{
-              ...glassButtonOutlined,
+              ...celestialButtonStyle,
+              border: 'none',
               minWidth: '80px',
               height: '28px',
               fontSize: '0.75rem',
-              fontFamily: 'JetBrains Mono, monospace',
-              color: 'var(--accent)',
-              borderColor: 'var(--accent-muted)',
               '&:hover': {
-                borderColor: 'var(--accent)',
-                background: 'var(--accent-transparent)'
+                ...celestialButtonStyle['&:hover'],
+                border: 'none'
               }
             }}
           >
@@ -5567,43 +6005,64 @@ const Paint = () => {
               mt: 0.5,
               zIndex: 3000,
               background: 'var(--surface-2)',
-              border: '1px solid var(--accent-muted)',
-              borderRadius: '4px',
-              boxShadow: '0 4px 12px var(--shadow-medium)',
-              minWidth: '120px'
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+              borderRadius: '10px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              minWidth: '120px',
+              backdropFilter: 'blur(10px)',
             }}>
               <Button
+                disableRipple
                 onClick={() => {
                   handleSavePalette();
                   setShowPaletteDropdown(false);
                 }}
                 fullWidth
                 sx={{
+                  background: 'transparent',
+                  border: 'none',
                   justifyContent: 'flex-start',
-                  color: 'var(--accent)',
+                  color: 'var(--text)',
                   fontFamily: 'JetBrains Mono, monospace',
                   fontSize: '0.8rem',
                   textTransform: 'none',
-                  py: 1,
-                  '&:hover': { background: 'color-mix(in srgb, var(--accent), transparent 90%)' }
+                  minHeight: 32,
+                  px: 1.25,
+                  py: 0.75,
+                  borderRadius: '5px',
+                  transition: 'all 200ms ease',
+                  '&:hover': {
+                    background: 'var(--bg-2)',
+                    color: 'var(--accent)'
+                  }
                 }}
               >
                 💾 Save
               </Button>
               <Button
+                disableRipple
                 onClick={() => {
                   handleLoadPalette();
                   setShowPaletteDropdown(false);
                 }}
                 fullWidth
                 sx={{
+                  background: 'transparent',
+                  border: 'none',
                   justifyContent: 'flex-start',
-                  color: 'var(--accent)',
+                  color: 'var(--text)',
                   fontFamily: 'JetBrains Mono, monospace',
                   fontSize: '0.8rem',
                   textTransform: 'none',
-                  py: 1,
-                  '&:hover': { background: 'color-mix(in srgb, var(--accent), transparent 90%)' }
+                  minHeight: 32,
+                  px: 1.25,
+                  py: 0.75,
+                  borderRadius: '5px',
+                  transition: 'all 200ms ease',
+                  '&:hover': {
+                    background: 'var(--bg-2)',
+                    color: 'var(--accent)'
+                  }
                 }}
               >
                 📂 Load
@@ -5619,7 +6078,7 @@ const Paint = () => {
         alignItems: 'center',
         gap: 0.5,
         p: 0.5,
-        ...glassSection,
+        ...sectionStyle,
         borderRadius: 1,
         height: '36px',
         minHeight: '36px',
@@ -5646,7 +6105,7 @@ const Paint = () => {
         >
           {blendModeExpanded ? <ChevronLeftIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
         </IconButton>
-        
+
         {blendModeExpanded && (
           <Typography sx={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.875rem', minWidth: '30px' }}>
             BM:
@@ -5687,12 +6146,15 @@ const Paint = () => {
             onClick={handleSelectByBlendMode}
             size="small"
             sx={{
-              ...glassButton,
-              textTransform: 'none',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.75rem',
+              ...celestialButtonStyle,
+              border: 'none',
               height: '32px',
               minWidth: '80px',
+              fontSize: '0.75rem',
+              '&:hover': {
+                ...celestialButtonStyle['&:hover'],
+                border: 'none'
+              }
             }}
           >
             Select BM{blendModeFilter}
@@ -5731,36 +6193,36 @@ const Paint = () => {
         <Box sx={{ flex: 1 }} />
 
         {/* Target checkboxes in a row - aligned with color containers */}
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
+        <Box sx={{
+          display: 'flex',
+          alignItems: 'center',
           gap: '8px',
           paddingLeft: '0.2rem'
         }}>
           {/* Spacer to match checkbox (18px) + gap (8px) + nameLabel (flex: 1, min ~100px) + gap (8px) + previewBtn (28px + 4px margin) + gap (8px) */}
-          <Box sx={{ 
+          <Box sx={{
             width: '18px', // checkbox width
             flexShrink: 0
           }} />
-          <Box sx={{ 
+          <Box sx={{
             flex: 1, // matches nameLabel flex: 1
             minWidth: 0
           }} />
-          <Box sx={{ 
+          <Box sx={{
             width: '28px', // previewBtn width
             marginLeft: '4px', // previewBtn marginLeft
             flexShrink: 0
           }} />
-          
-          {[ 
+
+          {[
             { key: 'oc', label: 'OC', width: '3rem' },
             { key: 'birthColor', label: 'BC', width: '3rem' },
             { key: 'color', label: 'Color', width: '10rem' },
           ].map((option) => (
-            <Box key={option.key} sx={{ 
+            <Box key={option.key} sx={{
               width: option.width,
               margin: '0 0.25rem',
-              display: 'flex', 
+              display: 'flex',
               justifyContent: 'flex-start',
               alignItems: 'center'
             }}>
@@ -5782,9 +6244,9 @@ const Paint = () => {
                   />
                 }
                 label={
-                  <Typography sx={{ 
-                    color: 'var(--accent)', 
-                    fontFamily: 'JetBrains Mono, monospace', 
+                  <Typography sx={{
+                    color: 'var(--accent)',
+                    fontFamily: 'JetBrains Mono, monospace',
                     fontSize: '0.75rem',
                     ml: 0.5
                   }}>
@@ -5829,14 +6291,14 @@ const Paint = () => {
           alignItems: 'center',
           gap: 1,
           p: 1,
-          ...glassSection,
+          ...sectionStyle,
           borderRadius: 1,
           minHeight: '60px',
         }}>
           <Typography sx={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.875rem', minWidth: '80px' }}>
             Filter ({targetColors.length}):
           </Typography>
-          
+
           {/* Target Colors Display with add/delete behaviors */}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, flex: 1 }}>
             {targetColors.map((color, index) => {
@@ -5867,6 +6329,7 @@ const Paint = () => {
                   }}
                   onClick={(e) => {
                     // Toggle deletion mode for this color block
+                    e.stopPropagation(); // Prevent any parent handlers
                     if (deleteTargetIndex === index) {
                       const newColors = targetColors.filter((_, i) => i !== index);
                       setTargetColors(newColors);
@@ -5878,11 +6341,14 @@ const Paint = () => {
                   onDoubleClick={(e) => {
                     // Double-click edits the color with NON-MUTATING picker
                     e.preventDefault();
+                    e.stopPropagation(); // Prevent any parent handlers
+                    // Clear delete mode before opening picker
+                    setDeleteTargetIndex(null);
+                    // Open picker with the current color
                     openFilterPicker(e, color, (vec4) => {
                       const newColors = [...targetColors];
                       newColors[index] = vec4;
                       setTargetColors(newColors);
-                      setDeleteTargetIndex(null);
                     });
                   }}
                   title={isDelete
@@ -5994,7 +6460,7 @@ const Paint = () => {
           alignItems: 'center',
           gap: 1,
           p: 0.5,
-          ...glassSection,
+          ...sectionStyle,
           borderRadius: 1,
           height: '32px',
           minHeight: '32px',
@@ -6076,7 +6542,7 @@ const Paint = () => {
         <Typography variant="caption" sx={{ color: 'var(--accent)', fontWeight: 'bold', mb: 1, display: 'block', px: 1 }}>
           Search Options
         </Typography>
-        
+
         <FormControlLabel
           control={
             <Checkbox
@@ -6099,7 +6565,7 @@ const Paint = () => {
           label="Systems"
           sx={{ color: 'var(--accent)', fontSize: '12px', display: 'block', px: 1, py: 0.5 }}
         />
-        
+
         <FormControlLabel
           control={
             <Checkbox
@@ -6123,7 +6589,7 @@ const Paint = () => {
           label="Emitters (slower)"
           sx={{ color: 'var(--accent)', fontSize: '12px', display: 'block', px: 1, py: 0.5 }}
         />
-        
+
         <FormControlLabel
           control={
             <Checkbox
@@ -6151,7 +6617,7 @@ const Paint = () => {
       {/* Particle List */}
       <Box sx={{
         flex: 1, // Use remaining available space instead of fixed height
-        ...glassSection,
+        ...sectionStyle,
         borderRadius: 1,
         overflow: 'auto',
         p: 0.5,
@@ -6173,7 +6639,7 @@ const Paint = () => {
       {/* Status Bar */}
       <Box sx={{
         p: 0.5,
-        ...glassSection,
+        ...sectionStyle,
         borderRadius: 1,
         minHeight: '24px',
         display: 'flex',
@@ -6189,8 +6655,8 @@ const Paint = () => {
         </Typography>
         {isLazyLoading && lazyLoadProgress.total > 0 && (
           <Box sx={{ mt: 1, width: '100%' }}>
-            <LinearProgress 
-              variant="determinate" 
+            <LinearProgress
+              variant="determinate"
               value={(lazyLoadProgress.loaded / lazyLoadProgress.total) * 100}
               sx={{
                 height: 4,
@@ -6219,7 +6685,7 @@ const Paint = () => {
       {statusMessage.includes('Ritobin path not configured') && (
         <Box sx={{
           p: 0.5,
-          ...glassSection,
+          ...sectionStyle,
           borderRadius: 1,
           mt: 0.5,
         }}>
@@ -6299,7 +6765,7 @@ const Paint = () => {
         gap: 5,
         p: 0.25, // Reduced padding for smaller gap
         background: 'transparent',
-        border: '1px solid var(--glass-overlay-medium)',
+        border: '1px solid rgba(255, 255, 255, 0.06)',
         borderRadius: 1,
         height: '36px',
         minHeight: '36px',
@@ -6312,25 +6778,27 @@ const Paint = () => {
           sx={{
             flex: 1,
             padding: '8px 20px',
-            background: 'linear-gradient(180deg, rgba(160,160,160,0.16), rgba(120,120,120,0.10))',
-            border: '1px solid rgba(200,200,200,0.24)',
-            color: 'var(--accent)',
-            borderRadius: '8px',
-            fontFamily: 'JetBrains Mono, monospace',
+            background: 'color-mix(in srgb, #9ca3af, var(--bg) 92%)',
+            border: '1px solid rgba(156, 163, 175, 0.2)',
+            color: '#9ca3af',
+            borderRadius: '5px',
             fontSize: '14px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            opacity: !selectedFile ? 0.4 : 1,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            height: '34px',
+            fontFamily: 'JetBrains Mono, monospace',
             textTransform: 'none',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            transition: 'all 200ms ease',
+            opacity: !selectedFile ? 0.4 : 1,
             '&:hover': {
-              background: 'linear-gradient(180deg, rgba(160,160,160,0.20), rgba(120,120,120,0.14))',
-              transform: 'translateY(-1px)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+              background: 'color-mix(in srgb, #9ca3af, var(--bg) 82%)',
+              borderColor: '#d1d5db',
+              boxShadow: '0 0 15px color-mix(in srgb, #9ca3af, transparent 80%)'
             },
             '&:disabled': {
-              opacity: 0.4,
+              background: 'transparent',
+              borderColor: 'var(--text-2)',
+              color: 'var(--text-2)',
+              opacity: 0.6,
               cursor: 'not-allowed'
             }
           }}
@@ -6345,26 +6813,31 @@ const Paint = () => {
           sx={{
             flex: 3,
             padding: '8px 20px',
-            background: 'linear-gradient(180deg, rgba(236,185,106,0.22), rgba(173,126,52,0.18))',
-            border: '1px solid rgba(236,185,106,0.32)',
-            color: 'var(--accent)',
-            borderRadius: '8px',
-            fontFamily: 'JetBrains Mono, monospace',
+            background: 'color-mix(in srgb, #f97316, var(--bg) 92%)',
+            border: '1px solid rgba(249, 115, 22, 0.2)',
+            color: '#f97316',
+            borderRadius: '5px',
             fontSize: '14px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            opacity: !selectedFile ? 0.4 : 1,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            height: '34px',
+            fontFamily: 'JetBrains Mono, monospace',
             textTransform: 'none',
+            fontWeight: 700,
+            boxShadow: '0 0 0 2px color-mix(in srgb, #f97316, transparent 70%), 0 2px 4px rgba(0,0,0,0.2)',
+            transition: 'all 200ms ease',
+            opacity: !selectedFile ? 0.4 : 1,
             '&:hover': {
-              background: 'linear-gradient(180deg, rgba(236,185,106,0.28), rgba(173,126,52,0.24))',
-              transform: 'translateY(-1px)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+              background: 'color-mix(in srgb, #f97316, var(--bg) 82%)',
+              borderColor: '#ea580c',
+              color: '#ea580c',
+              boxShadow: '0 0 0 2px color-mix(in srgb, #f97316, transparent 50%), 0 0 15px color-mix(in srgb, #f97316, transparent 60%)'
             },
             '&:disabled': {
-              opacity: 0.4,
-              cursor: 'not-allowed'
+              background: 'transparent',
+              borderColor: 'var(--text-2)',
+              color: 'var(--text-2)',
+              opacity: 0.6,
+              cursor: 'not-allowed',
+              boxShadow: 'none'
             }
           }}
         >
@@ -6378,25 +6851,28 @@ const Paint = () => {
           sx={{
             flex: 1,
             padding: '8px 20px',
-            background: 'linear-gradient(180deg, rgba(34,197,94,0.22), rgba(22,163,74,0.18))',
-            border: '1px solid rgba(34,197,94,0.32)',
-            color: '#eaffef',
-            borderRadius: '8px',
-            fontFamily: 'JetBrains Mono, monospace',
+            background: 'color-mix(in srgb, #22c55e, var(--bg) 92%)',
+            border: '1px solid rgba(34, 197, 94, 0.2)',
+            color: '#22c55e',
+            borderRadius: '5px',
             fontSize: '14px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            opacity: !selectedFile ? 0.4 : 1,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            height: '34px',
+            fontFamily: 'JetBrains Mono, monospace',
             textTransform: 'none',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            transition: 'all 200ms ease',
+            opacity: !selectedFile ? 0.4 : 1,
             '&:hover': {
-              background: 'linear-gradient(180deg, rgba(34,197,94,0.28), rgba(22,163,74,0.24))',
-              transform: 'translateY(-1px)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+              background: 'color-mix(in srgb, #22c55e, var(--bg) 82%)',
+              borderColor: '#16a34a',
+              color: '#16a34a',
+              boxShadow: '0 0 15px color-mix(in srgb, #22c55e, transparent 60%)'
             },
             '&:disabled': {
-              opacity: 0.4,
+              background: 'transparent',
+              borderColor: 'var(--text-2)',
+              color: 'var(--text-2)',
+              opacity: 0.6,
               cursor: 'not-allowed'
             }
           }}
@@ -6409,13 +6885,13 @@ const Paint = () => {
 
 
 
-             {/* Floating Backup Viewer Button - Always active, no disabling */}
-       {selectedFile && (
-         <Tooltip title="Backup History" placement="left" arrow>
-           <IconButton
-             onClick={handleOpenBackupViewer}
-             aria-label="View Backup History"
-             sx={{
+      {/* Floating Backup Viewer Button - Always active, no disabling */}
+      {selectedFile && (
+        <Tooltip title="Backup History" placement="left" arrow>
+          <IconButton
+            onClick={handleOpenBackupViewer}
+            aria-label="View Backup History"
+            sx={{
               position: 'fixed',
               bottom: 80,
               right: 24,
@@ -6428,14 +6904,14 @@ const Paint = () => {
               border: '1px solid rgba(147, 51, 234, 0.3)',
               boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(147, 51, 234, 0.2)',
               backdropFilter: 'blur(15px)',
-              WebkitBackdropFilter: 'blur(15px)',
+              // WebkitBackdropFilter: 'blur(15px)',
               '&:hover': {
                 transform: 'translateY(-2px)',
                 boxShadow: '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(147, 51, 234, 0.3)',
                 background: 'rgba(147, 51, 234, 0.25)',
                 border: '1px solid rgba(147, 51, 234, 0.5)'
               },
-              
+
               transition: 'all 0.2s ease'
             }}
           >
@@ -6451,7 +6927,7 @@ const Paint = () => {
           inset: 0,
           background: 'var(--shadow-medium)',
           backdropFilter: 'blur(6px)',
-          WebkitBackdropFilter: 'blur(6px)',
+          // WebkitBackdropFilter: 'blur(6px)',
           display: 'flex',
           alignItems: 'flex-start',
           justifyContent: 'center',
@@ -6460,8 +6936,8 @@ const Paint = () => {
           zIndex: 2000
         }}>
           <Box sx={{
-            background: 'var(--glass-bg)',
-            border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)',
+            background: 'var(--bg-2)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
             borderRadius: '14px',
             px: 2.5,
             pt: 2.5,
@@ -6473,9 +6949,7 @@ const Paint = () => {
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            boxShadow: '0 25px 60px var(--shadow-dark), inset 0 1px 0 var(--glass-overlay-light)',
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)'
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
           }}>
             <Typography sx={{
               color: 'var(--accent)',
@@ -6525,24 +6999,24 @@ const Paint = () => {
                       // Use layered backgrounds with background-clip to avoid edge banding/lines
                       background: palette.colors && palette.colors.length > 0
                         ? (() => {
-                            const colorHexes = palette.colors.map(color => {
-                              // Handle both ColorHandler objects and plain objects with hex property
-                              if (color && typeof color.ToHEX === 'function') {
-                                return color.ToHEX();
-                              } else if (color && color.hex) {
-                                return color.hex;
-                              } else {
-                                return 'var(--error-color)';
-                              }
-                            });
-                            
-                            // For single color, use solid background instead of gradient
-                            if (colorHexes.length === 1) {
-                              return colorHexes[0];
+                          const colorHexes = palette.colors.map(color => {
+                            // Handle both ColorHandler objects and plain objects with hex property
+                            if (color && typeof color.ToHEX === 'function') {
+                              return color.ToHEX();
+                            } else if (color && color.hex) {
+                              return color.hex;
                             } else {
-                              return `linear-gradient(90deg, ${colorHexes.join(', ')})`;
+                              return 'var(--error-color)';
                             }
-                          })()
+                          });
+
+                          // For single color, use solid background instead of gradient
+                          if (colorHexes.length === 1) {
+                            return colorHexes[0];
+                          } else {
+                            return `linear-gradient(90deg, ${colorHexes.join(', ')})`;
+                          }
+                        })()
                         : 'linear-gradient(90deg, var(--surface-1), var(--surface-3))',
                       backgroundClip: 'padding-box',
                       borderRadius: '10px',
@@ -6550,11 +7024,11 @@ const Paint = () => {
                       minHeight: '54px',
                       overflow: 'hidden',
                       cursor: 'pointer',
-                      boxShadow: 'inset 0 1px 0 var(--glass-overlay-light), 0 10px 24px var(--shadow-medium)',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                       transition: 'transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease',
                       '&:hover': {
                         borderColor: 'transparent',
-                        boxShadow: 'inset 0 1px 0 var(--glass-overlay-light), 0 14px 30px var(--shadow-dark)',
+                        boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
                         transform: 'translateY(-2px)'
                       },
                       '&::after': {
@@ -6609,7 +7083,7 @@ const Paint = () => {
                             background: 'rgba(0, 0, 0, 0.7)',
                             border: '1px solid rgba(255, 255, 255, 0.3)',
                             backdropFilter: 'saturate(180%) blur(16px)',
-                            WebkitBackdropFilter: 'saturate(180%) blur(16px)',
+                            // WebkitBackdropFilter: 'saturate(180%) blur(16px)',
                             color: 'white',
                             fontFamily: 'JetBrains Mono, monospace',
                             fontWeight: 'bold',
@@ -6635,7 +7109,7 @@ const Paint = () => {
                             background: 'rgba(0, 0, 0, 0.7)',
                             border: '1px solid rgba(255, 255, 255, 0.3)',
                             backdropFilter: 'saturate(180%) blur(16px)',
-                            WebkitBackdropFilter: 'saturate(180%) blur(16px)',
+                            // WebkitBackdropFilter: 'saturate(180%) blur(16px)',
                             color: 'white',
                             minWidth: '34px',
                             height: '28px',
@@ -6663,7 +7137,7 @@ const Paint = () => {
                 onClick={() => setShowPaletteModal(false)}
                 variant="outlined"
                 sx={{
-                  ...glassButtonOutlined,
+                  ...celestialButtonStyle,
                   minWidth: '110px',
                   borderRadius: '10px'
                 }}
@@ -6682,22 +7156,20 @@ const Paint = () => {
           inset: 0,
           background: 'var(--shadow-medium)',
           backdropFilter: 'blur(6px)',
-          WebkitBackdropFilter: 'blur(6px)',
+          // WebkitBackdropFilter: 'blur(6px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 2000
         }}>
           <Box sx={{
-            background: 'var(--glass-bg)',
-            border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)',
+            background: 'var(--bg-2)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
             borderRadius: '14px',
             padding: 3,
             minWidth: '420px',
             maxWidth: '560px',
-            boxShadow: '0 25px 60px var(--shadow-dark), inset 0 1px 0 var(--glass-overlay-light)',
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)'
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
           }}>
             <Typography sx={{
               color: 'var(--accent)',
@@ -6721,8 +7193,8 @@ const Paint = () => {
                 width: '320px',
                 height: '40px',
                 // Simple gradient background for palette preview
-                background: Palette.length === 1 
-                  ? Palette[0].ToHEX() 
+                background: Palette.length === 1
+                  ? Palette[0].ToHEX()
                   : `linear-gradient(90deg, ${Palette.map(color => color.ToHEX()).join(', ')})`,
                 backgroundClip: 'padding-box',
                 borderRadius: '10px',
@@ -6770,7 +7242,7 @@ const Paint = () => {
                 variant="contained"
                 disabled={!paletteName.trim()}
                 sx={{
-                  ...glassButton,
+                  ...primaryButtonStyle,
                   minWidth: '100px'
                 }}
               >
@@ -6783,7 +7255,7 @@ const Paint = () => {
                 }}
                 variant="outlined"
                 sx={{
-                  ...glassButtonOutlined,
+                  ...celestialButtonStyle,
                   minWidth: '100px'
                 }}
               >
@@ -6825,41 +7297,67 @@ const Paint = () => {
         fullWidth
         PaperProps={{
           sx: {
-            background: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
-            backdropFilter: 'saturate(180%) blur(16px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(16px)',
+            background: 'var(--bg-2)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            borderRadius: '5px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
           },
         }}
       >
-        <DialogTitle sx={{ 
-          color: 'var(--accent)', 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 1,
-          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-          fontWeight: 600
+        {/* Animated Top Bar */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '4px',
+            background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+            backgroundSize: '200% 100%',
+            animation: 'shimmer 3s ease-in-out infinite',
+            '@keyframes shimmer': {
+              '0%': { backgroundPosition: '200% 0' },
+              '100%': { backgroundPosition: '-200% 0' },
+            },
+          }}
+        />
+        {/* Header Bar */}
+        <Box sx={{
+          padding: '1.5rem',
+          borderBottom: '1px solid rgba(255,255,255,0.12)',
+          display: 'flex',
+          alignItems: 'center',
+          background: 'rgba(255,255,255,0.02)'
         }}>
-          ⚠️ Unsaved Changes
-        </DialogTitle>
-        
-        <DialogContent sx={{ pt: 2 }}>
-          <div style={{ 
-            color: '#e5e7eb', 
-            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-            lineHeight: 1.5
+          <Typography sx={{
+            margin: 0,
+            color: 'var(--accent)',
+            fontSize: '1.5rem',
+            fontWeight: 600,
+            fontFamily: 'JetBrains Mono, monospace'
+          }}>
+            ⚠️ Unsaved Changes
+          </Typography>
+        </Box>
+
+        <DialogContent sx={{ pt: 2, background: 'transparent' }}>
+          <Typography sx={{
+            color: 'var(--text)',
+            fontFamily: 'JetBrains Mono, monospace',
+            lineHeight: 1.5,
+            fontSize: '0.9rem'
           }}>
             You have unsaved changes. What would you like to do?
-          </div>
+          </Typography>
         </DialogContent>
 
-        <DialogActions sx={{ p: 2, gap: 1 }}>
+        <DialogActions sx={{ p: 2, gap: 1, borderTop: '1px solid rgba(255, 255, 255, 0.06)', background: 'transparent' }}>
           <Button
             onClick={handleUnsavedCancel}
-            sx={{ 
-              color: 'var(--accent2)',
+            sx={{
+              ...celestialButtonStyle,
               '&:hover': {
-                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                ...celestialButtonStyle['&:hover']
               }
             }}
           >
@@ -6868,9 +7366,12 @@ const Paint = () => {
           <Button
             onClick={handleUnsavedDiscard}
             sx={{
-              color: 'var(--accent2)',
+              ...celestialButtonStyle,
+              borderColor: 'rgba(239, 68, 68, 0.4)',
+              color: 'var(--text)',
               '&:hover': {
-                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                background: 'var(--surface-2)',
+                borderColor: '#ef4444',
                 color: '#ef4444',
               }
             }}
@@ -6881,13 +7382,8 @@ const Paint = () => {
             variant="contained"
             onClick={handleUnsavedSave}
             sx={{
-              background: 'var(--accent)',
-              color: 'var(--bg)',
-              borderRadius: '4px',
-              px: 2,
-              '&:hover': {
-                background: 'var(--accent2)',
-              },
+              ...primaryButtonStyle,
+              px: 2
             }}
           >
             Save & Leave

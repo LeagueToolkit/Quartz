@@ -1,614 +1,125 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Box,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Typography,
-  Tooltip,
-  useTheme,
-  useMediaQuery,
-} from '@mui/material';
-import { glassPanel, glassSurface } from '../utils/glassStyles';
+  Brush,
+  ArrowLeftRight,
+  Github,
+  Code,
+  FolderInput,
+  Waypoints,
+  Shuffle,
+  Palette,
+  Maximize,
+  Pipette,
+  FileDigit,
+  Wrench,
+  Settings,
+  CircleHelp
+} from 'lucide-react';
 import electronPrefs from '../utils/electronPrefs.js';
-import { TITLE_BAR_HEIGHT } from './CustomTitleBar';
-import {
-  Brush as PaletteIcon,
-  CompareArrows as PortIcon,
-  GitHub as GitHubIcon,
-          FormatColorFill as RGBAIcon,
-  Image as FrogImgIcon,
-  Palette as ImgRecolorIcon,
-  PhotoSizeSelectLarge as UpscaleIcon,
-  Code as BinEditorIcon,
-  Build as ToolsIcon,
-  Settings as SettingsIcon,
-  // Dashboard as HUDIcon, // HUD Editor removed - archived
-  DataObject as PythonIcon,
-  Storage as StorageIcon,
-  Casino as CasinoIcon,
-  Folder as FolderIcon,
-  Transform as BumpathIcon,
-  ImportExport as AniPortIcon,
-  CollectionsBookmark as FrogChangerIcon,
-} from '@mui/icons-material';
+import NavButton from './NavButton';
+import './ModernNavigation.css';
 
 const ModernNavigation = () => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [gifSrc, setGifSrc] = useState('');
-
-  // Function to get the navbar gif source, checking AppData/FrogTools/assets first
-  const getNavbarGifSrc = () => {
-    if (!window.require) {
-      // Fallback to public URL if not in Electron
-      return `${process.env.PUBLIC_URL}/your-logo.gif`;
-    }
-    
-    try {
-      const path = window.require('path');
-      const fs = window.require('fs');
-      
-      // Check app installation directory assets folder first (user can replace this file)
-      const appPath = path.dirname(process.execPath);
-      const userGifPath = path.join(appPath, 'assets', 'navbar.gif');
-      
-      if (fs.existsSync(userGifPath)) {
-        try {
-          const fileBuffer = fs.readFileSync(userGifPath);
-          const ext = path.extname(userGifPath).toLowerCase();
-          const mimeType = ext === '.gif' ? 'image/gif' : 
-                          ext === '.png' ? 'image/png' :
-                          ext === '.webp' ? 'image/webp' : 'image/gif';
-          const base64 = fileBuffer.toString('base64');
-          return `data:${mimeType};base64,${base64}`;
-        } catch (error) {
-          console.error('Error reading user gif:', error);
-          return `file://${userGifPath.replace(/\\/g, '/')}`;
-        }
-      }
-      
-      // Check resources/assets (bundled default)
-      if (process.resourcesPath) {
-        const resourcesGifPath = path.join(process.resourcesPath, 'assets', 'navbar.gif');
-        if (fs.existsSync(resourcesGifPath)) {
-          try {
-            const fileBuffer = fs.readFileSync(resourcesGifPath);
-            const base64 = fileBuffer.toString('base64');
-            return `data:image/gif;base64,${base64}`;
-          } catch (error) {
-            console.error('Error reading resources gif:', error);
-          }
-        }
-      }
-      
-      // Fallback to default gif from app build directory
-      const possiblePaths = [
-        path.join(process.resourcesPath, 'app', 'build', 'your-logo.gif'), // Packaged app
-        path.join(__dirname, 'build', 'your-logo.gif'), // Development build
-        path.join(process.cwd(), 'build', 'your-logo.gif'), // Build folder
-        path.join(process.cwd(), 'public', 'your-logo.gif'), // Public folder (dev)
-      ];
-      
-      for (const defaultPath of possiblePaths) {
-        if (fs.existsSync(defaultPath)) {
-          try {
-            const fileBuffer = fs.readFileSync(defaultPath);
-            const mimeType = 'image/gif';
-            const base64 = fileBuffer.toString('base64');
-            return `data:${mimeType};base64,${base64}`;
-          } catch (error) {
-            console.error('Error reading default gif:', error);
-            return `file://${defaultPath.replace(/\\/g, '/')}`;
-          }
-        }
-      }
-      
-      // Final fallback to public URL
-      return `${process.env.PUBLIC_URL}/your-logo.gif`;
-    } catch (error) {
-      console.error('Error getting navbar gif source:', error);
-      return `${process.env.PUBLIC_URL}/your-logo.gif`;
-    }
-  };
-  const [hoverTimeout, setHoverTimeout] = useState(null);
-  const [tooltipKey, setTooltipKey] = useState(0);
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const navigate = useNavigate();
-
-  // Load gif source on component mount and listen for changes
-  useEffect(() => {
-    const loadGifSrc = () => {
-      const src = getNavbarGifSrc();
-      setGifSrc(src);
-      console.log('🖼️ Navbar gif source loaded:', src);
-    };
-
-    loadGifSrc();
-    
-    // Check periodically for file changes (user might replace files manually in AppData/FrogTools/assets)
-    const interval = setInterval(() => {
-      const newSrc = getNavbarGifSrc();
-      if (newSrc !== gifSrc) {
-        setGifSrc(newSrc);
-        console.log('🔄 Navbar gif updated:', newSrc);
-      }
-    }, 2000); // Check every 2 seconds
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [gifSrc]);
   const location = useLocation();
-
   const [navigationItems, setNavigationItems] = useState([]);
-  const [navExpandEnabled, setNavExpandEnabled] = useState(false);
-  const [themeVariant, setThemeVariant] = useState('amethyst');
-  const [settingsItem] = useState({ text: 'Settings', icon: <SettingsIcon />, path: '/settings' });
 
-  // Load navigation items based on visibility settings
   useEffect(() => {
     const loadNavigationItems = async () => {
       await electronPrefs.initPromise;
-      
-      // Read expansion preference
-      const isEnabled = electronPrefs.obj.NavExpandEnabled === true || (electronPrefs.obj.NavExpandDisabled !== undefined && electronPrefs.obj.NavExpandDisabled === false);
-      setNavExpandEnabled(isEnabled);
-      if (!isEnabled) {
-        setIsExpanded(false);
-      }
-
-      // Read theme variant
-      try {
-        setThemeVariant(electronPrefs.obj.ThemeVariant || 'amethyst');
-      } catch {}
 
       const allItems = [
-        { text: 'Paint', icon: <PaletteIcon />, path: '/paint', key: 'paint' },
-        { text: 'Port', icon: <PortIcon />, path: '/port', key: 'port' },
-        { text: 'VFX Hub', icon: <GitHubIcon />, path: '/vfx-hub', key: 'vfxHub' },
-        { text: 'Bin Editor', icon: <BinEditorIcon />, path: '/bineditor', key: 'binEditor' },
-        { text: 'Asset Extractor', icon: <FrogChangerIcon />, path: '/frogchanger', key: 'frogchanger' },
-        { text: 'Bumpath', icon: <BumpathIcon />, path: '/bumpath', key: 'bumpath' },
-        { text: 'AniPort', icon: <AniPortIcon />, path: '/aniport', key: 'aniport' },
-        { text: 'Img Recolor', icon: <ImgRecolorIcon />, path: '/img-recolor', key: 'imgRecolor' },
-        { text: 'Upscale', icon: <UpscaleIcon />, path: '/upscale', key: 'upscale' },
-        { text: 'RGBA', icon: <RGBAIcon />, path: '/rgba', key: 'rgba' },
-        // HUD Editor removed - moved to archived/removed-features/hud-editor/
-        { text: 'File Handler', icon: <FolderIcon />, path: '/file-randomizer', key: 'fileRandomizer' },
-
-        { text: 'Tools', icon: <ToolsIcon />, path: '/tools', key: 'tools' },
+        { text: 'Paint', icon: Brush, path: '/paint', key: 'paint' },
+        { text: 'Port', icon: ArrowLeftRight, path: '/port', key: 'port' },
+        { text: 'VFX Hub', icon: Github, path: '/vfx-hub', key: 'vfxHub' },
+        { text: 'Bin Editor', icon: Code, path: '/bineditor', key: 'binEditor' },
+        { text: 'Img Recolor', icon: Palette, path: '/img-recolor', key: 'imgRecolor' },
+        { text: 'Asset Extractor', icon: FolderInput, path: '/frogchanger', key: 'frogchanger' },
+        { text: 'Bumpath', icon: Waypoints, path: '/bumpath', key: 'bumpath' },
+        { text: 'AniPort', icon: Shuffle, path: '/aniport', key: 'aniport' },
+        { text: 'Upscale', icon: Maximize, path: '/upscale', key: 'upscale' },
+        { text: 'RGBA', icon: Pipette, path: '/rgba', key: 'rgba' },
+        { text: 'File Handler', icon: FileDigit, path: '/file-randomizer', key: 'fileRandomizer' },
+        { text: 'Tools', icon: Wrench, path: '/tools', key: 'tools' },
       ];
 
-      // Filter items based on visibility settings
       const filteredItems = allItems.filter(item => {
         let settingKey;
-        // Handle special cases for proper casing
         switch (item.key) {
-          case 'vfxHub':
-            settingKey = 'VFXHubEnabled';
-            break;
-          case 'upscale':
-            settingKey = 'UpscaleEnabled';
-            break;
-          // case 'hudEditor': - Removed, HUD Editor archived
-                case 'rgba':
-        settingKey = 'RGBAEnabled';
-            break;
-          case 'imgRecolor':
-            settingKey = 'ImgRecolorEnabled';
-            break;
-          case 'binEditor':
-            settingKey = 'BinEditorEnabled';
-            break;
-          case 'aniport':
-            settingKey = 'AniPortEnabled';
-            break;
-          case 'frogchanger':
-            settingKey = 'FrogChangerEnabled';
-            break;
-
-          default:
-            settingKey = `${item.key.charAt(0).toUpperCase() + item.key.slice(1)}Enabled`;
+          case 'vfxHub': settingKey = 'VFXHubEnabled'; break;
+          case 'upscale': settingKey = 'UpscaleEnabled'; break;
+          case 'rgba': settingKey = 'RGBAEnabled'; break;
+          case 'imgRecolor': settingKey = 'ImgRecolorEnabled'; break;
+          case 'binEditor': settingKey = 'BinEditorEnabled'; break;
+          case 'aniport': settingKey = 'AniPortEnabled'; break;
+          case 'frogchanger': settingKey = 'FrogChangerEnabled'; break;
+          default: settingKey = `${item.key.charAt(0).toUpperCase() + item.key.slice(1)}Enabled`;
         }
-        return electronPrefs.obj[settingKey] !== false; // Default to true if not set
+        return electronPrefs.obj[settingKey] !== false;
       });
 
       setNavigationItems(filteredItems);
     };
 
     loadNavigationItems();
-
-    // Listen for settings changes
-    const handleSettingsChange = () => {
-      loadNavigationItems();
-      try { setThemeVariant(electronPrefs.obj.ThemeVariant || 'amethyst'); } catch {}
-    };
-
-    // Add event listener for settings changes
+    const handleSettingsChange = () => loadNavigationItems();
     window.addEventListener('settingsChanged', handleSettingsChange);
-
-    return () => {
-      window.removeEventListener('settingsChanged', handleSettingsChange);
-    };
+    return () => window.removeEventListener('settingsChanged', handleSettingsChange);
   }, []);
 
   const isActive = (path) => location.pathname === path;
-  const collapsedWidth = 64;
-  const expandedWidth = 240;
 
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (hoverTimeout) {
-        clearTimeout(hoverTimeout);
+  const handleNavigation = (path) => {
+    try {
+      const hasUnsaved = Boolean(window.__DL_unsavedBin);
+      if (hasUnsaved && !window.__DL_forceClose) {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('navigation-blocked', {
+            detail: { path },
+            bubbles: true,
+            cancelable: true
+          }));
+        }, 0);
+        return;
       }
-    };
-  }, [hoverTimeout]);
+    } catch (err) {
+      console.error('Error checking unsaved changes:', err);
+      return;
+    }
+    navigate(path);
+  };
+
 
   return (
-    <Box
-      sx={{
-        position: 'fixed',
-        top: `${TITLE_BAR_HEIGHT}px`, // Start below title bar
-        left: 0,
-        height: `calc(100vh - ${TITLE_BAR_HEIGHT}px)`, // Adjust height for title bar
-        width: navExpandEnabled && isExpanded ? expandedWidth : collapsedWidth,
-        transition: 'width 0.2s ease-out',
-        background: themeVariant === 'bluePurple'
-          ? (isExpanded
-              ? 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 90%), color-mix(in srgb, var(--accent), transparent 94%))'
-              : 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 88%), color-mix(in srgb, var(--accent), transparent 92%))')
-          : (isExpanded
-          ? 'linear-gradient(180deg, color-mix(in srgb, var(--accent2), transparent 92%), color-mix(in srgb, var(--accent2), transparent 96%))'
-          : 'linear-gradient(180deg, color-mix(in srgb, var(--accent2), transparent 90%), color-mix(in srgb, var(--accent2), transparent 94%))'),
-        borderRight: '1px solid color-mix(in srgb, var(--accent2), transparent 92%)',
-        boxShadow: 'inset 0 1px 0 color-mix(in srgb, var(--text), transparent 95%), 2px 0 18px rgba(0, 0, 0, 0.45)',
-        backdropFilter: isExpanded ? 'saturate(150%) blur(18px)' : 'saturate(200%) blur(22px)',
-        WebkitBackdropFilter: isExpanded ? 'saturate(150%) blur(18px)' : 'saturate(200%) blur(22px)',
-        zIndex: 1000,
-        overflow: 'hidden',
-      }}
-             onMouseEnter={() => {
-         if (!isMobile && navExpandEnabled) {
-           if (hoverTimeout) {
-             clearTimeout(hoverTimeout);
-             setHoverTimeout(null);
-           }
-           setIsExpanded(true);
-         }
-       }}
-       onMouseLeave={() => {
-         if (!isMobile && navExpandEnabled) {
-           const timeout = setTimeout(() => {
-             setIsExpanded(false);
-             setTooltipKey(prev => prev + 1); // Force tooltip cleanup
-           }, 150);
-           setHoverTimeout(timeout);
-         }
-       }}
-    >
-             {/* Header */}
-        <Box
-         sx={{
-           height: 64,
-            borderBottom: '1px solid color-mix(in srgb, var(--accent2), transparent 94%)',
-           background: themeVariant === 'bluePurple'
-             ? (isExpanded ? 'color-mix(in srgb, var(--accent), transparent 94%)' : 'color-mix(in srgb, var(--accent), transparent 92%)')
-              : (isExpanded ? 'color-mix(in srgb, var(--accent2), transparent 96%)' : 'color-mix(in srgb, var(--accent2), transparent 94%)'),
-           backdropFilter: isExpanded ? 'saturate(120%) blur(14px)' : 'saturate(160%) blur(16px)',
-           WebkitBackdropFilter: isExpanded ? 'saturate(120%) blur(14px)' : 'saturate(160%) blur(16px)',
-           display: 'flex',
-           justifyContent: 'center',
-           alignItems: 'center',
-           cursor: 'pointer',
-           '&:hover': {
-              background: themeVariant === 'bluePurple'
-                ? 'color-mix(in srgb, var(--accent), transparent 90%)'
-                : 'color-mix(in srgb, var(--accent2), transparent 92%)',
-            },
-         }}
-         onClick={() => navigate('/main')}
-       >
-                   {isExpanded ? (
-            <Typography
-              variant="h6"
-              sx={{
-                fontWeight: 'bold',
-                background: 'linear-gradient(45deg, var(--accent), var(--accent-muted), var(--accent))',
-                backgroundSize: '200% 200%',
-                backgroundClip: 'text',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                textAlign: 'center',
-                fontSize: '1.1rem',
-                lineHeight: 1,
-                transition: 'all 0.2s ease',
-                opacity: 1,
-                animation: 'shimmer 2s ease-in-out infinite',
-                '@keyframes shimmer': {
-                  '0%': {
-                    backgroundPosition: '0% 50%',
-                  },
-                  '50%': {
-                    backgroundPosition: '100% 50%',
-                  },
-                  '100%': {
-                    backgroundPosition: '0% 50%',
-                  },
-                },
-              }}
+    <div className="modern-nav-container">
+      <div className="modern-nav-top">
+        {navigationItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <NavButton
+              key={item.key}
+              title={item.text}
+              isActive={isActive(item.path)}
+              onClick={() => handleNavigation(item.path)}
             >
-              Quartz
-            </Typography>
-          ) : (
-            <img 
-              src={gifSrc || getNavbarGifSrc()} 
-              alt="Logo" 
-              style={{
-                width: '50px',
-                height: '50px',
-                objectFit: 'contain',
-                borderRadius: '8px',
-                transition: 'all 0.2s ease',
-              }}
-            />
-          )}
-       </Box>
+              <Icon size={22} />
+            </NavButton>
+          );
+        })}
+      </div>
 
-             {/* Main Navigation Items */}
-       <List sx={{ flexGrow: 1, pt: 1, pb: 1 }}>
-         {navigationItems.map((item) => (
-           <ListItem key={item.text} disablePadding sx={{ mb: 0.5, px: 1 }}>
-             <Tooltip
-               key={`${item.text}-${tooltipKey}`}
-                title={!isExpanded ? item.text : ''}
-               placement="right"
-               arrow
-               disableHoverListener={isExpanded}
-               enterDelay={300}
-               leaveDelay={0}
-               enterNextDelay={100}
-               PopperProps={{
-                 sx: {
-                    '& .MuiTooltip-tooltip': {
-                      backgroundColor: 'color-mix(in srgb, var(--accent2), transparent 85%)',
-                      color: 'var(--accent2)',
-                     fontSize: '0.8rem',
-                      border: '1px solid color-mix(in srgb, var(--accent2), transparent 82%)',
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
-                   },
-                    '& .MuiTooltip-arrow': {
-                      color: 'color-mix(in srgb, var(--accent2), transparent 85%)',
-                   },
-                 },
-               }}
-             >
-                <ListItemButton
-                 selected={isActive(item.path)}
-                onClick={(e) => {
-                  try {
-                    // Check for unsaved changes before navigation
-                    const hasUnsaved = Boolean(window.__DL_unsavedBin);
-                    console.log('🔍 Navigation click - hasUnsaved:', hasUnsaved, 'forceClose:', window.__DL_forceClose);
-                    if (hasUnsaved && !window.__DL_forceClose) {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      console.log('🚫 Blocking navigation, dispatching event for:', item.path);
-                      // Dispatch event to let pages handle the dialog
-                      // Use setTimeout to ensure event is processed
-                      setTimeout(() => {
-                        window.dispatchEvent(new CustomEvent('navigation-blocked', { 
-                          detail: { path: item.path },
-                          bubbles: true,
-                          cancelable: true
-                        }));
-                      }, 0);
-                      return; // Early return to prevent navigation
-                    }
-                  } catch (err) {
-                    console.error('Error checking unsaved changes:', err);
-                    return; // Return on error to prevent navigation
-                  }
-                  console.log('✅ Allowing navigation to:', item.path);
-                  navigate(item.path);
-                }}
-                 sx={{
-                   borderRadius: 2,
-                   position: 'relative',
-                   overflow: 'hidden',
-                   minHeight: 48,
-                   justifyContent: 'flex-start',
-                   px: isExpanded ? 2 : 1.5,
-                     background: isActive(item.path)
-                      ? 'color-mix(in srgb, var(--accent2), transparent 92%)'
-                      : 'transparent',
-                   '&:hover': {
-                       background: 'color-mix(in srgb, var(--accent2), transparent 94%)',
-                     transform: 'translateX(4px)',
-                     transition: 'all 0.2s ease',
-                   },
-                     '&.Mui-selected': {
-                       boxShadow: 'inset 0 1px 0 color-mix(in srgb, var(--text), transparent 96%)',
-                       background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent2), transparent 78%), color-mix(in srgb, var(--accent2), transparent 82%))',
-                       '& .MuiListItemIcon-root': {
-                          color: '#ffffff',
-                       },
-                       '& .MuiListItemText-primary': {
-                          color: '#ffffff',
-                         fontWeight: 'bold',
-                       },
-                     },
-                    '& .MuiListItemIcon-root': {
-                      color: isActive(item.path) ? '#ffffff' : (themeVariant === 'bluePurple' ? 'var(--accent2)' : 'var(--accent)'),
-                     minWidth: 40,
-                     transition: 'color 0.2s ease',
-                   },
-                    '& .MuiListItemText-primary': {
-                      color: isActive(item.path) ? '#ffffff' : (themeVariant === 'bluePurple' ? 'var(--accent2)' : 'var(--accent)'),
-                     fontWeight: isActive(item.path) ? 'bold' : 'normal',
-                     transition: 'all 0.2s ease',
-                   },
-                   transition: 'all 0.2s ease',
-                 }}
-               >
-                 <ListItemIcon>
-                   {item.icon}
-                 </ListItemIcon>
-                 <ListItemText 
-                   primary={isExpanded ? item.text : ''}
-                   sx={{
-                     '& .MuiListItemText-primary': {
-                       fontSize: '0.9rem',
-                       opacity: isExpanded ? 1 : 0,
-                       transform: isExpanded ? 'translateX(0)' : 'translateX(-20px)',
-                       transition: 'opacity 0.2s ease, transform 0.2s ease',
-                       whiteSpace: 'nowrap',
-                       overflow: 'hidden',
-                       visibility: isExpanded ? 'visible' : 'hidden',
-                       position: 'relative',
-                       zIndex: 1,
-                     },
-                   }}
-                 />
-               </ListItemButton>
-             </Tooltip>
-           </ListItem>
-         ))}
-       </List>
-
-       {/* Settings Item at Very Bottom */}
-       <List sx={{ 
-         position: 'absolute',
-         bottom: 0,
-         left: 0,
-         right: 0,
-         pt: 0.5,
-         pb: 0.5
-       }}>
-         <ListItem disablePadding sx={{ mb: 0.5, px: 1 }}>
-           <Tooltip
-             key={`${settingsItem.text}-${tooltipKey}`}
-             title={!isExpanded ? settingsItem.text : ''}
-             placement="right"
-             arrow
-             disableHoverListener={isExpanded}
-             enterDelay={300}
-             leaveDelay={0}
-             enterNextDelay={100}
-             PopperProps={{
-               sx: {
-                 '& .MuiTooltip-tooltip': {
-                    backgroundColor: 'rgba(27,15,43,0.9)',
-                    color: '#b88bf2',
-                   fontSize: '0.8rem',
-                    border: '1px solid rgba(184,139,242,0.18)',
-                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
-                 },
-                 '& .MuiTooltip-arrow': {
-                    color: 'rgba(27,15,43,0.9)',
-                 },
-               },
-             }}
-           >
-             <ListItemButton
-               selected={isActive(settingsItem.path)}
-               onClick={(e) => {
-                 try {
-                   // Check for unsaved changes before navigation
-                   const hasUnsaved = Boolean(window.__DL_unsavedBin);
-                   console.log('🔍 Settings navigation click - hasUnsaved:', hasUnsaved, 'forceClose:', window.__DL_forceClose);
-                   if (hasUnsaved && !window.__DL_forceClose) {
-                     e.preventDefault();
-                     e.stopPropagation();
-                     console.log('🚫 Blocking navigation, dispatching event for:', settingsItem.path);
-                     // Dispatch event to let pages handle the dialog
-                     // Use setTimeout to ensure event is processed
-                     setTimeout(() => {
-                       window.dispatchEvent(new CustomEvent('navigation-blocked', { 
-                         detail: { path: settingsItem.path },
-                         bubbles: true,
-                         cancelable: true
-                       }));
-                     }, 0);
-                     return; // Early return to prevent navigation
-                   }
-                 } catch (err) {
-                   console.error('Error checking unsaved changes:', err);
-                   return; // Return on error to prevent navigation
-                 }
-                 console.log('✅ Allowing navigation to:', settingsItem.path);
-                 navigate(settingsItem.path);
-               }}
-               sx={{
-                 borderRadius: 2,
-                 position: 'relative',
-                 overflow: 'hidden',
-                 minHeight: 48,
-                 justifyContent: 'flex-start',
-                 px: isExpanded ? 2 : 1.5,
-                  background: isActive(settingsItem.path)
-                    ? 'linear-gradient(135deg, rgba(107,114,128,0.4), rgba(107,114,128,0.2))'
-                    : 'transparent',
-                 '&:hover': {
-                    background: isActive(settingsItem.path)
-                      ? 'linear-gradient(135deg, rgba(107,114,128,0.5), rgba(107,114,128,0.3))'
-                      : 'linear-gradient(135deg, rgba(107,114,128,0.3), rgba(107,114,128,0.15))',
-                   transform: 'translateX(4px)',
-                   transition: 'all 0.2s ease',
-                 },
-                 '&.Mui-selected': {
-                   '& .MuiListItemIcon-root': {
-                     color: 'white',
-                   },
-                   '& .MuiListItemText-primary': {
-                     color: 'white',
-                     fontWeight: 'bold',
-                   },
-                 },
-                  '& .MuiListItemIcon-root': {
-                    color: isActive(settingsItem.path) ? 'white' : (themeVariant === 'bluePurple' ? 'var(--accent2)' : 'var(--accent)'),
-                   minWidth: 40,
-                   transition: 'color 0.2s ease',
-                 },
-                  '& .MuiListItemText-primary': {
-                    color: isActive(settingsItem.path) ? 'white' : (themeVariant === 'bluePurple' ? 'var(--accent2)' : 'var(--accent)'),
-                   fontWeight: isActive(settingsItem.path) ? 'bold' : 'normal',
-                   transition: 'all 0.2s ease',
-                 },
-                 transition: 'all 0.2s ease',
-               }}
-             >
-               <ListItemIcon>
-                 {settingsItem.icon}
-               </ListItemIcon>
-               <ListItemText 
-                 primary={isExpanded ? settingsItem.text : ''}
-                 sx={{
-                   '& .MuiListItemText-primary': {
-                     fontSize: '0.9rem',
-                     opacity: isExpanded ? 1 : 0,
-                     transform: isExpanded ? 'translateX(0)' : 'translateX(-20px)',
-                     transition: 'opacity 0.2s ease, transform 0.2s ease',
-                     whiteSpace: 'nowrap',
-                     overflow: 'hidden',
-                     visibility: isExpanded ? 'visible' : 'hidden',
-                     position: 'relative',
-                     zIndex: 1,
-                   },
-                 }}
-               />
-             </ListItemButton>
-           </Tooltip>
-         </ListItem>
-       </List>
-
-      
-    </Box>
+      <div className="modern-nav-bottom">
+        <NavButton
+          title="Settings"
+          isActive={isActive('/settings')}
+          onClick={() => handleNavigation('/settings')}
+        >
+          <Settings size={22} />
+        </NavButton>
+      </div>
+    </div>
   );
 };
 
-export default ModernNavigation; 
+export default ModernNavigation;

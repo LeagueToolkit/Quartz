@@ -148,93 +148,75 @@ const Upscale = () => {
 		}
 	};
 
-	// Glass morphism styles using theme variables (following Port/Paint patterns)
-	const glassPanel = useMemo(() => ({
-		background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
-		border: '1px solid rgba(255, 255, 255, 0.2)',
-		borderRadius: '12px',
-		backdropFilter: 'saturate(180%) blur(20px)',
-		WebkitBackdropFilter: 'saturate(180%) blur(20px)',
-		boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+	// Celestial minimalistic button style (matching Bumpath/ImgRecolor)
+	const celestialButtonStyle = useMemo(() => ({
+		background: 'var(--bg-2)',
+		border: '1px solid var(--accent-muted)',
+		color: 'var(--text)',
+		borderRadius: '5px',
+		transition: 'all 200ms ease',
+		textTransform: 'none',
+		fontFamily: 'JetBrains Mono, monospace',
+		boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+		'&:hover': {
+			background: 'var(--surface-2)',
+			borderColor: 'var(--accent)',
+			boxShadow: '0 0 15px color-mix(in srgb, var(--accent), transparent 60%)'
+		},
+		'&:disabled': {
+			background: 'var(--bg-2)',
+			borderColor: 'var(--text-2)',
+			color: 'var(--text-2)',
+			opacity: 0.6,
+			cursor: 'not-allowed'
+		},
+		'&:active': {
+			transform: 'translateY(1px)'
+		}
+	}), []);
+
+	const primaryButtonStyle = useMemo(() => ({
+		...celestialButtonStyle,
+		background: 'var(--bg-2)',
+		border: '1px solid var(--accent)',
+		color: 'var(--accent)',
+		fontWeight: 'bold',
+		boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent), transparent 70%), 0 2px 4px rgba(0,0,0,0.2)',
+		'&:hover': {
+			...celestialButtonStyle['&:hover'],
+			boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent), transparent 50%), 0 2px 4px rgba(0,0,0,0.3)'
+		}
 	}), []);
 
 	const sidebarStyle = useMemo(() => ({
 		width: '280px',
 		minWidth: '280px',
-		height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
+		height: '100%',
 		display: 'flex',
 		flexDirection: 'column',
 		padding: '12px',
-		background: 'var(--surface)',
-		borderRight: '1px solid var(--bg)',
+		background: 'transparent',
+		borderRight: '1px solid rgba(255, 255, 255, 0.06)',
 		overflowY: 'auto',
 		flexShrink: 0,
 	}), []);
 
 	const previewAreaStyle = useMemo(() => ({
 		flex: 1,
-		height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
+		height: '100%',
 		display: 'flex',
 		alignItems: 'center',
 		justifyContent: 'center',
 		position: 'relative',
-		background: 'var(--surface)',
-	}), []);
-
-	const buttonStyle = useMemo(() => ({
-		background: 'var(--surface-2)',
-		border: '1px solid var(--bg)',
-		borderRadius: '0.4rem',
-		color: 'var(--accent-muted)',
-		textTransform: 'none',
-		fontFamily: 'JetBrains Mono, monospace',
-		fontSize: '14px',
-		py: 1.5,
-		px: 2,
-		transition: 'all 0.3s ease',
-		'&:hover': {
-			background: '#3a3747',
-			borderColor: 'var(--accent)',
-			color: 'var(--accent)',
-		},
-		'&:disabled': {
-			color: '#404040',
-			background: 'var(--surface-2)',
-			cursor: 'default',
-		}
-	}), []);
-
-	const primaryButtonStyle = useMemo(() => ({
-		background: 'linear-gradient(135deg, var(--accent-muted), var(--accent))',
-		border: 'none',
-		borderRadius: '0.4rem',
-		color: 'var(--surface)',
-		textTransform: 'none',
-		fontFamily: 'JetBrains Mono, monospace',
-		fontSize: '14px',
-		fontWeight: 'bold',
-		py: 1.5,
-		px: 3,
-		transition: 'all 0.3s ease',
-		'&:hover': {
-			background: 'linear-gradient(135deg, var(--accent), var(--accent-muted))',
-			transform: 'translateY(-1px)',
-			boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-		},
-		'&:disabled': {
-			background: 'var(--surface-2)',
-			color: '#404040',
-			transform: 'none',
-			boxShadow: 'none',
-		}
+		background: 'transparent',
 	}), []);
 
 	const selectStyle = useMemo(() => ({
 		'& .MuiOutlinedInput-root': {
-			background: 'var(--surface-2)',
-			border: '1px solid var(--bg)',
-			borderRadius: '0.4rem',
-			color: 'var(--accent-muted)',
+			background: 'var(--bg-2)',
+			border: '1px solid var(--accent-muted)',
+			borderRadius: '5px',
+			color: 'var(--text)',
 			fontFamily: 'JetBrains Mono, monospace',
 			fontSize: '14px',
 			'& fieldset': {
@@ -243,72 +225,48 @@ const Upscale = () => {
 			'&:hover fieldset': {
 				border: 'none',
 			},
+			'&:hover': {
+				borderColor: 'var(--accent)',
+			},
 			'&.Mui-focused fieldset': {
 				border: '1px solid var(--accent)',
 			},
 		},
 		'& .MuiInputLabel-root': {
-			color: 'var(--accent-muted)',
+			color: 'var(--accent)',
 			fontFamily: 'JetBrains Mono, monospace',
 			fontSize: '14px',
 		},
 		'& .MuiInputLabel-root.Mui-focused': {
 			color: 'var(--accent)',
 		},
+		'& .MuiMenuItem-root': {
+			color: 'var(--text)',
+			fontFamily: 'JetBrains Mono, monospace',
+			fontSize: '14px',
+			background: 'var(--bg-2)',
+			'&:hover': {
+				background: 'var(--surface-2)',
+			},
+			'&.Mui-selected': {
+				background: 'var(--surface-2)',
+				color: 'var(--accent)',
+				'&:hover': {
+					background: 'var(--surface-2)',
+				},
+			},
+		},
 	}), []);
 
 	const stepStyle = useMemo(() => ({
 		padding: '12px',
 		marginBottom: '8px',
-		borderRadius: '0.4rem',
-		background: 'rgba(16,14,22,0.35)',
-		border: '1px solid rgba(255,255,255,0.10)',
-		backdropFilter: 'saturate(220%) blur(18px)',
-		WebkitBackdropFilter: 'saturate(220%) blur(18px)',
-		boxShadow: '0 12px 28px rgba(0,0,0,0.35)',
+		borderRadius: '5px',
+		background: 'transparent',
+		border: '1px solid rgba(255, 255, 255, 0.06)',
 		transition: 'all 0.2s ease',
 		'&:hover': {
-			borderColor: 'var(--accent)',
-			background: 'rgba(16,14,22,0.45)',
-			boxShadow: '0 16px 36px rgba(0,0,0,0.45)',
-		}
-	}), []);
-
-	// Download manager styles
-	const downloadManagerStyle = useMemo(() => ({
-		padding: '16px',
-		marginBottom: '16px',
-		borderRadius: '0.4rem',
-		background: 'rgba(16,14,22,0.35)',
-		border: '1px solid rgba(255,255,255,0.10)',
-		backdropFilter: 'saturate(220%) blur(18px)',
-		WebkitBackdropFilter: 'saturate(220%) blur(18px)',
-		boxShadow: '0 12px 28px rgba(0,0,0,0.35)',
-		transition: 'all 0.2s ease',
-	}), []);
-
-	const downloadButtonStyle = useMemo(() => ({
-		background: 'linear-gradient(135deg, var(--accent-muted), var(--accent))',
-		border: 'none',
-		borderRadius: '0.4rem',
-		color: 'var(--surface)',
-		textTransform: 'none',
-		fontFamily: 'JetBrains Mono, monospace',
-		fontSize: '14px',
-		fontWeight: 'bold',
-		py: 1.5,
-		px: 3,
-		transition: 'all 0.3s ease',
-		'&:hover': {
-			background: 'linear-gradient(135deg, var(--accent), var(--accent-muted))',
-			transform: 'translateY(-1px)',
-			boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-		},
-		'&:disabled': {
-			background: 'var(--surface-2)',
-			color: '#404040',
-			transform: 'none',
-			boxShadow: 'none',
+			borderColor: 'var(--accent-muted)',
 		}
 	}), []);
 
@@ -862,24 +820,22 @@ const Upscale = () => {
 					}
 				`}
 			</style>
-			{/* Upscaling Progress Modal - VFXHub Style */}
+			{/* Upscaling Progress Modal - Celestial Style */}
 			<div style={{
 				position: 'fixed',
 				top: 0,
 				left: 0,
 				right: 0,
 				bottom: 0,
-				background: 'rgba(0,0,0,0.4)',
-				backdropFilter: 'blur(16px)',
-				WebkitBackdropFilter: 'blur(16px)',
+				background: 'rgba(0,0,0,0.6)',
 				zIndex: 1000,
 				display: 'flex',
 				alignItems: 'center',
 				justifyContent: 'center'
 			}}>
 				<div style={{
-					border: '1px solid var(--glass-border)',
-					borderRadius: '10px',
+					border: '1px solid var(--accent-muted)',
+					borderRadius: '5px',
 					width: '80%',
 					maxWidth: '500px',
 					height: 'auto',
@@ -887,16 +843,14 @@ const Upscale = () => {
 					display: 'flex',
 					flexDirection: 'column',
 					overflow: 'hidden',
-					boxShadow: 'var(--glass-shadow)',
-					background: 'var(--glass-bg)',
-					backdropFilter: 'blur(20px)',
-					WebkitBackdropFilter: 'blur(20px)'
+					background: 'var(--bg-2)',
+					boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
 				}}>
 					{/* Modal Header */}
 					<div style={{
 						padding: '1rem',
-						borderBottom: '1px solid var(--glass-border)',
-						background: 'rgba(255,255,255,0.05)',
+						borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+						background: 'transparent',
 						display: 'flex',
 						justifyContent: 'space-between',
 						alignItems: 'center'
@@ -908,23 +862,22 @@ const Upscale = () => {
 							onClick={cancelUpscaling}
 							style={{
 								background: 'transparent',
-								border: '1px solid var(--glass-border)',
+								border: '1px solid var(--accent-muted)',
 								width: '28px',
 								height: '28px',
 								borderRadius: '50%',
 								color: 'var(--accent)',
 								fontSize: '1rem',
 								cursor: 'pointer',
-								boxShadow: 'var(--glass-shadow)',
 								transition: 'all 0.2s ease'
 							}}
 							onMouseEnter={(e) => {
-								e.target.style.transform = 'translateY(-1px)';
-								e.target.style.boxShadow = 'var(--glass-shadow)';
+								e.target.style.borderColor = 'var(--accent)';
+								e.target.style.transform = 'scale(1.1)';
 							}}
 							onMouseLeave={(e) => {
-								e.target.style.transform = 'translateY(0)';
-								e.target.style.boxShadow = 'var(--glass-shadow)';
+								e.target.style.borderColor = 'var(--accent-muted)';
+								e.target.style.transform = 'scale(1)';
 							}}
 						>
 							×
@@ -936,7 +889,7 @@ const Upscale = () => {
 						flex: 1,
 						padding: '1.5rem',
 						textAlign: 'center',
-						background: 'rgba(255,255,255,0.02)'
+						background: 'transparent'
 					}}>
 						{/* Loading Icon */}
 						<div style={{
@@ -1108,28 +1061,26 @@ const Upscale = () => {
 							onClick={cancelUpscaling}
 							style={{
 								padding: '0.5rem 1rem',
-								background: 'rgba(255,255,255,0.05)',
-								border: '1px solid var(--glass-border)',
-								color: 'var(--accent-muted)',
-								borderRadius: '8px',
+								background: 'var(--bg-2)',
+								border: '1px solid var(--accent-muted)',
+								color: 'var(--text)',
+								borderRadius: '5px',
 								cursor: 'pointer',
 								fontFamily: 'JetBrains Mono, monospace',
 								fontSize: '0.9rem',
 								fontWeight: 'bold',
-								boxShadow: 'var(--glass-shadow)',
+								boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
 								transition: 'all 0.2s ease'
 							}}
 							onMouseEnter={(e) => {
-								e.target.style.transform = 'translateY(-1px)';
-								e.target.style.boxShadow = 'var(--glass-shadow)';
 								e.target.style.borderColor = 'var(--accent)';
 								e.target.style.color = 'var(--accent)';
+								e.target.style.background = 'var(--surface-2)';
 							}}
 							onMouseLeave={(e) => {
-								e.target.style.transform = 'translateY(0)';
-								e.target.style.boxShadow = 'var(--glass-shadow)';
-								e.target.style.borderColor = 'var(--glass-border)';
-								e.target.style.color = 'var(--accent-muted)';
+								e.target.style.borderColor = 'var(--accent-muted)';
+								e.target.style.color = 'var(--text)';
+								e.target.style.background = 'var(--bg-2)';
 							}}
 						>
 							Cancel Upscaling
@@ -1142,31 +1093,18 @@ const Upscale = () => {
 
 	return (
 		<Box sx={{ 
-			height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
+			height: '100%',
 			minHeight: '100%',
 			display: 'flex', 
 			overflow: 'hidden',
-			background: 'radial-gradient(1200px 700px at 30% -10%, color-mix(in srgb, var(--accent), transparent 90%), transparent 60%), radial-gradient(1000px 600px at 85% 10%, color-mix(in srgb, var(--accent-muted), transparent 92%), transparent 60%), linear-gradient(135deg, var(--surface-2) 0%, var(--bg) 100%)',
-			position: 'relative',
-			isolation: 'isolate',
-			transform: 'translateZ(0)'
+			background: 'var(--bg)',
+			position: 'relative'
 		}}>
-			{/* Background lights to match Port/Paint */}
-			<Box sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
-				<Box sx={{ position: 'absolute', top: -120, left: -80, width: 600, height: 600, filter: 'blur(60px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent), transparent 82%), transparent 70%)' }} />
-				<Box sx={{ position: 'absolute', top: -60, right: -120, width: 700, height: 700, filter: 'blur(80px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent-muted), transparent 84%), transparent 70%)' }} />
-				<Box sx={{ position: 'absolute', bottom: -160, left: '20%', width: 800, height: 800, filter: 'blur(90px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent), transparent 88%), transparent 70%)' }} />
-			</Box>
-			
 			{/* Sidebar */}
 			<Box sx={{
 				...sidebarStyle,
 				position: 'relative',
-				zIndex: 1,
-				background: 'rgba(16,14,22,0.35)',
-				borderRight: '1px solid rgba(255,255,255,0.10)',
-				boxShadow: '0 12px 28px rgba(0,0,0,0.35)',
-				transform: 'translateZ(0)'
+				zIndex: 1
 			}}>
 				{/* Header */}
 				<Box sx={{ mb: 1 }}>
@@ -1227,10 +1165,7 @@ const Upscale = () => {
 						p: 1.5, 
 						background: 'rgba(239, 68, 68, 0.15)', 
 						border: '1px solid rgba(239, 68, 68, 0.3)', 
-						borderRadius: '0.4rem',
-						backdropFilter: 'saturate(220%) blur(18px)',
-						WebkitBackdropFilter: 'saturate(220%) blur(18px)',
-						boxShadow: '0 12px 28px rgba(0,0,0,0.35)'
+						borderRadius: '5px'
 					}}>
 						<Typography variant="body2" sx={{ color: '#ef4444', whiteSpace: 'pre-wrap', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px' }}>
 							{ensureError}
@@ -1265,7 +1200,7 @@ const Upscale = () => {
 						fullWidth 
 						onClick={pickInput}
 						startIcon={batchMode ? <FolderIcon /> : <UploadIcon />}
-						sx={{ ...buttonStyle, mb: 1, height: 36 }}
+						sx={{ ...celestialButtonStyle, mb: 1, height: 36 }}
 					>
 						{inputPath ? (batchMode ? 'Change Folder' : 'Change Image') : (batchMode ? 'Select Folder' : 'Select Image')}
 					</Button>
@@ -1358,7 +1293,7 @@ const Upscale = () => {
 						fullWidth 
 						onClick={pickOutput}
 						startIcon={<FolderIcon />}
-						sx={{ ...buttonStyle, mb: 1, height: 36 }}
+						sx={{ ...celestialButtonStyle, mb: 1, height: 36 }}
 					>
 						{outputDir ? 'Change Folder' : 'Set Output Folder'}
 					</Button>
@@ -1426,15 +1361,13 @@ const Upscale = () => {
 					top: 0, 
 					left: 0, 
 					right: 0, 
-					background: 'rgba(16,14,22,0.35)', 
-					borderBottom: '1px solid rgba(255,255,255,0.10)',
+					background: 'transparent', 
+					borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
 					p: 2,
 					display: 'flex',
 					alignItems: 'center',
 					justifyContent: 'space-between',
-					zIndex: 10,
-					boxShadow: '0 12px 28px rgba(0,0,0,0.35)',
-					transform: 'translateZ(0)'
+					zIndex: 10
 				}}>
 					<Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
 						<Tooltip title="Zoom Out">
@@ -1515,17 +1448,14 @@ const Upscale = () => {
 							<Box sx={{ 
 								width: 96, 
 								height: 96, 
-								background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
-								border: '1px solid rgba(255, 255, 255, 0.2)',
+								background: 'var(--bg-2)',
+								border: '1px solid var(--accent-muted)',
 								borderRadius: '50%', 
 								display: 'flex', 
 								alignItems: 'center', 
 								justifyContent: 'center', 
 								mx: 'auto', 
-								mb: 3,
-								backdropFilter: 'saturate(180%) blur(20px)',
-								WebkitBackdropFilter: 'saturate(180%) blur(20px)',
-								boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+								mb: 3
 							}}>
 								<ImageIcon sx={{ fontSize: 48, color: 'var(--accent-muted)' }} />
 							</Box>
@@ -1574,18 +1504,13 @@ const Upscale = () => {
 							}}>
 								{folderContents.map((file, index) => (
 									<Box key={index} sx={{
-										background: 'rgba(16,14,22,0.35)',
-										border: '1px solid rgba(255,255,255,0.10)',
-										borderRadius: '0.4rem',
+										background: 'var(--bg-2)',
+										border: '1px solid rgba(255, 255, 255, 0.06)',
+										borderRadius: '5px',
 										padding: '0.5rem',
-										backdropFilter: 'saturate(220%) blur(18px)',
-										WebkitBackdropFilter: 'saturate(220%) blur(18px)',
-										boxShadow: '0 12px 28px rgba(0,0,0,0.35)',
 										transition: 'all 0.2s ease',
 										'&:hover': {
-											borderColor: 'var(--accent)',
-											background: 'rgba(16,14,22,0.45)',
-											boxShadow: '0 16px 36px rgba(0,0,0,0.45)',
+											borderColor: 'var(--accent-muted)',
 										}
 									}}>
 										{file.thumbnail ? (
@@ -1644,17 +1569,14 @@ const Upscale = () => {
 							<Box sx={{ 
 								width: 96, 
 								height: 96, 
-								background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
-								border: '1px solid rgba(255, 255, 255, 0.2)',
+								background: 'var(--bg-2)',
+								border: '1px solid var(--accent-muted)',
 								borderRadius: '50%', 
 								display: 'flex', 
 								alignItems: 'center', 
 								justifyContent: 'center', 
 								mx: 'auto', 
-								mb: 3,
-								backdropFilter: 'saturate(180%) blur(20px)',
-								WebkitBackdropFilter: 'saturate(180%) blur(20px)',
-								boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+								mb: 3
 							}}>
 								<FolderIcon sx={{ fontSize: 48, color: 'var(--accent-muted)' }} />
 							</Box>
@@ -1674,13 +1596,10 @@ const Upscale = () => {
 						}}>
 							<Box sx={{ 
 								position: 'relative', 
-								background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
-								border: '1px solid rgba(255, 255, 255, 0.2)', 
-								borderRadius: '0.4rem', 
+								background: 'var(--bg-2)',
+								border: '1px solid var(--accent-muted)', 
+								borderRadius: '5px', 
 								overflow: 'hidden', 
-								backdropFilter: 'saturate(180%) blur(20px)',
-								WebkitBackdropFilter: 'saturate(180%) blur(20px)',
-								boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
 								display: 'inline-block'
 							}}
 							onMouseMove={handleMouseMove}
@@ -1785,17 +1704,14 @@ const Upscale = () => {
 										position: 'absolute',
 										top: 16,
 										left: 16,
-										background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
-										color: '#000000',
+										background: 'var(--bg-2)',
+										color: 'var(--text)',
 										padding: '4px 8px',
-										borderRadius: '0.4rem',
-										border: '1px solid rgba(255, 255, 255, 0.2)',
+										borderRadius: '5px',
+										border: '1px solid var(--accent-muted)',
 										fontSize: 12,
 										fontFamily: 'JetBrains Mono, monospace',
-										fontWeight: 'bold',
-										backdropFilter: 'saturate(180%) blur(20px)',
-										WebkitBackdropFilter: 'saturate(180%) blur(20px)',
-										boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+										fontWeight: 'bold'
 									}}>
 										Original
 									</Box>
@@ -1823,7 +1739,7 @@ const Upscale = () => {
 
 			</Box>
 
-			{/* Download Manager Modal - VFXHub Style */}
+			{/* Download Manager Modal - Celestial Style */}
 			{showDownloadModal && (
 				<div style={{
 					position: 'fixed',
@@ -1831,18 +1747,16 @@ const Upscale = () => {
 					left: 0,
 					right: 0,
 					bottom: 0,
-					background: 'rgba(0, 0, 0, 0.4)',
-					backdropFilter: 'blur(16px)',
-					WebkitBackdropFilter: 'blur(16px)',
+					background: 'rgba(0, 0, 0, 0.6)',
 					zIndex: 1000,
 					display: 'flex',
 					alignItems: 'center',
 					justifyContent: 'center'
 				}}>
 					<div style={{
-						background: 'var(--glass-bg)',
-						border: '1px solid var(--glass-border)',
-						borderRadius: '10px',
+						background: 'var(--bg-2)',
+						border: '1px solid var(--accent-muted)',
+						borderRadius: '5px',
 						width: '80%',
 						maxWidth: '500px',
 						height: 'auto',
@@ -1850,15 +1764,13 @@ const Upscale = () => {
 						display: 'flex',
 						flexDirection: 'column',
 						overflow: 'hidden',
-						boxShadow: 'var(--glass-shadow)',
-						backdropFilter: 'blur(20px)',
-						WebkitBackdropFilter: 'blur(20px)'
+						boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
 					}}>
 						{/* Modal Header */}
 						<div style={{
 							padding: '1rem',
-							borderBottom: '1px solid var(--glass-border)',
-							background: 'rgba(255,255,255,0.05)',
+							borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+							background: 'transparent',
 							display: 'flex',
 							justifyContent: 'space-between',
 							alignItems: 'center'
@@ -1870,23 +1782,22 @@ const Upscale = () => {
 								onClick={() => setShowDownloadModal(false)}
 								style={{
 									background: 'transparent',
-									border: '1px solid var(--glass-border)',
+									border: '1px solid var(--accent-muted)',
 									width: '28px',
 									height: '28px',
 									borderRadius: '50%',
 									color: 'var(--accent)',
 									fontSize: '1rem',
 									cursor: 'pointer',
-									boxShadow: 'var(--glass-shadow)',
 									transition: 'all 0.2s ease'
 								}}
 								onMouseEnter={(e) => {
-									e.target.style.transform = 'translateY(-1px)';
-									e.target.style.boxShadow = 'var(--glass-shadow)';
+									e.target.style.borderColor = 'var(--accent)';
+									e.target.style.transform = 'scale(1.1)';
 								}}
 								onMouseLeave={(e) => {
-									e.target.style.transform = 'translateY(0)';
-									e.target.style.boxShadow = 'var(--glass-shadow)';
+									e.target.style.borderColor = 'var(--accent-muted)';
+									e.target.style.transform = 'scale(1)';
 								}}
 							>
 								×
@@ -1898,7 +1809,7 @@ const Upscale = () => {
 							flex: 1,
 							padding: '1rem',
 							overflowY: 'auto',
-							background: 'rgba(255,255,255,0.02)'
+							background: 'transparent'
 						}}>
 							{/* Status Section */}
 							<div style={{ marginBottom: '1.5rem' }}>
@@ -1936,9 +1847,9 @@ const Upscale = () => {
 								
 								{downloadStatus && (
 									<div style={{
-										background: 'var(--glass-bg)',
-										border: '1px solid var(--glass-border)',
-										borderRadius: '8px',
+										background: 'var(--bg-2)',
+										border: '1px solid rgba(255, 255, 255, 0.06)',
+										borderRadius: '5px',
 										padding: '1rem'
 									}}>
 										<div style={{ 
@@ -1985,10 +1896,10 @@ const Upscale = () => {
 													}
 												}}
 												style={{
-													background: 'rgba(255,255,255,0.05)',
-													border: '1px solid var(--glass-border)',
-													borderRadius: '6px',
-													color: 'var(--accent)',
+													background: 'var(--bg-2)',
+													border: '1px solid var(--accent-muted)',
+													borderRadius: '5px',
+													color: 'var(--text)',
 													padding: '0.5rem 0.75rem',
 													fontSize: '0.75rem',
 													fontFamily: 'JetBrains Mono, monospace',
@@ -1999,12 +1910,14 @@ const Upscale = () => {
 													gap: '0.5rem'
 												}}
 												onMouseEnter={(e) => {
-													e.target.style.background = 'rgba(255,255,255,0.1)';
+													e.target.style.background = 'var(--surface-2)';
 													e.target.style.borderColor = 'var(--accent)';
+													e.target.style.color = 'var(--accent)';
 												}}
 												onMouseLeave={(e) => {
-													e.target.style.background = 'rgba(255,255,255,0.05)';
-													e.target.style.borderColor = 'var(--glass-border)';
+													e.target.style.background = 'var(--bg-2)';
+													e.target.style.borderColor = 'var(--accent-muted)';
+													e.target.style.color = 'var(--text)';
 												}}
 											>
 												📁 Open Installation Folder
@@ -2045,7 +1958,7 @@ const Upscale = () => {
 										background: 'rgba(0,0,0,0.3)', 
 										borderRadius: '3px',
 										overflow: 'hidden',
-										border: '1px solid var(--glass-border)'
+										border: '1px solid rgba(255, 255, 255, 0.06)'
 									}}>
 										<div style={{ 
 											width: `${downloadProgress}%`, 
@@ -2062,9 +1975,9 @@ const Upscale = () => {
 										marginTop: '1rem',
 										maxHeight: '200px',
 										overflowY: 'auto',
-										background: 'rgba(0,0,0,0.2)',
-										border: '1px solid var(--glass-border)',
-										borderRadius: '6px',
+										background: 'var(--bg-2)',
+										border: '1px solid rgba(255, 255, 255, 0.06)',
+										borderRadius: '5px',
 										padding: '0.75rem',
 										fontFamily: 'JetBrains Mono, monospace',
 										fontSize: '0.75rem',
@@ -2093,32 +2006,34 @@ const Upscale = () => {
 									width: '100%',
 									padding: '0.75rem 1rem',
 									background: isDownloading || (downloadStatus?.binary?.installed && downloadStatus?.models?.installed?.length === downloadStatus?.models?.total)
-										? 'rgba(255,255,255,0.05)'
-										: 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 78%), color-mix(in srgb, var(--accent-muted), transparent 82%))',
+										? 'var(--bg-2)'
+										: 'var(--bg-2)',
 									border: isDownloading || (downloadStatus?.binary?.installed && downloadStatus?.models?.installed?.length === downloadStatus?.models?.total)
-										? '1px solid var(--glass-border)'
-										: '1px solid color-mix(in srgb, var(--accent), transparent 68%)',
+										? '1px solid var(--text-2)'
+										: '1px solid var(--accent)',
 									color: isDownloading || (downloadStatus?.binary?.installed && downloadStatus?.models?.installed?.length === downloadStatus?.models?.total)
-										? 'rgba(255,255,255,0.3)'
+										? 'var(--text-2)'
 										: 'var(--accent)',
-									borderRadius: '8px',
+									borderRadius: '5px',
 									cursor: isDownloading || (downloadStatus?.binary?.installed && downloadStatus?.models?.installed?.length === downloadStatus?.models?.total) ? 'not-allowed' : 'pointer',
 									fontFamily: 'JetBrains Mono, monospace',
 									fontSize: '0.9rem',
 									fontWeight: 'bold',
-									boxShadow: 'var(--glass-shadow)',
+									boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
 									transition: 'all 0.2s ease',
-									opacity: isDownloading || (downloadStatus?.binary?.installed && downloadStatus?.models?.installed?.length === downloadStatus?.models?.total) ? 0.5 : 1
+									opacity: isDownloading || (downloadStatus?.binary?.installed && downloadStatus?.models?.installed?.length === downloadStatus?.models?.total) ? 0.6 : 1
 								}}
 								onMouseEnter={(e) => {
 									if (!isDownloading && !(downloadStatus?.binary?.installed && downloadStatus?.models?.installed?.length === downloadStatus?.models?.total)) {
-										e.target.style.transform = 'translateY(-1px)';
-										e.target.style.boxShadow = 'var(--glass-shadow)';
+										e.target.style.background = 'var(--surface-2)';
+										e.target.style.borderColor = 'var(--accent)';
 									}
 								}}
 								onMouseLeave={(e) => {
-									e.target.style.transform = 'translateY(0)';
-									e.target.style.boxShadow = 'var(--glass-shadow)';
+									if (!isDownloading && !(downloadStatus?.binary?.installed && downloadStatus?.models?.installed?.length === downloadStatus?.models?.total)) {
+										e.target.style.background = 'var(--bg-2)';
+										e.target.style.borderColor = 'var(--accent)';
+									}
 								}}
 							>
 								{downloadStatus?.binary?.installed && downloadStatus?.models?.installed?.length === downloadStatus?.models?.total 
@@ -2170,9 +2085,9 @@ const Upscale = () => {
 							<div style={{ 
 								marginTop: '1rem',
 								padding: '1rem',
-								background: 'rgba(255,255,255,0.05)',
-								borderRadius: '8px',
-								border: '1px solid rgba(255,255,255,0.1)'
+								background: 'var(--bg-2)',
+								borderRadius: '5px',
+								border: '1px solid rgba(255, 255, 255, 0.06)'
 							}}>
 								<h4 style={{ 
 									margin: '0 0 0.5rem 0', 

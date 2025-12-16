@@ -1,7 +1,7 @@
 {
   "name": "quartz",
   "productName": "Quartz",
-  "version": "1.2.2",
+  "version": "2.0.1",
   "description": "Quartz - League of Legends Modding Suite",
   "homepage": "./",
   "main": "electron-main.js",
@@ -37,36 +37,11 @@
     },
     "extraResources": [
       {
-        "from": "minimal-ltmao/src",
-        "to": "minimal-ltmao/src",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "minimal-ltmao/cpy-minimal",
-        "to": "minimal-ltmao/cpy-minimal",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "minimal-ltmao/res",
-        "to": "minimal-ltmao/res",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
         "from": "tools/executables",
         "to": "tools/executables",
         "filter": [
           "**/*"
         ]
-      },
-      {
-        "from": "dist/bumpath_backend.exe",
-        "to": "bumpath_backend.exe"
       },
       {
         "from": "tools/ritobin_cli.exe",
@@ -100,9 +75,8 @@
     "electron-build": "electron-builder build --win --publish never",
     "deploy": "electron-builder build --win --publish always",
     "release:win": "npm run build && electron-builder --win --publish never",
-    "build:backend": "python build_backend.py",
-    "build:all": "npm run build:backend && npm run build && npm run electron-build",
-    "dist": "npm run build:backend && npm run build && electron-builder --win --publish never",
+    "build:all": "npm run build && npm run electron-build",
+    "dist": "npm run build && electron-builder --win --publish never",
     "dist:no-backend": "npm run build && electron-builder --win --publish never",
     "dev:test-updates": "cross-env ENABLE_AUTO_UPDATER=true concurrently \"react-scripts start\" \"wait-on http://localhost:3000 && electron .\""
   },
@@ -119,6 +93,7 @@
   "dependencies": {
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
+    "@mongodb-js/zstd": "^2.0.1",
     "@mui/icons-material": "^5.15.0",
     "@mui/material": "^5.15.0",
     "@mui/x-data-grid": "^6.18.0",

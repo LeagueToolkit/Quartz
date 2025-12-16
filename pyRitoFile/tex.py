@@ -9,6 +9,7 @@ class TEXFormat(Enum):
     DXT1 = 10
     DXT5 = 12
     BGRA8 = 20
+    RGBA16 = 21
 
     def __json__(self):
         return self.name
@@ -46,7 +47,7 @@ class TEX:
             self.format = TEXFormat(self.format)
             self.mipmaps, = bs.read_b()
             # read data
-            if self.mipmaps and self.format in (TEXFormat.DXT1, TEXFormat.DXT5, TEXFormat.BGRA8):
+            if self.mipmaps and self.format in (TEXFormat.DXT1, TEXFormat.DXT5, TEXFormat.BGRA8, TEXFormat.RGBA16):
                 # if mipmaps and supported format
                 if self.format == TEXFormat.DXT1:
                     block_size = 4
@@ -54,6 +55,9 @@ class TEX:
                 elif self.format == TEXFormat.DXT5:
                     block_size = 4
                     bytes_per_block = 16
+                elif self.format == TEXFormat.RGBA16:
+                    block_size = 1
+                    bytes_per_block = 8
                 else:
                     block_size = 1
                     bytes_per_block = 4
@@ -82,7 +86,7 @@ class TEX:
             bs.write_u16(self.width, self.height)
             bs.write_u8(1, self.format.value, 0)  # unknown1, format, unknown2
             bs.write_b(self.mipmaps)
-            if self.mipmaps and self.format in (TEXFormat.DXT1, TEXFormat.DXT5, TEXFormat.BGRA8):
+            if self.mipmaps and self.format in (TEXFormat.DXT1, TEXFormat.DXT5, TEXFormat.BGRA8, TEXFormat.RGBA16):
                 for block_data in self.data:
                     bs.write(block_data)
             else:

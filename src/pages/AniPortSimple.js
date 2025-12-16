@@ -14,17 +14,17 @@ import { findAssetFiles, copyAssetFiles, showAssetCopyResults } from '../utils/a
 // Import animation-specific utilities
 import { parseAnimationData } from '../utils/animationParser.js';
 import { linkAnimationWithVfx, portAnimationEventWithVfx, findVfxSystemForEffectKey } from '../utils/animationVfxLinker.js';
-import { 
-  loadAnimationFilePair, 
+import {
+  loadAnimationFilePair,
   autoDetectSkinsFile,
-  validateFileCompatibility 
+  validateFileCompatibility
 } from '../utils/animationFileLoader.js';
 import { generateModifiedAnimationContent, detectFileStructureType } from '../utils/animationContentGenerator.js';
 import { deleteClip, extractClip, insertClip } from '../utils/clipTextManipulator.js';
-import { 
-  addSelectorPair, 
-  removeSelectorPair, 
-  updateSelectorPairProbability, 
+import {
+  addSelectorPair,
+  removeSelectorPair,
+  updateSelectorPairProbability,
   deleteSelectorClipData,
   generateSelectorClipDataText,
   addEventToSelectorClipData
@@ -43,12 +43,12 @@ const path = window.require ? window.require('path') : null;
 // TrackData processing function
 const processTrackDataChanges = (content, trackData, deletedTrack = null) => {
   let modifiedContent = content;
-  
+
   console.log('🔧 SAVE: Processing TrackData changes:', trackData);
   if (deletedTrack) {
     console.log('🔧 SAVE: Processing deleted track:', deletedTrack);
   }
-  
+
   // Handle deleted track first
   if (deletedTrack) {
     const escapedTrackName = deletedTrack.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -66,7 +66,7 @@ const processTrackDataChanges = (content, trackData, deletedTrack = null) => {
         'g'
       );
     }
-    
+
     // Use brace counting approach for precise deletion
     let startPattern;
     if (deletedTrack.startsWith('0x')) {
@@ -77,15 +77,15 @@ const processTrackDataChanges = (content, trackData, deletedTrack = null) => {
       startPattern = new RegExp(`"${deletedTrack.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\s*=\\s*TrackData\\s*\\{`, 'g');
     }
     const startMatch = startPattern.exec(modifiedContent);
-    
+
     if (startMatch) {
       const startIndex = startMatch.index;
       console.log(`🔧 SAVE: Found track to delete: ${deletedTrack} at position ${startIndex}`);
-      
+
       // Find the matching closing brace
       let braceCount = 0;
       let endIndex = startIndex;
-      
+
       for (let i = startIndex; i < modifiedContent.length; i++) {
         if (modifiedContent[i] === '{') {
           braceCount++;
@@ -97,26 +97,26 @@ const processTrackDataChanges = (content, trackData, deletedTrack = null) => {
           }
         }
       }
-      
+
       console.log(`🔧 SAVE: Brace count reached 0 at position ${endIndex}`);
-      
+
       // Remove the complete track entry
       modifiedContent = modifiedContent.substring(0, startIndex) + modifiedContent.substring(endIndex);
-      
+
       // Clean up any extra whitespace left behind
       modifiedContent = modifiedContent.replace(/\n\s*\n\s*\n/g, '\n\n');
-      
+
       console.log(`🔧 SAVE: Deleted track: ${deletedTrack}`);
     }
   }
-  
+
   // Process each track in the TrackData
   Object.entries(trackData).forEach(([trackName, trackProps]) => {
     console.log(`🔧 SAVE: Processing track ${trackName} with props:`, trackProps);
-    
+
     // Escape special regex characters in track name
     const escapedTrackName = trackName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    
+
     // Create a more robust pattern that handles multiline TrackData entries
     // Handle both quoted and unquoted track names (hex vs string names)
     let trackPattern;
@@ -133,12 +133,12 @@ const processTrackDataChanges = (content, trackData, deletedTrack = null) => {
         'g'
       );
     }
-    
+
     const match = trackPattern.exec(modifiedContent);
-    
+
     if (match) {
       console.log(`🔧 SAVE: Found existing track entry for ${trackName}:`, match[1]);
-      
+
       // Build new track data entry with correct formatting
       let newTrackEntry;
       if (trackName.startsWith('0x')) {
@@ -148,7 +148,7 @@ const processTrackDataChanges = (content, trackData, deletedTrack = null) => {
         // String track names (quoted)
         newTrackEntry = `"${trackName}" = TrackData {\n`;
       }
-      
+
       // Add properties only if they exist
       if (trackProps.mPriority !== undefined) {
         newTrackEntry += `        mPriority: u8 = ${trackProps.mPriority}\n`;
@@ -159,9 +159,9 @@ const processTrackDataChanges = (content, trackData, deletedTrack = null) => {
       if (trackProps.mBlendWeight !== undefined) {
         newTrackEntry += `        mBlendWeight: f32 = ${trackProps.mBlendWeight}\n`;
       }
-      
+
       newTrackEntry += '    }';
-      
+
       // Replace the old track entry with the new one
       modifiedContent = modifiedContent.replace(match[1], newTrackEntry);
       console.log(`🔧 SAVE: Updated TrackData for ${trackName}:`, trackProps);
@@ -170,18 +170,18 @@ const processTrackDataChanges = (content, trackData, deletedTrack = null) => {
       console.log(`🔧 SAVE: No existing track entry found for ${trackName}`);
     }
   });
-  
+
   return modifiedContent;
 };
 
 // Mask deletion processing function
 const processMaskDeletion = (content, deletedMask) => {
   let modifiedContent = content;
-  
+
   if (!deletedMask) return modifiedContent;
-  
+
   console.log('🔧 SAVE: Processing mask deletion:', deletedMask);
-  
+
   // Find and remove the mask entry from mMaskDataMap
   // Handle both quoted and unquoted mask names
   let maskEntryPattern;
@@ -198,7 +198,7 @@ const processMaskDeletion = (content, deletedMask) => {
       'g'
     );
   }
-  
+
   // Use brace counting approach for precise deletion
   let startPattern;
   if (deletedMask.startsWith('0x')) {
@@ -209,15 +209,15 @@ const processMaskDeletion = (content, deletedMask) => {
     startPattern = new RegExp(`"${deletedMask.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\s*=\\s*MaskData\\s*\\{`, 'g');
   }
   const startMatch = startPattern.exec(modifiedContent);
-  
+
   if (startMatch) {
     const startIndex = startMatch.index;
     console.log(`🔧 SAVE: Found mask to delete: ${deletedMask} at position ${startIndex}`);
-    
+
     // Find the matching closing brace
     let braceCount = 0;
     let endIndex = startIndex;
-    
+
     for (let i = startIndex; i < modifiedContent.length; i++) {
       if (modifiedContent[i] === '{') {
         braceCount++;
@@ -229,18 +229,18 @@ const processMaskDeletion = (content, deletedMask) => {
         }
       }
     }
-    
+
     console.log(`🔧 SAVE: Brace count reached 0 at position ${endIndex}`);
-    
+
     // Remove the complete mask entry
     modifiedContent = modifiedContent.substring(0, startIndex) + modifiedContent.substring(endIndex);
-    
+
     // Clean up any extra whitespace left behind
     modifiedContent = modifiedContent.replace(/\n\s*\n\s*\n/g, '\n\n');
-    
+
     console.log(`🔧 SAVE: Deleted mask: ${deletedMask}`);
   }
-  
+
   return modifiedContent;
 };
 
@@ -256,22 +256,22 @@ const AniPortSimple = () => {
   const [donorSkinsFile, setDonorSkinsFile] = useState(null);
   const [targetAnimationFile, setTargetAnimationFile] = useState(null);
   const [targetSkinsFile, setTargetSkinsFile] = useState(null);
-  
+
   // Toast notification state
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
-  
+
   // Info tooltip state
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
-  
+
   // Delete confirmation dialog state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [clipToDelete, setClipToDelete] = useState(null);
-  
+
   // VFX system deletion confirmation dialog state
   const [vfxDeleteConfirmOpen, setVfxDeleteConfirmOpen] = useState(false);
   const vfxDeleteCallbackRef = useRef(null);
   const [vfxDeleteEffectKey, setVfxDeleteEffectKey] = useState(null);
-  
+
   // Recent files state
   const [recentDonorFiles, setRecentDonorFiles] = useState([]);
   const [recentTargetFiles, setRecentTargetFiles] = useState([]);
@@ -279,7 +279,7 @@ const AniPortSimple = () => {
   // Data state
   const [donorData, setDonorData] = useState(null);
   const [targetData, setTargetData] = useState(null);
-  
+
   // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -290,7 +290,7 @@ const AniPortSimple = () => {
   const [expandedDonorClips, setExpandedDonorClips] = useState(new Set());
   const [targetSearchTerm, setTargetSearchTerm] = useState('');
   const [donorSearchTerm, setDonorSearchTerm] = useState('');
-  
+
   // Save and undo functionality
   const [fileSaved, setFileSaved] = useState(true);
   const [undoHistory, setUndoHistory] = useState([]);
@@ -311,7 +311,7 @@ const AniPortSimple = () => {
   const [editingProbability, setEditingProbability] = useState('');
   const [selectorProbabilityInput, setSelectorProbabilityInput] = useState('1.0');
   const [maskDataNameInputs, setMaskDataNameInputs] = useState({});
-  
+
   // Page switching state
   const [currentPage, setCurrentPage] = useState('animation'); // 'animation' or 'mask'
 
@@ -320,22 +320,22 @@ const AniPortSimple = () => {
     console.log('🔍 Validating animation file structure...');
     console.log('📄 Content length:', content.length);
     console.log('📄 First 500 chars:', content.substring(0, 500));
-    
+
     // Check for proper animationGraphData structure
     const hasAnimationGraphData = content.includes('animationGraphData {');
     const hasClipDataMap = content.includes('mClipDataMap: map[hash,pointer] = {');
     const hasAtomicClipData = content.includes('AtomicClipData {');
-    
+
     console.log('🔍 Validation results:');
     console.log('- hasAnimationGraphData:', hasAnimationGraphData);
     console.log('- hasClipDataMap:', hasClipDataMap);
     console.log('- hasAtomicClipData:', hasAtomicClipData);
-    
+
     if (!hasAnimationGraphData || !hasClipDataMap || !hasAtomicClipData) {
       console.log('❌ Missing required animation structure');
       return false;
     }
-    
+
     console.log('✅ Animation file structure is valid');
     return true;
   };
@@ -353,7 +353,7 @@ const AniPortSimple = () => {
         const binDir = path.dirname(filePath);
         const binName = path.basename(filePath, '.bin');
         const pyFilePath = path.join(binDir, `${binName}.py`);
-        
+
         if (fs?.existsSync(pyFilePath)) {
           setLoadingMessage('Loading existing .py file...');
           finalPath = pyFilePath;
@@ -369,7 +369,7 @@ const AniPortSimple = () => {
       // Validate the file content
       setLoadingMessage('Validating animation file structure...');
       const content = fs.readFileSync(finalPath, 'utf8');
-      
+
       if (!validateAnimationFile(content)) {
         setSnackbar({
           open: true,
@@ -429,7 +429,7 @@ const AniPortSimple = () => {
         const binDir = path.dirname(filePath);
         const binName = path.basename(filePath, '.bin');
         const pyFilePath = path.join(binDir, `${binName}.py`);
-        
+
         if (fs?.existsSync(pyFilePath)) {
           setLoadingMessage('Loading existing .py file...');
           finalPath = pyFilePath;
@@ -482,7 +482,7 @@ const AniPortSimple = () => {
           { name: 'All Files', extensions: ['*'] }
         ]
       });
-      
+
       if (!result.canceled && result.filePaths.length > 0) {
         const filePath = result.filePaths[0];
         await processAnimationFile(filePath, type);
@@ -515,7 +515,7 @@ const AniPortSimple = () => {
           { name: 'All Files', extensions: ['*'] }
         ]
       });
-      
+
       if (!result.canceled && result.filePaths.length > 0) {
         if (fileType === 'Animation') {
           await processAnimationFile(result.filePaths[0], type.toLowerCase());
@@ -531,14 +531,14 @@ const AniPortSimple = () => {
   // Recent files management
   const addToRecentFiles = (filePath, type) => {
     if (!filePath) return;
-    
+
     const recentKey = type === 'donor' ? 'recentDonorFiles' : 'recentTargetFiles';
     const setter = type === 'donor' ? setRecentDonorFiles : setRecentTargetFiles;
     const getter = type === 'donor' ? recentDonorFiles : recentTargetFiles;
-    
+
     // Remove if already exists
     const filtered = getter.filter(file => file.path !== filePath);
-    
+
     // Add to beginning and limit to 10 files
     const updated = [
       {
@@ -548,9 +548,9 @@ const AniPortSimple = () => {
       },
       ...filtered
     ].slice(0, 10);
-    
+
     setter(updated);
-    
+
     // Save to localStorage
     try {
       localStorage.setItem(`aniport_${recentKey}`, JSON.stringify(updated));
@@ -563,7 +563,7 @@ const AniPortSimple = () => {
     try {
       const donorRecent = localStorage.getItem('aniport_recentDonorFiles');
       const targetRecent = localStorage.getItem('aniport_recentTargetFiles');
-      
+
       if (donorRecent) {
         setRecentDonorFiles(JSON.parse(donorRecent));
       }
@@ -618,8 +618,8 @@ const AniPortSimple = () => {
       // Load donor files
       setLoadingMessage('Loading donor files...');
       const donorResult = await loadAnimationFilePair(
-        donorAnimationFile, 
-        donorSkinsFile, 
+        donorAnimationFile,
+        donorSkinsFile,
         (msg, progress) => progressCallback(`Donor: ${msg}`, progress * 0.4)
       );
 
@@ -630,8 +630,8 @@ const AniPortSimple = () => {
       // Load target files
       setLoadingMessage('Loading target files...');
       const targetResult = await loadAnimationFilePair(
-        targetAnimationFile, 
-        targetSkinsFile, 
+        targetAnimationFile,
+        targetSkinsFile,
         (msg, progress) => progressCallback(`Target: ${msg}`, 40 + (progress * 0.4))
       );
 
@@ -641,7 +641,7 @@ const AniPortSimple = () => {
 
       setDonorData(donorResult);
       setTargetData(targetResult);
-      
+
       // Store original content for saving
       if (targetResult.originalAnimationContent) {
         setTargetData(prev => ({
@@ -657,26 +657,26 @@ const AniPortSimple = () => {
           currentFileContent: targetResult.originalSkinsContent // Initialize current content
         }));
       }
-      
+
       // Clear undo history when loading new files
       setUndoHistory([]);
       setFileSaved(false);
-      
+
       // Debug logging
       console.log('Donor data:', donorResult);
       console.log('Target data:', targetResult);
       console.log('Donor clips:', Object.keys(donorResult.animationData.clips));
       console.log('Target clips:', Object.keys(targetResult.animationData.clips));
-      
+
       // Log first few clips to see structure
       const donorClipNames = Object.keys(donorResult.animationData.clips);
       const targetClipNames = Object.keys(targetResult.animationData.clips);
       console.log('First donor clip:', donorResult.animationData.clips[donorClipNames[0]]);
       console.log('First target clip:', targetResult.animationData.clips[targetClipNames[0]]);
-      
+
       setLoadingMessage('Files loaded successfully!');
       setLoadingProgress(100);
-      
+
       CreateMessage({
         title: 'Files Loaded Successfully',
         message: `Loaded ${donorResult.animationData.totalClips} donor clips and ${targetResult.animationData.totalClips} target clips`,
@@ -698,7 +698,7 @@ const AniPortSimple = () => {
   // Helper function to create display name for clips
   const getClipDisplayName = (clip) => {
     if (!clip.name) return 'Unknown';
-    
+
     // If it's a hash name, try to extract animation file name for better readability
     if (clip.name.startsWith('0x')) {
       if (clip.animationFilePath) {
@@ -710,7 +710,7 @@ const AniPortSimple = () => {
       }
       return `${clip.name} (Hash)`;
     }
-    
+
     return clip.name;
   };
 
@@ -719,12 +719,12 @@ const AniPortSimple = () => {
     if (!donorData || !donorData.animationData || !donorData.animationData.clips) {
       return [];
     }
-    
+
     const standaloneEvents = [];
     Object.values(donorData.animationData.clips).forEach(clip => {
       if (clip.isStandalone && clip.type === 'StandaloneEvent') {
         // Extract the event from the virtual clip
-        const eventType = Object.keys(clip.events).find(type => 
+        const eventType = Object.keys(clip.events).find(type =>
           clip.events[type] && clip.events[type].length > 0
         );
         if (eventType) {
@@ -732,7 +732,7 @@ const AniPortSimple = () => {
         }
       }
     });
-    
+
     return standaloneEvents;
   };
 
@@ -754,7 +754,7 @@ const AniPortSimple = () => {
 
   // Expand/collapse state for standalone containers and groups
   const [standaloneExpanded, setStandaloneExpanded] = useState(true);
-  const [standaloneGroupExpanded, setStandaloneGroupExpanded] = useState(new Set(['particle','submesh','sound','facetarget']));
+  const [standaloneGroupExpanded, setStandaloneGroupExpanded] = useState(new Set(['particle', 'submesh', 'sound', 'facetarget']));
   const [standaloneSlideOverOpen, setStandaloneSlideOverOpen] = useState(false);
 
   const toggleStandaloneGroup = (key) => {
@@ -779,14 +779,14 @@ const AniPortSimple = () => {
       console.log('No donor clips');
       return [];
     }
-    
+
     // Filter out standalone events from regular clips
-    const clips = Object.values(donorData.animationData.clips).filter(clip => 
+    const clips = Object.values(donorData.animationData.clips).filter(clip =>
       !clip.isStandalone || clip.type !== 'StandaloneEvent'
     );
-    
+
     console.log('Donor clips (excluding standalone):', clips.length, clips.map(c => c?.name || 'no name'));
-    
+
     // Filter by donor search term
     if (donorSearchTerm.trim()) {
       return clips.filter(clip => {
@@ -794,10 +794,10 @@ const AniPortSimple = () => {
         const clipName = clip.name.toLowerCase();
         const displayName = getClipDisplayName(clip).toLowerCase();
         const animationPath = clip.animationFilePath ? clip.animationFilePath.toLowerCase() : '';
-        
-        return clipName.includes(searchTerm) || 
-               displayName.includes(searchTerm) || 
-               animationPath.includes(searchTerm);
+
+        return clipName.includes(searchTerm) ||
+          displayName.includes(searchTerm) ||
+          animationPath.includes(searchTerm);
       });
     }
     return clips;
@@ -818,7 +818,7 @@ const AniPortSimple = () => {
     }
     const clips = Object.values(targetData.animationData.clips);
     console.log('Target clips:', clips.length, clips.map(c => c?.name || 'no name'));
-    
+
     // Filter by target search term
     if (targetSearchTerm.trim()) {
       return clips.filter(clip => {
@@ -826,10 +826,10 @@ const AniPortSimple = () => {
         const clipName = clip.name.toLowerCase();
         const displayName = getClipDisplayName(clip).toLowerCase();
         const animationPath = clip.animationFilePath ? clip.animationFilePath.toLowerCase() : '';
-        
-        return clipName.includes(searchTerm) || 
-               displayName.includes(searchTerm) || 
-               animationPath.includes(searchTerm);
+
+        return clipName.includes(searchTerm) ||
+          displayName.includes(searchTerm) ||
+          animationPath.includes(searchTerm);
       });
     }
     return clips;
@@ -871,16 +871,16 @@ const AniPortSimple = () => {
           fileContent: null, // No file content available
           action: actionDescription
         };
-        
+
         setUndoHistory(prev => {
           const newHistory = [...prev, currentState];
           return newHistory.slice(-20);
         });
         return;
       }
-      
+
       const currentFileContent = fsModule.readFileSync(targetAnimationFile, 'utf8');
-      
+
       const currentState = {
         targetData: JSON.parse(JSON.stringify(targetData)),
         targetAnimationFile: targetAnimationFile,
@@ -888,7 +888,7 @@ const AniPortSimple = () => {
         fileContent: currentFileContent, // Save the actual file content
         action: actionDescription
       };
-      
+
       setUndoHistory(prev => {
         const newHistory = [...prev, currentState];
         // Keep only last 20 actions to prevent memory issues
@@ -904,7 +904,7 @@ const AniPortSimple = () => {
         fileContent: null,
         action: actionDescription
       };
-      
+
       setUndoHistory(prev => {
         const newHistory = [...prev, currentState];
         return newHistory.slice(-20);
@@ -921,9 +921,9 @@ const AniPortSimple = () => {
     try {
       // Get the last state from undo history
       const lastState = undoHistory[undoHistory.length - 1];
-      
+
       console.log(`🔄 UNDO: Restoring state for action: ${lastState.action}`);
-      
+
       // Restore the file content if available
       if (lastState.fileContent && targetAnimationFile) {
         const fsModule = window.require ? window.require('fs') : null;
@@ -931,12 +931,12 @@ const AniPortSimple = () => {
           console.log(`🔄 UNDO: Writing restored content to file: ${targetAnimationFile}`);
           fsModule.writeFileSync(targetAnimationFile, lastState.fileContent, 'utf8');
           console.log(`✅ UNDO: File content restored successfully`);
-          
+
           // Re-parse the restored file content to get fresh UI state
           console.log(`🔄 UNDO: Re-parsing restored file content...`);
           const restoredData = parseAnimationData(lastState.fileContent);
           console.log(`✅ UNDO: Re-parsed data successfully`);
-          
+
           // Update UI state with the fresh parsed data
           setTargetData(prev => ({
             ...prev,
@@ -952,18 +952,18 @@ const AniPortSimple = () => {
         // Fallback to saved UI state
         setTargetData(lastState.targetData);
       }
-      
+
       // Always restore file paths
       setTargetAnimationFile(lastState.targetAnimationFile);
       setTargetSkinsFile(lastState.targetSkinsFile);
       setFileSaved(false);
-      
+
       // Remove the restored state from undo history
       setUndoHistory(prev => prev.slice(0, -1));
-      
+
       setStatusMessage(`✅ Undid: ${lastState.action}`);
       console.log(`✅ UNDO: Successfully restored state for: ${lastState.action}`);
-      
+
     } catch (error) {
       console.error('❌ UNDO: Error during undo operation:', error);
       setStatusMessage(`❌ Undo failed: ${error.message}`);
@@ -985,7 +985,7 @@ const AniPortSimple = () => {
       if (!fsModule) {
         throw new Error('File system access not available');
       }
-      
+
       setIsProcessing(true);
       setProcessingText('Saving .bin...');
       setStatusMessage('Saving modified target file...');
@@ -1004,25 +1004,25 @@ const AniPortSimple = () => {
       // Generate the modified Python content
       // Read the current file content to preserve previous deletions
       const currentContent = fsModule.readFileSync(targetAnimationFile, 'utf8');
-      
+
       // First, remove any deleted events from the current content
       let modifiedContent = removeDeletedEventsFromContent(currentContent, deletedEvents);
-      
+
       // For now, we'll implement a simple approach:
       // 1. If we have modified animation data, we need to regenerate the animation sections
       // 2. If we have modified VFX systems, we need to regenerate the VFX sections
       // 3. For now, let's start with a basic implementation that at least preserves the structure
-      
+
       // Implement content generation for both animation data and VFX systems
       // Only consider VFX systems that were actually ported (have ported: true flag)
       let hasVfxChanges = false;
       let portedVfxSystems = {};
-      
+
       console.log('🔧 SAVE: Checking for VFX systems in targetData...');
       console.log('🔧 SAVE: targetData.vfxSystems exists:', !!targetData.vfxSystems);
       console.log('🔧 SAVE: targetData.vfxSystems type:', typeof targetData.vfxSystems);
       console.log('🔧 SAVE: targetData.vfxSystems keys:', targetData.vfxSystems ? Object.keys(targetData.vfxSystems) : 'N/A');
-      
+
       if (targetData.vfxSystems) {
         for (const [systemKey, system] of Object.entries(targetData.vfxSystems)) {
           console.log(`🔧 SAVE: Checking VFX system "${systemKey}":`, {
@@ -1037,12 +1037,12 @@ const AniPortSimple = () => {
           }
         }
       }
-      
+
       console.log('🔧 SAVE: VFX changes detected:', hasVfxChanges);
       console.log('🔧 SAVE: Ported VFX systems count:', Object.keys(portedVfxSystems).length);
-      
+
       let hasAnimationChanges = targetData.animationData && targetData.animationData.clips && typeof targetData.animationData.clips === 'object';
-      
+
       console.log('🔧 SAVE: Content generation check:', {
         hasVfxChanges,
         hasAnimationChanges,
@@ -1051,7 +1051,7 @@ const AniPortSimple = () => {
         animationClipsCount: hasAnimationChanges ? Object.keys(targetData.animationData.clips).length : 0,
         animationClipsType: targetData.animationData?.clips ? typeof targetData.animationData.clips : 'undefined'
       });
-      
+
       // Detect file structure type first
       const { detectFileStructureType } = await import('../utils/animationContentGenerator.js');
       const fileStructureType = detectFileStructureType(
@@ -1060,50 +1060,172 @@ const AniPortSimple = () => {
         targetData.originalAnimationContent,
         targetData.originalSkinsContent
       );
-      
+
       console.log('🔧 SAVE: Detected file structure type:', fileStructureType);
-      
+
       if (fileStructureType === 'combined' || fileStructureType === 'embedded') {
         // For combined/embedded files, handle VFX and animation separately but carefully
         console.log('🔧 SAVE: Combined/embedded file detected, handling VFX and animation separately...');
-        
+
         // First handle VFX systems if any
         if (hasVfxChanges) {
           console.log('🔧 SAVE: Inserting ported VFX systems for combined file...');
-          
+
           try {
             const { completeVfxIntegrationForAniPort } = await import('../utils/aniportVfxInserter.js');
             const { cleanVfxSystemContent } = await import('../utils/vfxContentCleaner.js');
-            
+
             // Insert each ported VFX system using AniPort-specific logic
             for (const [systemKey, system] of Object.entries(portedVfxSystems)) {
               console.log('🔧 SAVE: Inserting ported VFX system:', systemKey);
-              
+
               try {
                 const originalContent = system.rawContent || system.fullContent || '';
                 const systemName = system.name || systemKey;
-                
+
                 if (!originalContent || originalContent.trim() === '') {
                   console.error(`🔧 SAVE: VFX system "${systemKey}" has no content, skipping`);
                   continue;
                 }
-                
+
                 console.log(`🔧 SAVE: Processing VFX system "${systemName}" with content length: ${originalContent.length}`);
-                
+
                 // Clean the VFX system content to remove any animation graph data
                 const cleanedContent = cleanVfxSystemContent(originalContent, systemName);
                 console.log(`🔧 SAVE: Cleaned VFX content length: ${cleanedContent.length}`);
-            
-            // Use AniPort-specific VFX integration (includes proper placement, ResourceResolver, and animation integration)
-            // Pass the actual ported events from targetData instead of creating new ones
-            const portedEvents = [];
-            if (targetData.animationData && targetData.animationData.clips) {
-              for (const [clipName, clip] of Object.entries(targetData.animationData.clips)) {
-                if (clip.events) {
-                  for (const [eventType, events] of Object.entries(clip.events)) {
-                    const portedEventsOfType = events.filter(event => event.isPorted === true);
-                    for (const event of portedEventsOfType) {
-                      portedEvents.push({
+
+                // Use AniPort-specific VFX integration (includes proper placement, ResourceResolver, and animation integration)
+                // Pass the actual ported events from targetData instead of creating new ones
+                const portedEvents = [];
+                if (targetData.animationData && targetData.animationData.clips) {
+                  for (const [clipName, clip] of Object.entries(targetData.animationData.clips)) {
+                    if (clip.events) {
+                      for (const [eventType, events] of Object.entries(clip.events)) {
+                        const portedEventsOfType = events.filter(event => event.isPorted === true);
+                        for (const event of portedEventsOfType) {
+                          portedEvents.push({
+                            ...event,
+                            clipName,
+                            eventType
+                          });
+                        }
+                      }
+                    }
+                  }
+                }
+
+                // Filter events to only include those that use this VFX system's effect key
+                const relevantEvents = portedEvents.filter(event => {
+                  // For particle events, check if the effect key matches this system
+                  if (event.eventType === 'particle' && event.effectKey) {
+                    // Universal matching: direct match with system name or effect key
+                    return event.effectKey === systemName || event.effectKey === systemKey;
+                  }
+                  // Include ALL non-particle events (sound, submesh, etc.) regardless of VFX system
+                  return true;
+                });
+
+                console.log(`🔧 SAVE: Filtered ${relevantEvents.length} relevant events for system ${systemName}`);
+
+                try {
+                  console.log(`🔧 SAVE: Calling completeVfxIntegrationForAniPort for "${systemName}"`);
+                  modifiedContent = completeVfxIntegrationForAniPort(
+                    modifiedContent,
+                    cleanedContent,
+                    systemName,
+                    relevantEvents, // Pass only events that use this VFX system
+                    systemName  // Use system name as effect key
+                  );
+                  console.log('🔧 SAVE: VFX system fully integrated:', systemName);
+                } catch (integrationError) {
+                  console.error(`🔧 SAVE: Failed to integrate VFX system "${systemName}":`, integrationError);
+                  throw new Error(`VFX system integration failed for "${systemName}": ${integrationError.message}`);
+                }
+              } catch (systemError) {
+                console.error(`🔧 SAVE: Error processing VFX system "${systemKey}":`, systemError);
+                throw new Error(`Failed to process VFX system "${systemKey}": ${systemError.message}`);
+              }
+            }
+
+            console.log('🔧 SAVE: All ported VFX systems integrated for combined file');
+          } catch (vfxError) {
+            console.error('🔧 SAVE: VFX integration failed:', vfxError);
+            throw new Error(`VFX systems integration failed: ${vfxError.message}`);
+          }
+        }
+
+        // Then handle animation events if any (but skip if no animation changes)
+        if (hasAnimationChanges) {
+          console.log('🔧 SAVE: Animation changes detected, checking if we need to write modified content...');
+
+          // Check if the file was modified by clip operations (delete/add)
+          const currentFileContent = fsModule.readFileSync(targetAnimationFile, 'utf8');
+          const currentClipCount = (currentFileContent.match(/"([^"]+)"\s*=\s*AtomicClipData\s*{/g) || []).length;
+          const expectedClipCount = Object.keys(targetData.animationData.clips).length;
+
+          console.log(`🔧 SAVE: Current file clips: ${currentClipCount}, Expected clips: ${expectedClipCount}`);
+
+          if (currentClipCount !== expectedClipCount) {
+            console.log('🔧 SAVE: Clip count mismatch detected - file was modified by clip operations, using current file content');
+            // File was already modified by clip operations, use the current content
+            modifiedContent = currentFileContent;
+
+            // Process TrackData changes if any
+            if (targetData.trackData) {
+              console.log('🔧 SAVE: Processing TrackData changes...');
+              modifiedContent = processTrackDataChanges(modifiedContent, targetData.trackData, targetData.deletedTrack);
+            }
+
+            // Process mask deletion if any
+            if (targetData.deletedMask) {
+              console.log('🔧 SAVE: Processing mask deletion...');
+              modifiedContent = processMaskDeletion(modifiedContent, targetData.deletedMask);
+            }
+          } else {
+            console.log('🔧 SAVE: No clip operations detected, skipping animation content generation to prevent duplication...');
+            console.log('🔧 SAVE: TODO: Fix animation content generation to prevent duplicating entire animation graph sections');
+            // TODO: Fix the animation content generator to prevent duplicating entire animation graph sections
+            // For now, we'll skip animation content generation to prevent file corruption
+
+            // Still process TrackData changes and deletions even without clip operations
+            if (targetData.trackData) {
+              console.log('🔧 SAVE: Processing TrackData changes...');
+              modifiedContent = processTrackDataChanges(modifiedContent, targetData.trackData, targetData.deletedTrack);
+            }
+
+            // Process mask deletion if any
+            if (targetData.deletedMask) {
+              console.log('🔧 SAVE: Processing mask deletion...');
+              modifiedContent = processMaskDeletion(modifiedContent, targetData.deletedMask);
+            }
+          }
+        }
+
+        // Handle non-particle events (sound, submesh, etc.) that don't have VFX systems
+        // Also handle particle events if they weren't processed by VFX integration
+        if (hasAnimationChanges) {
+          console.log('🔧 SAVE: Processing non-particle events and orphaned particle events...');
+
+          // Get all ported events that are not particle events OR particle events that weren't handled by VFX
+          const eventsToProcess = [];
+          if (targetData.animationData && targetData.animationData.clips) {
+            for (const [clipName, clip] of Object.entries(targetData.animationData.clips)) {
+              if (clip.events) {
+                for (const [eventType, events] of Object.entries(clip.events)) {
+                  const portedEventsOfType = events.filter(event => event.isPorted === true);
+                  for (const event of portedEventsOfType) {
+                    // Include non-particle events
+                    if (eventType !== 'particle') {
+                      eventsToProcess.push({
+                        ...event,
+                        clipName,
+                        eventType
+                      });
+                    }
+                    // Include particle events if no VFX changes were processed
+                    else if (eventType === 'particle' && !hasVfxChanges) {
+                      console.log('🔧 SAVE: Including orphaned particle event:', event.effectKey);
+                      eventsToProcess.push({
                         ...event,
                         clipName,
                         eventType
@@ -1113,161 +1235,39 @@ const AniPortSimple = () => {
                 }
               }
             }
-            
-            // Filter events to only include those that use this VFX system's effect key
-            const relevantEvents = portedEvents.filter(event => {
-              // For particle events, check if the effect key matches this system
-              if (event.eventType === 'particle' && event.effectKey) {
-                // Universal matching: direct match with system name or effect key
-                return event.effectKey === systemName || event.effectKey === systemKey;
-              }
-              // Include ALL non-particle events (sound, submesh, etc.) regardless of VFX system
-              return true;
-            });
-            
-            console.log(`🔧 SAVE: Filtered ${relevantEvents.length} relevant events for system ${systemName}`);
-            
-            try {
-              console.log(`🔧 SAVE: Calling completeVfxIntegrationForAniPort for "${systemName}"`);
-              modifiedContent = completeVfxIntegrationForAniPort(
-                modifiedContent, 
-                cleanedContent, 
-                systemName,
-                relevantEvents, // Pass only events that use this VFX system
-                systemName  // Use system name as effect key
-              );
-              console.log('🔧 SAVE: VFX system fully integrated:', systemName);
-            } catch (integrationError) {
-              console.error(`🔧 SAVE: Failed to integrate VFX system "${systemName}":`, integrationError);
-              throw new Error(`VFX system integration failed for "${systemName}": ${integrationError.message}`);
-            }
-              } catch (systemError) {
-                console.error(`🔧 SAVE: Error processing VFX system "${systemKey}":`, systemError);
-                throw new Error(`Failed to process VFX system "${systemKey}": ${systemError.message}`);
-              }
-            }
-            
-            console.log('🔧 SAVE: All ported VFX systems integrated for combined file');
-          } catch (vfxError) {
-            console.error('🔧 SAVE: VFX integration failed:', vfxError);
-            throw new Error(`VFX systems integration failed: ${vfxError.message}`);
+          }
+
+          console.log(`🔧 SAVE: Found ${eventsToProcess.length} events to process (non-particle + orphaned particle)`);
+
+          if (eventsToProcess.length > 0) {
+            // Use AniPort-specific inserter to add these events to the file
+            const { addPortedEventsToClipsForAniPort } = await import('../utils/aniportVfxInserter.js');
+
+            modifiedContent = addPortedEventsToClipsForAniPort(modifiedContent, eventsToProcess);
+            console.log('🔧 SAVE: Events added to file (including orphaned particle events)');
           }
         }
-        
-       // Then handle animation events if any (but skip if no animation changes)
-      if (hasAnimationChanges) {
-        console.log('🔧 SAVE: Animation changes detected, checking if we need to write modified content...');
-        
-        // Check if the file was modified by clip operations (delete/add)
-        const currentFileContent = fsModule.readFileSync(targetAnimationFile, 'utf8');
-        const currentClipCount = (currentFileContent.match(/"([^"]+)"\s*=\s*AtomicClipData\s*{/g) || []).length;
-        const expectedClipCount = Object.keys(targetData.animationData.clips).length;
-        
-        console.log(`🔧 SAVE: Current file clips: ${currentClipCount}, Expected clips: ${expectedClipCount}`);
-        
-        if (currentClipCount !== expectedClipCount) {
-          console.log('🔧 SAVE: Clip count mismatch detected - file was modified by clip operations, using current file content');
-          // File was already modified by clip operations, use the current content
-          modifiedContent = currentFileContent;
-          
-          // Process TrackData changes if any
-          if (targetData.trackData) {
-            console.log('🔧 SAVE: Processing TrackData changes...');
-            modifiedContent = processTrackDataChanges(modifiedContent, targetData.trackData, targetData.deletedTrack);
-          }
-          
-          // Process mask deletion if any
-          if (targetData.deletedMask) {
-            console.log('🔧 SAVE: Processing mask deletion...');
-            modifiedContent = processMaskDeletion(modifiedContent, targetData.deletedMask);
-          }
-        } else {
-          console.log('🔧 SAVE: No clip operations detected, skipping animation content generation to prevent duplication...');
-          console.log('🔧 SAVE: TODO: Fix animation content generation to prevent duplicating entire animation graph sections');
-          // TODO: Fix the animation content generator to prevent duplicating entire animation graph sections
-          // For now, we'll skip animation content generation to prevent file corruption
-          
-          // Still process TrackData changes and deletions even without clip operations
-          if (targetData.trackData) {
-            console.log('🔧 SAVE: Processing TrackData changes...');
-            modifiedContent = processTrackDataChanges(modifiedContent, targetData.trackData, targetData.deletedTrack);
-          }
-          
-          // Process mask deletion if any
-          if (targetData.deletedMask) {
-            console.log('🔧 SAVE: Processing mask deletion...');
-            modifiedContent = processMaskDeletion(modifiedContent, targetData.deletedMask);
-          }
-        }
-      }
-       
-       // Handle non-particle events (sound, submesh, etc.) that don't have VFX systems
-       // Also handle particle events if they weren't processed by VFX integration
-       if (hasAnimationChanges) {
-         console.log('🔧 SAVE: Processing non-particle events and orphaned particle events...');
-         
-         // Get all ported events that are not particle events OR particle events that weren't handled by VFX
-         const eventsToProcess = [];
-         if (targetData.animationData && targetData.animationData.clips) {
-           for (const [clipName, clip] of Object.entries(targetData.animationData.clips)) {
-             if (clip.events) {
-               for (const [eventType, events] of Object.entries(clip.events)) {
-                 const portedEventsOfType = events.filter(event => event.isPorted === true);
-                 for (const event of portedEventsOfType) {
-                   // Include non-particle events
-                   if (eventType !== 'particle') {
-                     eventsToProcess.push({
-                       ...event,
-                       clipName,
-                       eventType
-                     });
-                   } 
-                   // Include particle events if no VFX changes were processed
-                   else if (eventType === 'particle' && !hasVfxChanges) {
-                     console.log('🔧 SAVE: Including orphaned particle event:', event.effectKey);
-                     eventsToProcess.push({
-                       ...event,
-                       clipName,
-                       eventType
-                     });
-                   }
-                 }
-               }
-             }
-           }
-         }
-         
-         console.log(`🔧 SAVE: Found ${eventsToProcess.length} events to process (non-particle + orphaned particle)`);
-         
-         if (eventsToProcess.length > 0) {
-           // Use AniPort-specific inserter to add these events to the file
-           const { addPortedEventsToClipsForAniPort } = await import('../utils/aniportVfxInserter.js');
-           
-           modifiedContent = addPortedEventsToClipsForAniPort(modifiedContent, eventsToProcess);
-           console.log('🔧 SAVE: Events added to file (including orphaned particle events)');
-         }
-       }
-        
+
         console.log('🔧 SAVE: Combined file processing completed, length changed from', currentContent.length, 'to', modifiedContent.length);
       } else {
         // For separate files, handle VFX and animation separately
         if (hasVfxChanges) {
           console.log('🔧 SAVE: Inserting ported VFX systems...');
-          
+
           // Import AniPort-specific VFX insertion functions
           const { completeVfxIntegrationForAniPort } = await import('../utils/aniportVfxInserter.js');
           const { cleanVfxSystemContent } = await import('../utils/vfxContentCleaner.js');
-          
+
           // Insert each ported VFX system using AniPort-specific logic
           for (const [systemKey, system] of Object.entries(portedVfxSystems)) {
             console.log('🔧 SAVE: Inserting ported VFX system:', systemKey);
-            
+
             const originalContent = system.rawContent || system.fullContent || '';
             const systemName = system.name || systemKey;
-            
+
             // Clean the VFX system content to remove any animation graph data
             const cleanedContent = cleanVfxSystemContent(originalContent, systemName);
-            
+
             // Filter events to only include those that use this VFX system's effect key
             const relevantEvents = portedEvents.filter(event => {
               // For particle events, check if the effect key matches this system
@@ -1278,73 +1278,73 @@ const AniPortSimple = () => {
               // Include ALL non-particle events (sound, submesh, etc.) regardless of VFX system
               return true;
             });
-            
+
             console.log(`🔧 SAVE: Filtered ${relevantEvents.length} relevant events for system ${systemName}`);
-            
+
             // Use AniPort-specific VFX integration
             modifiedContent = completeVfxIntegrationForAniPort(
-              modifiedContent, 
-              cleanedContent, 
+              modifiedContent,
+              cleanedContent,
               systemName,
               relevantEvents, // Pass only events that use this VFX system
               systemName
             );
-            
+
             console.log('🔧 SAVE: VFX system fully integrated:', systemName);
           }
-          
+
           console.log('🔧 SAVE: All ported VFX systems integrated');
           console.log('🔧 SAVE: Content length changed from', currentContent.length, 'to', modifiedContent.length);
         }
-        
-         if (hasAnimationChanges) {
-           console.log('🔧 SAVE: Animation data changes detected but skipping animation content generation to prevent duplication...');
-           console.log('🔧 SAVE: TODO: Fix animation content generation to prevent duplicating entire animation graph sections');
-           // TODO: Fix the animation content generator to prevent duplicating entire animation graph sections
-           // For now, we'll skip animation content generation to prevent file corruption
-         }
-         
-         // Handle non-particle events (sound, submesh, etc.) that don't have VFX systems
-         if (hasAnimationChanges) {
-           console.log('🔧 SAVE: Processing non-particle events for separate files...');
-           
-           // Get all ported events that are not particle events
-           const nonParticleEvents = [];
-           if (targetData.animationData && targetData.animationData.clips) {
-             for (const [clipName, clip] of Object.entries(targetData.animationData.clips)) {
-               if (clip.events) {
-                 for (const [eventType, events] of Object.entries(clip.events)) {
-                   if (eventType !== 'particle') {
-                     const portedEventsOfType = events.filter(event => event.isPorted === true);
-                     for (const event of portedEventsOfType) {
-                       nonParticleEvents.push({
-                         ...event,
-                         clipName,
-                         eventType
-                       });
-                     }
-                   }
-                 }
-               }
-             }
-           }
-           
-           console.log(`🔧 SAVE: Found ${nonParticleEvents.length} non-particle events to process for separate files`);
-           
-           if (nonParticleEvents.length > 0) {
-             // Use AniPort-specific inserter to add these events to the file
-             const { addPortedEventsToClipsForAniPort } = await import('../utils/aniportVfxInserter.js');
-             
-             modifiedContent = addPortedEventsToClipsForAniPort(modifiedContent, nonParticleEvents);
-             console.log('🔧 SAVE: Non-particle events added to separate file');
-           }
-         }
+
+        if (hasAnimationChanges) {
+          console.log('🔧 SAVE: Animation data changes detected but skipping animation content generation to prevent duplication...');
+          console.log('🔧 SAVE: TODO: Fix animation content generation to prevent duplicating entire animation graph sections');
+          // TODO: Fix the animation content generator to prevent duplicating entire animation graph sections
+          // For now, we'll skip animation content generation to prevent file corruption
+        }
+
+        // Handle non-particle events (sound, submesh, etc.) that don't have VFX systems
+        if (hasAnimationChanges) {
+          console.log('🔧 SAVE: Processing non-particle events for separate files...');
+
+          // Get all ported events that are not particle events
+          const nonParticleEvents = [];
+          if (targetData.animationData && targetData.animationData.clips) {
+            for (const [clipName, clip] of Object.entries(targetData.animationData.clips)) {
+              if (clip.events) {
+                for (const [eventType, events] of Object.entries(clip.events)) {
+                  if (eventType !== 'particle') {
+                    const portedEventsOfType = events.filter(event => event.isPorted === true);
+                    for (const event of portedEventsOfType) {
+                      nonParticleEvents.push({
+                        ...event,
+                        clipName,
+                        eventType
+                      });
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          console.log(`🔧 SAVE: Found ${nonParticleEvents.length} non-particle events to process for separate files`);
+
+          if (nonParticleEvents.length > 0) {
+            // Use AniPort-specific inserter to add these events to the file
+            const { addPortedEventsToClipsForAniPort } = await import('../utils/aniportVfxInserter.js');
+
+            modifiedContent = addPortedEventsToClipsForAniPort(modifiedContent, nonParticleEvents);
+            console.log('🔧 SAVE: Non-particle events added to separate file');
+          }
+        }
       }
-      
+
       if (!hasVfxChanges && !hasAnimationChanges) {
         console.log('🔧 SAVE: No changes detected, using original content');
       }
-      
+
       // Save the modified content to a temporary .py file
       const fsp = fsModule.promises;
       const path = window.require('path');
@@ -1357,7 +1357,7 @@ const AniPortSimple = () => {
       console.log('🔧 SAVE: Writing modified content to file:', outputPyPath);
       await fsp.writeFile(outputPyPath, modifiedContent, 'utf8');
       console.log('🔧 SAVE: File written successfully');
-      
+
       // Update the current file content in targetData to preserve deletions for next save
       setTargetData(prevData => ({
         ...prevData,
@@ -1373,7 +1373,7 @@ const AniPortSimple = () => {
       try {
         // Use electronPrefs utility for proper preference access
         ritoBinPath = await electronPrefs.get('RitoBinPath');
-        
+
         // Fallback to old method if electronPrefs fails
         if (!ritoBinPath) {
           const settings = ipcRenderer.sendSync("get-ssx");
@@ -1437,11 +1437,12 @@ const AniPortSimple = () => {
 
         if (!hasError) {
           console.log('🔧 SAVE: Conversion successful!');
-          setStatusMessage(`✅ Successfully saved: ${outputBinPath}\nUpdated .py file: ${outputPyPath}`);
+          setStatusMessage(`✅ Successfully saved: ${outputBinPath}`);
+          setTimeout(() => setStatusMessage(''), 3000);
           setFileSaved(true);
           setIsProcessing(false);
           setProcessingText('');
-          
+
           // Clear deleted events after successful save
           setDeletedEvents(new Set());
 
@@ -1494,54 +1495,54 @@ const AniPortSimple = () => {
     if (deletedEvents.size === 0) {
       return content;
     }
-    
+
     console.log('🗑️ REMOVE: Removing deleted events from content...');
     console.log('🗑️ REMOVE: Deleted events:', Array.from(deletedEvents));
-    
+
     let modifiedContent = content;
-    
+
     // Parse deleted events and remove them from content
     for (const eventKey of deletedEvents) {
       const parts = eventKey.split('.');
-      
+
       if (parts[0] === 'vfx') {
         // Handle VFX system deletion
         const effectKey = parts[1];
         console.log(`🗑️ REMOVE: Removing VFX system for effect key "${effectKey}"`);
-        
+
         // Remove VFX system definition
         modifiedContent = removeVfxSystemFromContent(modifiedContent, effectKey);
-        
+
         // Remove ResourceResolver entry
         modifiedContent = removeResourceResolverEntry(modifiedContent, effectKey);
-        
+
       } else {
         // Handle regular event deletion
         const [clipName, eventType, eventName] = parts;
-        
+
         console.log(`🗑️ REMOVE: Removing ${eventType} event "${eventName}" from ${clipName} clip`);
-        
+
         // Use bracket counting approach for more reliable deletion
-        const eventTypeName = eventType === 'sound' ? 'SoundEventData' : 
-                             eventType === 'particle' ? 'ParticleEventData' : 
-                             eventType === 'facetarget' ? 'FaceTargetEventData' :
-                             'SubmeshVisibilityEventData';
-        
+        const eventTypeName = eventType === 'sound' ? 'SoundEventData' :
+          eventType === 'particle' ? 'ParticleEventData' :
+            eventType === 'facetarget' ? 'FaceTargetEventData' :
+              'SubmeshVisibilityEventData';
+
         modifiedContent = removeEventWithBracketCounting(modifiedContent, eventName, eventTypeName, clipName);
       }
     }
-    
+
     return modifiedContent;
   };
 
   // Remove VFX system from content
   const removeVfxSystemFromContent = (content, effectKey) => {
     console.log(`🗑️ REMOVE VFX: Looking for VFX system with effect key: ${effectKey}`);
-    
+
     // First, find the ResourceResolver entry to get the actual VFX system path
     let vfxSystemPath = null;
     const lines = content.split('\n');
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line.includes(`"${effectKey}"`) && line.includes('=') && line.includes('"Characters/')) {
@@ -1554,22 +1555,22 @@ const AniPortSimple = () => {
         }
       }
     }
-    
+
     if (!vfxSystemPath) {
       console.log(`🗑️ REMOVE VFX: Warning - could not find VFX system path for effect key "${effectKey}"`);
       return content;
     }
-    
+
     // Now look for the VFX system definition using the path
     let result = [];
     let inVfxSystem = false;
     let bracketDepth = 0;
     let vfxSystemStartLine = -1;
     let vfxSystemsRemoved = 0;
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      
+
       // Check if this line starts a VFX system definition with our path
       if (!inVfxSystem && line.includes(`"${vfxSystemPath}"`) && line.includes('VfxSystemDefinitionData')) {
         inVfxSystem = true;
@@ -1579,12 +1580,12 @@ const AniPortSimple = () => {
         console.log(`🗑️ REMOVE VFX: Found matching VFX system at line ${i + 1} with path: ${vfxSystemPath}`);
         continue; // Skip this line
       }
-      
+
       if (inVfxSystem) {
         const openBrackets = (line.match(/\{/g) || []).length;
         const closeBrackets = (line.match(/\}/g) || []).length;
         bracketDepth += openBrackets - closeBrackets;
-        
+
         if (bracketDepth <= 0) {
           console.log(`🗑️ REMOVE VFX: VFX system complete at line ${i + 1}, removed lines ${vfxSystemStartLine + 1}-${i + 1}`);
           inVfxSystem = false;
@@ -1596,49 +1597,49 @@ const AniPortSimple = () => {
         result.push(line);
       }
     }
-    
+
     const newContent = result.join('\n');
     const removedChars = content.length - newContent.length;
-    
+
     if (removedChars > 0) {
       console.log(`🗑️ REMOVE VFX: Successfully removed ${vfxSystemsRemoved} VFX system(s) for effect key "${effectKey}" (${removedChars} characters)`);
     } else {
       console.log(`🗑️ REMOVE VFX: Warning - could not find VFX system for effect key "${effectKey}"`);
     }
-    
+
     return newContent;
   };
-  
+
   // Remove ResourceResolver entry from content
   const removeResourceResolverEntry = (content, effectKey) => {
     console.log(`🗑️ REMOVE RESOURCE: Looking for ResourceResolver entry with key: ${effectKey}`);
-    
+
     const lines = content.split('\n');
     let result = [];
     let resourceEntriesRemoved = 0;
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      
+
       // Look for ResourceResolver entries that match our effect key
       if (line.includes(`"${effectKey}"`) && line.includes('=') && line.includes('"Characters/')) {
         console.log(`🗑️ REMOVE RESOURCE: Found ResourceResolver entry at line ${i + 1}: ${line.trim()}`);
         resourceEntriesRemoved++;
         continue; // Skip this line
       }
-      
+
       result.push(line);
     }
-    
+
     const newContent = result.join('\n');
     const removedChars = content.length - newContent.length;
-    
+
     if (removedChars > 0) {
       console.log(`🗑️ REMOVE RESOURCE: Successfully removed ${resourceEntriesRemoved} ResourceResolver entry/entries for "${effectKey}" (${removedChars} characters)`);
     } else {
       console.log(`🗑️ REMOVE RESOURCE: Warning - could not find ResourceResolver entry for "${effectKey}"`);
     }
-    
+
     return newContent;
   };
 
@@ -1651,19 +1652,19 @@ const AniPortSimple = () => {
     let eventStartLine = -1;
     let eventsRemoved = 0;
     let inTargetClip = false;
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      
+
       // Track if we're in the target clip (handle both quoted and hash names)
-      const isTargetClipStart = targetClipName.startsWith('0x') 
+      const isTargetClipStart = targetClipName.startsWith('0x')
         ? (line.includes(`${targetClipName} = AtomicClipData {`) || line.includes(`${targetClipName} = SequencerClipData {`) || line.includes(`${targetClipName} = ConditionFloatClipData {`))
         : (line.includes(`"${targetClipName}" = AtomicClipData {`) || line.includes(`"${targetClipName}" = SequencerClipData {`) || line.includes(`"${targetClipName}" = ConditionFloatClipData {`));
-      
+
       const isOtherClipStart = targetClipName.startsWith('0x')
         ? (line.includes('= AtomicClipData {') || line.includes('= SequencerClipData {') || line.includes('= ConditionFloatClipData {')) && !line.includes(`${targetClipName}`)
         : (line.includes('= AtomicClipData {') || line.includes('= SequencerClipData {') || line.includes('= ConditionFloatClipData {')) && !line.includes(`"${targetClipName}"`);
-      
+
       if (isTargetClipStart) {
         inTargetClip = true;
         console.log(`🗑️ REMOVE: Entered target clip "${targetClipName}" at line ${i + 1}`);
@@ -1671,7 +1672,7 @@ const AniPortSimple = () => {
         inTargetClip = false;
         console.log(`🗑️ REMOVE: Exited target clip "${targetClipName}" at line ${i + 1}`);
       }
-      
+
       // Check if this line starts the event we want to delete (only within the target clip)
       if (!inEvent && inTargetClip && line.includes(`${eventName} = ${eventTypeName}`)) {
         eventStartLine = i;
@@ -1695,15 +1696,15 @@ const AniPortSimple = () => {
         inEvent = true;
         continue; // Skip this definition line
       }
-      
+
       if (inEvent) {
         // Count brackets to determine when the event ends
         const openBrackets = (line.match(/\{/g) || []).length;
         const closeBrackets = (line.match(/\}/g) || []).length;
         bracketDepth += openBrackets - closeBrackets;
-        
+
         console.log(`🗑️ REMOVE: Line ${i + 1}: depth=${bracketDepth}, open=${openBrackets}, close=${closeBrackets}, content: ${line.trim()}`);
-        
+
         // If we've closed all brackets, the event is complete
         if (bracketDepth <= 0) {
           console.log(`🗑️ REMOVE: Event complete at line ${i + 1}, removed lines ${eventStartLine + 1}-${i + 1}`);
@@ -1717,16 +1718,16 @@ const AniPortSimple = () => {
         result.push(line);
       }
     }
-    
+
     const newContent = result.join('\n');
     const removedChars = content.length - newContent.length;
-    
+
     if (removedChars > 0) {
       console.log(`🗑️ REMOVE: Successfully removed ${eventsRemoved} ${eventTypeName} event(s) "${eventName}" (${removedChars} characters)`);
     } else {
       console.log(`🗑️ REMOVE: Warning - could not find ${eventTypeName} event "${eventName}" in content`);
     }
-    
+
     return newContent;
   };
 
@@ -1740,15 +1741,15 @@ const AniPortSimple = () => {
       console.log('🗑️ DELETE: Event type:', eventType);
       console.log('🗑️ DELETE: Event index:', eventIndex);
       console.log('🗑️ DELETE: Event has effectKey:', event.effectKey);
-      
+
       // Check if this is a particle event with an effect key
       let shouldDeleteVfxSystem = false;
       if (eventType === 'particle' && event.effectKey) {
         console.log('🗑️ DELETE: Particle event detected with effect key:', event.effectKey);
-        
+
         // Ask user if they want to delete the associated VFX system using custom dialog
         console.log('🗑️ DELETE: About to show dialog...');
-        
+
         // Create a Promise that waits for user input
         const dialogResult = await new Promise((resolve) => {
           // Store the resolve function in a ref so it persists across renders
@@ -1760,7 +1761,7 @@ const AniPortSimple = () => {
             // Resolve the promise with the result
             resolve(result);
           };
-          
+
           // Set the effect key and open the dialog
           setVfxDeleteEffectKey(event.effectKey);
           // Use requestAnimationFrame to ensure DOM is ready
@@ -1768,29 +1769,29 @@ const AniPortSimple = () => {
             setVfxDeleteConfirmOpen(true);
           });
         });
-        
+
         console.log('🗑️ DELETE: Dialog result:', dialogResult);
-        
+
         if (dialogResult === 'cancel') {
           // User cancelled
           console.log('🗑️ DELETE: User cancelled deletion');
           return;
         }
-        
+
         shouldDeleteVfxSystem = (dialogResult === 'delete-vfx');
         console.log('🗑️ DELETE: User choice - delete VFX system:', shouldDeleteVfxSystem);
       }
-      
+
       // Save state before deletion
-      const actionDescription = shouldDeleteVfxSystem 
+      const actionDescription = shouldDeleteVfxSystem
         ? `Delete ${eventType} event and VFX system from "${targetClipName}"`
         : `Delete ${eventType} event from "${targetClipName}"`;
       saveStateToHistory(actionDescription);
-      
+
       // Track the deleted event
       const eventKey = `${targetClipName}.${eventType}.${event.eventName || event.hash || eventIndex}`;
       setDeletedEvents(prev => new Set([...prev, eventKey]));
-      
+
       setIsLoading(true);
       setLoadingMessage('Deleting event...');
 
@@ -1798,57 +1799,57 @@ const AniPortSimple = () => {
       let otherEventsUsingEffectKey = 0;
       if (shouldDeleteVfxSystem && event.effectKey) {
         console.log('🗑️ DELETE: Checking for other events using effect key:', event.effectKey);
-        
+
         // Check if there are other particle events using the same effect key BEFORE updating state
         if (targetData && targetData.animationData && targetData.animationData.clips) {
           for (const [clipName, clip] of Object.entries(targetData.animationData.clips)) {
             if (clip.events && clip.events.particle) {
               for (const particleEvent of clip.events.particle) {
-                if (particleEvent.effectKey === event.effectKey && 
-                    !(clipName === targetClipName && particleEvent.eventName === event.eventName)) {
+                if (particleEvent.effectKey === event.effectKey &&
+                  !(clipName === targetClipName && particleEvent.eventName === event.eventName)) {
                   otherEventsUsingEffectKey++;
                 }
               }
             }
           }
         }
-        
+
         console.log(`🗑️ DELETE: Found ${otherEventsUsingEffectKey} other events using effect key "${event.effectKey}"`);
       }
 
       // Skip immediate state update - we'll re-parse from file instead
-      
+
       // Write the modified content to file (similar to handleDeleteClip)
       if (targetAnimationFile) {
         try {
           console.log('🗑️ DELETE: Writing modified content to file...');
-          
+
           const fsModule = window.require ? window.require('fs') : null;
           if (fsModule) {
             // Read current file content
             const currentContent = fsModule.readFileSync(targetAnimationFile, 'utf8');
-            
+
             // Remove the event from the file content
             const eventName = event.eventName || event.hash || `event_${eventIndex}`;
-            const eventTypeName = eventType === 'particle' ? 'ParticleEventData' : 
-                                 eventType === 'submesh' ? 'SubmeshVisibilityEventData' : 
-                                 eventType === 'sound' ? 'SoundEventData' : 
-                                 eventType === 'facetarget' ? 'FaceTargetEventData' : 'EventData';
-            
+            const eventTypeName = eventType === 'particle' ? 'ParticleEventData' :
+              eventType === 'submesh' ? 'SubmeshVisibilityEventData' :
+                eventType === 'sound' ? 'SoundEventData' :
+                  eventType === 'facetarget' ? 'FaceTargetEventData' : 'EventData';
+
             const modifiedContent = removeEventWithBracketCounting(currentContent, eventName, eventTypeName, targetClipName);
-            
+
             // Write the modified content back to file
             fsModule.writeFileSync(targetAnimationFile, modifiedContent, 'utf8');
-            
+
             console.log('🗑️ DELETE: File content updated successfully');
-            
+
             // Re-parse the target data to update UI with fresh data from file
             const updatedTargetData = parseAnimationData(modifiedContent);
             setTargetData(prev => ({
               ...prev,
               animationData: updatedTargetData
             }));
-            
+
             console.log('🗑️ DELETE: UI updated with fresh data from file');
           }
         } catch (fileError) {
@@ -1860,14 +1861,14 @@ const AniPortSimple = () => {
           });
         }
       }
-      
+
       // If user chose to delete VFX system, handle that too
       if (shouldDeleteVfxSystem && event.effectKey) {
         console.log('🗑️ DELETE: Deleting associated VFX system for effect key:', event.effectKey);
         setLoadingMessage('Deleting VFX system...');
-        
+
         // Use the count we calculated before updating state
-        
+
         if (otherEventsUsingEffectKey > 0) {
           console.log(`🗑️ DELETE: Warning - ${otherEventsUsingEffectKey} other events still use effect key "${event.effectKey}". User chose to delete VFX system anyway.`);
           CreateMessage({
@@ -1878,7 +1879,7 @@ const AniPortSimple = () => {
         } else {
           console.log('🗑️ DELETE: No other events use this effect key. Proceeding with VFX system deletion.');
         }
-        
+
         // Proceed with VFX system deletion regardless (user made the choice)
         // Find and delete the VFX system from targetData
         setTargetData(prevData => {
@@ -1886,10 +1887,10 @@ const AniPortSimple = () => {
             console.log('🗑️ DELETE: No VFX systems found in target data');
             return prevData;
           }
-          
+
           const updatedVfxSystems = { ...prevData.vfxSystems };
           let vfxSystemDeleted = false;
-          
+
           // Find VFX system by effect key
           for (const [systemKey, system] of Object.entries(updatedVfxSystems)) {
             if (system.effectKey === event.effectKey || systemKey.includes(event.effectKey)) {
@@ -1899,36 +1900,36 @@ const AniPortSimple = () => {
               break;
             }
           }
-          
+
           if (!vfxSystemDeleted) {
             console.log('🗑️ DELETE: Warning - VFX system not found for effect key:', event.effectKey);
           }
-          
+
           // Also remove from ResourceResolver
           const updatedResourceResolver = { ...prevData.resourceResolver };
           if (updatedResourceResolver[event.effectKey]) {
             console.log('🗑️ DELETE: Removing ResourceResolver entry for:', event.effectKey);
             delete updatedResourceResolver[event.effectKey];
           }
-          
+
           return {
             ...prevData,
             vfxSystems: updatedVfxSystems,
             resourceResolver: updatedResourceResolver
           };
         });
-        
+
         // Track the VFX system deletion for file removal
         const vfxSystemKey = `vfx.${event.effectKey}`;
         setDeletedEvents(prev => new Set([...prev, vfxSystemKey]));
-        
+
         console.log('🗑️ DELETE: VFX system and ResourceResolver entry deleted');
       }
-      
-      
+
+
       setFileSaved(false);
       setIsLoading(false);
-      
+
       let successMessage;
       if (shouldDeleteVfxSystem && event.effectKey) {
         // Use the count we calculated before updating state
@@ -1940,19 +1941,19 @@ const AniPortSimple = () => {
       } else {
         successMessage = `${eventType} event deleted successfully from ${targetClipName}`;
       }
-      
+
       CreateMessage({
         title: 'Event Deleted',
         message: successMessage,
         type: 'success'
       });
-      
+
       console.log('🗑️ DELETE: Event deleted successfully');
-      
+
     } catch (error) {
       console.error('🗑️ DELETE: Error deleting event:', error);
       setIsLoading(false);
-      
+
       CreateMessage({
         title: 'Delete Failed',
         message: `Failed to delete event: ${error.message}`,
@@ -1971,14 +1972,14 @@ const AniPortSimple = () => {
     if (!clipToDelete) return;
     const clipName = clipToDelete;
     setDeleteConfirmOpen(false);
-    
+
     // Check if this is a SelectorClipData and use specialized deletion
     const clip = targetData?.animationData?.clips?.[clipName];
     if (clip && clip.type === 'SelectorClipData') {
       await handleDeleteSelectorClipData(clipName);
       return;
     }
-    
+
     // Save current state to undo history
     await saveStateToHistory(`Delete clip "${clipName}"`);
 
@@ -1990,15 +1991,15 @@ const AniPortSimple = () => {
       console.log(`🗑️ CLIP DELETE: Deleting entire clip: ${clipName}`);
       console.log(`🗑️ CLIP DELETE: Target file:`, targetAnimationFile);
       console.log(`🗑️ CLIP DELETE: Target file type:`, typeof targetAnimationFile);
-      
+
       if (!targetAnimationFile) {
         throw new Error('No target animation file selected');
       }
-      
+
       // targetAnimationFile is the path string itself, not an object
       const filePath = targetAnimationFile;
       console.log(`🗑️ CLIP DELETE: Using file path:`, filePath);
-      
+
       // Get current target content
       const fsModule = window.require ? window.require('fs') : null;
       if (!fsModule) {
@@ -2006,27 +2007,27 @@ const AniPortSimple = () => {
       }
       const currentContent = fsModule.readFileSync(filePath, 'utf8');
       console.log(`🗑️ CLIP DELETE: Read ${currentContent.length} chars from file`);
-      
+
       // Delete the clip using our utility
       const modifiedContent = deleteClip(currentContent, clipName);
       console.log(`🗑️ CLIP DELETE: Modified content size: ${modifiedContent.length} chars`);
-      
+
       // Write the modified content back
       fsModule.writeFileSync(filePath, modifiedContent);
       console.log(`🗑️ CLIP DELETE: Successfully wrote modified content to file`);
-      
+
       // Re-parse the target data to update UI
       const updatedTargetData = parseAnimationData(modifiedContent);
       setTargetData(prev => ({
         ...prev,
         animationData: updatedTargetData
       }));
-      
+
       // Enable save button
       setFileSaved(false);
-      
+
       console.log(`✅ CLIP DELETE: Successfully deleted clip "${clipName}"`);
-      
+
       // Show success message (use setTimeout to prevent focus issues)
       setTimeout(() => {
         CreateMessage({
@@ -2035,7 +2036,7 @@ const AniPortSimple = () => {
           type: 'success'
         });
       }, 100);
-      
+
     } catch (error) {
       console.error('❌ CLIP DELETE: Error deleting clip:', error);
       CreateMessage({
@@ -2058,16 +2059,16 @@ const AniPortSimple = () => {
   // Handle drag start for whole clip
   const handleClipDragStart = (e, clip, isFromDonor = true) => {
     console.log(`🚀 CLIP DRAG: Starting drag for clip "${clip.name}"`);
-    
+
     // Set drag data
     e.dataTransfer.setData('application/json', JSON.stringify({
       type: 'wholeClip',
       clipName: clip.name,
       isFromDonor
     }));
-    
+
     e.dataTransfer.effectAllowed = 'copy';
-    
+
     // Add visual feedback
     e.currentTarget.style.opacity = '0.5';
   };
@@ -2107,7 +2108,7 @@ const AniPortSimple = () => {
 
       // Read the current file content
       const content = fs.readFileSync(targetAnimationFile, 'utf8');
-      
+
       // Smart formatting for the new clip name
       let formattedNewName;
       if (newName.startsWith('0x')) {
@@ -2123,7 +2124,7 @@ const AniPortSimple = () => {
 
       // Simple text replacement for the clip name
       let updatedContent = content;
-      
+
       // Determine how the old name appears in the file (quoted or unquoted)
       let oldNameInFile;
       if (oldName.startsWith('0x')) {
@@ -2133,27 +2134,27 @@ const AniPortSimple = () => {
         // String values are quoted in the file
         oldNameInFile = `"${oldName}"`;
       }
-      
+
       // Replace the clip declaration: oldNameInFile = AtomicClipData { -> formattedNewName = AtomicClipData {
       const clipPattern = new RegExp(`${oldNameInFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*=\\s*(AtomicClipData|SequencerClipData|ParametricClipData|ConditionFloatClipData)\\s*{`, 'g');
       updatedContent = updatedContent.replace(clipPattern, `${formattedNewName} = $1 {`);
-      
+
       // Update any string references to the old name in the file (these are always quoted)
       const stringRefPattern = new RegExp(`"${oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'g');
       updatedContent = updatedContent.replace(stringRefPattern, formattedNewName);
-      
+
       // Write the updated content back to the file
       fs.writeFileSync(targetAnimationFile, updatedContent);
-      
+
       // Update the data in memory while preserving order
       if (targetData && targetData.animationData && targetData.animationData.clips[oldName]) {
         const clip = targetData.animationData.clips[oldName];
         clip.name = newName;
-        
+
         // Create a new clips object with preserved order
         const newClips = {};
         const clipEntries = Object.entries(targetData.animationData.clips);
-        
+
         for (const [key, value] of clipEntries) {
           if (key === oldName) {
             // Replace the old name with the new name in the same position
@@ -2162,7 +2163,7 @@ const AniPortSimple = () => {
             newClips[key] = value;
           }
         }
-        
+
         // Update the target data with the reordered clips
         setTargetData(prev => ({
           ...prev,
@@ -2171,7 +2172,7 @@ const AniPortSimple = () => {
             clips: newClips
           }
         }));
-        
+
         // Update selected clip if it was the renamed one
         if (selectedTargetClip && selectedTargetClip.name === oldName) {
           setSelectedTargetClip(clip);
@@ -2372,16 +2373,16 @@ const AniPortSimple = () => {
 
       // Determine representation (quoted/hash). If child exists by name as quoted, use quoted.
       const useQuoted = !childClipName.startsWith('0x'); // Fixed duplicate declaration issue
-      
+
       // Check if this is the first entry in the list (no existing entries)
       const isFirstEntry = !existingListSection.includes('"') && !existingListSection.includes('0x');
-      
+
       // Format the entry line properly - always use consistent indentation
       const entryLine = `\n                    ${useQuoted ? `"${childClipName}"` : childClipName}`;
-      
+
       // Check if we need to fix the closing brace formatting
       let finalUpdatedClip = updatedClip.substring(0, insertPos) + entryLine + updatedClip.substring(insertPos);
-      
+
       // If the closing brace is on the same line as the last entry, move it to its own line
       const closingBracePattern = /(\n\s*"[^"]+")\s*}/;
       const braceMatch = finalUpdatedClip.match(closingBracePattern);
@@ -2389,7 +2390,7 @@ const AniPortSimple = () => {
         // Replace the inline closing brace with a properly formatted one
         finalUpdatedClip = finalUpdatedClip.replace(closingBracePattern, '$1\n                }');
       }
-      
+
       const updatedClipWithChild = finalUpdatedClip;
 
       console.log(`🔧 SEQUENCER: Adding clip name "${childClipName}" to list`);
@@ -2405,7 +2406,7 @@ const AniPortSimple = () => {
       const updatedTargetData = parseAnimationData(newContent);
       console.log(`🔧 SEQUENCER: Re-parsed data for ${sequencerClipName}:`, updatedTargetData.clips[sequencerClipName]);
       console.log(`🔧 SEQUENCER: Clip name list after re-parse:`, updatedTargetData.clips[sequencerClipName]?.clipNameList);
-      
+
       setTargetData(prev => ({ ...prev, animationData: updatedTargetData }));
       setFileSaved(false);
       setSequencerSearch('');
@@ -2449,27 +2450,27 @@ const AniPortSimple = () => {
       // Insert mEventDataMap as a separate property at the clip level
       // For SequencerClipData, we need to be careful not to insert inside mClipNameList
       let insertPos = -1;
-      
+
       // Find the last complete property block (not inside a list)
       const lines = clipBlock.split('\n');
       let braceDepth = 0;
       let lastPropertyEnd = -1;
-      
+
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        
+
         // Count braces to track nesting level
         for (const char of line) {
           if (char === '{') braceDepth++;
           if (char === '}') braceDepth--;
         }
-        
+
         // If we're at the top level (braceDepth <= 1) and this line ends a property
         if (braceDepth <= 1 && line.trim().endsWith('}') && !line.trim().startsWith('}')) {
           lastPropertyEnd = i;
         }
       }
-      
+
       if (lastPropertyEnd >= 0) {
         // Insert after the last property
         const linesBeforeInsert = lines.slice(0, lastPropertyEnd + 1);
@@ -2482,7 +2483,7 @@ const AniPortSimple = () => {
         // Fallback: insert before the final closing brace
         insertPos = clipBlock.lastIndexOf('}');
       }
-      
+
       if (insertPos === -1) insertPos = clipBlock.length - 1;
 
       const eventMapSnippet = `\n                mEventDataMap: map[hash,pointer] = {\n                }\n`;
@@ -2605,11 +2606,11 @@ const AniPortSimple = () => {
       }
 
       const clipBlock = currentContent.substring(clipStartIndex, end + 1);
-      
+
       // Find the mConditionFloatPairDataList section
       const conditionListPattern = /mConditionFloatPairDataList:\s*list\[embed\]\s*=\s*{/;
       const conditionListMatch = clipBlock.match(conditionListPattern);
-      
+
       if (!conditionListMatch) {
         throw new Error('mConditionFloatPairDataList not found in ConditionFloatClipData');
       }
@@ -2634,13 +2635,13 @@ const AniPortSimple = () => {
       // Insert the new pair before the closing brace of the list
       const beforeList = currentContent.substring(0, listEnd);
       const afterList = currentContent.substring(listEnd);
-      
+
       // Check if the list is empty (just has the opening brace)
       const listContent = currentContent.substring(listStartIndex, listEnd + 1);
       const isEmpty = listContent.trim() === '{';
-      
+
       const insertText = isEmpty ? `\n${newPair}\n        }` : `,\n${newPair}\n        }`;
-      
+
       const modifiedContent = beforeList + insertText + afterList;
 
       // Write the modified content back
@@ -2701,25 +2702,25 @@ const AniPortSimple = () => {
       }
 
       const clipBlock = currentContent.substring(clipStartIndex, end + 1);
-      
+
       // Find all ConditionFloatPairData blocks
       const pairPattern = /ConditionFloatPairData\s*{[\s\S]*?}/g;
       const pairs = Array.from(clipBlock.matchAll(pairPattern));
-      
+
       if (pairIndex >= pairs.length) {
         throw new Error(`Pair index ${pairIndex} out of range (${pairs.length} pairs found)`);
       }
 
       const pairToRemove = pairs[pairIndex];
       const pairText = pairToRemove[0];
-      
+
       // Remove the pair from the clip block
       let modifiedClipBlock = clipBlock.replace(pairText, '');
-      
+
       // Clean up any trailing commas
       modifiedClipBlock = modifiedClipBlock.replace(/,\s*}/g, '}');
       modifiedClipBlock = modifiedClipBlock.replace(/{\s*,/g, '{');
-      
+
       // Replace the clip in the full content
       const beforeClip = currentContent.substring(0, clipStartIndex);
       const afterClip = currentContent.substring(end + 1);
@@ -2758,7 +2759,7 @@ const AniPortSimple = () => {
     // Just update the UI state without saving to undo history
     setTargetData(prev => {
       if (!prev) return prev;
-      
+
       const updatedClips = { ...prev.animationData.clips };
       if (updatedClips[clipName]) {
         updatedClips[clipName] = {
@@ -2766,7 +2767,7 @@ const AniPortSimple = () => {
           trackDataName: newTrackDataName
         };
       }
-      
+
       return {
         ...prev,
         animationData: {
@@ -2782,18 +2783,18 @@ const AniPortSimple = () => {
     try {
       // Save current state to undo history
       await saveStateToHistory(`Edit track data name for "${clipName}"`);
-      
+
       console.log(`🔧 TRACK DATA: Changing track data name for "${clipName}" to "${newTrackDataName}"`);
       console.log(`🔧 TRACK DATA: Clip name type:`, clipName.startsWith('0x') ? 'hash' : 'quoted');
-      
+
       // Read current file content
       const fsModule = window.require ? window.require('fs') : null;
       if (!fsModule) {
         throw new Error('File system access not available');
       }
-      
+
       const currentContent = fsModule.readFileSync(targetAnimationFile, 'utf8');
-      
+
       // Find the clip in the file and update its mTrackDataName (handle both quoted and hash names)
       let clipPattern;
       if (clipName.startsWith('0x')) {
@@ -2806,19 +2807,19 @@ const AniPortSimple = () => {
       console.log(`🔧 TRACK DATA: Using pattern: ${clipPattern}`);
       const match = currentContent.match(clipPattern);
       console.log(`🔧 TRACK DATA: Pattern match result:`, match ? 'Found' : 'Not found');
-      
+
       if (!match) {
         throw new Error(`Could not find clip "${clipName}" in file`);
       }
-      
+
       const clipStartIndex = match.index;
       const clipStartLine = currentContent.substring(0, clipStartIndex).split('\n').length;
-      
+
       // Find the end of this clip using brace counting
       let braceCount = 0;
       let inClip = false;
       let clipEndIndex = clipStartIndex;
-      
+
       for (let i = clipStartIndex; i < currentContent.length; i++) {
         const char = currentContent[i];
         if (char === '{') {
@@ -2832,11 +2833,11 @@ const AniPortSimple = () => {
           }
         }
       }
-      
+
       // Extract the clip content
       const clipContent = currentContent.substring(clipStartIndex, clipEndIndex + 1);
       console.log(`🔧 TRACK DATA: Clip content (first 500 chars):`, clipContent.substring(0, 500));
-      
+
       // Smart formatting for the track data name
       let formattedTrackName;
       if (newTrackDataName.startsWith('0x')) {
@@ -2854,7 +2855,7 @@ const AniPortSimple = () => {
       let updatedClipContent;
       const lines = clipContent.split('\n');
       let trackDataNameLineIndex = -1;
-      
+
       // Find the mTrackDataName line
       for (let i = 0; i < lines.length; i++) {
         if (lines[i].trim().startsWith('mTrackDataName:')) {
@@ -2862,7 +2863,7 @@ const AniPortSimple = () => {
           break;
         }
       }
-      
+
       if (trackDataNameLineIndex !== -1) {
         // Replace existing mTrackDataName line
         const line = lines[trackDataNameLineIndex];
@@ -2877,23 +2878,23 @@ const AniPortSimple = () => {
         const line = `\n${indent}mTrackDataName: hash = ${formattedTrackName}`;
         updatedClipContent = clipContent.slice(0, insertPos) + line + clipContent.slice(insertPos);
       }
-      
+
       // Debug: Log the replacement to see what's happening
       console.log(`🔧 TRACK DATA: Original line:`, clipContent.match(/mTrackDataName:\s*hash\s*=\s*[^\n]+/)?.[0]);
       console.log(`🔧 TRACK DATA: New line:`, updatedClipContent.match(/mTrackDataName:\s*hash\s*=\s*[^\n]+/)?.[0]);
-      
+
       // Replace the clip content in the full file
-      const modifiedContent = currentContent.substring(0, clipStartIndex) + 
-                             updatedClipContent + 
-                             currentContent.substring(clipEndIndex + 1);
-      
+      const modifiedContent = currentContent.substring(0, clipStartIndex) +
+        updatedClipContent +
+        currentContent.substring(clipEndIndex + 1);
+
       // Write the modified content back to file
       fsModule.writeFileSync(targetAnimationFile, modifiedContent, 'utf8');
-      
+
       // Update the UI state
       setTargetData(prev => {
         if (!prev) return prev;
-        
+
         const updatedClips = { ...prev.animationData.clips };
         if (updatedClips[clipName]) {
           updatedClips[clipName] = {
@@ -2901,7 +2902,7 @@ const AniPortSimple = () => {
             trackDataName: newTrackDataName
           };
         }
-        
+
         return {
           ...prev,
           animationData: {
@@ -2910,17 +2911,17 @@ const AniPortSimple = () => {
           }
         };
       });
-      
+
       // Enable save button
       setFileSaved(false);
-      
+
       console.log(`✅ TRACK DATA: Successfully updated track data name for "${clipName}"`);
       CreateMessage({
         title: 'Track Data Updated',
         message: `Track data name for "${clipName}" updated to "${newTrackDataName}"`,
         type: 'success'
       });
-      
+
     } catch (error) {
       console.error('❌ TRACK DATA: Error updating track data name:', error);
       CreateMessage({
@@ -2983,7 +2984,7 @@ const AniPortSimple = () => {
       let newClipBlock;
       const lines = clipBlock.split('\n');
       let maskDataNameLineIndex = -1;
-      
+
       // Find the mMaskDataName line
       for (let i = 0; i < lines.length; i++) {
         if (lines[i].trim().startsWith('mMaskDataName:')) {
@@ -2991,7 +2992,7 @@ const AniPortSimple = () => {
           break;
         }
       }
-      
+
       if (maskDataNameLineIndex !== -1) {
         // Replace existing mMaskDataName line
         const line = lines[maskDataNameLineIndex];
@@ -3025,14 +3026,14 @@ const AniPortSimple = () => {
       const refreshed = parseAnimationData(updated);
       setTargetData(prev => ({ ...prev, animationData: refreshed }));
       setFileSaved(false);
-      
+
       // Clear the local input state for this clip
       setMaskDataNameInputs(prev => {
         const newState = { ...prev };
         delete newState[clipName];
         return newState;
       });
-      
+
       CreateMessage({ title: 'Mask Data Name Updated', message: `Set to ${formattedMaskName} for ${clipName}`, type: 'success' });
     } catch (e) {
       console.error('Mask data name change failed:', e);
@@ -3045,17 +3046,17 @@ const AniPortSimple = () => {
     // Update UI state immediately for responsive editing
     setTargetData(prev => {
       if (!prev) return prev;
-      
+
       const updatedClips = { ...prev.animationData.clips };
       if (updatedClips[clipName] && updatedClips[clipName].clipNameList) {
         updatedClips[clipName] = {
           ...updatedClips[clipName],
-          clipNameList: updatedClips[clipName].clipNameList.map((item, i) => 
+          clipNameList: updatedClips[clipName].clipNameList.map((item, i) =>
             i === index ? { ...item, value: newValue } : item
           )
         };
       }
-      
+
       return {
         ...prev,
         animationData: {
@@ -3071,18 +3072,18 @@ const AniPortSimple = () => {
     try {
       // Save current state to undo history
       await saveStateToHistory(`Edit clip name list for "${clipName}"`);
-      
+
       console.log(`🔧 CLIP LIST: Changing clip name list entry ${index} for "${clipName}" to "${newValue}" (${type})`);
       console.log(`🔧 CLIP LIST: Target file: ${targetAnimationFile}`);
-      
+
       const fsModule = window.require ? window.require('fs') : null;
       if (!fsModule) {
         throw new Error('File system not available');
       }
-      
+
       const currentContent = fsModule.readFileSync(targetAnimationFile, 'utf8');
       console.log(`🔧 CLIP LIST: File content length: ${currentContent.length}`);
-      
+
       // Find the clip in the file (handle both quoted and hash names)
       let clipPattern;
       if (clipName.startsWith('0x')) {
@@ -3095,17 +3096,17 @@ const AniPortSimple = () => {
       console.log(`🔧 CLIP LIST: Using pattern: ${clipPattern}`);
       const match = currentContent.match(clipPattern);
       console.log(`🔧 CLIP LIST: Pattern match result:`, match ? 'Found' : 'Not found');
-      
+
       if (!match) {
         throw new Error(`Could not find SequencerClipData clip "${clipName}" in file`);
       }
-      
+
       // Find the clip boundaries
       const clipStartIndex = match.index;
       let braceCount = 0;
       let clipEndIndex = clipStartIndex;
       let inClip = false;
-      
+
       for (let i = clipStartIndex; i < currentContent.length; i++) {
         const char = currentContent[i];
         if (char === '{') {
@@ -3119,18 +3120,18 @@ const AniPortSimple = () => {
           }
         }
       }
-      
+
       // Extract the clip content
       const clipContent = currentContent.substring(clipStartIndex, clipEndIndex + 1);
-      
+
       // Find the specific clip name entry to replace
       const lines = clipContent.split('\n');
       let targetLineIndex = -1;
       let currentIndex = 0;
-      
+
       console.log(`🔧 CLIP LIST: Looking for clip name entry at index ${index}`);
       console.log(`🔧 CLIP LIST: Clip content lines:`, lines.length);
-      
+
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         // Check if this line contains a clip name (quoted or hash)
@@ -3144,11 +3145,11 @@ const AniPortSimple = () => {
           currentIndex++;
         }
       }
-      
+
       if (targetLineIndex === -1) {
         throw new Error(`Could not find clip name entry at index ${index}`);
       }
-      
+
       // Create the new value based on type
       let newFormattedValue;
       if (type === 'quoted') {
@@ -3156,43 +3157,43 @@ const AniPortSimple = () => {
       } else {
         newFormattedValue = newValue;
       }
-      
+
       // Replace the line
       const originalLine = lines[targetLineIndex];
       lines[targetLineIndex] = lines[targetLineIndex].replace(/^(\s*).*$/, `$1${newFormattedValue}`);
       console.log(`🔧 CLIP LIST: Original line: "${originalLine}"`);
       console.log(`🔧 CLIP LIST: New line: "${lines[targetLineIndex]}"`);
-      
+
       // Reconstruct the clip content
       const updatedClipContent = lines.join('\n');
       console.log(`🔧 CLIP LIST: Updated clip content length: ${updatedClipContent.length}`);
-      
+
       // Replace the clip content in the full file
-      const modifiedContent = currentContent.substring(0, clipStartIndex) + 
-                             updatedClipContent + 
-                             currentContent.substring(clipEndIndex + 1);
-      
+      const modifiedContent = currentContent.substring(0, clipStartIndex) +
+        updatedClipContent +
+        currentContent.substring(clipEndIndex + 1);
+
       // Write the modified content back to file
       fsModule.writeFileSync(targetAnimationFile, modifiedContent, 'utf8');
-      
+
       // Update the UI state with the formatted value
       setTargetData(prev => {
         if (!prev) return prev;
-        
+
         const updatedClips = { ...prev.animationData.clips };
         if (updatedClips[clipName] && updatedClips[clipName].clipNameList) {
           updatedClips[clipName] = {
             ...updatedClips[clipName],
-            clipNameList: updatedClips[clipName].clipNameList.map((item, i) => 
-              i === index ? { 
-                ...item, 
+            clipNameList: updatedClips[clipName].clipNameList.map((item, i) =>
+              i === index ? {
+                ...item,
                 value: newValue,
                 raw: newFormattedValue
               } : item
             )
           };
         }
-        
+
         return {
           ...prev,
           animationData: {
@@ -3201,17 +3202,17 @@ const AniPortSimple = () => {
           }
         };
       });
-      
+
       // Enable save button
       setFileSaved(false);
-      
+
       console.log(`✅ CLIP LIST: Successfully updated clip name list entry for "${clipName}"`);
       CreateMessage({
         title: 'Clip Name Updated',
         message: `Clip name list entry for "${clipName}" updated to "${newFormattedValue}"`,
         type: 'success'
       });
-      
+
     } catch (error) {
       console.error('❌ CLIP LIST: Error updating clip name list:', error);
       CreateMessage({
@@ -3227,7 +3228,7 @@ const AniPortSimple = () => {
     // Update UI state immediately for responsive editing
     setTargetData(prev => {
       if (!prev) return prev;
-      
+
       const updatedClips = { ...prev.animationData.clips };
       if (updatedClips[clipName]) {
         updatedClips[clipName] = {
@@ -3235,7 +3236,7 @@ const AniPortSimple = () => {
           animationFilePath: newValue
         };
       }
-      
+
       return {
         ...prev,
         animationData: {
@@ -3251,18 +3252,18 @@ const AniPortSimple = () => {
     try {
       // Save current state to undo history
       await saveStateToHistory(`Edit animation file path for "${clipName}"`);
-      
+
       console.log(`🔧 ANIMATION PATH: Changing animation file path for "${clipName}" to "${newValue}"`);
       console.log(`🔧 ANIMATION PATH: Target file: ${targetAnimationFile}`);
-      
+
       const fsModule = window.require ? window.require('fs') : null;
       if (!fsModule) {
         throw new Error('File system not available');
       }
-      
+
       const currentContent = fsModule.readFileSync(targetAnimationFile, 'utf8');
       console.log(`🔧 ANIMATION PATH: File content length: ${currentContent.length}`);
-      
+
       // Find the clip in the file (handle both quoted and hash names)
       let clipPattern;
       if (clipName.startsWith('0x')) {
@@ -3275,17 +3276,17 @@ const AniPortSimple = () => {
       console.log(`🔧 ANIMATION PATH: Using pattern: ${clipPattern}`);
       const match = currentContent.match(clipPattern);
       console.log(`🔧 ANIMATION PATH: Pattern match result:`, match ? 'Found' : 'Not found');
-      
+
       if (!match) {
         throw new Error(`Could not find AtomicClipData clip "${clipName}" in file`);
       }
-      
+
       // Find the clip boundaries
       const clipStartIndex = match.index;
       let braceCount = 0;
       let clipEndIndex = clipStartIndex;
       let inClip = false;
-      
+
       for (let i = clipStartIndex; i < currentContent.length; i++) {
         const char = currentContent[i];
         if (char === '{') {
@@ -3299,20 +3300,20 @@ const AniPortSimple = () => {
           }
         }
       }
-      
+
       // Extract the clip content
       const clipContent = currentContent.substring(clipStartIndex, clipEndIndex + 1);
       console.log(`🔧 ANIMATION PATH: Clip content length: ${clipContent.length}`);
-      
+
       // Find and replace the mAnimationFilePath line (could be standalone or inside mAnimationResourceData), or insert it if it doesn't exist
       // First check if it's inside mAnimationResourceData
       const resourceDataPattern = /mAnimationResourceData:\s*embed\s*=\s*AnimationResourceData\s*\{[\s\S]*?mAnimationFilePath:\s*string\s*=\s*"([^"]+)"[\s\S]*?\}/;
       const resourceDataMatch = clipContent.match(resourceDataPattern);
-      
+
       // Also check for standalone mAnimationFilePath
       const standalonePathPattern = /mAnimationFilePath:\s*string\s*=\s*"([^"]+)"/;
       const standalonePathMatch = clipContent.match(standalonePathPattern);
-      
+
       let updatedClipContent;
       if (resourceDataMatch) {
         // Replace mAnimationFilePath inside existing mAnimationResourceData
@@ -3331,7 +3332,7 @@ const AniPortSimple = () => {
           const indentMatch = line.match(/^(\s+)/);
           const indent = indentMatch ? indentMatch[1] : '                ';
           const innerIndent = indent + '    ';
-          
+
           // Replace the standalone line with the nested structure
           lines[standaloneIndex] = indent + 'mAnimationResourceData: embed = AnimationResourceData {';
           lines.splice(standaloneIndex + 1, 0, innerIndent + `mAnimationFilePath: string = "${newValue}"`);
@@ -3346,7 +3347,7 @@ const AniPortSimple = () => {
       } else {
         // Insert new mAnimationResourceData with mAnimationFilePath inside it
         console.log(`🔧 ANIMATION PATH: mAnimationFilePath not found, inserting new mAnimationResourceData property`);
-        
+
         // Find the indent level by looking at mEventDataMap or other properties
         let indent = '                '; // Default 16 spaces
         const lines = clipContent.split('\n');
@@ -3359,7 +3360,7 @@ const AniPortSimple = () => {
             }
           }
         }
-        
+
         // Try to find mEventDataMap to insert after it
         let insertPosition = -1;
         let foundEventMap = false;
@@ -3377,7 +3378,7 @@ const AniPortSimple = () => {
               const closeBraces = (checkLine.match(/\}/g) || []).length;
               if (openBraces > 0) inEventMap = true;
               braceCount += openBraces - closeBraces;
-              
+
               // When we've closed all braces for mEventDataMap
               if (inEventMap && braceCount === 0) {
                 insertPosition = j + 1; // Insert after the closing brace line
@@ -3387,7 +3388,7 @@ const AniPortSimple = () => {
             break;
           }
         }
-        
+
         if (insertPosition === -1) {
           // mEventDataMap not found or couldn't determine position, insert after opening brace
           const firstBraceIndex = clipContent.indexOf('{');
@@ -3401,7 +3402,7 @@ const AniPortSimple = () => {
             throw new Error(`Could not determine where to insert mAnimationResourceData in clip "${clipName}"`);
           }
         }
-        
+
         // Build the nested structure: mAnimationResourceData with mAnimationFilePath inside
         const innerIndent = indent + '    '; // 4 more spaces for nested content
         const newProperty = [
@@ -3409,26 +3410,26 @@ const AniPortSimple = () => {
           innerIndent + `mAnimationFilePath: string = "${newValue}"`,
           indent + '}'
         ].join('\n');
-        
+
         // Insert the new property at the calculated position
         lines.splice(insertPosition, 0, newProperty);
         updatedClipContent = lines.join('\n');
       }
-      
+
       console.log(`🔧 ANIMATION PATH: Updated clip content length: ${updatedClipContent.length}`);
-      
+
       // Replace the clip content in the full file
-      const modifiedContent = currentContent.substring(0, clipStartIndex) + 
-                             updatedClipContent + 
-                             currentContent.substring(clipEndIndex + 1);
-      
+      const modifiedContent = currentContent.substring(0, clipStartIndex) +
+        updatedClipContent +
+        currentContent.substring(clipEndIndex + 1);
+
       // Write the modified content back to file
       fsModule.writeFileSync(targetAnimationFile, modifiedContent, 'utf8');
-      
+
       // Update the UI state
       setTargetData(prev => {
         if (!prev) return prev;
-        
+
         const updatedClips = { ...prev.animationData.clips };
         if (updatedClips[clipName]) {
           updatedClips[clipName] = {
@@ -3436,7 +3437,7 @@ const AniPortSimple = () => {
             animationFilePath: newValue
           };
         }
-        
+
         return {
           ...prev,
           animationData: {
@@ -3445,17 +3446,17 @@ const AniPortSimple = () => {
           }
         };
       });
-      
+
       // Enable save button
       setFileSaved(false);
-      
+
       console.log(`✅ ANIMATION PATH: Successfully updated animation file path for "${clipName}"`);
       CreateMessage({
         title: 'Animation Path Updated',
         message: `Animation file path for "${clipName}" updated to "${newValue}"`,
         type: 'success'
       });
-      
+
     } catch (error) {
       console.error('❌ ANIMATION PATH: Error updating animation file path:', error);
       CreateMessage({
@@ -3470,16 +3471,16 @@ const AniPortSimple = () => {
   const handleClipDrop = async (e, targetArea) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     try {
       const dragData = JSON.parse(e.dataTransfer.getData('application/json'));
-      
+
       if (dragData.type === 'wholeClip' && dragData.isFromDonor && targetArea === 'target') {
         console.log(`📥 CLIP DROP: Dropping clip "${dragData.clipName}" into target`);
-        
+
         // Save current state to undo history
         await saveStateToHistory(`Add clip "${dragData.clipName}"`);
-        
+
         // Extract the clip from donor
         const fsModule = window.require ? window.require('fs') : null;
         if (!fsModule) {
@@ -3487,7 +3488,7 @@ const AniPortSimple = () => {
         }
         const donorContent = fsModule.readFileSync(donorAnimationFile, 'utf8');
         console.log(`📥 CLIP DROP: Looking for clip "${dragData.clipName}" in donor file`);
-        
+
         // Try different variations of the clip name
         let clipText = extractClip(donorContent, dragData.clipName);
         if (!clipText) {
@@ -3498,33 +3499,33 @@ const AniPortSimple = () => {
           // Try without quotes if it had them
           clipText = extractClip(donorContent, dragData.clipName.replace(/"/g, ''));
         }
-        
+
         if (!clipText) {
           console.log(`📥 CLIP DROP: Available clips in donor:`, Object.keys(donorData.animationData.clips));
           throw new Error(`Could not extract clip "${dragData.clipName}" from donor file. Available clips: ${Object.keys(donorData.animationData.clips).join(', ')}`);
         }
-        
+
         // Insert into target
         const targetContent = fsModule.readFileSync(targetAnimationFile, 'utf8');
         // Strip any mMaskDataName from donor clip so target doesn't auto-gain one
         const sanitizedClipText = sanitizeClipTextForPort(clipText);
         const modifiedContent = insertClip(targetContent, sanitizedClipText);
-        
+
         // Write the modified content back
         fsModule.writeFileSync(targetAnimationFile, modifiedContent);
-        
+
         // Re-parse the target data to update UI
         const updatedTargetData = parseAnimationData(modifiedContent);
         setTargetData(prev => ({
           ...prev,
           animationData: updatedTargetData
         }));
-        
+
         // Enable save button
         setFileSaved(false);
-        
+
         console.log(`✅ CLIP DROP: Successfully added clip "${dragData.clipName}" to target`);
-        
+
         // Show success message
         CreateMessage({
           title: 'Clip Added',
@@ -3547,7 +3548,7 @@ const AniPortSimple = () => {
     try {
       // Save current state to undo history
       await saveStateToHistory(`Port event "${event.name || event.effectKey}" to "${targetClipName}"`);
-      
+
       console.log('🚀 PORT: ===== STARTING PORT EVENT =====');
       console.log('🚀 PORT: Event object:', JSON.stringify(event, null, 2));
       console.log('🚀 PORT: Event type:', event.type);
@@ -3561,8 +3562,8 @@ const AniPortSimple = () => {
       console.log('🚀 PORT: Target data exists:', !!targetData);
       console.log('🚀 PORT: Donor linkedData exists:', !!donorData?.linkedData);
       console.log('🚀 PORT: Donor connections exist:', !!donorData?.linkedData?.connections);
-      
-      
+
+
       setIsLoading(true);
       setLoadingMessage('Porting event...');
 
@@ -3587,15 +3588,15 @@ const AniPortSimple = () => {
       if (targetClip.type === 'SelectorClipData') {
         console.log('🚀 PORT: ===== SELECTORCLIPDATA EVENT PORTING =====');
         console.log('🚀 PORT: Target clip type matches SelectorClipData, proceeding with file writing');
-        
+
         // Use the new function to write event to file
         await addEventToSelectorClipData(targetAnimationFile, targetClipName, event, saveStateToHistory);
-        
+
         // Re-parse the file to update UI state
         const updatedContent = fs.readFileSync(targetAnimationFile, 'utf8');
         const updatedTargetData = parseAnimationData(updatedContent);
         setTargetData(prev => ({ ...prev, animationData: updatedTargetData }));
-        
+
         setFileSaved(false);
         CreateMessage({
           title: 'Event Ported',
@@ -3605,15 +3606,15 @@ const AniPortSimple = () => {
       } else if (event.isStandalone) {
         console.log('🚀 PORT: ===== STANDALONE EVENT PORTING =====');
         console.log('🚀 PORT: Porting standalone event directly to file');
-        
+
         // For standalone events, write directly to the target clip's mEventDataMap
         await addStandaloneEventToClip(targetAnimationFile, targetClipName, event, saveStateToHistory);
-        
+
         // Re-parse the file to update UI state
         const updatedContent = fs.readFileSync(targetAnimationFile, 'utf8');
         const updatedTargetData = parseAnimationData(updatedContent);
         setTargetData(prev => ({ ...prev, animationData: updatedTargetData }));
-        
+
         setFileSaved(false);
         CreateMessage({
           title: 'Standalone Event Ported',
@@ -3623,7 +3624,7 @@ const AniPortSimple = () => {
       } else if (event.type === 'particle' && event.effectKey) {
         console.log('🚀 PORT: ===== PARTICLE EVENT DETECTED =====');
         console.log('🚀 PORT: Porting particle event with effect key:', event.effectKey);
-        
+
         // REWORK: Ignore prebuilt connection map; pick the exact donor event by hash/name or startFrame
         let connection = null;
         try {
@@ -3678,15 +3679,15 @@ const AniPortSimple = () => {
           }
 
           console.log('🚀 PORT: Calling portAnimationEventWithVfx...');
-          
+
           // Create a modified connection that points to the target clip instead of source clip
           const modifiedConnection = {
             ...connection,
             animationClip: targetClipName // Use the target clip name instead of source
           };
-          
+
           console.log('🚀 PORT: Modified connection for target clip:', modifiedConnection);
-          
+
           const result = await portAnimationEventWithVfx(
             modifiedConnection,
             targetData.animationData,
@@ -3719,17 +3720,17 @@ const AniPortSimple = () => {
             } catch (fileWriteErr) {
               console.error('🚀 PORT: Failed to write event to file:', fileWriteErr);
             }
-            
+
             // Update the target data state to reflect the changes
             setTargetData(prevData => {
               if (!prevData) return prevData;
-              
+
               // The portAnimationEventWithVfx function already modified the data in place
               // We need to create a deep copy to trigger React re-render
               const newAnimationData = JSON.parse(JSON.stringify(prevData.animationData));
               const newVfxSystems = JSON.parse(JSON.stringify(targetData.vfxSystems || {}));
               const newResourceResolver = JSON.parse(JSON.stringify(targetData.resourceResolver || {}));
-              
+
               return {
                 ...prevData,
                 animationData: newAnimationData,
@@ -3737,41 +3738,41 @@ const AniPortSimple = () => {
                 resourceResolver: newResourceResolver
               };
             });
-            
+
             console.log('🚀 PORT: Target data after porting:', {
               hasAnimationData: !!targetData.animationData,
               hasVfxSystems: !!targetData.vfxSystems,
               hasResourceResolver: !!targetData.resourceResolver,
               vfxSystemsCount: targetData.vfxSystems ? Object.keys(targetData.vfxSystems).length : 0
             });
-            
+
             setFileSaved(false);
-            
+
             // Copy associated asset files
             try {
               console.log('🚀 PORT: Copying associated asset files...');
               console.log('🚀 PORT: VFX system object:', connection.vfxSystem);
-              
+
               // Get the raw content from the VFX system for asset detection
-              const vfxContent = connection.vfxSystem.rawContent || 
-                                connection.vfxSystem.fullContent || 
-                                connection.vfxSystem.originalContent ||
-                                connection.vfxSystem.content ||
-                                JSON.stringify(connection.vfxSystem);
-              
+              const vfxContent = connection.vfxSystem.rawContent ||
+                connection.vfxSystem.fullContent ||
+                connection.vfxSystem.originalContent ||
+                connection.vfxSystem.content ||
+                JSON.stringify(connection.vfxSystem);
+
               console.log('🚀 PORT: VFX content for asset detection (first 200 chars):', vfxContent.substring(0, 200));
-              
+
               const assetFiles = findAssetFiles(vfxContent);
               if (assetFiles.length > 0) {
                 console.log('🚀 PORT: Found asset files to copy:', assetFiles);
                 const { copiedFiles, failedFiles, skippedFiles } = copyAssetFiles(donorAnimationFile, targetAnimationFile, assetFiles);
-                
+
                 // Show asset copy results to user
                 const { ipcRenderer } = window.require('electron');
                 showAssetCopyResults(copiedFiles, failedFiles, skippedFiles, (messageData) => {
                   ipcRenderer.send("Message", messageData);
                 });
-                
+
                 console.log('🚀 PORT: Asset copy results:', { copiedFiles, failedFiles, skippedFiles });
               } else {
                 console.log('🚀 PORT: No asset files found to copy');
@@ -3780,7 +3781,7 @@ const AniPortSimple = () => {
               console.error('🚀 PORT: Error copying assets:', assetError);
               // Don't fail the entire operation if asset copying fails
             }
-            
+
             CreateMessage({
               title: 'Event Ported Successfully',
               message: `${event.effectKey} has been ported with its VFX system and assets.`,
@@ -3796,17 +3797,17 @@ const AniPortSimple = () => {
           console.log('🚀 PORT: Connection key was:', connectionKey);
           console.log('🚀 PORT: Available connection keys:', Object.keys(donorData.linkedData.connections || {}));
           console.log('🚀 PORT: Checking if any connections match the effect key...');
-          
+
           // Check if there are any connections that contain the effect key
-          const matchingConnections = Object.keys(donorData.linkedData.connections || {}).filter(key => 
+          const matchingConnections = Object.keys(donorData.linkedData.connections || {}).filter(key =>
             key.includes(event.effectKey)
           );
           console.log('🚀 PORT: Connections containing effect key:', matchingConnections);
-          
+
           // Try to find the VFX system directly from donor VFX systems
           if (donorData.vfxSystems && donorData.vfxSystems[event.effectKey]) {
             console.log('🚀 PORT: Found VFX system directly in donor data, porting it...');
-            
+
             // Ensure target containers exist
             if (!targetData.vfxSystems || typeof targetData.vfxSystems !== 'object') {
               targetData.vfxSystems = {};
@@ -3814,7 +3815,7 @@ const AniPortSimple = () => {
             if (!targetData.resourceResolver || typeof targetData.resourceResolver !== 'object') {
               targetData.resourceResolver = {};
             }
-            
+
             // Port the VFX system directly
             const vfxSystem = donorData.vfxSystems[event.effectKey];
             targetData.vfxSystems[event.effectKey] = {
@@ -3825,10 +3826,10 @@ const AniPortSimple = () => {
               rawContent: vfxSystem.fullContent || vfxSystem.rawContent || '',
               fullContent: vfxSystem.fullContent || vfxSystem.rawContent || ''
             };
-            
+
             // Add ResourceResolver entry
             targetData.resourceResolver[event.effectKey] = event.effectKey;
-            
+
             // Update React state
             setTargetData(prevData => {
               if (!prevData) return prevData;
@@ -3838,23 +3839,23 @@ const AniPortSimple = () => {
                 resourceResolver: { ...targetData.resourceResolver }
               };
             });
-            
+
             // Add the particle event to the target clip
-            const newEvent = { 
-              ...event, 
+            const newEvent = {
+              ...event,
               isPorted: true
             };
-            
+
             setTargetData(prevData => {
               if (!prevData || !prevData.animationData || !prevData.animationData.clips) {
                 return prevData;
               }
-              
+
               const currentTargetClip = prevData.animationData.clips[targetClipName];
               if (!currentTargetClip) {
                 return prevData;
               }
-              
+
               const updatedClip = {
                 ...currentTargetClip,
                 events: {
@@ -3865,7 +3866,7 @@ const AniPortSimple = () => {
                   ]
                 }
               };
-              
+
               return {
                 ...prevData,
                 animationData: {
@@ -3877,7 +3878,7 @@ const AniPortSimple = () => {
                 }
               };
             });
-            
+
             setFileSaved(false);
             CreateMessage({
               title: 'Event and VFX System Ported',
@@ -3896,28 +3897,28 @@ const AniPortSimple = () => {
         console.log('🚀 PORT: ===== PARTICLE EVENT WITHOUT EFFECT KEY =====');
         console.log('🚀 PORT: Porting particle event directly:', event.effectKey);
         console.log('🚀 PORT: Event has no effectKey, using direct porting method');
-        
+
         // Create a new event object with the original hash and mark it as ported
-        const newEvent = { 
-          ...event, 
+        const newEvent = {
+          ...event,
           hash: event.hash || '0x0288e0b9', // Use original hash if available
           isPorted: true // Mark this event as ported
         };
-        
+
         // Update the target data to reflect the changes
         setTargetData(prevData => {
           if (!prevData || !prevData.animationData || !prevData.animationData.clips || typeof prevData.animationData.clips !== 'object') {
             console.log('🚀 PORT: Warning - animationData.clips is not an object, skipping state update');
             return prevData;
           }
-          
+
           // Get the current target clip
           const currentTargetClip = prevData.animationData.clips[targetClipName];
           if (!currentTargetClip) {
             console.log('🚀 PORT: Warning - target clip not found, skipping state update');
             return prevData;
           }
-          
+
           // Create a new clip with the new event added
           const updatedClip = {
             ...currentTargetClip,
@@ -3929,7 +3930,7 @@ const AniPortSimple = () => {
               ]
             }
           };
-          
+
           return {
             ...prevData,
             animationData: {
@@ -3941,7 +3942,7 @@ const AniPortSimple = () => {
             }
           };
         });
-        
+
         setFileSaved(false);
         CreateMessage({
           title: 'Event Ported',
@@ -3953,32 +3954,32 @@ const AniPortSimple = () => {
         console.log('🚀 PORT: Porting other event type:', event.type);
         console.log('🚀 PORT: Event details:', JSON.stringify(event, null, 2));
         console.log('🚀 PORT: Target clip type:', targetClip.type);
-        
+
         console.log('🚀 PORT: ===== REGULAR CLIP EVENT PORTING =====');
         console.log('🚀 PORT: Target clip type is not SelectorClipData, using UI-only approach');
         console.log('🚀 PORT: Target clip type:', targetClip.type);
-        
+
         // Create a new event object with the original hash and mark it as ported
-        const newEvent = { 
-          ...event, 
+        const newEvent = {
+          ...event,
           hash: event.hash || '0x584a6a6f', // Use original hash if available
           isPorted: true // Mark this event as ported
         };
-        
+
         // Update the target data to reflect the changes
         setTargetData(prevData => {
           if (!prevData || !prevData.animationData || !prevData.animationData.clips || typeof prevData.animationData.clips !== 'object') {
             console.log('🚀 PORT: Warning - animationData.clips is not an object, skipping state update');
             return prevData;
           }
-          
+
           // Get the current target clip
           const currentTargetClip = prevData.animationData.clips[targetClipName];
           if (!currentTargetClip) {
             console.log('🚀 PORT: Warning - target clip not found, skipping state update');
             return prevData;
           }
-          
+
           // Create a new clip with the new event added
           const updatedClip = {
             ...currentTargetClip,
@@ -3990,7 +3991,7 @@ const AniPortSimple = () => {
               ]
             }
           };
-          
+
           return {
             ...prevData,
             animationData: {
@@ -4002,7 +4003,7 @@ const AniPortSimple = () => {
             }
           };
         });
-        
+
         setFileSaved(false);
         CreateMessage({
           title: 'Event Ported',
@@ -4033,17 +4034,17 @@ const AniPortSimple = () => {
     console.log('🚀 DRAG: Source clip:', sourceClip);
     console.log('🚀 DRAG: Source clip name:', sourceClip.name);
     console.log('🚀 DRAG: Is standalone event:', event.isStandalone);
-    
+
     // Stop event from bubbling up to the clip container
     e.stopPropagation();
-    
+
     const dragData = {
       event,
       sourceClip,
       type: 'animation-event',
       isStandalone: event.isStandalone || false
     };
-    
+
     console.log('🚀 DRAG: Drag data being set:', JSON.stringify(dragData, null, 2));
     e.dataTransfer.setData('application/json', JSON.stringify(dragData));
   };
@@ -4053,7 +4054,7 @@ const AniPortSimple = () => {
     console.log('🚀 DROP: ===== DROP EVENT =====');
     console.log('🚀 DROP: Drop event triggered on clip:', targetClip.name);
     console.log('🚀 DROP: Target clip object:', targetClip);
-    
+
     try {
       // Handle dropping full VFX systems (same payload used by Port.js)
       if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes && e.dataTransfer.types.includes('application/x-vfxsys')) {
@@ -4068,7 +4069,7 @@ const AniPortSimple = () => {
           // Check if target file has ResourceResolver (same check as Port.js)
           const targetContent = targetData?.currentFileContent || targetData?.originalAnimationContent || targetData?.originalSkinsContent || '';
           const hasResourceResolver = /\bResourceResolver\s*\{/m.test(targetContent);
-          
+
           if (!hasResourceResolver) {
             console.warn('🚀 DROP: Target file missing ResourceResolver, cannot add VFX system');
             CreateMessage({
@@ -4126,11 +4127,11 @@ const AniPortSimple = () => {
               console.log('🚀 DROP: Copying VFX assets:', assetFiles);
               const { copiedFiles, failedFiles, skippedFiles } = copyAssetFiles(donorAnimationFile, targetAnimationFile, assetFiles);
               console.log(`🚀 DROP: Asset copy results - Copied: ${copiedFiles.length}, Failed: ${failedFiles.length}, Skipped: ${skippedFiles.length}`);
-              
+
               if (failedFiles.length > 0) {
                 console.warn('🚀 DROP: Some assets failed to copy:', failedFiles);
               }
-              
+
               const { ipcRenderer } = window.require('electron');
               showAssetCopyResults(copiedFiles, failedFiles, skippedFiles, (messageData) => {
                 ipcRenderer.send("Message", messageData);
@@ -4144,13 +4145,13 @@ const AniPortSimple = () => {
           }
 
           setFileSaved(false);
-          
+
           // Debug: Verify VFX system was added to state
           console.log('🚀 DROP: Verifying VFX system was added to state...');
           console.log('🚀 DROP: Current targetData.vfxSystems:', targetData.vfxSystems);
           console.log('🚀 DROP: VFX systems count:', Object.keys(targetData.vfxSystems || {}).length);
           console.log('🚀 DROP: Added system details:', targetData.vfxSystems[chosenName]);
-          
+
           CreateMessage({
             title: 'VFX System Added',
             message: `Added VFX system "${chosenName}" to target. It will be written on Save.`,
@@ -4168,13 +4169,13 @@ const AniPortSimple = () => {
     try {
       const rawData = e.dataTransfer.getData('application/json');
       console.log('🚀 DROP: Raw data from transfer:', rawData);
-      
+
       const data = JSON.parse(rawData);
       console.log('🚀 DROP: Parsed data:', JSON.stringify(data, null, 2));
       console.log('🚀 DROP: Data type:', data.type);
       console.log('🚀 DROP: Data event:', data.event);
       console.log('🚀 DROP: Data sourceClip:', data.sourceClip);
-      
+
       if (data.type === 'animation-event') {
         console.log('🚀 DROP: ===== CALLING HANDLE PORT EVENT =====');
         console.log('🚀 DROP: About to call handlePortEvent with:');
@@ -4182,21 +4183,21 @@ const AniPortSimple = () => {
         console.log('🚀 DROP: - SourceClip:', data.sourceClip);
         console.log('🚀 DROP: - TargetClipName:', targetClip.name);
         console.log('🚀 DROP: - Is standalone:', data.isStandalone);
-        
+
         handlePortEvent(data.event, data.sourceClip, targetClip.name);
       } else if (data.type === 'wholeClip') {
         console.log('🚀 DROP: ===== CALLING HANDLE CLIP DROP =====');
         console.log('🚀 DROP: About to call handleClipDrop for whole clip:', data.clipName);
-        
+
         // Create a synthetic event for handleClipDrop
         const syntheticEvent = {
-          preventDefault: () => {},
-          stopPropagation: () => {},
+          preventDefault: () => { },
+          stopPropagation: () => { },
           dataTransfer: {
             getData: () => JSON.stringify(data)
           }
         };
-        
+
         handleClipDrop(syntheticEvent, 'target');
       } else {
         console.log('🚀 DROP: Wrong data type:', data.type);
@@ -4258,7 +4259,7 @@ const AniPortSimple = () => {
           </IconButton>
         </Tooltip>
       </div>
-      
+
       {/* Loading Overlay */}
       {isLoading && (
         <div className="loading-overlay">
@@ -4266,8 +4267,8 @@ const AniPortSimple = () => {
           <div className="loading-info">
             <p>{loadingMessage}</p>
             <div className="progress-bar">
-              <div 
-                className="progress-fill" 
+              <div
+                className="progress-fill"
                 style={{ width: `${loadingProgress}%` }}
               ></div>
             </div>
@@ -4280,13 +4281,13 @@ const AniPortSimple = () => {
       {donorData && targetData && (
         <div className="page-navigation">
           <div className="page-tabs">
-            <button 
+            <button
               className={`page-tab ${currentPage === 'animation' ? 'active' : ''}`}
               onClick={() => setCurrentPage('animation')}
             >
               🎬 Animation Editor
             </button>
-            <button 
+            <button
               className={`page-tab ${currentPage === 'mask' ? 'active' : ''}`}
               onClick={() => setCurrentPage('mask')}
             >
@@ -4300,13 +4301,13 @@ const AniPortSimple = () => {
       {(!donorData || !targetData) && (
         <div className="file-loading-section">
           <div className="file-grid">
-            
+
             {/* Target Files */}
             <div className="file-section target-section">
               <h3>Target Files (Destination)</h3>
               <div className="file-inputs">
                 <div className="input-group">
-                  <button 
+                  <button
                     className="combined-button"
                     onClick={() => handleCombinedFileSelect('target')}
                   >
@@ -4314,14 +4315,14 @@ const AniPortSimple = () => {
                   </button>
                 </div>
               </div>
-              
+
               {/* Recent Target Files */}
               {recentTargetFiles.length > 0 && (
                 <div className="recent-files-section">
                   <h4>📁 Recent Target Files</h4>
                   <div className="recent-files-list">
                     {recentTargetFiles.map((fileInfo, index) => (
-                      <div 
+                      <div
                         key={`${fileInfo.path}-${index}`}
                         className="recent-file-item"
                         onClick={() => selectRecentFile(fileInfo, 'target')}
@@ -4343,7 +4344,7 @@ const AniPortSimple = () => {
               <h3>Donor Files (Source)</h3>
               <div className="file-inputs">
                 <div className="input-group">
-                  <button 
+                  <button
                     className="combined-button"
                     onClick={() => handleCombinedFileSelect('donor')}
                   >
@@ -4351,14 +4352,14 @@ const AniPortSimple = () => {
                   </button>
                 </div>
               </div>
-              
+
               {/* Recent Donor Files */}
               {recentDonorFiles.length > 0 && (
                 <div className="recent-files-section">
                   <h4>📁 Recent Donor Files</h4>
                   <div className="recent-files-list">
                     {recentDonorFiles.map((fileInfo, index) => (
-                      <div 
+                      <div
                         key={`${fileInfo.path}-${index}`}
                         className="recent-file-item"
                         onClick={() => selectRecentFile(fileInfo, 'donor')}
@@ -4379,7 +4380,7 @@ const AniPortSimple = () => {
           {/* Load Files Button */}
           {donorAnimationFile && donorSkinsFile && targetAnimationFile && targetSkinsFile && (
             <div className="load-section">
-              <button 
+              <button
                 className="load-button"
                 onClick={loadFiles}
                 disabled={isLoading}
@@ -4396,890 +4397,890 @@ const AniPortSimple = () => {
         <div className="main-editor">
           {currentPage === 'animation' ? (
             <div className="animation-editor">
-          <div className="split-container">
-            
-            {/* Target Panel (Left) */}
-            <div className="panel target-panel">
-              <div className="panel-header">
-              </div>
-              
-              {/* Target Search Bar */}
-              <div className="panel-search">
-                <input
-                  type="text"
-                  placeholder="Search target clips..."
-                  value={targetSearchTerm}
-                  onChange={(e) => setTargetSearchTerm(e.target.value)}
-                  className="search-input"
-                />
-                {targetSearchTerm && (
-                  <div className="search-results">
-                    <span>
-                      Showing {getTargetClips().length} of {targetData?.animationData?.clips ? Object.keys(targetData.animationData.clips).length : 0} clips
-                    </span>
+              <div className="split-container">
+
+                {/* Target Panel (Left) */}
+                <div className="panel target-panel">
+                  <div className="panel-header">
                   </div>
-                )}
-              </div>
 
-              {/* Create New Clip Controls */}
-              <div className="new-clip-controls">
-                <input
-                  type="text"
-                  placeholder="New clip name (e.g., Run_Base)"
-                  value={newClipNameInput}
-                  onChange={(e) => setNewClipNameInput(e.target.value)}
-                  className="new-clip-name-input"
-                />
-                <select
-                  className="new-clip-type-select"
-                  value={newClipType}
-                  onChange={(e) => setNewClipType(e.target.value)}
-                >
-                  <option value="AtomicClipData">AtomicClipData</option>
-                  <option value="SequencerClipData">SequencerClipData</option>
-                  <option value="SelectorClipData">SelectorClipData</option>
-                  <option value="ParametricClipData">ParametricClipData</option>
-                  <option value="ConditionFloatClipData">ConditionFloatClipData</option>
-                </select>
-                <button className="new-clip-create-btn" onClick={handleCreateNewClip}>
-                  + New Clip
-                </button>
-              </div>
-              
-              <div className="animation-list">
-                {(() => {
-                  const clips = getTargetClips();
-                  console.log('Rendering target clips:', clips.length);
-                  return clips.length > 0 ? (
-                    clips.map((clip, index) => {
-                    const totalEvents = Object.values(clip.events || {}).reduce((sum, events) => sum + (events?.length || 0), 0) + 
-                      (clip.type === 'SequencerClipData' ? (clip.clipNameList?.length || 0) : 0) +
-                      (clip.type === 'SelectorClipData' ? (clip.selectorPairs?.length || 0) : 0) +
-                      (clip.type === 'ParametricClipData' ? (clip.parametricPairs?.length || 0) : 0) +
-                      (clip.type === 'ConditionFloatClipData' ? (clip.conditionFloatPairs?.length || 0) : 0);
-                    const isExpanded = expandedTargetClips.has(clip.name);
-                    
-                    return (
-                      <div 
-                        key={clip.name}
-                        className={`animation-clip target-clip ${dragOverClip === clip.name ? 'drag-over' : ''}`}
-                        onDrop={(e) => {
-                          handleDrop(e, clip);
-                          setDragOverClip(null);
-                        }}
-                        onDragOver={(e) => handleDragOver(e, clip)}
-                        onDragLeave={handleDragLeave}
-                      >
-                        <div 
-                          className="clip-header"
-                          onClick={() => {
-                            setSelectedTargetClip(clip);
-                            toggleTargetClipExpansion(clip.name);
-                          }}
-                        >
-                          <div className="clip-info">
-                            {editingClipName === clip.name ? (
-                              <div className="clip-name-editor" onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="text"
-                                  value={newClipName}
-                                  onChange={(e) => setNewClipName(e.target.value)}
-                                  onKeyDown={(e) => handleClipNameKeyPress(e, clip.name)}
-                                  onBlur={() => handleClipNameSave(clip.name, newClipName)}
-                                  autoFocus
-                                  className="clip-name-input"
-                                />
-                                <div className="clip-name-actions">
-                                  <button onClick={() => handleClipNameSave(clip.name, newClipName)} className="save-name-btn">✓</button>
-                                  <button onClick={handleClipNameCancel} className="cancel-name-btn">✗</button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="clip-name-container">
-                                <span className="clip-name">{getClipDisplayName(clip)}</span>
-                                <button 
-                                  className="edit-name-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleClipNameEdit(clip.name);
-                                  }}
-                                  title="Edit clip name"
-                                >
-                                  Edit
-                                </button>
-                              </div>
-                            )}
-                            <span className="clip-type">{clip.type || 'Unknown'}</span>
-                          </div>
-                          <div className="clip-stats">
-                            <span className="event-count">{totalEvents} events</span>
-                            <button 
-                              className="clip-delete-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteClipClick(clip.name);
+                  {/* Target Search Bar */}
+                  <div className="panel-search">
+                    <input
+                      type="text"
+                      placeholder="Search target clips..."
+                      value={targetSearchTerm}
+                      onChange={(e) => setTargetSearchTerm(e.target.value)}
+                      className="search-input"
+                    />
+                    {targetSearchTerm && (
+                      <div className="search-results">
+                        <span>
+                          Showing {getTargetClips().length} of {targetData?.animationData?.clips ? Object.keys(targetData.animationData.clips).length : 0} clips
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Create New Clip Controls */}
+                  <div className="new-clip-controls">
+                    <input
+                      type="text"
+                      placeholder="New clip name (e.g., Run_Base)"
+                      value={newClipNameInput}
+                      onChange={(e) => setNewClipNameInput(e.target.value)}
+                      className="new-clip-name-input"
+                    />
+                    <select
+                      className="new-clip-type-select"
+                      value={newClipType}
+                      onChange={(e) => setNewClipType(e.target.value)}
+                    >
+                      <option value="AtomicClipData">AtomicClipData</option>
+                      <option value="SequencerClipData">SequencerClipData</option>
+                      <option value="SelectorClipData">SelectorClipData</option>
+                      <option value="ParametricClipData">ParametricClipData</option>
+                      <option value="ConditionFloatClipData">ConditionFloatClipData</option>
+                    </select>
+                    <button className="new-clip-create-btn" onClick={handleCreateNewClip}>
+                      + New Clip
+                    </button>
+                  </div>
+
+                  <div className="animation-list">
+                    {(() => {
+                      const clips = getTargetClips();
+                      console.log('Rendering target clips:', clips.length);
+                      return clips.length > 0 ? (
+                        clips.map((clip, index) => {
+                          const totalEvents = Object.values(clip.events || {}).reduce((sum, events) => sum + (events?.length || 0), 0) +
+                            (clip.type === 'SequencerClipData' ? (clip.clipNameList?.length || 0) : 0) +
+                            (clip.type === 'SelectorClipData' ? (clip.selectorPairs?.length || 0) : 0) +
+                            (clip.type === 'ParametricClipData' ? (clip.parametricPairs?.length || 0) : 0) +
+                            (clip.type === 'ConditionFloatClipData' ? (clip.conditionFloatPairs?.length || 0) : 0);
+                          const isExpanded = expandedTargetClips.has(clip.name);
+
+                          return (
+                            <div
+                              key={clip.name}
+                              className={`animation-clip target-clip ${dragOverClip === clip.name ? 'drag-over' : ''}`}
+                              onDrop={(e) => {
+                                handleDrop(e, clip);
+                                setDragOverClip(null);
                               }}
-                              title="Delete entire clip"
+                              onDragOver={(e) => handleDragOver(e, clip)}
+                              onDragLeave={handleDragLeave}
                             >
-                              🗑️
-                            </button>
-                            <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>
-                              ▼
-                            </span>
-                          </div>
-                        </div>
-
-                        {isExpanded && (
-                          <div className="clip-events">
-                            {/* Track Data Name Editor - Only for AtomicClipData */}
-                            {clip.type === 'AtomicClipData' && (
-                              <div className="clip-property-editor">
-                                <div className="property-row">
-                                  <label className="property-label">Track Data Name:</label>
-                                  <div className="property-combo">
-                                    <input
-                                      type="text"
-                                      value={clip.trackDataName || ''}
-                                      onChange={(e) => handleTrackDataNameInputChange(clip.name, e.target.value)}
-                                      onBlur={(e) => handleTrackDataNameChange(clip.name, e.target.value)}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                          handleTrackDataNameChange(clip.name, e.target.value);
-                                          e.target.blur(); // Remove focus
-                                        }
-                                      }}
-                                      className="property-input"
-                                      placeholder={`Enter track data name (e.g., Default, base, 0x12345678)`}
-                                    />
-                                    {/* Suggested track names from parsed file */}
-                                    {Array.isArray(targetData?.animationData?.trackNames) && targetData.animationData.trackNames.length > 0 && (
-                                      <select
-                                        className="property-select"
-                                        onChange={(e) => {
-                                          const v = e.target.value;
-                                          if (v) handleTrackDataNameChange(clip.name, v);
-                                          e.target.selectedIndex = 0;
-                                        }}
-                                      >
-                                        <option value="">TrackDataMap entries…</option>
-                                        {targetData.animationData.trackNames.map((name) => (
-                                          <option key={name} value={name}>{name}</option>
-                                        ))}
-                                      </select>
-                                    )}
-                                  </div>
-                                  <div className="property-info">
-                                    {!clip.trackDataName && (
-                                      <span className="no-value">
-                                        No track data name set
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Mask Data Name Editor - Only for AtomicClipData */}
-                            {clip.type === 'AtomicClipData' && (
-                              <div className="clip-property-editor">
-                                <div className="property-row">
-                                  <label className="property-label">Mask Data Name:</label>
-                                  <div className="property-combo">
-                                    <input
-                                      type="text"
-                                      value={maskDataNameInputs[clip.name] !== undefined ? maskDataNameInputs[clip.name] : (clip.maskDataName || '')}
-                                      onChange={(e) => handleMaskDataNameInputChange(clip.name, e.target.value)}
-                                      onBlur={(e) => {
-                                        const value = maskDataNameInputs[clip.name] !== undefined ? maskDataNameInputs[clip.name] : e.target.value;
-                                        handleMaskDataNameChange(clip.name, value);
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                          const value = maskDataNameInputs[clip.name] !== undefined ? maskDataNameInputs[clip.name] : e.target.value;
-                                          handleMaskDataNameChange(clip.name, value);
-                                          e.target.blur();
-                                        }
-                                      }}
-                                      className="property-input"
-                                      placeholder={`Enter mask data name (e.g., UpperBody, 0xABCD...)`}
-                                    />
-                                    {/* Suggested mask names from parsed file */}
-                                    {Array.isArray(targetData?.animationData?.maskNames) && targetData.animationData.maskNames.length > 0 && (
-                                      <select
-                                        className="property-select"
-                                        onChange={(e) => {
-                                          const v = e.target.value;
-                                          if (v) handleMaskDataNameChange(clip.name, v);
-                                          e.target.selectedIndex = 0;
-                                        }}
-                                      >
-                                        <option value="">MaskDataMap entries…</option>
-                                        {targetData.animationData.maskNames.map((name) => (
-                                          <option key={name} value={name}>{name}</option>
-                                        ))}
-                                      </select>
-                                    )}
-                                  </div>
-                                  <div className="property-info">
-                                    {!clip.maskDataName && (
-                                      <span className="no-value">No mask data name set</span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Animation File Path Editor - Only for AtomicClipData */}
-                            {clip.type === 'AtomicClipData' && (
-                              <div className="clip-property-editor">
-                                <div className="property-row">
-                                  <label className="property-label">Animation File Path:</label>
-                                  <input
-                                    type="text"
-                                    value={clip.animationFilePath || ''}
-                                    onChange={(e) => handleAnimationFilePathInputChange(clip.name, e.target.value)}
-                                    onBlur={(e) => handleAnimationFilePathChange(clip.name, e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        handleAnimationFilePathChange(clip.name, e.target.value);
-                                        e.target.blur(); // Remove focus
-                                      }
-                                    }}
-                                    className="property-input animation-path-input"
-                                    placeholder="Enter animation file path (e.g., ASSETS/bum/Characters/Orianna/Skins/Base/animations/Orianna_attack1.anm)"
-                                  />
-                                  <div className="property-info">
-                                    {!clip.animationFilePath && (
-                                      <span className="no-value">
-                                        No animation file path set
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Clip Name List Editor - Only for SequencerClipData */}
-                            {clip.type === 'SequencerClipData' && (
-                              <div className="clip-property-editor">
-                                <div className="property-row">
-                                  <label className="property-label">Clip Name List:</label>
-                                  <div className="clip-name-list-editor">
-                                    {(clip.clipNameList || []).map((clipName, index) => (
-                                      <div key={index} className="clip-name-entry">
-                                        <input
-                                          type="text"
-                                          value={clipName.value}
-                                          onChange={(e) => handleClipNameListChange(clip.name, index, e.target.value, clipName.type)}
-                                          onBlur={(e) => handleClipNameListSave(clip.name, index, e.target.value, clipName.type)}
-                                          onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                              handleClipNameListSave(clip.name, index, e.target.value, clipName.type);
-                                              e.target.blur();
-                                            }
-                                          }}
-                                          className="property-input clip-name-input"
-                                          placeholder={`Enter clip name (${clipName.type === 'quoted' ? 'string' : 'hash'})`}
-                                        />
-                                        <span className="clip-name-type">({clipName.type})</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                                {/* Sequencer child picker */}
-                                <div className="sequencer-add-row">
-                                  <input
-                                    type="text"
-                                    className="sequencer-search-input"
-                                    placeholder="Search existing clips to add..."
-                                    value={sequencerOpenFor === clip.name ? sequencerSearch : ''}
-                                    onChange={(e) => { setSequencerOpenFor(clip.name); setSequencerSearch(e.target.value); }}
-                                  />
-                                  <select
-                                    className="sequencer-select"
-                                    onChange={(e) => {
-                                      const child = e.target.value;
-                                      if (child) {
-                                        handleAddClipToSequencer(clip.name, child);
-                                        e.target.selectedIndex = 0;
-                                      }
-                                    }}
-                                  >
-                                    <option value="">Add existing clip...</option>
-                                    {getTargetClips()
-                                      .filter(c => c.name !== clip.name)
-                                      .filter(c => {
-                                        if (sequencerOpenFor !== clip.name) return true;
-                                        const q = (sequencerSearch || '').toLowerCase();
-                                        return c.name.toLowerCase().includes(q);
-                                      })
-                                      .map(c => (
-                                        <option key={c.name} value={c.name}>{c.name}</option>
-                                      ))}
-                                  </select>
-                                  <button className="ensure-eventmap-btn" onClick={() => handleEnsureEventDataMap(clip.name)}>
-                                    + EventDataMap
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* SelectorClipData UI */}
-                            {clip.type === 'SelectorClipData' && (
-                              <div className="clip-property-editor">
-                                <div className="property-row">
-                                  <label className="property-label">Selector Pairs:</label>
-                                  <div className="selector-pairs-editor">
-                                    {/* Display existing pairs if any */}
-                                    {clip.selectorPairs && clip.selectorPairs.length > 0 && (
-                                      <div className="existing-pairs">
-                                        {clip.selectorPairs.map((pair, index) => {
-                                          const pairKey = `${clip.name}-${index}`;
-                                          const isEditing = editingSelectorPair === pairKey;
-                                          
-                                          return (
-                                            <div key={index} className="selector-pair-item">
-                                              <span className="pair-clip">{pair.clipName}</span>
-                                              {isEditing ? (
-                                                <div className="probability-editor">
-                                                  <input
-                                                    type="number"
-                                                    className="probability-edit-input"
-                                                    value={editingProbability}
-                                                    onChange={(e) => setEditingProbability(e.target.value)}
-                                                    onKeyPress={(e) => {
-                                                      if (e.key === 'Enter') {
-                                                        handleSaveSelectorPairProbability(clip.name, index);
-                                                      } else if (e.key === 'Escape') {
-                                                        handleCancelEditSelectorPair();
-                                                      }
-                                                    }}
-                                                    min="0"
-                                                    max="1"
-                                                    step="0.1"
-                                                    autoFocus
-                                                  />
-                                                  <button 
-                                                    className="save-probability-btn"
-                                                    onClick={() => handleSaveSelectorPairProbability(clip.name, index)}
-                                                    title="Save"
-                                                  >
-                                                    ✓
-                                                  </button>
-                                                  <button 
-                                                    className="cancel-probability-btn"
-                                                    onClick={handleCancelEditSelectorPair}
-                                                    title="Cancel"
-                                                  >
-                                                    ×
-                                                  </button>
-                                                </div>
-                                              ) : (
-                                                <span 
-                                                  className="pair-probability editable"
-                                                  onClick={() => handleEditSelectorPairProbability(clip.name, index, pair.probability)}
-                                                  title="Click to edit probability"
-                                                >
-                                                  ({pair.probability})
-                                                </span>
-                                              )}
-                                              <button 
-                                                className="remove-pair-btn"
-                                                onClick={() => handleRemoveSelectorPair(clip.name, index)}
-                                                title="Remove this pair"
-                                              >
-                                                ×
-                                              </button>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                    
-                                    {/* Add new pair controls */}
-                                    <div className="selector-add-row">
+                              <div
+                                className="clip-header"
+                                onClick={() => {
+                                  setSelectedTargetClip(clip);
+                                  toggleTargetClipExpansion(clip.name);
+                                }}
+                              >
+                                <div className="clip-info">
+                                  {editingClipName === clip.name ? (
+                                    <div className="clip-name-editor" onClick={(e) => e.stopPropagation()}>
                                       <input
                                         type="text"
-                                        className="selector-search-input"
-                                        placeholder="Search clips to add..."
-                                        value={selectorOpenFor === clip.name ? selectorSearch : ''}
-                                        onChange={(e) => { setSelectorOpenFor(clip.name); setSelectorSearch(e.target.value); }}
+                                        value={newClipName}
+                                        onChange={(e) => setNewClipName(e.target.value)}
+                                        onKeyDown={(e) => handleClipNameKeyPress(e, clip.name)}
+                                        onBlur={() => handleClipNameSave(clip.name, newClipName)}
+                                        autoFocus
+                                        className="clip-name-input"
                                       />
-                                      <input
-                                        type="number"
-                                        className="probability-input"
-                                        placeholder="1.0"
-                                        min="0"
-                                        max="1"
-                                        step="0.1"
-                                        value={selectorProbabilityInput}
-                                        onChange={(e) => setSelectorProbabilityInput(e.target.value)}
-                                      />
-                                      <select
-                                        className="selector-select"
-                                        onChange={(e) => {
-                                          const child = e.target.value;
-                                          const probability = parseFloat(selectorProbabilityInput || '1.0');
-                                          if (child) {
-                                            handleAddSelectorPair(clip.name, child, probability);
-                                            e.target.selectedIndex = 0;
-                                            // Keep the probability value for next addition
-                                            // Only reset to 1.0 if the field is empty
-                                            if (!selectorProbabilityInput || selectorProbabilityInput === '') {
-                                              setSelectorProbabilityInput('1.0');
-                                            }
-                                          }
+                                      <div className="clip-name-actions">
+                                        <button onClick={() => handleClipNameSave(clip.name, newClipName)} className="save-name-btn">✓</button>
+                                        <button onClick={handleClipNameCancel} className="cancel-name-btn">✗</button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="clip-name-container">
+                                      <span className="clip-name">{getClipDisplayName(clip)}</span>
+                                      <button
+                                        className="edit-name-btn"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleClipNameEdit(clip.name);
                                         }}
+                                        title="Edit clip name"
                                       >
-                                        <option value="">Add clip with probability...</option>
-                                        {getTargetClips()
-                                          .filter(c => c.name !== clip.name)
-                                          .filter(c => {
-                                            if (selectorOpenFor !== clip.name) return true;
-                                            const q = (selectorSearch || '').toLowerCase();
-                                            return c.name.toLowerCase().includes(q);
-                                          })
-                                          .map(c => (
-                                            <option key={c.name} value={c.name}>{c.name}</option>
-                                          ))}
-                                      </select>
-                                      <button className="ensure-eventmap-btn" onClick={() => handleEnsureEventDataMap(clip.name)}>
-                                        + EventDataMap
+                                        Edit
                                       </button>
                                     </div>
-                                  </div>
+                                  )}
+                                  <span className="clip-type">{clip.type || 'Unknown'}</span>
                                 </div>
-                              </div>
-                            )}
-                            
-                            {(() => {
-                              const hasEvents = Object.values(clip.events || {}).some(events => events && events.length > 0) ||
-                                                (clip.type === 'SequencerClipData' && clip.clipNameList && clip.clipNameList.length > 0) ||
-                                                (clip.type === 'SelectorClipData' && clip.selectorPairs && clip.selectorPairs.length > 0) ||
-                                                (clip.type === 'ParametricClipData' && clip.parametricPairs && clip.parametricPairs.length > 0) ||
-                                                (clip.type === 'ConditionFloatClipData' && clip.conditionFloatPairs && clip.conditionFloatPairs.length > 0);
-                              
-                              if (!hasEvents) {
-                                return (
-                                  <div className="empty-clip-drop-zone">
-                                    <div className="drop-zone-content">
-                                      <span className="drop-zone-icon">📥</span>
-                                      <span className="drop-zone-text">Drop events here to add them to this clip</span>
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              
-                              return Object.entries(clip.events || {}).map(([eventType, events]) => 
-                                events && events.length > 0 && (
-                                  <div key={eventType} className="event-type-section">
-                                    <div className="event-type-header">
-                                      <span className="event-type-name">{eventType}</span>
-                                      <span className="event-type-count">({events.length})</span>
-                                    </div>
-                                    
-                                    {events.map((event, index) => (
-                                      <div key={`${eventType}-${index}`} className="event-item target-event">
-                                        <div className="event-content">
-                                          <div className="event-header">
-                                            <span className="event-icon">
-                                              {eventType === 'particle' ? '✨' : 
-                                               eventType === 'sound' ? '🔊' : 
-                                               eventType === 'submesh' ? '👁️' : 
-                                               eventType === 'facetarget' ? '🎯' : '⚡'}
-                                            </span>
-                                            <span className="event-type">{eventType}</span>
-                                            {event.isPorted && <span className="ported-badge">PORTED</span>}
-                                          </div>
-                                          <div className="event-details">
-                                            {eventType === 'particle' && `Effect: ${event.effectKey || 'None'} | Frame: ${event.startFrame || 0}`}
-                                            {eventType === 'sound' && `Sound: ${event.soundName || 'None'}`}
-                                            {eventType === 'submesh' && `End Frame: ${event.endFrame || 0}`}
-                                            {eventType === 'facetarget' && `Target: ${event.faceTarget || 0} | Y-Rot: ${event.yRotationDegrees || 0}°`}
-                                          </div>
-                                        </div>
-                                        <div className="event-actions">
-                                          <button 
-                                            className="delete-button"
-                                            onClick={() => {
-                                              console.log('🗑️ BUTTON: Delete button clicked!');
-                                              console.log('🗑️ BUTTON: Event:', event);
-                                              console.log('🗑️ BUTTON: Clip name:', clip.name);
-                                              console.log('🗑️ BUTTON: Event type:', eventType);
-                                              console.log('🗑️ BUTTON: Event index:', index);
-                                              handleDeleteEvent(event, clip.name, eventType, index);
-                                            }}
-                                            title="Delete this event"
-                                          >
-                                            🗑️
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )
-                              );
-                            })()}
-
-                            {/* ConditionFloatClipData UI - Only for ConditionFloatClipData */}
-                            {clip.type === 'ConditionFloatClipData' && (
-                              <div className="event-type-section">
-                                <div className="event-type-header">
-                                  <span className="event-type-name">Condition Float Pairs</span>
-                                  <span className="event-type-count">({clip.conditionFloatPairs?.length || 0})</span>
-                                  <button 
-                                    className="add-pair-btn"
-                                    onClick={() => {
-                                      const clipName = prompt('Enter clip name:');
-                                      if (clipName) {
-                                        const value = prompt('Enter value (optional, leave empty for no value):');
-                                        const floatValue = value ? parseFloat(value) : null;
-                                        handleAddConditionFloatPair(clip.name, clipName, floatValue);
-                                      }
+                                <div className="clip-stats">
+                                  <span className="event-count">{totalEvents} events</span>
+                                  <button
+                                    className="clip-delete-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteClipClick(clip.name);
                                     }}
-                                    title="Add condition float pair"
+                                    title="Delete entire clip"
                                   >
-                                    + Add Pair
+                                    🗑️
                                   </button>
+                                  <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>
+                                    ▼
+                                  </span>
                                 </div>
+                              </div>
 
-                                {Array.isArray(clip.conditionFloatPairs) && clip.conditionFloatPairs.length > 0 && (
-                                  <div className="condition-pairs-list">
-                                    {clip.conditionFloatPairs.map((pair, idx) => (
-                                      <div key={`condition-pair-${idx}`} className="event-item">
+                              {isExpanded && (
+                                <div className="clip-events">
+                                  {/* Track Data Name Editor - Only for AtomicClipData */}
+                                  {clip.type === 'AtomicClipData' && (
+                                    <div className="clip-property-editor">
+                                      <div className="property-row">
+                                        <label className="property-label">Track Data Name:</label>
+                                        <div className="property-combo">
+                                          <input
+                                            type="text"
+                                            value={clip.trackDataName || ''}
+                                            onChange={(e) => handleTrackDataNameInputChange(clip.name, e.target.value)}
+                                            onBlur={(e) => handleTrackDataNameChange(clip.name, e.target.value)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                handleTrackDataNameChange(clip.name, e.target.value);
+                                                e.target.blur(); // Remove focus
+                                              }
+                                            }}
+                                            className="property-input"
+                                            placeholder={`Enter track data name (e.g., Default, base, 0x12345678)`}
+                                          />
+                                          {/* Suggested track names from parsed file */}
+                                          {Array.isArray(targetData?.animationData?.trackNames) && targetData.animationData.trackNames.length > 0 && (
+                                            <select
+                                              className="property-select"
+                                              onChange={(e) => {
+                                                const v = e.target.value;
+                                                if (v) handleTrackDataNameChange(clip.name, v);
+                                                e.target.selectedIndex = 0;
+                                              }}
+                                            >
+                                              <option value="">TrackDataMap entries…</option>
+                                              {targetData.animationData.trackNames.map((name) => (
+                                                <option key={name} value={name}>{name}</option>
+                                              ))}
+                                            </select>
+                                          )}
+                                        </div>
+                                        <div className="property-info">
+                                          {!clip.trackDataName && (
+                                            <span className="no-value">
+                                              No track data name set
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Mask Data Name Editor - Only for AtomicClipData */}
+                                  {clip.type === 'AtomicClipData' && (
+                                    <div className="clip-property-editor">
+                                      <div className="property-row">
+                                        <label className="property-label">Mask Data Name:</label>
+                                        <div className="property-combo">
+                                          <input
+                                            type="text"
+                                            value={maskDataNameInputs[clip.name] !== undefined ? maskDataNameInputs[clip.name] : (clip.maskDataName || '')}
+                                            onChange={(e) => handleMaskDataNameInputChange(clip.name, e.target.value)}
+                                            onBlur={(e) => {
+                                              const value = maskDataNameInputs[clip.name] !== undefined ? maskDataNameInputs[clip.name] : e.target.value;
+                                              handleMaskDataNameChange(clip.name, value);
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                const value = maskDataNameInputs[clip.name] !== undefined ? maskDataNameInputs[clip.name] : e.target.value;
+                                                handleMaskDataNameChange(clip.name, value);
+                                                e.target.blur();
+                                              }
+                                            }}
+                                            className="property-input"
+                                            placeholder={`Enter mask data name (e.g., UpperBody, 0xABCD...)`}
+                                          />
+                                          {/* Suggested mask names from parsed file */}
+                                          {Array.isArray(targetData?.animationData?.maskNames) && targetData.animationData.maskNames.length > 0 && (
+                                            <select
+                                              className="property-select"
+                                              onChange={(e) => {
+                                                const v = e.target.value;
+                                                if (v) handleMaskDataNameChange(clip.name, v);
+                                                e.target.selectedIndex = 0;
+                                              }}
+                                            >
+                                              <option value="">MaskDataMap entries…</option>
+                                              {targetData.animationData.maskNames.map((name) => (
+                                                <option key={name} value={name}>{name}</option>
+                                              ))}
+                                            </select>
+                                          )}
+                                        </div>
+                                        <div className="property-info">
+                                          {!clip.maskDataName && (
+                                            <span className="no-value">No mask data name set</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Animation File Path Editor - Only for AtomicClipData */}
+                                  {clip.type === 'AtomicClipData' && (
+                                    <div className="clip-property-editor">
+                                      <div className="property-row">
+                                        <label className="property-label">Animation File Path:</label>
+                                        <input
+                                          type="text"
+                                          value={clip.animationFilePath || ''}
+                                          onChange={(e) => handleAnimationFilePathInputChange(clip.name, e.target.value)}
+                                          onBlur={(e) => handleAnimationFilePathChange(clip.name, e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              handleAnimationFilePathChange(clip.name, e.target.value);
+                                              e.target.blur(); // Remove focus
+                                            }
+                                          }}
+                                          className="property-input animation-path-input"
+                                          placeholder="Enter animation file path (e.g., ASSETS/bum/Characters/Orianna/Skins/Base/animations/Orianna_attack1.anm)"
+                                        />
+                                        <div className="property-info">
+                                          {!clip.animationFilePath && (
+                                            <span className="no-value">
+                                              No animation file path set
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Clip Name List Editor - Only for SequencerClipData */}
+                                  {clip.type === 'SequencerClipData' && (
+                                    <div className="clip-property-editor">
+                                      <div className="property-row">
+                                        <label className="property-label">Clip Name List:</label>
+                                        <div className="clip-name-list-editor">
+                                          {(clip.clipNameList || []).map((clipName, index) => (
+                                            <div key={index} className="clip-name-entry">
+                                              <input
+                                                type="text"
+                                                value={clipName.value}
+                                                onChange={(e) => handleClipNameListChange(clip.name, index, e.target.value, clipName.type)}
+                                                onBlur={(e) => handleClipNameListSave(clip.name, index, e.target.value, clipName.type)}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                    handleClipNameListSave(clip.name, index, e.target.value, clipName.type);
+                                                    e.target.blur();
+                                                  }
+                                                }}
+                                                className="property-input clip-name-input"
+                                                placeholder={`Enter clip name (${clipName.type === 'quoted' ? 'string' : 'hash'})`}
+                                              />
+                                              <span className="clip-name-type">({clipName.type})</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      {/* Sequencer child picker */}
+                                      <div className="sequencer-add-row">
+                                        <input
+                                          type="text"
+                                          className="sequencer-search-input"
+                                          placeholder="Search existing clips to add..."
+                                          value={sequencerOpenFor === clip.name ? sequencerSearch : ''}
+                                          onChange={(e) => { setSequencerOpenFor(clip.name); setSequencerSearch(e.target.value); }}
+                                        />
+                                        <select
+                                          className="sequencer-select"
+                                          onChange={(e) => {
+                                            const child = e.target.value;
+                                            if (child) {
+                                              handleAddClipToSequencer(clip.name, child);
+                                              e.target.selectedIndex = 0;
+                                            }
+                                          }}
+                                        >
+                                          <option value="">Add existing clip...</option>
+                                          {getTargetClips()
+                                            .filter(c => c.name !== clip.name)
+                                            .filter(c => {
+                                              if (sequencerOpenFor !== clip.name) return true;
+                                              const q = (sequencerSearch || '').toLowerCase();
+                                              return c.name.toLowerCase().includes(q);
+                                            })
+                                            .map(c => (
+                                              <option key={c.name} value={c.name}>{c.name}</option>
+                                            ))}
+                                        </select>
+                                        <button className="ensure-eventmap-btn" onClick={() => handleEnsureEventDataMap(clip.name)}>
+                                          + EventDataMap
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* SelectorClipData UI */}
+                                  {clip.type === 'SelectorClipData' && (
+                                    <div className="clip-property-editor">
+                                      <div className="property-row">
+                                        <label className="property-label">Selector Pairs:</label>
+                                        <div className="selector-pairs-editor">
+                                          {/* Display existing pairs if any */}
+                                          {clip.selectorPairs && clip.selectorPairs.length > 0 && (
+                                            <div className="existing-pairs">
+                                              {clip.selectorPairs.map((pair, index) => {
+                                                const pairKey = `${clip.name}-${index}`;
+                                                const isEditing = editingSelectorPair === pairKey;
+
+                                                return (
+                                                  <div key={index} className="selector-pair-item">
+                                                    <span className="pair-clip">{pair.clipName}</span>
+                                                    {isEditing ? (
+                                                      <div className="probability-editor">
+                                                        <input
+                                                          type="number"
+                                                          className="probability-edit-input"
+                                                          value={editingProbability}
+                                                          onChange={(e) => setEditingProbability(e.target.value)}
+                                                          onKeyPress={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                              handleSaveSelectorPairProbability(clip.name, index);
+                                                            } else if (e.key === 'Escape') {
+                                                              handleCancelEditSelectorPair();
+                                                            }
+                                                          }}
+                                                          min="0"
+                                                          max="1"
+                                                          step="0.1"
+                                                          autoFocus
+                                                        />
+                                                        <button
+                                                          className="save-probability-btn"
+                                                          onClick={() => handleSaveSelectorPairProbability(clip.name, index)}
+                                                          title="Save"
+                                                        >
+                                                          ✓
+                                                        </button>
+                                                        <button
+                                                          className="cancel-probability-btn"
+                                                          onClick={handleCancelEditSelectorPair}
+                                                          title="Cancel"
+                                                        >
+                                                          ×
+                                                        </button>
+                                                      </div>
+                                                    ) : (
+                                                      <span
+                                                        className="pair-probability editable"
+                                                        onClick={() => handleEditSelectorPairProbability(clip.name, index, pair.probability)}
+                                                        title="Click to edit probability"
+                                                      >
+                                                        ({pair.probability})
+                                                      </span>
+                                                    )}
+                                                    <button
+                                                      className="remove-pair-btn"
+                                                      onClick={() => handleRemoveSelectorPair(clip.name, index)}
+                                                      title="Remove this pair"
+                                                    >
+                                                      ×
+                                                    </button>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          )}
+
+                                          {/* Add new pair controls */}
+                                          <div className="selector-add-row">
+                                            <input
+                                              type="text"
+                                              className="selector-search-input"
+                                              placeholder="Search clips to add..."
+                                              value={selectorOpenFor === clip.name ? selectorSearch : ''}
+                                              onChange={(e) => { setSelectorOpenFor(clip.name); setSelectorSearch(e.target.value); }}
+                                            />
+                                            <input
+                                              type="number"
+                                              className="probability-input"
+                                              placeholder="1.0"
+                                              min="0"
+                                              max="1"
+                                              step="0.1"
+                                              value={selectorProbabilityInput}
+                                              onChange={(e) => setSelectorProbabilityInput(e.target.value)}
+                                            />
+                                            <select
+                                              className="selector-select"
+                                              onChange={(e) => {
+                                                const child = e.target.value;
+                                                const probability = parseFloat(selectorProbabilityInput || '1.0');
+                                                if (child) {
+                                                  handleAddSelectorPair(clip.name, child, probability);
+                                                  e.target.selectedIndex = 0;
+                                                  // Keep the probability value for next addition
+                                                  // Only reset to 1.0 if the field is empty
+                                                  if (!selectorProbabilityInput || selectorProbabilityInput === '') {
+                                                    setSelectorProbabilityInput('1.0');
+                                                  }
+                                                }
+                                              }}
+                                            >
+                                              <option value="">Add clip with probability...</option>
+                                              {getTargetClips()
+                                                .filter(c => c.name !== clip.name)
+                                                .filter(c => {
+                                                  if (selectorOpenFor !== clip.name) return true;
+                                                  const q = (selectorSearch || '').toLowerCase();
+                                                  return c.name.toLowerCase().includes(q);
+                                                })
+                                                .map(c => (
+                                                  <option key={c.name} value={c.name}>{c.name}</option>
+                                                ))}
+                                            </select>
+                                            <button className="ensure-eventmap-btn" onClick={() => handleEnsureEventDataMap(clip.name)}>
+                                              + EventDataMap
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {(() => {
+                                    const hasEvents = Object.values(clip.events || {}).some(events => events && events.length > 0) ||
+                                      (clip.type === 'SequencerClipData' && clip.clipNameList && clip.clipNameList.length > 0) ||
+                                      (clip.type === 'SelectorClipData' && clip.selectorPairs && clip.selectorPairs.length > 0) ||
+                                      (clip.type === 'ParametricClipData' && clip.parametricPairs && clip.parametricPairs.length > 0) ||
+                                      (clip.type === 'ConditionFloatClipData' && clip.conditionFloatPairs && clip.conditionFloatPairs.length > 0);
+
+                                    if (!hasEvents) {
+                                      return (
+                                        <div className="empty-clip-drop-zone">
+                                          <div className="drop-zone-content">
+                                            <span className="drop-zone-icon">📥</span>
+                                            <span className="drop-zone-text">Drop events here to add them to this clip</span>
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+
+                                    return Object.entries(clip.events || {}).map(([eventType, events]) =>
+                                      events && events.length > 0 && (
+                                        <div key={eventType} className="event-type-section">
+                                          <div className="event-type-header">
+                                            <span className="event-type-name">{eventType}</span>
+                                            <span className="event-type-count">({events.length})</span>
+                                          </div>
+
+                                          {events.map((event, index) => (
+                                            <div key={`${eventType}-${index}`} className="event-item target-event">
+                                              <div className="event-content">
+                                                <div className="event-header">
+                                                  <span className="event-icon">
+                                                    {eventType === 'particle' ? '✨' :
+                                                      eventType === 'sound' ? '🔊' :
+                                                        eventType === 'submesh' ? '👁️' :
+                                                          eventType === 'facetarget' ? '🎯' : '⚡'}
+                                                  </span>
+                                                  <span className="event-type">{eventType}</span>
+                                                  {event.isPorted && <span className="ported-badge">PORTED</span>}
+                                                </div>
+                                                <div className="event-details">
+                                                  {eventType === 'particle' && `Effect: ${event.effectKey || 'None'} | Frame: ${event.startFrame || 0}`}
+                                                  {eventType === 'sound' && `Sound: ${event.soundName || 'None'}`}
+                                                  {eventType === 'submesh' && `End Frame: ${event.endFrame || 0}`}
+                                                  {eventType === 'facetarget' && `Target: ${event.faceTarget || 0} | Y-Rot: ${event.yRotationDegrees || 0}°`}
+                                                </div>
+                                              </div>
+                                              <div className="event-actions">
+                                                <button
+                                                  className="delete-button"
+                                                  onClick={() => {
+                                                    console.log('🗑️ BUTTON: Delete button clicked!');
+                                                    console.log('🗑️ BUTTON: Event:', event);
+                                                    console.log('🗑️ BUTTON: Clip name:', clip.name);
+                                                    console.log('🗑️ BUTTON: Event type:', eventType);
+                                                    console.log('🗑️ BUTTON: Event index:', index);
+                                                    handleDeleteEvent(event, clip.name, eventType, index);
+                                                  }}
+                                                  title="Delete this event"
+                                                >
+                                                  🗑️
+                                                </button>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )
+                                    );
+                                  })()}
+
+                                  {/* ConditionFloatClipData UI - Only for ConditionFloatClipData */}
+                                  {clip.type === 'ConditionFloatClipData' && (
+                                    <div className="event-type-section">
+                                      <div className="event-type-header">
+                                        <span className="event-type-name">Condition Float Pairs</span>
+                                        <span className="event-type-count">({clip.conditionFloatPairs?.length || 0})</span>
+                                        <button
+                                          className="add-pair-btn"
+                                          onClick={() => {
+                                            const clipName = prompt('Enter clip name:');
+                                            if (clipName) {
+                                              const value = prompt('Enter value (optional, leave empty for no value):');
+                                              const floatValue = value ? parseFloat(value) : null;
+                                              handleAddConditionFloatPair(clip.name, clipName, floatValue);
+                                            }
+                                          }}
+                                          title="Add condition float pair"
+                                        >
+                                          + Add Pair
+                                        </button>
+                                      </div>
+
+                                      {Array.isArray(clip.conditionFloatPairs) && clip.conditionFloatPairs.length > 0 && (
+                                        <div className="condition-pairs-list">
+                                          {clip.conditionFloatPairs.map((pair, idx) => (
+                                            <div key={`condition-pair-${idx}`} className="event-item">
+                                              <div className="event-content">
+                                                <div className="event-header">
+                                                  <span className="event-icon">⚖️</span>
+                                                  <span className="event-type">Condition</span>
+                                                </div>
+                                                <div className="event-details">
+                                                  {`Clip: ${pair.clipName || 'unknown'} | Value: ${pair.value ?? 'N/A'}`}
+                                                </div>
+                                              </div>
+                                              <div className="event-actions">
+                                                <button
+                                                  className="delete-button"
+                                                  onClick={() => handleRemoveConditionFloatPair(clip.name, idx)}
+                                                  title="Delete this condition float pair"
+                                                >
+                                                  🗑️
+                                                </button>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Updater Display - Only for ConditionFloatClipData */}
+                                  {clip.type === 'ConditionFloatClipData' && clip.updater && (
+                                    <div className="event-type-section">
+                                      <div className="event-type-header">
+                                        <span className="event-type-name">Updater</span>
+                                        <span className="event-type-count">({clip.updater.type})</span>
+                                      </div>
+
+                                      <div className="event-item">
                                         <div className="event-content">
                                           <div className="event-header">
-                                            <span className="event-icon">⚖️</span>
-                                            <span className="event-type">Condition</span>
+                                            <span className="event-icon">⚙️</span>
+                                            <span className="event-type">Updater</span>
                                           </div>
                                           <div className="event-details">
-                                            {`Clip: ${pair.clipName || 'unknown'} | Value: ${pair.value ?? 'N/A'}`}
+                                            {`Type: ${clip.updater.type || 'Unknown'}`}
                                           </div>
                                         </div>
-                                        <div className="event-actions">
-                                          <button 
-                                            className="delete-button"
-                                            onClick={() => handleRemoveConditionFloatPair(clip.name, idx)}
-                                            title="Delete this condition float pair"
-                                          >
-                                            🗑️
-                                          </button>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* ConditionFloatClipData Properties Display */}
+                                  {clip.type === 'ConditionFloatClipData' && (
+                                    <div className="event-type-section">
+                                      <div className="event-type-header">
+                                        <span className="event-type-name">Properties</span>
+                                      </div>
+
+                                      <div className="event-item">
+                                        <div className="event-content">
+                                          <div className="event-header">
+                                            <span className="event-icon">📋</span>
+                                            <span className="event-type">Properties</span>
+                                          </div>
+                                          <div className="event-details">
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                              {clip.changeAnimationMidPlay !== null && (
+                                                <span>Change Animation Mid Play: {clip.changeAnimationMidPlay ? 'true' : 'false'}</span>
+                                              )}
+                                              {clip.childAnimDelaySwitchTime !== null && (
+                                                <span>Child Anim Delay Switch Time: {clip.childAnimDelaySwitchTime}</span>
+                                              )}
+                                              {clip.dontStompTransitionClip !== null && (
+                                                <span>Don't Stomp Transition Clip: {clip.dontStompTransitionClip ? 'true' : 'false'}</span>
+                                              )}
+                                              {clip.playAnimChangeFromBeginning !== null && (
+                                                <span>Play Anim Change From Beginning: {clip.playAnimChangeFromBeginning ? 'true' : 'false'}</span>
+                                              )}
+                                              {clip.syncFrameOnChangeAnim !== null && (
+                                                <span>Sync Frame On Change Anim: {clip.syncFrameOnChangeAnim ? 'true' : 'false'}</span>
+                                              )}
+                                            </div>
+                                          </div>
                                         </div>
                                       </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Updater Display - Only for ConditionFloatClipData */}
-                            {clip.type === 'ConditionFloatClipData' && clip.updater && (
-                              <div className="event-type-section">
-                                <div className="event-type-header">
-                                  <span className="event-type-name">Updater</span>
-                                  <span className="event-type-count">({clip.updater.type})</span>
-                                </div>
-
-                                <div className="event-item">
-                                  <div className="event-content">
-                                    <div className="event-header">
-                                      <span className="event-icon">⚙️</span>
-                                      <span className="event-type">Updater</span>
                                     </div>
-                                    <div className="event-details">
-                                      {`Type: ${clip.updater.type || 'Unknown'}`}
-                                    </div>
-                                  </div>
+                                  )}
                                 </div>
-                              </div>
-                            )}
-
-                            {/* ConditionFloatClipData Properties Display */}
-                            {clip.type === 'ConditionFloatClipData' && (
-                              <div className="event-type-section">
-                                <div className="event-type-header">
-                                  <span className="event-type-name">Properties</span>
-                                </div>
-
-                                <div className="event-item">
-                                  <div className="event-content">
-                                    <div className="event-header">
-                                      <span className="event-icon">📋</span>
-                                      <span className="event-type">Properties</span>
-                                    </div>
-                                    <div className="event-details">
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        {clip.changeAnimationMidPlay !== null && (
-                                          <span>Change Animation Mid Play: {clip.changeAnimationMidPlay ? 'true' : 'false'}</span>
-                                        )}
-                                        {clip.childAnimDelaySwitchTime !== null && (
-                                          <span>Child Anim Delay Switch Time: {clip.childAnimDelaySwitchTime}</span>
-                                        )}
-                                        {clip.dontStompTransitionClip !== null && (
-                                          <span>Don't Stomp Transition Clip: {clip.dontStompTransitionClip ? 'true' : 'false'}</span>
-                                        )}
-                                        {clip.playAnimChangeFromBeginning !== null && (
-                                          <span>Play Anim Change From Beginning: {clip.playAnimChangeFromBeginning ? 'true' : 'false'}</span>
-                                        )}
-                                        {clip.syncFrameOnChangeAnim !== null && (
-                                          <span>Sync Frame On Change Anim: {clip.syncFrameOnChangeAnim ? 'true' : 'false'}</span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                    })
-                  ) : (
-                    <div className="no-clips">
-                      <p>No animation clips found</p>
-                      <p>Check console for debugging info</p>
-                      <div style={{marginTop: '20px', textAlign: 'left'}}>
-                        <p>Debug info:</p>
-                        <p>Donor data exists: {donorData ? 'Yes' : 'No'}</p>
-                        <p>Target data exists: {targetData ? 'Yes' : 'No'}</p>
-                        <p>Donor clips count: {donorData?.animationData?.clips ? Object.keys(donorData.animationData.clips).length : 0}</p>
-                        <p>Target clips count: {targetData?.animationData?.clips ? Object.keys(targetData.animationData.clips).length : 0}</p>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            </div>
-
-            {/* Donor Panel (Right) */}
-            <div className="panel donor-panel">
-              <div className="panel-header">
-                {/* Standalone Events Toggle Arrow */}
-                <button 
-                  className="standalone-toggle-arrow"
-                  onClick={() => setStandaloneSlideOverOpen(!standaloneSlideOverOpen)}
-                  title={standaloneSlideOverOpen ? "Hide Standalone Events" : "Show Standalone Events"}
-                >
-                  {standaloneSlideOverOpen ? '⬌' : '⬌'}
-                </button>
-              </div>
-              
-              {/* Donor Search Bar */}
-              <div className="panel-search">
-                <input
-                  type="text"
-                  placeholder="Search donor clips..."
-                  value={donorSearchTerm}
-                  onChange={(e) => setDonorSearchTerm(e.target.value)}
-                  className="search-input"
-                />
-                {donorSearchTerm && (
-                  <div className="search-results">
-                    <span>
-                      Showing {getDonorClips().length} of {donorData?.animationData?.clips ? Object.keys(donorData.animationData.clips).length : 0} clips
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              
-              <div className="animation-list">
-                {(() => {
-                  const clips = getDonorClips();
-                  console.log('Rendering donor clips:', clips.length);
-                  return clips.length > 0 ? (
-                    clips.map((clip, index) => {
-                    const totalEvents = Object.values(clip.events || {}).reduce((sum, events) => sum + (events?.length || 0), 0) + 
-                      (clip.type === 'SequencerClipData' ? (clip.clipNameList?.length || 0) : 0) +
-                      (clip.type === 'SelectorClipData' ? (clip.selectorPairs?.length || 0) : 0) +
-                      (clip.type === 'ParametricClipData' ? (clip.parametricPairs?.length || 0) : 0) +
-                      (clip.type === 'ConditionFloatClipData' ? (clip.conditionFloatPairs?.length || 0) : 0);
-                    const isExpanded = expandedDonorClips.has(clip.name);
-                    
-                    return (
-                      <div 
-                        key={clip.name}
-                        className="animation-clip donor-clip"
-                        draggable={true}
-                        onDragStart={(e) => handleClipDragStart(e, clip, true)}
-                        onDragEnd={handleClipDragEnd}
-                      >
-                        <div 
-                          className="clip-header"
-                          onClick={() => {
-                            setSelectedDonorClip(clip);
-                            toggleDonorClipExpansion(clip.name);
-                          }}
-                        >
-                          <div className="clip-info">
-                            <span className="clip-name">{getClipDisplayName(clip)}</span>
-                            <span className="clip-type">{clip.type || 'Unknown'}</span>
-                          </div>
-                          <div className="clip-stats">
-                            <span className="event-count">{totalEvents} events</span>
-                            <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>
-                              ▼
-                            </span>
+                              )}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="no-clips">
+                          <p>No animation clips found</p>
+                          <p>Check console for debugging info</p>
+                          <div style={{ marginTop: '20px', textAlign: 'left' }}>
+                            <p>Debug info:</p>
+                            <p>Donor data exists: {donorData ? 'Yes' : 'No'}</p>
+                            <p>Target data exists: {targetData ? 'Yes' : 'No'}</p>
+                            <p>Donor clips count: {donorData?.animationData?.clips ? Object.keys(donorData.animationData.clips).length : 0}</p>
+                            <p>Target clips count: {targetData?.animationData?.clips ? Object.keys(targetData.animationData.clips).length : 0}</p>
                           </div>
                         </div>
+                      );
+                    })()}
+                  </div>
+                </div>
 
-                        {isExpanded && (
-                          <div className="clip-events">
-                            {Object.entries(clip.events || {}).map(([eventType, events]) => 
-                              events && events.length > 0 && (
-                                <div key={eventType} className="event-type-section">
-                                  <div className="event-type-header">
-                                    <span className="event-type-name">{eventType}</span>
-                                    <span className="event-type-count">({events.length})</span>
-                                  </div>
-                                  
-                                  {events.map((event, index) => (
-                                    <div 
-                                      key={`${eventType}-${index}`} 
-                                      className="event-item draggable"
-                                      draggable
-                                      onDragStart={(e) => handleDragStart(e, event, clip)}
-                                    >
-                                      <div className="event-content">
-                                        <div className="event-header">
-                                          <span className="event-icon">
-                                            {eventType === 'particle' ? '✨' : 
-                                             eventType === 'sound' ? '🔊' : 
-                                             eventType === 'submesh' ? '👁️' : '⚡'}
-                                          </span>
-                                          <span className="event-type">{eventType}</span>
-                                          <span className="drag-hint">Drag to port →</span>
+                {/* Donor Panel (Right) */}
+                <div className="panel donor-panel">
+                  <div className="panel-header">
+                    {/* Standalone Events Toggle Arrow */}
+                    <button
+                      className="standalone-toggle-arrow"
+                      onClick={() => setStandaloneSlideOverOpen(!standaloneSlideOverOpen)}
+                      title={standaloneSlideOverOpen ? "Hide Standalone Events" : "Show Standalone Events"}
+                    >
+                      {standaloneSlideOverOpen ? '⬌' : '⬌'}
+                    </button>
+                  </div>
+
+                  {/* Donor Search Bar */}
+                  <div className="panel-search">
+                    <input
+                      type="text"
+                      placeholder="Search donor clips..."
+                      value={donorSearchTerm}
+                      onChange={(e) => setDonorSearchTerm(e.target.value)}
+                      className="search-input"
+                    />
+                    {donorSearchTerm && (
+                      <div className="search-results">
+                        <span>
+                          Showing {getDonorClips().length} of {donorData?.animationData?.clips ? Object.keys(donorData.animationData.clips).length : 0} clips
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+
+                  <div className="animation-list">
+                    {(() => {
+                      const clips = getDonorClips();
+                      console.log('Rendering donor clips:', clips.length);
+                      return clips.length > 0 ? (
+                        clips.map((clip, index) => {
+                          const totalEvents = Object.values(clip.events || {}).reduce((sum, events) => sum + (events?.length || 0), 0) +
+                            (clip.type === 'SequencerClipData' ? (clip.clipNameList?.length || 0) : 0) +
+                            (clip.type === 'SelectorClipData' ? (clip.selectorPairs?.length || 0) : 0) +
+                            (clip.type === 'ParametricClipData' ? (clip.parametricPairs?.length || 0) : 0) +
+                            (clip.type === 'ConditionFloatClipData' ? (clip.conditionFloatPairs?.length || 0) : 0);
+                          const isExpanded = expandedDonorClips.has(clip.name);
+
+                          return (
+                            <div
+                              key={clip.name}
+                              className="animation-clip donor-clip"
+                              draggable={true}
+                              onDragStart={(e) => handleClipDragStart(e, clip, true)}
+                              onDragEnd={handleClipDragEnd}
+                            >
+                              <div
+                                className="clip-header"
+                                onClick={() => {
+                                  setSelectedDonorClip(clip);
+                                  toggleDonorClipExpansion(clip.name);
+                                }}
+                              >
+                                <div className="clip-info">
+                                  <span className="clip-name">{getClipDisplayName(clip)}</span>
+                                  <span className="clip-type">{clip.type || 'Unknown'}</span>
+                                </div>
+                                <div className="clip-stats">
+                                  <span className="event-count">{totalEvents} events</span>
+                                  <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>
+                                    ▼
+                                  </span>
+                                </div>
+                              </div>
+
+                              {isExpanded && (
+                                <div className="clip-events">
+                                  {Object.entries(clip.events || {}).map(([eventType, events]) =>
+                                    events && events.length > 0 && (
+                                      <div key={eventType} className="event-type-section">
+                                        <div className="event-type-header">
+                                          <span className="event-type-name">{eventType}</span>
+                                          <span className="event-type-count">({events.length})</span>
                                         </div>
-                                        <div className="event-details">
-                                          {eventType === 'particle' && `Effect: ${event.effectKey || 'None'} | Frame: ${event.startFrame || 0}`}
-                                          {eventType === 'sound' && `Sound: ${event.soundName || 'None'}`}
-                                          {eventType === 'submesh' && `End Frame: ${event.endFrame || 0}`}
+
+                                        {events.map((event, index) => (
+                                          <div
+                                            key={`${eventType}-${index}`}
+                                            className="event-item draggable"
+                                            draggable
+                                            onDragStart={(e) => handleDragStart(e, event, clip)}
+                                          >
+                                            <div className="event-content">
+                                              <div className="event-header">
+                                                <span className="event-icon">
+                                                  {eventType === 'particle' ? '✨' :
+                                                    eventType === 'sound' ? '🔊' :
+                                                      eventType === 'submesh' ? '👁️' : '⚡'}
+                                                </span>
+                                                <span className="event-type">{eventType}</span>
+                                                <span className="drag-hint">Drag to port →</span>
+                                              </div>
+                                              <div className="event-details">
+                                                {eventType === 'particle' && `Effect: ${event.effectKey || 'None'} | Frame: ${event.startFrame || 0}`}
+                                                {eventType === 'sound' && `Sound: ${event.soundName || 'None'}`}
+                                                {eventType === 'submesh' && `End Frame: ${event.endFrame || 0}`}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )
+                                  )}
+
+                                  {clip.type === 'SequencerClipData' && Array.isArray(clip.clipNameList) && clip.clipNameList.length > 0 && (
+                                    <div className="event-type-section">
+                                      <div className="event-type-header">
+                                        <span className="event-type-name">Clip Name List</span>
+                                        <span className="event-type-count">({clip.clipNameList.length})</span>
+                                      </div>
+
+                                      {clip.clipNameList.map((clipName, idx) => (
+                                        <div key={`clip-name-${idx}`} className="event-item">
+                                          <div className="event-content">
+                                            <div className="event-header">
+                                              <span className="event-icon">🎬</span>
+                                              <span className="event-type">Clip Name</span>
+                                            </div>
+                                            <div className="event-details">
+                                              {clipName.value || clipName.raw || 'Unknown'}
+                                            </div>
+                                          </div>
                                         </div>
-                                      </div>
+                                      ))}
                                     </div>
-                                  ))}
-                                </div>
-                              )
-                            )}
+                                  )}
 
-                            {clip.type === 'SequencerClipData' && Array.isArray(clip.clipNameList) && clip.clipNameList.length > 0 && (
-                              <div className="event-type-section">
-                                <div className="event-type-header">
-                                  <span className="event-type-name">Clip Name List</span>
-                                  <span className="event-type-count">({clip.clipNameList.length})</span>
-                                </div>
+                                  {clip.type === 'SelectorClipData' && Array.isArray(clip.selectorPairs) && clip.selectorPairs.length > 0 && (
+                                    <div className="event-type-section">
+                                      <div className="event-type-header">
+                                        <span className="event-type-name">Selector Pairs</span>
+                                        <span className="event-type-count">({clip.selectorPairs.length})</span>
+                                      </div>
 
-                                {clip.clipNameList.map((clipName, idx) => (
-                                  <div key={`clip-name-${idx}`} className="event-item">
-                                    <div className="event-content">
-                                      <div className="event-header">
-                                        <span className="event-icon">🎬</span>
-                                        <span className="event-type">Clip Name</span>
-                                      </div>
-                                      <div className="event-details">
-                                        {clipName.value || clipName.raw || 'Unknown'}
-                                      </div>
+                                      {clip.selectorPairs.map((pair, idx) => (
+                                        <div key={`selector-pair-${idx}`} className="event-item">
+                                          <div className="event-content">
+                                            <div className="event-header">
+                                              <span className="event-icon">🧩</span>
+                                              <span className="event-type">Pair</span>
+                                            </div>
+                                            <div className="event-details">
+                                              {`Clip: ${pair.clipName || 'unknown'} | Probability: ${pair.probability ?? 1.0}`}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
                                     </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                                  )}
 
-                            {clip.type === 'SelectorClipData' && Array.isArray(clip.selectorPairs) && clip.selectorPairs.length > 0 && (
-                              <div className="event-type-section">
-                                <div className="event-type-header">
-                                  <span className="event-type-name">Selector Pairs</span>
-                                  <span className="event-type-count">({clip.selectorPairs.length})</span>
-                                </div>
+                                  {clip.type === 'ParametricClipData' && Array.isArray(clip.parametricPairs) && clip.parametricPairs.length > 0 && (
+                                    <div className="event-type-section">
+                                      <div className="event-type-header">
+                                        <span className="event-type-name">Parametric Pairs</span>
+                                        <span className="event-type-count">({clip.parametricPairs.length})</span>
+                                      </div>
 
-                                {clip.selectorPairs.map((pair, idx) => (
-                                  <div key={`selector-pair-${idx}`} className="event-item">
-                                    <div className="event-content">
-                                      <div className="event-header">
-                                        <span className="event-icon">🧩</span>
-                                        <span className="event-type">Pair</span>
-                                      </div>
-                                      <div className="event-details">
-                                        {`Clip: ${pair.clipName || 'unknown'} | Probability: ${pair.probability ?? 1.0}`}
-                                      </div>
+                                      {clip.parametricPairs.map((pair, idx) => (
+                                        <div key={`parametric-pair-${idx}`} className="event-item">
+                                          <div className="event-content">
+                                            <div className="event-header">
+                                              <span className="event-icon">📊</span>
+                                              <span className="event-type">Parametric</span>
+                                            </div>
+                                            <div className="event-details">
+                                              {`Clip: ${pair.clipName || 'unknown'} | Value: ${pair.value ?? 'N/A'}`}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
                                     </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                                  )}
 
-                            {clip.type === 'ParametricClipData' && Array.isArray(clip.parametricPairs) && clip.parametricPairs.length > 0 && (
-                              <div className="event-type-section">
-                                <div className="event-type-header">
-                                  <span className="event-type-name">Parametric Pairs</span>
-                                  <span className="event-type-count">({clip.parametricPairs.length})</span>
-                                </div>
+                                  {clip.type === 'ConditionFloatClipData' && Array.isArray(clip.conditionFloatPairs) && clip.conditionFloatPairs.length > 0 && (
+                                    <div className="event-type-section">
+                                      <div className="event-type-header">
+                                        <span className="event-type-name">Condition Float Pairs</span>
+                                        <span className="event-type-count">({clip.conditionFloatPairs.length})</span>
+                                      </div>
 
-                                {clip.parametricPairs.map((pair, idx) => (
-                                  <div key={`parametric-pair-${idx}`} className="event-item">
-                                    <div className="event-content">
-                                      <div className="event-header">
-                                        <span className="event-icon">📊</span>
-                                        <span className="event-type">Parametric</span>
-                                      </div>
-                                      <div className="event-details">
-                                        {`Clip: ${pair.clipName || 'unknown'} | Value: ${pair.value ?? 'N/A'}`}
-                                      </div>
+                                      {clip.conditionFloatPairs.map((pair, idx) => (
+                                        <div key={`condition-pair-${idx}`} className="event-item">
+                                          <div className="event-content">
+                                            <div className="event-header">
+                                              <span className="event-icon">⚖️</span>
+                                              <span className="event-type">Condition</span>
+                                            </div>
+                                            <div className="event-details">
+                                              {`Clip: ${pair.clipName || 'unknown'} | Value: ${pair.value ?? 'N/A'}`}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
                                     </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {clip.type === 'ConditionFloatClipData' && Array.isArray(clip.conditionFloatPairs) && clip.conditionFloatPairs.length > 0 && (
-                              <div className="event-type-section">
-                                <div className="event-type-header">
-                                  <span className="event-type-name">Condition Float Pairs</span>
-                                  <span className="event-type-count">({clip.conditionFloatPairs.length})</span>
+                                  )}
                                 </div>
-
-                                {clip.conditionFloatPairs.map((pair, idx) => (
-                                  <div key={`condition-pair-${idx}`} className="event-item">
-                                    <div className="event-content">
-                                      <div className="event-header">
-                                        <span className="event-icon">⚖️</span>
-                                        <span className="event-type">Condition</span>
-                                      </div>
-                                      <div className="event-details">
-                                        {`Clip: ${pair.clipName || 'unknown'} | Value: ${pair.value ?? 'N/A'}`}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                              )}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="no-clips">
+                          <p>No animation clips found</p>
+                          <p>Check console for debugging info</p>
+                          <div style={{ marginTop: '20px', textAlign: 'left' }}>
+                            <p>Debug info:</p>
+                            <p>Donor data exists: {donorData ? 'Yes' : 'No'}</p>
+                            <p>Target data exists: {targetData ? 'Yes' : 'No'}</p>
+                            <p>Donor clips count: {donorData?.animationData?.clips ? Object.keys(donorData.animationData.clips).length : 0}</p>
+                            <p>Target clips count: {targetData?.animationData?.clips ? Object.keys(targetData.animationData.clips).length : 0}</p>
                           </div>
-                        )}
-                      </div>
-                    );
-                    })
-                  ) : (
-                    <div className="no-clips">
-                      <p>No animation clips found</p>
-                      <p>Check console for debugging info</p>
-                      <div style={{marginTop: '20px', textAlign: 'left'}}>
-                        <p>Debug info:</p>
-                        <p>Donor data exists: {donorData ? 'Yes' : 'No'}</p>
-                        <p>Target data exists: {targetData ? 'Yes' : 'No'}</p>
-                        <p>Donor clips count: {donorData?.animationData?.clips ? Object.keys(donorData.animationData.clips).length : 0}</p>
-                        <p>Target clips count: {targetData?.animationData?.clips ? Object.keys(targetData.animationData.clips).length : 0}</p>
-                      </div>
-                    </div>
-                  );
-                })()}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
             </div>
           ) : (
             <div className="mask-editor">
-              <MaskViewer 
+              <MaskViewer
                 targetAnimationFile={targetAnimationFile}
                 targetSkinsFile={targetSkinsFile}
                 targetData={targetData}
@@ -5305,7 +5306,7 @@ const AniPortSimple = () => {
       {/* Bottom Controls - Save and Undo */}
       {donorData && targetData && (
         <div className="bottom-controls">
-          <button 
+          <button
             onClick={handleUndo}
             disabled={undoHistory.length === 0}
             className={`undo-button ${undoHistory.length === 0 ? 'disabled' : ''}`}
@@ -5313,7 +5314,7 @@ const AniPortSimple = () => {
           >
             Undo ({undoHistory.length})
           </button>
-          <button 
+          <button
             onClick={handleSave}
             disabled={isProcessing || !hasChangesToSave()}
             className={`save-button ${hasChangesToSave() ? 'has-changes' : ''} ${isProcessing ? 'processing' : ''}`}
@@ -5348,7 +5349,7 @@ const AniPortSimple = () => {
         <div className="standalone-slide-content">
           <div className="standalone-slide-header">
             <h3>Standalone Events</h3>
-            <button 
+            <button
               className="standalone-close-btn"
               onClick={() => setStandaloneSlideOverOpen(false)}
               title="Close Standalone Events"
@@ -5356,11 +5357,11 @@ const AniPortSimple = () => {
               ×
             </button>
           </div>
-          
+
           <div className="standalone-slide-body">
             {/* Standalone Event Creator */}
             <div className="standalone-create">
-              <StandaloneEventCreatorUI 
+              <StandaloneEventCreatorUI
                 donorData={donorData}
                 setDonorData={setDonorData}
                 CreateMessage={CreateMessage}
@@ -5370,7 +5371,7 @@ const AniPortSimple = () => {
             {/* Standalone Events List */}
             {getStandaloneEvents().length > 0 && (
               <div className="standalone-events-section">
-                <div className="section-header" onClick={() => setStandaloneExpanded(v => !v)} style={{cursor:'pointer'}}>
+                <div className="section-header" onClick={() => setStandaloneExpanded(v => !v)} style={{ cursor: 'pointer' }}>
                   <h4>Standalone Events ({getStandaloneEvents().length})</h4>
                   <p>{standaloneExpanded ? 'Click to collapse' : 'Click to expand'} • Drag these events to any target clip</p>
                 </div>
@@ -5388,7 +5389,7 @@ const AniPortSimple = () => {
                       {order.map(g => (
                         groups[g.key] && groups[g.key].length > 0 && (
                           <div key={g.key} className="standalone-group">
-                            <div className="standalone-group-header" onClick={() => toggleStandaloneGroup(g.key)} style={{cursor:'pointer'}}>
+                            <div className="standalone-group-header" onClick={() => toggleStandaloneGroup(g.key)} style={{ cursor: 'pointer' }}>
                               <span className="group-icon">{g.icon}</span>
                               <span className="group-title">{g.label}</span>
                               <span className="group-count">({groups[g.key].length})</span>
@@ -5397,7 +5398,7 @@ const AniPortSimple = () => {
                             {standaloneGroupExpanded.has(g.key) && (
                               <div className="standalone-events-list">
                                 {groups[g.key].map((event, index) => (
-                                  <div 
+                                  <div
                                     key={`standalone-${g.key}-${index}`}
                                     className="standalone-event-item draggable"
                                     draggable
@@ -5435,7 +5436,7 @@ const AniPortSimple = () => {
           </div>
         </div>
       </div>
-      
+
       {/* Toast notification */}
       <Snackbar
         open={snackbar.open}
@@ -5453,177 +5454,177 @@ const AniPortSimple = () => {
             backdropFilter: 'blur(10px)',
             '& .MuiAlert-icon': {
               color: 'var(--accent)'
-          }
+            }
+          }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={handleDeleteCancel}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: 'var(--glass-bg)',
+            border: '1px solid var(--glass-border)',
+            backdropFilter: 'saturate(180%) blur(16px)',
+            WebkitBackdropFilter: 'saturate(180%) blur(16px)',
+          },
         }}
       >
-        {snackbar.message}
-      </Alert>
-    </Snackbar>
-
-    {/* Delete Confirmation Dialog */}
-    <Dialog
-      open={deleteConfirmOpen}
-      onClose={handleDeleteCancel}
-      maxWidth="sm"
-      fullWidth
-      PaperProps={{
-        sx: {
-          background: 'var(--glass-bg)',
-          border: '1px solid var(--glass-border)',
-          backdropFilter: 'saturate(180%) blur(16px)',
-          WebkitBackdropFilter: 'saturate(180%) blur(16px)',
-        },
-      }}
-    >
-      <DialogTitle sx={{ 
-        color: 'var(--accent)', 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: 1,
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-        fontWeight: 600
-      }}>
-        ⚠️ Delete Clip
-      </DialogTitle>
-      
-      <DialogContent sx={{ pt: 2 }}>
-        <div style={{ 
-          color: '#e5e7eb', 
+        <DialogTitle sx={{
+          color: 'var(--accent)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-          lineHeight: 1.5
+          fontWeight: 600
         }}>
-          Are you sure you want to delete the entire "{clipToDelete}" clip? This action cannot be undone.
-        </div>
-      </DialogContent>
+          ⚠️ Delete Clip
+        </DialogTitle>
 
-      <DialogActions sx={{ p: 2, gap: 1 }}>
-        <Button
-          onClick={handleDeleteCancel}
-          sx={{ 
-            color: 'var(--accent2)',
-            '&:hover': {
-              backgroundColor: 'rgba(139, 92, 246, 0.1)',
-            }
-          }}
-        >
-          Cancel
-        </Button>
-        <Button
-          variant="contained"
-          onClick={handleDeleteClip}
-          sx={{
-            background: '#ef4444',
-            color: '#ffffff',
-            borderRadius: '4px',
-            px: 2,
-            '&:hover': {
-              background: '#dc2626',
-            },
-          }}
-        >
-          Delete
-        </Button>
-      </DialogActions>
-    </Dialog>
+        <DialogContent sx={{ pt: 2 }}>
+          <div style={{
+            color: '#e5e7eb',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            lineHeight: 1.5
+          }}>
+            Are you sure you want to delete the entire "{clipToDelete}" clip? This action cannot be undone.
+          </div>
+        </DialogContent>
 
-    {/* VFX System Deletion Confirmation Dialog */}
-    <Dialog
-      open={vfxDeleteConfirmOpen}
-      onClose={() => {
-        if (vfxDeleteCallbackRef.current) {
-          vfxDeleteCallbackRef.current('cancel');
-        }
-      }}
-      maxWidth="sm"
-      fullWidth
-      disableEscapeKeyDown={false}
-      PaperProps={{
-        sx: {
-          background: 'var(--glass-bg)',
-          border: '1px solid var(--glass-border)',
-          backdropFilter: 'saturate(180%) blur(16px)',
-          WebkitBackdropFilter: 'saturate(180%) blur(16px)',
-        },
-      }}
-    >
-      <DialogTitle sx={{ 
-        color: 'var(--accent)', 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: 1,
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-        fontWeight: 600
-      }}>
-        🗑️ Delete VFX System?
-      </DialogTitle>
-      
-      <DialogContent sx={{ pt: 2 }}>
-        <div style={{ 
-          color: '#e5e7eb', 
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button
+            onClick={handleDeleteCancel}
+            sx={{
+              color: 'var(--accent2)',
+              '&:hover': {
+                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+              }
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleDeleteClip}
+            sx={{
+              background: '#ef4444',
+              color: '#ffffff',
+              borderRadius: '4px',
+              px: 2,
+              '&:hover': {
+                background: '#dc2626',
+              },
+            }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* VFX System Deletion Confirmation Dialog */}
+      <Dialog
+        open={vfxDeleteConfirmOpen}
+        onClose={() => {
+          if (vfxDeleteCallbackRef.current) {
+            vfxDeleteCallbackRef.current('cancel');
+          }
+        }}
+        maxWidth="sm"
+        fullWidth
+        disableEscapeKeyDown={false}
+        PaperProps={{
+          sx: {
+            background: 'var(--glass-bg)',
+            border: '1px solid var(--glass-border)',
+            backdropFilter: 'saturate(180%) blur(16px)',
+            WebkitBackdropFilter: 'saturate(180%) blur(16px)',
+          },
+        }}
+      >
+        <DialogTitle sx={{
+          color: 'var(--accent)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-          lineHeight: 1.5
+          fontWeight: 600
         }}>
-          <div style={{ marginBottom: '8px' }}>
-            This particle event uses effect key <strong style={{ color: 'var(--accent)' }}>"{vfxDeleteEffectKey}"</strong>.
-          </div>
-          <div>
-            Do you also want to delete the associated VFX system and its ResourceResolver entry?
-          </div>
-        </div>
-      </DialogContent>
+          🗑️ Delete VFX System?
+        </DialogTitle>
 
-      <DialogActions sx={{ p: 2, gap: 1 }}>
-        <Button
-          onClick={() => {
-            if (vfxDeleteCallbackRef.current) {
-              vfxDeleteCallbackRef.current('cancel');
-            }
-          }}
-          sx={{ 
-            color: 'var(--accent2)',
-            '&:hover': {
-              backgroundColor: 'rgba(139, 92, 246, 0.1)',
-            }
-          }}
-        >
-          Cancel
-        </Button>
-        <Button
-          onClick={() => {
-            if (vfxDeleteCallbackRef.current) {
-              vfxDeleteCallbackRef.current('delete-event-only');
-            }
-          }}
-          sx={{
-            color: 'var(--accent2)',
-            '&:hover': {
-              backgroundColor: 'rgba(139, 92, 246, 0.1)',
-            }
-          }}
-        >
-          Delete Event Only
-        </Button>
-        <Button
-          variant="contained"
-          onClick={() => {
-            if (vfxDeleteCallbackRef.current) {
-              vfxDeleteCallbackRef.current('delete-vfx');
-            }
-          }}
-          sx={{
-            background: '#ef4444',
-            color: '#ffffff',
-            borderRadius: '4px',
-            px: 2,
-            '&:hover': {
-              background: '#dc2626',
-            },
-          }}
-        >
-          Delete VFX System Too
-        </Button>
-      </DialogActions>
-    </Dialog>
+        <DialogContent sx={{ pt: 2 }}>
+          <div style={{
+            color: '#e5e7eb',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            lineHeight: 1.5
+          }}>
+            <div style={{ marginBottom: '8px' }}>
+              This particle event uses effect key <strong style={{ color: 'var(--accent)' }}>"{vfxDeleteEffectKey}"</strong>.
+            </div>
+            <div>
+              Do you also want to delete the associated VFX system and its ResourceResolver entry?
+            </div>
+          </div>
+        </DialogContent>
+
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button
+            onClick={() => {
+              if (vfxDeleteCallbackRef.current) {
+                vfxDeleteCallbackRef.current('cancel');
+              }
+            }}
+            sx={{
+              color: 'var(--accent2)',
+              '&:hover': {
+                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+              }
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              if (vfxDeleteCallbackRef.current) {
+                vfxDeleteCallbackRef.current('delete-event-only');
+              }
+            }}
+            sx={{
+              color: 'var(--accent2)',
+              '&:hover': {
+                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+              }
+            }}
+          >
+            Delete Event Only
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (vfxDeleteCallbackRef.current) {
+                vfxDeleteCallbackRef.current('delete-vfx');
+              }
+            }}
+            sx={{
+              background: '#ef4444',
+              color: '#ffffff',
+              borderRadius: '4px',
+              px: 2,
+              '&:hover': {
+                background: '#dc2626',
+              },
+            }}
+          >
+            Delete VFX System Too
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 };

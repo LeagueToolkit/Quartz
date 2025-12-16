@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Port.css';
 import { Box, IconButton, Tooltip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Checkbox, FormControlLabel, Select, MenuItem, FormControl, InputLabel, Menu } from '@mui/material';
-import { Apps as AppsIcon, Add as AddIcon, Folder as FolderIcon, ArrowBack as ArrowBackIcon, Warning as WarningIcon, ChevronRight as ChevronRightIcon, ChevronLeft as ChevronLeftIcon } from '@mui/icons-material';
+import { Apps as AppsIcon, Add as AddIcon, Folder as FolderIcon, ArrowBack as ArrowBackIcon, Warning as WarningIcon, ChevronRight as ChevronRightIcon, ChevronLeft as ChevronLeftIcon, MoreHoriz as MoreHorizIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import CropOriginalIcon from '@mui/icons-material/CropOriginal';
 import { ToPyWithPath } from '../utils/fileOperations.js';
 import { loadFileWithBackup, createBackup } from '../utils/backupManager.js';
@@ -21,6 +21,7 @@ import { processDataURL } from '../utils/rgbaDataURL.js';
 import { findAssetFiles, copyAssetFiles, showAssetCopyResults } from '../utils/assetCopier.js';
 import GlowingSpinner from '../components/GlowingSpinner';
 import { addIdleParticleEffect, hasIdleParticleEffect, extractParticleName, BONE_NAMES, getIdleParticleBone, getAllIdleParticleBones, updateIdleParticleBone, removeAllIdleParticlesForSystem } from '../utils/idleParticlesManager.js';
+import { openAssetPreview } from '../utils/assetPreviewEvent';
 import { addChildParticleEffect, findAvailableVfxSystems, hasChildParticleEffect, extractChildParticleEmitters, isDivineLabChildParticle, extractChildParticleData, updateChildParticleEmitter } from '../utils/childParticlesManager.js';
 import { scanEffectKeys, extractSubmeshes, insertOrUpdatePersistentEffect, insertMultiplePersistentEffects, ensureResolverMapping, resolveEffectKey, extractExistingPersistentConditions } from '../utils/persistentEffectsManager.js';
 import MatrixEditor from '../components/MatrixEditor';
@@ -85,16 +86,27 @@ const RenameInput = React.memo(({ initialValue, onConfirm, onCancel, onClick }) 
 });
 
 // Separate component for search input to prevent full re-renders on typing
-const SearchInput = React.memo(({ 
+const SearchInput = React.memo(({
   initialValue,
-  placeholder, 
+  placeholder,
   onChange
 }) => {
   const [localValue, setLocalValue] = useState(initialValue || '');
-  
-  // Sync with external value changes (like clearing)
+  const isFocusedRef = useRef(false);
+  const lastSyncedValueRef = useRef(initialValue || '');
+
+  // Sync with external value changes (like clearing) but only when not focused
+  // This prevents overwriting user input during typing
   useEffect(() => {
-    setLocalValue(initialValue || '');
+    const propValue = initialValue || '';
+    // Only update if:
+    // 1. The prop value actually changed
+    // 2. AND the input is not currently focused (user is not typing)
+    // 3. AND the prop value is different from what we last synced
+    if (propValue !== lastSyncedValueRef.current && !isFocusedRef.current) {
+      setLocalValue(propValue);
+      lastSyncedValueRef.current = propValue;
+    }
   }, [initialValue]);
 
   const handleChange = (e) => {
@@ -103,12 +115,24 @@ const SearchInput = React.memo(({
     onChange(newValue); // Notify parent (debounced, won't cause lag)
   };
 
+  const handleFocus = () => {
+    isFocusedRef.current = true;
+  };
+
+  const handleBlur = () => {
+    isFocusedRef.current = false;
+    // Sync the last synced value when blurring
+    lastSyncedValueRef.current = localValue;
+  };
+
   return (
     <input
       type="text"
       placeholder={placeholder}
       value={localValue}
       onChange={handleChange}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
       style={{
         flex: 1,
         padding: '8px 16px',
@@ -126,9 +150,9 @@ const SearchInput = React.memo(({
 });
 
 // Simple memoized input component for preventing re-renders on typing
-const MemoizedInput = React.memo(({ 
-  value, 
-  onChange, 
+const MemoizedInput = React.memo(({
+  value,
+  onChange,
   type = 'text',
   placeholder = '',
   min,
@@ -139,10 +163,23 @@ const MemoizedInput = React.memo(({
 }) => {
   const [localValue, setLocalValue] = useState(value || '');
   const valueRef = useRef(value || '');
-  
+  const inputRef = useRef(null);
+  const isFocusedRef = useRef(false);
+
+  // Only sync with prop value when it actually changes AND input is not focused
+  // This prevents overwriting user input during typing
   useEffect(() => {
-    setLocalValue(value || '');
-    valueRef.current = value || '';
+    const propValue = value || '';
+    const currentValue = valueRef.current;
+
+    // Only update if:
+    // 1. The prop value actually changed
+    // 2. AND the input is not currently focused (user is not typing)
+    // 3. AND the prop value is different from what we have locally
+    if (propValue !== currentValue && !isFocusedRef.current) {
+      setLocalValue(propValue);
+      valueRef.current = propValue;
+    }
   }, [value]);
 
   const handleChange = (e) => {
@@ -153,7 +190,12 @@ const MemoizedInput = React.memo(({
     // Parent will get the value on blur or when needed
   };
 
+  const handleFocus = () => {
+    isFocusedRef.current = true;
+  };
+
   const handleBlur = () => {
+    isFocusedRef.current = false;
     // Sync with parent on blur
     if (valueRef.current !== value) {
       const syntheticEvent = {
@@ -175,9 +217,11 @@ const MemoizedInput = React.memo(({
 
   return (
     <input
+      ref={inputRef}
       type={type}
       value={localValue}
       onChange={handleChange}
+      onFocus={handleFocus}
       onBlur={handleBlur}
       onKeyPress={handleKeyPress}
       placeholder={placeholder}
@@ -186,6 +230,159 @@ const MemoizedInput = React.memo(({
       autoFocus={autoFocus}
       style={style}
     />
+  );
+});
+
+// Separated System Actions Button to prevent full list re-renders and improve menu opening performance
+const SystemActionsButton = React.memo(({
+  system,
+  hasResourceResolver,
+  hasSkinCharacterData,
+  menuAnchorEl,
+  setActionsMenuAnchor,
+  setShowMatrixModal,
+  setMatrixModalState,
+  handleAddIdleParticles,
+  handleAddChildParticles,
+  handleDeleteAllEmitters
+}) => {
+  const isOpen = Boolean(menuAnchorEl);
+
+  return (
+    <>
+      <IconButton
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          if (isOpen) {
+            setActionsMenuAnchor(null);
+          } else {
+            setActionsMenuAnchor({ element: e.currentTarget, systemKey: system.key });
+          }
+        }}
+        disabled={!hasResourceResolver || !hasSkinCharacterData}
+        title="Actions menu"
+        onMouseDown={(e) => {
+          e.stopPropagation();
+        }}
+        sx={{
+          color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : 'var(--accent2)',
+          padding: '4px',
+          minWidth: '32px', // Increased from 24px
+          width: '32px',    // Increased from 24px
+          height: '32px',   // Increased from 24px
+          borderRadius: '6px',
+          marginLeft: 'auto',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          '&:hover': {
+            color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : 'var(--accent)',
+            backgroundColor: 'rgba(255,255,255,0.05)'
+          },
+          '&.Mui-disabled': {
+            opacity: 0.5
+          }
+        }}
+      >
+        <MoreHorizIcon /> {/* fontSize="small" removed for bigger icon */}
+      </IconButton>
+      <Menu
+        anchorEl={menuAnchorEl}
+        open={isOpen}
+        onClose={(e) => {
+          if (e) e.stopPropagation();
+          setActionsMenuAnchor(null);
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        TransitionProps={{ timeout: 200, enter: true, exit: true }}
+        PaperProps={{
+          onClick: (e) => e.stopPropagation(),
+          onMouseDown: (e) => e.stopPropagation(),
+          sx: {
+            background: 'var(--surface-2)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '6px',
+            minWidth: '180px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            mt: 0.5,
+            transition: 'opacity 0.2s ease-in-out, transform 0.2s ease-in-out',
+            '&.MuiMenu-paper': { transformOrigin: 'top right' }
+          }
+        }}
+      >
+        <MenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            handleAddIdleParticles(system.key, system.name);
+            setActionsMenuAnchor(null);
+          }}
+          disabled={!hasResourceResolver || !hasSkinCharacterData}
+          sx={{
+            color: 'var(--accent)',
+            fontSize: '0.875rem',
+            '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' }
+          }}
+        >
+          Add Idle
+        </MenuItem>
+        <MenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            handleAddChildParticles(system.key, system.name);
+            setActionsMenuAnchor(null);
+          }}
+          disabled={!hasResourceResolver || !hasSkinCharacterData}
+          sx={{
+            color: 'var(--accent)',
+            fontSize: '0.875rem',
+            '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' }
+          }}
+        >
+          Add Child
+        </MenuItem>
+        <MenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            try {
+              const sysText = system.rawContent || '';
+              const parsed = parseSystemMatrix(sysText);
+              setMatrixModalState({
+                systemKey: system.key,
+                initial: parsed.matrix || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+              });
+              setShowMatrixModal(true);
+            } catch (err) { console.error(err); }
+            setActionsMenuAnchor(null);
+          }}
+          sx={{
+            color: 'var(--accent)',
+            fontSize: '0.875rem',
+            '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' }
+          }}
+        >
+          Add Matrix
+        </MenuItem>
+        {system.emitters && system.emitters.length > 0 && (
+          <MenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDeleteAllEmitters(system.key);
+              setActionsMenuAnchor(null);
+            }}
+            sx={{
+              color: '#ef4444',
+              fontSize: '0.875rem',
+              '&:hover': { backgroundColor: 'rgba(239, 68, 68, 0.1)' }
+            }}
+          >
+            <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+            Delete All Emitters
+          </MenuItem>
+        )}
+      </Menu>
+    </>
   );
 });
 
@@ -238,13 +435,13 @@ const Port = () => {
   // File data states
   const [targetSystems, setTargetSystems] = useState({});
   const [donorSystems, setDonorSystems] = useState({});
-  
+
   // Memoized filtered systems for better performance
   const filteredTargetSystems = React.useMemo(() => {
     if (!targetFilter) return Object.values(targetSystems);
-    
+
     const searchTerm = targetFilter.toLowerCase();
-    
+
     return Object.values(targetSystems).map(system => {
       // Check system name first (fastest check)
       const systemName = (system.particleName || system.name || system.key || '').toLowerCase();
@@ -252,20 +449,20 @@ const Port = () => {
         // If system name matches, return the system with all emitters
         return system;
       }
-      
+
       // Only check emitter names if emitter search is enabled
       if (enableTargetEmitterSearch && system.emitters && Array.isArray(system.emitters)) {
         const matchingEmitters = system.emitters.filter(emitter => {
           const emitterName = (emitter.name || '').toLowerCase();
           return emitterName.includes(searchTerm);
         });
-        
+
         // If we found matching emitters, return system with only those emitters
         if (matchingEmitters.length > 0) {
           return { ...system, emitters: matchingEmitters };
         }
       }
-      
+
       // No matches found, return null (will be filtered out)
       return null;
     }).filter(system => system !== null);
@@ -273,9 +470,9 @@ const Port = () => {
 
   const filteredDonorSystems = React.useMemo(() => {
     if (!donorFilter) return Object.values(donorSystems);
-    
+
     const searchTerm = donorFilter.toLowerCase();
-    
+
     return Object.values(donorSystems).map(system => {
       // Check system name first (fastest check)
       const systemName = (system.particleName || system.name || system.key || '').toLowerCase();
@@ -283,24 +480,25 @@ const Port = () => {
         // If system name matches, return the system with all emitters
         return system;
       }
-      
+
       // Only check emitter names if emitter search is enabled
       if (enableDonorEmitterSearch && system.emitters && Array.isArray(system.emitters)) {
         const matchingEmitters = system.emitters.filter(emitter => {
           const emitterName = (emitter.name || '').toLowerCase();
           return emitterName.includes(searchTerm);
         });
-        
+
         // If we found matching emitters, return system with only those emitters
         if (matchingEmitters.length > 0) {
           return { ...system, emitters: matchingEmitters };
         }
       }
-      
+
       // No matches found, return null (will be filtered out)
       return null;
     }).filter(system => system !== null);
   }, [donorSystems, donorFilter, enableDonorEmitterSearch]);
+
   const [targetPyContent, setTargetPyContent] = useState('');
   const [donorPyContent, setDonorPyContent] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -309,8 +507,10 @@ const Port = () => {
   const [statusMessage, setStatusMessage] = useState('Ready - Select files to begin porting');
   const [fileSaved, setFileSaved] = useState(true);
   const [selectedTargetSystem, setSelectedTargetSystem] = useState(null);
-  const [deletedEmitters, setDeletedEmitters] = useState(new Map()); // Track deleted emitters by systemKey:emitterName
+  const [collapsedSystems, setCollapsedSystems] = useState(new Set());
+  const [deletedEmitters, setDeletedEmitters] = useState(new Map());
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [showRitoBinErrorDialog, setShowRitoBinErrorDialog] = useState(false);
   const pendingNavigationPathRef = useRef(null);
 
   // Idle particles states
@@ -319,7 +519,7 @@ const Port = () => {
   const [idleBonesList, setIdleBonesList] = useState([]);
   const [isEditingIdle, setIsEditingIdle] = useState(false);
   const [existingIdleBones, setExistingIdleBones] = useState([]);
-  
+
   // Child particles states
   const [showChildModal, setShowChildModal] = useState(false);
   const [selectedSystemForChild, setSelectedSystemForChild] = useState(null);
@@ -334,12 +534,12 @@ const Port = () => {
   const [childParticleTranslationOverrideX, setChildParticleTranslationOverrideX] = useState('0');
   const [childParticleTranslationOverrideY, setChildParticleTranslationOverrideY] = useState('0');
   const [childParticleTranslationOverrideZ, setChildParticleTranslationOverrideZ] = useState('0');
-  
+
   // Child particle edit states
   const [showChildEditModal, setShowChildEditModal] = useState(false);
   const [editingChildEmitter, setEditingChildEmitter] = useState(null);
   const [editingChildSystem, setEditingChildSystem] = useState(null);
-  
+
   // Persistent editor state
   const [showPersistentModal, setShowPersistentModal] = useState(false);
   const [persistentPreset, setPersistentPreset] = useState({ type: 'IsAnimationPlaying', animationName: 'Spell4', delay: { on: 0, off: 0 } });
@@ -356,38 +556,38 @@ const Port = () => {
   const [effectKeyOptions, setEffectKeyOptions] = useState([]);
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const typeDropdownRef = useRef(null);
-  
+
   // Type options for the dropdown
   const typeOptions = [
-    { 
-      value: 'IsAnimationPlaying', 
-      label: 'Animation Playing', 
-      description: 'Trigger when specific animation is playing' 
+    {
+      value: 'IsAnimationPlaying',
+      label: 'Animation Playing',
+      description: 'Trigger when specific animation is playing'
     },
-    { 
-      value: 'HasBuffScript', 
-      label: 'Has Buff', 
-      description: 'Trigger when character has a specific buff' 
+    {
+      value: 'HasBuffScript',
+      label: 'Has Buff',
+      description: 'Trigger when character has a specific buff'
     },
-    { 
-      value: 'LearnedSpell', 
-      label: 'Learned Spell', 
-      description: 'Trigger when character has learned a spell' 
+    {
+      value: 'LearnedSpell',
+      label: 'Learned Spell',
+      description: 'Trigger when character has learned a spell'
     },
-    { 
-      value: 'HasGear', 
-      label: 'Has Gear', 
-      description: 'Trigger when character has specific gear equipped' 
+    {
+      value: 'HasGear',
+      label: 'Has Gear',
+      description: 'Trigger when character has specific gear equipped'
     },
-    { 
-      value: 'FloatComparison', 
-      label: 'Spell Rank Comparison', 
-      description: 'Compare spell rank with a value' 
+    {
+      value: 'FloatComparison',
+      label: 'Spell Rank Comparison',
+      description: 'Compare spell rank with a value'
     },
-    { 
-      value: 'BuffCounterFloatComparison', 
-      label: 'Buff Counter Comparison', 
-      description: 'Compare buff counter with a value' 
+    {
+      value: 'BuffCounterFloatComparison',
+      label: 'Buff Counter Comparison',
+      description: 'Compare buff counter with a value'
     }
   ];
   const [availableSubmeshes, setAvailableSubmeshes] = useState([]);
@@ -404,15 +604,130 @@ const Port = () => {
   const [showMatrixModal, setShowMatrixModal] = useState(false);
   const [actionsMenuAnchor, setActionsMenuAnchor] = useState(null);
   const [matrixModalState, setMatrixModalState] = useState({ systemKey: null, initial: null });
-  
+
   // Emitter rename state
   const [renamingEmitter, setRenamingEmitter] = useState(null); // { systemKey, emitterName, newName }
-  
+
   // System rename state
   const [renamingSystem, setRenamingSystem] = useState(null); // { systemKey, newName }
 
   // Optimistic delete helpers
   const backgroundSaveTimerRef = useRef(null);
+
+  // Auto-expand systems when emitter search finds matches (TARGET)
+  const prevTargetFilterRef = useRef({ filter: '', enabled: false });
+  React.useEffect(() => {
+    const hadFilter = prevTargetFilterRef.current.filter && prevTargetFilterRef.current.enabled;
+    const hasFilter = targetFilter && enableTargetEmitterSearch;
+
+    // Only collapse when transitioning from having a filter to not having one
+    if (hadFilter && !hasFilter) {
+      setCollapsedSystems(prev => {
+        const targetSystemKeys = Object.keys(targetSystems);
+        const newCollapsed = new Set(prev);
+        // Collapse all target systems (but keep donor systems as they were)
+        targetSystemKeys.forEach(key => newCollapsed.add(key));
+        // Keep selected system expanded
+        if (selectedTargetSystem) {
+          newCollapsed.delete(selectedTargetSystem);
+        }
+        return newCollapsed;
+      });
+    }
+
+    // Update the ref for next time
+    prevTargetFilterRef.current = { filter: targetFilter, enabled: enableTargetEmitterSearch };
+
+    if (!hasFilter) {
+      return;
+    }
+
+    const searchTerm = targetFilter.toLowerCase();
+    const systemsToExpand = new Set();
+
+    Object.values(targetSystems).forEach(system => {
+      // Check if system name matches - if so, don't need to expand
+      const systemName = (system.particleName || system.name || system.key || '').toLowerCase();
+      if (systemName.includes(searchTerm)) return;
+
+      // Check if any emitters match
+      if (system.emitters && Array.isArray(system.emitters)) {
+        const hasMatchingEmitter = system.emitters.some(emitter => {
+          const emitterName = (emitter.name || '').toLowerCase();
+          return emitterName.includes(searchTerm);
+        });
+
+        if (hasMatchingEmitter) {
+          systemsToExpand.add(system.key);
+        }
+      }
+    });
+
+    // Expand systems with matching emitters
+    if (systemsToExpand.size > 0) {
+      setCollapsedSystems(prev => {
+        const newCollapsed = new Set(prev);
+        systemsToExpand.forEach(key => newCollapsed.delete(key));
+        return newCollapsed;
+      });
+    }
+  }, [targetFilter, enableTargetEmitterSearch, targetSystems, selectedTargetSystem]);
+
+  // Auto-expand systems when emitter search finds matches (DONOR)
+  const prevDonorFilterRef = useRef({ filter: '', enabled: false });
+  React.useEffect(() => {
+    const hadFilter = prevDonorFilterRef.current.filter && prevDonorFilterRef.current.enabled;
+    const hasFilter = donorFilter && enableDonorEmitterSearch;
+
+    // Only collapse when transitioning from having a filter to not having one
+    if (hadFilter && !hasFilter) {
+      setCollapsedSystems(prev => {
+        const donorSystemKeys = Object.keys(donorSystems);
+        const newCollapsed = new Set(prev);
+        // Collapse all donor systems (but keep target systems as they were)
+        donorSystemKeys.forEach(key => newCollapsed.add(key));
+        return newCollapsed;
+      });
+    }
+
+    // Update the ref for next time
+    prevDonorFilterRef.current = { filter: donorFilter, enabled: enableDonorEmitterSearch };
+
+    if (!hasFilter) {
+      return;
+    }
+
+    const searchTerm = donorFilter.toLowerCase();
+    const systemsToExpand = new Set();
+
+    Object.values(donorSystems).forEach(system => {
+      // Check if system name matches - if so, don't need to expand
+      const systemName = (system.particleName || system.name || system.key || '').toLowerCase();
+      if (systemName.includes(searchTerm)) return;
+
+      // Check if any emitters match
+      if (system.emitters && Array.isArray(system.emitters)) {
+        const hasMatchingEmitter = system.emitters.some(emitter => {
+          const emitterName = (emitter.name || '').toLowerCase();
+          return emitterName.includes(searchTerm);
+        });
+
+        if (hasMatchingEmitter) {
+          systemsToExpand.add(system.key);
+        }
+      }
+    });
+
+    // Expand systems with matching emitters
+    if (systemsToExpand.size > 0) {
+      setCollapsedSystems(prev => {
+        const newCollapsed = new Set(prev);
+        systemsToExpand.forEach(key => newCollapsed.delete(key));
+        return newCollapsed;
+      });
+    }
+  }, [donorFilter, enableDonorEmitterSearch, donorSystems]);
+
 
   // Remove a single VfxEmitterDefinitionData block by emitterName from a system's rawContent (fast, text-only)
   const removeEmitterBlockFromSystem = (systemRawContent, emitterNameToRemove) => {
@@ -449,17 +764,31 @@ const Port = () => {
         // Skip past this block for the outer loop
         k = endIdx;
       }
-    } catch (_) {}
+    } catch (_) { }
     return null;
   };
-  
+
   // Backup viewer state
   const [showBackupViewer, setShowBackupViewer] = useState(false);
-  
+
   // Container name trimming preferences
-  const [trimTargetNames, setTrimTargetNames] = useState(true);
-  const [trimDonorNames, setTrimDonorNames] = useState(true);
-  
+  const [trimTargetNames, setTrimTargetNames] = useState(() => {
+    const saved = localStorage.getItem('port_trimTargetNames');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+  const [trimDonorNames, setTrimDonorNames] = useState(() => {
+    const saved = localStorage.getItem('port_trimDonorNames');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('port_trimTargetNames', JSON.stringify(trimTargetNames));
+  }, [trimTargetNames]);
+
+  useEffect(() => {
+    localStorage.setItem('port_trimDonorNames', JSON.stringify(trimDonorNames));
+  }, [trimDonorNames]);
+
   // Simplified undo system state - only undo, no redo
   const [undoHistory, setUndoHistory] = useState([]);
   // Capability flags based on targetPyContent
@@ -468,23 +797,23 @@ const Port = () => {
 
   // Reflect unsaved state globally for navigation guard
   useEffect(() => {
-    try { window.__DL_unsavedBin = !fileSaved; } catch {}
+    try { window.__DL_unsavedBin = !fileSaved; } catch { }
   }, [fileSaved]);
 
   // Intercept navigation when unsaved changes exist
   useEffect(() => {
     const handleNavigationBlock = (e) => {
       console.log('🔒 Navigation blocked event received:', e.detail);
-      
+
       if (!fileSaved && !window.__DL_forceClose) {
         // Prevent default and stop propagation
         if (e.preventDefault) e.preventDefault();
         if (e.stopPropagation) e.stopPropagation();
-        
+
         // Store the intended navigation path
         const targetPath = e.detail?.path;
         console.log('🔒 Target path:', targetPath, 'File saved:', fileSaved);
-        
+
         if (targetPath) {
           // Store navigation path in ref (not state) to avoid render issues
           pendingNavigationPathRef.current = targetPath;
@@ -496,7 +825,7 @@ const Port = () => {
     // Listen for custom navigation-block event from ModernNavigation
     // Use capture phase to catch event early
     window.addEventListener('navigation-blocked', handleNavigationBlock, true);
-    
+
     return () => {
       window.removeEventListener('navigation-blocked', handleNavigationBlock, true);
     };
@@ -546,19 +875,19 @@ const Port = () => {
         await electronPrefs.initPromise;
         const lastTargetPath = await electronPrefs.get('SharedLastBinPath');
         const lastDonorPath = await electronPrefs.get('PortLastDonorBinPath');
-        
+
         // Auto-reload target bin if it exists (shared across Paint, Port, and VFXHub)
         if (lastTargetPath && fs?.existsSync(lastTargetPath)) {
           console.log('🔄 Auto-reloading shared bin:', lastTargetPath);
           setStatusMessage('Auto-reloading last target bin...');
-          
+
           setIsProcessing(true);
           setTargetPath(lastTargetPath);
-          
+
           const binDir = path.dirname(lastTargetPath);
           const binName = path.basename(lastTargetPath, '.bin');
           const pyFilePath = path.join(binDir, `${binName}.py`);
-          
+
           let pyContent;
           if (fs?.existsSync(pyFilePath)) {
             setProcessingText('Loading existing .py file...');
@@ -573,30 +902,37 @@ const Port = () => {
               createBackup(pyFilePath, pyContent, 'port');
             }
           }
-          
+
           setTargetPyContent(pyContent);
-          try { setFileSaved(true); } catch {} // File is loaded from disk, so it's saved
-          
+          try { setFileSaved(true); } catch { } // File is loaded from disk, so it's saved
+
           // Parse the Python content using VFX emitter parser
           const systems = parseVfxEmitters(pyContent);
           setTargetSystems(systems);
-          
+
+          // Check if systems should be expanded on load
+          const expandOnLoad = await electronPrefs.get('ExpandSystemsOnLoad');
+          if (!expandOnLoad) {
+            // Default: collapse all systems
+            setCollapsedSystems(prev => new Set([...prev, ...Object.keys(systems)]));
+          }
+
           setStatusMessage(`Target bin auto-reloaded: ${Object.keys(systems).length} systems found`);
-          
+
           // Clear deleted emitters when loading a new target file
           setDeletedEmitters(new Map());
-          
+
           // Clear any existing texture preview when loading new file
           const existingPreview = document.getElementById('port-texture-hover-preview');
           if (existingPreview) existingPreview.remove();
-          
+
           // Clear conversion tracking
           activeConversions.current.clear();
           conversionTimers.current.clear();
-          
+
           // Clear texture name cache for fresh data
           textureNameCache.current.clear();
-          
+
           // Clear undo history when loading new file
           setUndoHistory([]);
         } else if (lastTargetPath) {
@@ -608,14 +944,14 @@ const Port = () => {
         if (lastDonorPath && fs?.existsSync(lastDonorPath)) {
           console.log('🔄 Auto-reloading last Port donor bin:', lastDonorPath);
           setStatusMessage('Auto-reloading last donor bin...');
-          
+
           setIsProcessing(true);
           setDonorPath(lastDonorPath);
-          
+
           const binDir = path.dirname(lastDonorPath);
           const binName = path.basename(lastDonorPath, '.bin');
           const pyFilePath = path.join(binDir, `${binName}.py`);
-          
+
           let pyContent;
           if (fs?.existsSync(pyFilePath)) {
             setProcessingText('Loading existing .py file...');
@@ -628,10 +964,18 @@ const Port = () => {
               createBackup(pyFilePath, pyContent, 'port');
             }
           }
-          
+
           setDonorPyContent(pyContent);
           const systems = parseVfxEmitters(pyContent);
           setDonorSystems(systems);
+          
+          // Check if systems should be expanded on load
+          const expandOnLoad = await electronPrefs.get('ExpandSystemsOnLoad');
+          if (!expandOnLoad) {
+            // Default: collapse all systems
+            setCollapsedSystems(prev => new Set([...prev, ...Object.keys(systems)]));
+          }
+          
           setStatusMessage(`Donor bin auto-reloaded: ${Object.keys(systems).length} systems found`);
         } else if (lastDonorPath) {
           console.log('⚠️ Last Port donor bin file no longer exists, clearing saved path');
@@ -656,13 +1000,13 @@ const Port = () => {
     const targetPath = pendingNavigationPathRef.current;
     setShowUnsavedDialog(false);
     pendingNavigationPathRef.current = null;
-    
+
     try {
       await handleSave();
       // After save, allow navigation
       window.__DL_forceClose = true;
       window.__DL_unsavedBin = false;
-      
+
       if (targetPath) {
         // Execute navigation after state updates
         setTimeout(() => {
@@ -682,12 +1026,12 @@ const Port = () => {
     const targetPath = pendingNavigationPathRef.current;
     setShowUnsavedDialog(false);
     pendingNavigationPathRef.current = null;
-    
+
     // Clear the unsaved flag to allow navigation
     setFileSaved(true);
     window.__DL_forceClose = true;
     window.__DL_unsavedBin = false;
-    
+
     if (targetPath) {
       // Execute navigation after state updates
       setTimeout(() => {
@@ -741,20 +1085,20 @@ const Port = () => {
       } catch (e) {
         // Ignore - may already be removed
       }
-      
+
       // Clear conversion tracking
       activeConversions.current.clear();
       conversionTimers.current.forEach(timer => {
         if (timer) clearTimeout(timer);
       });
       conversionTimers.current.clear();
-      
+
       // Clear large state objects to prevent memory leaks when switching pages
       setTargetSystems({});
       setDonorSystems({});
       setTargetPyContent('');
       setDonorPyContent('');
-      
+
       console.log('🧹 Cleaned up Port.js memory on unmount');
     };
   }, []);
@@ -805,37 +1149,26 @@ const Port = () => {
   // Removed batch texture preloading to eliminate performance issues
 
   const handleOpenTargetBin = async () => {
-    try {
-      setStatusMessage('Opening target bin...');
-
-      // Use the same file selection method as paint component
-      const { ipcRenderer } = window.require('electron');
-      // Guard: require Ritobin configured first
+    let path = targetPath !== 'This will show target bin' ? targetPath : undefined;
+    if (!path) {
       try {
-        const ritobin = await electronPrefs.get('RitoBinPath');
-        if (!ritobin) {
-          setStatusMessage('Configure Ritobin in Settings');
-          window.dispatchEvent(new CustomEvent('celestia:navigate', { detail: { path: '/settings' } }));
-          return;
-        }
-      } catch {}
-      const filePath = ipcRenderer.sendSync("FileSelect", ["Select Target Bin File", "Bin"]);
+        path = await electronPrefs.get('SharedLastBinPath');
+      } catch (e) { console.error(e); }
+    }
+    openAssetPreview(path, null, 'port-target');
+  };
 
-      if (!filePath || filePath === '') {
-        setIsProcessing(false);
-        setProcessingText('');
-        setStatusMessage('File selection cancelled');
-        return;
-      }
-
+  const processTargetBin = async (filePath) => {
+    try {
+      setStatusMessage('Loading target bin...');
       setIsProcessing(true);
       setTargetPath(filePath);
-      
+
       // Check if .py file already exists
       const binDir = path.dirname(filePath);
       const binName = path.basename(filePath, '.bin');
       const pyFilePath = path.join(binDir, `${binName}.py`);
-      
+
       let pyContent;
       if (fs?.existsSync(pyFilePath)) {
         setProcessingText('Loading existing .py file...');
@@ -854,12 +1187,20 @@ const Port = () => {
         }
       }
       setTargetPyContent(pyContent);
-      try { setFileSaved(false); } catch {}
+      try { setFileSaved(true); } catch { } // File is loaded from disk, so it's saved
 
 
       // Parse the Python content using VFX emitter parser
       const systems = parseVfxEmitters(pyContent);
       setTargetSystems(systems);
+
+      // Check if systems should be expanded on load
+      const expandOnLoad = await electronPrefs.get('ExpandSystemsOnLoad');
+      if (!expandOnLoad) {
+        // Default: collapse all systems
+        setCollapsedSystems(prev => new Set([...prev, ...Object.keys(systems)]));
+      }
+      setSelectedTargetSystem(null);
 
       setStatusMessage(`Target bin loaded: ${Object.keys(systems).length} systems found`);
 
@@ -877,11 +1218,11 @@ const Port = () => {
       // Clear any existing texture preview when loading new file
       const existingPreview = document.getElementById('port-texture-hover-preview');
       if (existingPreview) existingPreview.remove();
-      
+
       // Clear conversion tracking
       activeConversions.current.clear();
       conversionTimers.current.clear();
-      
+
       // Clear texture name cache for fresh data
       textureNameCache.current.clear();
 
@@ -901,37 +1242,26 @@ const Port = () => {
 
 
   const handleOpenDonorBin = async () => {
-    try {
-      setStatusMessage('Opening donor bin...');
-
-      // Use the same file selection method as paint component
-      const { ipcRenderer } = window.require('electron');
-      // Guard: require Ritobin configured first
+    let path = donorPath !== 'This will show donor bin' ? donorPath : undefined;
+    if (!path) {
       try {
-        const ritobin = await electronPrefs.get('RitoBinPath');
-        if (!ritobin) {
-          setStatusMessage('Configure Ritobin in Settings');
-          window.dispatchEvent(new CustomEvent('celestia:navigate', { detail: { path: '/settings' } }));
-          return;
-        }
-      } catch {}
-      const filePath = ipcRenderer.sendSync("FileSelect", ["Select Donor Bin File", "Bin"]);
+        path = await electronPrefs.get('PortLastDonorBinPath');
+      } catch (e) { console.error(e); }
+    }
+    openAssetPreview(path, null, 'port-donor');
+  };
 
-      if (!filePath || filePath === '') {
-        setIsProcessing(false);
-        setProcessingText('');
-        setStatusMessage('File selection cancelled');
-        return;
-      }
-
+  const processDonorBin = async (filePath) => {
+    try {
+      setStatusMessage('Loading donor bin...');
       setIsProcessing(true);
       setDonorPath(filePath);
-      
+
       // Check if .py file already exists
       const binDir = path.dirname(filePath);
       const binName = path.basename(filePath, '.bin');
       const pyFilePath = path.join(binDir, `${binName}.py`);
-      
+
       let pyContent;
       if (fs?.existsSync(pyFilePath)) {
         setProcessingText('Loading existing .py file...');
@@ -955,6 +1285,13 @@ const Port = () => {
       const systems = parseVfxEmitters(pyContent);
       setDonorSystems(systems);
 
+      // Check if systems should be expanded on load
+      const expandOnLoad = await electronPrefs.get('ExpandSystemsOnLoad');
+      if (!expandOnLoad) {
+        // Default: collapse all systems
+        setCollapsedSystems(prev => new Set([...prev, ...Object.keys(systems)]));
+      }
+
       setStatusMessage(`Donor bin loaded: ${Object.keys(systems).length} systems found`);
 
       // Save the donor bin path for auto-reload on next visit
@@ -968,11 +1305,11 @@ const Port = () => {
       // Clear any existing texture preview when loading new file
       const existingPreview = document.getElementById('port-texture-hover-preview');
       if (existingPreview) existingPreview.remove();
-      
+
       // Clear conversion tracking
       activeConversions.current.clear();
       conversionTimers.current.clear();
-      
+
       // Clear texture name cache for fresh data
       textureNameCache.current.clear();
 
@@ -988,6 +1325,23 @@ const Port = () => {
     }
   };
 
+  // Listen for file selection
+  useEffect(() => {
+    const handleAssetSelected = (e) => {
+      const { path: filePath, mode } = e.detail || {};
+      if (!filePath) return;
+
+      if (mode === 'port-target') {
+        processTargetBin(filePath);
+      } else if (mode === 'port-donor') {
+        processDonorBin(filePath);
+      }
+    };
+
+    window.addEventListener('asset-preview-selected', handleAssetSelected);
+    return () => window.removeEventListener('asset-preview-selected', handleAssetSelected);
+  }, []);
+
   // Save current state to undo history for any action
   const saveStateToHistory = (actionDescription) => {
     const currentState = {
@@ -998,13 +1352,13 @@ const Port = () => {
       timestamp: Date.now(),
       action: actionDescription
     };
-    
+
     setUndoHistory(prev => {
       const newHistory = [...prev, currentState];
       // Keep only last 10 actions to prevent memory issues
       return newHistory.slice(-10);
     });
-    
+
   };
 
   const handleUndo = () => {
@@ -1015,17 +1369,17 @@ const Port = () => {
 
     // Get the last state from undo history
     const lastState = undoHistory[undoHistory.length - 1];
-    
+
     // Restore the state
     setTargetSystems(lastState.targetSystems);
     setTargetPyContent(lastState.targetPyContent);
-    try { setFileSaved(false); } catch {}
+    try { setFileSaved(false); } catch { }
     setSelectedTargetSystem(lastState.selectedTargetSystem);
     setDeletedEmitters(lastState.deletedEmitters);
-    
+
     // Remove the restored state from undo history
     setUndoHistory(prev => prev.slice(0, -1));
-    
+
     setStatusMessage(`Undid: ${lastState.action}`);
   };
 
@@ -1051,25 +1405,25 @@ const Port = () => {
   const performBackupRestore = () => {
     try {
       setStatusMessage('Backup restored - reloading file...');
-      
+
       // Reload the restored file content
       const pyFilePath = targetPath.replace('.bin', '.py');
       if (fs?.existsSync(pyFilePath)) {
         const restoredContent = fs.readFileSync(pyFilePath, 'utf8');
-        
+
         // Clear any existing state that might cause issues
         setSelectedTargetSystem(null);
         setDeletedEmitters(new Map());
         setUndoHistory([]);
-        
+
         // Update the content and systems
         setTargetPyContent(restoredContent);
         const systems = parseVfxEmitters(restoredContent);
         setTargetSystems(systems);
-        
+
         // Reset file saved state since we're loading from disk
-        try { setFileSaved(true); } catch {}
-        
+        try { setFileSaved(true); } catch { }
+
         setStatusMessage(`Backup restored - ${Object.keys(systems).length} systems reloaded`);
       }
     } catch (error) {
@@ -1120,20 +1474,20 @@ const Port = () => {
       setVfxDropdownOpen({});
       setEditingConditionIndex(null);
       setShowExistingConditions(false);
-      
+
       // Load data
       setEffectKeyOptions(scanEffectKeys(targetPyContent));
       const newAvailableSubmeshes = extractSubmeshes(targetPyContent);
       setAvailableSubmeshes(newAvailableSubmeshes);
-      
+
       // Only clear submeshes that are in availableSubmeshes, keep custom ones
       setPersistentShowSubmeshes(prev => prev.filter(s => !newAvailableSubmeshes.includes(s)));
       setPersistentHideSubmeshes(prev => prev.filter(s => !newAvailableSubmeshes.includes(s)));
-      
+
       const existing = extractExistingPersistentConditions(targetPyContent);
       setExistingConditions(existing);
-      
-      
+
+
       setShowPersistentModal(true);
     } catch (e) {
       console.error('Error preparing Persistent editor:', e);
@@ -1186,14 +1540,14 @@ const Port = () => {
         setStatusMessage('Enter a system name');
         return;
       }
-      
+
       // Save state before creating new system
       saveStateToHistory(`Create new VFX system "${name}"`);
-      
+
       const minimalSystem = `"${name}" = VfxSystemDefinitionData {\n    complexEmitterDefinitionData: list[pointer] = {}\n    particleName: string = "${name}"\n    particlePath: string = "${name}"\n}`;
       const updated = insertVFXSystemIntoFile(targetPyContent, minimalSystem, name);
       setTargetPyContent(updated);
-      try { setFileSaved(false); } catch {}
+      try { setFileSaved(false); } catch { }
       try {
         const systems = parseVfxEmitters(updated);
         const entries = Object.entries(systems);
@@ -1217,7 +1571,7 @@ const Port = () => {
         } else {
           setTargetSystems(systems);
         }
-      } catch {}
+      } catch { }
       setShowNewSystemModal(false);
       setStatusMessage(`Created VFX system "${name}" and updated ResourceResolver`);
     } catch (e) {
@@ -1232,7 +1586,7 @@ const Port = () => {
       setStatusMessage('Both target and donor files must be loaded');
       return;
     }
-    
+
     if (!hasResourceResolver) {
       setStatusMessage('Locked: target bin missing ResourceResolver');
       return;
@@ -1253,7 +1607,7 @@ const Port = () => {
       `• May take several minutes to complete\n\n` +
       `Are you sure you want to continue?`
     );
-    
+
     if (!confirmed) {
       return;
     }
@@ -1262,13 +1616,13 @@ const Port = () => {
       setIsPortAllLoading(true);
       setIsProcessing(true);
       setProcessingText(`Porting ${donorSystemsList.length} VFX systems...`);
-      
+
       // Save state before porting all systems
       saveStateToHistory(`Port all ${donorSystemsList.length} VFX systems from donor`);
-      
+
       // Create backup before making changes
       await createBackup(targetPath, 'port-all-systems');
-      
+
       let updatedContent = targetPyContent;
       let successCount = 0;
       let errorCount = 0;
@@ -1278,7 +1632,7 @@ const Port = () => {
       for (let i = 0; i < donorSystemsList.length; i++) {
         const system = donorSystemsList[i];
         setProcessingText(`Porting system ${i + 1}/${donorSystemsList.length}: ${system.particleName || system.name}`);
-        
+
         try {
           // Extract full VFX system content
           let fullContent = '';
@@ -1298,16 +1652,16 @@ const Port = () => {
 
           // Check if system name already exists in target
           const originalName = system.particleName || system.name;
-          const systemExists = Object.values(targetSystems).some(targetSystem => 
+          const systemExists = Object.values(targetSystems).some(targetSystem =>
             (targetSystem.particleName || targetSystem.name) === originalName
           );
-          
+
           let finalSystemName = originalName;
           if (systemExists) {
             // Only generate unique name if there's a conflict
             finalSystemName = generateUniqueSystemName(updatedContent, originalName);
           }
-          
+
           // Insert the VFX system with preserved names (unless there was a conflict)
           if (systemExists) {
             // Use the standard insertion which will update names to avoid conflicts
@@ -1339,7 +1693,7 @@ const Port = () => {
           errors.push(`Failed to port ${system.name}: ${systemError.message}`);
           errorCount++;
         }
-        
+
         // Yield control to the browser to prevent UI freezing
         if (i % 3 === 0 || i === donorSystemsList.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 0));
@@ -1349,7 +1703,7 @@ const Port = () => {
       // Update the target content and systems
       setTargetPyContent(updatedContent);
       setFileSaved(false);
-      
+
       // Refresh target systems
       try {
         const systems = parseVfxEmitters(updatedContent);
@@ -1361,7 +1715,7 @@ const Port = () => {
       // Show results
       if (successCount > 0) {
         setStatusMessage(`Successfully ported ${successCount} VFX systems${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
-        
+
         // Show detailed errors if any
         if (errors.length > 0) {
           console.warn('Port all errors:', errors);
@@ -1390,7 +1744,7 @@ const Port = () => {
     // Clear existing state first
     setVfxSearchTerms({});
     setVfxDropdownOpen({});
-    
+
     // Load the condition data
     setPersistentPreset(condition.preset);
     setPersistentVfx(condition.vfx.map((v, idx) => ({
@@ -1401,9 +1755,9 @@ const Port = () => {
     setPersistentHideSubmeshes([...condition.submeshesHide]); // Force array copy
     setEditingConditionIndex(condition.index);
     setShowExistingConditions(false);
-    
+
     // Debug log to verify data is loaded
-    
+
     setStatusMessage(`Loaded condition: ${condition.label}`);
   };
 
@@ -1413,7 +1767,7 @@ const Port = () => {
       // Save state before applying persistent effects
       const action = editingConditionIndex !== null ? 'Update persistent effects' : 'Add persistent effects';
       saveStateToHistory(action);
-      
+
       let updated = targetPyContent;
       const normalizedVfx = persistentVfx.map(v => {
         const selected = effectKeyOptions.find(o => o.id === v.id) || { key: v.key, type: v.type, value: v.value };
@@ -1433,7 +1787,7 @@ const Port = () => {
         editingIndex: editingConditionIndex
       });
       setTargetPyContent(updated);
-      try { setFileSaved(false); } catch {}
+      try { setFileSaved(false); } catch { }
       // Don't re-parse systems here - it will reset the state and lose ported emitters
       // The systems are already loaded in targetSystems state
       setShowPersistentModal(false);
@@ -1450,7 +1804,7 @@ const Port = () => {
       setIsProcessing(true);
       setProcessingText('Saving .bin...');
       setStatusMessage('Saving modified target file...');
-      try { setFileSaved(true); } catch {}
+      try { setFileSaved(true); } catch { }
 
       // Allow overlay to render before heavy work
       await new Promise((r) => setTimeout(r, 10));
@@ -1466,13 +1820,13 @@ const Port = () => {
 
       // Extract existing persistent effects before generating modified content
       const existingPersistentConditions = extractExistingPersistentConditions(targetPyContent);
-      
+
       // Use the original content directly instead of regenerating
       let modifiedContent = targetPyContent;
-      
+
       // Only regenerate if there are deleted emitters that need to be removed
       const hasDeletedEmitters = deletedEmitters.size > 0;
-      
+
       // Check if any systems have emitters without full data
       let hasEmittersWithoutFullData = false;
       for (const systemName in targetSystems) {
@@ -1485,7 +1839,7 @@ const Port = () => {
           }
         }
       }
-      
+
       if (hasDeletedEmitters || hasEmittersWithoutFullData) {
         // Build a safe systems map with full emitter contents for regeneration
         const systemsForSave = {};
@@ -1503,10 +1857,10 @@ const Port = () => {
           }
           systemsForSave[systemKey] = { ...system, emitters: emittersForSystem };
         }
-        
+
         modifiedContent = generateModifiedPythonFromSystems(targetPyContent, systemsForSave);
       }
-      
+
       // Re-insert persistent effects only if needed (avoid confusion during idle-only edits)
       let finalContent = modifiedContent;
       try {
@@ -1545,7 +1899,7 @@ const Port = () => {
       try {
         // Use electronPrefs utility for proper preference access
         ritoBinPath = await electronPrefs.get('RitoBinPath');
-        
+
         // Fallback to old method if electronPrefs fails
         if (!ritoBinPath) {
           const settings = ipcRenderer.sendSync("get-ssx");
@@ -1591,14 +1945,15 @@ const Port = () => {
         const hasError = code !== 0 || hasStderrError;
 
         if (!hasError) {
-          setStatusMessage(`✅ Successfully saved: ${outputBinPath}\nUpdated .py file: ${outputPyPath}`);
-          try { setFileSaved(true); } catch {}
+          setStatusMessage(`✅ Successfully saved: ${outputBinPath}`);
+          setTimeout(() => setStatusMessage(''), 3000);
+          try { setFileSaved(true); } catch { }
           // Sync in-memory content and systems with what we just saved
           try {
             setTargetPyContent(finalContent);
             const refreshedSystems = parseVfxEmitters(finalContent);
             setTargetSystems(refreshedSystems);
-          } catch (_) {}
+          } catch (_) { }
           // Clear deleted emitters after successful save
           setDeletedEmitters(new Map());
           setIsProcessing(false);
@@ -1627,6 +1982,8 @@ const Port = () => {
           setStatusMessage(`❌ Error converting to .bin format (${errorReason})\n⚠️ Skipping .py indentation fix due to RitoBin error`);
           setIsProcessing(false);
           setProcessingText('');
+
+          setShowRitoBinErrorDialog(true);
         }
       });
 
@@ -1640,7 +1997,7 @@ const Port = () => {
       console.error('Error saving file:', error);
       setStatusMessage(`Error: ${error.message}`);
     } finally {
-      
+
     }
   };
 
@@ -1650,14 +2007,14 @@ const Port = () => {
 
     // Save state to history BEFORE making changes
     if (isTarget) {
-      try { saveStateToHistory(`Delete emitter from ${systemKey}`); } catch {}
+      try { saveStateToHistory(`Delete emitter from ${systemKey}`); } catch { }
     }
 
     const updatedSystems = { ...systems };
     if (updatedSystems[systemKey] && updatedSystems[systemKey].emitters) {
       let emitter;
       let actualIndex;
-      
+
       // If emitterName is provided, find the emitter by name instead of index
       // This is needed when dealing with filtered emitters
       if (emitterName) {
@@ -1672,7 +2029,7 @@ const Port = () => {
         emitter = updatedSystems[systemKey].emitters[emitterIndex];
         actualIndex = emitterIndex;
       }
-      
+
       updatedSystems[systemKey].emitters.splice(actualIndex, 1);
       setSystems(updatedSystems);
 
@@ -1698,7 +2055,7 @@ const Port = () => {
               const sysKeyForReplace = (currentSys.key || systemKey);
               const newFileText = replaceSystemBlockInFile(targetPyContent || '', sysKeyForReplace, newSystemRaw);
               setTargetPyContent(newFileText);
-              try { setFileSaved(false); } catch {}
+              try { setFileSaved(false); } catch { }
 
               // Debounced background save (no UI blocking)
               if (backgroundSaveTimerRef.current) {
@@ -1726,14 +2083,14 @@ const Port = () => {
                       const settings = ipcRenderer.sendSync('get-ssx');
                       ritoBinPath = settings[0]?.RitoBinPath;
                     }
-                  } catch (_) {}
+                  } catch (_) { }
 
                   if (ritoBinPath) {
                     const outputBinPath = targetPath;
                     const p = spawn(ritoBinPath, [outputPyPath, outputBinPath]);
                     // Detach style: best-effort, ignore stdout to avoid jank
-                    p.stdout?.on('data', () => {});
-                    p.stderr?.on('data', () => {});
+                    p.stdout?.on('data', () => { });
+                    p.stderr?.on('data', () => { });
                   }
                 } catch (bgErr) {
                   console.warn('Background save failed (non-blocking):', bgErr?.message || bgErr);
@@ -1774,7 +2131,7 @@ const Port = () => {
     }
 
     // Save state to history BEFORE making changes
-    try { saveStateToHistory(`Rename emitter "${oldEmitterName}" to "${newEmitterName}"`); } catch {}
+    try { saveStateToHistory(`Rename emitter "${oldEmitterName}" to "${newEmitterName}"`); } catch { }
 
     const system = targetSystems[systemKey];
     if (!system) {
@@ -1849,7 +2206,7 @@ const Port = () => {
       [systemKey]: {
         ...prev[systemKey],
         rawContent: updatedSystemRawContent,
-        emitters: prev[systemKey].emitters.map(e => 
+        emitters: prev[systemKey].emitters.map(e =>
           e.name === oldEmitterName ? { ...e, name: newEmitterName } : e
         )
       }
@@ -1860,7 +2217,7 @@ const Port = () => {
       const sysKeyForReplace = (system.key || systemKey);
       const newFileText = replaceSystemBlockInFile(targetPyContent || '', sysKeyForReplace, updatedSystemRawContent);
       setTargetPyContent(newFileText);
-      try { setFileSaved(false); } catch {}
+      try { setFileSaved(false); } catch { }
     } catch (e) {
       console.warn('Failed to update file content:', e);
     }
@@ -1900,7 +2257,7 @@ const Port = () => {
     }
 
     // Check if new name already exists
-    const existingSystem = Object.values(targetSystems).find(s => 
+    const existingSystem = Object.values(targetSystems).find(s =>
       (s.name === newSystemName || s.key === newSystemName) && s.key !== systemKey
     );
     if (existingSystem) {
@@ -1910,17 +2267,17 @@ const Port = () => {
     }
 
     // Save state to history BEFORE making changes
-    try { saveStateToHistory(`Rename system "${oldSystemName}" to "${newSystemName}"`); } catch {}
+    try { saveStateToHistory(`Rename system "${oldSystemName}" to "${newSystemName}"`); } catch { }
 
     let updatedContent = targetPyContent || '';
 
     // 1. Update the system header (the key assignment)
     // Support both quoted keys and hash keys, case-insensitive
     const escapedOldKey = systemKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const oldKeyPattern = systemKey.startsWith('0x') 
+    const oldKeyPattern = systemKey.startsWith('0x')
       ? new RegExp(`^\\s*${escapedOldKey}\\s*=\\s*VfxSystemDefinitionData\\s*\\{`, 'mi')
       : new RegExp(`^\\s*"${escapedOldKey}"\\s*=\\s*VfxSystemDefinitionData\\s*\\{`, 'mi');
-    
+
     const newKey = newSystemName.startsWith('0x') ? newSystemName : `"${newSystemName}"`;
     updatedContent = updatedContent.replace(oldKeyPattern, (match) => {
       // Preserve the original whitespace before the key
@@ -1940,7 +2297,7 @@ const Port = () => {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const trimmed = line.trim();
-      
+
       // Case-insensitive check for the system header
       const systemHeaderPattern = new RegExp(`${newKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*=\\s*VfxSystemDefinitionData\\s*\\{`, 'i');
       if (systemHeaderPattern.test(trimmed)) {
@@ -2010,11 +2367,11 @@ const Port = () => {
 
           // Check if either the key or value matches our old system name
           const keyMatches = entryKeyClean === oldNameClean || entryKeyClean === oldSystemName ||
-                            entryKeyClean.toLowerCase() === oldNameClean.toLowerCase();
+            entryKeyClean.toLowerCase() === oldNameClean.toLowerCase();
           const valueMatches = entryValueClean === oldNameClean || entryValueClean === oldSystemName ||
-                              entryValueClean.endsWith('/' + oldNameClean) || entryValueClean.endsWith('/' + oldSystemName) ||
-                              entryValueClean.toLowerCase() === oldNameClean.toLowerCase() ||
-                              entryValueClean.toLowerCase().endsWith('/' + oldNameClean.toLowerCase());
+            entryValueClean.endsWith('/' + oldNameClean) || entryValueClean.endsWith('/' + oldSystemName) ||
+            entryValueClean.toLowerCase() === oldNameClean.toLowerCase() ||
+            entryValueClean.toLowerCase().endsWith('/' + oldNameClean.toLowerCase());
 
           if (keyMatches || valueMatches) {
             // Determine the new key and value
@@ -2034,7 +2391,7 @@ const Port = () => {
             // Format the entry properly
             const finalEntryKeyFormatted = finalEntryKey.startsWith('0x') ? finalEntryKey : `"${finalEntryKey}"`;
             const finalEntryValueFormatted = finalEntryValue.startsWith('0x') ? finalEntryValue : `"${finalEntryValue}"`;
-            
+
             // Preserve indentation
             const indentMatch = line.match(/^(\s*)/);
             const indent = indentMatch ? indentMatch[1] : '            ';
@@ -2060,7 +2417,7 @@ const Port = () => {
     // 5. Update in-memory state
     const updatedSystems = { ...targetSystems };
     const oldSystem = updatedSystems[systemKey];
-    
+
     // Remove old system and add with new key
     delete updatedSystems[systemKey];
     updatedSystems[newSystemName] = {
@@ -2072,7 +2429,7 @@ const Port = () => {
     };
 
     setTargetPyContent(updatedContent);
-    try { setFileSaved(false); } catch {}
+    try { setFileSaved(false); } catch { }
 
     // Re-parse systems to update the in-memory state with the new system key
     try {
@@ -2119,7 +2476,7 @@ const Port = () => {
     let finalEmitterName = emitterName;
     if (targetSystem.emitters) {
       const existingNames = new Set(targetSystem.emitters.map(e => e.name));
-      
+
       if (existingNames.has(emitterName)) {
         // Find the next available suffix
         let suffix = 1;
@@ -2127,10 +2484,10 @@ const Port = () => {
           suffix++;
         }
         finalEmitterName = `${emitterName}_${suffix}`;
-        
+
         // Update the emitter name in the data
         fullEmitterData.name = finalEmitterName;
-        
+
         // Update the emitter name in originalContent if it exists
         if (fullEmitterData.originalContent) {
           fullEmitterData.originalContent = fullEmitterData.originalContent.replace(
@@ -2143,15 +2500,15 @@ const Port = () => {
 
     try {
       // Save state to history
-      try { saveStateToHistory(`Move emitter "${emitterName}" from "${sourceSystem.name}" to "${targetSystem.name}"`); } catch {}
+      try { saveStateToHistory(`Move emitter "${emitterName}" from "${sourceSystem.name}" to "${targetSystem.name}"`); } catch { }
 
       // 1. Remove emitter from source system
       const sourceSystemContent = sourceSystem.rawContent || '';
       const sourceEmitters = sourceSystem.emitters || [];
-      
+
       // Filter out the emitter being moved
       const remainingEmitters = sourceEmitters.filter(e => e.name !== emitterName);
-      
+
       // Build emitter blocks for remaining emitters
       const remainingEmitterBlocks = remainingEmitters.map(e => {
         if (e.originalContent) return e.originalContent;
@@ -2187,10 +2544,10 @@ const Port = () => {
       // 2. Add emitter to target system
       // Get the updated target system content (it may have been updated if source and target are different)
       const targetSystemContent = targetSystem.rawContent || '';
-      const targetSys = updatedSourceSystemContent ? 
+      const targetSys = updatedSourceSystemContent ?
         (extractVFXSystem(updatedSourceSystemContent, targetSystemKey)?.fullContent || targetSystemContent) :
         targetSystemContent;
-      
+
       const targetEmitters = targetSystem.emitters || [];
       const targetEmitterBlocks = targetEmitters.map(e => {
         if (e.originalContent) return e.originalContent;
@@ -2227,7 +2584,7 @@ const Port = () => {
 
       // Update file content
       setTargetPyContent(updatedTargetContent);
-      try { setFileSaved(false); } catch {}
+      try { setFileSaved(false); } catch { }
 
       // Re-parse systems to update state
       try {
@@ -2349,10 +2706,10 @@ const Port = () => {
       // Check if emitter name already exists in target system and generate unique name if needed
       const targetSystem = targetSystems[selectedTargetSystem];
       let finalEmitterName = emitterName;
-      
+
       if (targetSystem && targetSystem.emitters) {
         const existingNames = new Set(targetSystem.emitters.map(e => e.name));
-        
+
         if (existingNames.has(emitterName)) {
           // Find the next available suffix
           let suffix = 1;
@@ -2360,10 +2717,10 @@ const Port = () => {
             suffix++;
           }
           finalEmitterName = `${emitterName}_${suffix}`;
-          
+
           // Update the emitter name in the data
           fullEmitterData.name = finalEmitterName;
-          
+
           // Update the emitter name in originalContent if it exists
           if (fullEmitterData.originalContent) {
             fullEmitterData.originalContent = fullEmitterData.originalContent.replace(
@@ -2371,7 +2728,7 @@ const Port = () => {
               `emitterName: string = "${finalEmitterName}"`
             );
           }
-          
+
           setStatusMessage(`Emitter name "${emitterName}" already exists, renaming to "${finalEmitterName}"`);
         }
       }
@@ -2415,7 +2772,7 @@ const Port = () => {
                   }
                   k = endIdx;
                 }
-              } catch (_) {}
+              } catch (_) { }
               return null;
             })();
             if (recovered) return recovered;
@@ -2426,7 +2783,7 @@ const Port = () => {
           const newSystemText = replaceEmittersInSystem(currentSystemContent || '', emitterBlocks);
           const newFile = replaceSystemBlockInFile(targetPyContent || '', targetSys.key, newSystemText);
           setTargetPyContent(newFile);
-          try { setFileSaved(false); } catch {}
+          try { setFileSaved(false); } catch { }
           // Preserve emitters; refresh only this system rawContent
           setTargetSystems(prev => ({
             ...prev,
@@ -2438,7 +2795,7 @@ const Port = () => {
         } catch (error) {
           console.warn('Failed to update targetPyContent after porting emitter (fast path):', error);
         }
-        
+
         setStatusMessage(`Ported emitter "${finalEmitterName}" to "${updatedTargetSystems[selectedTargetSystem].name}"`);
 
         // Copy associated asset files
@@ -2446,13 +2803,13 @@ const Port = () => {
           const assetFiles = findAssetFiles(fullEmitterData);
           if (assetFiles.length > 0) {
             const { copiedFiles, failedFiles, skippedFiles } = copyAssetFiles(donorPath, targetPath, assetFiles);
-            
+
             // Show results to user
             const { ipcRenderer } = window.require('electron');
             showAssetCopyResults(copiedFiles, failedFiles, skippedFiles, (messageData) => {
               ipcRenderer.send("Message", messageData);
             });
-            
+
             if (copiedFiles.length > 0) {
               setStatusMessage(`Ported emitter "${finalEmitterName}" and copied ${copiedFiles.length} asset files${skippedFiles.length > 0 ? ` (${skippedFiles.length} skipped)` : ''}`);
             } else if (skippedFiles.length > 0) {
@@ -2485,7 +2842,7 @@ const Port = () => {
     try {
       // Save state before porting
       saveStateToHistory(`Port all emitters from "${donorSystem.name}"`);
-      
+
       setStatusMessage(`Porting all emitters from "${donorSystem.name}" to target system...`);
 
       const targetSystem = targetSystems[selectedTargetSystem];
@@ -2524,10 +2881,10 @@ const Port = () => {
             suffix++;
           }
           finalEmitterName = `${emitterName}_${suffix}`;
-          
+
           // Update the emitter name in the data
           fullEmitterData.name = finalEmitterName;
-          
+
           // Update the emitter name in originalContent if it exists
           if (fullEmitterData.originalContent) {
             fullEmitterData.originalContent = fullEmitterData.originalContent.replace(
@@ -2583,14 +2940,14 @@ const Port = () => {
               }
               k = endIdx;
             }
-          } catch (_) {}
+          } catch (_) { }
           return `VfxEmitterDefinitionData {\n    emitterName: string = "${e.name}"\n}`;
         });
 
         const newSystemText = replaceEmittersInSystem(currentSystemContent || '', emitterBlocks);
         const newFile = replaceSystemBlockInFile(targetPyContent || '', targetSys.key, newSystemText);
         setTargetPyContent(newFile);
-        try { setFileSaved(false); } catch {}
+        try { setFileSaved(false); } catch { }
         setTargetSystems(prev => ({
           ...prev,
           [targetSysKey]: {
@@ -2645,7 +3002,7 @@ const Port = () => {
     }
 
     // Save state to history BEFORE making changes
-    try { saveStateToHistory(`Delete all emitters from ${getShortSystemName(system.name)}`); } catch {}
+    try { saveStateToHistory(`Delete all emitters from ${getShortSystemName(system.name)}`); } catch { }
 
     try {
       const emitterCount = system.emitters.length;
@@ -2721,11 +3078,11 @@ const Port = () => {
       // Save state before adding/updating idle particles
       const action = isEditingIdle ? 'Update idle particles' : 'Add idle particles';
       saveStateToHistory(`${action} for "${selectedSystemForIdle.name}"`);
-      
+
       // Build bone configs from the list
       const boneConfigs = idleBonesList.map(item => ({
-        boneName: (item.customBoneName && item.customBoneName.trim()) 
-          ? item.customBoneName.trim() 
+        boneName: (item.customBoneName && item.customBoneName.trim())
+          ? item.customBoneName.trim()
           : item.boneName
       }));
 
@@ -2739,13 +3096,13 @@ const Port = () => {
       // If user removed all entries, just remove idle particles and don't add any
       if (boneConfigs.length === 0) {
         setTargetPyContent(updatedContent);
-        try { setFileSaved(false); } catch {}
+        try { setFileSaved(false); } catch { }
         setStatusMessage(`Removed all idle particles from "${selectedSystemForIdle.name}"`);
       } else {
         // Add all the bones from the list (edited + new)
         updatedContent = addIdleParticleEffect(updatedContent, selectedSystemForIdle.key, boneConfigs);
         setTargetPyContent(updatedContent);
-        try { setFileSaved(false); } catch {}
+        try { setFileSaved(false); } catch { }
 
         const boneNames = boneConfigs.map(c => c.boneName).join(', ');
         setStatusMessage(`${isEditingIdle ? 'Updated' : 'Added'} ${boneConfigs.length} idle particle(s) for "${selectedSystemForIdle.name}" on bones: ${boneNames}`);
@@ -2805,11 +3162,11 @@ const Port = () => {
     try {
       // Save state before adding child particles
       saveStateToHistory(`Add child particles to "${selectedSystemForChild.name}"`);
-      
+
       const updated = addChildParticleEffect(
-        targetPyContent, 
-        selectedSystemForChild.key, 
-        selectedChildSystem, 
+        targetPyContent,
+        selectedSystemForChild.key,
+        selectedChildSystem,
         childEmitterName.trim(),
         deletedEmitters,
         parseFloat(childParticleRate),
@@ -2821,10 +3178,10 @@ const Port = () => {
         parseFloat(childParticleTranslationOverrideY),
         parseFloat(childParticleTranslationOverrideZ)
       );
-      
+
       setTargetPyContent(updated);
-      try { setFileSaved(false); } catch {}
-      
+      try { setFileSaved(false); } catch { }
+
       // Re-parse systems to update UI and ensure child particles are properly reflected
       try {
         const systems = parseVfxEmitters(updated);
@@ -2832,7 +3189,7 @@ const Port = () => {
       } catch (parseError) {
         console.warn('Failed to re-parse systems after adding child particles:', parseError);
       }
-      
+
       setStatusMessage(`Added child particles "${childEmitterName}" to "${selectedSystemForChild.name}"`);
       setShowChildModal(false);
       setSelectedSystemForChild(null);
@@ -2858,27 +3215,27 @@ const Port = () => {
     try {
       // Extract the current data from the emitter
       const currentData = extractChildParticleData(targetPyContent, systemKey, emitterName);
-      
+
       if (!currentData) {
         setStatusMessage(`Could not find child particle data for "${emitterName}"`);
         return;
       }
-      
+
       // Load available VFX systems for the dropdown
       const systems = findAvailableVfxSystems(targetPyContent);
       setAvailableVfxSystems(systems);
-      
+
       // Set up the edit modal
       setEditingChildEmitter(emitterName);
       setEditingChildSystem({ key: systemKey, name: systemName });
-      
+
       // Find the matching system in availableVfxSystems to get the correct key
       console.log('Current effectKey:', currentData.effectKey);
       console.log('Available systems:', systems.map(s => ({ key: s.key, name: s.name })));
       const matchingSystem = systems.find(sys => sys.key === currentData.effectKey);
       console.log('Matching system:', matchingSystem);
       setSelectedChildSystem(matchingSystem ? matchingSystem.key : currentData.effectKey);
-      
+
       setChildParticleRate(currentData.rate.toString());
       setChildParticleLifetime(currentData.lifetime.toString());
       setChildParticleBindWeight(currentData.bindWeight.toString());
@@ -2888,7 +3245,7 @@ const Port = () => {
       setChildParticleTranslationOverrideY(currentData.translationOverrideY.toString());
       setChildParticleTranslationOverrideZ(currentData.translationOverrideZ.toString());
       setShowChildEditModal(true);
-      
+
       setStatusMessage(`Editing child particle "${emitterName}" in "${systemName}"`);
     } catch (error) {
       console.error('Error preparing child particle edit:', error);
@@ -2906,13 +3263,13 @@ const Port = () => {
     try {
       // Save state before editing
       saveStateToHistory(`Edit child particle "${editingChildEmitter}" in "${editingChildSystem.name}"`);
-      
+
       // Only include fields that were actually changed
       const newData = {};
-      
+
       // Get current data to compare
       const currentData = extractChildParticleData(targetPyContent, editingChildSystem.key, editingChildEmitter);
-      
+
       if (currentData) {
         // Only add fields that are different from current values
         if (parseFloat(childParticleRate) !== currentData.rate) {
@@ -2945,21 +3302,21 @@ const Port = () => {
           console.log('Setting effectKey to:', selectedChildSystem);
         }
       }
-      
+
       const updated = updateChildParticleEmitter(
         targetPyContent,
         editingChildSystem.key,
         editingChildEmitter,
         newData
       );
-      
+
       console.log('Updated Python content length:', updated.length);
       console.log('Original Python content length:', targetPyContent.length);
       console.log('Content changed:', updated !== targetPyContent);
-      
+
       setTargetPyContent(updated);
-      try { setFileSaved(false); } catch {}
-      
+      try { setFileSaved(false); } catch { }
+
       // Re-parse systems to update UI
       try {
         const systems = parseVfxEmitters(updated);
@@ -2968,7 +3325,7 @@ const Port = () => {
       } catch (parseError) {
         console.warn('Failed to re-parse systems after editing child particle:', parseError);
       }
-      
+
       setStatusMessage(`Updated child particle "${editingChildEmitter}" in "${editingChildSystem.name}"`);
       setShowChildEditModal(false);
       setEditingChildEmitter(null);
@@ -3000,16 +3357,16 @@ const Port = () => {
 
   // Cache for texture names to avoid repeated processing during search
   const textureNameCache = useRef(new Map());
-  
+
   // Helper function to extract texture names from emitter data (with caching)
   const extractTextureNamesFromEmitter = (emitter, system) => {
     const cacheKey = `${system.key}:${emitter.name}`;
-    
+
     // Check cache first
     if (textureNameCache.current.has(cacheKey)) {
       return textureNameCache.current.get(cacheKey);
     }
-    
+
     try {
       const fullEmitterData = loadEmitterData(system, emitter.name);
       if (fullEmitterData && fullEmitterData.texturePath) {
@@ -3018,7 +3375,7 @@ const Port = () => {
         const fileName = texturePath.split('/').pop() || texturePath.split('\\').pop() || texturePath;
         const textureName = fileName.split('.')[0]; // Remove extension
         const result = textureName.toLowerCase();
-        
+
         // Cache the result
         textureNameCache.current.set(cacheKey, result);
         return result;
@@ -3026,7 +3383,7 @@ const Port = () => {
     } catch (error) {
       console.warn('Error extracting texture name:', error);
     }
-    
+
     // Cache empty result to avoid repeated processing
     textureNameCache.current.set(cacheKey, '');
     return '';
@@ -3115,15 +3472,15 @@ const Port = () => {
     const previewWidth = 260; // Updated width to match CSS
     const previewHeight = 280; // Updated height to match CSS
     const margin = 10;
-    
+
     // Horizontal position - to the left of the icon
     const left = Math.max(margin, rect.left - previewWidth - margin);
-    
+
     // Vertical position - smart positioning to avoid cutoff
     let top;
     const spaceBelow = window.innerHeight - rect.bottom - margin;
     const spaceAbove = rect.top - margin;
-    
+
     if (spaceBelow >= previewHeight) {
       // Enough space below - align with icon top
       top = rect.top - 10;
@@ -3134,7 +3491,7 @@ const Port = () => {
       // Not enough space either way - position to fit in viewport
       top = Math.max(margin, Math.min(rect.top - 10, window.innerHeight - previewHeight - margin));
     }
-    
+
 
     // Extract colors from emitter data if available
     const colorInfos = emitterData && emitterData.originalContent
@@ -3154,9 +3511,9 @@ const Port = () => {
       if (unique.length > 0) {
         colorSwatches = `
           <div style="display: flex; gap: 3px; justify-content: center; padding: 6px; background: rgba(0,0,0,0.2); border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); margin-top: 6px;">
-            ${unique.map(col => 
-              `<div style="width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.3); background: ${col}; box-shadow: 0 1px 2px rgba(0,0,0,0.3);"></div>`
-            ).join('')}
+            ${unique.map(col =>
+          `<div style="width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.3); background: ${col}; box-shadow: 0 1px 2px rgba(0,0,0,0.3);"></div>`
+        ).join('')}
           </div>
         `;
       }
@@ -3212,15 +3569,15 @@ const Port = () => {
     const previewWidth = 260; // Match success preview width
     const previewHeight = 180; // Error preview is smaller
     const margin = 10;
-    
+
     // Horizontal position - to the left of the icon
     const left = Math.max(margin, rect.left - previewWidth - margin);
-    
+
     // Vertical position - smart positioning to avoid cutoff
     let top;
     const spaceBelow = window.innerHeight - rect.bottom - margin;
     const spaceAbove = rect.top - margin;
-    
+
     if (spaceBelow >= previewHeight) {
       // Enough space below - align with icon top
       top = rect.top - 10;
@@ -3646,9 +4003,9 @@ const Port = () => {
             modifiedLines = [...beforeSection, ...emitterLines, ...afterSection];
           }
 
-                console.log(`    Successfully inserted emitters into system "${displayName}"`);
+          console.log(`    Successfully inserted emitters into system "${displayName}"`);
         } else {
-                console.log(`    WARNING: Could not find complexEmitterDefinitionData section for system "${displayName}"`);
+          console.log(`    WARNING: Could not find complexEmitterDefinitionData section for system "${displayName}"`);
         }
       }
     });
@@ -3657,7 +4014,18 @@ const Port = () => {
     return modifiedLines.join('\n');
   };
 
-  // Render particle systems (now uses pre-filtered systems)
+  const toggleSystemCollapse = (systemKey) => {
+    setCollapsedSystems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(systemKey)) {
+        newSet.delete(systemKey);
+      } else {
+        newSet.add(systemKey);
+      }
+      return newSet;
+    });
+  };
+
   const renderParticleSystems = (systems, isTarget = true) => {
     if (!systems || systems.length === 0) {
       return (
@@ -3667,437 +4035,49 @@ const Port = () => {
       );
     }
 
+    const hasTargetSelected = !!selectedTargetSystem;
+
     return systems.map(system => {
       const isPressed = pressedSystemKey === system.key && !isTarget;
       const isDragging = dragStartedKey === system.key && !isTarget;
-      
+
       return (
-      <div
-        key={system.key}
-        draggable={!isTarget}
-        // Removed hover preloading to eliminate scroll lag - textures will load on-demand when preview button is clicked
-        title={!isTarget ? 'Drag into Target to add full system' : undefined}
-        onMouseDown={(e) => {
-          if (isTarget || e.target.closest('button') || e.target.closest('.port-btn')) return;
-          // Immediate visual feedback on click
-          setPressedSystemKey(system.key);
-          setDragStartedKey(null);
-        }}
-        onMouseUp={(e) => {
-          if (isTarget) return;
-          // Only reset if drag didn't start (user clicked but didn't drag)
-          if (!isDragging) {
-            setPressedSystemKey(null);
-          }
-        }}
-        onDragStart={async (e) => {
-          if (isTarget) return;
-          setDragStartedKey(system.key);
-          try {
-            // Prepare full VFX system content payload for donor systems
-            let fullContent = '';
+        <div
+          key={system.key}
+          draggable={!isTarget}
+          // Removed hover preloading to eliminate scroll lag - textures will load on-demand when preview button is clicked
+          title={!isTarget ? 'Drag into Target to add full system' : undefined}
+          onMouseDown={(e) => {
+            if (isTarget || e.target.closest('button') || e.target.closest('.port-btn') || e.target.closest('.particle-title-div')) return;
+            setPressedSystemKey(system.key);
+            setDragStartedKey(null);
+          }}
+          onMouseUp={(e) => {
+            if (isTarget) return;
+            // Only reset if drag didn't start (user clicked but didn't drag)
+            if (!isDragging) {
+              setPressedSystemKey(null);
+            }
+          }}
+          onDragStart={async (e) => {
+            if (isTarget) return;
+            setDragStartedKey(system.key);
             try {
-              const extracted = extractVFXSystem(donorPyContent, system.name);
-              fullContent = extracted?.fullContent || extracted?.rawContent || system.rawContent || '';
-            } catch (_) {
-              fullContent = system.rawContent || '';
-            }
-            const particleNameForUi = (system && typeof system.particleName === 'string' && system.particleName.trim()) ? system.particleName : system.name;
-            const payload = {
-              name: particleNameForUi,
-              fullContent
-            };
-            e.dataTransfer.effectAllowed = 'copy';
-            e.dataTransfer.setData('application/x-vfxsys', JSON.stringify(payload));
-            // Create a drag image for better visual feedback
-            const el = e.currentTarget;
-            const dragImage = el.cloneNode(true);
-            dragImage.style.transform = 'rotate(2deg)';
-            dragImage.style.opacity = '0.9';
-            document.body.appendChild(dragImage);
-            dragImage.style.position = 'absolute';
-            dragImage.style.top = '-1000px';
-            e.dataTransfer.setDragImage(dragImage, 0, 0);
-            setTimeout(() => {
+              // Prepare full VFX system content payload for donor systems
+              let fullContent = '';
               try {
-                if (dragImage.parentNode === document.body) {
-                  document.body.removeChild(dragImage);
-                }
-              } catch (e) {
-                // Ignore - may already be removed
+                const extracted = extractVFXSystem(donorPyContent, system.name);
+                fullContent = extracted?.fullContent || extracted?.rawContent || system.rawContent || '';
+              } catch (_) {
+                fullContent = system.rawContent || '';
               }
-            }, 0);
-          } catch (err) {
-            console.error('Drag start failed:', err);
-          }
-        }}
-        onDragEnd={(e) => {
-          if (isTarget) return;
-          setPressedSystemKey(null);
-          setDragStartedKey(null);
-        }}
-        className={`particle-div ${isTarget && selectedTargetSystem === system.key ? 'selected-system' : ''}`}
-        onClick={() => isTarget && setSelectedTargetSystem(selectedTargetSystem === system.key ? null : system.key)}
-        onDragOver={(e) => {
-          if (!isTarget) return;
-          // Allow dropping emitters into target systems
-          const types = e.dataTransfer?.types;
-          const hasEmitterType = types && (
-            Array.from(types).includes('application/x-vfxemitter') || 
-            (typeof types.contains === 'function' && types.contains('application/x-vfxemitter'))
-          );
-          const hasVfxType = types && (
-            Array.from(types).includes('application/x-vfxsys') || 
-            (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
-          );
-          // Allow VFX system drops to bubble up to parent container
-          if (hasVfxType) {
-            return; // Don't prevent default, let it bubble up
-          }
-          if (hasEmitterType) {
-            e.preventDefault();
-            e.stopPropagation();
-            e.dataTransfer.dropEffect = 'move';
-          }
-        }}
-        onDrop={(e) => {
-          if (!isTarget) return;
-          // Check if this is a VFX system drop - if so, let it bubble up to parent
-          const types = e.dataTransfer?.types;
-          const hasVfxType = types && (
-            Array.from(types).includes('application/x-vfxsys') || 
-            (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
-          );
-          if (hasVfxType) {
-            return; // Let VFX system drops bubble up to parent container
-          }
-          try {
-            e.preventDefault();
-            e.stopPropagation();
-            const data = e.dataTransfer.getData('application/x-vfxemitter');
-            if (!data) return;
-            
-            const emitterData = JSON.parse(data);
-            const { sourceSystemKey, emitterName } = emitterData;
-            
-            if (sourceSystemKey && emitterName && system.key !== sourceSystemKey) {
-              handleMoveEmitter(sourceSystemKey, emitterName, system.key);
-            }
-          } catch (error) {
-            console.error('Error handling emitter drop:', error);
-          }
-        }}
-        style={{ 
-          cursor: isTarget ? 'pointer' : 'default',
-          outline: isPressed ? '2px dashed var(--accent)' : (isDragging ? '2px dashed var(--accent)' : 'none'),
-          outlineOffset: isPressed || isDragging ? '2px' : '0px',
-          opacity: isPressed ? '0.8' : (isDragging ? '0.7' : '1'),
-          transform: isPressed ? 'scale(0.98)' : (isDragging ? 'scale(0.95)' : 'scale(1)'),
-          transition: 'all 0.1s ease-out',
-          ...(isTarget && system.ported ? {
-            background: 'linear-gradient(180deg, color-mix(in srgb, var(--accent-green, #22c55e), transparent 65%), color-mix(in srgb, var(--accent-green, #22c55e), transparent 78%))',
-            border: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)'
-          } : {}),
-          ...(isTarget && draggedEmitter && draggedEmitter.sourceSystemKey !== system.key ? {
-            border: '2px dashed var(--accent)',
-            background: 'rgba(147, 51, 234, 0.1)'
-          } : {})
-        }}
-      >
-        <div className="particle-title-div" style={isTarget && system.ported ? { background: 'color-mix(in srgb, var(--accent-green, #22c55e), transparent 75%)', borderBottom: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)' } : undefined}>
-          {!isTarget && (
-            <button
-              className="port-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                handlePortAllEmitters(system.key);
-              }}
-              title="Port all emitters from this system to selected target system"
-              disabled={!selectedTargetSystem}
-              style={{ flexShrink: 0, minWidth: '15px', height: '30px', marginRight: '4px', fontSize: '15px', padding: '2px' }}
-            >
-              ◄
-            </button>
-          )}
-          {isTarget && system.emitters && system.emitters.length > 0 && (
-            <button
-              className="delete-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeleteAllEmitters(system.key);
-              }}
-              title="Delete all emitters from this system"
-              style={{ 
-                flexShrink: 0, 
-                minWidth: '15px', 
-                height: '50px', 
-                marginRight: '4px', 
-                fontSize: '25px', 
-                padding: '1px',
-                background: 'transparent',
-                border: 'none',
-                color: '#ef4444',
-                cursor: 'pointer'
-              }}
-            >
-              🗑
-            </button>
-          )}
-          {isTarget && renamingSystem && renamingSystem.systemKey === system.key ? (
-            <RenameInput
-              initialValue={system.particleName || system.name || system.key}
-              onConfirm={(newName) => {
-                if (newName && newName.trim() !== '' && newName !== (system.particleName || system.name || system.key)) {
-                  handleRenameSystem(system.key, newName);
-                } else {
-                  setRenamingSystem(null);
-                }
-              }}
-              onCancel={() => setRenamingSystem(null)}
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <div 
-              className="label ellipsis flex-1" 
-              title={system.particleName || system.name}
-              style={{
-                color: 'var(--accent)',
-                fontWeight: '600',
-                fontSize: '1rem',
-                textShadow: '0 1px 2px rgba(0,0,0,0.5)'
-              }}
-            >
-              <span
-                onClick={(e) => {
-                  if (isTarget) {
-                    e.stopPropagation();
-                  }
-                }}
-                onDoubleClick={(e) => {
-                  if (isTarget) {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    setRenamingSystem({ systemKey: system.key, newName: system.particleName || system.name || system.key });
-                  }
-                }}
-                style={{
-                  cursor: isTarget ? 'text' : 'default',
-                  display: 'inline-block'
-                }}
-              >
-                {(() => {
-                  const displayName = system.particleName || system.name || system.key;
-                  const shouldTrim = isTarget ? trimTargetNames : trimDonorNames;
-                  const maxLength = 35;
-                  const trimLength = 32;
-                  
-                  if (shouldTrim && displayName.length > maxLength) {
-                    return displayName.substring(0, trimLength) + '...';
-                  }
-                  return displayName;
-                })()}
-              </span>
-            </div>
-          )}
-          {isTarget && selectedTargetSystem === system.key && (
-            <div className="selection-indicator"></div>
-          )}
-          {isTarget && (
-            <>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  const isOpen = actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key;
-                  if (isOpen) {
-                    setActionsMenuAnchor(null);
-                  } else {
-                    setActionsMenuAnchor({ element: e.currentTarget, systemKey: system.key });
-                  }
-                }}
-                disabled={!hasResourceResolver || !hasSkinCharacterData}
-                title="Actions menu"
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                }}
-                sx={{
-                  color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : 'var(--accent2)',
-                  padding: '4px',
-                  minWidth: '24px',
-                  width: '24px',
-                  height: '24px',
-                  marginLeft: 'auto',
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                  transform: actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? 'rotate(90deg)' : 'rotate(0deg)',
-                  '&:hover': { 
-                    color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : 'var(--accent)', 
-                    backgroundColor: 'rgba(255,255,255,0.05)' 
-                  },
-                  '&.Mui-disabled': {
-                    opacity: 0.5
-                  }
-                }}
-              >
-                {actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? (
-                  <ChevronLeftIcon fontSize="small" />
-                ) : (
-                  <ChevronRightIcon fontSize="small" />
-                )}
-              </IconButton>
-              <Menu
-                anchorEl={actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? actionsMenuAnchor.element : null}
-                open={Boolean(actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key)}
-                onClose={(e) => {
-                  if (e) {
-                    e.stopPropagation();
-                  }
-                  setActionsMenuAnchor(null);
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                }}
-                anchorOrigin={{
-                  vertical: 'bottom',
-                  horizontal: 'right',
-                }}
-                transformOrigin={{
-                  vertical: 'top',
-                  horizontal: 'right',
-                }}
-                TransitionProps={{
-                  timeout: 200,
-                  enter: true,
-                  exit: true,
-                }}
-                PaperProps={{
-                  onClick: (e) => {
-                    e.stopPropagation();
-                  },
-                  onMouseDown: (e) => {
-                    e.stopPropagation();
-                  },
-                  sx: {
-                    background: 'var(--surface-2)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '6px',
-                    minWidth: '180px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                    mt: 0.5,
-                    transition: 'opacity 0.2s ease-in-out, transform 0.2s ease-in-out',
-                    '&.MuiMenu-paper': {
-                      transformOrigin: 'top right',
-                    }
-                  }
-                }}
-              >
-                <MenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleAddIdleParticles(system.key, system.name);
-                    setActionsMenuAnchor(null);
-                  }}
-                  disabled={!hasResourceResolver || !hasSkinCharacterData}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                  }}
-                  sx={{
-                    color: 'var(--accent)',
-                    fontSize: '0.875rem',
-                    transition: 'background-color 0.15s ease',
-                    '&:hover': {
-                      backgroundColor: 'rgba(255,255,255,0.05)'
-                    },
-                    '&.Mui-disabled': {
-                      opacity: 0.5
-                    }
-                  }}
-                >
-                  Add Idle
-                </MenuItem>
-                <MenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleAddChildParticles(system.key, system.name);
-                    setActionsMenuAnchor(null);
-                  }}
-                  disabled={!hasResourceResolver || !hasSkinCharacterData}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                  }}
-                  sx={{
-                    color: 'var(--accent)',
-                    fontSize: '0.875rem',
-                    transition: 'background-color 0.15s ease',
-                    '&:hover': {
-                      backgroundColor: 'rgba(255,255,255,0.05)'
-                    },
-                    '&.Mui-disabled': {
-                      opacity: 0.5
-                    }
-                  }}
-                >
-                  Add Child
-                </MenuItem>
-                <MenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    try {
-                      const sysText = system.rawContent || '';
-                      console.log('System text length:', sysText.length);
-                      const parsed = parseSystemMatrix(sysText);
-                      console.log('Parsed matrix:', parsed);
-                      setMatrixModalState({ systemKey: system.key, initial: parsed.matrix || [
-                        1,0,0,0,
-                        0,1,0,0,
-                        0,0,1,0,
-                        0,0,0,1
-                      ]});
-                      setShowMatrixModal(true);
-                      console.log('Matrix modal should be open now');
-                    } catch (err) {
-                      console.error('Open matrix editor failed:', err);
-                    }
-                    setActionsMenuAnchor(null);
-                  }}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                  }}
-                  sx={{
-                    color: 'var(--accent)',
-                    fontSize: '0.875rem',
-                    transition: 'background-color 0.15s ease',
-                    '&:hover': {
-                      backgroundColor: 'rgba(255,255,255,0.05)'
-                    }
-                  }}
-                >
-                  Add Matrix
-                </MenuItem>
-              </Menu>
-            </>
-          )}
-        </div>
-        {system.emitters.map((emitter, index) => {
-          const isQuartzChild = isDivineLabChildParticle(emitter.name);
-          
-          return (
-          <div 
-            key={index} 
-            className="emitter-div"
-            draggable={isTarget}
-            onDragStart={(e) => {
-              if (!isTarget) return;
-              e.stopPropagation();
-              setDraggedEmitter({ sourceSystemKey: system.key, emitterName: emitter.name });
-              e.dataTransfer.effectAllowed = 'move';
-              e.dataTransfer.setData('application/x-vfxemitter', JSON.stringify({
-                sourceSystemKey: system.key,
-                emitterName: emitter.name
-              }));
+              const particleNameForUi = (system && typeof system.particleName === 'string' && system.particleName.trim()) ? system.particleName : system.name;
+              const payload = {
+                name: particleNameForUi,
+                fullContent
+              };
+              e.dataTransfer.effectAllowed = 'copy';
+              e.dataTransfer.setData('application/x-vfxsys', JSON.stringify(payload));
               // Create a drag image for better visual feedback
               const el = e.currentTarget;
               const dragImage = el.cloneNode(true);
@@ -4108,313 +4088,692 @@ const Port = () => {
               dragImage.style.top = '-1000px';
               e.dataTransfer.setDragImage(dragImage, 0, 0);
               setTimeout(() => {
-              try {
-                if (dragImage.parentNode === document.body) {
-                  document.body.removeChild(dragImage);
+                try {
+                  if (dragImage.parentNode === document.body) {
+                    document.body.removeChild(dragImage);
+                  }
+                } catch (e) {
+                  // Ignore - may already be removed
                 }
-              } catch (e) {
-                // Ignore - may already be removed
+              }, 0);
+            } catch (err) {
+              console.error('Drag start failed:', err);
+            }
+          }}
+          onDragEnd={(e) => {
+            if (isTarget) return;
+            setPressedSystemKey(null);
+            setDragStartedKey(null);
+          }}
+          className={`particle-div ${isTarget && selectedTargetSystem === system.key ? 'selected-system' : ''}`}
+          onClick={(e) => {
+            if (isTarget) {
+              const clickedOnHeader = e.target.closest('.particle-title-div');
+
+              // Always activate/deactivate system when clicking on header or anywhere on the system
+              if (clickedOnHeader) {
+                setSelectedTargetSystem(selectedTargetSystem === system.key ? null : system.key);
               }
-            }, 0);
-            }}
-            onDragEnd={(e) => {
-              if (!isTarget) return;
-              setDraggedEmitter(null);
-            }}
+            }
+          }}
+          onDragOver={(e) => {
+            if (!isTarget) return;
+            // Allow dropping emitters into target systems
+            const types = e.dataTransfer?.types;
+            const hasEmitterType = types && (
+              Array.from(types).includes('application/x-vfxemitter') ||
+              (typeof types.contains === 'function' && types.contains('application/x-vfxemitter'))
+            );
+            const hasVfxType = types && (
+              Array.from(types).includes('application/x-vfxsys') ||
+              (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
+            );
+            // Allow VFX system drops to bubble up to parent container
+            if (hasVfxType) {
+              return; // Don't prevent default, let it bubble up
+            }
+            if (hasEmitterType) {
+              e.preventDefault();
+              e.stopPropagation();
+              e.dataTransfer.dropEffect = 'move';
+            }
+          }}
+          onDrop={(e) => {
+            if (!isTarget) return;
+            // Check if this is a VFX system drop - if so, let it bubble up to parent
+            const types = e.dataTransfer?.types;
+            const hasVfxType = types && (
+              Array.from(types).includes('application/x-vfxsys') ||
+              (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
+            );
+            if (hasVfxType) {
+              return; // Let VFX system drops bubble up to parent container
+            }
+            try {
+              e.preventDefault();
+              e.stopPropagation();
+              const data = e.dataTransfer.getData('application/x-vfxemitter');
+              if (!data) return;
+
+              const emitterData = JSON.parse(data);
+              const { sourceSystemKey, emitterName } = emitterData;
+
+              if (sourceSystemKey && emitterName && system.key !== sourceSystemKey) {
+                handleMoveEmitter(sourceSystemKey, emitterName, system.key);
+              }
+            } catch (error) {
+              console.error('Error handling emitter drop:', error);
+            }
+          }}
+          style={{
+            cursor: isTarget ? 'pointer' : 'default',
+            outline: isPressed ? '2px dashed var(--accent)' : (isDragging ? '2px dashed var(--accent)' : 'none'),
+            outlineOffset: isPressed || isDragging ? '2px' : '0px',
+            opacity: isPressed ? '0.8' : (isDragging ? '0.7' : '1'),
+            transform: isPressed ? 'scale(0.98)' : (isDragging ? 'scale(0.95)' : 'scale(1)'),
+            transition: 'all 0.1s ease-out',
+            ...(isTarget && system.ported ? {
+              background: 'linear-gradient(180deg, color-mix(in srgb, var(--accent-green, #22c55e), transparent 65%), color-mix(in srgb, var(--accent-green, #22c55e), transparent 78%))',
+              border: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)'
+            } : {}),
+            ...(isTarget && draggedEmitter && draggedEmitter.sourceSystemKey !== system.key ? {
+              border: '2px dashed var(--accent)',
+              background: 'rgba(147, 51, 234, 0.1)'
+            } : {})
+          }}
+        >
+          <div
+            className="particle-title-div"
             style={{
-              border: isQuartzChild ? '2px solid #3b82f6' : undefined,
-              borderRadius: isQuartzChild ? '6px' : undefined,
-              background: isQuartzChild ? 'rgba(59, 130, 246, 0.05)' : undefined,
-              cursor: isTarget ? 'grab' : 'default',
-              opacity: draggedEmitter && draggedEmitter.sourceSystemKey === system.key && draggedEmitter.emitterName === emitter.name ? 0.5 : 1
+              cursor: 'pointer',
+              ...(isTarget && system.ported ? {
+                background: 'color-mix(in srgb, var(--accent-green, #22c55e), transparent 75%)',
+                borderBottom: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)'
+              } : {})
             }}
           >
+            {/* Arrow indicator for collapse state - clicking it toggles collapse */}
+            <div 
+              style={{ 
+                marginRight: '4px',
+                display: 'flex', 
+                alignItems: 'center', 
+                opacity: 0.7, 
+                cursor: 'pointer',
+                position: 'relative',
+                padding: 0
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleSystemCollapse(system.key);
+              }}
+            >
+              {/* Invisible larger clickable area */}
+              <div style={{ 
+                position: 'absolute', 
+                inset: '-12px', 
+                zIndex: 1 
+              }} />
+              {collapsedSystems.has(system.key) ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" style={{ transform: 'rotate(-90deg)' }} />}
+            </div>
+
             {!isTarget && (
               <button
                 className="port-btn"
-                onClick={() => handlePortEmitter(system.key, emitter.name)}
-                title="Port emitter to selected target system"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePortAllEmitters(system.key);
+                }}
+                title="Port all emitters from this system to selected target system"
                 disabled={!selectedTargetSystem}
-                style={{ flexShrink: 0, minWidth: '24px' }}
+                style={{
+                  flexShrink: 0,
+                  minWidth: '32px',
+                  width: '32px',
+                  height: '32px',
+                  marginRight: '6px',
+                  fontSize: '16px',
+                  padding: '0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
               >
                 ◄
               </button>
             )}
-            {isTarget && renamingEmitter && renamingEmitter.systemKey === system.key && renamingEmitter.emitterName === emitter.name ? (
+            {isTarget && renamingSystem && renamingSystem.systemKey === system.key ? (
               <RenameInput
-                initialValue={emitter.name}
+                initialValue={system.particleName || system.name || system.key}
                 onConfirm={(newName) => {
-                  if (newName && newName.trim() !== '' && newName !== emitter.name) {
-                    handleRenameEmitter(system.key, emitter.name, newName);
+                  if (newName && newName.trim() !== '' && newName !== (system.particleName || system.name || system.key)) {
+                    handleRenameSystem(system.key, newName);
                   } else {
-                    setRenamingEmitter(null);
+                    setRenamingSystem(null);
                   }
                 }}
-                onCancel={() => setRenamingEmitter(null)}
+                onCancel={() => setRenamingSystem(null)}
                 onClick={(e) => e.stopPropagation()}
               />
             ) : (
               <div
-                className="label flex-1 ellipsis"
-                style={{ 
-                  minWidth: 0, 
+                className="label ellipsis flex-1"
+                title={system.particleName || system.name}
+                style={{
                   color: 'var(--accent)',
                   fontWeight: '600',
-                  fontSize: '0.95rem',
-                  textShadow: '0 1px 2px rgba(0,0,0,0.5)'
+                  fontSize: '1rem',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
                 }}
               >
                 <span
-                  onClick={(e) => {
-                    if (isTarget && !isQuartzChild) {
-                      e.stopPropagation();
-                    }
-                  }}
                   onDoubleClick={(e) => {
-                    if (isTarget && !isQuartzChild) {
+                    if (isTarget) {
                       e.stopPropagation();
                       e.preventDefault();
-                      setRenamingEmitter({ systemKey: system.key, emitterName: emitter.name, newName: emitter.name });
+                      setRenamingSystem({ systemKey: system.key, newName: system.particleName || system.name || system.key });
                     }
                   }}
-                  style={{ 
-                    cursor: isTarget && !isQuartzChild ? 'text' : 'default',
-                    display: 'inline-block'
+                  style={{
+                    cursor: 'pointer',
+                    display: 'inline-block',
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
                   }}
                 >
-                  {emitter.name || `Emitter ${index + 1}`}
+                  {(() => {
+                    const displayName = system.particleName || system.name || system.key;
+                    const shouldTrim = isTarget ? trimTargetNames : trimDonorNames;
+                    return shouldTrim ? getShortSystemName(displayName) : displayName;
+                  })()}
                 </span>
-                {emitter.isChildParticle && (
-                  <span 
-                    style={{
-                      marginLeft: '6px',
-                      fontSize: '10px',
-                      background: 'rgba(255, 193, 7, 0.2)',
-                      color: '#ffc107',
-                      padding: '1px 4px',
-                      borderRadius: '3px',
-                      border: '1px solid rgba(255, 193, 7, 0.3)',
-                      fontWeight: 'bold'
-                    }}
-                    title={`Child particle referencing: ${emitter.childSystemKey}`}
-                  >
-                    CHILD
+                {collapsedSystems.has(system.key) && system.emitters && (
+                  <span style={{
+                    marginLeft: 'auto',
+                    opacity: 0.6,
+                    fontSize: '0.85em',
+                    fontWeight: 'normal',
+                    flexShrink: 0,
+                    paddingLeft: '8px'
+                  }}>
+                    ({system.emitters.length})
                   </span>
                 )}
               </div>
             )}
-            
-            {/* Color blocks */}
-            {emitter.color && (
-              <div
-                className="color-block"
-                style={{
-                  width: '16px',
-                  height: '16px',
-                  borderRadius: '3px',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  marginLeft: '6px',
-                  flexShrink: 0,
-                  background: emitter.color.constantValue || '#ffffff'
-                }}
-                title={`Color: ${emitter.color.constantValue || 'Unknown'}`}
+            {isTarget && selectedTargetSystem === system.key && (
+              <div className="selection-indicator"></div>
+            )}
+            {isTarget && (
+              <SystemActionsButton
+                system={system}
+                hasResourceResolver={hasResourceResolver}
+                hasSkinCharacterData={hasSkinCharacterData}
+                menuAnchorEl={actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? actionsMenuAnchor.element : null}
+                setActionsMenuAnchor={setActionsMenuAnchor}
+                setShowMatrixModal={setShowMatrixModal}
+                setMatrixModalState={setMatrixModalState}
+                handleAddIdleParticles={handleAddIdleParticles}
+                handleAddChildParticles={handleAddChildParticles}
+                handleDeleteAllEmitters={handleDeleteAllEmitters}
               />
             )}
-            
-            {/* Edit button for Quartz-created child particles */}
-            {isQuartzChild && isTarget && (
-              <button
-                className="edit-child-btn"
-                onClick={(e) => {
+          </div>
+          {!collapsedSystems.has(system.key) && system.emitters.map((emitter, index) => {
+            const isQuartzChild = isDivineLabChildParticle(emitter.name);
+
+            return (
+              <div
+                key={index}
+                className="emitter-div"
+                draggable={isTarget}
+                onDragStart={(e) => {
+                  if (!isTarget) return;
                   e.stopPropagation();
-                  handleEditChildParticle(system.key, system.name, emitter.name);
+                  setDraggedEmitter({ sourceSystemKey: system.key, emitterName: emitter.name });
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('application/x-vfxemitter', JSON.stringify({
+                    sourceSystemKey: system.key,
+                    emitterName: emitter.name
+                  }));
+                  // Create a drag image for better visual feedback
+                  const el = e.currentTarget;
+                  const dragImage = el.cloneNode(true);
+                  dragImage.style.transform = 'rotate(2deg)';
+                  dragImage.style.opacity = '0.9';
+                  document.body.appendChild(dragImage);
+                  dragImage.style.position = 'absolute';
+                  dragImage.style.top = '-1000px';
+                  e.dataTransfer.setDragImage(dragImage, 0, 0);
+                  setTimeout(() => {
+                    try {
+                      if (dragImage.parentNode === document.body) {
+                        document.body.removeChild(dragImage);
+                      }
+                    } catch (e) {
+                      // Ignore - may already be removed
+                    }
+                  }, 0);
                 }}
-                title="Edit child particle"
+                onDragEnd={(e) => {
+                  if (!isTarget) return;
+                  setDraggedEmitter(null);
+                }}
                 style={{
-                  width: '24px',
-                  height: '24px',
-                  marginLeft: '6px',
-                  flexShrink: 0,
-                  background: 'rgba(59, 130, 246, 0.1)',
-                  border: '1px solid #3b82f6',
-                  borderRadius: '4px',
-                  color: '#3b82f6',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '12px'
+                  border: isQuartzChild ? '2px solid #3b82f6' : undefined,
+                  borderRadius: isQuartzChild ? '6px' : undefined,
+                  background: isQuartzChild ? 'rgba(59, 130, 246, 0.05)' : undefined,
+                  cursor: isTarget ? 'grab' : 'default',
+                  opacity: draggedEmitter && draggedEmitter.sourceSystemKey === system.key && draggedEmitter.emitterName === emitter.name ? 0.5 : 1
                 }}
               >
-                ✏️
-              </button>
-            )}
-            
-            {/* Preview button */}
-              <button
-              className="preview-btn"
-              style={{
-                width: '24px',
-                height: '24px',
-                marginLeft: '6px',
-                flexShrink: 0,
-                background: 'transparent',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '4px',
-                color: 'var(--accent, #3b82f6)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '12px'
-              }}
-              title="Preview texture"
-                onMouseEnter={async (e) => {
-                e.stopPropagation();
-                console.log('🖼️ MouseEnter on preview button for emitter:', emitter.name);
-                console.log('🖼️ System:', system.name, 'Key:', system.key);
-                
-                // Clear any existing timer
-                if (conversionTimers.current.has('hover')) {
-                  clearTimeout(conversionTimers.current.get('hover'));
-                  conversionTimers.current.delete('hover');
-                }
-
-                // Set a delay before showing preview
-                const timer = setTimeout(async () => {
-                  console.log('🖼️ Timer fired, loading texture preview for:', emitter.name);
-                  try {
-                    console.log('🖼️ Loading emitter data...');
-                    const fullEmitterData = loadEmitterData(system, emitter.name);
-                    console.log('🖼️ Full emitter data:', fullEmitterData);
-                    if (fullEmitterData && fullEmitterData.texturePath) {
-                      console.log('🖼️ Texture path found:', fullEmitterData.texturePath);
-                      
-                      // Check if this texture is already being converted
-                      if (activeConversions.current.has(fullEmitterData.texturePath)) {
-                        console.log(`[port] Texture ${fullEmitterData.texturePath} already being converted, skipping...`);
+                {!isTarget && (
+                  <button
+                    className="port-btn"
+                    onClick={() => {
+                      if (!selectedTargetSystem) {
+                        setStatusMessage('Please select a target system first');
                         return;
                       }
+                      handlePortEmitter(system.key, emitter.name);
+                    }}
+                    title="Port emitter to selected target system"
+                    style={{ flexShrink: 0, minWidth: '24px' }}
+                  >
+                    ◄
+                  </button>
+                )}
+                {isTarget && renamingEmitter && renamingEmitter.systemKey === system.key && renamingEmitter.emitterName === emitter.name ? (
+                  <RenameInput
+                    initialValue={emitter.name}
+                    onConfirm={(newName) => {
+                      if (newName && newName.trim() !== '' && newName !== emitter.name) {
+                        handleRenameEmitter(system.key, emitter.name, newName);
+                      } else {
+                        setRenamingEmitter(null);
+                      }
+                    }}
+                    onCancel={() => setRenamingEmitter(null)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <div
+                    className="label flex-1 ellipsis"
+                    style={{
+                      minWidth: 0,
+                      color: 'var(--accent)',
+                      fontWeight: '600',
+                      fontSize: '0.95rem',
+                      textShadow: '0 1px 2px rgba(0,0,0,0.5)'
+                    }}
+                  >
+                    <span
+                      onClick={(e) => {
+                        if (isTarget && !isQuartzChild) {
+                          e.stopPropagation();
+                        }
+                      }}
+                      onDoubleClick={(e) => {
+                        if (isTarget && !isQuartzChild) {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setRenamingEmitter({ systemKey: system.key, emitterName: emitter.name, newName: emitter.name });
+                        }
+                      }}
+                      style={{
+                        cursor: isTarget && !isQuartzChild ? 'text' : 'default',
+                        display: 'inline-block'
+                      }}
+                    >
+                      {emitter.name || `Emitter ${index + 1}`}
+                    </span>
+                    {emitter.isChildParticle && (
+                      <span
+                        style={{
+                          marginLeft: '6px',
+                          fontSize: '10px',
+                          background: 'rgba(255, 193, 7, 0.2)',
+                          color: '#ffc107',
+                          padding: '1px 4px',
+                          borderRadius: '3px',
+                          border: '1px solid rgba(255, 193, 7, 0.3)',
+                          fontWeight: 'bold'
+                        }}
+                        title={`Child particle referencing: ${emitter.childSystemKey}`}
+                      >
+                        CHILD
+                      </span>
+                    )}
+                  </div>
+                )}
 
-                      // Add to active conversions
-                      activeConversions.current.add(fullEmitterData.texturePath);
+                {/* Color blocks */}
+                {emitter.color && (
+                  <div
+                    className="color-block"
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      borderRadius: '3px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)',
+                      marginLeft: '6px',
+                      flexShrink: 0,
+                      background: emitter.color.constantValue || '#ffffff'
+                    }}
+                    title={`Color: ${emitter.color.constantValue || 'Unknown'}`}
+                  />
+                )}
 
+                {/* Edit button for Quartz-created child particles */}
+                {isQuartzChild && isTarget && (
+                  <button
+                    className="edit-child-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditChildParticle(system.key, system.name, emitter.name);
+                    }}
+                    title="Edit child particle"
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      marginLeft: '6px',
+                      flexShrink: 0,
+                      background: 'rgba(59, 130, 246, 0.1)',
+                      border: '1px solid #3b82f6',
+                      borderRadius: '4px',
+                      color: '#3b82f6',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '12px'
+                    }}
+                  >
+                    ✏️
+                  </button>
+                )}
+
+                {/* Preview button */}
+                <button
+                  className="preview-btn"
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    marginLeft: '6px',
+                    flexShrink: 0,
+                    background: 'transparent',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    borderRadius: '4px',
+                    color: 'var(--accent, #3b82f6)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '12px'
+                  }}
+                  title="Preview texture"
+                  onMouseEnter={async (e) => {
+                    e.stopPropagation();
+                    console.log('🖼️ MouseEnter on preview button for emitter:', emitter.name);
+                    console.log('🖼️ System:', system.name, 'Key:', system.key);
+
+                    // Clear any existing timer
+                    if (conversionTimers.current.has('hover')) {
+                      clearTimeout(conversionTimers.current.get('hover'));
+                      conversionTimers.current.delete('hover');
+                    }
+
+                    // Set a delay before showing preview
+                    const timer = setTimeout(async () => {
+                      console.log('🖼️ Timer fired, loading texture preview for:', emitter.name);
                       try {
-                        // Get project root directory for efficient texture path resolution
-                        const projectRoot = path.dirname(targetPath);
-                        
-                        console.log('🖼️ Calling convertTextureToPNG with:', {
-                          texturePath: fullEmitterData.texturePath,
-                          targetPath,
-                          donorPath,
-                          projectRoot
-                        });
-                        const result = await convertTextureToPNG(fullEmitterData.texturePath, targetPath, donorPath, projectRoot);
-                        console.log('🖼️ convertTextureToPNG returned:', result);
+                        console.log('🖼️ Loading emitter data...');
+                        const fullEmitterData = loadEmitterData(system, emitter.name);
+                        console.log('🖼️ Full emitter data:', fullEmitterData);
+                        if (fullEmitterData && fullEmitterData.texturePath) {
+                          console.log('🖼️ Texture path found:', fullEmitterData.texturePath);
 
-                        if (result) {
-                          let dataUrl;
-                          
-                          // Check if result is a data URL (new native format) or file path (old format)
-                          if (result.startsWith('data:')) {
-                            // Native format - already a data URL
-                            console.log('🖼️ Using native data URL format');
-                            dataUrl = result;
-                          } else {
-                            // Old format - file path, read it
-                            const fs = window.require('fs');
-                            
-                            if (!fs.existsSync(result)) {
-                              console.log('🖼️ PNG file does not exist at path:', result);
-                              showTextureError(fullEmitterData.texturePath, e.target);
-                              return;
-                            }
-
-                            console.log('🖼️ PNG file exists, reading and converting to base64...');
-                            const imageBuffer = fs.readFileSync(result);
-                            const base64Image = imageBuffer.toString('base64');
-                            dataUrl = `data:image/png;base64,${base64Image}`;
+                          // Check if this texture is already being converted
+                          if (activeConversions.current.has(fullEmitterData.texturePath)) {
+                            console.log(`[port] Texture ${fullEmitterData.texturePath} already being converted, skipping...`);
+                            return;
                           }
 
-                          console.log('🖼️ Calling showTexturePreview with data URL...');
-                          showTexturePreview(fullEmitterData.texturePath, dataUrl, e.target, fullEmitterData);
+                          // Add to active conversions
+                          activeConversions.current.add(fullEmitterData.texturePath);
+
+                          try {
+                            // Get project root directory for efficient texture path resolution
+                            const projectRoot = path.dirname(targetPath);
+
+                            console.log('🖼️ Calling convertTextureToPNG with:', {
+                              texturePath: fullEmitterData.texturePath,
+                              targetPath,
+                              donorPath,
+                              projectRoot
+                            });
+                            const result = await convertTextureToPNG(fullEmitterData.texturePath, targetPath, donorPath, projectRoot);
+                            console.log('🖼️ convertTextureToPNG returned:', result);
+
+                            if (result) {
+                              let dataUrl;
+
+                              // Check if result is a data URL (new native format) or file path (old format)
+                              if (result.startsWith('data:')) {
+                                // Native format - already a data URL
+                                console.log('🖼️ Using native data URL format');
+                                dataUrl = result;
+                              } else {
+                                // Old format - file path, read it
+                                const fs = window.require('fs');
+
+                                if (!fs.existsSync(result)) {
+                                  console.log('🖼️ PNG file does not exist at path:', result);
+                                  showTextureError(fullEmitterData.texturePath, e.target);
+                                  return;
+                                }
+
+                                console.log('🖼️ PNG file exists, reading and converting to base64...');
+                                const imageBuffer = fs.readFileSync(result);
+                                const base64Image = imageBuffer.toString('base64');
+                                dataUrl = `data:image/png;base64,${base64Image}`;
+                              }
+
+                              console.log('🖼️ Calling showTexturePreview with data URL...');
+                              showTexturePreview(fullEmitterData.texturePath, dataUrl, e.target, fullEmitterData);
+                            } else {
+                              console.log('🖼️ convertTextureToPNG returned null/undefined');
+                              showTextureError(fullEmitterData.texturePath, e.target);
+                            }
+                          } catch (error) {
+                            console.error('Error converting texture:', error);
+                            showTextureError(fullEmitterData.texturePath, e.target);
+                          } finally {
+                            activeConversions.current.delete(fullEmitterData.texturePath);
+                          }
                         } else {
-                          console.log('🖼️ convertTextureToPNG returned null/undefined');
-                          showTextureError(fullEmitterData.texturePath, e.target);
+                          console.log('🖼️ No texture path found for emitter:', emitter.name);
                         }
                       } catch (error) {
-                        console.error('Error converting texture:', error);
-                        showTextureError(fullEmitterData.texturePath, e.target);
-                      } finally {
-                        activeConversions.current.delete(fullEmitterData.texturePath);
+                        console.error('Error loading texture preview:', error);
                       }
-                    } else {
-                      console.log('🖼️ No texture path found for emitter:', emitter.name);
-                    }
-                  } catch (error) {
-                    console.error('Error loading texture preview:', error);
-                  }
-                }, 200); // Back to 200ms for smooth feel
-                
-                conversionTimers.current.set('hover', timer);
-              }}
-              onMouseLeave={(e) => {
-                e.stopPropagation();
-                console.log('🖼️ MouseLeave on preview button');
-                
-                // Clear the timer only
-                if (conversionTimers.current.has('hover')) {
-                  clearTimeout(conversionTimers.current.get('hover'));
-                  conversionTimers.current.delete('hover');
-                }
-                
-                // Do NOT remove preview here - let it handle its own lifecycle
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              >
-                <CropOriginalIcon sx={{ fontSize: 16 }} />
-              </button>
-            {isTarget && (
-              <button
-                className="delete-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteEmitter(system.key, index, isTarget, emitter.name);
-                }}
-                title="Delete emitter"
-                style={{ 
-                  flexShrink: 0,
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#ef4444',
-                  cursor: 'pointer',
-                  fontSize: '25px',
-                  padding: '2px 4px'
-                }}
-              >
-                🗑
-              </button>
-            )}
-          </div>
-          )
-        })}
-      </div>
-      );
-      })
-    }
+                    }, 200); // Back to 200ms for smooth feel
 
-  // Helper function to convert color data to CSS color string
+                    conversionTimers.current.set('hover', timer);
+                  }}
+                  onMouseLeave={(e) => {
+                    e.stopPropagation();
+                    if (conversionTimers.current.has('hover')) {
+                      clearTimeout(conversionTimers.current.get('hover'));
+                      conversionTimers.current.delete('hover');
+                    }
+                  }}
+                  onContextMenu={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    try {
+                      const fullEmitterData = loadEmitterData(system, emitter.name);
+                      if (fullEmitterData && fullEmitterData.texturePath) {
+                        const texturePath = fullEmitterData.texturePath;
+                        const binPath = isTarget ? targetPath : donorPath;
+                        let resolvedPath = texturePath;
+
+                        if (binPath && binPath !== 'This will show target bin') {
+                          const fs = window.require('fs');
+                          const path = window.require('path');
+                          const normalizedBin = binPath.replace(/\\/g, '/');
+                          const dataMatch = normalizedBin.match(/\/data\//i);
+
+                          if (dataMatch) {
+                            const dataIndex = dataMatch.index;
+                            const projectRoot = normalizedBin.substring(0, dataIndex);
+                            const cleanTexture = texturePath.replace(/\\/g, '/');
+                            const candidate1 = path.join(projectRoot, cleanTexture);
+                            if (fs.existsSync(candidate1)) {
+                              resolvedPath = candidate1;
+                            }
+                          }
+
+                          if (resolvedPath === texturePath) {
+                            const smartPath = findActualTexturePath(texturePath, binPath);
+                            if (smartPath) resolvedPath = smartPath;
+                          }
+                        }
+
+                        if (window.require) {
+                          const { shell } = window.require('electron');
+                          if (shell) {
+                            await shell.openPath(resolvedPath);
+                          }
+                        }
+                      }
+                    } catch (err) {
+                      console.error("Error opening external app:", err);
+                    }
+                  }}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    const existingPreview = document.getElementById('port-texture-hover-preview');
+                    if (existingPreview) existingPreview.remove();
+                    console.log('🖼️ Click on preview button for emitter:', emitter.name);
+                    try {
+                      const fullEmitterData = loadEmitterData(system, emitter.name);
+                      if (fullEmitterData && fullEmitterData.texturePath) {
+                        const texturePath = fullEmitterData.texturePath;
+
+                        // Resolve absolute path
+                        const binPath = isTarget ? targetPath : donorPath;
+                        let resolvedPath = texturePath;
+
+                        // Custom Path Resolution Strategy (Project Root / Data Folder split)
+                        if (binPath && binPath !== 'This will show target bin') {
+                          const fs = window.require('fs');
+                          const path = window.require('path');
+
+                          // 1. "Look before data" Strategy
+                          const normalizedBin = binPath.replace(/\\/g, '/');
+                          const dataMatch = normalizedBin.match(/\/data\//i);
+
+                          if (dataMatch) {
+                            const dataIndex = dataMatch.index;
+                            const projectRoot = normalizedBin.substring(0, dataIndex);
+
+                            const cleanTexture = texturePath.replace(/\\/g, '/');
+                            const candidate1 = path.join(projectRoot, cleanTexture);
+
+                            if (fs.existsSync(candidate1)) {
+                              resolvedPath = candidate1;
+                              console.log('[Port] Resolved path via Project Root Strategy:', resolvedPath);
+                            }
+                          }
+
+                          // 2. Fallback to smart finder
+                          if (resolvedPath === texturePath) {
+                            const smartPath = findActualTexturePath(texturePath, binPath);
+                            if (smartPath) resolvedPath = smartPath;
+                          }
+                        }
+
+                        // If already converting (from hover), just open with path for now
+                        if (activeConversions.current.has(texturePath)) {
+                          openAssetPreview(resolvedPath);
+                          return;
+                        }
+
+                        // Convert to get dataUrl
+                        const projectRoot = path.dirname(targetPath);
+                        let dataUrl = null;
+
+                        try {
+                          const result = await convertTextureToPNG(texturePath, targetPath, donorPath, projectRoot);
+                          if (result) {
+                            if (result.startsWith('data:')) {
+                              dataUrl = result;
+                            } else if (fs && fs.existsSync(result)) {
+                              const imageBuffer = fs.readFileSync(result);
+                              dataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`;
+                            }
+                          }
+                        } catch (convErr) {
+                          console.warn('Conversion on click failed:', convErr);
+                        }
+
+                        openAssetPreview(resolvedPath, dataUrl);
+                      }
+                    } catch (err) {
+                      console.error("Error opening preview modal:", err);
+                    }
+                  }}
+                >
+                  <CropOriginalIcon sx={{ fontSize: 16 }} />
+                </button>
+                {
+                  isTarget && (
+                    <button
+                      className="delete-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteEmitter(system.key, index, isTarget, emitter.name);
+                      }}
+                      title="Delete emitter"
+                      style={{
+                        flexShrink: 0,
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#ef4444',
+                        cursor: 'pointer',
+                        fontSize: '25px',
+                        padding: '2px 4px'
+                      }}
+                    >
+                      🗑
+                    </button>
+                  )
+                }
+              </div>
+            )
+          })
+          }
+        </div >
+      );
+    })
+  }
+
   const getColorString = (colorData) => {
     if (!colorData) return 'var(--accent)';
 
     if (colorData.constantValue && colorData.constantValue.length >= 3) {
       const [r, g, b, a = 1] = colorData.constantValue;
-              return `rgba(${Math.ceil(r * 254.9)}, ${Math.ceil(g * 254.9)}, ${Math.ceil(b * 254.9)}, ${a})`;
+      return `rgba(${Math.ceil(r * 254.9)}, ${Math.ceil(g * 254.9)}, ${Math.ceil(b * 254.9)}, ${a})`;
     }
 
-          return 'var(--accent)';
+    return 'var(--accent)';
   };
 
   // Helper function to get short name from full path
@@ -4436,55 +4795,68 @@ const Port = () => {
     }
 
     // If it's still too long, truncate it
-    if (shortName.length > 30) {
-      return shortName.substring(0, 27) + '...';
+    if (shortName.length > 45) {
+      return shortName.substring(0, 42) + '...';
     }
 
     return shortName;
   };
 
-  // Reusable glass button styles matching MainPage
-  const glassButtonSx = {
-    padding: '8px 24px',
-    background: 'rgba(255, 255, 255, 0.08)',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
-    backdropFilter: 'saturate(180%) blur(16px)',
-    WebkitBackdropFilter: 'saturate(180%) blur(16px)',
-    color: '#ffffff',
+  // Celestial minimalistic button style (matching Bumpath/ImgRecolor)
+  const celestialButtonStyle = {
+    background: 'var(--bg-2)',
+    border: '1px solid var(--accent-muted)',
+    color: 'var(--text)',
+    borderRadius: '5px',
+    transition: 'all 200ms ease',
+    textTransform: 'none',
     fontFamily: 'JetBrains Mono, monospace',
-    fontWeight: 600,
-    cursor: isProcessing ? 'not-allowed' : 'pointer',
-    borderRadius: '8px',
-    transition: 'all 0.25s ease',
-    opacity: isProcessing ? 0.7 : 1,
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+    '&:hover': {
+      background: 'var(--surface-2)',
+      borderColor: 'var(--accent)',
+      boxShadow: '0 0 15px color-mix(in srgb, var(--accent), transparent 60%)'
+    },
+    '&:disabled': {
+      background: 'var(--bg-2)',
+      borderColor: 'var(--text-2)',
+      color: 'var(--text-2)',
+      opacity: 0.6,
+      cursor: 'not-allowed'
+    },
   };
 
-  // Match RGBA deep purple glass styling for main containers
-  const glassSection = {
-    background: 'var(--glass-bg)',
-    border: '1px solid var(--glass-border)',
-    borderRadius: 12,
-    backdropFilter: 'saturate(220%) blur(18px)',
-    WebkitBackdropFilter: 'saturate(220%) blur(18px)',
-    boxShadow: 'var(--glass-shadow)'
+  // Primary button style (accented version)
+  const primaryButtonStyle = {
+    ...celestialButtonStyle,
+    background: 'var(--bg-2)',
+    border: '1px solid var(--accent)',
+    color: 'var(--accent)',
+    fontWeight: 'bold',
+    boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent), transparent 70%), 0 2px 4px rgba(0,0,0,0.2)',
+    '&:hover': {
+      ...celestialButtonStyle['&:hover'],
+      boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent), transparent 50%), 0 2px 4px rgba(0,0,0,0.3)'
+    }
+  };
+
+  // Simple section style (transparent with subtle borders)
+  const sectionStyle = {
+    background: 'transparent',
+    border: '1px solid rgba(255, 255, 255, 0.06)',
+    borderRadius: '5px'
   };
 
   return (
     <div className="port-container" style={{
       minHeight: '100%',
       height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
-      background: 'linear-gradient(135deg, var(--bg-2) 0%, var(--bg) 100%)',
+      background: 'var(--bg)',
       position: 'relative',
       overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column',
     }}>
-      {/* Background lights to match MainPage */}
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
-        <div style={{ position: 'absolute', top: -120, left: -80, width: 600, height: 600, filter: 'blur(60px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent), transparent 82%), transparent 70%)' }} />
-        <div style={{ position: 'absolute', top: -60, right: -120, width: 700, height: 700, filter: 'blur(80px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent2), transparent 84%), transparent 70%)' }} />
-        <div style={{ position: 'absolute', bottom: -160, left: '20%', width: 800, height: 800, filter: 'blur(90px)', background: 'radial-gradient(circle, color-mix(in srgb, var(--accent), transparent 88%), transparent 70%)' }} />
-      </div>
       {isProcessing && <GlowingSpinner text={processingText || 'Working...'} />}
       {/* Main Content Area */}
       <div style={{
@@ -4504,18 +4876,40 @@ const Port = () => {
           gap: '12px'
         }}>
           {/* Target Button */}
-          <button
+          {/* Target Button */}
+          <Button
             onClick={handleOpenTargetBin}
             disabled={isProcessing}
-            style={{
-              ...glassButtonSx,
-              background: 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 78%), color-mix(in srgb, var(--accent), transparent 82%))',
-              border: '1px solid color-mix(in srgb, var(--accent), transparent 68%)',
+            sx={{
+              width: '100%',
+              padding: '0 16px',
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '13px',
+              fontWeight: 700,
+              height: '36px',
+              background: 'color-mix(in srgb, var(--accent), var(--bg) 85%)',
+              border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)',
               color: 'var(--accent)',
+              borderRadius: '4px',
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              position: 'relative',
+              '&:hover': {
+                background: 'color-mix(in srgb, var(--accent), var(--bg) 75%)',
+                borderColor: 'var(--accent)',
+                textShadow: '0 0 8px color-mix(in srgb, var(--accent), transparent 50%)',
+              },
+              '&:disabled': {
+                opacity: 0.5,
+                cursor: 'not-allowed',
+                borderColor: 'rgba(255,255,255,0.1)',
+                color: 'rgba(255,255,255,0.3)'
+              }
             }}
           >
             {isProcessing ? 'Processing...' : 'Open Target Bin'}
-          </button>
+          </Button>
 
 
           {/* Target Filter */}
@@ -4530,10 +4924,10 @@ const Port = () => {
               title={enableTargetEmitterSearch ? "Disable emitter search (faster)" : "Enable emitter search"}
               style={{
                 padding: '8px 12px',
-                background: enableTargetEmitterSearch 
+                background: enableTargetEmitterSearch
                   ? 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 78%), color-mix(in srgb, var(--accent), transparent 82%))'
                   : 'var(--surface-2)',
-                border: enableTargetEmitterSearch 
+                border: enableTargetEmitterSearch
                   ? '1px solid color-mix(in srgb, var(--accent), transparent 68%)'
                   : '1px solid #444',
                 borderRadius: '6px',
@@ -4552,7 +4946,7 @@ const Port = () => {
           {/* Target Content Area */}
           <div style={{
             flex: 1,
-            ...glassSection,
+            ...sectionStyle,
             border: isDragOverVfx ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.10)',
             borderRadius: '8px',
             padding: '0',
@@ -4566,7 +4960,7 @@ const Port = () => {
               // Allow dropping donor systems into the target list
               const types = e.dataTransfer?.types;
               const hasVfxType = types && (
-                Array.from(types).includes('application/x-vfxsys') || 
+                Array.from(types).includes('application/x-vfxsys') ||
                 (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
               );
               if (hasVfxType) {
@@ -4582,7 +4976,7 @@ const Port = () => {
               e.stopPropagation();
               const types = e.dataTransfer?.types;
               const hasVfxType = types && (
-                Array.from(types).includes('application/x-vfxsys') || 
+                Array.from(types).includes('application/x-vfxsys') ||
                 (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
               );
               if (hasVfxType) {
@@ -4641,7 +5035,7 @@ const Port = () => {
                   if (targetListRef.current) {
                     try {
                       targetListRef.current.scrollTop = 0;
-                    } catch {}
+                    } catch { }
                   }
                 });
 
@@ -4694,14 +5088,14 @@ const Port = () => {
               </div>
             )}
             {Object.keys(targetSystems).length > 0 ? (
-              <div 
-                ref={targetListRef} 
-                style={{ width: '100%', height: '100%', overflow: 'auto' }}
+              <div
+                ref={targetListRef}
+                style={{ width: '100%', height: '100%', overflow: 'auto', background: 'rgba(255, 255, 255, 0.03)' }}
                 onDragOver={(e) => {
                   // Allow dropping on the list container itself
                   const types = e.dataTransfer?.types;
                   const hasVfxType = types && (
-                    Array.from(types).includes('application/x-vfxsys') || 
+                    Array.from(types).includes('application/x-vfxsys') ||
                     (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
                   );
                   if (hasVfxType) {
@@ -4752,7 +5146,7 @@ const Port = () => {
                       if (targetListRef.current) {
                         try {
                           targetListRef.current.scrollTop = 0;
-                        } catch {}
+                        } catch { }
                       }
                     });
 
@@ -4805,18 +5199,40 @@ const Port = () => {
           gap: '12px'
         }}>
           {/* Donor Button */}
-          <button
+          {/* Donor Button */}
+          <Button
             onClick={handleOpenDonorBin}
             disabled={isProcessing}
-            style={{
-              ...glassButtonSx,
-              background: 'linear-gradient(180deg, rgba(239,68,68,0.22), rgba(220,38,38,0.18))',
-              border: '1px solid rgba(239,68,68,0.32)',
-              color: '#ffd6d6',
+            sx={{
+              width: '100%',
+              padding: '0 16px',
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '13px',
+              fontWeight: 700,
+              height: '36px',
+              background: 'color-mix(in srgb, #ef4444, var(--bg) 85%)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              color: '#ef4444',
+              borderRadius: '4px',
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              position: 'relative',
+              '&:hover': {
+                background: 'color-mix(in srgb, #ef4444, var(--bg) 75%)',
+                borderColor: '#ef4444',
+                textShadow: '0 0 8px color-mix(in srgb, #ef4444, transparent 50%)',
+              },
+              '&:disabled': {
+                opacity: 0.5,
+                cursor: 'not-allowed',
+                borderColor: 'rgba(255,255,255,0.1)',
+                color: 'rgba(255,255,255,0.3)'
+              }
             }}
           >
             {isProcessing ? 'Processing...' : 'Open Donor Bin'}
-          </button>
+          </Button>
 
           {/* Donor Filter */}
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -4830,10 +5246,10 @@ const Port = () => {
               title={enableDonorEmitterSearch ? "Disable emitter search (faster)" : "Enable emitter search"}
               style={{
                 padding: '8px 12px',
-                background: enableDonorEmitterSearch 
+                background: enableDonorEmitterSearch
                   ? 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 78%), color-mix(in srgb, var(--accent), transparent 82%))'
                   : 'var(--surface-2)',
-                border: enableDonorEmitterSearch 
+                border: enableDonorEmitterSearch
                   ? '1px solid color-mix(in srgb, var(--accent), transparent 68%)'
                   : '1px solid #444',
                 borderRadius: '6px',
@@ -4852,7 +5268,7 @@ const Port = () => {
           {/* Donor Content Area */}
           <div style={{
             flex: 1,
-            ...glassSection,
+            ...sectionStyle,
             borderRadius: '8px',
             padding: '0',
             overflow: 'hidden',
@@ -4885,63 +5301,61 @@ const Port = () => {
 
       {/* Persistent Modal */}
       {showPersistentModal && (
-        <div 
-          style={{ 
-            position: 'fixed', 
-            top: 0, 
-            left: 0, 
-            right: 0, 
-            bottom: 0, 
-            background: 'rgba(0,0,0,0.4)', 
-            backdropFilter: 'blur(4px)',
-            WebkitBackdropFilter: 'blur(4px)',
-            zIndex: 1000, 
-            display: 'flex', 
-            alignItems: 'center', 
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.4)',
+            // backdropFilter: 'blur(4px)',
+            // WebkitBackdropFilter: 'blur(4px)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
             justifyContent: 'center',
             padding: '20px',
             paddingLeft: '100px' // Account for left navbar
           }}
         >
-          <div 
-            style={{ 
-              background: 'linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))', 
-              border: '1px solid rgba(255,255,255,0.14)', 
-              backdropFilter: 'saturate(200%) blur(20px)', 
-              WebkitBackdropFilter: 'saturate(200%) blur(20px)', 
-              borderRadius: 12, 
-              width: '90%', 
-              maxWidth: 1000, 
-              height: '80%', 
-              maxHeight: 700, 
-              display: 'flex', 
-              flexDirection: 'column', 
+          <div
+            style={{
+              background: 'var(--bg-2)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 12,
+              width: '90%',
+              maxWidth: 1000,
+              height: '80%',
+              maxHeight: 700,
+              display: 'flex',
+              flexDirection: 'column',
               overflow: 'hidden',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
-            }} 
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div style={{ 
-              padding: '1.5rem', 
-              borderBottom: '1px solid rgba(255,255,255,0.12)', 
-              display: 'flex', 
-              justifyContent: 'space-between', 
+            <div style={{
+              padding: '1.5rem',
+              borderBottom: '1px solid rgba(255,255,255,0.12)',
+              display: 'flex',
+              justifyContent: 'space-between',
               alignItems: 'center',
               background: 'rgba(255,255,255,0.02)'
             }}>
               <h2 style={{ margin: 0, color: 'var(--accent)', fontSize: '1.5rem', fontWeight: 600 }}>Persistent Effects</h2>
-              <button 
-                onClick={() => setShowPersistentModal(false)} 
-                style={{ 
-                  background: 'rgba(255,255,255,0.1)', 
-                  border: '1px solid rgba(255,255,255,0.2)', 
-                  width: 32, 
-                  height: 32, 
-                  borderRadius: '50%', 
-                  color: 'var(--accent)', 
-                  cursor: 'pointer', 
-                  backdropFilter: 'saturate(180%) blur(12px)',
+              <button
+                onClick={() => setShowPersistentModal(false)}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  color: 'var(--accent)',
+                  cursor: 'pointer',
+                  // backdropFilter: 'saturate(180%) blur(12px)',
                   fontSize: '18px',
                   display: 'flex',
                   alignItems: 'center',
@@ -4956,10 +5370,10 @@ const Port = () => {
             </div>
 
             {/* Content */}
-            <div 
-              style={{ 
-                display: 'flex', 
-                flex: 1, 
+            <div
+              style={{
+                display: 'flex',
+                flex: 1,
                 overflow: 'hidden'
               }}
               onClick={() => {
@@ -4968,9 +5382,9 @@ const Port = () => {
               }}
             >
               {/* Left Panel - Condition */}
-              <div style={{ 
-                flex: '0 0 380px', 
-                padding: '1.5rem', 
+              <div style={{
+                flex: '0 0 380px',
+                padding: '1.5rem',
                 borderRight: '1px solid rgba(255,255,255,0.08)',
                 overflow: 'auto'
               }}>
@@ -4994,8 +5408,6 @@ const Port = () => {
                           justifyContent: 'space-between',
                           alignItems: 'center',
                           transition: 'all 0.2s ease',
-                          backdropFilter: 'blur(10px)',
-                          WebkitBackdropFilter: 'blur(10px)'
                         }}
                         onMouseEnter={(e) => {
                           e.target.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))';
@@ -5007,13 +5419,13 @@ const Port = () => {
                         }}
                       >
                         <span>{typeOptions.find(opt => opt.value === persistentPreset.type)?.label || persistentPreset.type}</span>
-                        <span style={{ 
+                        <span style={{
                           transform: typeDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.2s ease',
                           fontSize: '0.8rem'
                         }}>▼</span>
                       </button>
-                      
+
                       {typeDropdownOpen && (
                         <div style={{
                           position: 'absolute',
@@ -5025,8 +5437,8 @@ const Port = () => {
                           borderRadius: 8,
                           marginTop: 4,
                           zIndex: 1000,
-                          backdropFilter: 'blur(20px)',
-                          WebkitBackdropFilter: 'blur(20px)',
+                          // backdropFilter: 'blur(20px)',
+                          // WebkitBackdropFilter: 'blur(20px)',
                           boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
                           overflow: 'hidden'
                         }}>
@@ -5062,10 +5474,10 @@ const Port = () => {
                                 {option.label}
                               </div>
                               {option.description && (
-                                <div style={{ 
-                                  fontSize: '0.75rem', 
-                                  color: 'rgba(255,255,255,0.8)', 
-                                  marginTop: 2 
+                                <div style={{
+                                  fontSize: '0.75rem',
+                                  color: 'rgba(255,255,255,0.8)',
+                                  marginTop: 2
                                 }}>
                                   {option.description}
                                 </div>
@@ -5076,12 +5488,12 @@ const Port = () => {
                       )}
                     </div>
                   </div>
-                  
+
                   {persistentPreset.type === 'IsAnimationPlaying' && (
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Animation:</span>
-                      <MemoizedInput 
-                        value={persistentPreset.animationName || ''} 
+                      <MemoizedInput
+                        value={persistentPreset.animationName || ''}
                         onChange={e => setPersistentPreset(p => ({ ...p, animationName: e.target.value }))}
                         style={{
                           padding: '8px 12px',
@@ -5094,12 +5506,12 @@ const Port = () => {
                       />
                     </label>
                   )}
-                  
+
                   {persistentPreset.type === 'HasBuffScript' && (
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Script Name:</span>
-                      <MemoizedInput 
-                        value={persistentPreset.scriptName || ''} 
+                      <MemoizedInput
+                        value={persistentPreset.scriptName || ''}
                         onChange={e => setPersistentPreset(p => ({ ...p, scriptName: e.target.value }))}
                         style={{
                           padding: '8px 12px',
@@ -5112,15 +5524,15 @@ const Port = () => {
                       />
                     </label>
                   )}
-                  
+
                   {persistentPreset.type === 'LearnedSpell' && (
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Slot (0-3):</span>
-                      <MemoizedInput 
-                        type="number" 
-                        min={0} 
-                        max={3} 
-                        value={persistentPreset.slot ?? 3} 
+                      <MemoizedInput
+                        type="number"
+                        min={0}
+                        max={3}
+                        value={persistentPreset.slot ?? 3}
                         onChange={e => setPersistentPreset(p => ({ ...p, slot: Number(e.target.value) }))}
                         style={{
                           padding: '8px 12px',
@@ -5133,14 +5545,14 @@ const Port = () => {
                       />
                     </label>
                   )}
-                  
+
                   {persistentPreset.type === 'HasGear' && (
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Index:</span>
-                      <MemoizedInput 
-                        type="number" 
-                        min={0} 
-                        value={persistentPreset.index ?? 0} 
+                      <MemoizedInput
+                        type="number"
+                        min={0}
+                        value={persistentPreset.index ?? 0}
                         onChange={e => setPersistentPreset(p => ({ ...p, index: Number(e.target.value) }))}
                         style={{
                           padding: '8px 12px',
@@ -5153,16 +5565,16 @@ const Port = () => {
                       />
                     </label>
                   )}
-                  
+
                   {persistentPreset.type === 'FloatComparison' && (
                     <>
                       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Spell Slot:</span>
-                        <MemoizedInput 
-                          type="number" 
-                          min={0} 
-                          max={3} 
-                          value={persistentPreset.slot ?? 3} 
+                        <MemoizedInput
+                          type="number"
+                          min={0}
+                          max={3}
+                          value={persistentPreset.slot ?? 3}
                           onChange={e => setPersistentPreset(p => ({ ...p, slot: Number(e.target.value) }))}
                           style={{
                             padding: '8px 12px',
@@ -5176,9 +5588,9 @@ const Port = () => {
                       </label>
                       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Operator:</span>
-                        <MemoizedInput 
-                          type="number" 
-                          value={persistentPreset.operator ?? 3} 
+                        <MemoizedInput
+                          type="number"
+                          value={persistentPreset.operator ?? 3}
                           onChange={e => setPersistentPreset(p => ({ ...p, operator: Number(e.target.value) }))}
                           style={{
                             padding: '8px 12px',
@@ -5192,9 +5604,9 @@ const Port = () => {
                       </label>
                       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Value:</span>
-                        <MemoizedInput 
-                          type="number" 
-                          value={persistentPreset.value ?? 1} 
+                        <MemoizedInput
+                          type="number"
+                          value={persistentPreset.value ?? 1}
                           onChange={e => setPersistentPreset(p => ({ ...p, value: Number(e.target.value) }))}
                           style={{
                             padding: '8px 12px',
@@ -5208,15 +5620,15 @@ const Port = () => {
                       </label>
                     </>
                   )}
-                  
+
                   {persistentPreset.type === 'BuffCounterFloatComparison' && (
                     <>
                       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Spell Hash:</span>
-                        <MemoizedInput 
-                          type="text" 
+                        <MemoizedInput
+                          type="text"
                           placeholder="Characters/Ezreal/Spells/EzrealPassiveAbility/EzrealPassiveStacks"
-                          value={persistentPreset.spellHash ?? ''} 
+                          value={persistentPreset.spellHash ?? ''}
                           onChange={e => setPersistentPreset(p => ({ ...p, spellHash: e.target.value }))}
                           style={{
                             padding: '8px 12px',
@@ -5230,9 +5642,9 @@ const Port = () => {
                       </label>
                       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Operator:</span>
-                        <MemoizedInput 
-                          type="number" 
-                          value={persistentPreset.operator ?? 2} 
+                        <MemoizedInput
+                          type="number"
+                          value={persistentPreset.operator ?? 2}
                           onChange={e => setPersistentPreset(p => ({ ...p, operator: Number(e.target.value) }))}
                           style={{
                             padding: '8px 12px',
@@ -5246,9 +5658,9 @@ const Port = () => {
                       </label>
                       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Value:</span>
-                        <MemoizedInput 
-                          type="number" 
-                          value={persistentPreset.value ?? 5} 
+                        <MemoizedInput
+                          type="number"
+                          value={persistentPreset.value ?? 5}
                           onChange={e => setPersistentPreset(p => ({ ...p, value: Number(e.target.value) }))}
                           style={{
                             padding: '8px 12px',
@@ -5262,13 +5674,13 @@ const Port = () => {
                       </label>
                     </>
                   )}
-                  
+
                   <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Delay On:</span>
-                    <MemoizedInput 
-                      type="number" 
-                      min={0} 
-                      value={persistentPreset.delay?.on ?? 0} 
+                    <MemoizedInput
+                      type="number"
+                      min={0}
+                      value={persistentPreset.delay?.on ?? 0}
                       onChange={e => setPersistentPreset(p => ({ ...p, delay: { ...(p.delay || {}), on: Number(e.target.value) } }))}
                       style={{
                         padding: '8px 12px',
@@ -5282,10 +5694,10 @@ const Port = () => {
                   </label>
                   <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Delay Off:</span>
-                    <MemoizedInput 
-                      type="number" 
-                      min={0} 
-                      value={persistentPreset.delay?.off ?? 0} 
+                    <MemoizedInput
+                      type="number"
+                      min={0}
+                      value={persistentPreset.delay?.off ?? 0}
                       onChange={e => setPersistentPreset(p => ({ ...p, delay: { ...(p.delay || {}), off: Number(e.target.value) } }))}
                       style={{
                         padding: '8px 12px',
@@ -5301,27 +5713,27 @@ const Port = () => {
               </div>
 
               {/* Right Panel - Effects */}
-              <div style={{ 
-                flex: 1, 
-                padding: '1.5rem', 
+              <div style={{
+                flex: 1,
+                padding: '1.5rem',
                 overflow: 'auto',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 20
               }}>
                 <div style={{ marginBottom: 8, fontWeight: 600, color: 'var(--accent)', fontSize: '1.1rem' }}>Effects</div>
-                
+
                 {/* Submeshes To Show */}
                 <div>
                   <div style={{ fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.9)' }}>Submeshes To Show</div>
-                  
+
                   {/* Custom input for adding new submeshes */}
-                  <div style={{ 
-                    display: 'flex', 
-                    gap: 8, 
-                    marginBottom: 8 
+                  <div style={{
+                    display: 'flex',
+                    gap: 8,
+                    marginBottom: 8
                   }}>
-                    <MemoizedInput 
+                    <MemoizedInput
                       type="text"
                       value={customShowSubmeshInput}
                       onChange={e => setCustomShowSubmeshInput(e.target.value)}
@@ -5337,7 +5749,7 @@ const Port = () => {
                         fontSize: '0.85rem'
                       }}
                     />
-                    <button 
+                    <button
                       onClick={handleAddCustomShowSubmesh}
                       disabled={!customShowSubmeshInput.trim()}
                       style={{
@@ -5354,12 +5766,12 @@ const Port = () => {
                       Add
                     </button>
                   </div>
-                  
-                  <div style={{ 
-                    display: 'flex', 
-                    flexWrap: 'wrap', 
-                    gap: 8, 
-                    maxHeight: 140, 
+
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                    maxHeight: 140,
                     overflow: 'auto',
                     padding: '8px',
                     background: 'rgba(255,255,255,0.02)',
@@ -5367,9 +5779,9 @@ const Port = () => {
                     border: '1px solid rgba(255,255,255,0.08)'
                   }}>
                     {availableSubmeshes.map(s => (
-                      <label key={`show-${s}`} style={{ 
-                        display: 'inline-flex', 
-                        alignItems: 'center', 
+                      <label key={`show-${s}`} style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
                         gap: 6,
                         padding: '4px 8px',
                         background: persistentShowSubmeshes.includes(s) ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
@@ -5379,21 +5791,21 @@ const Port = () => {
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
                       }}>
-                        <input 
-                          type="checkbox" 
-                          checked={persistentShowSubmeshes.includes(s)} 
+                        <input
+                          type="checkbox"
+                          checked={persistentShowSubmeshes.includes(s)}
                           onChange={e => setPersistentShowSubmeshes(prev => e.target.checked ? [...prev, s] : prev.filter(x => x !== s))}
                           style={{ margin: 0 }}
                         />
                         <span style={{ color: 'rgba(255,255,255,0.9)' }}>{s}</span>
                       </label>
                     ))}
-                    
+
                     {/* Display custom submeshes that are not in availableSubmeshes */}
                     {persistentShowSubmeshes.filter(s => !availableSubmeshes.includes(s)).map(s => (
-                      <div key={`custom-show-${s}`} style={{ 
-                        display: 'inline-flex', 
-                        alignItems: 'center', 
+                      <div key={`custom-show-${s}`} style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
                         gap: 6,
                         padding: '4px 8px',
                         background: 'rgba(34,197,94,0.15)',
@@ -5403,7 +5815,7 @@ const Port = () => {
                       }}>
                         <span style={{ color: 'rgba(34,197,94,1)' }}>✓</span>
                         <span style={{ color: 'rgba(255,255,255,0.9)' }}>{s}</span>
-                        <button 
+                        <button
                           onClick={() => handleRemoveCustomSubmesh(s, 'show')}
                           style={{
                             background: 'none',
@@ -5421,18 +5833,18 @@ const Port = () => {
                     ))}
                   </div>
                 </div>
-                
+
                 {/* Submeshes To Hide */}
                 <div>
                   <div style={{ fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.9)' }}>Submeshes To Hide</div>
-                  
+
                   {/* Custom input for adding new submeshes */}
-                  <div style={{ 
-                    display: 'flex', 
-                    gap: 8, 
-                    marginBottom: 8 
+                  <div style={{
+                    display: 'flex',
+                    gap: 8,
+                    marginBottom: 8
                   }}>
-                    <MemoizedInput 
+                    <MemoizedInput
                       type="text"
                       value={customHideSubmeshInput}
                       onChange={e => setCustomHideSubmeshInput(e.target.value)}
@@ -5448,7 +5860,7 @@ const Port = () => {
                         fontSize: '0.85rem'
                       }}
                     />
-                    <button 
+                    <button
                       onClick={handleAddCustomHideSubmesh}
                       disabled={!customHideSubmeshInput.trim()}
                       style={{
@@ -5465,12 +5877,12 @@ const Port = () => {
                       Add
                     </button>
                   </div>
-                  
-                  <div style={{ 
-                    display: 'flex', 
-                    flexWrap: 'wrap', 
-                    gap: 8, 
-                    maxHeight: 140, 
+
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                    maxHeight: 140,
                     overflow: 'auto',
                     padding: '8px',
                     background: 'rgba(255,255,255,0.02)',
@@ -5478,9 +5890,9 @@ const Port = () => {
                     border: '1px solid rgba(255,255,255,0.08)'
                   }}>
                     {availableSubmeshes.map(s => (
-                      <label key={`hide-${s}`} style={{ 
-                        display: 'inline-flex', 
-                        alignItems: 'center', 
+                      <label key={`hide-${s}`} style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
                         gap: 6,
                         padding: '4px 8px',
                         background: persistentHideSubmeshes.includes(s) ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.05)',
@@ -5490,21 +5902,21 @@ const Port = () => {
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
                       }}>
-                        <input 
-                          type="checkbox" 
-                          checked={persistentHideSubmeshes.includes(s)} 
+                        <input
+                          type="checkbox"
+                          checked={persistentHideSubmeshes.includes(s)}
                           onChange={e => setPersistentHideSubmeshes(prev => e.target.checked ? [...prev, s] : prev.filter(x => x !== s))}
                           style={{ margin: 0 }}
                         />
                         <span style={{ color: 'rgba(255,255,255,0.9)' }}>{s}</span>
                       </label>
                     ))}
-                    
+
                     {/* Display custom submeshes that are not in availableSubmeshes */}
                     {persistentHideSubmeshes.filter(s => !availableSubmeshes.includes(s)).map(s => (
-                      <div key={`custom-hide-${s}`} style={{ 
-                        display: 'inline-flex', 
-                        alignItems: 'center', 
+                      <div key={`custom-hide-${s}`} style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
                         gap: 6,
                         padding: '4px 8px',
                         background: 'rgba(239,68,68,0.15)',
@@ -5514,7 +5926,7 @@ const Port = () => {
                       }}>
                         <span style={{ color: 'rgba(239,68,68,1)' }}>✓</span>
                         <span style={{ color: 'rgba(255,255,255,0.9)' }}>{s}</span>
-                        <button 
+                        <button
                           onClick={() => handleRemoveCustomSubmesh(s, 'hide')}
                           style={{
                             background: 'none',
@@ -5532,13 +5944,13 @@ const Port = () => {
                     ))}
                   </div>
                 </div>
-                
+
                 {/* Persistent VFX */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                   <div style={{ fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.9)' }}>Persistent VFX</div>
-                  <div style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
                     gap: 12,
                     flex: 1,
                     overflow: 'auto',
@@ -5548,10 +5960,10 @@ const Port = () => {
                     border: '1px solid rgba(255,255,255,0.08)'
                   }}>
                     {persistentVfx.map((v, idx) => (
-                      <div key={idx} style={{ 
-                        display: 'grid', 
-                        gridTemplateColumns: '2fr 1fr auto', 
-                        gap: 12, 
+                      <div key={idx} style={{
+                        display: 'grid',
+                        gridTemplateColumns: '2fr 1fr auto',
+                        gap: 12,
                         alignItems: 'start',
                         padding: '12px',
                         background: 'rgba(255,255,255,0.03)',
@@ -5599,7 +6011,7 @@ const Port = () => {
                             >
                               {vfxDropdownOpen[idx] ? '▲' : '▼'}
                             </button>
-                            
+
                             {vfxDropdownOpen[idx] && (
                               <div style={{
                                 position: 'absolute',
@@ -5612,7 +6024,7 @@ const Port = () => {
                                 maxHeight: '120px',
                                 overflow: 'auto',
                                 zIndex: 9999,
-                                backdropFilter: 'blur(15px)',
+                                // backdropFilter: 'blur(15px)',
                                 boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
                               }}>
                                 {effectKeyOptions
@@ -5654,13 +6066,13 @@ const Port = () => {
                             )}
                           </div>
                         </div>
-                        
+
                         {/* Bone Name */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                           <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)' }}>Bone Name:</span>
-                          <input 
-                            placeholder="C_Buffbone_Glb_Layout_Loc" 
-                            value={v.boneName || ''} 
+                          <input
+                            placeholder="C_Buffbone_Glb_Layout_Loc"
+                            value={v.boneName || ''}
                             onChange={e => setPersistentVfx(list => list.map((x, i) => i === idx ? { ...x, boneName: e.target.value } : x))}
                             style={{
                               padding: '8px 12px',
@@ -5672,9 +6084,9 @@ const Port = () => {
                             }}
                           />
                         </div>
-                        
+
                         {/* Delete Button */}
-                        <button 
+                        <button
                           onClick={() => setPersistentVfx(list => list.filter((_, i) => i !== idx))}
                           style={{
                             background: 'rgba(239,68,68,0.15)',
@@ -5696,11 +6108,11 @@ const Port = () => {
                         >
                           🗑
                         </button>
-                        
+
                         {/* Options */}
-                        <div style={{ 
+                        <div style={{
                           gridColumn: '1 / -1',
-                          display: 'flex', 
+                          display: 'flex',
                           flexWrap: 'wrap',
                           gap: 12,
                           marginTop: 8,
@@ -5708,34 +6120,34 @@ const Port = () => {
                           borderTop: '1px solid rgba(255,255,255,0.08)'
                         }}>
                           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
-                            <input 
-                              type="checkbox" 
-                              checked={!!v.ownerOnly} 
-                              onChange={e => setPersistentVfx(list => list.map((x,i)=> i===idx ? { ...x, ownerOnly: e.target.checked } : x))}
+                            <input
+                              type="checkbox"
+                              checked={!!v.ownerOnly}
+                              onChange={e => setPersistentVfx(list => list.map((x, i) => i === idx ? { ...x, ownerOnly: e.target.checked } : x))}
                             />
                             <span style={{ color: 'rgba(255,255,255,0.8)' }}>Owner Only</span>
                           </label>
                           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
-                            <input 
-                              type="checkbox" 
-                              checked={!!v.attachToCamera} 
-                              onChange={e => setPersistentVfx(list => list.map((x,i)=> i===idx ? { ...x, attachToCamera: e.target.checked } : x))}
+                            <input
+                              type="checkbox"
+                              checked={!!v.attachToCamera}
+                              onChange={e => setPersistentVfx(list => list.map((x, i) => i === idx ? { ...x, attachToCamera: e.target.checked } : x))}
                             />
                             <span style={{ color: 'rgba(255,255,255,0.8)' }}>Attach to Camera</span>
                           </label>
                           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
-                            <input 
-                              type="checkbox" 
-                              checked={!!v.forceRenderVfx} 
-                              onChange={e => setPersistentVfx(list => list.map((x,i)=> i===idx ? { ...x, forceRenderVfx: e.target.checked } : x))}
+                            <input
+                              type="checkbox"
+                              checked={!!v.forceRenderVfx}
+                              onChange={e => setPersistentVfx(list => list.map((x, i) => i === idx ? { ...x, forceRenderVfx: e.target.checked } : x))}
                             />
                             <span style={{ color: 'rgba(255,255,255,0.8)' }}>Force Render VFX</span>
                           </label>
                         </div>
                       </div>
                     ))}
-                    
-                    <button 
+
+                    <button
                       onClick={() => setPersistentVfx(list => [...list, {}])}
                       style={{
                         padding: '12px',
@@ -5770,24 +6182,24 @@ const Port = () => {
             </div>
 
             {/* Footer */}
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
               alignItems: 'center',
-              gap: 12, 
-              padding: '1.5rem', 
+              gap: 12,
+              padding: '1.5rem',
               borderTop: '1px solid rgba(255,255,255,0.12)',
               background: 'rgba(255,255,255,0.02)'
             }}>
               {/* Left side - Load Existing */}
               <div style={{ position: 'relative' }}>
-                <button 
+                <button
                   onClick={() => setShowExistingConditions(!showExistingConditions)}
-                  style={{ 
-                    padding: '10px 16px', 
-                    background: 'rgba(59,130,246,0.15)', 
-                    border: '1px solid rgba(59,130,246,0.3)', 
-                    borderRadius: 8, 
+                  style={{
+                    padding: '10px 16px',
+                    background: 'rgba(59,130,246,0.15)',
+                    border: '1px solid rgba(59,130,246,0.3)',
+                    borderRadius: 8,
                     color: '#60a5fa',
                     cursor: 'pointer',
                     fontSize: '0.9rem',
@@ -5801,7 +6213,7 @@ const Port = () => {
                 >
                   📂 Load Existing ({existingConditions.length})
                 </button>
-                
+
                 {showExistingConditions && (
                   <div style={{
                     position: 'absolute',
@@ -5815,7 +6227,7 @@ const Port = () => {
                     maxHeight: '200px',
                     overflow: 'auto',
                     zIndex: 10000,
-                    backdropFilter: 'blur(15px)',
+                    // backdropFilter: 'blur(15px)',
                     boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
                   }}>
                     {existingConditions.length === 0 ? (
@@ -5848,15 +6260,15 @@ const Port = () => {
                   </div>
                 )}
               </div>
-              
+
               {/* Right side - Action buttons */}
               <div style={{ display: 'flex', gap: 12 }}>
                 {editingConditionIndex !== null && (
-                  <div style={{ 
-                    padding: '10px 16px', 
-                    background: 'rgba(251,191,36,0.15)', 
-                    border: '1px solid rgba(251,191,36,0.3)', 
-                    borderRadius: 8, 
+                  <div style={{
+                    padding: '10px 16px',
+                    background: 'rgba(251,191,36,0.15)',
+                    border: '1px solid rgba(251,191,36,0.3)',
+                    borderRadius: 8,
                     color: '#fbbf24',
                     fontSize: '0.85rem',
                     display: 'flex',
@@ -5866,13 +6278,13 @@ const Port = () => {
                     ✏️ Editing Condition {editingConditionIndex + 1}
                   </div>
                 )}
-                <button 
-                  onClick={() => setShowPersistentModal(false)} 
-                  style={{ 
-                    padding: '10px 20px', 
-                    background: 'rgba(255,255,255,0.06)', 
-                    border: '1px solid rgba(255,255,255,0.14)', 
-                    borderRadius: 8, 
+                <button
+                  onClick={() => setShowPersistentModal(false)}
+                  style={{
+                    padding: '10px 20px',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.14)',
+                    borderRadius: 8,
                     color: 'var(--accent)',
                     cursor: 'pointer',
                     fontSize: '0.9rem',
@@ -5883,14 +6295,14 @@ const Port = () => {
                 >
                   Cancel
                 </button>
-                <button 
-                  onClick={handleApplyPersistent} 
-                  style={{ 
-                    padding: '10px 20px', 
-                    background: 'linear-gradient(180deg, rgba(34,197,94,0.22), rgba(22,163,74,0.18))', 
-                    border: '1px solid rgba(34,197,94,0.32)', 
-                    borderRadius: 8, 
-                    color: '#eaffef', 
+                <button
+                  onClick={handleApplyPersistent}
+                  style={{
+                    padding: '10px 20px',
+                    background: 'linear-gradient(180deg, rgba(34,197,94,0.22), rgba(22,163,74,0.18))',
+                    border: '1px solid rgba(34,197,94,0.32)',
+                    borderRadius: 8,
+                    color: '#eaffef',
                     fontWeight: 600,
                     cursor: 'pointer',
                     fontSize: '0.9rem',
@@ -5926,11 +6338,9 @@ const Port = () => {
         fullWidth
         PaperProps={{
           sx: {
-            background: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
-            backdropFilter: 'saturate(180%) blur(20px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(20px)',
-            boxShadow: 'var(--glass-shadow)',
+            background: 'transparent',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
             borderRadius: 3,
             overflow: 'hidden',
           }
@@ -5952,15 +6362,15 @@ const Port = () => {
             },
           }}
         />
-        <DialogTitle sx={{ 
-          color: 'var(--accent)', 
-          display: 'flex', 
-          alignItems: 'center', 
+        <DialogTitle sx={{
+          color: 'var(--accent)',
+          display: 'flex',
+          alignItems: 'center',
           gap: 1.5,
           pb: 1.5,
           pt: 2.5,
           px: 3,
-          borderBottom: '1px solid var(--glass-border)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
         }}>
           <Box
             sx={{
@@ -5976,8 +6386,8 @@ const Port = () => {
           >
             <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
           </Box>
-          <Typography variant="h6" sx={{ 
-            fontWeight: 600, 
+          <Typography variant="h6" sx={{
+            fontWeight: 600,
             color: 'var(--accent)',
             fontFamily: 'JetBrains Mono, monospace',
             fontSize: '1rem',
@@ -5987,24 +6397,24 @@ const Port = () => {
         </DialogTitle>
         <DialogContent sx={{ px: 3, py: 2.5 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Typography variant="body2" sx={{ 
-              color: 'var(--accent2)', 
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
               lineHeight: 1.6,
               fontSize: '0.875rem',
             }}>
               VFX System: <strong style={{ color: 'var(--accent)' }}>{editingChildSystem?.name}</strong>
             </Typography>
-            <Typography variant="body2" sx={{ 
-              color: 'var(--accent2)', 
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
               lineHeight: 1.6,
               fontSize: '0.875rem',
             }}>
               Emitter: <strong style={{ color: 'var(--accent)' }}>{editingChildEmitter}</strong>
             </Typography>
-            
+
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
               }}>
@@ -6018,7 +6428,7 @@ const Port = () => {
                     color: 'var(--accent)',
                     backgroundColor: 'var(--surface)',
                     '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--glass-border)',
+                      borderColor: 'rgba(255, 255, 255, 0.06)',
                     },
                     '&:hover .MuiOutlinedInput-notchedOutline': {
                       borderColor: 'var(--accent)',
@@ -6044,8 +6454,8 @@ const Port = () => {
             </Box>
 
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
               }}>
@@ -6062,7 +6472,7 @@ const Port = () => {
                   padding: '8px 12px',
                   background: 'var(--surface)',
                   color: 'var(--accent)',
-                  border: '1px solid var(--glass-border)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
                   borderRadius: '6px',
                   fontSize: '0.875rem',
                   fontFamily: 'JetBrains Mono, monospace',
@@ -6071,8 +6481,8 @@ const Port = () => {
             </Box>
 
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
               }}>
@@ -6088,7 +6498,7 @@ const Port = () => {
                   padding: '8px 12px',
                   background: 'var(--surface)',
                   color: 'var(--accent)',
-                  border: '1px solid var(--glass-border)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
                   borderRadius: '6px',
                   fontSize: '0.875rem',
                   fontFamily: 'JetBrains Mono, monospace',
@@ -6097,8 +6507,8 @@ const Port = () => {
             </Box>
 
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
               }}>
@@ -6115,7 +6525,7 @@ const Port = () => {
                   padding: '8px 12px',
                   background: 'var(--surface)',
                   color: 'var(--accent)',
-                  border: '1px solid var(--glass-border)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
                   borderRadius: '6px',
                   fontSize: '0.875rem',
                   fontFamily: 'JetBrains Mono, monospace',
@@ -6124,8 +6534,8 @@ const Port = () => {
             </Box>
 
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
                 fontWeight: 500,
@@ -6143,7 +6553,7 @@ const Port = () => {
                   padding: '8px 12px',
                   background: 'var(--surface)',
                   color: 'var(--accent)',
-                  border: '1px solid var(--glass-border)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
                   borderRadius: '6px',
                   fontSize: '0.875rem',
                   fontFamily: 'JetBrains Mono, monospace',
@@ -6152,8 +6562,8 @@ const Port = () => {
             </Box>
 
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
                 fontWeight: 500,
@@ -6162,8 +6572,8 @@ const Port = () => {
               </Typography>
               <Box sx={{ display: 'flex', gap: 1.5 }}>
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{ 
-                    color: 'var(--accent2)', 
+                  <Typography variant="body2" sx={{
+                    color: 'var(--accent2)',
                     mb: 0.5,
                     fontSize: '0.75rem',
                   }}>
@@ -6179,7 +6589,7 @@ const Port = () => {
                       padding: '6px 8px',
                       background: 'var(--surface)',
                       color: 'var(--accent)',
-                      border: '1px solid var(--glass-border)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
                       borderRadius: '6px',
                       fontSize: '0.75rem',
                       fontFamily: 'JetBrains Mono, monospace',
@@ -6187,8 +6597,8 @@ const Port = () => {
                   />
                 </Box>
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{ 
-                    color: 'var(--accent2)', 
+                  <Typography variant="body2" sx={{
+                    color: 'var(--accent2)',
                     mb: 0.5,
                     fontSize: '0.75rem',
                   }}>
@@ -6204,7 +6614,7 @@ const Port = () => {
                       padding: '6px 8px',
                       background: 'var(--surface)',
                       color: 'var(--accent)',
-                      border: '1px solid var(--glass-border)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
                       borderRadius: '6px',
                       fontSize: '0.75rem',
                       fontFamily: 'JetBrains Mono, monospace',
@@ -6212,8 +6622,8 @@ const Port = () => {
                   />
                 </Box>
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{ 
-                    color: 'var(--accent2)', 
+                  <Typography variant="body2" sx={{
+                    color: 'var(--accent2)',
                     mb: 0.5,
                     fontSize: '0.75rem',
                   }}>
@@ -6229,7 +6639,7 @@ const Port = () => {
                       padding: '6px 8px',
                       background: 'var(--surface)',
                       color: 'var(--accent)',
-                      border: '1px solid var(--glass-border)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
                       borderRadius: '6px',
                       fontSize: '0.75rem',
                       fontFamily: 'JetBrains Mono, monospace',
@@ -6253,7 +6663,7 @@ const Port = () => {
                 />
               }
               label={
-                <Typography variant="body2" sx={{ 
+                <Typography variant="body2" sx={{
                   color: 'var(--accent2)',
                   fontSize: '0.875rem',
                 }}>
@@ -6263,10 +6673,10 @@ const Port = () => {
             />
           </Box>
         </DialogContent>
-        <DialogActions sx={{ 
-          p: 2.5, 
+        <DialogActions sx={{
+          p: 2.5,
           pt: 2,
-          borderTop: '1px solid var(--glass-border)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
           gap: 1.5,
         }}>
           <Button
@@ -6285,7 +6695,7 @@ const Port = () => {
             variant="outlined"
             sx={{
               color: 'var(--accent2)',
-              borderColor: 'var(--glass-border)',
+              borderColor: 'rgba(255, 255, 255, 0.06)',
               textTransform: 'none',
               fontFamily: 'JetBrains Mono, monospace',
               fontSize: '0.8rem',
@@ -6340,7 +6750,7 @@ const Port = () => {
 
               // 1) Update file text
               setTargetPyContent(updatedFile);
-              try { setFileSaved(false); } catch {}
+              try { setFileSaved(false); } catch { }
 
               // 2) Preserve in-memory emitters; update only this system's rawContent
               setTargetSystems(prev => {
@@ -6377,11 +6787,9 @@ const Port = () => {
         fullWidth
         PaperProps={{
           sx: {
-            background: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
-            backdropFilter: 'saturate(180%) blur(20px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(20px)',
-            boxShadow: 'var(--glass-shadow)',
+            background: 'transparent',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
             borderRadius: 3,
             overflow: 'hidden',
           }
@@ -6403,15 +6811,15 @@ const Port = () => {
             },
           }}
         />
-        <DialogTitle sx={{ 
-          color: 'var(--accent)', 
-          display: 'flex', 
-          alignItems: 'center', 
+        <DialogTitle sx={{
+          color: 'var(--accent)',
+          display: 'flex',
+          alignItems: 'center',
           gap: 1.5,
           pb: 1.5,
           pt: 2.5,
           px: 3,
-          borderBottom: '1px solid var(--glass-border)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
         }}>
           <Box
             sx={{
@@ -6427,8 +6835,8 @@ const Port = () => {
           >
             <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
           </Box>
-          <Typography variant="h6" sx={{ 
-            fontWeight: 600, 
+          <Typography variant="h6" sx={{
+            fontWeight: 600,
             color: 'var(--accent)',
             fontFamily: 'JetBrains Mono, monospace',
             fontSize: '1rem',
@@ -6439,8 +6847,8 @@ const Port = () => {
         <DialogContent sx={{ px: 3, py: 2.5 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
               }}>
@@ -6456,15 +6864,15 @@ const Port = () => {
                   padding: '8px 12px',
                   background: 'var(--surface)',
                   color: 'var(--accent)',
-                  border: '1px solid var(--glass-border)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
                   borderRadius: '6px',
                   fontSize: '0.875rem',
                   fontFamily: 'JetBrains Mono, monospace',
                 }}
               />
             </Box>
-            <Typography variant="body2" sx={{ 
-              color: 'var(--accent-muted)', 
+            <Typography variant="body2" sx={{
+              color: 'var(--accent-muted)',
               fontSize: '0.75rem',
               fontStyle: 'italic',
             }}>
@@ -6472,10 +6880,10 @@ const Port = () => {
             </Typography>
           </Box>
         </DialogContent>
-        <DialogActions sx={{ 
-          p: 2.5, 
+        <DialogActions sx={{
+          p: 2.5,
           pt: 2,
-          borderTop: '1px solid var(--glass-border)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
           gap: 1.5,
         }}>
           <Button
@@ -6483,7 +6891,7 @@ const Port = () => {
             variant="outlined"
             sx={{
               color: 'var(--accent2)',
-              borderColor: 'var(--glass-border)',
+              borderColor: 'rgba(255, 255, 255, 0.06)',
               textTransform: 'none',
               fontFamily: 'JetBrains Mono, monospace',
               fontSize: '0.8rem',
@@ -6528,11 +6936,9 @@ const Port = () => {
         fullWidth
         PaperProps={{
           sx: {
-            background: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
-            backdropFilter: 'saturate(180%) blur(20px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(20px)',
-            boxShadow: 'var(--glass-shadow)',
+            background: 'transparent',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
             borderRadius: 3,
             overflow: 'hidden',
           }
@@ -6554,15 +6960,15 @@ const Port = () => {
             },
           }}
         />
-        <DialogTitle sx={{ 
-          color: 'var(--accent)', 
-          display: 'flex', 
-          alignItems: 'center', 
+        <DialogTitle sx={{
+          color: 'var(--accent)',
+          display: 'flex',
+          alignItems: 'center',
           gap: 1.5,
           pb: 1.5,
           pt: 2.5,
           px: 3,
-          borderBottom: '1px solid var(--glass-border)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
         }}>
           <Box
             sx={{
@@ -6593,14 +6999,14 @@ const Port = () => {
                 value={namePromptValue}
                 onChange={e => setNamePromptValue(e.target.value)}
                 placeholder="Enter a unique name (e.g., testname)"
-                style={{ 
+                style={{
                   width: '100%',
-                  padding: '10px 12px', 
-                  background: 'rgba(255,255,255,0.05)', 
-                  border: '1px solid rgba(255,255,255,0.15)', 
-                  borderRadius: 8, 
-                  color: 'var(--accent)', 
-                  fontSize: '0.95rem' 
+                  padding: '10px 12px',
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: 8,
+                  color: 'var(--accent)',
+                  fontSize: '0.95rem'
                 }}
               />
             </Box>
@@ -6635,21 +7041,21 @@ const Port = () => {
                   return;
                 }
                 if (!pendingDrop) return;
-                
+
                 if (!hasResourceResolver) {
                   setStatusMessage('Locked: target bin missing ResourceResolver');
                   return;
                 }
                 // Save state before insertion
                 saveStateToHistory(`Add VFX system "${chosen}"`);
-                
+
                 const { fullContent, defaultName } = pendingDrop;
                 const prevKeys = new Set(Object.keys(targetSystems || {}));
-                
+
                 // Check if user kept the original name (preservation mode)
                 const isPreservationMode = chosen === defaultName;
                 let updatedPy;
-                
+
                 if (isPreservationMode) {
                   // Use preservation function to maintain original ResourceResolver names and system structure
                   console.log(`[Drag Drop] Using preservation mode for system "${chosen}"`);
@@ -6659,12 +7065,12 @@ const Port = () => {
                   console.log(`[Drag Drop] Using standard insertion for renamed system "${chosen}"`);
                   updatedPy = insertVFXSystemIntoFile(targetPyContent || '', fullContent, chosen);
                 }
-                
+
                 setTargetPyContent(updatedPy);
-                try { setFileSaved(false); } catch {}
+                try { setFileSaved(false); } catch { }
                 const systems = parseVfxEmitters(updatedPy);
                 const nowTs = Date.now();
-                
+
                 // Apply deleted emitters state to the newly parsed systems
                 const systemsWithDeletedEmitters = Object.fromEntries(
                   Object.entries(systems).map(([key, sys]) => {
@@ -6679,7 +7085,7 @@ const Port = () => {
                     return [key, sys];
                   })
                 );
-                
+
                 const entries = Object.entries(systemsWithDeletedEmitters).map(([key, sys]) => (
                   !prevKeys.has(key)
                     ? [key, { ...sys, ported: true, portedAt: nowTs }]
@@ -6689,10 +7095,10 @@ const Port = () => {
                 const oldEntries = entries.filter(([key]) => prevKeys.has(key));
                 const ordered = Object.fromEntries([...newEntries, ...oldEntries]);
                 setTargetSystems(ordered);
-                
+
                 // Preserve deleted emitters state - don't reset it when adding new systems
                 // The deletedEmitters Map should remain unchanged during drag and drop operations
-                
+
                 const modeText = isPreservationMode ? 'with preserved ResourceResolver names' : 'with updated names';
                 setStatusMessage(`Added VFX system "${chosen}" to target ${modeText}`);
               } catch (e) {
@@ -6732,11 +7138,9 @@ const Port = () => {
         fullWidth
         PaperProps={{
           sx: {
-            background: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
-            backdropFilter: 'saturate(180%) blur(20px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(20px)',
-            boxShadow: 'var(--glass-shadow)',
+            background: 'transparent',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
             borderRadius: 3,
             overflow: 'hidden',
           }
@@ -6758,15 +7162,15 @@ const Port = () => {
             },
           }}
         />
-        <DialogTitle sx={{ 
-          color: 'var(--accent)', 
-          display: 'flex', 
-          alignItems: 'center', 
+        <DialogTitle sx={{
+          color: 'var(--accent)',
+          display: 'flex',
+          alignItems: 'center',
           gap: 1.5,
           pb: 1.5,
           pt: 2.5,
           px: 3,
-          borderBottom: '1px solid var(--glass-border)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
         }}>
           <Box
             sx={{
@@ -6782,8 +7186,8 @@ const Port = () => {
           >
             <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
           </Box>
-          <Typography variant="h6" sx={{ 
-            fontWeight: 600, 
+          <Typography variant="h6" sx={{
+            fontWeight: 600,
             color: 'var(--accent)',
             fontFamily: 'JetBrains Mono, monospace',
             fontSize: '1rem',
@@ -6793,16 +7197,16 @@ const Port = () => {
         </DialogTitle>
         <DialogContent sx={{ px: 3, py: 2.5 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Typography variant="body2" sx={{ 
-              color: 'var(--accent2)', 
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
               lineHeight: 1.6,
               fontSize: '0.875rem',
             }}>
               VFX System: <strong style={{ color: 'var(--accent)' }}>{selectedSystemForIdle?.name}</strong>
             </Typography>
-            
-            <Typography variant="body2" sx={{ 
-              color: 'var(--accent2)', 
+
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
               fontSize: '0.875rem',
               fontWeight: 600,
             }}>
@@ -6810,15 +7214,15 @@ const Port = () => {
             </Typography>
 
             {idleBonesList.length === 0 && (
-              <Box sx={{ 
+              <Box sx={{
                 backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
-                border: '1px dashed var(--glass-border)',
+                border: '1px dashed rgba(255, 255, 255, 0.06)',
                 borderRadius: 1.5,
                 p: 3,
                 textAlign: 'center',
               }}>
-                <Typography variant="body2" sx={{ 
-                  color: 'var(--accent2)', 
+                <Typography variant="body2" sx={{
+                  color: 'var(--accent2)',
                   fontSize: '0.8rem',
                 }}>
                   No idle particles yet. Click "Add Another Bone" below to add one.
@@ -6827,18 +7231,18 @@ const Port = () => {
             )}
 
             {idleBonesList.map((item, index) => (
-              <Box key={item.id} sx={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
+              <Box key={item.id} sx={{
+                display: 'flex',
+                flexDirection: 'column',
                 gap: 1.5,
                 p: 2,
                 backgroundColor: 'rgba(var(--accent-rgb), 0.03)',
                 borderRadius: 1.5,
-                border: '1px solid var(--glass-border)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
               }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" sx={{ 
-                    color: 'var(--accent)', 
+                  <Typography variant="body2" sx={{
+                    color: 'var(--accent)',
                     fontSize: '0.8rem',
                     fontWeight: 600,
                     minWidth: '60px',
@@ -6869,8 +7273,8 @@ const Port = () => {
                 </Box>
 
                 <Box>
-                  <Typography variant="body2" sx={{ 
-                    color: 'var(--accent2)', 
+                  <Typography variant="body2" sx={{
+                    color: 'var(--accent2)',
                     mb: 0.5,
                     fontSize: '0.75rem',
                   }}>
@@ -6880,7 +7284,7 @@ const Port = () => {
                     <Select
                       value={item.boneName}
                       onChange={(e) => {
-                        const newList = idleBonesList.map(bone => 
+                        const newList = idleBonesList.map(bone =>
                           bone.id === item.id ? { ...bone, boneName: e.target.value } : bone
                         );
                         setIdleBonesList(newList);
@@ -6889,7 +7293,7 @@ const Port = () => {
                         color: 'var(--accent)',
                         backgroundColor: 'var(--surface)',
                         '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'var(--glass-border)',
+                          borderColor: 'rgba(255, 255, 255, 0.06)',
                         },
                         '&:hover .MuiOutlinedInput-notchedOutline': {
                           borderColor: 'var(--accent)',
@@ -6912,8 +7316,8 @@ const Port = () => {
                 </Box>
 
                 <Box>
-                  <Typography variant="body2" sx={{ 
-                    color: 'var(--accent2)', 
+                  <Typography variant="body2" sx={{
+                    color: 'var(--accent2)',
                     mb: 0.5,
                     fontSize: '0.75rem',
                   }}>
@@ -6923,7 +7327,7 @@ const Port = () => {
                     type="text"
                     value={item.customBoneName}
                     onChange={(e) => {
-                      const newList = idleBonesList.map(bone => 
+                      const newList = idleBonesList.map(bone =>
                         bone.id === item.id ? { ...bone, customBoneName: e.target.value } : bone
                       );
                       setIdleBonesList(newList);
@@ -6934,7 +7338,7 @@ const Port = () => {
                       padding: '8px 12px',
                       background: 'var(--surface)',
                       color: 'var(--accent)',
-                      border: '1px solid var(--glass-border)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
                       borderRadius: '6px',
                       fontSize: '0.75rem',
                       fontFamily: 'JetBrains Mono, monospace',
@@ -6952,7 +7356,7 @@ const Port = () => {
               startIcon={<AddIcon />}
               sx={{
                 color: 'var(--accent)',
-                borderColor: 'var(--glass-border)',
+                borderColor: 'rgba(255, 255, 255, 0.06)',
                 textTransform: 'none',
                 fontFamily: 'JetBrains Mono, monospace',
                 fontSize: '0.75rem',
@@ -6966,10 +7370,10 @@ const Port = () => {
             </Button>
           </Box>
         </DialogContent>
-        <DialogActions sx={{ 
-          p: 2.5, 
+        <DialogActions sx={{
+          p: 2.5,
           pt: 2,
-          borderTop: '1px solid var(--glass-border)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
           gap: 1.5,
         }}>
           <Button
@@ -6983,7 +7387,7 @@ const Port = () => {
             variant="outlined"
             sx={{
               color: 'var(--accent2)',
-              borderColor: 'var(--glass-border)',
+              borderColor: 'rgba(255, 255, 255, 0.06)',
               textTransform: 'none',
               fontFamily: 'JetBrains Mono, monospace',
               fontSize: '0.8rem',
@@ -7031,11 +7435,9 @@ const Port = () => {
         fullWidth
         PaperProps={{
           sx: {
-            background: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
-            backdropFilter: 'saturate(180%) blur(20px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(20px)',
-            boxShadow: 'var(--glass-shadow)',
+            background: 'transparent',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
             borderRadius: 3,
             overflow: 'hidden',
           }
@@ -7057,15 +7459,15 @@ const Port = () => {
             },
           }}
         />
-        <DialogTitle sx={{ 
-          color: 'var(--accent)', 
-          display: 'flex', 
-          alignItems: 'center', 
+        <DialogTitle sx={{
+          color: 'var(--accent)',
+          display: 'flex',
+          alignItems: 'center',
           gap: 1.5,
           pb: 1.5,
           pt: 2.5,
           px: 3,
-          borderBottom: '1px solid var(--glass-border)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
         }}>
           <Box
             sx={{
@@ -7081,8 +7483,8 @@ const Port = () => {
           >
             <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
           </Box>
-          <Typography variant="h6" sx={{ 
-            fontWeight: 600, 
+          <Typography variant="h6" sx={{
+            fontWeight: 600,
             color: 'var(--accent)',
             fontFamily: 'JetBrains Mono, monospace',
             fontSize: '1rem',
@@ -7093,17 +7495,17 @@ const Port = () => {
         <DialogContent sx={{ px: 3, py: 2.5 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
 
-            <Typography variant="body2" sx={{ 
-              color: 'var(--accent2)', 
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
               lineHeight: 1.6,
               fontSize: '0.875rem',
             }}>
               VFX System: <strong style={{ color: 'var(--accent)' }}>{selectedSystemForChild?.name}</strong>
             </Typography>
-            
+
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
               }}>
@@ -7117,7 +7519,7 @@ const Port = () => {
                     color: 'var(--accent)',
                     backgroundColor: 'var(--surface)',
                     '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--glass-border)',
+                      borderColor: 'rgba(255, 255, 255, 0.06)',
                     },
                     '&:hover .MuiOutlinedInput-notchedOutline': {
                       borderColor: 'var(--accent)',
@@ -7141,10 +7543,10 @@ const Port = () => {
                 </Select>
               </FormControl>
             </Box>
-            
+
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
               }}>
@@ -7160,7 +7562,7 @@ const Port = () => {
                   padding: '8px 12px',
                   background: 'var(--surface)',
                   color: 'var(--accent)',
-                  border: '1px solid var(--glass-border)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
                   borderRadius: '6px',
                   fontSize: '0.875rem',
                   fontFamily: 'JetBrains Mono, monospace',
@@ -7169,8 +7571,8 @@ const Port = () => {
             </Box>
 
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
               }}>
@@ -7188,7 +7590,7 @@ const Port = () => {
                   padding: '8px 12px',
                   background: 'var(--surface)',
                   color: 'var(--accent)',
-                  border: '1px solid var(--glass-border)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
                   borderRadius: '6px',
                   fontSize: '0.875rem',
                   fontFamily: 'JetBrains Mono, monospace',
@@ -7197,8 +7599,8 @@ const Port = () => {
             </Box>
 
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
               }}>
@@ -7215,7 +7617,7 @@ const Port = () => {
                   padding: '8px 12px',
                   background: 'var(--surface)',
                   color: 'var(--accent)',
-                  border: '1px solid var(--glass-border)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
                   borderRadius: '6px',
                   fontSize: '0.875rem',
                   fontFamily: 'JetBrains Mono, monospace',
@@ -7224,8 +7626,8 @@ const Port = () => {
             </Box>
 
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
               }}>
@@ -7243,7 +7645,7 @@ const Port = () => {
                   padding: '8px 12px',
                   background: 'var(--surface)',
                   color: 'var(--accent)',
-                  border: '1px solid var(--glass-border)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
                   borderRadius: '6px',
                   fontSize: '0.875rem',
                   fontFamily: 'JetBrains Mono, monospace',
@@ -7252,8 +7654,8 @@ const Port = () => {
             </Box>
 
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
                 fontWeight: 500,
@@ -7272,7 +7674,7 @@ const Port = () => {
                   padding: '8px 12px',
                   background: 'var(--surface)',
                   color: 'var(--accent)',
-                  border: '1px solid var(--glass-border)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
                   borderRadius: '6px',
                   fontSize: '0.875rem',
                   fontFamily: 'JetBrains Mono, monospace',
@@ -7281,8 +7683,8 @@ const Port = () => {
             </Box>
 
             <Box>
-              <Typography variant="body2" sx={{ 
-                color: 'var(--accent2)', 
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
                 mb: 1,
                 fontSize: '0.875rem',
                 fontWeight: 500,
@@ -7291,8 +7693,8 @@ const Port = () => {
               </Typography>
               <Box sx={{ display: 'flex', gap: 1.5 }}>
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{ 
-                    color: 'var(--accent2)', 
+                  <Typography variant="body2" sx={{
+                    color: 'var(--accent2)',
                     mb: 0.5,
                     fontSize: '0.75rem',
                   }}>
@@ -7309,7 +7711,7 @@ const Port = () => {
                       padding: '6px 8px',
                       background: 'var(--surface)',
                       color: 'var(--accent)',
-                      border: '1px solid var(--glass-border)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
                       borderRadius: '6px',
                       fontSize: '0.75rem',
                       fontFamily: 'JetBrains Mono, monospace',
@@ -7317,8 +7719,8 @@ const Port = () => {
                   />
                 </Box>
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{ 
-                    color: 'var(--accent2)', 
+                  <Typography variant="body2" sx={{
+                    color: 'var(--accent2)',
                     mb: 0.5,
                     fontSize: '0.75rem',
                   }}>
@@ -7335,7 +7737,7 @@ const Port = () => {
                       padding: '6px 8px',
                       background: 'var(--surface)',
                       color: 'var(--accent)',
-                      border: '1px solid var(--glass-border)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
                       borderRadius: '6px',
                       fontSize: '0.75rem',
                       fontFamily: 'JetBrains Mono, monospace',
@@ -7343,8 +7745,8 @@ const Port = () => {
                   />
                 </Box>
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{ 
-                    color: 'var(--accent2)', 
+                  <Typography variant="body2" sx={{
+                    color: 'var(--accent2)',
                     mb: 0.5,
                     fontSize: '0.75rem',
                   }}>
@@ -7361,7 +7763,7 @@ const Port = () => {
                       padding: '6px 8px',
                       background: 'var(--surface)',
                       color: 'var(--accent)',
-                      border: '1px solid var(--glass-border)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
                       borderRadius: '6px',
                       fontSize: '0.75rem',
                       fontFamily: 'JetBrains Mono, monospace',
@@ -7385,7 +7787,7 @@ const Port = () => {
                 />
               }
               label={
-                <Typography variant="body2" sx={{ 
+                <Typography variant="body2" sx={{
                   color: 'var(--accent2)',
                   fontSize: '0.875rem',
                 }}>
@@ -7395,10 +7797,10 @@ const Port = () => {
             />
           </Box>
         </DialogContent>
-        <DialogActions sx={{ 
-          p: 2.5, 
+        <DialogActions sx={{
+          p: 2.5,
           pt: 2,
-          borderTop: '1px solid var(--glass-border)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
           gap: 1.5,
         }}>
           <Button
@@ -7412,7 +7814,7 @@ const Port = () => {
             variant="outlined"
             sx={{
               color: 'var(--accent2)',
-              borderColor: 'var(--glass-border)',
+              borderColor: 'rgba(255, 255, 255, 0.06)',
               textTransform: 'none',
               fontFamily: 'JetBrains Mono, monospace',
               fontSize: '0.8rem',
@@ -7461,9 +7863,51 @@ const Port = () => {
         fontFamily: 'JetBrains Mono, monospace',
         fontSize: '12px',
         display: 'flex',
-        alignItems: 'center'
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '20px'
       }}>
-        {statusMessage}
+        <span style={{ flex: 1 }}>{statusMessage}</span>
+        {targetPyContent && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
+            fontSize: '11px',
+            color: 'rgba(255,255,255,0.7)'
+          }}>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}>
+              <input
+                type="checkbox"
+                checked={trimTargetNames}
+                onChange={(e) => setTrimTargetNames(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>Trim Target Names</span>
+            </label>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}>
+              <input
+                type="checkbox"
+                checked={trimDonorNames}
+                onChange={(e) => setTrimDonorNames(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>Trim Donor Names</span>
+            </label>
+          </div>
+        )}
       </div>
 
       {/* Bottom Controls - Thinner */}
@@ -7473,48 +7917,74 @@ const Port = () => {
         padding: '12px 20px',
         background: 'transparent'
       }}>
-        <button 
+        <Button
           onClick={handleUndo}
           disabled={undoHistory.length === 0}
-          style={{
+          sx={{
             flex: 1,
-            ...glassButtonSx,
-            padding: '8px 16px',
-            background: undoHistory.length === 0 
-              ? 'linear-gradient(180deg, rgba(80,80,80,0.16), rgba(60,60,60,0.10))'
-              : 'linear-gradient(180deg, rgba(160,160,160,0.16), rgba(120,120,120,0.10))',
-            border: '1px solid rgba(200,200,200,0.24)',
-            color: undoHistory.length === 0 ? 'rgba(255,255,255,0.4)' : 'var(--accent)',
-            cursor: undoHistory.length === 0 ? 'not-allowed' : 'pointer',
-            transition: 'all 0.2s ease',
+            padding: '0 16px',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '13px',
+            fontWeight: 700,
+            height: '36px',
+            background: 'color-mix(in srgb, #9ca3af, var(--bg) 85%)',
+            border: '1px solid rgba(156, 163, 175, 0.3)',
+            color: '#9ca3af',
+            borderRadius: '4px',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            position: 'relative',
+            '&:hover': {
+              background: 'color-mix(in srgb, #9ca3af, var(--bg) 75%)',
+              borderColor: '#9ca3af',
+              textShadow: '0 0 8px color-mix(in srgb, #9ca3af, transparent 50%)',
+            },
+            '&:disabled': {
+              opacity: 0.5,
+              cursor: 'not-allowed',
+              borderColor: 'rgba(156,163,175,0.32)',
+              color: 'rgba(156,163,175,0.32)'
+            }
           }}
           title={undoHistory.length > 0 ? `Undo: ${undoHistory[undoHistory.length - 1]?.action}` : 'Nothing to undo'}
         >
           Undo ({undoHistory.length})
-        </button>
-        <button 
+        </Button>
+        <Button
           onClick={handleSave}
           disabled={isProcessing || !hasChangesToSave()}
-          style={{
+          sx={{
             flex: 1,
-            padding: '8px 20px',
-            background: hasChangesToSave() ? 'linear-gradient(180deg, rgba(34,197,94,0.22), rgba(22,163,74,0.18))' : 'rgba(160,160,160,0.16)',
-            border: hasChangesToSave() ? '1px solid rgba(34,197,94,0.32)' : '1px solid rgba(200,200,200,0.24)',
-            backdropFilter: 'saturate(180%) blur(16px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(16px)',
-            color: hasChangesToSave() ? '#eaffef' : 'var(--accent)',
-            borderRadius: '8px',
+            padding: '0 16px',
             fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '14px',
-            fontWeight: hasChangesToSave() ? '600' : 'normal',
-            cursor: hasChangesToSave() && !isProcessing ? 'pointer' : 'not-allowed',
-            transition: 'all 0.2s ease',
-            opacity: hasChangesToSave() ? 1 : 0.7
+            fontSize: '13px',
+            fontWeight: 700,
+            height: '36px',
+            background: 'color-mix(in srgb, #22c55e, var(--bg) 85%)',
+            border: '1px solid rgba(34, 197, 94, 0.3)',
+            color: '#22c55e',
+            borderRadius: '4px',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            position: 'relative',
+            '&:hover': {
+              background: 'color-mix(in srgb, #22c55e, var(--bg) 75%)',
+              borderColor: '#22c55e',
+              textShadow: '0 0 8px color-mix(in srgb, #22c55e, transparent 50%)',
+            },
+            '&:disabled': {
+              opacity: 0.5,
+              cursor: 'not-allowed',
+              borderColor: 'rgba(34, 197, 94, 0.3)',
+              color: 'rgba(34, 197, 94, 0.3)'
+            }
           }}
           title={hasChangesToSave() ? 'Save changes to file' : 'No changes to save'}
         >
           Save
-        </button>
+        </Button>
       </div>
 
 
@@ -7537,8 +8007,8 @@ const Port = () => {
               color: '#c084fc',
               border: '1px solid rgba(147, 51, 234, 0.3)',
               boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(147, 51, 234, 0.2)',
-              backdropFilter: 'blur(15px)',
-              WebkitBackdropFilter: 'blur(15px)',
+              // backdropFilter: 'blur(15px)',
+              // WebkitBackdropFilter: 'blur(15px)',
               '&:hover': {
                 transform: 'translateY(-2px)',
                 boxShadow: '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(147, 51, 234, 0.3)',
@@ -7561,31 +8031,31 @@ const Port = () => {
             onClick={handleOpenPersistent}
             aria-label="Open Persistent Effects"
             disabled={!hasResourceResolver || !hasSkinCharacterData}
-          sx={{
-            position: 'fixed',
-            bottom: 80,
-            right: 24,
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            zIndex: 4500,
-            background: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.06)' : 'rgba(34, 197, 94, 0.15)',
-            color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : '#4ade80',
-            border: '1px solid rgba(34, 197, 94, 0.3)',
-            boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(34, 197, 94, 0.2)',
-            backdropFilter: 'blur(15px)',
-            WebkitBackdropFilter: 'blur(15px)',
-            '&:hover': {
-              transform: (!hasResourceResolver || !hasSkinCharacterData) ? 'none' : 'translateY(-2px)',
-              boxShadow: (!hasResourceResolver || !hasSkinCharacterData) ? '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(34, 197, 94, 0.2)' : '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(34, 197, 94, 0.3)',
-              background: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.06)' : 'rgba(34, 197, 94, 0.25)',
-              border: '1px solid rgba(34, 197, 94, 0.5)'
-            },
-            transition: 'all 0.2s ease'
-          }}
+            sx={{
+              position: 'fixed',
+              bottom: 80,
+              right: 24,
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              zIndex: 4500,
+              background: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.06)' : 'rgba(34, 197, 94, 0.15)',
+              color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : '#4ade80',
+              border: '1px solid rgba(34, 197, 94, 0.3)',
+              boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(34, 197, 94, 0.2)',
+              // backdropFilter: 'blur(15px)',
+              // WebkitBackdropFilter: 'blur(15px)',
+              '&:hover': {
+                transform: (!hasResourceResolver || !hasSkinCharacterData) ? 'none' : 'translateY(-2px)',
+                boxShadow: (!hasResourceResolver || !hasSkinCharacterData) ? '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(34, 197, 94, 0.2)' : '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(34, 197, 94, 0.3)',
+                background: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.06)' : 'rgba(34, 197, 94, 0.25)',
+                border: '1px solid rgba(34, 197, 94, 0.5)'
+              },
+              transition: 'all 0.2s ease'
+            }}
           >
-              <AppsIcon sx={{ fontSize: 18 }} />
-            </IconButton>
+            <AppsIcon sx={{ fontSize: 18 }} />
+          </IconButton>
         </Tooltip>
       )}
 
@@ -7596,29 +8066,29 @@ const Port = () => {
             onClick={handleOpenNewSystemModal}
             aria-label="Create New VFX System"
             disabled={!hasResourceResolver}
-          sx={{
-            position: 'fixed',
-            bottom: 80,
-            right: 72,
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            zIndex: 4500,
-            background: !hasResourceResolver ? 'rgba(255,255,255,0.06)' : 'rgba(236, 185, 106, 0.15)',
-            color: !hasResourceResolver ? 'rgba(255,255,255,0.35)' : '#fbbf24',
-            border: '1px solid rgba(236, 185, 106, 0.3)',
-            boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(236, 185, 106, 0.2)',
-            '&:hover': {
-              transform: !hasResourceResolver ? 'none' : 'translateY(-2px)',
-              boxShadow: !hasResourceResolver ? '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(236, 185, 106, 0.2)' : '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(236, 185, 106, 0.3)',
-              background: !hasResourceResolver ? 'rgba(255,255,255,0.06)' : 'rgba(236, 185, 106, 0.25)',
-              border: '1px solid rgba(236, 185, 106, 0.5)'
-            },
-            transition: 'all 0.2s ease'
-          }}
+            sx={{
+              position: 'fixed',
+              bottom: 80,
+              right: 72,
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              zIndex: 4500,
+              background: !hasResourceResolver ? 'rgba(255,255,255,0.06)' : 'rgba(236, 185, 106, 0.15)',
+              color: !hasResourceResolver ? 'rgba(255,255,255,0.35)' : '#fbbf24',
+              border: '1px solid rgba(236, 185, 106, 0.3)',
+              boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(236, 185, 106, 0.2)',
+              '&:hover': {
+                transform: !hasResourceResolver ? 'none' : 'translateY(-2px)',
+                boxShadow: !hasResourceResolver ? '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(236, 185, 106, 0.2)' : '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(236, 185, 106, 0.3)',
+                background: !hasResourceResolver ? 'rgba(255,255,255,0.06)' : 'rgba(236, 185, 106, 0.25)',
+                border: '1px solid rgba(236, 185, 106, 0.5)'
+              },
+              transition: 'all 0.2s ease'
+            }}
           >
-              <AddIcon sx={{ fontSize: 20, fontWeight: 700 }} />
-            </IconButton>
+            <AddIcon sx={{ fontSize: 20, fontWeight: 700 }} />
+          </IconButton>
         </Tooltip>
       )}
 
@@ -7629,35 +8099,35 @@ const Port = () => {
             onClick={handlePortAllSystems}
             aria-label="Port All VFX Systems"
             disabled={!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading}
-          sx={{
-            position: 'fixed',
-            bottom: 80,
-            right: 120,
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            zIndex: 4500,
-            background: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'rgba(255,255,255,0.06)' : 'rgba(59, 130, 246, 0.15)',
-            color: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'rgba(255,255,255,0.35)' : '#3b82f6',
-            border: '1px solid rgba(59, 130, 246, 0.3)',
-            boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(59, 130, 246, 0.2)',
-            backdropFilter: 'blur(15px)',
-            WebkitBackdropFilter: 'blur(15px)',
-            '&:hover': {
-              transform: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'none' : 'translateY(-2px)',
-              boxShadow: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(59, 130, 246, 0.2)' : '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(59, 130, 246, 0.3)',
-              background: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'rgba(255,255,255,0.06)' : 'rgba(59, 130, 246, 0.25)',
-              border: '1px solid rgba(59, 130, 246, 0.5)'
-            },
-            transition: 'all 0.2s ease'
-          }}
+            sx={{
+              position: 'fixed',
+              bottom: 80,
+              right: 120,
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              zIndex: 4500,
+              background: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'rgba(255,255,255,0.06)' : 'rgba(59, 130, 246, 0.15)',
+              color: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'rgba(255,255,255,0.35)' : '#3b82f6',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+              boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(59, 130, 246, 0.2)',
+              // backdropFilter: 'blur(15px)',
+              // WebkitBackdropFilter: 'blur(15px)',
+              '&:hover': {
+                transform: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'none' : 'translateY(-2px)',
+                boxShadow: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(59, 130, 246, 0.2)' : '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(59, 130, 246, 0.3)',
+                background: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'rgba(255,255,255,0.06)' : 'rgba(59, 130, 246, 0.25)',
+                border: '1px solid rgba(59, 130, 246, 0.5)'
+              },
+              transition: 'all 0.2s ease'
+            }}
           >
-              {isPortAllLoading ? (
-                <CircularProgress size={18} sx={{ color: '#3b82f6' }} />
-              ) : (
-                <ArrowBackIcon sx={{ fontSize: 18 }} />
-              )}
-            </IconButton>
+            {isPortAllLoading ? (
+              <CircularProgress size={18} sx={{ color: '#3b82f6' }} />
+            ) : (
+              <ArrowBackIcon sx={{ fontSize: 18 }} />
+            )}
+          </IconButton>
         </Tooltip>
       )}
 
@@ -7682,10 +8152,6 @@ const Port = () => {
         }}
         filePath={targetPath !== 'This will show target bin' ? targetPath.replace('.bin', '.py') : null}
         component="port"
-        trimTargetNames={trimTargetNames}
-        trimDonorNames={trimDonorNames}
-        onTrimTargetNamesChange={setTrimTargetNames}
-        onTrimDonorNamesChange={setTrimDonorNames}
       />
 
       {/* Unsaved Changes Dialog */}
@@ -7696,41 +8162,72 @@ const Port = () => {
         fullWidth
         PaperProps={{
           sx: {
-            background: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
-            backdropFilter: 'saturate(180%) blur(16px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(16px)',
+            background: 'transparent',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            borderRadius: '5px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            overflow: 'hidden'
           },
         }}
       >
-        <DialogTitle sx={{ 
-          color: 'var(--accent)', 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 1,
-          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-          fontWeight: 600
+        {/* Animated Top Bar */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '4px',
+            background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+            backgroundSize: '200% 100%',
+            animation: 'shimmer 3s ease-in-out infinite',
+            '@keyframes shimmer': {
+              '0%': { backgroundPosition: '200% 0' },
+              '100%': { backgroundPosition: '-200% 0' },
+            },
+          }}
+        />
+        {/* Header Bar */}
+        <Box sx={{
+          padding: '1.5rem',
+          borderBottom: '1px solid rgba(255,255,255,0.12)',
+          display: 'flex',
+          alignItems: 'center',
+          background: 'rgba(255,255,255,0.02)'
         }}>
-          ⚠️ Unsaved Changes
-        </DialogTitle>
-        
-        <DialogContent sx={{ pt: 2 }}>
-          <div style={{ 
-            color: '#e5e7eb', 
-            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-            lineHeight: 1.5
+          <Typography sx={{
+            margin: 0,
+            color: 'var(--accent)',
+            fontSize: '1.5rem',
+            fontWeight: 600,
+            fontFamily: 'JetBrains Mono, monospace'
+          }}>
+            ⚠️ Unsaved Changes
+          </Typography>
+        </Box>
+
+        <DialogContent sx={{ pt: 2, background: 'transparent' }}>
+          <Typography sx={{
+            color: 'var(--text)',
+            fontFamily: 'JetBrains Mono, monospace',
+            lineHeight: 1.5,
+            fontSize: '0.9rem'
           }}>
             You have unsaved changes. What would you like to do?
-          </div>
+          </Typography>
         </DialogContent>
 
-        <DialogActions sx={{ p: 2, gap: 1 }}>
+        <DialogActions sx={{ p: 2, gap: 1, borderTop: '1px solid rgba(255, 255, 255, 0.06)', background: 'transparent' }}>
           <Button
             onClick={handleUnsavedCancel}
-            sx={{ 
-              color: 'var(--accent2)',
+            sx={{
+              ...celestialButtonStyle,
+              color: 'var(--text-2)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
               '&:hover': {
-                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderColor: 'var(--text)',
+                color: 'var(--text)'
               }
             }}
           >
@@ -7739,29 +8236,131 @@ const Port = () => {
           <Button
             onClick={handleUnsavedDiscard}
             sx={{
-              color: 'var(--accent2)',
+              ...celestialButtonStyle,
+              borderColor: '#ef4444',
+              color: '#ef4444',
+              background: 'rgba(239, 68, 68, 0.05)',
               '&:hover': {
-                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                color: '#ef4444',
+                background: 'rgba(239, 68, 68, 0.15)',
+                borderColor: '#ef4444',
+                boxShadow: '0 0 15px rgba(239, 68, 68, 0.25)'
               }
             }}
           >
             Discard Changes
           </Button>
           <Button
-            variant="contained"
             onClick={handleUnsavedSave}
             sx={{
-              background: 'var(--accent)',
-              color: 'var(--bg)',
-              borderRadius: '4px',
+              ...celestialButtonStyle,
+              borderColor: '#22c55e',
+              color: '#22c55e',
+              background: 'rgba(34, 197, 94, 0.05)',
+              fontWeight: 'bold',
               px: 2,
               '&:hover': {
-                background: 'var(--accent2)',
-              },
+                background: 'rgba(34, 197, 94, 0.15)',
+                borderColor: '#22c55e',
+                boxShadow: '0 0 15px rgba(34, 197, 94, 0.25)'
+              }
             }}
           >
             Save & Leave
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* RitoBin Error Dialog */}
+      <Dialog
+        open={showRitoBinErrorDialog}
+        onClose={() => setShowRitoBinErrorDialog(false)}
+        PaperProps={{
+          sx: {
+            background: 'var(--bg-primary)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            minWidth: '450px',
+            borderRadius: '12px',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
+          }
+        }}
+      >
+        <Box sx={{
+          padding: '1.5rem',
+          borderBottom: '1px solid rgba(255,255,255,0.12)',
+          display: 'flex',
+          alignItems: 'center',
+          background: 'rgba(239, 68, 68, 0.05)'
+        }}>
+          <Typography sx={{
+            margin: 0,
+            color: '#ef4444',
+            fontSize: '1.5rem',
+            fontWeight: 600,
+            fontFamily: 'JetBrains Mono, monospace',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5
+          }}>
+            <WarningIcon sx={{ fontSize: '1.75rem' }} />
+            Conversion Failed
+          </Typography>
+        </Box>
+
+        <DialogContent sx={{ pt: 2.5, background: 'transparent' }}>
+          <Typography sx={{
+            color: 'var(--text)',
+            fontFamily: 'JetBrains Mono, monospace',
+            lineHeight: 1.6,
+            fontSize: '0.9rem',
+            mb: 2
+          }}>
+            RitoBin failed to convert the file. This usually means the App broke the code or the Python code was invalid before.
+          </Typography>
+          <Typography sx={{
+            color: 'var(--text-2)',
+            fontFamily: 'JetBrains Mono, monospace',
+            lineHeight: 1.6,
+            fontSize: '0.9rem'
+          }}>
+            Would you like to restore the file to its previous state from the latest backup?
+          </Typography>
+        </DialogContent>
+
+        <DialogActions sx={{ p: 2, gap: 1, borderTop: '1px solid rgba(255, 255, 255, 0.06)', background: 'transparent' }}>
+          <Button
+            onClick={() => setShowRitoBinErrorDialog(false)}
+            sx={{
+              ...celestialButtonStyle,
+              color: 'var(--text-2)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+              '&:hover': {
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderColor: 'var(--text)',
+                color: 'var(--text)'
+              }
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              performBackupRestore();
+              setShowRitoBinErrorDialog(false);
+            }}
+            sx={{
+              ...celestialButtonStyle,
+              borderColor: '#ef4444',
+              color: '#ef4444',
+              background: 'rgba(239, 68, 68, 0.05)',
+              '&:hover': {
+                background: 'rgba(239, 68, 68, 0.15)',
+                borderColor: '#ef4444',
+                boxShadow: '0 0 15px rgba(239, 68, 68, 0.25)'
+              }
+            }}
+          >
+            Restore Backup
           </Button>
         </DialogActions>
       </Dialog>

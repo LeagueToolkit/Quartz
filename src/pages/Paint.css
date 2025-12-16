@@ -40,46 +40,70 @@
 
 /* Particle and Material divs - for when they're dynamically created */
 .Particle-Div, .Material-Div {
-  border: 2px solid var(--glass-border) !important;
-  border-radius: 0.4rem !important;
-  margin-bottom: 4px !important;  /* Changed from 4px to 8px to test */
-  background: var(--surface) !important;
+  margin: 0.5rem 0;
+  color: var(--accent-muted);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 5px;
+  background: transparent;
 }
 
 .Particle-Title-Div {
-  padding: 8px;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--bg);
-  border-radius: 0.2rem 0.2rem 0 0;
+  min-height: 2rem;
+  border-radius: 5px 5px 0 0;
+  background: rgba(255, 255, 255, 0.03);
+  padding-inline-start: 0.6rem;
+  padding-block: 0.35rem;
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  margin-bottom: 0.3rem;
 }
 
 .Emitter-Div {
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--error-color-transparent);
-  align-items: center;
-  gap: 8px;
-  height: 2rem;
-  margin: 0.2rem;
-  padding-inline-start: 0.2rem;
+  margin: 0.15rem 0.3rem;
+  min-height: 1.6rem;
+  padding: 0.25rem 0.5rem;
   display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border-radius: 0.3rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .Emitter-Div:last-child {
   border-bottom: none;
+  margin-bottom: 0.3rem;
+}
+
+.Emitter-Div:hover {
+  background: var(--bg-2);
+  border-color: var(--accent-muted);
 }
 
 /* Property blocks for colors */
 .Prop-Block, .Prop-Block-Secondary {
-  border: 1px solid var(--bg);
-  border-radius: 0.4rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
   height: 1.84616rem;
   position: relative;
   display: flex;
   margin: auto;
   margin-inline: 0.25rem;
+  padding: auto;
   text-align: center;
+  border-radius: 0.4rem;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: small;
+  border: 1px solid var(--bg);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .Prop-Block {
@@ -160,23 +184,41 @@
   }
 }
 
+/* Label styling */
+.Label {
+  color: var(--accent-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: small;
+}
+
 /* Texture preview button styling */
 .texture-preview-btn {
   background: var(--surface-2);
+  color: var(--accent-muted);
   border: 1px solid var(--bg);
-  border-radius: 4px;
-  color: var(--accent);
+  border-radius: 0.4rem;
+  width: 64px;
+  height: 64px;
+  font-size: 32px;
   cursor: pointer;
-  font-size: 14px;
-  padding: 2px 4px;
-  transition: all 0.2s ease;
-  margin-left: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0.5rem;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  min-width: 64px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  position: relative;
 }
 
 .texture-preview-btn:hover {
-  background: var(--surface-2);
+  background: #3a3747;
   border-color: var(--accent);
   transform: scale(1.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  z-index: 20;
 }
 
 /* Texture Hover Preview */
