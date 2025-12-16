@@ -470,7 +470,7 @@ const CustomExplorer = () => {
 
             if (dirToOpen) {
                 setIsOpen(true);
-                navigateTo(dirToOpen, true, effectiveMode);
+                navigateTo(dirToOpen, true, effectiveMode, true); // Add to recents on initial open
 
                 if (fileToSelect) {
                     setSelectedItem(fileToSelect);
@@ -575,12 +575,13 @@ const CustomExplorer = () => {
     };
 
     // Navigation Logic
-    const navigateTo = (newPath, resetHistory = false, overrideMode = null) => {
+    const navigateTo = (newPath, resetHistory = false, overrideMode = null, addToRecents = false) => {
         if (!fs || !pathModule) return;
         const currentMode = overrideMode || mode;
 
-        // Auto-add to recent folders (unless we are in a Bin mode where we track files instead)
-        if (!isBinMode(currentMode)) {
+        // Only add to recent folders when explicitly requested (initial load, file selection, etc.)
+        // Not when just browsing/navigating through folders
+        if (addToRecents && !isBinMode(currentMode)) {
             addToRecent(newPath, currentMode);
         }
 
@@ -681,7 +682,10 @@ const CustomExplorer = () => {
             if (mode !== 'browser') {
                 // Select Return for any selection mode
                 if (isBinMode(mode)) {
-                    addToRecent(item.path);
+                    // Only add .bin files to recent, not all files
+                    if (item.extension === '.bin') {
+                        addToRecent(item.path);
+                    }
                 } else if (pathModule) {
                     addToRecent(pathModule.dirname(item.path));
                 }
