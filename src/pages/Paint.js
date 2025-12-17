@@ -195,7 +195,7 @@ const MemoizedSearchInput = React.memo(({
     // This allows filtering to happen as they type, but prevents parent re-renders
     debounceTimeoutRef.current = setTimeout(() => {
       onChange(newValue);
-    }, 100);
+    }, 350);
   };
 
   const handleBlur = () => {
@@ -1868,7 +1868,7 @@ const Paint = () => {
     headerContent.style.cursor = 'pointer';
     headerContent.style.padding = '4px';
     headerContent.style.borderRadius = '4px';
-    headerContent.style.transition = 'background-color 0.2s ease';
+    // Note: Removed inline transition for performance
 
     const systemCheckbox = document.createElement('input');
     systemCheckbox.type = 'checkbox';
@@ -1915,15 +1915,7 @@ const Paint = () => {
         CheckChildren(systemDiv.children, systemCheckbox.checked);
       }
     };
-
-    // Add hover effect
-    headerContent.onmouseenter = () => {
-      headerContent.style.backgroundColor = 'color-mix(in srgb, var(--accent), transparent 90%)';
-    };
-
-    headerContent.onmouseleave = () => {
-      headerContent.style.backgroundColor = 'transparent';
-    };
+    // Note: Removed JS hover handlers for performance - CSS :hover handles this now
 
     headerDiv.appendChild(headerContent);
     systemDiv.appendChild(headerDiv);
@@ -2219,7 +2211,8 @@ const Paint = () => {
     const emitterDiv = document.createElement('div');
     emitterDiv.className = 'Emitter-Div';
     emitterDiv.style.cursor = 'pointer';
-    emitterDiv.style.transition = 'background-color 0.2s ease';
+    // Note: Removed inline transition and JS hover handlers for performance
+    // CSS :hover in Paint.css now handles hover styling more efficiently
 
     // Store texture path in dataset for searching
     if (emitter.texturePath) {
@@ -2255,14 +2248,6 @@ const Paint = () => {
       }
     };
 
-    // Add hover effect
-    emitterDiv.onmouseenter = () => {
-      emitterDiv.style.backgroundColor = 'color-mix(in srgb, var(--accent), transparent 95%)';
-    };
-
-    emitterDiv.onmouseleave = () => {
-      emitterDiv.style.backgroundColor = 'transparent';
-    };
 
     const nameLabel = document.createElement('div');
     nameLabel.className = 'Label';

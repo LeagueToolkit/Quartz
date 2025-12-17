@@ -16,11 +16,11 @@ export function parsePyFile(content) {
     const result = {
         header: '',           // Content before first VfxSystem
         systems: {},          // Map of system name -> system data
+        systemOrder: [],      // Array of system names in order (to preserve order during serialization)
         footer: '',           // Content after last VfxSystem
         rawContent: content   // Keep original for reference
     };
 
-    let headerEndLine = -1;
     let lastSystemEndLine = -1;
 
     // Find all VfxSystemDefinitionData blocks
@@ -33,17 +33,34 @@ export function parsePyFile(content) {
     }
 
     // Extract header (everything before first system)
-    headerEndLine = systemBlocks[0].startLine;
+    const headerEndLine = systemBlocks[0].startLine;
     result.header = lines.slice(0, headerEndLine).join('\n');
     if (result.header) result.header += '\n';
 
-    // Parse each system
-    for (const block of systemBlocks) {
+    // Parse each system, capturing any content between systems
+    for (let i = 0; i < systemBlocks.length; i++) {
+        const block = systemBlocks[i];
         const systemLines = lines.slice(block.startLine, block.endLine + 1);
         const rawContent = systemLines.join('\n');
 
         const system = parseSystem(rawContent, block.name, block.startLine);
+
+        // Capture any content between the previous system and this one (non-VFX entries)
+        // This preserves ResourceResolver, animationGraphData, SkinCharacterDataProperties etc.
+        if (i > 0) {
+            const prevBlock = systemBlocks[i - 1];
+            const gapStart = prevBlock.endLine + 1;
+            const gapEnd = block.startLine;
+            if (gapEnd > gapStart) {
+                const gapContent = lines.slice(gapStart, gapEnd).join('\n');
+                if (gapContent.trim()) {
+                    system.prefix = '\n' + gapContent + '\n';
+                }
+            }
+        }
+
         result.systems[block.name] = system;
+        result.systemOrder.push(block.name);
 
         lastSystemEndLine = block.endLine;
     }
@@ -294,14 +311,32 @@ function parseVec3Property(content, propName) {
         }
     }
 
-    // Parse dynamics values (list of vec3)
-    const dynamicsMatch = blockContent.match(/values:\s*list\[vec3\]\s*=\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/i);
-    if (dynamicsMatch) {
-        const vectorMatches = dynamicsMatch[1].matchAll(/\{\s*([^}]+)\}/g);
+    // Parse dynamics values (list of vec3) - improved pattern
+    // Look for "values: list[vec3] = {" followed by vec3 entries within dynamics block
+    const dynamicsSection = blockContent.match(/dynamics:\s*pointer\s*=\s*VfxAnimatedVector3fVariableData\s*\{[\s\S]*?values:\s*list\[vec3\]\s*=\s*\{([\s\S]*?)\}\s*\}/i);
+    if (dynamicsSection) {
+        const valuesContent = dynamicsSection[1];
+        // Match individual vec3 values: { x, y, z }
+        const vectorMatches = valuesContent.matchAll(/\{\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\}/g);
         for (const vm of vectorMatches) {
-            const values = vm[1].split(',').map(v => parseFloat(v.trim()));
-            if (values.length >= 3) {
-                result.dynamicsValues.push({ x: values[0], y: values[1], z: values[2] });
+            result.dynamicsValues.push({
+                x: parseFloat(vm[1]),
+                y: parseFloat(vm[2]),
+                z: parseFloat(vm[3])
+            });
+        }
+    }
+
+    // Fallback to simpler pattern if the above didn't match
+    if (result.dynamicsValues.length === 0) {
+        const simpleMatch = blockContent.match(/values:\s*list\[vec3\]\s*=\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/i);
+        if (simpleMatch) {
+            const vectorMatches = simpleMatch[1].matchAll(/\{\s*([^}]+)\}/g);
+            for (const vm of vectorMatches) {
+                const values = vm[1].split(',').map(v => parseFloat(v.trim()));
+                if (values.length >= 3 && !isNaN(values[0])) {
+                    result.dynamicsValues.push({ x: values[0], y: values[1], z: values[2] });
+                }
             }
         }
     }

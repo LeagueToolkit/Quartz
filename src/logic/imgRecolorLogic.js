@@ -10,9 +10,11 @@ import { loadTextureRGBA, detectFileType, writeTEX, readTEX, writeDDS, readDDS, 
 
 /**
  * Load a folder and scan for images
+ * @param {string|null} initialPath - Initial path to load (optional)
+ * @param {boolean} recursive - Whether to scan subdirectories recursively
  * @returns {Promise<Object|null>} { folderPath, images: [{ path, name, type }] }
  */
-export async function loadFolder(initialPath = null) {
+export async function loadFolder(initialPath = null, recursive = false) {
   if (!window.require || !fs || !path) {
     console.error('Electron environment not available');
     return null;
@@ -32,21 +34,40 @@ export async function loadFolder(initialPath = null) {
     }
 
     const images = [];
-
-    // Scan folder for image files
-    const files = fs.readdirSync(folderPath);
     const imageExtensions = ['.tex', '.dds', '.png', '.jpg', '.jpeg'];
 
-    for (const file of files) {
-      const ext = path.extname(file).toLowerCase();
-      if (imageExtensions.includes(ext)) {
-        images.push({
-          path: path.join(folderPath, file),
-          name: file,
-          type: ext.substring(1)
-        });
+    /**
+     * Recursively scan a directory for image files
+     * @param {string} dirPath - Directory path to scan
+     */
+    const scanDirectory = (dirPath) => {
+      try {
+        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+
+        for (const entry of entries) {
+          const fullPath = path.join(dirPath, entry.name);
+
+          if (entry.isDirectory() && recursive) {
+            // Recurse into subdirectory
+            scanDirectory(fullPath);
+          } else if (entry.isFile()) {
+            const ext = path.extname(entry.name).toLowerCase();
+            if (imageExtensions.includes(ext)) {
+              images.push({
+                path: fullPath,
+                name: entry.name,
+                type: ext.substring(1)
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not read directory:', dirPath, err.message);
       }
-    }
+    };
+
+    // Start scanning from root folder
+    scanDirectory(folderPath);
 
     return {
       folderPath,

@@ -53,7 +53,9 @@ const ICONS = {
 export default function BinEditorV2() {
     // ============ STATE ============
     const [data, setData] = useState(null);                    // Parsed file data
-    const [originalContent, setOriginalContent] = useState(''); // For undo/restore
+    const [originalContent, setOriginalContent] = useState(''); // Content when file was loaded (for restore)
+    const [initialContent, setInitialContent] = useState('');   // Very first content (survives saves)
+    const [undoHistory, setUndoHistory] = useState([]);         // Stack of previous states for undo
     const [currentPath, setCurrentPath] = useState(null);       // Current .py file path
     const [binPath, setBinPath] = useState(null);               // Original .bin path
 
@@ -76,6 +78,7 @@ export default function BinEditorV2() {
 
     // ============ REFS ============
     const fileInputRef = useRef(null);
+    const MAX_UNDO_HISTORY = 20; // Limit undo history size
 
     // ============ COMPUTED VALUES ============
     const stats = useMemo(() => {
@@ -202,6 +205,8 @@ export default function BinEditorV2() {
 
             setData(parsed);
             setOriginalContent(content);
+            setInitialContent(content);  // Store the very first content
+            setUndoHistory([]);           // Clear undo history on new file load
             setCurrentPath(pyPath);
             setSelectedEmitters(new Set());
             setExpandedSystems(new Set());
@@ -264,6 +269,7 @@ export default function BinEditorV2() {
             });
 
             setOriginalContent(content);
+            setUndoHistory([]);  // Clear undo history after saving (saved state is new baseline)
             setHasUnsavedChanges(false);
             setStatusMessage('Saved successfully');
 
@@ -277,23 +283,39 @@ export default function BinEditorV2() {
     }, [data, currentPath, binPath]);
 
     const restoreOriginal = useCallback(async () => {
-        if (!originalContent || !currentPath) {
+        // Use initialContent (original when first loaded) if available, otherwise originalContent (last loaded/saved)
+        const contentToRestore = initialContent || originalContent;
+
+        if (!contentToRestore || !currentPath) {
             setStatusMessage('Nothing to restore');
             return;
         }
 
         try {
             setIsLoading(true);
-            setLoadingText('Restoring original...');
+            setLoadingText('Restoring to original...');
 
             // Re-parse original content
-            const parsed = parsePyFile(originalContent);
+            const parsed = parsePyFile(contentToRestore);
 
             // Write original back to file
             const fs = window.require('fs');
-            fs.writeFileSync(currentPath, originalContent, 'utf8');
+            const { execSync } = window.require('child_process');
+            const path = window.require('path');
+            fs.writeFileSync(currentPath, contentToRestore, 'utf8');
+
+            setLoadingText('Converting to .bin...');
+
+            // Convert back to .bin (same as save)
+            const ritobinPath = await electronPrefs.get('RitoBinPath');
+            execSync(`"${ritobinPath}" "${currentPath}"`, {
+                cwd: path.dirname(currentPath),
+                timeout: 30000
+            });
 
             setData(parsed);
+            setOriginalContent(contentToRestore);
+            setUndoHistory([]); // Clear undo history after restore
             setHasUnsavedChanges(false);
             setSelectedEmitters(new Set());
             setStatusMessage('Restored to original');
@@ -305,7 +327,31 @@ export default function BinEditorV2() {
             setIsLoading(false);
             setLoadingText('');
         }
-    }, [originalContent, currentPath]);
+    }, [initialContent, originalContent, currentPath]);
+
+    // Undo the last change
+    const undoLastChange = useCallback(() => {
+        if (undoHistory.length === 0) {
+            setStatusMessage('Nothing to undo');
+            return;
+        }
+
+        // Pop the last state from history
+        const previousData = undoHistory[undoHistory.length - 1];
+        setUndoHistory(prev => prev.slice(0, -1));
+
+        setData(previousData);
+        setStatusMessage(`Undo successful (${undoHistory.length - 1} more steps available)`);
+
+        // Still has unsaved changes unless undo history is now empty and data matches original
+        if (undoHistory.length <= 1) {
+            // Check if we're back to original
+            const currentContent = serializeToFile(previousData);
+            if (currentContent === originalContent) {
+                setHasUnsavedChanges(false);
+            }
+        }
+    }, [undoHistory, originalContent]);
 
     // ============ SELECTION ============
 
@@ -367,6 +413,23 @@ export default function BinEditorV2() {
 
     // ============ EDITING OPERATIONS ============
 
+    // Save current state to undo history before making changes
+    const saveToUndoHistory = useCallback(() => {
+        if (!data) return;
+
+        // Deep clone the data to save
+        const clonedData = JSON.parse(JSON.stringify(data));
+
+        setUndoHistory(prev => {
+            const newHistory = [...prev, clonedData];
+            // Limit history size
+            if (newHistory.length > MAX_UNDO_HISTORY) {
+                return newHistory.slice(-MAX_UNDO_HISTORY);
+            }
+            return newHistory;
+        });
+    }, [data]);
+
     const markChanged = useCallback(() => {
         setHasUnsavedChanges(true);
     }, []);
@@ -378,6 +441,7 @@ export default function BinEditorV2() {
             return;
         }
 
+        saveToUndoHistory();  // Save state before change
         const result = scaleBirthScale(data, selectedEmitters, scaleMultiplier);
 
         if (result.modified > 0) {
@@ -387,7 +451,7 @@ export default function BinEditorV2() {
         } else {
             setStatusMessage('No emitters with birthScale in selection');
         }
-    }, [data, selectedEmitters, scaleMultiplier, markChanged]);
+    }, [data, selectedEmitters, scaleMultiplier, markChanged, saveToUndoHistory]);
 
     // Scale only scale0
     const applyScaleScale0 = useCallback(() => {
@@ -396,6 +460,7 @@ export default function BinEditorV2() {
             return;
         }
 
+        saveToUndoHistory();  // Save state before change
         const result = scaleScale0(data, selectedEmitters, scaleMultiplier);
 
         if (result.modified > 0) {
@@ -405,7 +470,7 @@ export default function BinEditorV2() {
         } else {
             setStatusMessage('No emitters with scale0 in selection');
         }
-    }, [data, selectedEmitters, scaleMultiplier, markChanged]);
+    }, [data, selectedEmitters, scaleMultiplier, markChanged, saveToUndoHistory]);
 
     const handleAddBindWeight = useCallback(() => {
         if (!data || selectedEmitters.size === 0) {
@@ -413,6 +478,7 @@ export default function BinEditorV2() {
             return;
         }
 
+        saveToUndoHistory();  // Save state before change
         const result = addBindWeight(data, selectedEmitters, 1);
 
         if (result.added > 0) {
@@ -422,7 +488,7 @@ export default function BinEditorV2() {
         } else {
             setStatusMessage('Selected emitters already have bindWeight');
         }
-    }, [data, selectedEmitters, markChanged]);
+    }, [data, selectedEmitters, markChanged, saveToUndoHistory]);
 
     const handleSetBindWeightZero = useCallback(() => {
         if (!data || selectedEmitters.size === 0) {
@@ -430,6 +496,7 @@ export default function BinEditorV2() {
             return;
         }
 
+        saveToUndoHistory();  // Save state before change
         const result = setBindWeight(data, selectedEmitters, 0);
 
         if (result.modified > 0) {
@@ -439,7 +506,7 @@ export default function BinEditorV2() {
         } else {
             setStatusMessage('No emitters with bindWeight in selection');
         }
-    }, [data, selectedEmitters, markChanged]);
+    }, [data, selectedEmitters, markChanged, saveToUndoHistory]);
 
     const handleSetBindWeightOne = useCallback(() => {
         if (!data || selectedEmitters.size === 0) {
@@ -447,6 +514,7 @@ export default function BinEditorV2() {
             return;
         }
 
+        saveToUndoHistory();  // Save state before change
         const result = setBindWeight(data, selectedEmitters, 1);
 
         if (result.modified > 0) {
@@ -456,7 +524,7 @@ export default function BinEditorV2() {
         } else {
             setStatusMessage('No emitters with bindWeight in selection');
         }
-    }, [data, selectedEmitters, markChanged]);
+    }, [data, selectedEmitters, markChanged, saveToUndoHistory]);
 
     const handleAddTranslationOverride = useCallback(() => {
         if (!data || selectedEmitters.size === 0) {
@@ -464,6 +532,7 @@ export default function BinEditorV2() {
             return;
         }
 
+        saveToUndoHistory();  // Save state before change
         const result = addTranslationOverride(data, selectedEmitters, { x: 0, y: 0, z: 0 });
 
         if (result.added > 0) {
@@ -473,7 +542,7 @@ export default function BinEditorV2() {
         } else {
             setStatusMessage('Selected emitters already have translationOverride');
         }
-    }, [data, selectedEmitters, markChanged]);
+    }, [data, selectedEmitters, markChanged, saveToUndoHistory]);
 
     // Set translationOverride values for all selected emitters
     const handleSetTranslationOverride = useCallback(() => {
@@ -482,6 +551,7 @@ export default function BinEditorV2() {
             return;
         }
 
+        saveToUndoHistory();  // Save state before change
         const newValue = { x: toX, y: toY, z: toZ };
         const result = setTranslationOverride(data, selectedEmitters, newValue);
 
@@ -492,7 +562,7 @@ export default function BinEditorV2() {
         } else {
             setStatusMessage('No emitters with translationOverride in selection');
         }
-    }, [data, selectedEmitters, toX, toY, toZ, markChanged]);
+    }, [data, selectedEmitters, toX, toY, toZ, markChanged, saveToUndoHistory]);
 
     // Scale particleLifetime
     const handleScaleParticleLifetime = useCallback(() => {
@@ -501,6 +571,7 @@ export default function BinEditorV2() {
             return;
         }
 
+        saveToUndoHistory();  // Save state before change
         const result = scaleParticleLifetime(data, selectedEmitters, scaleMultiplier);
 
         if (result.modified > 0) {
@@ -510,7 +581,7 @@ export default function BinEditorV2() {
         } else {
             setStatusMessage('No emitters with particleLifetime in selection');
         }
-    }, [data, selectedEmitters, scaleMultiplier, markChanged]);
+    }, [data, selectedEmitters, scaleMultiplier, markChanged, saveToUndoHistory]);
 
     // Scale lifetime (emitter duration)
     const handleScaleLifetime = useCallback(() => {
@@ -519,6 +590,7 @@ export default function BinEditorV2() {
             return;
         }
 
+        saveToUndoHistory();  // Save state before change
         const result = scaleLifetime(data, selectedEmitters, scaleMultiplier);
 
         if (result.modified > 0) {
@@ -528,7 +600,7 @@ export default function BinEditorV2() {
         } else {
             setStatusMessage('No emitters with lifetime in selection');
         }
-    }, [data, selectedEmitters, scaleMultiplier, markChanged]);
+    }, [data, selectedEmitters, scaleMultiplier, markChanged, saveToUndoHistory]);
 
     // Single emitter property changes
     const handlePropertyChange = useCallback((property, axis, value) => {
@@ -536,6 +608,8 @@ export default function BinEditorV2() {
 
         const numValue = parseFloat(value);
         if (isNaN(numValue)) return;
+
+        saveToUndoHistory();  // Save state before change
 
         // Find the system
         const systemName = [...selectedEmitters][0].split(':')[0];
@@ -571,7 +645,7 @@ export default function BinEditorV2() {
             setData({ ...data });
             markChanged();
         }
-    }, [selectedEmitter, data, selectedEmitters, markChanged]);
+    }, [selectedEmitter, data, selectedEmitters, markChanged, saveToUndoHistory]);
 
     // ============ RENDER HELPERS ============
 
@@ -892,11 +966,20 @@ export default function BinEditorV2() {
                             {ICONS.folder} Load .bin
                         </button>
                         <button
-                            onClick={restoreOriginal}
-                            disabled={!hasUnsavedChanges}
-                            style={buttonStyle('#9d8cd9', !hasUnsavedChanges)}
+                            onClick={undoLastChange}
+                            disabled={undoHistory.length === 0}
+                            style={buttonStyle('#6cb6ff', undoHistory.length === 0)}
+                            title={`Undo (${undoHistory.length} steps available)`}
                         >
-                            {ICONS.undo} Restore
+                            {ICONS.undo} Undo{undoHistory.length > 0 ? ` (${undoHistory.length})` : ''}
+                        </button>
+                        <button
+                            onClick={restoreOriginal}
+                            disabled={!initialContent}
+                            style={buttonStyle('#9d8cd9', !initialContent)}
+                            title="Restore to original state when file was first loaded"
+                        >
+                            ↺ Restore
                         </button>
                         <button
                             onClick={saveFile}

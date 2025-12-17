@@ -9,6 +9,7 @@ import {
     updateBirthScale,
     updateScale0,
     updateBirthScaleDynamics,
+    updateScale0Dynamics,
     updateBindWeight,
     insertBindWeight,
     updateTranslationOverride,
@@ -101,6 +102,20 @@ export function scaleScale0(data, selectedKeys, multiplier) {
                     modified++;
                 } else {
                     errors.push(`Failed to update scale0 for ${emitter.name}`);
+                }
+            }
+
+            // Also scale dynamics if present
+            if (emitter.scale0?.dynamicsValues?.length > 0) {
+                const newDynamics = emitter.scale0.dynamicsValues.map(v => ({
+                    x: v.x * multiplier,
+                    y: v.y * multiplier,
+                    z: v.z * multiplier
+                }));
+
+                if (updateScale0Dynamics(emitter, newDynamics)) {
+                    markSystemModified(data, system.name);
+                    // Don't increment modified again, same emitter
                 }
             }
         }
@@ -337,6 +352,11 @@ export function scaleParticleLifetime(data, selectedKeys, multiplier) {
             if (!selectedKeys.has(key)) continue;
 
             if (emitter.particleLifetime?.constantValue != null) {
+                // Skip -1 (infinite/forever) - it's a special value
+                if (emitter.particleLifetime.constantValue === -1) {
+                    continue;
+                }
+
                 const newValue = emitter.particleLifetime.constantValue * multiplier;
 
                 if (updateParticleLifetime(emitter, newValue)) {
@@ -370,6 +390,11 @@ export function scaleLifetime(data, selectedKeys, multiplier) {
             if (!selectedKeys.has(key)) continue;
 
             if (emitter.lifetime?.value != null) {
+                // Skip -1 (infinite/forever) - it's a special value
+                if (emitter.lifetime.value === -1) {
+                    continue;
+                }
+
                 const newValue = emitter.lifetime.value * multiplier;
 
                 if (updateLifetime(emitter, newValue)) {

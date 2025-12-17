@@ -1,5 +1,35 @@
 /* paint component specific styles */
 
+/* ============================================
+   PERFORMANCE OPTIMIZATIONS FOR LARGE LISTS
+   ============================================ */
+
+/* Promote particle list to its own compositing layer for smooth scrolling */
+#Particle-List,
+.particle-list-container {
+  /* GPU acceleration */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  /* Contain layout recalculations */
+  contain: layout style;
+  /* Optimize scroll performance */
+  overflow-anchor: none;
+}
+
+/* Optimize system containers */
+.Particle-Div,
+.Material-Div {
+  /* Prevent layout thrashing from child changes */
+  contain: layout style;
+}
+
+/* Disable pointer events during scroll for smoother performance */
+.scrolling .Emitter-Div,
+.scrolling .Prop-Block,
+.scrolling .Prop-Block-Secondary {
+  pointer-events: none;
+}
+
 /* Override Material-UI styles to match the original design */
 .MuiPaper-root {
   background-color: var(--surface-2) !important;
@@ -15,19 +45,21 @@
   text-transform: none !important;
 }
 
-/* Color blocks in the color container */
+/* Color blocks in the color container - PERFORMANCE OPTIMIZED */
 .Color {
   height: 30px;
   border: 1px solid var(--bg);
   cursor: pointer;
-  transition: all 0.3s ease;
   border-radius: 0.4rem;
+  /* GPU acceleration */
+  will-change: border-color, opacity;
+  contain: layout style;
 }
 
 .Color:hover {
-  transform: scale(1.05);
-  box-shadow: 0 2px 8px var(--shadow-light);
+  /* Simple hover - no transform, no box-shadow */
   border-color: var(--accent);
+  opacity: 0.9;
 }
 
 /* Gradient indicator styling */
@@ -39,7 +71,8 @@
 }
 
 /* Particle and Material divs - for when they're dynamically created */
-.Particle-Div, .Material-Div {
+.Particle-Div,
+.Material-Div {
   margin: 0.5rem 0;
   color: var(--accent-muted);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -61,6 +94,12 @@
   font-weight: 500;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   margin-bottom: 0.3rem;
+  /* GPU optimization */
+  contain: layout style;
+}
+
+.Particle-Title-Div:hover {
+  background: color-mix(in srgb, var(--accent), transparent 92%);
 }
 
 .Emitter-Div {
@@ -73,6 +112,9 @@
   background: transparent;
   border-radius: 0.3rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  /* GPU optimization for many items */
+  contain: layout style;
+  will-change: background-color;
 }
 
 .Emitter-Div:last-child {
@@ -82,11 +124,11 @@
 
 .Emitter-Div:hover {
   background: var(--bg-2);
-  border-color: var(--accent-muted);
 }
 
-/* Property blocks for colors */
-.Prop-Block, .Prop-Block-Secondary {
+/* Property blocks for colors - PERFORMANCE OPTIMIZED */
+.Prop-Block,
+.Prop-Block-Secondary {
   height: 1.84616rem;
   position: relative;
   display: flex;
@@ -103,7 +145,9 @@
   border: 1px solid var(--bg);
   background: var(--surface-2);
   cursor: pointer;
-  transition: all 0.2s ease;
+  /* GPU acceleration - no transitions */
+  contain: layout style;
+  will-change: border-color;
 }
 
 .Prop-Block {
@@ -114,20 +158,19 @@
   width: 2.9rem;
 }
 
-.Prop-Block:hover, .Prop-Block-Secondary:hover {
-  transform: scale(1.1);
-  border-color: var(--accent-muted);
+.Prop-Block:hover,
+.Prop-Block-Secondary:hover {
+  /* Simple border highlight - no transform */
+  border-color: var(--accent);
 }
 
 /* Blank object styling */
 .Blank-Obj {
-  background: repeating-linear-gradient(
-    45deg,
-    var(--surface-3),
-    var(--surface-3) 2px,
-    var(--surface-4) 2px,
-    var(--surface-4) 4px
-  ) !important;
+  background: repeating-linear-gradient(45deg,
+      var(--surface-3),
+      var(--surface-3) 2px,
+      var(--surface-4) 2px,
+      var(--surface-4) 4px) !important;
 }
 
 /* Blend mode input styling */
@@ -178,7 +221,7 @@
   .MuiGrid-container {
     flex-direction: column;
   }
-  
+
   .MuiGrid-item {
     max-width: 100% !important;
   }
@@ -191,7 +234,7 @@
   font-size: small;
 }
 
-/* Texture preview button styling */
+/* Texture preview button styling - PERFORMANCE OPTIMIZED */
 .texture-preview-btn {
   background: var(--surface-2);
   color: var(--accent-muted);
@@ -205,20 +248,19 @@
   align-items: center;
   justify-content: center;
   margin-left: 0.5rem;
-  transition: all 0.2s;
   flex-shrink: 0;
   min-width: 64px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   z-index: 10;
   position: relative;
+  /* GPU optimization */
+  contain: layout style;
+  will-change: border-color, background-color;
 }
 
 .texture-preview-btn:hover {
   background: #3a3747;
   border-color: var(--accent);
-  transform: scale(1.1);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
-  z-index: 20;
+  /* No transform, no box-shadow for performance */
 }
 
 /* Texture Hover Preview */

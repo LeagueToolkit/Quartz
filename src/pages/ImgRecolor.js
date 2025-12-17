@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Box, Typography, Button, Slider, Checkbox } from '@mui/material';
+import { Box, Typography, Button, Slider, Checkbox, Switch, Menu, IconButton } from '@mui/material';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import SaveIcon from '@mui/icons-material/Save';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import SettingsIcon from '@mui/icons-material/Settings';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import GlowingSpinner from '../components/GlowingSpinner';
 import { loadFolder, loadSingleImage, saveImageFile, isGrayscaleImage } from '../logic/imgRecolorLogic';
 
@@ -97,38 +99,38 @@ const ImageThumbnail = memo(({ image, isSelected, onImageClick }) => {
   // Load thumbnail only when visible - queued with UI yielding and downscaled
   useEffect(() => {
     if (!isVisible) return;
-    
+
     let cancelled = false;
 
     thumbnailQueue.add(async () => {
       // Check if still mounted before doing work
       if (cancelled) return null;
-      
+
       const imageData = await loadSingleImage(image.path);
       if (!imageData || cancelled) return null;
-      
+
       const { width, height } = imageData;
       const maxSize = 128; // Small thumbnail size
-      
+
       // Calculate scale
       const scale = Math.min(maxSize / width, maxSize / height, 1);
       const newWidth = Math.round(width * scale);
       const newHeight = Math.round(height * scale);
-      
+
       // Create full size canvas first
       const fullCanvas = document.createElement('canvas');
       fullCanvas.width = width;
       fullCanvas.height = height;
       const fullCtx = fullCanvas.getContext('2d');
       fullCtx.putImageData(imageData, 0, 0);
-      
+
       // Downscale to thumbnail
       const thumbCanvas = document.createElement('canvas');
       thumbCanvas.width = newWidth;
       thumbCanvas.height = newHeight;
       const thumbCtx = thumbCanvas.getContext('2d');
       thumbCtx.drawImage(fullCanvas, 0, 0, newWidth, newHeight);
-      
+
       return thumbCanvas.toDataURL();
     }).then(dataUrl => {
       if (dataUrl && !cancelled) {
@@ -265,6 +267,7 @@ const ImgRecolor = () => {
   const [folderPath, setFolderPath] = useState('');
   const [allImages, setAllImages] = useState([]);
   const [selectedImages, setSelectedImages] = useState(new Set());
+  const [recursiveScan, setRecursiveScan] = useState(false); // Include subfolders toggle
   const [showingSelection, setShowingSelection] = useState(true);
   const [loadedImages, setLoadedImages] = useState(new Map()); // path -> { original, adjusted }
 
@@ -279,8 +282,16 @@ const ImgRecolor = () => {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
+  // Options menu state
+  const [optionsAnchor, setOptionsAnchor] = useState(null);
+  const optionsOpen = Boolean(optionsAnchor);
+
   // Loading state
   const [isLoading, setIsLoading] = useState(false);
+
+  // Drag and drop state
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
 
   // Web Worker and debounce
   const workerRef = useRef(null);
@@ -357,31 +368,31 @@ const ImgRecolor = () => {
   // Create a downscaled preview for fast processing
   const createPreview = useCallback((imageData, maxSize = 256) => {
     const { width, height } = imageData;
-    
+
     // If already small enough, return as-is
     if (width <= maxSize && height <= maxSize) {
       return { preview: imageData, scale: 1 };
     }
-    
+
     // Calculate scale to fit within maxSize
     const scale = Math.min(maxSize / width, maxSize / height);
     const newWidth = Math.round(width * scale);
     const newHeight = Math.round(height * scale);
-    
+
     // Create canvas for downscaling
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
     ctx.putImageData(imageData, 0, 0);
-    
+
     // Create smaller canvas
     const smallCanvas = document.createElement('canvas');
     smallCanvas.width = newWidth;
     smallCanvas.height = newHeight;
     const smallCtx = smallCanvas.getContext('2d');
     smallCtx.drawImage(canvas, 0, 0, newWidth, newHeight);
-    
+
     return {
       preview: smallCtx.getImageData(0, 0, newWidth, newHeight),
       scale
@@ -453,7 +464,7 @@ const ImgRecolor = () => {
   const handleLoadFolder = async () => {
     setIsLoading(true);
     try {
-      const result = await loadFolder();
+      const result = await loadFolder(null, recursiveScan);
       if (result) {
         setFolderPath(result.folderPath);
         setAllImages(result.images);
@@ -608,7 +619,7 @@ const ImgRecolor = () => {
       // Process all selected images at FULL resolution
       for (const imagePath of selectedImages) {
         let original;
-        
+
         // Get original full-resolution image
         if (loadedImages.has(imagePath)) {
           original = loadedImages.get(imagePath).original;
@@ -627,7 +638,7 @@ const ImgRecolor = () => {
             opacity,
             preserveOriginalColors
           );
-          
+
           const success = await saveImageFile(adjusted, imagePath);
           if (success) {
             savedCount++;
@@ -654,15 +665,167 @@ const ImgRecolor = () => {
     }
   };
 
+  // Drag and drop handlers
+  const handleDragEnter = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback(async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounterRef.current = 0;
+
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    setIsLoading(true);
+    try {
+      const fs = window.require('fs');
+      const path = window.require('path');
+      const imageExtensions = ['.tex', '.dds', '.png', '.jpg', '.jpeg'];
+
+      // Check if first item is a directory
+      const firstPath = files[0].path;
+      const stat = fs.statSync(firstPath);
+
+      if (stat.isDirectory()) {
+        // Load folder (use recursiveScan setting)
+        const result = await loadFolder(firstPath, recursiveScan);
+        if (result) {
+          setFolderPath(result.folderPath);
+          setAllImages(result.images);
+          setSelectedImages(new Set());
+          setShowingSelection(true);
+          setLoadedImages(new Map());
+        }
+      } else {
+        // Handle individual files - collect all valid images
+        const images = [];
+        const folderPaths = new Set();
+
+        for (const file of files) {
+          const ext = path.extname(file.path).toLowerCase();
+          if (imageExtensions.includes(ext)) {
+            images.push({
+              path: file.path,
+              name: file.name,
+              type: ext.substring(1)
+            });
+            folderPaths.add(path.dirname(file.path));
+          }
+        }
+
+        if (images.length > 0) {
+          // Use the common folder or first file's folder as the path
+          const commonFolder = folderPaths.size === 1
+            ? Array.from(folderPaths)[0]
+            : path.dirname(files[0].path);
+
+          setFolderPath(commonFolder);
+          setAllImages(images);
+          setSelectedImages(new Set(images.map(img => img.path))); // Auto-select dropped files
+          setShowingSelection(true);
+          setLoadedImages(new Map());
+        }
+      }
+    } catch (error) {
+      console.error('Drop error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [recursiveScan]);
+
   return (
-    <Box sx={{
-      height: '100%',
-      display: 'flex',
-      flexDirection: 'column',
-      background: 'var(--bg)',
-      position: 'relative',
-      overflow: 'hidden'
-    }}>
+    <Box
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--bg)',
+        position: 'relative',
+        overflow: 'hidden'
+      }}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drag Overlay */}
+      {isDragging && (
+        <Box sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 100,
+          background: 'rgba(0, 0, 0, 0.85)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 2,
+          border: '3px dashed var(--accent)',
+          borderRadius: '12px',
+          margin: '16px',
+          animation: 'pulse-border 1.5s ease-in-out infinite',
+          pointerEvents: 'none'
+        }}>
+          <CloudUploadIcon sx={{
+            fontSize: '4rem',
+            color: 'var(--accent)',
+            animation: 'float 2s ease-in-out infinite'
+          }} />
+          <Typography sx={{
+            color: 'var(--accent)',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '1.2rem',
+            fontWeight: 600
+          }}>
+            Drop images or folder here
+          </Typography>
+          <Typography sx={{
+            color: 'var(--text-2)',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '0.85rem'
+          }}>
+            Supports TEX, DDS, PNG, JPG files
+          </Typography>
+        </Box>
+      )}
+
+      {/* Drag overlay animations */}
+      <style>{`
+        @keyframes pulse-border {
+          0%, 100% { border-color: var(--accent); box-shadow: 0 0 20px color-mix(in srgb, var(--accent), transparent 70%); }
+          50% { border-color: var(--accent-muted); box-shadow: 0 0 40px color-mix(in srgb, var(--accent), transparent 50%); }
+        }
+        @keyframes float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
+        }
+      `}</style>
       {/* Main Content */}
       <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', flex: 1, overflow: 'hidden', gap: 'clamp(0.5rem, 1vw, 0.75rem)', p: 'clamp(0.5rem, 1vw, 0.75rem)' }}>
         {/* Left Panel - Image List/Preview */}
@@ -737,14 +900,98 @@ const ImgRecolor = () => {
                 </>
               )}
             </Box>
-            <Typography sx={{
-              color: 'var(--text-2)',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.85rem',
-              marginLeft: 'auto'
-            }}>
-              {folderPath ? `${allImages.length} images found` : 'No folder loaded'}
-            </Typography>
+            {/* Right side - Status text and Settings */}
+            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+              <Typography sx={{
+                color: 'var(--text-2)',
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: '0.85rem'
+              }}>
+                {folderPath ? `${allImages.length} images found` : 'No folder loaded'}
+              </Typography>
+              {/* Options Menu Button */}
+              <IconButton
+                onClick={(e) => setOptionsAnchor(e.currentTarget)}
+                sx={{
+                  ...celestialButtonStyle,
+                  width: '34px',
+                  height: '34px',
+                  padding: 0,
+                  minWidth: 'unset',
+                  color: optionsOpen ? 'var(--accent)' : 'var(--text)',
+                  borderColor: optionsOpen ? 'var(--accent)' : 'var(--accent-muted)',
+                }}
+              >
+                <SettingsIcon sx={{ fontSize: '1.1rem' }} />
+              </IconButton>
+              {/* Options Dropdown Menu */}
+              <Menu
+                anchorEl={optionsAnchor}
+                open={optionsOpen}
+                onClose={() => setOptionsAnchor(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                slotProps={{
+                  paper: {
+                    sx: {
+                      background: 'var(--bg-2)',
+                      border: '1px solid var(--accent-muted)',
+                      borderRadius: '8px',
+                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+                      minWidth: '200px',
+                      mt: 0.5
+                    }
+                  }
+                }}
+              >
+                {/* Include Subfolders Option */}
+                <Box
+                  onClick={() => setRecursiveScan(!recursiveScan)}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 16px',
+                    cursor: 'pointer',
+                    transition: 'background 150ms ease',
+                    '&:hover': {
+                      background: 'rgba(255, 255, 255, 0.05)'
+                    }
+                  }}
+                >
+                  <Typography sx={{
+                    color: 'var(--text)',
+                    fontFamily: 'JetBrains Mono, monospace',
+                    fontSize: '0.85rem',
+                    userSelect: 'none'
+                  }}>
+                    Include Subfolders
+                  </Typography>
+                  <Switch
+                    checked={recursiveScan}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setRecursiveScan(e.target.checked);
+                    }}
+                    size="small"
+                    sx={{
+                      '& .MuiSwitch-switchBase': {
+                        color: 'var(--text-2)',
+                      },
+                      '& .MuiSwitch-switchBase.Mui-checked': {
+                        color: 'var(--accent)',
+                      },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                        backgroundColor: 'var(--accent-muted)',
+                      },
+                      '& .MuiSwitch-track': {
+                        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                      }
+                    }}
+                  />
+                </Box>
+              </Menu>
+            </Box>
           </Box>
 
           {/* Horizontal Divider */}
@@ -1130,9 +1377,9 @@ const ImgRecolor = () => {
             </Box>
 
             {/* Preserve Original Colors Checkbox */}
-            <Box sx={{ 
+            <Box sx={{
               marginBottom: '20px',
-              display: 'flex', 
+              display: 'flex',
               alignItems: 'center',
               paddingLeft: '4px'
             }}>
@@ -1158,7 +1405,7 @@ const ImgRecolor = () => {
                 cursor: 'pointer',
                 userSelect: 'none'
               }}
-              onClick={() => setPreserveOriginalColors(!preserveOriginalColors)}
+                onClick={() => setPreserveOriginalColors(!preserveOriginalColors)}
               >
                 Preserve original colors
               </Typography>
