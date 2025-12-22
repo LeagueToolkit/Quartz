@@ -17,7 +17,7 @@ const parseVfxEmitters = (content) => {
     // Look for VfxSystemDefinitionData (case-insensitive)
     if (/=\s*VfxSystemDefinitionData\s*\{/i.test(line)) {
       vfxSystemCount++;
-      
+
       // Support quoted keys and hashed keys like 0x6bb943e2 (case-insensitive)
       const keyMatch = line.match(/^(?:"([^\"]+)"|(0x[0-9a-fA-F]+))\s*=\s*VfxSystemDefinitionData\s*\{/i);
       if (keyMatch) {
@@ -27,17 +27,17 @@ const parseVfxEmitters = (content) => {
 
         // Parse only emitter names within this system (fast parsing)
         const { emitterNames, endLine } = parseEmitterNamesInVfxSystem(lines, i);
-        
+
         // Extract only this system's content
         const systemContent = lines.slice(i, endLine + 1).join('\n');
-        
+
         // Try to read particleName for a friendlier display name (case-insensitive)
         let particleName = null;
         const particleNameMatch = systemContent.match(/particleName:\s*string\s*=\s*"([^"]+)"/i);
         if (particleNameMatch) {
           particleName = particleNameMatch[1];
         }
-        
+
         const system = {
           key: cleanSystemKey,
           name: systemName,
@@ -121,7 +121,7 @@ const parseEmitterNameOnly = (lines, emitterStartLine) => {
 
   for (let i = emitterStartLine + 1; i < lines.length && i < emitterStartLine + 100; i++) {
     const line = lines[i].trim();
-    
+
     // Track bracket depth
     const openBrackets = (line.match(/{/g) || []).length;
     const closeBrackets = (line.match(/}/g) || []).length;
@@ -160,7 +160,7 @@ const loadEmitterData = (system, emitterName) => {
   }
 
 
-  
+
   const lines = system.rawContent.split('\n');
   let bracketDepth = 0;
   let inSystem = false;
@@ -185,28 +185,28 @@ const loadEmitterData = (system, emitterName) => {
 
       // Found an emitter - check if it's the one we want (case-insensitive)
       if (/VfxEmitterDefinitionData\s*\{/i.test(line)) {
-        
+
         // Find the end of this specific emitter block
         let emitterBracketDepth = 1;
         let emitterEndLine = i;
-        
+
         // Find the end of this emitter block
         for (let j = i + 1; j < lines.length; j++) {
           const emitterLine = lines[j];
           const openBrackets = (emitterLine.match(/{/g) || []).length;
           const closeBrackets = (emitterLine.match(/}/g) || []).length;
           emitterBracketDepth += openBrackets - closeBrackets;
-          
+
           if (emitterBracketDepth <= 0) {
             emitterEndLine = j;
             break;
           }
         }
-        
+
         // Extract just this emitter's lines
         const emitterLines = lines.slice(i, emitterEndLine + 1);
         const { emitter, endLine } = parseVfxEmitter(emitterLines, 0);
-        
+
         if (emitter && emitter.name) {
           foundEmitters.push(emitter.name);
           if (emitter.name === emitterName) {
@@ -235,14 +235,14 @@ const loadEmitterData = (system, emitterName) => {
  */
 const loadMultipleEmitterData = (system, emitterNames) => {
   const emitters = [];
-  
+
   for (const emitterName of emitterNames) {
     const emitterData = loadEmitterData(system, emitterName);
     if (emitterData) {
       emitters.push(emitterData);
     }
   }
-  
+
   return emitters;
 };
 
@@ -262,7 +262,7 @@ const loadEmitterDataFromAllSystems = (allSystems, emitterName) => {
       }
     }
   }
-  
+
   return null;
 };
 
@@ -276,10 +276,10 @@ const cleanSystemName = (fullName) => {
   if (fullName.startsWith('0x')) {
     return fullName; // Return the full hash value as-is
   }
-  
+
   // Remove quotes from string paths
   const cleanName = fullName.replace(/^"|"$/g, '');
-  
+
   // Extract meaningful name from path like "Characters/Aurora/Skins/Skin0/Particles/Aurora_Base_BA_Wand"
   const parts = cleanName.split('/');
   return parts.length > 1 ? parts[parts.length - 1] : cleanName;
@@ -340,7 +340,7 @@ const parseEmittersInVfxSystem = (lines, systemStartLine) => {
  * @returns {Object} - Object containing emitter data and end line
  */
 const parseVfxEmitter = (lines, emitterStartLine) => {
-  
+
   const emitter = {
     name: '',
     startLine: emitterStartLine,
@@ -359,7 +359,7 @@ const parseVfxEmitter = (lines, emitterStartLine) => {
     originalContent += line + '\n';
 
     const trimmedLine = line.trim();
-    
+
     // Track bracket depth
     const openBrackets = (line.match(/{/g) || []).length;
     const closeBrackets = (line.match(/}/g) || []).length;
@@ -382,11 +382,11 @@ const parseVfxEmitter = (lines, emitterStartLine) => {
     if (bracketDepth <= 0) {
       emitter.endLine = i;
       emitter.originalContent = originalContent;
-      
+
       // Extract texture path from the emitter content
       emitter.texturePath = findTexturePathInContent(originalContent);
       // texturePath optional
-      
+
       // parsing complete
       break;
     }
@@ -820,19 +820,20 @@ const parseDynamics = (lines, startLine) => {
  * @returns {string|null} - Found texture path or null
  */
 const findTexturePathInContent = (content) => {
-  // First, look specifically for the main texture field
-  const mainTexturePattern = /texture:\s*string\s*=\s*"([^"]+)"/gi;
+  // First, look specifically for the main texture field (not particleColorTexture or other variants)
+  // Use negative lookbehind to ensure we match only standalone "texture:" not "particleColorTexture:" etc.
+  const mainTexturePattern = /(?<![a-zA-Z])texture:\s*string\s*=\s*"([^"]+)"/gi;
   const mainTextureMatch = content.match(mainTexturePattern);
   if (mainTextureMatch && mainTextureMatch.length > 0) {
     // Extract just the path from the first capture group
-    let texturePath = mainTextureMatch[0].match(/texture:\s*string\s*=\s*"([^"]+)"/i)[1];
-    
+    let texturePath = mainTextureMatch[0].match(/(?<![a-zA-Z])texture:\s*string\s*=\s*"([^"]+)"/i)[1];
+
     // Auto-correct known corruption patterns
     if (texturePath.includes('akitanerusera')) {
       const correctedPath = texturePath.replace(/akitanerusera/g, 'ASSETS');
       texturePath = correctedPath;
     }
-    
+
     return texturePath;
   }
 
@@ -858,13 +859,13 @@ const findTexturePathInContent = (content) => {
         // Pattern doesn't have capture groups, just remove quotes
         texturePath = matches[0].replace(/"/g, '');
       }
-      
+
       // Auto-correct known corruption patterns
       if (texturePath.includes('akitanerusera')) {
         const correctedPath = texturePath.replace(/akitanerusera/g, 'ASSETS');
         texturePath = correctedPath;
       }
-      
+
       // Return the first match
       return texturePath;
     }
@@ -891,7 +892,7 @@ const generateEmitterPython = (emitter) => {
     content += `    emitterName: string = "${emitter.name}"\n`;
   }
   content += `}\n`;
-  
+
   return content;
 };
 
@@ -983,12 +984,12 @@ const generateVector3Python = (vector3Data, indentLevel, propertyName) => {
  */
 const replaceEmittersInSystem = (systemContent, emittersPython) => {
   const lines = systemContent.split('\n');
-  
+
   // First, we need to determine which emitters belong to which section
   // by checking the original system content
   const complexEmitters = [];
   const simpleEmitters = [];
-  
+
   // Find both sections and their emitters in the original content
   let inComplexSection = false;
   let inSimpleSection = false;
@@ -997,11 +998,11 @@ const replaceEmittersInSystem = (systemContent, emittersPython) => {
   let complexSectionDepth = 0;
   let simpleSectionDepth = 0;
   const originalEmitterSections = new Map(); // Map emitter name to section type
-  
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
-    
+
     // Track section starts
     if (trimmed.includes('complexEmitterDefinitionData: list[pointer] =')) {
       inComplexSection = true;
@@ -1012,7 +1013,7 @@ const replaceEmittersInSystem = (systemContent, emittersPython) => {
       simpleSectionStart = i;
       simpleSectionDepth = 1;
     }
-    
+
     // Track emitters within sections
     if ((inComplexSection || inSimpleSection) && trimmed.includes('VfxEmitterDefinitionData {')) {
       // Find the emitter name
@@ -1028,7 +1029,7 @@ const replaceEmittersInSystem = (systemContent, emittersPython) => {
         }
       }
     }
-    
+
     // Track section depth
     if (inComplexSection) {
       const opens = (line.match(/\{/g) || []).length;
@@ -1038,7 +1039,7 @@ const replaceEmittersInSystem = (systemContent, emittersPython) => {
         inComplexSection = false;
       }
     }
-    
+
     if (inSimpleSection) {
       const opens = (line.match(/\{/g) || []).length;
       const closes = (line.match(/\}/g) || []).length;
@@ -1048,7 +1049,7 @@ const replaceEmittersInSystem = (systemContent, emittersPython) => {
       }
     }
   }
-  
+
   // Now categorize the new emitters based on their original section
   // If we can't determine, check if they exist in the original content
   for (const emitterBlock of emittersPython) {
@@ -1064,7 +1065,7 @@ const replaceEmittersInSystem = (systemContent, emittersPython) => {
         }
       }
     }
-    
+
     // Determine which section this emitter belongs to
     const sectionType = originalEmitterSections.get(emitterName);
     if (sectionType === 'simple') {
@@ -1074,12 +1075,12 @@ const replaceEmittersInSystem = (systemContent, emittersPython) => {
       complexEmitters.push(emitterBlock);
     }
   }
-  
+
   // If we have both sections, we need to replace both separately
   if (complexSectionStart !== -1 && simpleSectionStart !== -1) {
     // Replace complex section first
     const complexResultLines = replaceEmittersInSection(lines, complexSectionStart, complexEmitters);
-    
+
     // Recalculate simpleSectionStart after complex section replacement (line numbers may have shifted)
     let newSimpleSectionStart = -1;
     for (let i = 0; i < complexResultLines.length; i++) {
@@ -1088,7 +1089,7 @@ const replaceEmittersInSystem = (systemContent, emittersPython) => {
         break;
       }
     }
-    
+
     if (newSimpleSectionStart !== -1) {
       // Replace simple section in the result
       return replaceEmittersInSection(complexResultLines, newSimpleSectionStart, simpleEmitters).join('\n');
@@ -1097,12 +1098,12 @@ const replaceEmittersInSystem = (systemContent, emittersPython) => {
       return complexResultLines.join('\n');
     }
   }
-  
+
   // If only one section exists, use the original logic
   let sectionStartLine = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes('complexEmitterDefinitionData: list[pointer] =') || 
-        lines[i].includes('simpleEmitterDefinitionData: list[pointer] =')) {
+    if (lines[i].includes('complexEmitterDefinitionData: list[pointer] =') ||
+      lines[i].includes('simpleEmitterDefinitionData: list[pointer] =')) {
       sectionStartLine = i;
       break;
     }
@@ -1111,12 +1112,12 @@ const replaceEmittersInSystem = (systemContent, emittersPython) => {
   if (sectionStartLine === -1) {
     return systemContent;
   }
-  
+
   // Use all emitters if we couldn't categorize them
-  const emittersToUse = complexSectionStart !== -1 ? complexEmitters : 
-                        simpleSectionStart !== -1 ? simpleEmitters : 
-                        emittersPython;
-  
+  const emittersToUse = complexSectionStart !== -1 ? complexEmitters :
+    simpleSectionStart !== -1 ? simpleEmitters :
+      emittersPython;
+
   return replaceEmittersInSection(lines, sectionStartLine, emittersToUse).join('\n');
 };
 
@@ -1129,7 +1130,7 @@ const replaceEmittersInSystem = (systemContent, emittersPython) => {
  */
 const replaceEmittersInSection = (lines, sectionStartLine, emittersPython) => {
   const result = [];
-  
+
   // Determine indentation
   const headerLine = lines[sectionStartLine];
   const headerIndentMatch = headerLine.match(/^(\s*)/);

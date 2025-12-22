@@ -3,7 +3,7 @@
  * Main entry point
  */
 
-export { BIN, BINPatch, loadHashtables } from './bin.js';
+export { BIN, BINPatch, loadHashtables, clearHashtablesCache } from './bin.js';
 export { BytesStream } from './stream.js';
 export { BINHasher } from './binHasher.js';
 export { WADHasher } from './wadHasher.js';

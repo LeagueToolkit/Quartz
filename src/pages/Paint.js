@@ -5174,6 +5174,7 @@ const Paint = () => {
   };
   return (
     <Box
+      className="paint-container"
       sx={{
         height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
         minHeight: '100%', // Ensure it fills the container
@@ -6600,13 +6601,15 @@ const Paint = () => {
       </Menu>
 
       {/* Particle List */}
-      <Box sx={{
-        flex: 1, // Use remaining available space instead of fixed height
-        ...sectionStyle,
-        borderRadius: 1,
-        overflow: 'auto',
-        p: 0.5,
-      }} ref={particleListRef}>
+      <Box
+        className="vfx-particle-list"
+        sx={{
+          flex: 1, // Use remaining available space instead of fixed height
+          ...sectionStyle,
+          borderRadius: 1,
+          overflow: 'auto',
+          p: 0.5,
+        }} ref={particleListRef}>
         {!selectedFile && (
           <Box sx={{
             display: 'flex',

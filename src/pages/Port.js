@@ -312,6 +312,26 @@ const SystemActionsButton = React.memo(({
           }
         }}
       >
+        {system.emitters && system.emitters.length > 0 && (
+          <MenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDeleteAllEmitters(system.key);
+              setActionsMenuAnchor(null);
+            }}
+            sx={{
+              color: '#ef4444',
+              fontSize: '0.875rem',
+              borderBottom: '1px solid rgba(255,255,255,0.05)',
+              mb: 0.5,
+              pb: 1,
+              '&:hover': { backgroundColor: 'rgba(239, 68, 68, 0.1)' }
+            }}
+          >
+            <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+            Delete All Emitters
+          </MenuItem>
+        )}
         <MenuItem
           onClick={(e) => {
             e.stopPropagation();
@@ -364,23 +384,6 @@ const SystemActionsButton = React.memo(({
         >
           Add Matrix
         </MenuItem>
-        {system.emitters && system.emitters.length > 0 && (
-          <MenuItem
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDeleteAllEmitters(system.key);
-              setActionsMenuAnchor(null);
-            }}
-            sx={{
-              color: '#ef4444',
-              fontSize: '0.875rem',
-              '&:hover': { backgroundColor: 'rgba(239, 68, 68, 0.1)' }
-            }}
-          >
-            <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
-            Delete All Emitters
-          </MenuItem>
-        )}
       </Menu>
     </>
   );
@@ -968,14 +971,14 @@ const Port = () => {
           setDonorPyContent(pyContent);
           const systems = parseVfxEmitters(pyContent);
           setDonorSystems(systems);
-          
+
           // Check if systems should be expanded on load
           const expandOnLoad = await electronPrefs.get('ExpandSystemsOnLoad');
           if (!expandOnLoad) {
             // Default: collapse all systems
             setCollapsedSystems(prev => new Set([...prev, ...Object.keys(systems)]));
           }
-          
+
           setStatusMessage(`Donor bin auto-reloaded: ${Object.keys(systems).length} systems found`);
         } else if (lastDonorPath) {
           console.log('⚠️ Last Port donor bin file no longer exists, clearing saved path');
@@ -4169,6 +4172,8 @@ const Port = () => {
             cursor: isTarget ? 'pointer' : 'default',
             outline: isPressed ? '2px dashed var(--accent)' : (isDragging ? '2px dashed var(--accent)' : 'none'),
             outlineOffset: isPressed || isDragging ? '2px' : '0px',
+            userSelect: 'none',
+            outline: 'none',
             opacity: isPressed ? '0.8' : (isDragging ? '0.7' : '1'),
             transform: isPressed ? 'scale(0.98)' : (isDragging ? 'scale(0.95)' : 'scale(1)'),
             transition: 'all 0.1s ease-out',
@@ -4185,580 +4190,608 @@ const Port = () => {
           <div
             className="particle-title-div"
             style={{
-              cursor: 'pointer',
+              cursor: 'default',
+              padding: '0',
+              display: 'flex',
+              alignItems: 'stretch',
+              minHeight: '42px', // Match VFXHub height
               ...(isTarget && system.ported ? {
                 background: 'color-mix(in srgb, var(--accent-green, #22c55e), transparent 75%)',
                 borderBottom: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)'
               } : {})
             }}
           >
-            {/* Arrow indicator for collapse state - clicking it toggles collapse */}
-            <div 
-              style={{ 
-                marginRight: '4px',
-                display: 'flex', 
-                alignItems: 'center', 
-                opacity: 0.7, 
-                cursor: 'pointer',
-                position: 'relative',
-                padding: 0
-              }}
+            {/* Expand Zone (approx 20% width area on left) */}
+            <div
               onClick={(e) => {
                 e.stopPropagation();
                 toggleSystemCollapse(system.key);
               }}
+              style={{
+                width: '40px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'background 0.2s',
+                borderRight: '1px solid rgba(255,255,255,0.04)',
+                backgroundColor: 'rgba(255,255,255,0.02)'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+              title={collapsedSystems.has(system.key) ? "Expand" : "Collapse"}
             >
-              {/* Invisible larger clickable area */}
-              <div style={{ 
-                position: 'absolute', 
-                inset: '-12px', 
-                zIndex: 1 
-              }} />
-              {collapsedSystems.has(system.key) ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" style={{ transform: 'rotate(-90deg)' }} />}
+              <span style={{ fontSize: '14px', opacity: 0.9 }}>
+                {collapsedSystems.has(system.key) ? '🞂' : '▼'}
+              </span>
             </div>
 
-            {!isTarget && (
-              <button
-                className="port-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handlePortAllEmitters(system.key);
-                }}
-                title="Port all emitters from this system to selected target system"
-                disabled={!selectedTargetSystem}
-                style={{
-                  flexShrink: 0,
-                  minWidth: '32px',
-                  width: '32px',
-                  height: '32px',
-                  marginRight: '6px',
-                  fontSize: '16px',
-                  padding: '0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                ◄
-              </button>
-            )}
-            {isTarget && renamingSystem && renamingSystem.systemKey === system.key ? (
-              <RenameInput
-                initialValue={system.particleName || system.name || system.key}
-                onConfirm={(newName) => {
-                  if (newName && newName.trim() !== '' && newName !== (system.particleName || system.name || system.key)) {
-                    handleRenameSystem(system.key, newName);
-                  } else {
-                    setRenamingSystem(null);
-                  }
-                }}
-                onCancel={() => setRenamingSystem(null)}
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : (
-              <div
-                className="label ellipsis flex-1"
-                title={system.particleName || system.name}
-                style={{
-                  color: 'var(--accent)',
-                  fontWeight: '600',
-                  fontSize: '1rem',
-                  textShadow: '0 1px 2px rgba(0,0,0,0.5)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-              >
-                <span
-                  onDoubleClick={(e) => {
-                    if (isTarget) {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      setRenamingSystem({ systemKey: system.key, newName: system.particleName || system.name || system.key });
-                    }
+            {/* Content Zone (The rest) */}
+            <div
+              className={`flex-1 flex items-center ${isTarget && selectedTargetSystem === system.key ? 'selected' : ''}`}
+              style={{
+                padding: '0 12px',
+                cursor: 'pointer',
+                transition: 'background 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              onClick={(e) => {
+                if (isTarget) {
+                  setSelectedTargetSystem(selectedTargetSystem === system.key ? null : system.key);
+                }
+              }}
+            >
+              {!isTarget && (
+                <button
+                  className="port-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePortAllEmitters(system.key);
                   }}
+                  title="Port all emitters from this system to selected target system"
+                  disabled={!selectedTargetSystem}
                   style={{
-                    cursor: 'pointer',
-                    display: 'inline-block',
-                    flex: 1,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
+                    flexShrink: 0,
+                    minWidth: '28px',
+                    width: '28px',
+                    height: '28px',
+                    fontSize: '14px',
+                    padding: '0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
                   }}
                 >
-                  {(() => {
-                    const displayName = system.particleName || system.name || system.key;
-                    const shouldTrim = isTarget ? trimTargetNames : trimDonorNames;
-                    return shouldTrim ? getShortSystemName(displayName) : displayName;
-                  })()}
-                </span>
-                {collapsedSystems.has(system.key) && system.emitters && (
+                  ◄
+                </button>
+              )}
+
+              {isTarget && renamingSystem && renamingSystem.systemKey === system.key ? (
+                <RenameInput
+                  initialValue={system.particleName || system.name || system.key}
+                  onConfirm={(newName) => {
+                    if (newName && newName.trim() !== '' && newName !== (system.particleName || system.name || system.key)) {
+                      handleRenameSystem(system.key, newName);
+                    } else {
+                      setRenamingSystem(null);
+                    }
+                  }}
+                  onCancel={() => setRenamingSystem(null)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <div
+                  className="label ellipsis flex-1"
+                  title={system.particleName || system.name}
+                  style={{
+                    color: 'var(--accent)',
+                    fontWeight: '600',
+                    fontSize: '0.95rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <span
+                    onDoubleClick={(e) => {
+                      if (isTarget) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setRenamingSystem({ systemKey: system.key, newName: system.particleName || system.name || system.key });
+                      }
+                    }}
+                    style={{
+                      cursor: 'pointer',
+                      display: 'inline-block',
+                      flex: 1,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {(() => {
+                      const displayName = system.particleName || system.name || system.key;
+                      const shouldTrim = isTarget ? trimTargetNames : trimDonorNames;
+                      return shouldTrim ? getShortSystemName(displayName) : displayName;
+                    })()}
+                  </span>
+                  {selectedTargetSystem === system.key && isTarget && (
+                    <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>✓</span>
+                  )}
                   <span style={{
                     marginLeft: 'auto',
-                    opacity: 0.6,
-                    fontSize: '0.85em',
-                    fontWeight: 'normal',
-                    flexShrink: 0,
-                    paddingLeft: '8px'
+                    opacity: 1.0,
+                    fontSize: '12px',
+                    background: 'rgba(255,255,255,0.08)',
+                    padding: '1px 7px',
+                    borderRadius: '12px',
+                    color: 'var(--text)',
+                    border: '1px solid rgba(255,255,255,0.05)',
+                    fontWeight: '600'
                   }}>
-                    ({system.emitters.length})
+                    {system.emitters.length}
                   </span>
-                )}
+                </div>
+              )}
+            </div>
+
+            {isTarget && (
+              <div style={{ display: 'flex', alignItems: 'center', paddingRight: '8px' }}>
+                <SystemActionsButton
+                  system={system}
+                  hasResourceResolver={hasResourceResolver}
+                  hasSkinCharacterData={hasSkinCharacterData}
+                  menuAnchorEl={actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? actionsMenuAnchor.element : null}
+                  setActionsMenuAnchor={setActionsMenuAnchor}
+                  setShowMatrixModal={setShowMatrixModal}
+                  setMatrixModalState={setMatrixModalState}
+                  handleAddIdleParticles={handleAddIdleParticles}
+                  handleAddChildParticles={handleAddChildParticles}
+                  handleDeleteAllEmitters={handleDeleteAllEmitters}
+                />
               </div>
             )}
-            {isTarget && selectedTargetSystem === system.key && (
-              <div className="selection-indicator"></div>
-            )}
-            {isTarget && (
-              <SystemActionsButton
-                system={system}
-                hasResourceResolver={hasResourceResolver}
-                hasSkinCharacterData={hasSkinCharacterData}
-                menuAnchorEl={actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? actionsMenuAnchor.element : null}
-                setActionsMenuAnchor={setActionsMenuAnchor}
-                setShowMatrixModal={setShowMatrixModal}
-                setMatrixModalState={setMatrixModalState}
-                handleAddIdleParticles={handleAddIdleParticles}
-                handleAddChildParticles={handleAddChildParticles}
-                handleDeleteAllEmitters={handleDeleteAllEmitters}
-              />
-            )}
           </div>
-          {!collapsedSystems.has(system.key) && system.emitters.map((emitter, index) => {
-            const isQuartzChild = isDivineLabChildParticle(emitter.name);
+          {
+            !collapsedSystems.has(system.key) && system.emitters.map((emitter, index) => {
+              const isQuartzChild = isDivineLabChildParticle(emitter.name);
 
-            return (
-              <div
-                key={index}
-                className="emitter-div"
-                draggable={isTarget}
-                onDragStart={(e) => {
-                  if (!isTarget) return;
-                  e.stopPropagation();
-                  setDraggedEmitter({ sourceSystemKey: system.key, emitterName: emitter.name });
-                  e.dataTransfer.effectAllowed = 'move';
-                  e.dataTransfer.setData('application/x-vfxemitter', JSON.stringify({
-                    sourceSystemKey: system.key,
-                    emitterName: emitter.name
-                  }));
-                  // Create a drag image for better visual feedback
-                  const el = e.currentTarget;
-                  const dragImage = el.cloneNode(true);
-                  dragImage.style.transform = 'rotate(2deg)';
-                  dragImage.style.opacity = '0.9';
-                  document.body.appendChild(dragImage);
-                  dragImage.style.position = 'absolute';
-                  dragImage.style.top = '-1000px';
-                  e.dataTransfer.setDragImage(dragImage, 0, 0);
-                  setTimeout(() => {
-                    try {
-                      if (dragImage.parentNode === document.body) {
-                        document.body.removeChild(dragImage);
+              return (
+                <div
+                  key={index}
+                  className="emitter-div"
+                  draggable={isTarget}
+                  onDragStart={(e) => {
+                    if (!isTarget) return;
+                    e.stopPropagation();
+                    setDraggedEmitter({ sourceSystemKey: system.key, emitterName: emitter.name });
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('application/x-vfxemitter', JSON.stringify({
+                      sourceSystemKey: system.key,
+                      emitterName: emitter.name
+                    }));
+                    // Create a drag image for better visual feedback
+                    const el = e.currentTarget;
+                    const dragImage = el.cloneNode(true);
+                    dragImage.style.transform = 'rotate(2deg)';
+                    dragImage.style.opacity = '0.9';
+                    document.body.appendChild(dragImage);
+                    dragImage.style.position = 'absolute';
+                    dragImage.style.top = '-1000px';
+                    e.dataTransfer.setDragImage(dragImage, 0, 0);
+                    setTimeout(() => {
+                      try {
+                        if (dragImage.parentNode === document.body) {
+                          document.body.removeChild(dragImage);
+                        }
+                      } catch (e) {
+                        // Ignore - may already be removed
                       }
-                    } catch (e) {
-                      // Ignore - may already be removed
-                    }
-                  }, 0);
-                }}
-                onDragEnd={(e) => {
-                  if (!isTarget) return;
-                  setDraggedEmitter(null);
-                }}
-                style={{
-                  border: isQuartzChild ? '2px solid #3b82f6' : undefined,
-                  borderRadius: isQuartzChild ? '6px' : undefined,
-                  background: isQuartzChild ? 'rgba(59, 130, 246, 0.05)' : undefined,
-                  cursor: isTarget ? 'grab' : 'default',
-                  opacity: draggedEmitter && draggedEmitter.sourceSystemKey === system.key && draggedEmitter.emitterName === emitter.name ? 0.5 : 1
-                }}
-              >
-                {!isTarget && (
-                  <button
-                    className="port-btn"
-                    onClick={() => {
-                      if (!selectedTargetSystem) {
-                        setStatusMessage('Please select a target system first');
-                        return;
-                      }
-                      handlePortEmitter(system.key, emitter.name);
-                    }}
-                    title="Port emitter to selected target system"
-                    style={{ flexShrink: 0, minWidth: '24px' }}
-                  >
-                    ◄
-                  </button>
-                )}
-                {isTarget && renamingEmitter && renamingEmitter.systemKey === system.key && renamingEmitter.emitterName === emitter.name ? (
-                  <RenameInput
-                    initialValue={emitter.name}
-                    onConfirm={(newName) => {
-                      if (newName && newName.trim() !== '' && newName !== emitter.name) {
-                        handleRenameEmitter(system.key, emitter.name, newName);
-                      } else {
-                        setRenamingEmitter(null);
-                      }
-                    }}
-                    onCancel={() => setRenamingEmitter(null)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <div
-                    className="label flex-1 ellipsis"
-                    style={{
-                      minWidth: 0,
-                      color: 'var(--accent)',
-                      fontWeight: '600',
-                      fontSize: '0.95rem',
-                      textShadow: '0 1px 2px rgba(0,0,0,0.5)'
-                    }}
-                  >
-                    <span
-                      onClick={(e) => {
-                        if (isTarget && !isQuartzChild) {
-                          e.stopPropagation();
+                    }, 0);
+                  }}
+                  onDragEnd={(e) => {
+                    if (!isTarget) return;
+                    setDraggedEmitter(null);
+                  }}
+                  style={{
+                    border: isQuartzChild ? '2px solid #3b82f6' : undefined,
+                    borderRadius: isQuartzChild ? '6px' : undefined,
+                    background: isQuartzChild ? 'rgba(59, 130, 246, 0.05)' : undefined,
+                    cursor: isTarget ? 'grab' : 'default',
+                    opacity: draggedEmitter && draggedEmitter.sourceSystemKey === system.key && draggedEmitter.emitterName === emitter.name ? 0.5 : 1
+                  }}
+                >
+                  {!isTarget && (
+                    <button
+                      className="port-btn"
+                      onClick={() => {
+                        if (!selectedTargetSystem) {
+                          setStatusMessage('Please select a target system first');
+                          return;
+                        }
+                        handlePortEmitter(system.key, emitter.name);
+                      }}
+                      title="Port emitter to selected target system"
+                      style={{ flexShrink: 0, minWidth: '24px' }}
+                    >
+                      ◄
+                    </button>
+                  )}
+                  {isTarget && renamingEmitter && renamingEmitter.systemKey === system.key && renamingEmitter.emitterName === emitter.name ? (
+                    <RenameInput
+                      initialValue={emitter.name}
+                      onConfirm={(newName) => {
+                        if (newName && newName.trim() !== '' && newName !== emitter.name) {
+                          handleRenameEmitter(system.key, emitter.name, newName);
+                        } else {
+                          setRenamingEmitter(null);
                         }
                       }}
-                      onDoubleClick={(e) => {
-                        if (isTarget && !isQuartzChild) {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          setRenamingEmitter({ systemKey: system.key, emitterName: emitter.name, newName: emitter.name });
-                        }
-                      }}
+                      onCancel={() => setRenamingEmitter(null)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <div
+                      className="label flex-1 ellipsis"
                       style={{
-                        cursor: isTarget && !isQuartzChild ? 'text' : 'default',
-                        display: 'inline-block'
+                        minWidth: 0,
+                        color: 'var(--accent)',
+                        fontWeight: '600',
+                        fontSize: '0.95rem',
+                        textShadow: '0 1px 2px rgba(0,0,0,0.5)'
                       }}
                     >
-                      {emitter.name || `Emitter ${index + 1}`}
-                    </span>
-                    {emitter.isChildParticle && (
                       <span
-                        style={{
-                          marginLeft: '6px',
-                          fontSize: '10px',
-                          background: 'rgba(255, 193, 7, 0.2)',
-                          color: '#ffc107',
-                          padding: '1px 4px',
-                          borderRadius: '3px',
-                          border: '1px solid rgba(255, 193, 7, 0.3)',
-                          fontWeight: 'bold'
+                        onClick={(e) => {
+                          if (isTarget && !isQuartzChild) {
+                            e.stopPropagation();
+                          }
                         }}
-                        title={`Child particle referencing: ${emitter.childSystemKey}`}
+                        onDoubleClick={(e) => {
+                          if (isTarget && !isQuartzChild) {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            setRenamingEmitter({ systemKey: system.key, emitterName: emitter.name, newName: emitter.name });
+                          }
+                        }}
+                        style={{
+                          cursor: isTarget && !isQuartzChild ? 'text' : 'default',
+                          display: 'inline-block'
+                        }}
                       >
-                        CHILD
+                        {emitter.name || `Emitter ${index + 1}`}
                       </span>
-                    )}
-                  </div>
-                )}
+                      {emitter.isChildParticle && (
+                        <span
+                          style={{
+                            marginLeft: '6px',
+                            fontSize: '10px',
+                            background: 'rgba(255, 193, 7, 0.2)',
+                            color: '#ffc107',
+                            padding: '1px 4px',
+                            borderRadius: '3px',
+                            border: '1px solid rgba(255, 193, 7, 0.3)',
+                            fontWeight: 'bold'
+                          }}
+                          title={`Child particle referencing: ${emitter.childSystemKey}`}
+                        >
+                          CHILD
+                        </span>
+                      )}
+                    </div>
+                  )}
 
-                {/* Color blocks */}
-                {emitter.color && (
-                  <div
-                    className="color-block"
-                    style={{
-                      width: '16px',
-                      height: '16px',
-                      borderRadius: '3px',
-                      border: '1px solid rgba(255, 255, 255, 0.2)',
-                      marginLeft: '6px',
-                      flexShrink: 0,
-                      background: emitter.color.constantValue || '#ffffff'
-                    }}
-                    title={`Color: ${emitter.color.constantValue || 'Unknown'}`}
-                  />
-                )}
+                  {/* Color blocks */}
+                  {emitter.color && (
+                    <div
+                      className="color-block"
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '3px',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        marginLeft: '6px',
+                        flexShrink: 0,
+                        background: emitter.color.constantValue || '#ffffff'
+                      }}
+                      title={`Color: ${emitter.color.constantValue || 'Unknown'}`}
+                    />
+                  )}
 
-                {/* Edit button for Quartz-created child particles */}
-                {isQuartzChild && isTarget && (
+                  {/* Edit button for Quartz-created child particles */}
+                  {isQuartzChild && isTarget && (
+                    <button
+                      className="edit-child-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditChildParticle(system.key, system.name, emitter.name);
+                      }}
+                      title="Edit child particle"
+                      style={{
+                        width: '24px',
+                        height: '24px',
+                        marginLeft: '6px',
+                        flexShrink: 0,
+                        background: 'rgba(59, 130, 246, 0.1)',
+                        border: '1px solid #3b82f6',
+                        borderRadius: '4px',
+                        color: '#3b82f6',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '12px'
+                      }}
+                    >
+                      ✏️
+                    </button>
+                  )}
+
+                  {/* Preview button */}
                   <button
-                    className="edit-child-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEditChildParticle(system.key, system.name, emitter.name);
-                    }}
-                    title="Edit child particle"
+                    className="preview-btn"
                     style={{
                       width: '24px',
                       height: '24px',
                       marginLeft: '6px',
                       flexShrink: 0,
-                      background: 'rgba(59, 130, 246, 0.1)',
-                      border: '1px solid #3b82f6',
+                      background: 'transparent',
+                      border: '1px solid rgba(255, 255, 255, 0.2)',
                       borderRadius: '4px',
-                      color: '#3b82f6',
+                      color: 'var(--accent, #3b82f6)',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       fontSize: '12px'
                     }}
-                  >
-                    ✏️
-                  </button>
-                )}
+                    title="Preview texture"
+                    onMouseEnter={async (e) => {
+                      e.stopPropagation();
+                      console.log('🖼️ MouseEnter on preview button for emitter:', emitter.name);
+                      console.log('🖼️ System:', system.name, 'Key:', system.key);
 
-                {/* Preview button */}
-                <button
-                  className="preview-btn"
-                  style={{
-                    width: '24px',
-                    height: '24px',
-                    marginLeft: '6px',
-                    flexShrink: 0,
-                    background: 'transparent',
-                    border: '1px solid rgba(255, 255, 255, 0.2)',
-                    borderRadius: '4px',
-                    color: 'var(--accent, #3b82f6)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '12px'
-                  }}
-                  title="Preview texture"
-                  onMouseEnter={async (e) => {
-                    e.stopPropagation();
-                    console.log('🖼️ MouseEnter on preview button for emitter:', emitter.name);
-                    console.log('🖼️ System:', system.name, 'Key:', system.key);
+                      // Clear any existing timer
+                      if (conversionTimers.current.has('hover')) {
+                        clearTimeout(conversionTimers.current.get('hover'));
+                        conversionTimers.current.delete('hover');
+                      }
 
-                    // Clear any existing timer
-                    if (conversionTimers.current.has('hover')) {
-                      clearTimeout(conversionTimers.current.get('hover'));
-                      conversionTimers.current.delete('hover');
-                    }
+                      // Set a delay before showing preview
+                      const timer = setTimeout(async () => {
+                        console.log('🖼️ Timer fired, loading texture preview for:', emitter.name);
+                        try {
+                          console.log('🖼️ Loading emitter data...');
+                          const fullEmitterData = loadEmitterData(system, emitter.name);
+                          console.log('🖼️ Full emitter data:', fullEmitterData);
+                          if (fullEmitterData && fullEmitterData.texturePath) {
+                            console.log('🖼️ Texture path found:', fullEmitterData.texturePath);
 
-                    // Set a delay before showing preview
-                    const timer = setTimeout(async () => {
-                      console.log('🖼️ Timer fired, loading texture preview for:', emitter.name);
+                            // Check if this texture is already being converted
+                            if (activeConversions.current.has(fullEmitterData.texturePath)) {
+                              console.log(`[port] Texture ${fullEmitterData.texturePath} already being converted, skipping...`);
+                              return;
+                            }
+
+                            // Add to active conversions
+                            activeConversions.current.add(fullEmitterData.texturePath);
+
+                            try {
+                              // Get project root directory for efficient texture path resolution
+                              const projectRoot = path.dirname(targetPath);
+
+                              console.log('🖼️ Calling convertTextureToPNG with:', {
+                                texturePath: fullEmitterData.texturePath,
+                                targetPath,
+                                donorPath,
+                                projectRoot
+                              });
+                              const result = await convertTextureToPNG(fullEmitterData.texturePath, targetPath, donorPath, projectRoot);
+                              console.log('🖼️ convertTextureToPNG returned:', result);
+
+                              if (result) {
+                                let dataUrl;
+
+                                // Check if result is a data URL (new native format) or file path (old format)
+                                if (result.startsWith('data:')) {
+                                  // Native format - already a data URL
+                                  console.log('🖼️ Using native data URL format');
+                                  dataUrl = result;
+                                } else {
+                                  // Old format - file path, read it
+                                  const fs = window.require('fs');
+
+                                  if (!fs.existsSync(result)) {
+                                    console.log('🖼️ PNG file does not exist at path:', result);
+                                    showTextureError(fullEmitterData.texturePath, e.target);
+                                    return;
+                                  }
+
+                                  console.log('🖼️ PNG file exists, reading and converting to base64...');
+                                  const imageBuffer = fs.readFileSync(result);
+                                  const base64Image = imageBuffer.toString('base64');
+                                  dataUrl = `data:image/png;base64,${base64Image}`;
+                                }
+
+                                console.log('🖼️ Calling showTexturePreview with data URL...');
+                                showTexturePreview(fullEmitterData.texturePath, dataUrl, e.target, fullEmitterData);
+                              } else {
+                                console.log('🖼️ convertTextureToPNG returned null/undefined');
+                                showTextureError(fullEmitterData.texturePath, e.target);
+                              }
+                            } catch (error) {
+                              console.error('Error converting texture:', error);
+                              showTextureError(fullEmitterData.texturePath, e.target);
+                            } finally {
+                              activeConversions.current.delete(fullEmitterData.texturePath);
+                            }
+                          } else {
+                            console.log('🖼️ No texture path found for emitter:', emitter.name);
+                          }
+                        } catch (error) {
+                          console.error('Error loading texture preview:', error);
+                        }
+                      }, 200); // Back to 200ms for smooth feel
+
+                      conversionTimers.current.set('hover', timer);
+                    }}
+                    onMouseLeave={(e) => {
+                      e.stopPropagation();
+                      if (conversionTimers.current.has('hover')) {
+                        clearTimeout(conversionTimers.current.get('hover'));
+                        conversionTimers.current.delete('hover');
+                      }
+                    }}
+                    onContextMenu={async (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       try {
-                        console.log('🖼️ Loading emitter data...');
                         const fullEmitterData = loadEmitterData(system, emitter.name);
-                        console.log('🖼️ Full emitter data:', fullEmitterData);
                         if (fullEmitterData && fullEmitterData.texturePath) {
-                          console.log('🖼️ Texture path found:', fullEmitterData.texturePath);
+                          const texturePath = fullEmitterData.texturePath;
+                          const binPath = isTarget ? targetPath : donorPath;
+                          let resolvedPath = texturePath;
 
-                          // Check if this texture is already being converted
-                          if (activeConversions.current.has(fullEmitterData.texturePath)) {
-                            console.log(`[port] Texture ${fullEmitterData.texturePath} already being converted, skipping...`);
+                          if (binPath && binPath !== 'This will show target bin') {
+                            const fs = window.require('fs');
+                            const path = window.require('path');
+                            const normalizedBin = binPath.replace(/\\/g, '/');
+                            const dataMatch = normalizedBin.match(/\/data\//i);
+
+                            if (dataMatch) {
+                              const dataIndex = dataMatch.index;
+                              const projectRoot = normalizedBin.substring(0, dataIndex);
+                              const cleanTexture = texturePath.replace(/\\/g, '/');
+                              const candidate1 = path.join(projectRoot, cleanTexture);
+                              if (fs.existsSync(candidate1)) {
+                                resolvedPath = candidate1;
+                              }
+                            }
+
+                            if (resolvedPath === texturePath) {
+                              const smartPath = findActualTexturePath(texturePath, binPath);
+                              if (smartPath) resolvedPath = smartPath;
+                            }
+                          }
+
+                          if (window.require) {
+                            const { shell } = window.require('electron');
+                            if (shell) {
+                              await shell.openPath(resolvedPath);
+                            }
+                          }
+                        }
+                      } catch (err) {
+                        console.error("Error opening external app:", err);
+                      }
+                    }}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const existingPreview = document.getElementById('port-texture-hover-preview');
+                      if (existingPreview) existingPreview.remove();
+                      console.log('🖼️ Click on preview button for emitter:', emitter.name);
+                      try {
+                        const fullEmitterData = loadEmitterData(system, emitter.name);
+                        if (fullEmitterData && fullEmitterData.texturePath) {
+                          const texturePath = fullEmitterData.texturePath;
+
+                          // Resolve absolute path
+                          const binPath = isTarget ? targetPath : donorPath;
+                          let resolvedPath = texturePath;
+
+                          // Custom Path Resolution Strategy (Project Root / Data Folder split)
+                          if (binPath && binPath !== 'This will show target bin') {
+                            const fs = window.require('fs');
+                            const path = window.require('path');
+
+                            // 1. "Look before data" Strategy
+                            const normalizedBin = binPath.replace(/\\/g, '/');
+                            const dataMatch = normalizedBin.match(/\/data\//i);
+
+                            if (dataMatch) {
+                              const dataIndex = dataMatch.index;
+                              const projectRoot = normalizedBin.substring(0, dataIndex);
+
+                              const cleanTexture = texturePath.replace(/\\/g, '/');
+                              const candidate1 = path.join(projectRoot, cleanTexture);
+
+                              if (fs.existsSync(candidate1)) {
+                                resolvedPath = candidate1;
+                                console.log('[Port] Resolved path via Project Root Strategy:', resolvedPath);
+                              }
+                            }
+
+                            // 2. Fallback to smart finder
+                            if (resolvedPath === texturePath) {
+                              const smartPath = findActualTexturePath(texturePath, binPath);
+                              if (smartPath) resolvedPath = smartPath;
+                            }
+                          }
+
+                          // If already converting (from hover), just open with path for now
+                          if (activeConversions.current.has(texturePath)) {
+                            openAssetPreview(resolvedPath);
                             return;
                           }
 
-                          // Add to active conversions
-                          activeConversions.current.add(fullEmitterData.texturePath);
+                          // Convert to get dataUrl
+                          const projectRoot = path.dirname(targetPath);
+                          let dataUrl = null;
 
                           try {
-                            // Get project root directory for efficient texture path resolution
-                            const projectRoot = path.dirname(targetPath);
-
-                            console.log('🖼️ Calling convertTextureToPNG with:', {
-                              texturePath: fullEmitterData.texturePath,
-                              targetPath,
-                              donorPath,
-                              projectRoot
-                            });
-                            const result = await convertTextureToPNG(fullEmitterData.texturePath, targetPath, donorPath, projectRoot);
-                            console.log('🖼️ convertTextureToPNG returned:', result);
-
+                            const result = await convertTextureToPNG(texturePath, targetPath, donorPath, projectRoot);
                             if (result) {
-                              let dataUrl;
-
-                              // Check if result is a data URL (new native format) or file path (old format)
                               if (result.startsWith('data:')) {
-                                // Native format - already a data URL
-                                console.log('🖼️ Using native data URL format');
                                 dataUrl = result;
-                              } else {
-                                // Old format - file path, read it
-                                const fs = window.require('fs');
-
-                                if (!fs.existsSync(result)) {
-                                  console.log('🖼️ PNG file does not exist at path:', result);
-                                  showTextureError(fullEmitterData.texturePath, e.target);
-                                  return;
-                                }
-
-                                console.log('🖼️ PNG file exists, reading and converting to base64...');
+                              } else if (fs && fs.existsSync(result)) {
                                 const imageBuffer = fs.readFileSync(result);
-                                const base64Image = imageBuffer.toString('base64');
-                                dataUrl = `data:image/png;base64,${base64Image}`;
+                                dataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`;
                               }
-
-                              console.log('🖼️ Calling showTexturePreview with data URL...');
-                              showTexturePreview(fullEmitterData.texturePath, dataUrl, e.target, fullEmitterData);
-                            } else {
-                              console.log('🖼️ convertTextureToPNG returned null/undefined');
-                              showTextureError(fullEmitterData.texturePath, e.target);
                             }
-                          } catch (error) {
-                            console.error('Error converting texture:', error);
-                            showTextureError(fullEmitterData.texturePath, e.target);
-                          } finally {
-                            activeConversions.current.delete(fullEmitterData.texturePath);
+                          } catch (convErr) {
+                            console.warn('Conversion on click failed:', convErr);
                           }
-                        } else {
-                          console.log('🖼️ No texture path found for emitter:', emitter.name);
+
+                          openAssetPreview(resolvedPath, dataUrl);
                         }
-                      } catch (error) {
-                        console.error('Error loading texture preview:', error);
+                      } catch (err) {
+                        console.error("Error opening preview modal:", err);
                       }
-                    }, 200); // Back to 200ms for smooth feel
-
-                    conversionTimers.current.set('hover', timer);
-                  }}
-                  onMouseLeave={(e) => {
-                    e.stopPropagation();
-                    if (conversionTimers.current.has('hover')) {
-                      clearTimeout(conversionTimers.current.get('hover'));
-                      conversionTimers.current.delete('hover');
-                    }
-                  }}
-                  onContextMenu={async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    try {
-                      const fullEmitterData = loadEmitterData(system, emitter.name);
-                      if (fullEmitterData && fullEmitterData.texturePath) {
-                        const texturePath = fullEmitterData.texturePath;
-                        const binPath = isTarget ? targetPath : donorPath;
-                        let resolvedPath = texturePath;
-
-                        if (binPath && binPath !== 'This will show target bin') {
-                          const fs = window.require('fs');
-                          const path = window.require('path');
-                          const normalizedBin = binPath.replace(/\\/g, '/');
-                          const dataMatch = normalizedBin.match(/\/data\//i);
-
-                          if (dataMatch) {
-                            const dataIndex = dataMatch.index;
-                            const projectRoot = normalizedBin.substring(0, dataIndex);
-                            const cleanTexture = texturePath.replace(/\\/g, '/');
-                            const candidate1 = path.join(projectRoot, cleanTexture);
-                            if (fs.existsSync(candidate1)) {
-                              resolvedPath = candidate1;
-                            }
-                          }
-
-                          if (resolvedPath === texturePath) {
-                            const smartPath = findActualTexturePath(texturePath, binPath);
-                            if (smartPath) resolvedPath = smartPath;
-                          }
-                        }
-
-                        if (window.require) {
-                          const { shell } = window.require('electron');
-                          if (shell) {
-                            await shell.openPath(resolvedPath);
-                          }
-                        }
-                      }
-                    } catch (err) {
-                      console.error("Error opening external app:", err);
-                    }
-                  }}
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    const existingPreview = document.getElementById('port-texture-hover-preview');
-                    if (existingPreview) existingPreview.remove();
-                    console.log('🖼️ Click on preview button for emitter:', emitter.name);
-                    try {
-                      const fullEmitterData = loadEmitterData(system, emitter.name);
-                      if (fullEmitterData && fullEmitterData.texturePath) {
-                        const texturePath = fullEmitterData.texturePath;
-
-                        // Resolve absolute path
-                        const binPath = isTarget ? targetPath : donorPath;
-                        let resolvedPath = texturePath;
-
-                        // Custom Path Resolution Strategy (Project Root / Data Folder split)
-                        if (binPath && binPath !== 'This will show target bin') {
-                          const fs = window.require('fs');
-                          const path = window.require('path');
-
-                          // 1. "Look before data" Strategy
-                          const normalizedBin = binPath.replace(/\\/g, '/');
-                          const dataMatch = normalizedBin.match(/\/data\//i);
-
-                          if (dataMatch) {
-                            const dataIndex = dataMatch.index;
-                            const projectRoot = normalizedBin.substring(0, dataIndex);
-
-                            const cleanTexture = texturePath.replace(/\\/g, '/');
-                            const candidate1 = path.join(projectRoot, cleanTexture);
-
-                            if (fs.existsSync(candidate1)) {
-                              resolvedPath = candidate1;
-                              console.log('[Port] Resolved path via Project Root Strategy:', resolvedPath);
-                            }
-                          }
-
-                          // 2. Fallback to smart finder
-                          if (resolvedPath === texturePath) {
-                            const smartPath = findActualTexturePath(texturePath, binPath);
-                            if (smartPath) resolvedPath = smartPath;
-                          }
-                        }
-
-                        // If already converting (from hover), just open with path for now
-                        if (activeConversions.current.has(texturePath)) {
-                          openAssetPreview(resolvedPath);
-                          return;
-                        }
-
-                        // Convert to get dataUrl
-                        const projectRoot = path.dirname(targetPath);
-                        let dataUrl = null;
-
-                        try {
-                          const result = await convertTextureToPNG(texturePath, targetPath, donorPath, projectRoot);
-                          if (result) {
-                            if (result.startsWith('data:')) {
-                              dataUrl = result;
-                            } else if (fs && fs.existsSync(result)) {
-                              const imageBuffer = fs.readFileSync(result);
-                              dataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`;
-                            }
-                          }
-                        } catch (convErr) {
-                          console.warn('Conversion on click failed:', convErr);
-                        }
-
-                        openAssetPreview(resolvedPath, dataUrl);
-                      }
-                    } catch (err) {
-                      console.error("Error opening preview modal:", err);
-                    }
-                  }}
-                >
-                  <CropOriginalIcon sx={{ fontSize: 16 }} />
-                </button>
-                {
-                  isTarget && (
-                    <button
-                      className="delete-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteEmitter(system.key, index, isTarget, emitter.name);
-                      }}
-                      title="Delete emitter"
-                      style={{
-                        flexShrink: 0,
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#ef4444',
-                        cursor: 'pointer',
-                        fontSize: '25px',
-                        padding: '2px 4px'
-                      }}
-                    >
-                      🗑
-                    </button>
-                  )
-                }
-              </div>
-            )
-          })
+                    }}
+                  >
+                    <CropOriginalIcon sx={{ fontSize: 16 }} />
+                  </button>
+                  {
+                    isTarget && (
+                      <button
+                        className="delete-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteEmitter(system.key, index, isTarget, emitter.name);
+                        }}
+                        title="Delete emitter"
+                        style={{
+                          flexShrink: 0,
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                          fontSize: '25px',
+                          padding: '2px 4px'
+                        }}
+                      >
+                        🗑
+                      </button>
+                    )
+                  }
+                </div>
+              )
+            })
           }
         </div >
       );
@@ -5320,8 +5353,8 @@ const Port = () => {
           }}
         >
           <div
+            className="persistent-modal"
             style={{
-              background: 'var(--bg-2)',
               border: '1px solid rgba(255,255,255,0.06)',
               borderRadius: 12,
               width: '90%',

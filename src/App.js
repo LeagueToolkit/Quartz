@@ -24,7 +24,7 @@ import AniPort from './pages/AniPortSimple';
 import FrogChanger from './pages/FrogChanger';
 import HashReminderModal from './components/HashReminderModal';
 import AssetPreviewModal from './components/AssetPreviewModal';
-
+import GlobalClickEffect from './components/ClickEffects/GlobalClickEffect';
 
 import fontManager from './utils/fontManager.js';
 import electronPrefs from './utils/electronPrefs.js';
@@ -203,13 +203,18 @@ function App() {
   const [themeVariant, setThemeVariant] = useState('onyx');
   const [themeReady, setThemeReady] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [wallpaperPath, setWallpaperPath] = useState('');
+  const [wallpaperOpacity, setWallpaperOpacity] = useState(0.15);
+  const [glassBlur, setGlassBlur] = useState(6);
+  const [clickEffectEnabled, setClickEffectEnabled] = useState(false);
+  const [clickEffectType, setClickEffectType] = useState('water');
 
   useEffect(() => {
-    // Load theme preference
+    // Load theme preference and wallpaper
     (async () => {
       try {
         await electronPrefs.initPromise;
-        
+
         // If ThemeVariant is not set (first run), set it to onyx and save it
         if (electronPrefs.obj.ThemeVariant === undefined) {
           electronPrefs.obj.ThemeVariant = 'onyx';
@@ -218,6 +223,17 @@ function App() {
         } else {
           // Use saved theme (no fallback - if it's saved, use it)
           setThemeVariant(electronPrefs.obj.ThemeVariant);
+        }
+
+        // Load wallpaper settings
+        if (electronPrefs.obj.WallpaperPath) {
+          setWallpaperPath(electronPrefs.obj.WallpaperPath);
+        }
+        if (electronPrefs.obj.WallpaperOpacity !== undefined) {
+          setWallpaperOpacity(electronPrefs.obj.WallpaperOpacity);
+        }
+        if (electronPrefs.obj.GlassBlur !== undefined) {
+          setGlassBlur(electronPrefs.obj.GlassBlur);
         }
       } catch { }
     })();
@@ -232,6 +248,37 @@ function App() {
       } catch { }
     };
     window.addEventListener('settingsChanged', onSettingsChanged);
+
+    // Listen for wallpaper changes
+    const onWallpaperChanged = (event) => {
+      const { path, opacity } = event.detail || {};
+      if (path !== undefined) setWallpaperPath(path);
+      if (opacity !== undefined) setWallpaperOpacity(opacity);
+    };
+    window.addEventListener('wallpaperChanged', onWallpaperChanged);
+
+    // Listen for glass blur changes
+    const onGlassBlurChanged = (event) => {
+      const { amount } = event.detail || {};
+      if (amount !== undefined) setGlassBlur(amount);
+    };
+    window.addEventListener('glassBlurChanged', onGlassBlurChanged);
+
+    // Listen for click effect changes
+    const onClickEffectChanged = (event) => {
+      const { enabled, type } = event.detail || {};
+      if (enabled !== undefined) setClickEffectEnabled(enabled);
+      if (type !== undefined) setClickEffectType(type);
+    };
+    window.addEventListener('clickEffectChanged', onClickEffectChanged);
+
+    // Load click effect setting
+    if (electronPrefs.obj.ClickEffectEnabled !== undefined) {
+      setClickEffectEnabled(electronPrefs.obj.ClickEffectEnabled);
+    }
+    if (electronPrefs.obj.ClickEffectType !== undefined) {
+      setClickEffectType(electronPrefs.obj.ClickEffectType);
+    }
 
     // Listen for global font changes from fontManager
     const handleGlobalFontChange = (event) => {
@@ -280,6 +327,9 @@ function App() {
 
     return () => {
       window.removeEventListener('settingsChanged', onSettingsChanged);
+      window.removeEventListener('wallpaperChanged', onWallpaperChanged);
+      window.removeEventListener('glassBlurChanged', onGlassBlurChanged);
+      window.removeEventListener('clickEffectChanged', onClickEffectChanged);
       window.removeEventListener('globalFontChange', handleGlobalFontChange);
       document.removeEventListener('fontChanged', handleFontChange);
 
@@ -299,6 +349,11 @@ function App() {
       setThemeReady(true);
     }
   }, [themeVariant]);
+
+  // Apply glass blur intensity to CSS variable
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty('--glass-blur', `${glassBlur}px`);
+  }, [glassBlur]);
 
   // Create theme with current font
   const theme = useMemo(() => {
@@ -329,13 +384,37 @@ function App() {
           <AssetPreviewModal />
           <FontPersistenceHandler />
           <CelestiaNavigationBridge />
-          <Box sx={{
-            position: 'relative',
-            height: '100vh',
-            width: '100vw',
-            bgcolor: 'var(--mui-background)',
-            overflow: 'hidden'
-          }}>
+          <GlobalClickEffect enabled={clickEffectEnabled} type={clickEffectType} />
+          <Box
+            className={wallpaperPath ? 'has-wallpaper' : ''}
+            sx={{
+              position: 'relative',
+              height: '100vh',
+              width: '100vw',
+              bgcolor: 'var(--mui-background)',
+              overflow: 'hidden'
+            }}
+          >
+            {/* Global Wallpaper Background */}
+            {wallpaperPath && (
+              <Box
+                sx={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  zIndex: 0,
+                  pointerEvents: 'none',
+                  backgroundImage: `url("local-file:///${wallpaperPath.replace(/\\/g, '/')}")`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                  opacity: wallpaperOpacity,
+                }}
+              />
+            )}
+
             {/* Custom Title Bar */}
             <CustomTitleBar />
 
@@ -343,16 +422,19 @@ function App() {
             <ModernNavigation />
 
             {/* Main content positioned after navbar */}
-            <Box sx={{
-              position: 'absolute',
-              top: `${TITLE_BAR_HEIGHT}px`, // Start below title bar
-              left: '60px', // Start after collapsed navbar
-              right: 0,
-              bottom: 0,
-              background: 'var(--mui-background)',
-              overflow: 'auto', // Allow scrolling if content exceeds container
-              zIndex: 1,
-            }}>
+            <Box
+              className="main-content-area"
+              sx={{
+                position: 'absolute',
+                top: `${TITLE_BAR_HEIGHT}px`, // Start below title bar
+                left: '60px', // Start after collapsed navbar
+                right: 0,
+                bottom: 0,
+                background: wallpaperPath ? 'transparent' : 'var(--mui-background)',
+                overflow: 'auto', // Allow scrolling if content exceeds container
+                zIndex: 1,
+              }}
+            >
               <Routes>
                 <Route path="/" element={<MainPage />} />
                 <Route path="/main" element={<MainPage />} />
@@ -393,16 +475,31 @@ function App() {
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                zIndex: 9999,
+                zIndex: 999999,
                 color: 'var(--accent)',
                 fontFamily: 'JetBrains Mono, monospace'
               }}>
                 <Box sx={{
                   textAlign: 'center',
-                  animation: 'pulse 1.5s ease-in-out infinite'
+                  animation: 'pulse 1.5s ease-in-out infinite',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '100%'
                 }}>
-                  <Box sx={{ fontSize: '2rem', mb: 2 }}>
-                    🔄
+                  <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center', width: '100%' }}>
+                    <img
+                      src={`${process.env.PUBLIC_URL}/your-logo.gif`}
+                      alt="Quartz Logo"
+                      style={{
+                        height: '80px',
+                        width: 'auto',
+                        display: 'block',
+                        margin: '0 auto',
+                        filter: 'drop-shadow(0 0 10px rgba(139, 92, 246, 0.5))'
+                      }}
+                    />
                   </Box>
                   <Box sx={{ fontSize: '1.5rem', mb: 1, fontWeight: 'bold' }}>
                     Closing Quartz...
@@ -413,6 +510,8 @@ function App() {
                 </Box>
               </Box>
             )}
+
+            {/* Loading Overlay */}
           </Box>
         </Router>
       </ThemeProvider>

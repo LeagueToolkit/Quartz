@@ -20,10 +20,10 @@ import {
 	Divider,
 	Modal,
 } from '@mui/material';
-import { 
-	Image as ImageIcon, 
-	Settings as SettingsIcon, 
-	Folder as FolderIcon, 
+import {
+	Image as ImageIcon,
+	Settings as SettingsIcon,
+	Folder as FolderIcon,
 	RocketLaunch as RocketIcon,
 	Compare as CompareIcon,
 	CompareArrows as CompareArrowsIcon,
@@ -96,7 +96,7 @@ const Upscale = () => {
 		fileProgress: 0
 	});
 	const [batchResults, setBatchResults] = useState(null);
-	
+
 	// Folder preview state
 	const [folderContents, setFolderContents] = useState([]);
 
@@ -122,7 +122,7 @@ const Upscale = () => {
 				const height = Math.round(naturalHeight * scale);
 				setDisplaySize({ width, height });
 			}
-		} catch {}
+		} catch { }
 	};
 
 	const theme = useTheme();
@@ -140,8 +140,8 @@ const Upscale = () => {
 			const ext = (filePath.split('.').pop() || '').toLowerCase();
 			const mime = ext === 'jpg' || ext === 'jpeg' || ext === 'jfif' ? 'image/jpeg'
 				: ext === 'bmp' ? 'image/bmp'
-				: ext === 'tif' || ext === 'tiff' ? 'image/tiff'
-				: 'image/png';
+					: ext === 'tif' || ext === 'tiff' ? 'image/tiff'
+						: 'image/png';
 			return `data:${mime};base64,${res.data}`;
 		} catch {
 			return '';
@@ -277,7 +277,7 @@ const Upscale = () => {
 			try {
 				const saved = await ipcRenderer.invoke('prefs:get', 'RealesrganExePath');
 				if (mounted && saved) setExePath(saved);
-			} catch {}
+			} catch { }
 		})();
 		const onLog = (_e, data) => {
 			setLog((prev) => (prev ? prev + data : data));
@@ -293,7 +293,7 @@ const Upscale = () => {
 				setDownloadMessage(data.message || '');
 			}
 		};
-		
+
 		// Batch processing event listeners
 		const onBatchStart = (_e, data) => {
 			console.log('Batch processing started:', data);
@@ -308,24 +308,24 @@ const Upscale = () => {
 				});
 			}
 		};
-		
+
 		const onBatchProgress = (_e, data) => {
 			console.log('Batch progress update:', data);
 			if (mounted) {
 				setBatchProgress(data);
 			}
 		};
-		
+
 		const onBatchComplete = (_e, data) => {
 			console.log('Batch processing complete:', data);
 			if (mounted) {
 				setBatchResults(data);
 				setIsRunning(false);
-				
+
 
 			}
 		};
-		
+
 		ipcRenderer.on('upscayl:log', onLog);
 		ipcRenderer.on('upscayl:progress', onProgress);
 		ipcRenderer.on('upscale:progress', onDownloadProgress);
@@ -333,16 +333,16 @@ const Upscale = () => {
 		ipcRenderer.on('upscayl:batch-start', onBatchStart);
 		ipcRenderer.on('upscayl:batch-progress', onBatchProgress);
 		ipcRenderer.on('upscayl:batch-complete', onBatchComplete);
-		
+
 		return () => {
 			mounted = false;
-			try { ipcRenderer.removeListener('upscayl:log', onLog); } catch {}
-			try { ipcRenderer.removeListener('upscayl:progress', onProgress); } catch {}
-			try { ipcRenderer.removeListener('upscale:progress', onDownloadProgress); } catch {}
-			try { ipcRenderer.removeListener('upscale:log', onLog); } catch {}
-			try { ipcRenderer.removeListener('upscayl:batch-start', onBatchStart); } catch {}
-			try { ipcRenderer.removeListener('upscayl:batch-progress', onBatchProgress); } catch {}
-			try { ipcRenderer.removeListener('upscayl:batch-complete', onBatchComplete); } catch {}
+			try { ipcRenderer.removeListener('upscayl:log', onLog); } catch { }
+			try { ipcRenderer.removeListener('upscayl:progress', onProgress); } catch { }
+			try { ipcRenderer.removeListener('upscale:progress', onDownloadProgress); } catch { }
+			try { ipcRenderer.removeListener('upscale:log', onLog); } catch { }
+			try { ipcRenderer.removeListener('upscayl:batch-start', onBatchStart); } catch { }
+			try { ipcRenderer.removeListener('upscayl:batch-progress', onBatchProgress); } catch { }
+			try { ipcRenderer.removeListener('upscayl:batch-complete', onBatchComplete); } catch { }
 		};
 	}, []);
 
@@ -356,7 +356,7 @@ const Upscale = () => {
 			if (logRef.current) {
 				logRef.current.scrollTop = logRef.current.scrollHeight;
 			}
-		} catch {}
+		} catch { }
 	}, [log]);
 
 	// Load preview image when input path changes (file:// first, data URL fallback)
@@ -367,8 +367,8 @@ const Upscale = () => {
 				const ext = (inputPath.split('.').pop() || '').toLowerCase();
 				const mime = ext === 'jpg' || ext === 'jpeg' || ext === 'jfif' ? 'image/jpeg'
 					: ext === 'bmp' ? 'image/bmp'
-					: ext === 'tif' || ext === 'tiff' ? 'image/tiff'
-					: 'image/png';
+						: ext === 'tif' || ext === 'tiff' ? 'image/tiff'
+							: 'image/png';
 				const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`;
 				setPreviewImage(dataUrl);
 			} else {
@@ -417,20 +417,20 @@ const Upscale = () => {
 			console.error('❌ nodeFs or nodePath not available');
 			return;
 		}
-		
+
 		try {
 			const supportedExtensions = ['.png', '.jpg', '.jpeg', '.jfif', '.bmp', '.tif', '.tiff'];
 			const contents = [];
-			
+
 			console.log('🔍 Reading directory:', folderPath);
 			const files = nodeFs.readdirSync(folderPath);
 			console.log('🔍 Found files:', files);
-			
+
 			for (const file of files) {
 				const filePath = nodePath.join(folderPath, file);
 				console.log('🔍 Checking file:', filePath);
 				const stat = nodeFs.statSync(filePath);
-				
+
 				if (stat.isFile()) {
 					const ext = nodePath.extname(file).toLowerCase();
 					console.log('🔍 File extension:', ext);
@@ -441,10 +441,10 @@ const Upscale = () => {
 							const buffer = nodeFs.readFileSync(filePath);
 							const mime = ext === 'jpg' || ext === 'jpeg' || ext === 'jfif' ? 'image/jpeg'
 								: ext === 'bmp' ? 'image/bmp'
-								: ext === 'tif' || ext === 'tiff' ? 'image/tiff'
-								: 'image/png';
+									: ext === 'tif' || ext === 'tiff' ? 'image/tiff'
+										: 'image/png';
 							const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`;
-							
+
 							contents.push({
 								name: file,
 								path: filePath,
@@ -469,12 +469,12 @@ const Upscale = () => {
 					console.log('🔍 Skipping directory:', file);
 				}
 			}
-			
+
 			// Sort by name
 			contents.sort((a, b) => a.name.localeCompare(b.name));
 			console.log('🔍 Final folder contents:', contents.length, 'images');
 			setFolderContents(contents);
-			
+
 		} catch (error) {
 			console.error('❌ Error loading folder contents:', error);
 			setFolderContents([]);
@@ -484,7 +484,7 @@ const Upscale = () => {
 	const pickInput = async () => {
 		console.log('🔍 pickInput called, batchMode:', batchMode);
 		if (!ipcRenderer) return;
-		
+
 		if (batchMode) {
 			console.log('🔍 Batch mode: opening directory dialog');
 			// Batch mode: select folder
@@ -494,11 +494,11 @@ const Upscale = () => {
 				const selectedPath = res.filePaths[0];
 				console.log('🔍 Selected folder path:', selectedPath);
 				setInputPath(selectedPath);
-				
+
 				// Load folder contents for preview
 				console.log('🔍 Calling loadFolderContents...');
 				await loadFolderContents(selectedPath);
-				
+
 				// Automatically set output folder to a subfolder of the selected folder
 				if (nodePath) {
 					const outputDir = nodePath.join(selectedPath, 'upscaled');
@@ -517,10 +517,10 @@ const Upscale = () => {
 			if (!res.canceled && res.filePaths?.[0]) {
 				const selectedPath = res.filePaths[0];
 				setInputPath(selectedPath);
-				
+
 				// Clear folder contents for single file mode
 				setFolderContents([]);
-				
+
 				// Automatically set output folder to the same directory as the input image
 				if (nodePath) {
 					const outputDir = nodePath.dirname(selectedPath);
@@ -553,7 +553,7 @@ const Upscale = () => {
 		setDownloadProgress(0);
 		setDownloadMessage('Starting download...');
 		setLog(''); // Clear previous logs
-		
+
 		try {
 			await ipcRenderer.invoke('upscale:download-all');
 		} catch (error) {
@@ -576,7 +576,7 @@ const Upscale = () => {
 			console.log('🔍 Calling realesrgan.ensure...');
 			const path = await ipcRenderer.invoke('realesrgan.ensure');
 			console.log('🔍 Got path from realesrgan.ensure:', path);
-			
+
 			if (path) {
 				setExePath(path);
 				console.log('🔍 Saving path to preferences:', path);
@@ -602,7 +602,7 @@ const Upscale = () => {
 		setShouldCancel(true);
 		setProgress(0);
 		setLog('');
-		
+
 		// Cancel the upscaling process
 		if (ipcRenderer) {
 			try {
@@ -611,7 +611,7 @@ const Upscale = () => {
 				console.error('Error canceling upscaling:', e);
 			}
 		}
-		
+
 		// Set running to false after canceling
 		setIsRunning(false);
 	};
@@ -621,13 +621,13 @@ const Upscale = () => {
 			console.error('Missing ipcRenderer or exePath');
 			return;
 		}
-		
+
 		// Validate required inputs before starting
 		if (!inputPath) {
 			console.error('No input path selected');
 			return;
 		}
-		
+
 		console.log('🔍 Starting upscale with exePath:', exePath);
 		setIsRunning(true);
 		setShouldCancel(false);
@@ -642,26 +642,26 @@ const Upscale = () => {
 			fileProgress: 0
 		});
 		setBatchResults(null);
-		
+
 		try {
 			console.log('🔍 Batch mode:', batchMode);
 			console.log('🔍 Input path:', inputPath);
 			console.log('🔍 Output dir:', outputDir);
-			
+
 			if (batchMode) {
 				// Batch processing mode
 				console.log('🔍 Starting batch processing...');
-				
+
 				// Validate that input is a directory
 				if (!nodeFs?.existsSync(inputPath) || !nodeFs.lstatSync(inputPath).isDirectory()) {
 					throw new Error('Batch mode requires a folder to be selected');
 				}
-				
+
 				// Validate output directory
 				if (!outputDir) {
 					throw new Error('Please select an output folder for batch processing');
 				}
-				
+
 				// Call batch processing
 				const results = await ipcRenderer.invoke('upscayl:batch-process', {
 					inputFolder: inputPath,
@@ -671,9 +671,9 @@ const Upscale = () => {
 					extraArgs,
 					exePath
 				});
-				
+
 				console.log('✅ Batch processing completed:', results);
-				
+
 			} else {
 				// Single file processing mode
 				const args = [];
@@ -717,14 +717,14 @@ const Upscale = () => {
 				}
 
 				const exeDir = nodePath ? nodePath.dirname(exePath) : undefined;
-				
+
 				// Use streaming upscaling for real-time progress
 				const { code, stdout, stderr } = await ipcRenderer.invoke('upscayl:stream', {
 					exePath: exePath,
 					args,
 					cwd: exeDir,
 				});
-				
+
 				setLog((prev) => prev + (stdout || '') + (stderr || ''));
 				setProgress(code === 0 ? 100 : 0);
 
@@ -735,8 +735,8 @@ const Upscale = () => {
 						const ext = (resolvedOutput.split('.').pop() || '').toLowerCase();
 						const mime = ext === 'jpg' || ext === 'jpeg' || ext === 'jfif' ? 'image/jpeg'
 							: ext === 'bmp' ? 'image/bmp'
-							: ext === 'tif' || ext === 'tiff' ? 'image/tiff'
-							: 'image/png';
+								: ext === 'tif' || ext === 'tiff' ? 'image/tiff'
+									: 'image/png';
 						const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`;
 						setUpscaledImage(dataUrl);
 					} catch {
@@ -768,7 +768,7 @@ const Upscale = () => {
 
 	const handleMouseMove = (event) => {
 		if (!isDragging || !upscaledImage) return;
-		
+
 		const container = event.currentTarget;
 		const rect = container.getBoundingClientRect();
 		const x = event.clientX - rect.left;
@@ -912,9 +912,9 @@ const Upscale = () => {
 								opacity: 0.5,
 								animation: 'pulse 2s infinite'
 							}} />
-							<LoaderIcon style={{ 
-								fontSize: 40, 
-								color: 'var(--surface)', 
+							<LoaderIcon style={{
+								fontSize: 40,
+								color: 'var(--surface)',
 								animation: 'spin 1s linear infinite',
 								position: 'relative',
 								zIndex: 1
@@ -985,7 +985,7 @@ const Upscale = () => {
 											boxShadow: '0 0 8px color-mix(in srgb, var(--accent), transparent 50%)'
 										}} />
 									</div>
-									
+
 									{/* File Progress */}
 									<div style={{
 										display: 'flex',
@@ -1092,10 +1092,10 @@ const Upscale = () => {
 	);
 
 	return (
-		<Box sx={{ 
+		<Box className="upscale-container" sx={{
 			height: '100%',
 			minHeight: '100%',
-			display: 'flex', 
+			display: 'flex',
 			overflow: 'hidden',
 			background: 'var(--bg)',
 			position: 'relative'
@@ -1117,8 +1117,8 @@ const Upscale = () => {
 				<Box sx={{ mb: 2 }}>
 					<FormControlLabel
 						control={
-							<Switch 
-								checked={batchMode} 
+							<Switch
+								checked={batchMode}
 								onChange={(e) => setBatchMode(e.target.checked)}
 								sx={{
 									'& .MuiSwitch-switchBase.Mui-checked': {
@@ -1131,24 +1131,24 @@ const Upscale = () => {
 							/>
 						}
 						label="Batch Mode"
-						sx={{ 
-							'& .MuiFormControlLabel-label': { 
-								color: 'var(--text)', 
+						sx={{
+							'& .MuiFormControlLabel-label': {
+								color: 'var(--text)',
 								fontFamily: 'JetBrains Mono, monospace',
 								fontSize: 14,
 								fontWeight: 'bold'
-							} 
+							}
 						}}
 					/>
 				</Box>
 
 				{/* Status */}
 				<Box sx={{ mb: 2 }}>
-					<Chip 
-						label={exePath ? 'Ready' : 'Not Installed'} 
+					<Chip
+						label={exePath ? 'Ready' : 'Not Installed'}
 						color={exePath ? 'success' : 'error'}
 						variant="outlined"
-						sx={{ 
+						sx={{
 							fontFamily: 'JetBrains Mono, monospace',
 							'&.MuiChip-outlined': {
 								borderColor: exePath ? 'var(--accent)' : '#ef4444',
@@ -1160,11 +1160,11 @@ const Upscale = () => {
 
 				{/* Error Display */}
 				{ensureError && (
-					<Box sx={{ 
-						mb: 2, 
-						p: 1.5, 
-						background: 'rgba(239, 68, 68, 0.15)', 
-						border: '1px solid rgba(239, 68, 68, 0.3)', 
+					<Box sx={{
+						mb: 2,
+						p: 1.5,
+						background: 'rgba(239, 68, 68, 0.15)',
+						border: '1px solid rgba(239, 68, 68, 0.3)',
 						borderRadius: '5px'
 					}}>
 						<Typography variant="body2" sx={{ color: '#ef4444', whiteSpace: 'pre-wrap', fontFamily: 'JetBrains Mono, monospace', fontSize: '12px' }}>
@@ -1176,13 +1176,13 @@ const Upscale = () => {
 				{/* Step 1: Select Image/Folder */}
 				<Box sx={stepStyle}>
 					<Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-						<Box sx={{ 
-							width: 20, 
-							height: 20, 
-							borderRadius: '50%', 
-							background: 'var(--accent)', 
-							display: 'flex', 
-							alignItems: 'center', 
+						<Box sx={{
+							width: 20,
+							height: 20,
+							borderRadius: '50%',
+							background: 'var(--accent)',
+							display: 'flex',
+							alignItems: 'center',
 							justifyContent: 'center',
 							fontSize: 11,
 							fontWeight: 'bold',
@@ -1195,9 +1195,9 @@ const Upscale = () => {
 							{batchMode ? 'Select Folder' : 'Select Image'}
 						</Typography>
 					</Box>
-					<Button 
-						variant="outlined" 
-						fullWidth 
+					<Button
+						variant="outlined"
+						fullWidth
 						onClick={pickInput}
 						startIcon={batchMode ? <FolderIcon /> : <UploadIcon />}
 						sx={{ ...celestialButtonStyle, mb: 1, height: 36 }}
@@ -1214,13 +1214,13 @@ const Upscale = () => {
 				{/* Step 2: Choose Model */}
 				<Box sx={stepStyle}>
 					<Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-						<Box sx={{ 
-							width: 20, 
-							height: 20, 
-							borderRadius: '50%', 
-							background: 'var(--accent)', 
-							display: 'flex', 
-							alignItems: 'center', 
+						<Box sx={{
+							width: 20,
+							height: 20,
+							borderRadius: '50%',
+							background: 'var(--accent)',
+							display: 'flex',
+							alignItems: 'center',
 							justifyContent: 'center',
 							fontSize: 11,
 							fontWeight: 'bold',
@@ -1233,7 +1233,7 @@ const Upscale = () => {
 							Choose Model
 						</Typography>
 					</Box>
-					
+
 					<FormControl fullWidth size="small" sx={{ mb: 1.5, ...selectStyle }}>
 						<InputLabel>AI Model</InputLabel>
 						<Select
@@ -1269,13 +1269,13 @@ const Upscale = () => {
 				{/* Step 3: Set Output */}
 				<Box sx={stepStyle}>
 					<Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-						<Box sx={{ 
-							width: 20, 
-							height: 20, 
-							borderRadius: '50%', 
-							background: 'var(--accent)', 
-							display: 'flex', 
-							alignItems: 'center', 
+						<Box sx={{
+							width: 20,
+							height: 20,
+							borderRadius: '50%',
+							background: 'var(--accent)',
+							display: 'flex',
+							alignItems: 'center',
 							justifyContent: 'center',
 							fontSize: 11,
 							fontWeight: 'bold',
@@ -1288,9 +1288,9 @@ const Upscale = () => {
 							Set Output
 						</Typography>
 					</Box>
-					<Button 
-						variant="outlined" 
-						fullWidth 
+					<Button
+						variant="outlined"
+						fullWidth
 						onClick={pickOutput}
 						startIcon={<FolderIcon />}
 						sx={{ ...celestialButtonStyle, mb: 1, height: 36 }}
@@ -1307,13 +1307,13 @@ const Upscale = () => {
 				{/* Step 4: Upscale */}
 				<Box sx={stepStyle}>
 					<Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-						<Box sx={{ 
-							width: 20, 
-							height: 20, 
-							borderRadius: '50%', 
-							background: 'var(--accent)', 
-							display: 'flex', 
-							alignItems: 'center', 
+						<Box sx={{
+							width: 20,
+							height: 20,
+							borderRadius: '50%',
+							background: 'var(--accent)',
+							display: 'flex',
+							alignItems: 'center',
 							justifyContent: 'center',
 							fontSize: 11,
 							fontWeight: 'bold',
@@ -1326,16 +1326,16 @@ const Upscale = () => {
 							Upscale
 						</Typography>
 					</Box>
-					
+
 					{inputPath && (
 						<Typography variant="body2" sx={{ mb: 1.5, color: 'var(--accent-muted)', fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>
 							Upscale from {inputPath ? (batchMode ? "folder" : "image") : (batchMode ? "no folder" : "no image")} to {inputPath ? `${scale}x larger` : (batchMode ? "select folder first" : "select image first")}
 						</Typography>
 					)}
 
-					<Button 
-						variant="contained" 
-						fullWidth 
+					<Button
+						variant="contained"
+						fullWidth
 						onClick={startUpscale}
 						disabled={!exePath || !inputPath || !outputDir || isRunning}
 						startIcon={<SparklesIcon />}
@@ -1356,12 +1356,12 @@ const Upscale = () => {
 				background: 'transparent',
 			}}>
 				{/* Toolbar */}
-				<Box sx={{ 
-					position: 'absolute', 
-					top: 0, 
-					left: 0, 
-					right: 0, 
-					background: 'transparent', 
+				<Box sx={{
+					position: 'absolute',
+					top: 0,
+					left: 0,
+					right: 0,
+					background: 'transparent',
 					borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
 					p: 2,
 					display: 'flex',
@@ -1375,10 +1375,10 @@ const Upscale = () => {
 								<ZoomOutIcon />
 							</IconButton>
 						</Tooltip>
-						<Typography sx={{ 
-							minWidth: 60, 
-							textAlign: 'center', 
-							color: 'var(--text)', 
+						<Typography sx={{
+							minWidth: 60,
+							textAlign: 'center',
+							color: 'var(--text)',
 							fontFamily: 'JetBrains Mono, monospace',
 							fontSize: '14px'
 						}}>
@@ -1395,12 +1395,12 @@ const Upscale = () => {
 							</IconButton>
 						</Tooltip>
 					</Box>
-					
+
 					<Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
 						<Tooltip title={!downloadStatus?.binary?.installed ? "AI Components Settings - Click to install Upscayl" : "AI Components Settings"}>
-							<IconButton 
+							<IconButton
 								onClick={() => setShowDownloadModal(true)}
-								sx={{ 
+								sx={{
 									color: downloadStatus?.binary?.installed ? 'var(--accent)' : '#f59e0b',
 									position: 'relative',
 									'&:hover': {
@@ -1430,12 +1430,12 @@ const Upscale = () => {
 				</Box>
 
 				{/* Image Preview */}
-				<Box sx={{ 
-					position: 'relative', 
-					width: '100%', 
-					height: '100%', 
-					display: 'flex', 
-					alignItems: 'center', 
+				<Box sx={{
+					position: 'relative',
+					width: '100%',
+					height: '100%',
+					display: 'flex',
+					alignItems: 'center',
 					justifyContent: 'center',
 					pt: 8, // Account for toolbar
 					userSelect: 'none',
@@ -1445,16 +1445,16 @@ const Upscale = () => {
 				}}>
 					{!previewImage && !isRunning && !batchMode && (
 						<Box sx={{ textAlign: 'center', color: 'var(--text)' }}>
-							<Box sx={{ 
-								width: 96, 
-								height: 96, 
+							<Box sx={{
+								width: 96,
+								height: 96,
 								background: 'var(--bg-2)',
 								border: '1px solid var(--accent-muted)',
-								borderRadius: '50%', 
-								display: 'flex', 
-								alignItems: 'center', 
-								justifyContent: 'center', 
-								mx: 'auto', 
+								borderRadius: '50%',
+								display: 'flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								mx: 'auto',
 								mb: 3
 							}}>
 								<ImageIcon sx={{ fontSize: 48, color: 'var(--accent-muted)' }} />
@@ -1467,7 +1467,7 @@ const Upscale = () => {
 							</Typography>
 						</Box>
 					)}
-					
+
 					{/* Batch Mode Folder Preview */}
 					{(() => {
 						const shouldRender = batchMode && inputPath && folderContents.length > 0 && !isRunning;
@@ -1480,102 +1480,102 @@ const Upscale = () => {
 						});
 						return shouldRender;
 					})() && (
-						<Box sx={{ 
-							width: '100%', 
-							height: '100%', 
-							padding: '1rem',
-							overflow: 'auto',
-							pt: 8 // Account for toolbar
-						}}>
-							<Typography variant="h5" sx={{ 
-								mb: 2, 
-								fontFamily: 'JetBrains Mono, monospace', 
-								fontWeight: 'bold', 
-								color: 'var(--accent)',
-								textAlign: 'center'
+							<Box sx={{
+								width: '100%',
+								height: '100%',
+								padding: '1rem',
+								overflow: 'auto',
+								pt: 8 // Account for toolbar
 							}}>
-								Folder Contents ({folderContents.length} images)
-							</Typography>
-							<Box sx={{ 
-								display: 'grid', 
-								gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-								gap: '1rem',
-								padding: '1rem'
-							}}>
-								{folderContents.map((file, index) => (
-									<Box key={index} sx={{
-										background: 'var(--bg-2)',
-										border: '1px solid rgba(255, 255, 255, 0.06)',
-										borderRadius: '5px',
-										padding: '0.5rem',
-										transition: 'all 0.2s ease',
-										'&:hover': {
-											borderColor: 'var(--accent-muted)',
-										}
-									}}>
-										{file.thumbnail ? (
-											<img 
-												src={file.thumbnail} 
-												alt={file.name}
-												style={{
+								<Typography variant="h5" sx={{
+									mb: 2,
+									fontFamily: 'JetBrains Mono, monospace',
+									fontWeight: 'bold',
+									color: 'var(--accent)',
+									textAlign: 'center'
+								}}>
+									Folder Contents ({folderContents.length} images)
+								</Typography>
+								<Box sx={{
+									display: 'grid',
+									gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+									gap: '1rem',
+									padding: '1rem'
+								}}>
+									{folderContents.map((file, index) => (
+										<Box key={index} sx={{
+											background: 'var(--bg-2)',
+											border: '1px solid rgba(255, 255, 255, 0.06)',
+											borderRadius: '5px',
+											padding: '0.5rem',
+											transition: 'all 0.2s ease',
+											'&:hover': {
+												borderColor: 'var(--accent-muted)',
+											}
+										}}>
+											{file.thumbnail ? (
+												<img
+													src={file.thumbnail}
+													alt={file.name}
+													style={{
+														width: '100%',
+														height: '120px',
+														objectFit: 'cover',
+														borderRadius: '0.3rem',
+														marginBottom: '0.5rem'
+													}}
+												/>
+											) : (
+												<Box sx={{
 													width: '100%',
 													height: '120px',
-													objectFit: 'cover',
+													background: 'rgba(255,255,255,0.05)',
 													borderRadius: '0.3rem',
+													display: 'flex',
+													alignItems: 'center',
+													justifyContent: 'center',
 													marginBottom: '0.5rem'
-												}}
-											/>
-										) : (
-											<Box sx={{
-												width: '100%',
-												height: '120px',
-												background: 'rgba(255,255,255,0.05)',
-												borderRadius: '0.3rem',
-												display: 'flex',
-												alignItems: 'center',
-												justifyContent: 'center',
-												marginBottom: '0.5rem'
+												}}>
+													<ImageIcon sx={{ fontSize: 40, color: 'var(--accent-muted)' }} />
+												</Box>
+											)}
+											<Typography variant="body2" sx={{
+												color: 'var(--text)',
+												fontFamily: 'JetBrains Mono, monospace',
+												fontSize: '0.75rem',
+												textAlign: 'center',
+												wordBreak: 'break-word'
 											}}>
-												<ImageIcon sx={{ fontSize: 40, color: 'var(--accent-muted)' }} />
-											</Box>
-										)}
-										<Typography variant="body2" sx={{ 
-											color: 'var(--text)', 
-											fontFamily: 'JetBrains Mono, monospace',
-											fontSize: '0.75rem',
-											textAlign: 'center',
-											wordBreak: 'break-word'
-										}}>
-											{file.name}
-										</Typography>
-										<Typography variant="caption" sx={{ 
-											color: 'var(--accent-muted)', 
-											fontFamily: 'JetBrains Mono, monospace',
-											fontSize: '0.7rem',
-											textAlign: 'center',
-											display: 'block'
-										}}>
-											{(file.size / 1024 / 1024).toFixed(1)} MB
-										</Typography>
-									</Box>
-								))}
+												{file.name}
+											</Typography>
+											<Typography variant="caption" sx={{
+												color: 'var(--accent-muted)',
+												fontFamily: 'JetBrains Mono, monospace',
+												fontSize: '0.7rem',
+												textAlign: 'center',
+												display: 'block'
+											}}>
+												{(file.size / 1024 / 1024).toFixed(1)} MB
+											</Typography>
+										</Box>
+									))}
+								</Box>
 							</Box>
-						</Box>
-					)}
-					
+						)}
+
 					{/* Batch Mode Empty State */}
 					{batchMode && inputPath && folderContents.length === 0 && !isRunning && (
 						<Box sx={{ textAlign: 'center', color: 'var(--text)' }}>
-							<Box sx={{ 
-								width: 96, 
-								height: 96, 
+							<Box sx={{
+								width: 96,
+								height: 96,
 								background: 'var(--bg-2)',
 								border: '1px solid var(--accent-muted)',
-								borderRadius: '50%', 
-								display: 'flex', 
-								alignItems: 'center', 
-								justifyContent: 'center', 
-								mx: 'auto', 
+								borderRadius: '50%',
+								display: 'flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								mx: 'auto',
 								mb: 3
 							}}>
 								<FolderIcon sx={{ fontSize: 48, color: 'var(--accent-muted)' }} />
@@ -1589,39 +1589,39 @@ const Upscale = () => {
 						</Box>
 					)}
 					{previewImage && (
-						<Box sx={{ 
-							position: 'relative', 
+						<Box sx={{
+							position: 'relative',
 							transform: `scale(${zoomLevel / 100})`,
 							transition: 'transform 0.3s ease'
 						}}>
-							<Box sx={{ 
-								position: 'relative', 
+							<Box sx={{
+								position: 'relative',
 								background: 'var(--bg-2)',
-								border: '1px solid var(--accent-muted)', 
-								borderRadius: '5px', 
-								overflow: 'hidden', 
+								border: '1px solid var(--accent-muted)',
+								borderRadius: '5px',
+								overflow: 'hidden',
 								display: 'inline-block'
 							}}
-							onMouseMove={handleMouseMove}
-							onMouseLeave={() => setIsDragging(false)}
+								onMouseMove={handleMouseMove}
+								onMouseLeave={() => setIsDragging(false)}
 							>
 								{/* Original Image */}
-								<img 
-									src={previewImage} 
-									alt="Original" 
+								<img
+									src={previewImage}
+									alt="Original"
 									draggable={false}
 									onDragStart={(e) => e.preventDefault()}
-									style={{ 
-										maxWidth: '900px', 
-										maxHeight: '650px', 
+									style={{
+										maxWidth: '900px',
+										maxHeight: '650px',
 										width: 'auto',
 										height: 'auto',
 										objectFit: 'contain',
 										pointerEvents: 'none',
 										display: 'block'
-									}} 
+									}}
 								/>
-								
+
 								{/* Upscaled Image Overlay */}
 								{upscaledImage && (
 									<Box sx={{
@@ -1633,14 +1633,14 @@ const Upscale = () => {
 										overflow: 'hidden',
 										clipPath: `inset(0 0 0 ${sliderPosition}%)`
 									}}>
-										<img 
-											src={upscaledImage} 
-											alt="Upscaled" 
+										<img
+											src={upscaledImage}
+											alt="Upscaled"
 											draggable={false}
 											onDragStart={(e) => e.preventDefault()}
-											style={{ 
-												maxWidth: '900px', 
-												maxHeight: '650px', 
+											style={{
+												maxWidth: '900px',
+												maxHeight: '650px',
 												width: 'auto',
 												height: 'auto',
 												objectFit: 'contain',
@@ -1649,11 +1649,11 @@ const Upscale = () => {
 												position: 'absolute',
 												top: 0,
 												left: 0
-											}} 
+											}}
 										/>
 									</Box>
 								)}
-								
+
 								{/* Divider Line */}
 								{upscaledImage && (
 									<Box sx={{
@@ -1673,8 +1673,8 @@ const Upscale = () => {
 											width: 4,
 										}
 									}}
-									onMouseDown={(e) => { e.preventDefault(); handleSliderMouseDown(); }}
-									onMouseUp={handleSliderMouseUp}
+										onMouseDown={(e) => { e.preventDefault(); handleSliderMouseDown(); }}
+										onMouseUp={handleSliderMouseUp}
 									>
 										<Box sx={{
 											position: 'absolute',
@@ -1696,7 +1696,7 @@ const Upscale = () => {
 									</Box>
 								)}
 							</Box>
-							
+
 							{/* Labels */}
 							{upscaledImage && (
 								<>
@@ -1813,15 +1813,15 @@ const Upscale = () => {
 						}}>
 							{/* Status Section */}
 							<div style={{ marginBottom: '1.5rem' }}>
-								<div style={{ 
-									display: 'flex', 
-									alignItems: 'center', 
-									justifyContent: 'space-between', 
-									marginBottom: '1rem' 
+								<div style={{
+									display: 'flex',
+									alignItems: 'center',
+									justifyContent: 'space-between',
+									marginBottom: '1rem'
 								}}>
-									<h3 style={{ 
-										margin: 0, 
-										color: 'var(--text)', 
+									<h3 style={{
+										margin: 0,
+										color: 'var(--text)',
 										fontFamily: 'JetBrains Mono, monospace',
 										fontSize: '1rem'
 									}}>
@@ -1829,11 +1829,11 @@ const Upscale = () => {
 									</h3>
 									<span style={{
 										padding: '0.25rem 0.75rem',
-										background: downloadStatus?.binary?.installed 
-											? 'rgba(34, 197, 94, 0.2)' 
+										background: downloadStatus?.binary?.installed
+											? 'rgba(34, 197, 94, 0.2)'
 											: 'rgba(245, 158, 11, 0.2)',
-										border: downloadStatus?.binary?.installed 
-											? '1px solid rgba(34, 197, 94, 0.4)' 
+										border: downloadStatus?.binary?.installed
+											? '1px solid rgba(34, 197, 94, 0.4)'
 											: '1px solid rgba(245, 158, 11, 0.4)',
 										borderRadius: '12px',
 										color: downloadStatus?.binary?.installed ? 'var(--accent)' : '#f59e0b',
@@ -1844,7 +1844,7 @@ const Upscale = () => {
 										{downloadStatus?.binary?.installed ? "Ready" : "Missing Components"}
 									</span>
 								</div>
-								
+
 								{downloadStatus && (
 									<div style={{
 										background: 'var(--bg-2)',
@@ -1852,37 +1852,37 @@ const Upscale = () => {
 										borderRadius: '5px',
 										padding: '1rem'
 									}}>
-										<div style={{ 
-											color: 'var(--accent-muted)', 
-											marginBottom: '0.5rem', 
-											fontFamily: 'JetBrains Mono, monospace', 
+										<div style={{
+											color: 'var(--accent-muted)',
+											marginBottom: '0.5rem',
+											fontFamily: 'JetBrains Mono, monospace',
 											fontSize: '0.875rem',
 											display: 'flex',
 											alignItems: 'center',
 											gap: '0.5rem'
 										}}>
-											<div style={{ 
-												width: '6px', 
-												height: '6px', 
-												borderRadius: '50%', 
-												background: downloadStatus.binary?.installed ? 'var(--accent)' : '#f59e0b' 
+											<div style={{
+												width: '6px',
+												height: '6px',
+												borderRadius: '50%',
+												background: downloadStatus.binary?.installed ? 'var(--accent)' : '#f59e0b'
 											}} />
 											Binary: {downloadStatus.binary?.installed ? '✅ Installed' : '❌ Missing'}
 										</div>
-										<div style={{ 
-											color: 'var(--accent-muted)', 
-											fontFamily: 'JetBrains Mono, monospace', 
+										<div style={{
+											color: 'var(--accent-muted)',
+											fontFamily: 'JetBrains Mono, monospace',
 											fontSize: '0.875rem',
 											display: 'flex',
 											alignItems: 'center',
 											gap: '0.5rem',
 											marginBottom: downloadStatus.binary?.installed ? '0.75rem' : '0'
 										}}>
-											<div style={{ 
-												width: '6px', 
-												height: '6px', 
-												borderRadius: '50%', 
-												background: downloadStatus.models?.installed?.length === downloadStatus.models?.total ? 'var(--accent)' : '#f59e0b' 
+											<div style={{
+												width: '6px',
+												height: '6px',
+												borderRadius: '50%',
+												background: downloadStatus.models?.installed?.length === downloadStatus.models?.total ? 'var(--accent)' : '#f59e0b'
 											}} />
 											Models: {downloadStatus.models?.installed?.length || 0}/{downloadStatus.models?.total || 0} installed
 										</div>
@@ -1930,17 +1930,17 @@ const Upscale = () => {
 							{/* Download Progress */}
 							{isDownloading && (
 								<div style={{ marginBottom: '1.5rem' }}>
-									<h3 style={{ 
-										margin: '0 0 1rem 0', 
-										color: 'var(--text)', 
+									<h3 style={{
+										margin: '0 0 1rem 0',
+										color: 'var(--text)',
 										fontFamily: 'JetBrains Mono, monospace',
 										fontSize: '1rem'
 									}}>
 										{downloadMessage || 'Downloading Components'}
 									</h3>
-									<div style={{ 
-										display: 'flex', 
-										justifyContent: 'space-between', 
+									<div style={{
+										display: 'flex',
+										justifyContent: 'space-between',
 										marginBottom: '0.5rem',
 										fontFamily: 'JetBrains Mono, monospace',
 										fontSize: '0.875rem'
@@ -1952,26 +1952,26 @@ const Upscale = () => {
 											{Math.round(downloadProgress)}%
 										</span>
 									</div>
-									<div style={{ 
-										width: '100%', 
-										height: '6px', 
-										background: 'rgba(0,0,0,0.3)', 
+									<div style={{
+										width: '100%',
+										height: '6px',
+										background: 'rgba(0,0,0,0.3)',
 										borderRadius: '3px',
 										overflow: 'hidden',
 										border: '1px solid rgba(255, 255, 255, 0.06)'
 									}}>
-										<div style={{ 
-											width: `${downloadProgress}%`, 
-											height: '100%', 
+										<div style={{
+											width: `${downloadProgress}%`,
+											height: '100%',
 											background: 'linear-gradient(90deg, var(--accent-muted), var(--accent))',
 											borderRadius: 0,
 											transition: 'width 0.3s ease',
 											boxShadow: '0 0 8px color-mix(in srgb, var(--accent), transparent 50%)'
 										}} />
 									</div>
-									
+
 									{/* Download Log */}
-									<div style={{ 
+									<div style={{
 										marginTop: '1rem',
 										maxHeight: '200px',
 										overflowY: 'auto',
@@ -1985,11 +1985,11 @@ const Upscale = () => {
 										lineHeight: 1.4
 									}}>
 										{log.split('\n').map((line, index) => (
-											<div key={index} style={{ 
-												color: line.includes('❌') ? '#ef4444' : 
-													   line.includes('✅') ? '#10b981' : 
-													   line.includes('🔍') ? '#3b82f6' : 
-													   'var(--accent-muted)'
+											<div key={index} style={{
+												color: line.includes('❌') ? '#ef4444' :
+													line.includes('✅') ? '#10b981' :
+														line.includes('🔍') ? '#3b82f6' :
+															'var(--accent-muted)'
 											}}>
 												{line}
 											</div>
@@ -2036,27 +2036,27 @@ const Upscale = () => {
 									}
 								}}
 							>
-								{downloadStatus?.binary?.installed && downloadStatus?.models?.installed?.length === downloadStatus?.models?.total 
-									? "All Components Installed" 
+								{downloadStatus?.binary?.installed && downloadStatus?.models?.installed?.length === downloadStatus?.models?.total
+									? "All Components Installed"
 									: "Download All Components (~200MB)"
 								}
 							</button>
 
 							{/* Info & Credits */}
-							<div style={{ 
-								color: 'var(--accent-muted)', 
-								marginTop: '1.5rem', 
+							<div style={{
+								color: 'var(--accent-muted)',
+								marginTop: '1.5rem',
 								textAlign: 'center',
 								fontFamily: 'JetBrains Mono, monospace',
 								fontSize: '0.75rem',
 								opacity: 0.8,
 								lineHeight: 1.4
 							}}>
-								Powered by Real-ESRGAN (AGPL-3.0)<br/>
-								Models from <span 
+								Powered by Real-ESRGAN (AGPL-3.0)<br />
+								Models from <span
 									onClick={() => ipcRenderer?.invoke('openExternal', 'https://github.com/upscayl/upscayl')}
-									style={{ 
-										color: 'var(--accent)', 
+									style={{
+										color: 'var(--accent)',
 										textDecoration: 'none',
 										cursor: 'pointer',
 										transition: 'color 0.2s ease'
@@ -2065,11 +2065,11 @@ const Upscale = () => {
 									onMouseLeave={(e) => e.target.style.color = 'var(--accent)'}
 								>
 									Upscayl Project
-								</span><br/>
-								Binary from <span 
+								</span><br />
+								Binary from <span
 									onClick={() => ipcRenderer?.invoke('openExternal', 'https://github.com/upscayl/upscayl-ncnn')}
-									style={{ 
-										color: 'var(--accent)', 
+									style={{
+										color: 'var(--accent)',
 										textDecoration: 'none',
 										cursor: 'pointer',
 										transition: 'color 0.2s ease'
@@ -2082,40 +2082,40 @@ const Upscale = () => {
 							</div>
 
 							{/* About Section */}
-							<div style={{ 
+							<div style={{
 								marginTop: '1rem',
 								padding: '1rem',
 								background: 'var(--bg-2)',
 								borderRadius: '5px',
 								border: '1px solid rgba(255, 255, 255, 0.06)'
 							}}>
-								<h4 style={{ 
-									margin: '0 0 0.5rem 0', 
-									color: 'var(--accent)', 
+								<h4 style={{
+									margin: '0 0 0.5rem 0',
+									color: 'var(--accent)',
 									fontFamily: 'JetBrains Mono, monospace',
 									fontSize: '0.8rem'
 								}}>
 									About AI Upscaling
 								</h4>
-								<p style={{ 
+								<p style={{
 									margin: '0 0 0.5rem 0',
-									color: 'var(--accent-muted)', 
+									color: 'var(--accent-muted)',
 									fontSize: '0.7rem',
 									lineHeight: 1.4
 								}}>
-									This feature uses advanced AI models to upscale images with enhanced detail and quality. 
+									This feature uses advanced AI models to upscale images with enhanced detail and quality.
 									The technology is based on Real-ESRGAN and Upscayl's optimized models.
 								</p>
-								<div style={{ 
-									display: 'flex', 
-									gap: '0.5rem', 
+								<div style={{
+									display: 'flex',
+									gap: '0.5rem',
 									flexWrap: 'wrap',
 									justifyContent: 'center'
 								}}>
-									<span 
+									<span
 										onClick={() => ipcRenderer?.invoke('openExternal', 'https://github.com/upscayl/upscayl')}
-										style={{ 
-											color: 'var(--accent)', 
+										style={{
+											color: 'var(--accent)',
 											textDecoration: 'none',
 											fontSize: '0.7rem',
 											padding: '0.25rem 0.5rem',
@@ -2135,10 +2135,10 @@ const Upscale = () => {
 									>
 										Upscayl GitHub
 									</span>
-									<span 
+									<span
 										onClick={() => ipcRenderer?.invoke('openExternal', 'https://github.com/upscayl/upscayl-ncnn')}
-										style={{ 
-											color: 'var(--accent)', 
+										style={{
+											color: 'var(--accent)',
 											textDecoration: 'none',
 											fontSize: '0.7rem',
 											padding: '0.25rem 0.5rem',

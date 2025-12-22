@@ -757,6 +757,7 @@ const ImgRecolor = () => {
 
   return (
     <Box
+      className="img-recolor-container"
       sx={{
         height: '100%',
         display: 'flex',

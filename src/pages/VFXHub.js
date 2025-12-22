@@ -4,7 +4,7 @@ import './Port.css'; // Reuse existing styles
 import themeManager from '../utils/themeManager.js';
 import electronPrefs from '../utils/electronPrefs.js';
 import { Box, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Select, MenuItem, FormControl, Checkbox, FormControlLabel, Menu } from '@mui/material';
-import { Apps as AppsIcon, Add as AddIcon, Folder as FolderIcon, Warning as WarningIcon, ChevronRight as ChevronRightIcon, ChevronLeft as ChevronLeftIcon, MoreHoriz as MoreHorizIcon } from '@mui/icons-material';
+import { Apps as AppsIcon, Add as AddIcon, Folder as FolderIcon, Warning as WarningIcon, ChevronRight as ChevronRightIcon, ChevronLeft as ChevronLeftIcon, MoreHoriz as MoreHorizIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import GlowingSpinner from '../components/GlowingSpinner';
 import { ToPyWithPath } from '../utils/fileOperations.js';
 import { loadFileWithBackup, createBackup } from '../utils/backupManager.js';
@@ -614,14 +614,14 @@ const VFXHub = () => {
 
           const systems = parseVfxEmitters(pyContent);
           setTargetSystems(systems);
-          
+
           // Check if systems should be expanded on load
           const expandOnLoad = await electronPrefs.get('ExpandSystemsOnLoad');
           if (!expandOnLoad) {
             // Default: collapse all systems
             setCollapsedSystems(new Set(Object.keys(systems)));
           }
-          
+
           setStatusMessage(`Target bin auto-reloaded: ${Object.keys(systems).length} systems found`);
           setDeletedEmitters(new Map());
         } else if (lastBinPath) {
@@ -3343,114 +3343,152 @@ const VFXHub = () => {
           className={`particle-div ${isTarget && selectedTargetSystem === system.key ? 'selected-system' : ''}`}
           style={{
             cursor: isTarget ? 'pointer' : 'default',
-            // Neutral styling - subtle border for ported systems
-            // Let CSS handle the gradient background
             border: system.ported ? '1px solid rgba(34, 197, 94, 0.3)' : undefined,
-          }}
-          onClick={() => {
-            if (isTarget) {
-              setSelectedTargetSystem(selectedTargetSystem === system.key ? null : system.key);
-            }
+            overflow: 'hidden'
           }}
         >
           <div
             className="particle-title-div"
             style={{
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              height: '42px',
+              padding: 0,
               ...(system.ported ? { background: 'color-mix(in srgb, var(--accent-green, #22c55e), transparent 75%)', borderBottom: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)' } : {})
             }}
           >
-            {/* Arrow indicator for collapse state - clicking it toggles collapse */}
-            <div 
-              style={{ 
-                marginRight: '4px',
-                display: 'flex', 
-                alignItems: 'center', 
-                opacity: 0.7, 
-                cursor: 'pointer',
-                position: 'relative',
-                padding: 0
-              }}
+            {/* Expand Zone (Left 40px) */}
+            <div
               onClick={(e) => {
                 e.stopPropagation();
                 toggleSystemCollapse(system.key);
               }}
+              style={{
+                width: '40px',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRight: '1px solid rgba(255,255,255,0.04)',
+                transition: 'background 0.2s',
+                flexShrink: 0
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              title={isCollapsed ? "Expand" : "Collapse"}
             >
-              {/* Invisible larger clickable area */}
-              <div style={{ 
-                position: 'absolute', 
-                inset: '-12px', 
-                zIndex: 1 
-              }} />
-              {isCollapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" style={{ transform: 'rotate(-90deg)' }} />}
-            </div>
-
-            {!isTarget && (
-              <button
-                className="port-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handlePortAllEmitters(system.key);
-                }}
-                title="Port all emitters from this system to selected target system"
-                disabled={!selectedTargetSystem}
-                style={{ flexShrink: 0, minWidth: '15px', height: '30px', marginRight: '4px', fontSize: '15px', padding: '2px' }}
-              >
-                ◄
-              </button>
-            )}
-
-            <div className="label flex-1" title={rawName} style={{
-              color: 'var(--text)',
-              fontWeight: '600',
-              fontSize: '1rem',
-              display: 'flex',
-              alignItems: 'center',
-              minWidth: 0
-            }}>
-              <span style={{
-                flex: 1,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap'
-              }}>
-                {displayName}
+              <span style={{ fontSize: '14px', opacity: 0.8 }}>
+                {isCollapsed ? '🞂' : '▼'}
               </span>
-              {isCollapsed && <span style={{ opacity: 0.6, fontSize: '0.85em', fontWeight: 'normal', paddingLeft: '8px', flexShrink: 0 }}>({emitterCount})</span>}
             </div>
 
-            {isTarget && selectedTargetSystem === system.key && (
-              <div className="selection-indicator"></div>
-            )}
+            {/* Content Zone (The rest) */}
+            <div
+              className={`flex-1 flex items-center ${isTarget && selectedTargetSystem === system.key ? 'selected' : ''}`}
+              style={{
+                padding: '0 12px',
+                height: '100%',
+                cursor: 'pointer',
+                transition: 'background 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                minWidth: 0
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              onClick={(e) => {
+                if (isTarget) {
+                  setSelectedTargetSystem(selectedTargetSystem === system.key ? null : system.key);
+                }
+              }}
+            >
+              {!isTarget && (
+                <button
+                  className="port-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePortAllEmitters(system.key);
+                  }}
+                  title="Port all emitters from this system to selected target system"
+                  disabled={!selectedTargetSystem}
+                  style={{
+                    flexShrink: 0,
+                    minWidth: '28px',
+                    width: '28px',
+                    height: '28px',
+                    fontSize: '14px',
+                    padding: '0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: '4px'
+                  }}
+                >
+                  ◄
+                </button>
+              )}
+
+              <div className="label ellipsis flex-1" title={rawName} style={{
+                color: 'var(--text)',
+                fontWeight: '600',
+                fontSize: '0.95rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                overflow: 'hidden'
+              }}>
+                <span style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  flex: 1
+                }}>
+                  {displayName}
+                </span>
+                {isTarget && selectedTargetSystem === system.key && (
+                  <span style={{ color: 'var(--accent)', fontWeight: 'bold', flexShrink: 0 }}>✓</span>
+                )}
+                <span style={{
+                  opacity: 1.0,
+                  fontSize: '12px',
+                  background: 'rgba(255,255,255,0.08)',
+                  padding: '1px 7px',
+                  borderRadius: '12px',
+                  flexShrink: 0,
+                  marginLeft: 'auto',
+                  color: 'var(--text)',
+                  border: '1px solid rgba(255,255,255,0.05)',
+                  fontWeight: '600'
+                }}>
+                  {emitterCount}
+                </span>
+              </div>
+            </div>
 
             {isTarget && (
-              <>
+              <div style={{ display: 'flex', alignItems: 'center', paddingRight: '12px' }}>
                 <IconButton
                   size="small"
                   onClick={(e) => {
                     e.stopPropagation();
                     e.preventDefault();
-                    // Open menu
-                    const isOpen = actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key;
-                    if (isOpen) {
+                    if (actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key) {
                       setActionsMenuAnchor(null);
                     } else {
                       setActionsMenuAnchor({ element: e.currentTarget, systemKey: system.key });
                     }
                   }}
                   title="Actions menu"
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                  }}
                   sx={{
                     color: 'var(--accent2)',
                     padding: '4px',
-                    minWidth: '24px',
-                    width: '24px',
-                    height: '24px',
-                    marginLeft: 'auto',
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    transform: actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? 'rotate(90deg)' : 'rotate(0deg)',
+                    minWidth: '32px',
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '6px',
+                    transition: 'all 0.2s ease',
                     '&:hover': {
                       color: 'var(--accent)',
                       backgroundColor: 'rgba(255,255,255,0.05)'
@@ -3463,51 +3501,43 @@ const VFXHub = () => {
                   anchorEl={actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? actionsMenuAnchor.element : null}
                   open={Boolean(actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key)}
                   onClose={(e) => {
-                    if (e) {
-                      e.stopPropagation();
-                    }
+                    if (e) e.stopPropagation();
                     setActionsMenuAnchor(null);
                   }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                  }}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                  }}
-                  anchorOrigin={{
-                    vertical: 'bottom',
-                    horizontal: 'right',
-                  }}
-                  transformOrigin={{
-                    vertical: 'top',
-                    horizontal: 'right',
-                  }}
-                  TransitionProps={{
-                    timeout: 200,
-                    enter: true,
-                    exit: true,
-                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
                   PaperProps={{
-                    onClick: (e) => {
-                      e.stopPropagation();
-                    },
-                    onMouseDown: (e) => {
-                      e.stopPropagation();
-                    },
                     sx: {
                       background: 'var(--surface-2)',
                       border: '1px solid rgba(255,255,255,0.1)',
                       borderRadius: '6px',
                       minWidth: '180px',
                       boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                      mt: 0.5,
-                      transition: 'opacity 0.2s ease-in-out, transform 0.2s ease-in-out',
-                      '&.MuiMenu-paper': {
-                        transformOrigin: 'top right',
-                      }
+                      mt: 0.5
                     }
                   }}
                 >
+                  {system.emitters && system.emitters.length > 0 && (
+                    <MenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteAllEmitters(system.key);
+                        setActionsMenuAnchor(null);
+                      }}
+                      sx={{
+                        color: '#ef4444',
+                        fontSize: '0.875rem',
+                        borderBottom: '1px solid rgba(255,255,255,0.05)',
+                        mb: 0.5,
+                        pb: 1,
+                        '&:hover': { backgroundColor: 'rgba(239, 68, 68, 0.1)' }
+                      }}
+                    >
+                      <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+                      Delete All Emitters
+                    </MenuItem>
+                  )}
                   <MenuItem
                     onClick={(e) => {
                       e.stopPropagation();
@@ -3515,19 +3545,10 @@ const VFXHub = () => {
                       setActionsMenuAnchor(null);
                     }}
                     disabled={!hasResourceResolver || !hasSkinCharacterData}
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                    }}
                     sx={{
                       color: 'var(--accent)',
                       fontSize: '0.875rem',
-                      transition: 'background-color 0.15s ease',
-                      '&:hover': {
-                        backgroundColor: 'rgba(255,255,255,0.05)'
-                      },
-                      '&.Mui-disabled': {
-                        opacity: 0.5
-                      }
+                      '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' }
                     }}
                   >
                     Add Idle
@@ -3547,44 +3568,19 @@ const VFXHub = () => {
                           ]
                         });
                         setShowMatrixModal(true);
-                      } catch (err) {
-                        console.error('Open matrix editor failed:', err);
-                      }
+                      } catch (err) { console.error(err); }
                       setActionsMenuAnchor(null);
-                    }}
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
                     }}
                     sx={{
                       color: 'var(--accent)',
                       fontSize: '0.875rem',
-                      transition: 'background-color 0.15s ease',
-                      '&:hover': {
-                        backgroundColor: 'rgba(255,255,255,0.05)'
-                      }
+                      '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' }
                     }}
                   >
                     Add Matrix
                   </MenuItem>
-                  <MenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteAllEmitters(system.key);
-                      setActionsMenuAnchor(null);
-                    }}
-                    sx={{
-                      color: '#ef4444',
-                      fontSize: '0.875rem',
-                      transition: 'background-color 0.15s ease',
-                      '&:hover': {
-                        backgroundColor: 'rgba(239, 68, 68, 0.1)'
-                      }
-                    }}
-                  >
-                    Delete All Emitters
-                  </MenuItem>
                 </Menu>
-              </>
+              </div>
             )}
           </div>
 
@@ -3603,9 +3599,10 @@ const VFXHub = () => {
               )}
               <div className="label flex-1 ellipsis" style={{
                 minWidth: 0,
-                color: 'var(--text)',
-                fontWeight: '500',
-                fontSize: '0.9rem'
+                color: 'var(--accent)',
+                fontWeight: '600',
+                fontSize: '0.9rem',
+                textShadow: '0 1px 2px rgba(0,0,0,0.5)'
               }}>
                 {emitter.name || `Emitter ${index + 1}`}
               </div>
@@ -4779,7 +4776,7 @@ const VFXHub = () => {
   });
 
   return (
-    <div className="port-container" style={{
+    <div className="vfx-hub-container" style={{
       minHeight: '100%',
       height: '100%',
       background: 'var(--bg)',
@@ -5197,8 +5194,8 @@ const VFXHub = () => {
           }}
         >
           <div
+            className="persistent-modal"
             style={{
-              background: 'var(--bg-2)',
               border: '1px solid rgba(255,255,255,0.06)',
               borderRadius: 12,
               width: '90%',

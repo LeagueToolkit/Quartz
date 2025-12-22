@@ -37,6 +37,9 @@ import {
 import GlowingSpinner from '../components/GlowingSpinner.js';
 import electronPrefs from '../utils/electronPrefs.js';
 import { openAssetPreview } from '../utils/assetPreviewEvent';
+import { convertTextureToPNG, findActualTexturePath } from '../utils/textureConverter';
+import { processDataURL } from '../utils/rgbaDataURL.js';
+import CropOriginalIcon from '@mui/icons-material/CropOriginal';
 
 // Icons (using simple Unicode for now)
 const ICONS = {
@@ -44,10 +47,19 @@ const ICONS = {
     save: '💾',
     undo: '↩️',
     expand: '▼',
-    collapse: '🡺',
+    collapse: '🞂',
     search: '🔍',
     scale: '📐',
     check: '✓'
+};
+
+// Helper to parse numbers with both comma and period as decimal separators
+const parseLocaleFloat = (value) => {
+    if (typeof value === 'number') return value;
+    if (!value || typeof value !== 'string') return NaN;
+    // Replace comma with period for European locales
+    const normalized = value.replace(',', '.');
+    return parseFloat(normalized);
 };
 
 export default function BinEditorV2() {
@@ -78,6 +90,8 @@ export default function BinEditorV2() {
 
     // ============ REFS ============
     const fileInputRef = useRef(null);
+    const activeConversions = useRef(new Set());
+    const conversionTimers = useRef(new Map());
     const MAX_UNDO_HISTORY = 20; // Limit undo history size
 
     // ============ COMPUTED VALUES ============
@@ -606,7 +620,7 @@ export default function BinEditorV2() {
     const handlePropertyChange = useCallback((property, axis, value) => {
         if (!selectedEmitter || !data) return;
 
-        const numValue = parseFloat(value);
+        const numValue = parseLocaleFloat(value);
         if (isNaN(numValue)) return;
 
         saveToUndoHistory();  // Save state before change
@@ -649,48 +663,372 @@ export default function BinEditorV2() {
 
     // ============ RENDER HELPERS ============
 
+    // Extract texture path from emitter rawContent (similar to vfxEmitterParser.js)
+    const findTexturePathInEmitter = useCallback((emitter) => {
+        if (!emitter || !emitter.rawContent) return null;
+        const content = emitter.rawContent;
+
+        // First, look specifically for the main texture field (not particleColorTexture or other variants)
+        const mainTexturePattern = /(?<![a-zA-Z])texture:\s*string\s*=\s*"([^"]+)"/gi;
+        const mainTextureMatch = content.match(mainTexturePattern);
+        if (mainTextureMatch && mainTextureMatch.length > 0) {
+            let texturePath = mainTextureMatch[0].match(/(?<![a-zA-Z])texture:\s*string\s*=\s*"([^"]+)"/i)[1];
+            return texturePath;
+        }
+
+        // Fallback to other texture patterns
+        const fallbackPatterns = [
+            /texturePath[:\s]*"([^"]+)"/gi,
+            /textureName[:\s]*"([^"]+)"/gi,
+            /"([^"]*\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi
+        ];
+
+        for (const pattern of fallbackPatterns) {
+            const matches = content.match(pattern);
+            if (matches && matches.length > 0) {
+                const texturePath = matches[0].replace(/"/g, '');
+                return texturePath;
+            }
+        }
+
+        return null;
+    }, []);
+
+    // Show texture preview (simplified version for BinEditor)
+    const showTexturePreview = useCallback((texturePath, imageDataUrl, buttonElement) => {
+        // Remove existing preview
+        const existingPreview = document.getElementById('bineditor-texture-hover-preview');
+        if (existingPreview) {
+            existingPreview.remove();
+        }
+
+        const rect = buttonElement.getBoundingClientRect();
+        const previewWidth = 260;
+        const previewHeight = 220;
+        const margin = 10;
+
+        // Horizontal position - to the left of the button
+        const left = Math.max(margin, rect.left - previewWidth - margin);
+
+        // Smart vertical positioning to avoid cutoff at top or bottom
+        let top;
+        const spaceBelow = window.innerHeight - rect.bottom - margin;
+        const spaceAbove = rect.top - margin;
+
+        if (spaceBelow >= previewHeight) {
+            // Enough space below - align with button top
+            top = rect.top - 10;
+        } else if (spaceAbove >= previewHeight) {
+            // Not enough space below but enough above - show above button
+            top = rect.top - previewHeight + rect.height + 10;
+        } else {
+            // Not enough space either way - center in viewport
+            top = Math.max(margin, Math.min(rect.top - previewHeight / 2, window.innerHeight - previewHeight - margin));
+        }
+
+        // Final boundary check
+        top = Math.max(margin, Math.min(top, window.innerHeight - previewHeight - margin));
+
+        const hoverPreview = document.createElement('div');
+        hoverPreview.id = 'bineditor-texture-hover-preview';
+        hoverPreview.style.cssText = `
+            position: fixed;
+            left: ${left}px;
+            top: ${top}px;
+            z-index: 10000;
+            max-width: 260px;
+        `;
+
+        hoverPreview.innerHTML = `
+            <div class="bineditor-texture-hover-content" 
+                 style="background: linear-gradient(135deg, rgba(40, 40, 45, 0.98) 0%, rgba(30, 30, 35, 0.98) 100%);
+                        border: 1px solid rgba(255, 255, 255, 0.15);
+                        border-radius: 12px;
+                        backdrop-filter: saturate(180%) blur(20px);
+                        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+                        overflow: hidden;"
+                 onmouseenter="clearTimeout(parseInt(this.dataset.timeoutId))"
+                 onmouseleave="this.dataset.timeoutId = setTimeout(() => this.parentElement.remove(), 1000)">
+                <div style="padding: 8px; background: rgba(0,0,0,0.3); border-bottom: 1px solid rgba(255,255,255,0.1); text-align: center;">
+                    <span style="font-weight: bold; color: var(--accent-muted); font-family: 'JetBrains Mono', monospace; font-size: 0.9rem;">Texture Preview</span>
+                </div>
+                <div style="padding: 1rem; text-align: center;">
+                    <img src="${processDataURL(imageDataUrl)}" alt="Texture preview" style="width: 200px; height: 140px; object-fit: contain; display: block; border-radius: 4px; margin: 0 auto;" />
+                    <div style="margin-top: 8px; color: rgba(255,255,255,0.8); font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; word-break: break-all; max-height: 3em; overflow: hidden;">${texturePath}</div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(hoverPreview);
+
+        // Set timeout ID for the preview content (like Port.js)
+        const previewContent = hoverPreview.querySelector('.bineditor-texture-hover-content');
+        const timeoutId = setTimeout(() => {
+            const existingPreview = document.getElementById('bineditor-texture-hover-preview');
+            if (existingPreview) {
+                existingPreview.remove();
+            }
+        }, 1500); // 1.5 second auto-hide like Port.js
+        previewContent.dataset.timeoutId = timeoutId;
+    }, []);
+
+    // Show texture error preview
+    const showTextureError = useCallback((texturePath, buttonElement) => {
+        const existingPreview = document.getElementById('bineditor-texture-hover-preview');
+        if (existingPreview) existingPreview.remove();
+
+        const rect = buttonElement.getBoundingClientRect();
+        const previewWidth = 260;
+        const previewHeight = 80;
+        const margin = 10;
+
+        const left = Math.max(margin, rect.left - previewWidth - margin);
+
+        // Smart vertical positioning
+        let top;
+        const spaceBelow = window.innerHeight - rect.bottom - margin;
+        const spaceAbove = rect.top - margin;
+
+        if (spaceBelow >= previewHeight) {
+            top = rect.top - 10;
+        } else if (spaceAbove >= previewHeight) {
+            top = rect.top - previewHeight + rect.height + 10;
+        } else {
+            top = Math.max(margin, Math.min(rect.top - previewHeight / 2, window.innerHeight - previewHeight - margin));
+        }
+        top = Math.max(margin, Math.min(top, window.innerHeight - previewHeight - margin));
+
+        const hoverPreview = document.createElement('div');
+        hoverPreview.id = 'bineditor-texture-hover-preview';
+        hoverPreview.style.cssText = `
+            position: fixed;
+            left: ${left}px;
+            top: ${top}px;
+            z-index: 10000;
+            max-width: 260px;
+        `;
+
+        hoverPreview.innerHTML = `
+            <div class="bineditor-texture-hover-content"
+                 style="background: rgba(30, 30, 30, 0.95);
+                        border: 1px solid rgba(255, 100, 100, 0.3);
+                        border-radius: 8px;
+                        backdrop-filter: blur(10px);
+                        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+                        padding: 12px;"
+                 onmouseenter="clearTimeout(parseInt(this.dataset.timeoutId))"
+                 onmouseleave="this.dataset.timeoutId = setTimeout(() => this.parentElement.remove(), 1000)">
+                <div style="color: #f87171; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; margin-bottom: 8px;">Failed to load texture</div>
+                <div style="color: rgba(255,255,255,0.6); font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; word-break: break-all;">${texturePath}</div>
+            </div>
+        `;
+
+        document.body.appendChild(hoverPreview);
+
+        // Set timeout ID for the preview content (like Port.js)
+        const previewContent = hoverPreview.querySelector('.bineditor-texture-hover-content');
+        const timeoutId = setTimeout(() => {
+            const existingPreview = document.getElementById('bineditor-texture-hover-preview');
+            if (existingPreview) {
+                existingPreview.remove();
+            }
+        }, 1500);
+        previewContent.dataset.timeoutId = timeoutId;
+    }, []);
+
+    // Handle texture preview on hover
+    const handleTexturePreview = useCallback(async (e, emitter) => {
+        const texturePath = findTexturePathInEmitter(emitter);
+        if (!texturePath) return;
+
+        // Capture the button element before async operations (e.currentTarget becomes null after event)
+        const buttonElement = e.currentTarget;
+        if (!buttonElement) return;
+
+        // Clear previous timer
+        if (conversionTimers.current.has('hover')) {
+            clearTimeout(conversionTimers.current.get('hover'));
+        }
+
+        const timer = setTimeout(async () => {
+            if (activeConversions.current.has(texturePath)) return;
+
+            activeConversions.current.add(texturePath);
+
+            try {
+                const projectRoot = binPath ? window.require('path').dirname(binPath) : null;
+                const result = await convertTextureToPNG(texturePath, binPath, binPath, projectRoot);
+
+                if (result) {
+                    let dataUrl;
+                    if (result.startsWith('data:')) {
+                        dataUrl = result;
+                    } else {
+                        const fs = window.require('fs');
+                        if (fs.existsSync(result)) {
+                            const imageBuffer = fs.readFileSync(result);
+                            dataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`;
+                        }
+                    }
+
+                    if (dataUrl) {
+                        showTexturePreview(texturePath, dataUrl, buttonElement);
+                    } else {
+                        showTextureError(texturePath, buttonElement);
+                    }
+                } else {
+                    showTextureError(texturePath, buttonElement);
+                }
+            } catch (error) {
+                console.error('Error loading texture preview:', error);
+                showTextureError(texturePath, buttonElement);
+            } finally {
+                activeConversions.current.delete(texturePath);
+            }
+        }, 200);
+
+        conversionTimers.current.set('hover', timer);
+    }, [binPath, findTexturePathInEmitter, showTexturePreview, showTextureError]);
+
+    // Handle texture click (open in asset preview)
+    const handleTextureClick = useCallback(async (e, emitter) => {
+        e.stopPropagation();
+        const texturePath = findTexturePathInEmitter(emitter);
+        if (!texturePath) return;
+
+        try {
+            let resolvedPath = texturePath;
+
+            if (binPath && window.require) {
+                const fs = window.require('fs');
+                const path = window.require('path');
+                const normalizedBin = binPath.replace(/\\/g, '/');
+                const dataMatch = normalizedBin.match(/\/data\//i);
+
+                if (dataMatch) {
+                    const projectRoot = normalizedBin.substring(0, dataMatch.index);
+                    const cleanTexture = texturePath.replace(/\\/g, '/');
+                    const candidate = path.join(projectRoot, cleanTexture);
+                    if (fs.existsSync(candidate)) {
+                        resolvedPath = candidate;
+                    }
+                }
+
+                if (resolvedPath === texturePath) {
+                    const smartPath = findActualTexturePath(texturePath, binPath);
+                    if (smartPath) resolvedPath = smartPath;
+                }
+            }
+
+            // Try to get data URL for preview
+            const projectRoot = binPath ? window.require('path').dirname(binPath) : null;
+            let dataUrl = null;
+            try {
+                const result = await convertTextureToPNG(texturePath, binPath, binPath, projectRoot);
+                if (result) {
+                    if (result.startsWith('data:')) {
+                        dataUrl = result;
+                    } else if (window.require) {
+                        const fs = window.require('fs');
+                        if (fs.existsSync(result)) {
+                            const imageBuffer = fs.readFileSync(result);
+                            dataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`;
+                        }
+                    }
+                }
+            } catch (convErr) {
+                console.warn('Conversion on click failed:', convErr);
+            }
+
+            openAssetPreview(resolvedPath, dataUrl);
+        } catch (err) {
+            console.error('Error opening texture:', err);
+        }
+    }, [binPath, findTexturePathInEmitter]);
+
+
     const renderEmitter = (emitter, systemName) => {
         const key = createEmitterKey(systemName, emitter.name);
         const isSelected = selectedEmitters.has(key);
+        const hasTexture = findTexturePathInEmitter(emitter) !== null;
 
         return (
             <div
                 key={key}
+                className={`bin-editor-emitter ${isSelected ? 'selected' : ''}`}
                 onClick={(e) => toggleEmitterSelection(systemName, emitter.name, e.ctrlKey || e.metaKey)}
                 style={{
                     padding: '8px 12px',
                     marginLeft: '16px',
                     marginBottom: '4px',
-                    background: isSelected ? 'rgba(236, 185, 106, 0.2)' : 'rgba(255,255,255,0.03)',
-                    border: isSelected ? '1px solid rgba(236, 185, 106, 0.5)' : '1px solid transparent',
+                    background: isSelected ? 'rgba(236, 185, 106, 0.3)' : 'rgba(255,255,255,0.06)',
+                    border: isSelected ? '1px solid rgba(236, 185, 106, 0.5)' : '1px solid rgba(255,255,255,0.04)',
                     borderRadius: '4px',
                     cursor: 'pointer',
-                    transition: 'all 0.15s ease'
+                    transition: 'all 0.15s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    outline: 'none'
                 }}
             >
-                <div style={{ fontWeight: 600, color: isSelected ? '#ecb96a' : '#e8e6e3' }}>
-                    {emitter.name}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, color: isSelected ? '#ecb96a' : '#e8e6e3', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {emitter.name}
+                        {isSelected && <span>✓</span>}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#888', marginTop: '4px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        {emitter.birthScale0?.constantValue && (
+                            <span style={{ color: '#6cb6ff' }} title="Birth Scale">BS: ({emitter.birthScale0.constantValue.x.toFixed(1)}, {emitter.birthScale0.constantValue.y.toFixed(1)}, {emitter.birthScale0.constantValue.z.toFixed(1)})</span>
+                        )}
+                        {emitter.scale0?.constantValue && (
+                            <span style={{ color: '#7ee787' }} title="Scale">S: ({emitter.scale0.constantValue.x.toFixed(1)}, {emitter.scale0.constantValue.y.toFixed(1)}, {emitter.scale0.constantValue.z.toFixed(1)})</span>
+                        )}
+                        {emitter.bindWeight && (
+                            <span style={{ color: '#9d8cd9' }} title="Bind Weight">BW: {emitter.bindWeight.constantValue}</span>
+                        )}
+                        {emitter.translationOverride && (
+                            <span style={{ color: '#d29922' }} title="Translation Override">TO: ({emitter.translationOverride.constantValue.x}, {emitter.translationOverride.constantValue.y}, {emitter.translationOverride.constantValue.z})</span>
+                        )}
+                        {emitter.particleLifetime?.constantValue != null && (
+                            <span style={{ color: '#f97316' }} title="Particle Lifetime">PL: {emitter.particleLifetime.constantValue.toFixed(2)}</span>
+                        )}
+                        {emitter.lifetime?.value != null && (
+                            <span style={{ color: '#22c55e' }} title="Emitter Lifetime">LT: {emitter.lifetime.value.toFixed(2)}</span>
+                        )}
+                    </div>
                 </div>
-                <div style={{ fontSize: '11px', color: '#888', marginTop: '4px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {emitter.birthScale0?.constantValue && (
-                        <span style={{ color: '#6cb6ff' }} title="Birth Scale">BS: ({emitter.birthScale0.constantValue.x.toFixed(1)}, {emitter.birthScale0.constantValue.y.toFixed(1)}, {emitter.birthScale0.constantValue.z.toFixed(1)})</span>
-                    )}
-                    {emitter.scale0?.constantValue && (
-                        <span style={{ color: '#7ee787' }} title="Scale">S: ({emitter.scale0.constantValue.x.toFixed(1)}, {emitter.scale0.constantValue.y.toFixed(1)}, {emitter.scale0.constantValue.z.toFixed(1)})</span>
-                    )}
-                    {emitter.bindWeight && (
-                        <span style={{ color: '#9d8cd9' }} title="Bind Weight">BW: {emitter.bindWeight.constantValue}</span>
-                    )}
-                    {emitter.translationOverride && (
-                        <span style={{ color: '#d29922' }} title="Translation Override">TO: ({emitter.translationOverride.constantValue.x}, {emitter.translationOverride.constantValue.y}, {emitter.translationOverride.constantValue.z})</span>
-                    )}
-                    {emitter.particleLifetime?.constantValue != null && (
-                        <span style={{ color: '#f97316' }} title="Particle Lifetime">PL: {emitter.particleLifetime.constantValue.toFixed(2)}</span>
-                    )}
-                    {emitter.lifetime?.value != null && (
-                        <span style={{ color: '#22c55e' }} title="Emitter Lifetime">LT: {emitter.lifetime.value.toFixed(2)}</span>
-                    )}
-                </div>
+                {/* Texture Preview Button */}
+                {hasTexture && (
+                    <button
+                        onClick={(e) => handleTextureClick(e, emitter)}
+                        onMouseEnter={(e) => handleTexturePreview(e, emitter)}
+                        onMouseLeave={() => {
+                            if (conversionTimers.current.has('hover')) {
+                                clearTimeout(conversionTimers.current.get('hover'));
+                                conversionTimers.current.delete('hover');
+                            }
+                        }}
+                        style={{
+                            width: '24px',
+                            height: '24px',
+                            flexShrink: 0,
+                            background: 'transparent',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '4px',
+                            color: 'var(--accent, #3b82f6)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '12px',
+                            transition: 'all 0.15s ease'
+                        }}
+                        title="Preview texture"
+                    >
+                        <CropOriginalIcon sx={{ fontSize: 16 }} />
+                    </button>
+                )}
             </div>
         );
     };
@@ -705,45 +1043,79 @@ export default function BinEditorV2() {
             <div key={system.name} style={{ marginBottom: '8px' }}>
                 {/* System Header */}
                 <div
+                    className={`bin-editor-item ${selectedCount > 0 ? 'selected' : ''}`}
                     style={{
                         display: 'flex',
                         alignItems: 'center',
-                        padding: '10px 12px',
-                        background: selectedCount > 0 ? 'rgba(157, 140, 217, 0.15)' : 'rgba(255,255,255,0.05)',
+                        background: selectedCount > 0 ? 'rgba(157, 140, 217, 0.2)' : 'rgba(255,255,255,0.08)',
+                        border: '1px solid rgba(255,255,255,0.06)',
                         borderRadius: '6px',
                         cursor: 'pointer',
-                        userSelect: 'none'
+                        userSelect: 'none',
+                        overflow: 'hidden',
+                        height: '42px',
+                        outline: 'none'
                     }}
                 >
-                    <span
-                        onClick={() => toggleSystemExpanded(system.name)}
-                        style={{ marginRight: '8px', fontSize: '10px' }}
+                    {/* Expand Zone (approx 20% width) */}
+                    <div
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSystemExpanded(system.name);
+                        }}
+                        style={{
+                            width: '40px',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRight: '1px solid rgba(255,255,255,0.04)',
+                            transition: 'background 0.2s',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                        title={isExpanded ? "Collapse" : "Expand"}
                     >
-                        {isExpanded ? ICONS.expand : ICONS.collapse}
-                    </span>
+                        <span style={{ fontSize: '14px' }}>
+                            {isExpanded ? ICONS.expand : ICONS.collapse}
+                        </span>
+                    </div>
 
-                    <span
+                    {/* Activation Zone (The rest) */}
+                    <div
                         onClick={() => selectAllInSystem(system.name)}
-                        style={{ flex: 1, fontWeight: 600, color: '#9d8cd9', cursor: 'pointer' }}
+                        style={{
+                            flex: 1,
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '0 12px',
+                            gap: '8px',
+                            transition: 'background 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                         title={`Click to select all emitters in ${system.name}`}
                     >
-                        {system.displayName}
-                    </span>
+                        <span style={{ flex: 1, fontWeight: 600, color: '#9d8cd9', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {system.displayName}
+                            {selectedCount > 0 && <span style={{ color: '#ecb96a' }}>✓</span>}
+                        </span>
 
-                    <span
-                        onClick={(e) => { e.stopPropagation(); selectAllInSystem(system.name); }}
-                        style={{
-                            padding: '2px 8px',
-                            background: 'rgba(236, 185, 106, 0.2)',
-                            borderRadius: '10px',
-                            fontSize: '11px',
-                            color: '#ecb96a',
-                            cursor: 'pointer'
-                        }}
-                        title="Click to select/deselect all"
-                    >
-                        {selectedCount > 0 ? `${selectedCount}/` : ''}{system.emitters.length}
-                    </span>
+                        <span
+                            style={{
+                                padding: '1px 7px',
+                                background: 'rgba(157, 140, 217, 0.15)',
+                                borderRadius: '12px',
+                                fontSize: '12px',
+                                color: '#9d8cd9',
+                                border: '1px solid rgba(157, 140, 217, 0.2)',
+                                fontWeight: '600'
+                            }}
+                        >
+                            {selectedCount > 0 ? `${selectedCount}/` : ''}{system.emitters.length}
+                        </span>
+                    </div>
                 </div>
 
                 {/* Emitters List */}
@@ -776,10 +1148,15 @@ export default function BinEditorV2() {
                         <div key={axis} style={{ flex: 1 }}>
                             <label style={{ fontSize: '11px', color: '#888' }}>{axis.toUpperCase()}</label>
                             <input
-                                type="number"
-                                value={value[axis]}
-                                onChange={(e) => handlePropertyChange(property, axis, e.target.value)}
-                                step="0.1"
+                                type="text"
+                                key={`${selectedEmitter?.name}-${property}-${axis}`}
+                                defaultValue={value[axis]}
+                                onBlur={(e) => handlePropertyChange(property, axis, e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.target.blur();
+                                    }
+                                }}
                                 style={{
                                     width: '100%',
                                     padding: '6px 8px',
@@ -834,12 +1211,11 @@ export default function BinEditorV2() {
                     <div style={{ marginBottom: '16px' }}>
                         <div style={{ fontWeight: 600, color: '#9d8cd9', marginBottom: '8px' }}>Bind Weight</div>
                         <input
-                            type="number"
-                            value={selectedEmitter.bindWeight.constantValue}
-                            onChange={(e) => handlePropertyChange('bindWeight', null, e.target.value)}
-                            step="0.1"
-                            min="0"
-                            max="1"
+                            type="text"
+                            key={`${selectedEmitter.name}-bindWeight`}
+                            defaultValue={selectedEmitter.bindWeight.constantValue}
+                            onBlur={(e) => handlePropertyChange('bindWeight', null, e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                             style={{
                                 width: '100%',
                                 padding: '6px 8px',
@@ -858,11 +1234,11 @@ export default function BinEditorV2() {
                     <div style={{ marginBottom: '16px' }}>
                         <div style={{ fontWeight: 600, color: '#f97316', marginBottom: '8px' }}>Particle Lifetime</div>
                         <input
-                            type="number"
-                            value={selectedEmitter.particleLifetime.constantValue}
-                            onChange={(e) => handlePropertyChange('particleLifetime', null, e.target.value)}
-                            step="0.1"
-                            min="0"
+                            type="text"
+                            key={`${selectedEmitter.name}-particleLifetime`}
+                            defaultValue={selectedEmitter.particleLifetime.constantValue}
+                            onBlur={(e) => handlePropertyChange('particleLifetime', null, e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                             style={{
                                 width: '100%',
                                 padding: '6px 8px',
@@ -881,11 +1257,11 @@ export default function BinEditorV2() {
                     <div style={{ marginBottom: '16px' }}>
                         <div style={{ fontWeight: 600, color: '#22c55e', marginBottom: '8px' }}>Emitter Lifetime</div>
                         <input
-                            type="number"
-                            value={selectedEmitter.lifetime.value}
-                            onChange={(e) => handlePropertyChange('lifetime', null, e.target.value)}
-                            step="0.1"
-                            min="0"
+                            type="text"
+                            key={`${selectedEmitter.name}-lifetime`}
+                            defaultValue={selectedEmitter.lifetime.value}
+                            onBlur={(e) => handlePropertyChange('lifetime', null, e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                             style={{
                                 width: '100%',
                                 padding: '6px 8px',
@@ -904,11 +1280,11 @@ export default function BinEditorV2() {
                     <div style={{ marginBottom: '16px' }}>
                         <div style={{ fontWeight: 600, color: '#a855f7', marginBottom: '8px' }}>Particle Linger</div>
                         <input
-                            type="number"
-                            value={selectedEmitter.particleLinger.value}
-                            onChange={(e) => handlePropertyChange('particleLinger', null, e.target.value)}
-                            step="0.1"
-                            min="0"
+                            type="text"
+                            key={`${selectedEmitter.name}-particleLinger`}
+                            defaultValue={selectedEmitter.particleLinger.value}
+                            onBlur={(e) => handlePropertyChange('particleLinger', null, e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                             style={{
                                 width: '100%',
                                 padding: '6px 8px',
@@ -938,7 +1314,7 @@ export default function BinEditorV2() {
     // ============ MAIN RENDER ============
 
     return (
-        <div style={{
+        <div className="bin-editor-container" style={{
             display: 'flex',
             flexDirection: 'column',
             height: '100%',
@@ -1005,19 +1381,20 @@ export default function BinEditorV2() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '16px',
-                    flexWrap: 'wrap',
-                    background: 'rgba(0,0,0,0.1)'
+                    background: 'rgba(0,0,0,0.1)',
+                    overflowX: 'auto'
                 }}>
                     {/* Scale Controls */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ fontSize: '12px', color: '#888' }}>Scale:</span>
                         <input
-                            type="number"
-                            value={scaleMultiplier}
-                            onChange={(e) => setScaleMultiplier(parseFloat(e.target.value) || 1)}
-                            step="0.5"
-                            min="0.1"
-                            max="10"
+                            type="text"
+                            defaultValue={scaleMultiplier}
+                            onBlur={(e) => {
+                                const val = parseLocaleFloat(e.target.value);
+                                setScaleMultiplier(isNaN(val) || val <= 0 ? 1 : val);
+                            }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                             style={{
                                 width: '60px',
                                 padding: '4px 8px',
@@ -1065,9 +1442,13 @@ export default function BinEditorV2() {
                             + TO
                         </button>
                         <input
-                            type="number"
-                            value={toX}
-                            onChange={(e) => setToX(parseFloat(e.target.value) || 0)}
+                            type="text"
+                            defaultValue={toX}
+                            onBlur={(e) => {
+                                const val = parseLocaleFloat(e.target.value);
+                                setToX(isNaN(val) ? 0 : val);
+                            }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                             placeholder="X"
                             title="Translation Override X value"
                             style={{
@@ -1082,9 +1463,13 @@ export default function BinEditorV2() {
                             }}
                         />
                         <input
-                            type="number"
-                            value={toY}
-                            onChange={(e) => setToY(parseFloat(e.target.value) || 0)}
+                            type="text"
+                            defaultValue={toY}
+                            onBlur={(e) => {
+                                const val = parseLocaleFloat(e.target.value);
+                                setToY(isNaN(val) ? 0 : val);
+                            }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                             placeholder="Y"
                             title="Translation Override Y value"
                             style={{
@@ -1099,9 +1484,13 @@ export default function BinEditorV2() {
                             }}
                         />
                         <input
-                            type="number"
-                            value={toZ}
-                            onChange={(e) => setToZ(parseFloat(e.target.value) || 0)}
+                            type="text"
+                            defaultValue={toZ}
+                            onBlur={(e) => {
+                                const val = parseLocaleFloat(e.target.value);
+                                setToZ(isNaN(val) ? 0 : val);
+                            }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                             placeholder="Z"
                             title="Translation Override Z value"
                             style={{
@@ -1109,7 +1498,7 @@ export default function BinEditorV2() {
                                 padding: '4px 6px',
                                 background: 'rgba(0,0,0,0.3)',
                                 border: '1px solid rgba(210, 153, 34, 0.3)',
-                                borderRadius: 'var(--border-radius, 4px)',
+                                borderRadius: '4px',
                                 color: '#d29922',
                                 fontSize: '11px',
                                 textAlign: 'center'
@@ -1144,7 +1533,7 @@ export default function BinEditorV2() {
             {/* Main Content */}
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
                 {/* Left Panel - Systems List */}
-                <div style={{
+                <div className="bin-editor-list" style={{
                     width: '50%',
                     borderRight: '1px solid rgba(255,255,255,0.1)',
                     overflow: 'auto',
@@ -1172,7 +1561,7 @@ export default function BinEditorV2() {
                 </div>
 
                 {/* Right Panel - Property Editor */}
-                <div style={{
+                <div className="bin-editor-props" style={{
                     width: '50%',
                     overflow: 'auto',
                     padding: '16px 20px'

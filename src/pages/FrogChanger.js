@@ -1250,7 +1250,7 @@ const FrogChanger = () => {
         if (repathResult.success) {
           addConsoleLog(`${progress} Successfully repathed ${championName} (${championSkinIds.length} skins) to: ${outputDir}`, 'success');
           console.log(`Successfully repathed ${championName} (${championSkinIds.length} skins) to: ${outputDir}`);
-          
+
           // Clean up extracted folder after successful repath
           try {
             const fs = window.require('fs');
@@ -1844,7 +1844,7 @@ const FrogChanger = () => {
         </div>
       )}
 
-      <div className="flex h-screen">
+      <div className="frog-changer-container flex h-screen">
         {/* Sidebar */}
         <aside className="w-64 border-r border-gray-800 p-4 overflow-y-auto">
           <div className="relative mb-4">
@@ -1997,8 +1997,8 @@ const FrogChanger = () => {
                         key={`${champion.name}-${skin.id}`}
                         onClick={() => handleSkinlineSkinClick(champion, skin)}
                         className={`group relative bg-gray-800 rounded-lg overflow-visible border cursor-pointer transition-all duration-75 ${selectedSkins.some(s => s.name === skin.name && s.champion?.name === champion.name)
-                            ? "border-green-400 shadow-lg shadow-green-400/25"
-                            : "border-gray-700 hover:border-green-400 hover:shadow-lg hover:shadow-green-400/25"
+                          ? "border-green-400 shadow-lg shadow-green-400/25"
+                          : "border-gray-700 hover:border-green-400 hover:shadow-lg hover:shadow-green-400/25"
                           }`}
                       >
                         <div className="aspect-[3/4] relative overflow-hidden">
@@ -2145,8 +2145,8 @@ const FrogChanger = () => {
                       key={`${selectedChampion?.name}-${skin.id}`}
                       onClick={() => handleSkinClick(skin.name)}
                       className={`group relative bg-gray-900 rounded-lg overflow-visible border cursor-pointer transition-all duration-75 ${selectedSkins.some(s => typeof s === 'string' ? s === skin.name : s.name === skin.name)
-                          ? "border-green-400 shadow-lg shadow-green-400/25"
-                          : "border-gray-700 hover:border-green-400 hover:shadow-lg hover:shadow-green-400/25"
+                        ? "border-green-400 shadow-lg shadow-green-400/25"
+                        : "border-gray-700 hover:border-green-400 hover:shadow-lg hover:shadow-green-400/25"
                         }`}
                     >
                       <div className="aspect-[3/4] relative overflow-hidden">
@@ -2177,13 +2177,13 @@ const FrogChanger = () => {
 
                         {/* Extraction status indicators */}
                         {extractingSkins[`${selectedChampion?.name}_${skin.id}`] && (
-                          <div className="absolute top-10 left-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-bold">
+                          <div className="absolute top-10 left-2 bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold shadow-lg border border-white/10">
                             EXTRACTING...
                           </div>
                         )}
 
                         {extractionProgress[`${selectedChampion?.name}_${skin.id}`] && !extractingSkins[`${selectedChampion?.name}_${skin.id}`] && (
-                          <div className="absolute bottom-2 left-2 right-2 bg-gray-800 text-green-400 px-2 py-1 rounded text-xs">
+                          <div className="absolute bottom-2 left-2 right-2 bg-black/80 text-white px-2 py-1 rounded text-xs font-bold backdrop-blur-md border border-white/20 shadow-lg text-center">
                             {extractionProgress[`${selectedChampion?.name}_${skin.id}`]}
                           </div>
                         )}
@@ -2536,8 +2536,8 @@ const FrogChanger = () => {
                       console.log('Voiceover extraction setting saved:', newValue);
                     }}
                     className={`px-3 py-1.5 rounded text-sm flex items-center gap-1 transition-all duration-200 ${extractVoiceover
-                        ? 'bg-green-600 hover:bg-green-700 text-white'
-                        : 'bg-gray-600 hover:bg-gray-700 text-gray-300'
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-gray-600 hover:bg-gray-700 text-gray-300'
                       }`}
                   >
                     {extractVoiceover ? '✅ Enabled' : '❌ Disabled'}

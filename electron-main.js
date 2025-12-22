@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -6,8 +6,14 @@ const isDev = require('electron-is-dev');
 const https = require('https');
 const { autoUpdater } = require('electron-updater');
 
+// Register custom protocols as privileged as early as possible
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'local-file', privileges: { standard: true, secure: true, supportFetchAPI: true } }
+]);
+
 // Track if the app is in the process of quitting to avoid re-entrancy/loops
 let isQuitting = false;
+let isShuttingDown = false;
 let textureCacheCleared = false;
 
 // Auto-updater configuration
@@ -45,10 +51,10 @@ function clearOldLogsOnStartup() {
       fs.mkdirSync(LOG_DIR, { recursive: true });
       return; // Directory didn't exist, nothing to clear
     }
-    
+
     const files = fs.readdirSync(LOG_DIR);
     let deletedCount = 0;
-    
+
     for (const file of files) {
       const filePath = path.join(LOG_DIR, file);
       try {
@@ -61,7 +67,7 @@ function clearOldLogsOnStartup() {
         console.error(`Failed to delete old log file ${file}:`, error);
       }
     }
-    
+
     if (deletedCount > 0) {
       console.log(`Cleared ${deletedCount} old log file(s) from logs directory`);
     }
@@ -81,7 +87,7 @@ try {
 let hashManager;
 function loadHashManager() {
   if (hashManager) return hashManager;
-  
+
   const pathsToTry = [
     // Development: relative path from electron-main.js
     './src/utils/hashManager',
@@ -90,7 +96,7 @@ function loadHashManager() {
     // Alternative: path with .js extension
     path.join(__dirname, 'src', 'utils', 'hashManager.js'),
   ];
-  
+
   for (const modulePath of pathsToTry) {
     try {
       hashManager = require(modulePath);
@@ -100,7 +106,7 @@ function loadHashManager() {
       // Continue to next path
     }
   }
-  
+
   // If app is available, try app path
   if (app && typeof app.isReady === 'function' && app.isReady()) {
     try {
@@ -113,7 +119,7 @@ function loadHashManager() {
       // Continue to error handling
     }
   }
-  
+
   // If all else fails, log error and return stub
   const errorMsg = 'Failed to load hashManager from all attempted paths';
   console.error(errorMsg);
@@ -123,9 +129,9 @@ function loadHashManager() {
   if (app) {
     try {
       logToFile(`app.getAppPath(): ${app.getAppPath()}`, 'ERROR');
-    } catch (e) {}
+    } catch (e) { }
   }
-  
+
   // Return a stub to prevent crashes
   return {
     checkHashes: () => ({ allPresent: false, missing: [], error: 'hashManager not loaded' }),
@@ -138,10 +144,10 @@ function loadHashManager() {
 function logToFile(message, level = 'INFO') {
   const timestamp = new Date().toISOString();
   const logMessage = `[${timestamp}] [${level}] ${message}\n`;
-  
+
   // Write to console
   console.log(logMessage.trim());
-  
+
   // Write to file
   try {
     fs.appendFileSync(LOG_FILE, logMessage);
@@ -189,7 +195,7 @@ ipcMain.handle('open-log-folder', async () => {
 logToFile('='.repeat(80), 'INFO');
 logToFile('Quartz Started', 'INFO');
 
-  // Load hashManager now that logToFile is available
+// Load hashManager now that logToFile is available
 hashManager = loadHashManager();
 
 
@@ -197,22 +203,22 @@ hashManager = loadHashManager();
 function ensureRitobinCli() {
   try {
     // Use same path logic as hashManager - AppData/Roaming/FrogTools
-    const appDataPath = process.env.APPDATA || 
-      (process.platform === 'darwin' 
+    const appDataPath = process.env.APPDATA ||
+      (process.platform === 'darwin'
         ? path.join(process.env.HOME, 'Library', 'Application Support')
         : process.platform === 'linux'
           ? path.join(process.env.HOME, '.local', 'share')
           : path.join(process.env.HOME, 'AppData', 'Roaming'));
-    
+
     const frogToolsDir = path.join(appDataPath, 'FrogTools');
     const ritobinDestPath = path.join(frogToolsDir, 'ritobin_cli.exe');
-    
+
     // Skip if already exists
     if (fs.existsSync(ritobinDestPath)) {
       logToFile('ritobin_cli.exe already exists in FrogTools', 'INFO');
       return;
     }
-    
+
     // Get path to bundled ritobin_cli.exe (in app resources)
     let ritobinSrcPath;
     if (app.isPackaged) {
@@ -222,12 +228,12 @@ function ensureRitobinCli() {
       // In development: use the tools directory
       ritobinSrcPath = path.join(__dirname, 'tools', 'ritobin_cli.exe');
     }
-    
+
     // Ensure FrogTools directory exists
     if (!fs.existsSync(frogToolsDir)) {
       fs.mkdirSync(frogToolsDir, { recursive: true });
     }
-    
+
     // Copy ritobin_cli.exe if source exists
     if (fs.existsSync(ritobinSrcPath)) {
       fs.copyFileSync(ritobinSrcPath, ritobinDestPath);
@@ -246,7 +252,7 @@ function ensureDefaultAssets() {
   try {
     const userDataPath = app.getPath('userData');
     const assetsDestDir = path.join(userDataPath, 'assets');
-    
+
     // Get path to bundled assets (in app resources)
     let assetsSrcDir;
     if (app.isPackaged) {
@@ -256,29 +262,29 @@ function ensureDefaultAssets() {
       // In development: use the public directory
       assetsSrcDir = path.join(__dirname, 'public');
     }
-    
+
     // Ensure assets directory exists
     if (!fs.existsSync(assetsDestDir)) {
       fs.mkdirSync(assetsDestDir, { recursive: true });
     }
-    
+
     // List of default assets to copy (only if they don't already exist)
     // Map source filename to destination filename
     const defaultAssets = [
       { src: 'celestia.webp', dest: 'celestia.webp' },
       { src: 'your-logo.gif', dest: 'navbar.gif' }
     ];
-    
+
     if (!fs.existsSync(assetsSrcDir)) {
       logToFile(`Assets source directory not found at ${assetsSrcDir}, skipping asset copy`, 'WARN');
       return;
     }
-    
+
     let copiedCount = 0;
     for (const asset of defaultAssets) {
       const srcPath = path.join(assetsSrcDir, asset.src);
       const destPath = path.join(assetsDestDir, asset.dest);
-      
+
       // Only copy if source exists and destination doesn't exist (don't overwrite user customizations)
       if (fs.existsSync(srcPath) && !fs.existsSync(destPath)) {
         try {
@@ -290,7 +296,7 @@ function ensureDefaultAssets() {
         }
       }
     }
-    
+
     if (copiedCount > 0) {
       logToFile(`Copied ${copiedCount} default asset(s) to AppData/Roaming/Quartz/assets`, 'INFO');
     } else {
@@ -316,16 +322,16 @@ function createWindow() {
     height: 800,
     icon: path.join(__dirname, 'public', 'divinelab.ico'),
     frame: false, // Remove default Windows title bar completely
-    titleBarStyle: 'hidden', // macOS only, but harmless on Windows
-    transparent: false, // Keep opaque for better performance
-    backgroundColor: '#0f0e13', // Dark background to prevent white flash on startup
+    titleBarStyle: 'hidden', // macOS only,
+    transparent: true, // Enable transparency for custom title bar and background
+    backgroundColor: '#00000000', // Transparent background
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
       enableRemoteModule: false,
     },
   });
-  
+
   // Ensure frame is removed (Windows-specific check)
   if (process.platform === 'win32') {
     mainWindow.setMenuBarVisibility(false); // Hide menu bar if any
@@ -333,7 +339,7 @@ function createWindow() {
 
   // Set the window reference for auto-updater
   updateCheckWindow = mainWindow;
-  
+
   // Notify renderer when window state changes
   mainWindow.on('maximize', () => {
     mainWindow.webContents.send('window:maximized');
@@ -374,7 +380,7 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, 'build', 'index.html'));
     // Disable DevTools in production
     mainWindow.webContents.on('devtools-opened', () => mainWindow.webContents.closeDevTools());
-    try { mainWindow.removeMenu(); } catch {}
+    try { mainWindow.removeMenu(); } catch { }
   }
 
   // Unified close handler: checks unsaved changes AND stops backend
@@ -399,7 +405,7 @@ function createWindow() {
       let hasUnsaved = false;
       try {
         hasUnsaved = await mainWindow.webContents.executeJavaScript('Boolean(window.__DL_unsavedBin)');
-      } catch {}
+      } catch { }
 
       // If there are unsaved changes, show confirmation dialog
       if (hasUnsaved) {
@@ -427,10 +433,10 @@ function createWindow() {
       isShuttingDown = true;
 
       // Notify renderer that we're closing
-      try { 
-        await mainWindow.webContents.executeJavaScript('window.__DL_forceClose = true;'); 
+      try {
+        await mainWindow.webContents.executeJavaScript('window.__DL_forceClose = true;');
         mainWindow.webContents.send('app:closing');
-      } catch {}
+      } catch { }
 
       // Backend service removed - no cleanup needed
 
@@ -442,14 +448,14 @@ function createWindow() {
 
       // Now actually close the window
       console.log('🔄 Destroying window and quitting app...');
-      try { mainWindow.destroy(); } catch {}
+      try { mainWindow.destroy(); } catch { }
       app.quit();
     } catch (error) {
       console.error('❌ Error in close handler:', error);
       // As a fallback, allow quitting to avoid trapping the user
       isQuitting = true;
       isShuttingDown = true;
-      try { mainWindow.destroy(); } catch {}
+      try { mainWindow.destroy(); } catch { }
       app.quit();
     }
   });
@@ -463,7 +469,7 @@ function createWindow() {
   // Prevent new windows/popups
   try {
     mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  } catch {}
+  } catch { }
 
   // Block navigation to external origins
   mainWindow.webContents.on('will-navigate', (event, url) => {
@@ -519,7 +525,7 @@ function resolveLtmaoRuntimePath() {
       console.log('✅ Using legacy LtMAO-hai path:', legacyLtmao);
       return legacyLtmao;
     }
-    
+
     console.warn('⚠️ No minimal-ltmao found in any expected location');
   } catch (err) {
     console.error('❌ Error resolving minimal-ltmao path:', err);
@@ -533,22 +539,22 @@ function getLtmaoPythonAndCli() {
     console.warn('⚠️ LtMAO runtime base path not found');
     return { base: null, pythonPath: null, cliScript: null };
   }
-  
+
   // For Windows, use python.exe from cpy-minimal only (smaller bundle)
   const pythonPath = path.join(base, 'cpy-minimal', 'python.exe');
   const cliScript = path.join(base, 'src', 'cli.py');
-  
+
   // Verify Python executable exists
   if (!fs.existsSync(pythonPath)) {
     console.warn(`⚠️ Python executable not found at: ${pythonPath}`);
     return { base, pythonPath: null, cliScript };
   }
-  
+
   if (!fs.existsSync(cliScript)) {
     console.warn(`⚠️ CLI script not found at: ${cliScript}`);
     return { base, pythonPath, cliScript: null };
   }
-  
+
   console.log('✅ LtMAO paths resolved in main process (using cpy-minimal):', { base, pythonPath, cliScript });
   return { base, pythonPath, cliScript };
 }
@@ -649,7 +655,7 @@ ipcMain.on('FileSelect', (event, [title, fileType]) => {
   if (!window) {
     window = BrowserWindow.getFocusedWindow();
   }
-  
+
   dialog.showOpenDialog(window, {
     title: title || 'Select File',
     properties: ['openFile'],
@@ -751,7 +757,7 @@ ipcMain.handle('tools:runExe', async (event, payload) => {
       child.on('error', (err) => {
         // Surface spawn error
       });
-      try { child.unref(); } catch {}
+      try { child.unref(); } catch { }
       return { code: 0, stdout: '', stderr: '' };
     }
 
@@ -766,10 +772,10 @@ ipcMain.handle('tools:runExe', async (event, payload) => {
       let stdout = '';
       let stderr = '';
       child.stdout?.on('data', (d) => {
-        try { stdout += d.toString(); } catch {}
+        try { stdout += d.toString(); } catch { }
       });
       child.stderr?.on('data', (d) => {
-        try { stderr += d.toString(); } catch {}
+        try { stderr += d.toString(); } catch { }
       });
       child.on('error', (err) => {
         resolve({ code: -1, stdout, stderr: String(err?.message || err) });
@@ -817,7 +823,7 @@ ipcMain.handle('tools:deletePath', async (event, payload) => {
           child.on('close', () => resolve());
           child.on('error', () => resolve());
         });
-      } catch {}
+      } catch { }
       res = attemptDelete();
       if (res === true) return { ok: true };
     }
@@ -848,7 +854,7 @@ function setupAutoUpdater() {
     logToFile('To enable for testing, set ENABLE_AUTO_UPDATER=true', 'INFO');
     return;
   }
-  
+
   if (enableInDev) {
     logToFile('⚠️ AUTO-UPDATER ENABLED IN DEV MODE (FOR TESTING ONLY)', 'WARNING');
   }
@@ -933,7 +939,7 @@ function setupAutoUpdater() {
       logToFile('Checking for updates...', 'INFO');
       logToFile(`Current version: ${app.getVersion()}`, 'INFO');
       logToFile(`isDev: ${isDev}, isPackaged: ${app.isPackaged}`, 'INFO');
-      
+
       // In dev mode, we need to manually set the feed URL and use checkForUpdatesAndNotify
       if (enableInDev) {
         // Set feed URL manually for dev testing
@@ -974,7 +980,7 @@ async function checkUpdatesViaGitHubAPI() {
     try {
       logToFile('Checking updates via GitHub API (fallback)...', 'INFO');
       const currentVersion = app.getVersion();
-      
+
       const options = {
         hostname: 'api.github.com',
         path: '/repos/RitoShark/Quartz/releases/latest',
@@ -987,22 +993,22 @@ async function checkUpdatesViaGitHubAPI() {
 
       const req = https.request(options, (res) => {
         let data = '';
-        
+
         res.on('data', (chunk) => {
           data += chunk;
         });
-        
+
         res.on('end', () => {
           try {
             if (res.statusCode !== 200) {
               throw new Error(`GitHub API returned ${res.statusCode}`);
             }
-            
+
             const release = JSON.parse(data);
             const latestVersion = release.tag_name.replace(/^v/, ''); // Remove 'v' prefix if present
-            
+
             logToFile(`GitHub API - Current: ${currentVersion}, Latest: ${latestVersion}`, 'INFO');
-            
+
             // Simple semver comparison (basic)
             const compareVersions = (v1, v2) => {
               const parts1 = v1.split('.').map(Number);
@@ -1015,7 +1021,7 @@ async function checkUpdatesViaGitHubAPI() {
               }
               return 0;
             };
-            
+
             if (compareVersions(currentVersion, latestVersion) < 0) {
               logToFile(`Update available via GitHub API: ${latestVersion}`, 'INFO');
               if (updateCheckWindow) {
@@ -1041,12 +1047,12 @@ async function checkUpdatesViaGitHubAPI() {
           }
         });
       });
-      
+
       req.on('error', (error) => {
         logToFile(`GitHub API request failed: ${error.message}`, 'ERROR');
         reject(error);
       });
-      
+
       req.end();
     } catch (error) {
       logToFile(`GitHub API check failed: ${error.message}`, 'ERROR');
@@ -1058,18 +1064,51 @@ async function checkUpdatesViaGitHubAPI() {
 // This method will be called when Electron has finished initialization
 app.whenReady().then(() => {
   logToFile('APP: whenReady triggered - initializing application', 'INFO');
-  try { app.setAppUserModelId('com.github.ritoshark.quartz'); } catch {}
+
+  // Register local-file protocol to allow loading local images securely
+  protocol.registerFileProtocol('local-file', (request, callback) => {
+    try {
+      const urlString = request.url;
+      // Strip protocol and any number of leading slashes
+      let filePath = urlString.replace(/^local-file:\/+/i, '');
+
+      // Decoded first to handle spaces and special chars
+      filePath = decodeURIComponent(filePath);
+
+      // Fix Windows drive letter if it's missing the colon (e.g., "c/Users" -> "c:/Users")
+      // Browser normalization often strips the colon
+      if (/^[a-zA-Z]\//.test(filePath)) {
+        filePath = filePath[0] + ':' + filePath.slice(1);
+      }
+
+      // Ensure it's an absolute path
+      const absolutePath = path.resolve(filePath);
+
+      logToFile(`[PROTOCOL] Request: ${urlString} -> Resolved: ${absolutePath}`, 'INFO');
+
+      if (!fs.existsSync(absolutePath)) {
+        logToFile(`[PROTOCOL] File not found: ${absolutePath}`, 'ERROR');
+      }
+
+      return callback({ path: absolutePath });
+    } catch (error) {
+      logToFile(`[PROTOCOL] Critical error: ${error.message}`, 'ERROR');
+      return callback({ error: -6 }); // net::ERR_FILE_NOT_FOUND
+    }
+  });
+
+  try { app.setAppUserModelId('com.github.ritoshark.quartz'); } catch { }
   createWindow();
-  
+
   // Setup auto-updater (only in production)
   setupAutoUpdater();
-  
+
   // Copy ritobin_cli.exe to FrogTools (if needed)
   ensureRitobinCli();
-  
+
   // Copy default assets to AppData/Roaming/Quartz/assets on first run (if needed)
   ensureDefaultAssets();
-  
+
   // Check for hash files (in background, non-blocking)
   setTimeout(() => {
     try {
@@ -1083,7 +1122,7 @@ app.whenReady().then(() => {
       logToFile(`Hash check error: ${err.message}`, 'WARNING');
     }
   }, 1000);
-  
+
   // Backend service startup disabled - using JavaScript implementations instead
   // logToFile('APP: Scheduling backend service startup', 'INFO');
   // const delay = isDev && !app.isPackaged ? 2000 : 5000;
@@ -1127,11 +1166,11 @@ function clearTextureCacheOnQuit() {
     return;
   }
   textureCacheCleared = true;
-  
+
   try {
     const os = require('os');
     const appDataCacheDir = path.join(os.homedir(), 'AppData', 'Local', 'Quartz', 'TextureCache');
-    
+
     if (fs.existsSync(appDataCacheDir)) {
       const files = fs.readdirSync(appDataCacheDir);
       let deletedCount = 0;
@@ -1166,27 +1205,27 @@ function cleanupMeiFolders() {
   try {
     const os = require('os');
     const tempDir = os.tmpdir();
-    
+
     if (!fs.existsSync(tempDir)) {
       return;
     }
-    
+
     // Find all _MEI* folders
     const entries = fs.readdirSync(tempDir, { withFileTypes: true });
     const meiFolders = entries
       .filter(entry => entry.isDirectory() && entry.name.startsWith('_MEI'))
       .map(entry => path.join(tempDir, entry.name));
-    
+
     if (meiFolders.length === 0) {
       return;
     }
-    
+
     console.log(`🧹 Found ${meiFolders.length} _MEI* folder(s) to clean up...`);
     logToFile(`Found ${meiFolders.length} _MEI* folder(s) to clean up`, 'INFO');
-    
+
     let totalSize = 0;
     let deletedCount = 0;
-    
+
     for (const meiFolder of meiFolders) {
       try {
         // Calculate folder size
@@ -1211,9 +1250,9 @@ function cleanupMeiFolders() {
             // Skip directories we can't read
           }
         };
-        
+
         calculateSize(meiFolder);
-        
+
         // Try to delete the folder
         try {
           fs.rmSync(meiFolder, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
@@ -1232,7 +1271,7 @@ function cleanupMeiFolders() {
         logToFile(`Error processing _MEI folder ${path.basename(meiFolder)}: ${error.message}`, 'WARN');
       }
     }
-    
+
     if (deletedCount > 0) {
       const totalMB = (totalSize / (1024 * 1024)).toFixed(2);
       console.log(`🧹 Cleanup complete: Deleted ${deletedCount} folder(s), freed ${totalMB} MB`);
@@ -1251,10 +1290,10 @@ function cleanupMeiFolders() {
 app.on('window-all-closed', async () => {
   // Clear texture cache before closing
   clearTextureCacheOnQuit();
-  
+
   // Clean up _MEI* folders on app close
   cleanupMeiFolders();
-  
+
   // On macOS it is common for applications and their menu bar
   // to stay active until the user quits explicitly with Cmd + Q
   if (process.platform !== 'darwin') {
@@ -1266,10 +1305,10 @@ app.on('window-all-closed', async () => {
 app.on('before-quit', async (e) => {
   // Clear texture cache on app quit
   clearTextureCacheOnQuit();
-  
+
   try {
     console.log('📌 before-quit event triggered');
-    
+
     // If already quitting/shutting down, allow it
     if (isQuitting || isShuttingDown) {
       console.log('✅ Already quitting/shutting down, allowing quit...');
@@ -1295,13 +1334,13 @@ app.on('before-quit', async (e) => {
     let hasUnsaved = false;
     try {
       hasUnsaved = await win.webContents.executeJavaScript('Boolean(window.__DL_unsavedBin)');
-    } catch {}
+    } catch { }
 
     if (!hasUnsaved) {
       console.log('No unsaved changes, proceeding with quit');
       isQuitting = true;
       isShuttingDown = true;
-      try { await win.webContents.executeJavaScript('window.__DL_forceClose = true;'); } catch {}
+      try { await win.webContents.executeJavaScript('window.__DL_forceClose = true;'); } catch { }
       // Clear texture cache before quitting
       clearTextureCacheOnQuit();
       // Clean up _MEI* folders on app close
@@ -1327,7 +1366,7 @@ app.on('before-quit', async (e) => {
       console.log('User confirmed quit without saving');
       isQuitting = true;
       isShuttingDown = true;
-      try { await win.webContents.executeJavaScript('window.__DL_forceClose = true;'); } catch {}
+      try { await win.webContents.executeJavaScript('window.__DL_forceClose = true;'); } catch { }
       // Clear texture cache before quitting
       clearTextureCacheOnQuit();
       // Clean up _MEI* folders on app close
@@ -1335,7 +1374,7 @@ app.on('before-quit', async (e) => {
       // Clear saved bin paths before quitting (only when actually shutting down)
       clearSavedBinPaths();
       const w = win; // reference before async quit
-      try { w?.destroy?.(); } catch {}
+      try { w?.destroy?.(); } catch { }
       app.quit();
     } else {
       console.log('User cancelled quit');
@@ -1361,7 +1400,7 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
-}); 
+});
 
 // ---------------- Headless Upscale backend (Upscayl ncnn CLI for Windows) ----------------
 // Use Upscayl's ncnn fork that publishes Windows zips
@@ -1530,13 +1569,13 @@ function httpDownloadToFile(url, destPath, redirectsLeft = 5) {
           return reject(new Error(`HTTP ${status}`));
         }
 
-        try { fs.mkdirSync(path.dirname(destPath), { recursive: true }); } catch {}
+        try { fs.mkdirSync(path.dirname(destPath), { recursive: true }); } catch { }
         const file = fs.createWriteStream(destPath);
         res.pipe(file);
         file.on('finish', () => file.close(() => resolve(destPath)));
         file.on('error', (err) => {
-          try { file.close?.(); } catch {}
-          try { fs.unlinkSync(destPath); } catch {}
+          try { file.close?.(); } catch { }
+          try { fs.unlinkSync(destPath); } catch { }
           reject(err);
         });
       }).on('error', (err) => {
@@ -1575,7 +1614,7 @@ function findNihuiWindowsAsset(assets) {
 }
 
 function ensureDir(p) {
-  try { fs.mkdirSync(p, { recursive: true }); } catch {}
+  try { fs.mkdirSync(p, { recursive: true }); } catch { }
 }
 
 function copyDirRecursive(src, dest) {
@@ -1601,7 +1640,7 @@ function copyDirRecursive(src, dest) {
 // Windows-specific: robust download via PowerShell (handles redirects reliably)
 async function downloadWithPowershell(url, destPath) {
   return await new Promise((resolve) => {
-    try { fs.mkdirSync(path.dirname(destPath), { recursive: true }); } catch {}
+    try { fs.mkdirSync(path.dirname(destPath), { recursive: true }); } catch { }
     const cmd = `$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '${url}' -OutFile '${destPath}' -UseBasicParsing -Headers @{ 'User-Agent' = 'Quartz' }`;
     const ps = spawn('powershell.exe', ['-NoProfile', '-Command', cmd], { windowsHide: true, shell: false });
     ps.on('error', () => resolve({ ok: false }));
@@ -1650,7 +1689,7 @@ ipcMain.handle('upscale:check-status', async () => {
     const binaryDir = path.join(installDir, 'upscayl-bin-20240601-103425-windows');
     const modelsDir = path.join(binaryDir, 'models');
     const downloadedExePath = path.join(binaryDir, 'upscayl-bin.exe');
-    
+
     const status = {
       binary: {
         installed: fs.existsSync(downloadedExePath),
@@ -1663,12 +1702,12 @@ ipcMain.handle('upscale:check-status', async () => {
         total: UPSCALE_DOWNLOADS.models.length
       }
     };
-    
+
     // Check each model
     for (const model of UPSCALE_DOWNLOADS.models) {
       let allFilesExist = true;
       const installedFiles = [];
-      
+
       for (const file of model.files) {
         const filePath = path.join(modelsDir, file.filename);
         if (fs.existsSync(filePath)) {
@@ -1677,14 +1716,14 @@ ipcMain.handle('upscale:check-status', async () => {
           allFilesExist = false;
         }
       }
-      
+
       if (allFilesExist) {
         status.models.installed.push(model.name);
       } else {
         status.models.missing.push(model);
       }
     }
-    
+
     return status;
   } catch (e) {
     console.log('❌ Error checking upscale status:', e.message);
@@ -1698,14 +1737,14 @@ ipcMain.handle('upscale:download-all', async (event) => {
     const installDir = getUpscaleInstallDir();
     const binaryDir = path.join(installDir, 'upscayl-bin-20240601-103425-windows');
     const modelsDir = path.join(binaryDir, 'models');
-    
+
     // Send initial status
-    event.sender.send('upscale:progress', { 
-      step: 'init', 
-      message: 'Initializing download...', 
-      progress: 0 
+    event.sender.send('upscale:progress', {
+      step: 'init',
+      message: 'Initializing download...',
+      progress: 0
     });
-    
+
     // Ensure install directory exists
     try {
       ensureDir(installDir);
@@ -1715,16 +1754,16 @@ ipcMain.handle('upscale:download-all', async (event) => {
       event.sender.send('upscale:log', `❌ ${errorMsg}`);
       throw new Error(errorMsg);
     }
-    
+
     // Step 1: Download and extract binary
-    event.sender.send('upscale:progress', { 
-      step: 'binary', 
-      message: 'Downloading Upscayl Binary...', 
-      progress: 0 
+    event.sender.send('upscale:progress', {
+      step: 'binary',
+      message: 'Downloading Upscayl Binary...',
+      progress: 0
     });
-    
+
     const zipPath = path.join(installDir, UPSCALE_DOWNLOADS.binary.filename);
-    
+
     // Try Node.js download first, fallback to PowerShell if it fails
     let downloadSuccess = false;
     try {
@@ -1735,7 +1774,7 @@ ipcMain.handle('upscale:download-all', async (event) => {
     } catch (nodeError) {
       event.sender.send('upscale:log', `❌ Node.js download failed: ${nodeError.message}`);
       event.sender.send('upscale:log', '🔍 Attempting PowerShell download...');
-      
+
       try {
         const psResult = await downloadWithPowershell(UPSCALE_DOWNLOADS.binary.url, zipPath);
         if (psResult.ok) {
@@ -1749,53 +1788,53 @@ ipcMain.handle('upscale:download-all', async (event) => {
         throw new Error(`Download failed with both methods. Node.js error: ${nodeError.message}, PowerShell error: ${psError.message}`);
       }
     }
-    
-    event.sender.send('upscale:progress', { 
-      step: 'binary', 
-      message: 'Extracting Binary...', 
-      progress: 50 
+
+    event.sender.send('upscale:progress', {
+      step: 'binary',
+      message: 'Extracting Binary...',
+      progress: 50
     });
-    
+
     const extractResult = await extractZipWindows(zipPath, installDir);
     if (!extractResult.ok) {
       const errorMsg = `Failed to extract binary: ${extractResult.error || 'Unknown error'}`;
       event.sender.send('upscale:log', `❌ ${errorMsg}`);
       throw new Error(errorMsg);
     }
-    
+
     event.sender.send('upscale:log', '✅ Binary extraction successful');
-    
+
     // Clean up zip file
-    try { 
-      fs.unlinkSync(zipPath); 
+    try {
+      fs.unlinkSync(zipPath);
       event.sender.send('upscale:log', '✅ Cleaned up zip file');
-    } catch {}
-    
-    event.sender.send('upscale:progress', { 
-      step: 'binary', 
-      message: 'Binary Ready!', 
-      progress: 100 
+    } catch { }
+
+    event.sender.send('upscale:progress', {
+      step: 'binary',
+      message: 'Binary Ready!',
+      progress: 100
     });
-    
+
     // Step 2: Download models
     ensureDir(modelsDir);
-    
+
     for (let i = 0; i < UPSCALE_DOWNLOADS.models.length; i++) {
       const model = UPSCALE_DOWNLOADS.models[i];
-      
-      event.sender.send('upscale:progress', { 
-        step: 'models', 
-        message: `Downloading ${model.name}...`, 
+
+      event.sender.send('upscale:progress', {
+        step: 'models',
+        message: `Downloading ${model.name}...`,
         progress: (i / UPSCALE_DOWNLOADS.models.length) * 100,
         current: i + 1,
         total: UPSCALE_DOWNLOADS.models.length
       });
-      
+
       try {
         // Download all files for this model
         for (const file of model.files) {
           const filePath = path.join(modelsDir, file.filename);
-          
+
           // Try Node.js download first, fallback to PowerShell if it fails
           let fileDownloadSuccess = false;
           try {
@@ -1804,7 +1843,7 @@ ipcMain.handle('upscale:download-all', async (event) => {
             event.sender.send('upscale:log', `✅ Downloaded ${file.filename}`);
           } catch (nodeError) {
             event.sender.send('upscale:log', `❌ Node.js download failed for ${file.filename}: ${nodeError.message}`);
-            
+
             try {
               const psResult = await downloadWithPowershell(file.url, filePath);
               if (psResult.ok) {
@@ -1818,7 +1857,7 @@ ipcMain.handle('upscale:download-all', async (event) => {
               throw new Error(`Failed to download ${file.filename} with both methods`);
             }
           }
-          
+
           if (!fileDownloadSuccess) {
             throw new Error(`Failed to download ${file.filename}`);
           }
@@ -1828,31 +1867,31 @@ ipcMain.handle('upscale:download-all', async (event) => {
         // Continue with other models
       }
     }
-    
-    event.sender.send('upscale:progress', { 
-      step: 'complete', 
-      message: 'All components downloaded successfully!', 
-      progress: 100 
+
+    event.sender.send('upscale:progress', {
+      step: 'complete',
+      message: 'All components downloaded successfully!',
+      progress: 100
     });
-    
+
     // Save the binary path
     const exePath = path.join(binaryDir, 'upscayl-bin.exe');
     const savedPrefs = loadPrefs();
     savedPrefs.RealesrganExePath = exePath;
     savePrefs(savedPrefs);
-    
+
     return { success: true, exePath };
-    
+
   } catch (e) {
     event.sender.send('upscale:log', `❌ Error downloading upscale components: ${e.message}`);
     event.sender.send('upscale:log', `❌ Install directory: ${installDir}`);
     event.sender.send('upscale:log', `❌ Binary directory: ${binaryDir}`);
     event.sender.send('upscale:log', `❌ Models directory: ${modelsDir}`);
-    
-    event.sender.send('upscale:progress', { 
-      step: 'error', 
-      message: `Download failed: ${e.message}`, 
-      progress: 0 
+
+    event.sender.send('upscale:progress', {
+      step: 'error',
+      message: `Download failed: ${e.message}`,
+      progress: 0
     });
     throw e;
   }
@@ -1862,21 +1901,21 @@ ipcMain.handle('upscale:download-all', async (event) => {
 ipcMain.handle('upscayl:stream', async (event, { exePath, args, cwd }) => {
   try {
     console.log('🔍 Starting upscayl stream with:', { exePath, args, cwd });
-    
+
     return new Promise((resolve, reject) => {
       const { spawn } = require('child_process');
-      
+
       const process = spawn(exePath, args, {
         cwd: cwd,
         stdio: ['pipe', 'pipe', 'pipe']
       });
-      
+
       // Store process reference for cancellation
       global.currentUpscaylProcess = process;
-      
+
       let stdout = '';
       let stderr = '';
-      
+
       process.stdout.on('data', (data) => {
         const output = data.toString();
         stdout += output;
@@ -1884,12 +1923,12 @@ ipcMain.handle('upscayl:stream', async (event, { exePath, args, cwd }) => {
         // Send real-time updates to renderer
         event.sender.send('upscayl:log', output);
       });
-      
+
       process.stderr.on('data', (data) => {
         const output = data.toString();
         stderr += output;
         console.log('Upscayl stderr:', output);
-        
+
         // Parse progress percentage from stderr
         const progressMatch = output.match(/(\d+(?:,\d+)?)%/);
         if (progressMatch) {
@@ -1900,21 +1939,21 @@ ipcMain.handle('upscayl:stream', async (event, { exePath, args, cwd }) => {
             event.sender.send('upscayl:progress', progress);
           }
         }
-        
+
         // Send real-time updates to renderer
         event.sender.send('upscayl:log', output);
       });
-      
+
       process.on('close', (code) => {
         console.log('Upscayl process exited with code:', code);
         resolve({ code, stdout, stderr });
       });
-      
+
       process.on('error', (error) => {
         console.error('Upscayl process error:', error);
         reject(error);
       });
-      
+
       // Handle process termination
       process.on('exit', (code, signal) => {
         console.log('Upscayl process exit:', { code, signal });
@@ -1923,7 +1962,7 @@ ipcMain.handle('upscayl:stream', async (event, { exePath, args, cwd }) => {
         }
       });
     });
-    
+
   } catch (error) {
     console.error('❌ Error in upscayl:stream:', error);
     throw error;
@@ -1937,7 +1976,7 @@ ipcMain.handle('upscayl:cancel', async () => {
     if (!proc) return { ok: true };
 
     // Try graceful kill first
-    try { proc.kill('SIGTERM'); } catch {}
+    try { proc.kill('SIGTERM'); } catch { }
 
     // On Windows, ensure the entire tree is terminated
     if (process.platform === 'win32' && proc.pid) {
@@ -1950,7 +1989,7 @@ ipcMain.handle('upscayl:cancel', async () => {
           child.on('close', () => resolve());
           child.on('error', () => resolve());
         });
-      } catch {}
+      } catch { }
     }
 
     // Clear reference
@@ -1966,46 +2005,46 @@ ipcMain.handle('upscayl:batch-process', async (event, { inputFolder, outputFolde
   try {
     console.log('🔍 Starting batch processing:', { inputFolder, outputFolder, model, scale, exePath });
     console.log('🔍 Batch processing parameters received:', { inputFolder, outputFolder, model, scale, extraArgs, exePath });
-    
+
     // Ensure output directory exists
     if (!fs.existsSync(outputFolder)) {
       fs.mkdirSync(outputFolder, { recursive: true });
     }
-    
+
     // Discover image files in the input folder
     const imageFiles = discoverImageFiles(inputFolder);
     console.log(`📁 Found ${imageFiles.length} image files in folder`);
-    
+
     if (imageFiles.length === 0) {
       throw new Error('No supported image files found in the selected folder');
     }
-    
+
     // Send initial batch info
     event.sender.send('upscayl:batch-start', {
       totalFiles: imageFiles.length,
       files: imageFiles.map(f => path.basename(f))
     });
-    
+
     const results = {
       total: imageFiles.length,
       successful: 0,
       failed: 0,
       errors: []
     };
-    
+
     // Process files sequentially
     for (let i = 0; i < imageFiles.length; i++) {
       const inputFile = imageFiles[i];
       const fileName = path.basename(inputFile);
       const fileExt = path.extname(inputFile);
       const baseName = path.basename(inputFile, fileExt);
-      
+
       // Create output filename
       const outputFileName = `${baseName}_x${scale}${fileExt}`;
       const outputFile = path.join(outputFolder, outputFileName);
-      
+
       console.log(`🔄 Processing file ${i + 1}/${imageFiles.length}: ${fileName}`);
-      
+
       // Send batch progress update
       event.sender.send('upscayl:batch-progress', {
         currentFile: i + 1,
@@ -2014,7 +2053,7 @@ ipcMain.handle('upscayl:batch-process', async (event, { inputFolder, outputFolde
         overallProgress: Math.round(((i) / imageFiles.length) * 100),
         fileProgress: 0
       });
-      
+
       try {
         // Build upscayl arguments for this file
         const args = [
@@ -2023,38 +2062,38 @@ ipcMain.handle('upscayl:batch-process', async (event, { inputFolder, outputFolde
           '-s', String(scale),
           '-n', model
         ];
-        
+
         if (extraArgs && extraArgs.trim().length) {
           args.push(...extraArgs.split(' ').filter(Boolean));
         }
-        
+
         const exeDir = path.dirname(exePath);
-        
+
         // Process this file using the existing streaming mechanism
         const { code, stdout, stderr } = await new Promise((resolve, reject) => {
           const { spawn } = require('child_process');
-          
+
           const process = spawn(exePath, args, {
             cwd: exeDir,
             stdio: ['pipe', 'pipe', 'pipe']
           });
-          
+
           // Store process reference for cancellation
           global.currentUpscaylProcess = process;
-          
+
           let stdout = '';
           let stderr = '';
-          
+
           process.stdout.on('data', (data) => {
             const output = data.toString();
             stdout += output;
             event.sender.send('upscayl:log', output);
           });
-          
+
           process.stderr.on('data', (data) => {
             const output = data.toString();
             stderr += output;
-            
+
             // Parse progress percentage from stderr for individual file
             const progressMatch = output.match(/(\d+(?:,\d+)?)%/);
             if (progressMatch) {
@@ -2070,19 +2109,19 @@ ipcMain.handle('upscayl:batch-process', async (event, { inputFolder, outputFolde
                 });
               }
             }
-            
+
             event.sender.send('upscayl:log', output);
           });
-          
+
           process.on('close', (code) => {
             resolve({ code, stdout, stderr });
           });
-          
+
           process.on('error', (error) => {
             reject(error);
           });
         });
-        
+
         if (code === 0) {
           results.successful++;
           console.log(`✅ Successfully processed: ${fileName}`);
@@ -2093,7 +2132,7 @@ ipcMain.handle('upscayl:batch-process', async (event, { inputFolder, outputFolde
           console.log(`❌ Failed to process: ${fileName}`);
           event.sender.send('upscayl:log', `❌ ${error}\n`);
         }
-        
+
       } catch (fileError) {
         results.failed++;
         const error = `Error processing ${fileName}: ${fileError.message}`;
@@ -2101,7 +2140,7 @@ ipcMain.handle('upscayl:batch-process', async (event, { inputFolder, outputFolde
         console.log(`❌ Error processing: ${fileName}`, fileError);
         event.sender.send('upscayl:log', `❌ ${error}\n`);
       }
-      
+
       // Send updated overall progress
       event.sender.send('upscayl:batch-progress', {
         currentFile: i + 1,
@@ -2111,13 +2150,13 @@ ipcMain.handle('upscayl:batch-process', async (event, { inputFolder, outputFolde
         fileProgress: 100
       });
     }
-    
+
     // Send batch completion
     event.sender.send('upscayl:batch-complete', results);
-    
+
     console.log(`✅ Batch processing complete: ${results.successful}/${results.total} successful`);
     return results;
-    
+
   } catch (error) {
     console.error('❌ Error in batch processing:', error);
     throw error;
@@ -2128,14 +2167,14 @@ ipcMain.handle('upscayl:batch-process', async (event, { inputFolder, outputFolde
 function discoverImageFiles(folderPath) {
   const supportedExtensions = ['.png', '.jpg', '.jpeg', '.jfif', '.bmp', '.tif', '.tiff'];
   const imageFiles = [];
-  
+
   try {
     const files = fs.readdirSync(folderPath);
-    
+
     for (const file of files) {
       const filePath = path.join(folderPath, file);
       const stat = fs.statSync(filePath);
-      
+
       if (stat.isFile()) {
         const ext = path.extname(file).toLowerCase();
         if (supportedExtensions.includes(ext)) {
@@ -2143,10 +2182,10 @@ function discoverImageFiles(folderPath) {
         }
       }
     }
-    
+
     // Sort files alphabetically for consistent processing order
     return imageFiles.sort();
-    
+
   } catch (error) {
     console.error('Error discovering image files:', error);
     throw new Error(`Failed to read folder: ${error.message}`);
@@ -2158,11 +2197,11 @@ ipcMain.handle('realesrgan.ensure', async () => {
   try {
     console.log('🔍 realesrgan.ensure called - checking setup...');
     const savedPrefs = loadPrefs();
-    
+
     // In development, check for local upscale-backend directory
     const devPath = path.join(__dirname, 'upscale-backend', 'upscayl-bin-20240601-103425-windows', 'upscayl-bin.exe');
     console.log('🔍 Checking development path:', devPath);
-    
+
     if (fs.existsSync(devPath)) {
       console.log('✅ Development executable found, saving path...');
       // Save the path for future use
@@ -2170,13 +2209,13 @@ ipcMain.handle('realesrgan.ensure', async () => {
       savePrefs(savedPrefs);
       return devPath;
     }
-    
+
     // Fall back to any previously saved path if it exists
     if (savedPrefs?.RealesrganExePath && fs.existsSync(savedPrefs.RealesrganExePath)) {
       console.log('✅ Using saved path:', savedPrefs.RealesrganExePath);
       return savedPrefs.RealesrganExePath;
     }
-    
+
     console.log('❌ No executable found - user needs to download from settings');
     // Return null to indicate user should download from settings
     return null;
@@ -2197,16 +2236,16 @@ ipcMain.handle('realesrgan.ensure', async () => {
 ipcMain.handle('filerandomizer:createBackup', async (event, { targetFolder, replacementFiles }) => {
   try {
     console.log('💾 Creating backup of target folder:', targetFolder);
-    
+
     // Create backup folder with timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupFolder = path.join(path.dirname(targetFolder), `backup_${path.basename(targetFolder)}_${timestamp}`);
-    
+
     // Ensure backup folder exists
     if (!fs.existsSync(backupFolder)) {
       fs.mkdirSync(backupFolder, { recursive: true });
     }
-    
+
     // Copy entire target folder to backup
     const copyFolder = (src, dest) => {
       if (fs.statSync(src).isDirectory()) {
@@ -2223,10 +2262,10 @@ ipcMain.handle('filerandomizer:createBackup', async (event, { targetFolder, repl
         fs.copyFileSync(src, dest);
       }
     };
-    
+
     copyFolder(targetFolder, backupFolder);
     console.log('✅ Backup created successfully:', backupFolder);
-    
+
     return {
       success: true,
       backupPath: backupFolder
@@ -2244,46 +2283,46 @@ ipcMain.handle('filerandomizer:discoverFiles', async (event, { targetFolder, rep
   try {
     // Detect if this is for renaming (no replacement files) or randomizing
     const isRenaming = !replacementFiles || replacementFiles.length === 0;
-    
+
     if (isRenaming) {
       console.log('🔍 Discovering files for renaming in:', targetFolder);
     } else {
       console.log('🔍 Discovering files for replacement in:', targetFolder);
     }
-    
+
     console.log('🧠 Smart name matching:', smartNameMatching);
     console.log('🔍 Filter mode:', filterMode);
     console.log('🔍 Filter keywords:', filterKeywords);
-    
+
     // Validate target folder path
     if (!targetFolder || !fs.existsSync(targetFolder)) {
       throw new Error('Target folder does not exist or is invalid');
     }
-    
+
     // Check if target folder is in a safe location
     const targetPath = path.resolve(targetFolder);
     const userProfile = process.env.USERPROFILE || process.env.HOME;
     const userProfilePath = path.resolve(userProfile);
-    
+
     // Only allow scanning within user's own directories
     if (!targetPath.startsWith(userProfilePath)) {
       throw new Error('Target folder must be within your user profile directory for safety');
     }
-    
+
     const discoveredFiles = {};
     let totalFiles = 0;
     let filteredFiles = 0;
-    
+
     // Parse filter keywords
     const keywords = filterKeywords ? filterKeywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k) : [];
-    
+
     // Function to check if file should be included based on filtering
     const shouldIncludeFile = (fileName) => {
       if (keywords.length === 0) return true;
-      
+
       const fileNameLower = fileName.toLowerCase();
       const hasKeyword = keywords.some(keyword => fileNameLower.includes(keyword));
-      
+
       if (filterMode === 'skip') {
         // Skip files containing keywords
         return !hasKeyword;
@@ -2292,7 +2331,7 @@ ipcMain.handle('filerandomizer:discoverFiles', async (event, { targetFolder, rep
         return hasKeyword;
       }
     };
-    
+
     let targetExtensions = [];
     if (isRenaming) {
       // For renaming, look for ALL files regardless of extension
@@ -2306,18 +2345,18 @@ ipcMain.handle('filerandomizer:discoverFiles', async (event, { targetFolder, rep
       console.log('🔍 Randomizer mode detected - will scan for specific file types');
     }
     console.log('📁 Subdirectory scanning:', scanSubdirectories ? 'ENABLED' : 'DISABLED');
-    
+
     // Recursively scan for files with matching extensions
     const scanDirectory = (dir) => {
       try {
         if (!fs.existsSync(dir)) return;
-        
+
         const items = fs.readdirSync(dir);
         for (const item of items) {
           try {
             const fullPath = path.join(dir, item);
             const stat = fs.statSync(fullPath);
-            
+
             if (stat.isDirectory()) {
               // Skip system and protected directories
               const skipPatterns = [
@@ -2326,11 +2365,11 @@ ipcMain.handle('filerandomizer:discoverFiles', async (event, { targetFolder, rep
                 '$Recycle.Bin', 'System Volume Information', 'Recovery',
                 'Local Settings', 'Application Data', 'LocalLow'
               ];
-              const shouldSkip = skipPatterns.some(skip => 
+              const shouldSkip = skipPatterns.some(skip =>
                 item.toLowerCase().includes(skip.toLowerCase()) ||
                 fullPath.toLowerCase().includes(skip.toLowerCase())
               );
-              
+
               // Additional safety: only scan within user profile
               if (!shouldSkip && fullPath.startsWith(userProfilePath)) {
                 // Only scan subdirectories if the toggle is enabled
@@ -2344,7 +2383,7 @@ ipcMain.handle('filerandomizer:discoverFiles', async (event, { targetFolder, rep
             } else if (stat.isFile()) {
               const ext = path.extname(item).toLowerCase();
               console.log(`🔍 Checking file: ${item} with extension: ${ext}`);
-              
+
               // Check if file should be included based on extension and filtering
               let shouldProcessFile = false;
               if (isRenaming) {
@@ -2360,7 +2399,7 @@ ipcMain.handle('filerandomizer:discoverFiles', async (event, { targetFolder, rep
                   console.log(`❌ Extension ${ext} not in target extensions: ${targetExtensions.join(', ')}`);
                 }
               }
-              
+
               if (shouldProcessFile) {
                 // Apply filtering
                 if (shouldIncludeFile(item)) {
@@ -2385,36 +2424,36 @@ ipcMain.handle('filerandomizer:discoverFiles', async (event, { targetFolder, rep
         console.log(`⚠️ Skipping directory ${dir} due to error:`, dirError.message);
       }
     };
-    
+
     // Start scanning from target folder and climb up within project boundaries only
     let currentDir = targetFolder;
     const maxDepth = 10; // Allow deeper project scanning
     let depth = 0;
-    
+
     // Find the project root by looking for common project indicators
     const findProjectRoot = (startDir) => {
       let dir = startDir;
       let projectRoot = startDir;
-      
+
       // Look for project root indicators (go up to 5 levels max to avoid going too far)
       for (let i = 0; i < 5; i++) {
         if (dir === path.dirname(dir)) break; // Reached root
-        
+
         try {
           const items = fs.readdirSync(dir);
-          
+
           // Check for strong project indicators
-          const hasStrongIndicators = items.some(item => 
+          const hasStrongIndicators = items.some(item =>
             ['.git', 'package.json', 'Quartz-main'].includes(item)
           );
-          
+
           // Check for moderate project indicators
-          const hasModerateIndicators = items.some(item => 
-            ['mod', 'assets', 'src', 'project.config'].some(indicator => 
+          const hasModerateIndicators = items.some(item =>
+            ['mod', 'assets', 'src', 'project.config'].some(indicator =>
               item.toLowerCase().includes(indicator.toLowerCase())
             )
           );
-          
+
           // Only set as project root if we find strong indicators
           if (hasStrongIndicators) {
             projectRoot = dir;
@@ -2425,28 +2464,28 @@ ipcMain.handle('filerandomizer:discoverFiles', async (event, { targetFolder, rep
             projectRoot = dir;
             console.log(`✅ Found moderate project indicator in: ${dir}`);
           }
-          
+
           dir = path.dirname(dir);
         } catch (error) {
           console.log(`⚠️ Cannot read directory ${dir}:`, error.message);
           break;
         }
       }
-      
+
       return projectRoot;
     };
-    
+
     const projectRoot = findProjectRoot(targetFolder);
     console.log(`🔍 Project root detected:`, projectRoot);
-    
+
     // Scan the target folder and all its subdirectories (climbing down, not up)
     console.log(`🔍 Starting scan from target folder: ${targetFolder}`);
-    
+
     // Just scan the target folder directly - scanDirectory will handle subdirectories recursively
     scanDirectory(targetFolder);
-    
+
     console.log(`✅ Completed scanning target folder and all subdirectories`);
-    
+
     if (isRenaming) {
       console.log(`✅ File discovery completed: ${totalFiles} files found for renaming, ${filteredFiles} filtered out`);
     } else {
@@ -2471,43 +2510,43 @@ ipcMain.handle('filerandomizer:replaceFiles', async (event, { targetFolder, repl
   try {
     console.log('🔄 Starting file replacement process...');
     console.log(`🧠 Smart name matching: ${smartNameMatching ? 'ENABLED' : 'DISABLED'}`);
-    
+
     let replacedCount = 0;
     const errors = [];
     let totalFiles = 0;
-    
+
     // Calculate total files to process
     Object.values(discoveredFiles).forEach(files => {
       totalFiles += files.length;
     });
-    
+
     // If smart name matching is enabled, create a mapping of base names to replacement files
     const baseNameToReplacement = new Map();
-    
+
     // Process each file extension
     for (const [extension, filePaths] of Object.entries(discoveredFiles)) {
       console.log(`🔄 Processing ${extension} files:`, filePaths.length);
-      
+
       // Get replacement files for this extension
       const extensionReplacementFiles = replacementFiles.filter(f => f.extension === extension);
       if (extensionReplacementFiles.length === 0) {
         console.log(`⚠️ No replacement files found for extension: ${extension}`);
         continue;
       }
-      
+
       // Replace each file with progress updates
       for (let i = 0; i < filePaths.length; i++) {
         const filePath = filePaths[i];
         try {
           let selectedReplacement;
-          
+
           if (smartNameMatching) {
             // Extract base name (everything before the last underscore)
             const fileName = path.basename(filePath, extension);
             const baseName = fileName.replace(/_[^_]*$/, ''); // Remove last suffix
-            
+
             console.log(`🔍 File: ${fileName}, Base name: ${baseName}`);
-            
+
             // Check if we already have a replacement for this base name
             if (baseNameToReplacement.has(baseName)) {
               selectedReplacement = baseNameToReplacement.get(baseName);
@@ -2523,13 +2562,13 @@ ipcMain.handle('filerandomizer:replaceFiles', async (event, { targetFolder, repl
             const randomIndex = Math.floor(Math.random() * extensionReplacementFiles.length);
             selectedReplacement = extensionReplacementFiles[randomIndex];
           }
-          
+
           console.log(`🔄 Replacing: ${filePath} with ${selectedReplacement.path}`);
-          
+
           // Copy replacement file to target location
           fs.copyFileSync(selectedReplacement.path, filePath);
           replacedCount++;
-          
+
           // Send progress update every 10 files or at the end
           if (replacedCount % 10 === 0 || replacedCount === totalFiles) {
             event.sender.send('filerandomizer:progress', {
@@ -2538,19 +2577,19 @@ ipcMain.handle('filerandomizer:replaceFiles', async (event, { targetFolder, repl
               percentage: Math.round((replacedCount / totalFiles) * 100)
             });
           }
-          
+
         } catch (error) {
           console.error(`❌ Error replacing file ${filePath}:`, error);
           errors.push({ file: filePath, error: error.message });
         }
       }
     }
-    
+
     console.log(`✅ File replacement completed. Replaced ${replacedCount} files.`);
     if (errors.length > 0) {
       console.log(`⚠️ ${errors.length} errors occurred during replacement.`);
     }
-    
+
     return {
       success: true,
       replacedCount,
@@ -2580,7 +2619,7 @@ ipcMain.handle('filerandomizer:renameFiles', async (event, { targetFolder, textT
   try {
     console.log('✂️ Starting file renaming process...');
     console.log(`📁 Target folder: ${targetFolder}`);
-    
+
     if (textToFind && textToReplaceWith !== undefined) {
       // Text replacement mode
       console.log(`✂️ Text to find: "${textToFind}"`);
@@ -2599,22 +2638,22 @@ ipcMain.handle('filerandomizer:renameFiles', async (event, { targetFolder, textT
         console.log(`➕ Suffix to add: "${suffixToAdd}"`);
       }
     }
-    
+
     let renamedCount = 0;
     const errors = [];
     let totalFiles = 0;
-    
+
     // Calculate total files to process
     Object.values(discoveredFiles).forEach(files => {
       totalFiles += files.length;
     });
-    
+
     console.log(`📊 Total files to rename: ${totalFiles}`);
-    
+
     // Process each file extension
     for (const [extension, filePaths] of Object.entries(discoveredFiles)) {
       console.log(`✂️ Processing ${extension} files:`, filePaths.length);
-      
+
       // Rename each file
       for (let i = 0; i < filePaths.length; i++) {
         const filePath = filePaths[i];
@@ -2622,17 +2661,17 @@ ipcMain.handle('filerandomizer:renameFiles', async (event, { targetFolder, textT
           const dir = path.dirname(filePath);
           const oldFileName = path.basename(filePath);
           let newFileName = oldFileName;
-          
+
           if (textToFind && textToReplaceWith !== undefined) {
             // Text replacement mode
             newFileName = oldFileName.replace(new RegExp(textToFind.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), textToReplaceWith || '');
           }
-          
+
           // Add prefix if specified
           if (prefixToAdd) {
             newFileName = prefixToAdd + newFileName;
           }
-          
+
           // Add suffix if specified (before the file extension)
           if (suffixToAdd) {
             const lastDotIndex = newFileName.lastIndexOf('.');
@@ -2644,26 +2683,26 @@ ipcMain.handle('filerandomizer:renameFiles', async (event, { targetFolder, textT
               newFileName = newFileName + suffixToAdd;
             }
           }
-          
+
           // Skip if no change would be made
           if (newFileName === oldFileName) {
             console.log(`⏭️ No change needed for: ${oldFileName}`);
             continue;
           }
-          
+
           // Check if new filename already exists
           const newFilePath = path.join(dir, newFileName);
           if (fs.existsSync(newFilePath)) {
             console.log(`⚠️ Skipping ${oldFileName} - new name already exists: ${newFileName}`);
             continue;
           }
-          
+
           console.log(`✂️ Renaming: ${oldFileName} → ${newFileName}`);
-          
+
           // Rename the file
           fs.renameSync(filePath, newFilePath);
           renamedCount++;
-          
+
           // Send progress update every 10 files or at the end
           if (renamedCount % 10 === 0 || renamedCount === totalFiles) {
             event.sender.send('filerandomizer:progress', {
@@ -2672,19 +2711,19 @@ ipcMain.handle('filerandomizer:renameFiles', async (event, { targetFolder, textT
               percentage: Math.round((renamedCount / totalFiles) * 100)
             });
           }
-          
+
         } catch (error) {
           console.error(`❌ Error renaming file ${filePath}:`, error);
           errors.push({ file: filePath, error: error.message });
         }
       }
     }
-    
+
     console.log(`✅ File renaming completed. Renamed ${renamedCount} files.`);
     if (errors.length > 0) {
       console.log(`⚠️ ${errors.length} errors occurred during renaming.`);
     }
-    
+
     return {
       success: true,
       renamedCount,
@@ -2705,7 +2744,7 @@ ipcMain.handle('filerandomizer:renameFiles', async (event, { targetFolder, textT
 ipcMain.handle('wad:extract', async (event, data) => {
   try {
     console.log('🎯 WAD extraction request received:', JSON.stringify(data, null, 2));
-    
+
     // Validate required parameters
     if (!data || !data.wadPath || !data.outputDir || data.skinId === undefined || data.skinId === null) {
       console.error('❌ Missing required parameters:', {
@@ -2715,20 +2754,20 @@ ipcMain.handle('wad:extract', async (event, data) => {
       });
       return { error: 'Missing required parameters: wadPath, outputDir, skinId' };
     }
-    
+
     // Validate WAD file exists
     if (!fs.existsSync(data.wadPath)) {
       return { error: `WAD file not found: ${data.wadPath}` };
     }
-    
+
     // Use integrated hash location if not provided
     const hashPath = getHashPath(data.hashPath);
     console.log('📁 Using hash path:', hashPath);
-    
+
     // Import ES modules using relative paths (they're part of the project)
     const { unpackWAD } = await import('./src/utils/wad/index.js');
     const { loadHashtables } = await import('./src/jsritofile/index.js');
-    
+
     // Load hashtables if hash path exists
     let hashtables = null;
     if (hashPath && fs.existsSync(hashPath)) {
@@ -2742,7 +2781,7 @@ ipcMain.handle('wad:extract', async (event, data) => {
     } else {
       console.log('ℹ️ No hashtables path provided, files will use hash names');
     }
-    
+
     // Progress callback
     let lastProgress = 0;
     const progressCallback = (count, message) => {
@@ -2751,7 +2790,7 @@ ipcMain.handle('wad:extract', async (event, data) => {
         lastProgress = count;
       }
     };
-    
+
     // Extract WAD file using JavaScript implementation
     console.log('🚀 Starting WAD extraction with JavaScript implementation...');
     const result = await unpackWAD(
@@ -2761,20 +2800,20 @@ ipcMain.handle('wad:extract', async (event, data) => {
       null, // no filter
       progressCallback
     );
-    
+
     console.log('✅ WAD extraction completed:', {
       extractedCount: result.extractedCount,
       outputDir: result.outputDir,
       hashedFilesCount: Object.keys(result.hashedFiles || {}).length
     });
-    
+
     return {
       success: true,
       extractedCount: result.extractedCount,
       outputDir: result.outputDir,
       hashedFiles: result.hashedFiles || {}
     };
-    
+
   } catch (error) {
     console.error('❌ WAD extraction error:', error);
     return { error: error.message, stack: error.stack };
@@ -2785,7 +2824,7 @@ ipcMain.handle('wad:extract', async (event, data) => {
 ipcMain.handle('bumpath:repath', async (event, data) => {
   try {
     console.log('🎯 Bumpath repath request received:', JSON.stringify(data, null, 2));
-    
+
     // Validate required parameters
     if (!data || !data.sourceDir || !data.outputDir || !data.selectedSkinIds) {
       console.error('❌ Missing required parameters:', {
@@ -2795,24 +2834,24 @@ ipcMain.handle('bumpath:repath', async (event, data) => {
       });
       return { error: 'Missing required parameters: sourceDir, outputDir, selectedSkinIds' };
     }
-    
+
     // Validate source directory exists
     if (!fs.existsSync(data.sourceDir)) {
       return { error: `Source directory not found: ${data.sourceDir}` };
     }
-    
+
     // Use integrated hash location if not provided
     const hashPath = getHashPath(data.hashPath);
     console.log('📁 Using hash path:', hashPath);
-    
+
     const ignoreMissing = data.ignoreMissing !== false; // Default true
     const combineLinked = data.combineLinked !== false; // Default true
     const customPrefix = data.customPrefix || 'bum';
     const processTogether = data.processTogether || false;
-    
+
     // Import ES modules using relative paths (they're part of the project)
     const { BumpathCore } = await import('./src/utils/bumpath/bumpathCore.js');
-    
+
     // Progress callback
     let lastProgress = 0;
     const progressCallback = (count, message) => {
@@ -2821,23 +2860,23 @@ ipcMain.handle('bumpath:repath', async (event, data) => {
         lastProgress = count;
       }
     };
-    
+
     if (processTogether) {
       // Process all skins together
       console.log(`🚀 Processing ${data.selectedSkinIds.length} skins together...`);
-      
+
       const bumInstance = new BumpathCore();
-      
+
       // Add source directory
       console.log(`📂 Adding source directory: ${data.sourceDir}`);
       await bumInstance.addSourceDirs([data.sourceDir]);
-      
+
       // Reset all BIN files to unselected
       const binSelections = {};
       for (const unifyFile in bumInstance.sourceBins) {
         binSelections[unifyFile] = false;
       }
-      
+
       // Select BIN files matching selected skin IDs
       let selectedCount = 0;
       for (const unifyFile in bumInstance.sourceBins) {
@@ -2858,15 +2897,15 @@ ipcMain.handle('bumpath:repath', async (event, data) => {
           }
         }
       }
-      
+
       bumInstance.updateBinSelection(binSelections);
       console.log(`📋 Marked ${selectedCount} BIN files for skins ${data.selectedSkinIds.join(', ')}`);
-      
+
       // Scan
       console.log('🔍 Scanning BIN files...');
       await bumInstance.scan(hashPath);
       console.log(`✅ Found ${Object.keys(bumInstance.scannedTree).length} entries`);
-      
+
       // Apply custom prefix if provided
       if (customPrefix !== 'bum') {
         console.log(`🏷️  Applying custom prefix '${customPrefix}' to all entries...`);
@@ -2874,38 +2913,38 @@ ipcMain.handle('bumpath:repath', async (event, data) => {
         bumInstance.applyPrefix(allEntryHashes, customPrefix);
         console.log(`✅ Applied prefix to ${allEntryHashes.length} entries`);
       }
-      
+
       // Process
       console.log('⚙️  Starting Bumpath process...');
       await bumInstance.process(data.outputDir, ignoreMissing, combineLinked, progressCallback);
       console.log('✅ Bumpath repath completed');
-      
+
       return {
         success: true,
         message: `Processed ${data.selectedSkinIds.length} skins together`
       };
-      
+
     } else {
       // Process each skin individually
       console.log(`🚀 Processing ${data.selectedSkinIds.length} skins individually...`);
-      
+
       const results = [];
-      
+
       for (let i = 0; i < data.selectedSkinIds.length; i++) {
         const skinId = data.selectedSkinIds[i];
         console.log(`\n--- Processing skin ${skinId} (${i + 1}/${data.selectedSkinIds.length}) ---`);
-        
+
         const bumInstance = new BumpathCore();
-        
+
         // Add source directory
         await bumInstance.addSourceDirs([data.sourceDir]);
-        
+
         // Reset all BIN files to unselected
         const binSelections = {};
         for (const unifyFile in bumInstance.sourceBins) {
           binSelections[unifyFile] = false;
         }
-        
+
         // Select only the current skin's BIN file
         let selectedCount = 0;
         for (const unifyFile in bumInstance.sourceBins) {
@@ -2925,30 +2964,30 @@ ipcMain.handle('bumpath:repath', async (event, data) => {
             }
           }
         }
-        
+
         bumInstance.updateBinSelection(binSelections);
         console.log(`📋 Marked ${selectedCount} BIN files for skin ${skinId}`);
-        
+
         // Scan
         console.log(`🔍 Scanning BIN files for skin ${skinId}...`);
         await bumInstance.scan(hashPath);
         console.log(`✅ Found ${Object.keys(bumInstance.scannedTree).length} entries`);
-        
+
         // Apply custom prefix if provided
         if (customPrefix !== 'bum') {
           console.log(`🏷️  Applying custom prefix '${customPrefix}' to all entries...`);
           const allEntryHashes = Object.keys(bumInstance.entryPrefix).filter(hash => hash !== 'All_BINs');
           bumInstance.applyPrefix(allEntryHashes, customPrefix);
         }
-        
+
         // Process
         console.log(`⚙️  Starting Bumpath process for skin ${skinId}...`);
         await bumInstance.process(data.outputDir, ignoreMissing, combineLinked, progressCallback);
         console.log(`✅ Completed skin ${skinId}`);
-        
+
         results.push({ skinId, success: true });
       }
-      
+
       console.log('✅ Bumpath repath completed for all skins');
       return {
         success: true,
@@ -2956,7 +2995,7 @@ ipcMain.handle('bumpath:repath', async (event, data) => {
         results
       };
     }
-    
+
   } catch (error) {
     console.error('❌ Bumpath repath error:', error);
     return { error: error.message, stack: error.stack };
@@ -2984,7 +3023,23 @@ ipcMain.handle('hashes:download', async (event, progressCallback) => {
       lastProgress = message;
       logToFile(`Hash download: ${message}`, 'INFO');
     });
-    logToFile(`Hash download completed: ${result.downloaded.length} files, ${result.errors.length} errors`, 'INFO');
+
+
+    if (result.success) {
+      logToFile(`Hash download completed: ${result.downloaded.length} files, ${result.errors.length} errors`, 'INFO');
+
+      // Clear backend hashtables cache so subsequent operations use new hashes
+      try {
+        const { clearHashtablesCache } = await import('./src/jsritofile/index.js');
+        clearHashtablesCache();
+        logToFile('Backend hashtables cache cleared', 'INFO');
+      } catch (cacheError) {
+        logToFile(`Failed to clear backend hashtables cache: ${cacheError.message}`, 'WARN');
+      }
+    } else {
+      logToFile(`Hash download failed: ${result.errors.length} errors`, 'ERROR');
+    }
+
     return result;
   } catch (error) {
     console.error('❌ Hash download error:', error);
@@ -3001,7 +3056,7 @@ ipcMain.handle('hashes:get-directory', async () => {
     logToFile(`  - process.env.HOME: ${process.env.HOME || 'undefined'}`, 'INFO');
     logToFile(`  - process.platform: ${process.platform}`, 'INFO');
     logToFile(`  - os.homedir(): ${require('os').homedir()}`, 'INFO');
-    
+
     // Verify directory exists and is writable
     const fs = require('fs');
     if (fs.existsSync(hashDir)) {
@@ -3017,7 +3072,7 @@ ipcMain.handle('hashes:get-directory', async () => {
     } else {
       logToFile(`  - Directory exists: NO`, 'WARN');
     }
-    
+
     return { hashDir };
   } catch (error) {
     logToFile(`❌ Get hash directory error: ${error.message}`, 'ERROR');
@@ -3031,20 +3086,20 @@ ipcMain.handle('hashes:get-directory', async () => {
 ipcMain.handle('ritobin:get-default-path', async () => {
   try {
     // Use same path logic as hashManager - AppData/Roaming/FrogTools
-    const appDataPath = process.env.APPDATA || 
-      (process.platform === 'darwin' 
+    const appDataPath = process.env.APPDATA ||
+      (process.platform === 'darwin'
         ? path.join(process.env.HOME, 'Library', 'Application Support')
         : process.platform === 'linux'
           ? path.join(process.env.HOME, '.local', 'share')
           : path.join(process.env.HOME, 'AppData', 'Roaming'));
-    
+
     const ritobinPath = path.join(appDataPath, 'FrogTools', 'ritobin_cli.exe');
     const exists = fs.existsSync(ritobinPath);
-    
-    return { 
-      path: ritobinPath, 
+
+    return {
+      path: ritobinPath,
       exists,
-      isDefault: true 
+      isDefault: true
     };
   } catch (error) {
     console.error('❌ Get default ritobin path error:', error);
@@ -3058,7 +3113,7 @@ ipcMain.handle('file:open-folder', async (event, folderPath) => {
     if (!folderPath || !fs.existsSync(folderPath)) {
       return { success: false, error: 'Path does not exist' };
     }
-    
+
     // Use showItemInFolder for files, openPath for directories
     const stats = fs.statSync(folderPath);
     if (stats.isFile()) {
@@ -3068,7 +3123,7 @@ ipcMain.handle('file:open-folder', async (event, folderPath) => {
       // Open directory
       await shell.openPath(folderPath);
     }
-    
+
     return { success: true };
   } catch (error) {
     console.error('❌ Open folder error:', error);
@@ -3114,26 +3169,26 @@ ipcMain.handle('update:download', async () => {
     if (isDev || !app.isPackaged) {
       return { success: false, error: 'Update downloading is only available in production builds' };
     }
-    
+
     // Check if update info is available - use cached version if available
     if (cachedUpdateInfo) {
       autoUpdater.updateInfo = cachedUpdateInfo;
       logToFile(`Using cached update info: ${cachedUpdateInfo.version}`, 'INFO');
     }
-    
+
     // Check if update info is available, if not, wait for it
     // The update-available event should have already fired, but updateInfo might not be set immediately
     if (!autoUpdater.updateInfo) {
       let retries = 0;
       const maxRetries = 10;
-      
+
       while (!autoUpdater.updateInfo && retries < maxRetries) {
         logToFile(`Waiting for update info... (${retries + 1}/${maxRetries})`, 'INFO');
         await new Promise(resolve => setTimeout(resolve, 500));
         retries++;
       }
     }
-    
+
     // If still no update info, try checking again
     if (!autoUpdater.updateInfo) {
       logToFile('Update info still not available, triggering check...', 'INFO');
@@ -3149,7 +3204,7 @@ ipcMain.handle('update:download', async () => {
         logToFile(`Update check failed: ${checkError.message}`, 'ERROR');
       }
     }
-    
+
     // If still no update info, use fallback
     if (!autoUpdater.updateInfo) {
       logToFile('No update info from electron-updater, using fallback...', 'WARNING');
@@ -3157,22 +3212,22 @@ ipcMain.handle('update:download', async () => {
       if (fallbackResult.updateAvailable) {
         const { shell } = require('electron');
         await shell.openExternal(`https://github.com/RitoShark/Quartz/releases/tag/v${fallbackResult.version}`);
-        return { 
-          success: true, 
-          manualDownload: true, 
-          message: 'Opening GitHub release page for manual download (electron-updater not available)' 
+        return {
+          success: true,
+          manualDownload: true,
+          message: 'Opening GitHub release page for manual download (electron-updater not available)'
         };
       }
       return { success: false, error: 'No update information available' };
     }
-    
+
     logToFile(`Downloading update: ${autoUpdater.updateInfo.version}`, 'INFO');
     // Try to download with electron-updater
     await autoUpdater.downloadUpdate();
     return { success: true };
   } catch (error) {
     logToFile(`Update download error: ${error.message}`, 'ERROR');
-    
+
     // If download fails, offer manual download as fallback
     if (error.message.includes('check update first') || error.message.includes('latest.yml') || !autoUpdater.updateInfo) {
       try {
@@ -3180,17 +3235,17 @@ ipcMain.handle('update:download', async () => {
         if (fallbackResult.updateAvailable) {
           const { shell } = require('electron');
           await shell.openExternal(`https://github.com/RitoShark/Quartz/releases/tag/v${fallbackResult.version}`);
-          return { 
-            success: true, 
-            manualDownload: true, 
-            message: 'Opening GitHub release page for manual download' 
+          return {
+            success: true,
+            manualDownload: true,
+            message: 'Opening GitHub release page for manual download'
           };
         }
       } catch (fallbackError) {
         logToFile(`Fallback also failed: ${fallbackError.message}`, 'ERROR');
       }
     }
-    
+
     return { success: false, error: error.message };
   }
 });
@@ -3243,8 +3298,8 @@ ipcMain.handle('window:isMaximized', (event) => {
 ipcMain.handle('update:get-version', async () => {
   try {
     const packageJson = require('./package.json');
-    return { 
-      success: true, 
+    return {
+      success: true,
       version: packageJson.version,
       isDev: isDev,
       isPackaged: app.isPackaged

@@ -184,9 +184,17 @@ function countBrackets(line) {
 function parseSystem(rawContent, name, globalStartLine) {
     const lines = rawContent.split('\n');
 
+    // Try to read particleName for a friendlier display name (like Port.js does)
+    let particleName = null;
+    const particleNameMatch = rawContent.match(/particleName:\s*string\s*=\s*"([^"]+)"/i);
+    if (particleNameMatch) {
+        particleName = particleNameMatch[1];
+    }
+
     const system = {
         name,
-        displayName: getShortName(name),
+        displayName: particleName || getShortName(name), // Prefer particleName, fallback to path
+        particleName, // Store separately for reference
         rawContent,
         globalStartLine,
         emitters: []

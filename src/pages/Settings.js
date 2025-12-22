@@ -43,7 +43,8 @@ const ModernSettings = () => {
     fileRandomizerEnabled: false,
     bumpathEnabled: false,
     aniportEnabled: true,
-    frogchangerEnabled: false
+    frogchangerEnabled: false,
+    glassBlur: 6
   });
 
   // Theme-related state
@@ -95,6 +96,15 @@ const ModernSettings = () => {
   const [newVersion, setNewVersion] = useState('');
   const [updateProgress, setUpdateProgress] = useState({ percent: 0, transferred: 0, total: 0 });
   const [updateError, setUpdateError] = useState('');
+  const [highlightUpdateSection, setHighlightUpdateSection] = useState(false);
+  const updateSectionRef = useRef(null);
+
+  // DEV: Set to true to simulate update highlight for testing
+  const DEV_SIMULATE_UPDATE_HIGHLIGHT = false;
+
+  // Wallpaper state
+  const [wallpaperPath, setWallpaperPath] = useState('');
+  const [wallpaperOpacity, setWallpaperOpacity] = useState(0.15);
 
   // Color helper functions
   const clamp01 = (x) => Math.max(0, Math.min(1, Number.isFinite(x) ? x : 0));
@@ -385,8 +395,17 @@ const ModernSettings = () => {
         fileRandomizerEnabled: electronPrefs.obj.FileRandomizerEnabled !== false,
         bumpathEnabled: electronPrefs.obj.BumpathEnabled !== false,
         aniportEnabled: electronPrefs.obj.AniPortEnabled !== false,
-        frogchangerEnabled: electronPrefs.obj.FrogChangerEnabled !== false
+        frogchangerEnabled: electronPrefs.obj.FrogChangerEnabled !== false,
+        glassBlur: electronPrefs.obj.GlassBlur !== undefined ? electronPrefs.obj.GlassBlur : 6
       }));
+
+      // Load wallpaper settings
+      if (electronPrefs.obj.WallpaperPath) {
+        setWallpaperPath(electronPrefs.obj.WallpaperPath);
+      }
+      if (electronPrefs.obj.WallpaperOpacity !== undefined) {
+        setWallpaperOpacity(electronPrefs.obj.WallpaperOpacity);
+      }
 
       // Load available fonts (one fresh scan on settings open)
       setIsLoadingFonts(true);
@@ -422,6 +441,50 @@ const ModernSettings = () => {
     };
     loadSettings();
   }, []);
+
+  // Check for update highlight flag (when user navigates from update notification)
+  useEffect(() => {
+    const checkHighlightFlag = () => {
+      try {
+        const shouldHighlight = localStorage.getItem('settings:highlight-update') === 'true' || DEV_SIMULATE_UPDATE_HIGHLIGHT;
+
+        if (shouldHighlight) {
+          // Clear the flag
+          localStorage.removeItem('settings:highlight-update');
+
+          // Expand the tools section
+          setExpandedSections(prev => ({
+            ...prev,
+            tools: true
+          }));
+
+          // Set highlight state
+          setHighlightUpdateSection(true);
+
+          // Scroll to update section after a short delay (let the section expand first)
+          setTimeout(() => {
+            if (updateSectionRef.current) {
+              updateSectionRef.current.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+              });
+            }
+          }, 300);
+
+          // Remove highlight after 3 seconds
+          setTimeout(() => {
+            setHighlightUpdateSection(false);
+          }, 3000);
+        }
+      } catch (e) {
+        console.error('Error checking highlight flag:', e);
+      }
+    };
+
+    // Check after a brief delay to ensure component is mounted
+    const timer = setTimeout(checkHighlightFlag, 100);
+    return () => clearTimeout(timer);
+  }, [DEV_SIMULATE_UPDATE_HIGHLIGHT]);
 
   // Setup update listeners and check version on mount
   useEffect(() => {
@@ -787,6 +850,15 @@ const ModernSettings = () => {
           // Refresh hash status
           const statusResult = await ipcRenderer.invoke('hashes:check');
           setHashStatus(statusResult);
+
+          // Clear cached hashtables so new hashes are loaded
+          try {
+            const { clearHashtablesCache } = await import('../jsritofile/index.js');
+            clearHashtablesCache();
+            console.log('Cleared hashtables cache after update');
+          } catch (e) {
+            console.warn('Failed to clear hashtables cache:', e);
+          }
         } else {
           console.warn(`Download completed with ${result.errors.length} error(s): ${result.errors.join(', ')}`);
         }
@@ -855,8 +927,93 @@ const ModernSettings = () => {
     }
   };
 
+  // Wallpaper handlers
+  const handleBrowseWallpaper = async () => {
+    try {
+      if (window.require) {
+        const { ipcRenderer } = window.require('electron');
+        const result = await ipcRenderer.invoke('dialog:openFile', {
+          title: 'Select Wallpaper Image',
+          filters: [
+            { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }
+          ],
+          properties: ['openFile']
+        });
+
+        if (result && result.filePaths && result.filePaths.length > 0) {
+          const newPath = result.filePaths[0];
+          setWallpaperPath(newPath);
+          await electronPrefs.set('WallpaperPath', newPath);
+          window.dispatchEvent(new CustomEvent('wallpaperChanged', {
+            detail: { path: newPath, opacity: wallpaperOpacity }
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error selecting wallpaper:', error);
+    }
+  };
+
+  const handleWallpaperOpacityChange = async (opacity) => {
+    setWallpaperOpacity(opacity);
+    await electronPrefs.set('WallpaperOpacity', opacity);
+    window.dispatchEvent(new CustomEvent('wallpaperChanged', {
+      detail: { path: wallpaperPath, opacity }
+    }));
+  };
+
+  const handleGlassBlurChange = async (amount) => {
+    setSettings(prev => ({ ...prev, glassBlur: amount }));
+    await electronPrefs.set('GlassBlur', amount);
+    window.dispatchEvent(new CustomEvent('glassBlurChanged', {
+      detail: { amount }
+    }));
+  };
+
+  const handleClearWallpaper = async () => {
+    setWallpaperPath('');
+    await electronPrefs.set('WallpaperPath', '');
+    window.dispatchEvent(new CustomEvent('wallpaperChanged', {
+      detail: { path: '', opacity: wallpaperOpacity }
+    }));
+  };
+
+  // Click effect state
+  const [clickEffectEnabled, setClickEffectEnabled] = useState(false);
+  const [clickEffectType, setClickEffectType] = useState('water');
+
+  // Load click effect setting on mount
+  useEffect(() => {
+    const loadClickEffect = async () => {
+      await electronPrefs.initPromise;
+      if (electronPrefs.obj.ClickEffectEnabled !== undefined) {
+        setClickEffectEnabled(electronPrefs.obj.ClickEffectEnabled);
+      }
+      if (electronPrefs.obj.ClickEffectType !== undefined) {
+        setClickEffectType(electronPrefs.obj.ClickEffectType);
+      }
+    };
+    loadClickEffect();
+  }, []);
+
+  const handleClickEffectToggle = async (enabled) => {
+    setClickEffectEnabled(enabled);
+    await electronPrefs.set('ClickEffectEnabled', enabled);
+    window.dispatchEvent(new CustomEvent('clickEffectChanged', {
+      detail: { enabled }
+    }));
+  };
+
+  const handleClickEffectTypeChange = async (type) => {
+    setClickEffectType(type);
+    await electronPrefs.set('ClickEffectType', type);
+    window.dispatchEvent(new CustomEvent('clickEffectChanged', {
+      detail: { type }
+    }));
+  };
+
   return (
-    <div style={{
+    <div className="settings-container" style={{
       width: '100%',
       minHeight: '100%',
       background: 'var(--bg)',
@@ -880,6 +1037,7 @@ const ModernSettings = () => {
           icon={<Palette size={20} />}
           expanded={expandedSections.appearance}
           onToggle={() => toggleSection('appearance')}
+          hasWallpaper={!!wallpaperPath}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Font Selection */}
@@ -952,6 +1110,173 @@ const ModernSettings = () => {
               </div>
             </FormGroup>
 
+            {/* Wallpaper */}
+            <FormGroup label="Wallpaper" description="Set a background image that covers the entire app">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* Current wallpaper preview */}
+                {wallpaperPath && (
+                  <div style={{
+                    width: '100%',
+                    height: '120px',
+                    borderRadius: '8px',
+                    overflow: 'hidden',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    position: 'relative'
+                  }}>
+                    <img
+                      src={`local-file:///${wallpaperPath.replace(/\\/g, '/')}`}
+                      alt="Wallpaper preview"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        opacity: wallpaperOpacity
+                      }}
+                    />
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '8px',
+                      left: '8px',
+                      right: '8px',
+                      fontSize: '11px',
+                      color: 'rgba(255, 255, 255, 0.8)',
+                      background: 'rgba(0, 0, 0, 0.6)',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}>
+                      {wallpaperPath.split(/[/\\]/).pop()}
+                    </div>
+                  </div>
+                )}
+
+                {/* Wallpaper path input and browse */}
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    value={wallpaperPath}
+                    onChange={(e) => {
+                      const newPath = e.target.value;
+                      setWallpaperPath(newPath);
+                      electronPrefs.set('WallpaperPath', newPath).then(() => {
+                        window.dispatchEvent(new CustomEvent('wallpaperChanged', {
+                          detail: { path: newPath, opacity: wallpaperOpacity }
+                        }));
+                      });
+                    }}
+                    placeholder="No wallpaper selected"
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      background: 'rgba(0, 0, 0, 0.2)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '6px',
+                      color: 'var(--text)',
+                      fontSize: '13px'
+                    }}
+                  />
+                  <Button
+                    icon={<Folder size={16} />}
+                    variant="secondary"
+                    onClick={handleBrowseWallpaper}
+                  >
+                    Browse
+                  </Button>
+                  {wallpaperPath && (
+                    <Button
+                      icon={<Trash2 size={16} />}
+                      variant="secondary"
+                      onClick={handleClearWallpaper}
+                      style={{ padding: '8px 12px' }}
+                    >
+                    </Button>
+                  )}
+                </div>
+
+                {/* Opacity slider */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-2)', minWidth: '60px' }}>
+                    Opacity: {Math.round(wallpaperOpacity * 100)}%
+                  </span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={wallpaperOpacity * 100}
+                    onChange={(e) => handleWallpaperOpacityChange(parseFloat(e.target.value) / 100)}
+                    style={{
+                      flex: 1,
+                      accentColor: 'var(--accent)'
+                    }}
+                  />
+                </div>
+
+                {/* Glass Blur Intensity slider */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-2)', minWidth: '60px' }}>
+                    UI Blur: {settings.glassBlur}px
+                  </span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="24"
+                    value={settings.glassBlur}
+                    onChange={(e) => handleGlassBlurChange(parseInt(e.target.value))}
+                    style={{
+                      flex: 1,
+                      accentColor: 'var(--accent)'
+                    }}
+                  />
+                </div>
+              </div>
+            </FormGroup>
+
+            {/* Click Effect */}
+            <FormGroup label="Click Effect" description="Show interactive visual effects on click">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  userSelect: 'none'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={clickEffectEnabled}
+                    onChange={(e) => handleClickEffectToggle(e.target.checked)}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      accentColor: 'var(--accent)',
+                      cursor: 'pointer'
+                    }}
+                  />
+                  <span style={{ fontSize: '13px', color: 'var(--text)' }}>
+                    Enable click effects
+                  </span>
+                </label>
+
+                <CustomSelect
+                  icon={<Palette size={16} />}
+                  value={clickEffectType}
+                  onChange={handleClickEffectTypeChange}
+                  disabled={!clickEffectEnabled}
+                  options={[
+                    { value: 'water', label: 'Water Ripple' },
+                    { value: 'particles', label: 'Particle Burst' },
+                    { value: 'pulse', label: 'Digital Pulse' },
+                    { value: 'sparkle', label: 'Magic Sparkles' },
+                    { value: 'glitch', label: 'Cyber Glitch' },
+                    { value: 'galaxy', label: 'Cosmic Spiral' },
+                    { value: 'firework', label: 'Neon Firework' }
+                  ]}
+                />
+              </div>
+            </FormGroup>
+
             {/* Quick Actions */}
             <div style={{ display: 'flex', gap: '8px' }}>
               <Button
@@ -980,6 +1305,7 @@ const ModernSettings = () => {
           icon={<Terminal size={20} />}
           expanded={expandedSections.tools}
           onToggle={() => toggleSection('tools')}
+          hasWallpaper={!!wallpaperPath}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Ritobin Path */}
@@ -1042,12 +1368,23 @@ const ModernSettings = () => {
               label="Application Updates"
               description="Check for and install updates"
             >
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.02)',
-                border: '1px solid rgba(255, 255, 255, 0.06)',
-                borderRadius: '8px',
-                padding: '16px'
-              }}>
+              <div
+                ref={updateSectionRef}
+                style={{
+                  background: highlightUpdateSection
+                    ? 'rgba(139, 92, 246, 0.15)'
+                    : 'rgba(255, 255, 255, 0.02)',
+                  border: highlightUpdateSection
+                    ? '2px solid rgba(139, 92, 246, 0.6)'
+                    : '1px solid rgba(255, 255, 255, 0.06)',
+                  borderRadius: '8px',
+                  padding: '16px',
+                  transition: 'all 0.3s ease',
+                  boxShadow: highlightUpdateSection
+                    ? '0 0 20px rgba(139, 92, 246, 0.3)'
+                    : 'none'
+                }}
+              >
                 <div style={{
                   display: 'flex',
                   justifyContent: 'space-between',
@@ -1130,6 +1467,7 @@ const ModernSettings = () => {
                       icon={updateStatus === 'checking' ? <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Upload size={16} />}
                       onClick={handleCheckForUpdates}
                       disabled={updateStatus === 'checking'}
+                      variant="secondary"
                       style={{ flex: 1, minWidth: '150px' }}
                     >
                       {updateStatus === 'checking' ? 'Checking...' : 'Check for Updates'}
@@ -1151,6 +1489,7 @@ const ModernSettings = () => {
                     <Button
                       icon={<Check size={16} />}
                       onClick={handleInstallUpdate}
+                      variant="secondary"
                       style={{ flex: 1, minWidth: '150px' }}
                     >
                       Install Update
@@ -1168,6 +1507,7 @@ const ModernSettings = () => {
           icon={<Eye size={20} />}
           expanded={expandedSections.pages}
           onToggle={() => toggleSection('pages')}
+          hasWallpaper={!!wallpaperPath}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Navigation Settings */}
@@ -1274,6 +1614,7 @@ const ModernSettings = () => {
           icon={<Palette size={20} />}
           expanded={expandedSections.themeCreator}
           onToggle={() => toggleSection('themeCreator')}
+          hasWallpaper={!!wallpaperPath}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Theme Name */}
@@ -1499,6 +1840,7 @@ const ModernSettings = () => {
           icon={<Github size={20} />}
           expanded={expandedSections.github}
           onToggle={() => toggleSection('github')}
+          hasWallpaper={!!wallpaperPath}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <FormGroup label="Username" description="Your GitHub username">
@@ -1572,15 +1914,20 @@ const ModernSettings = () => {
 };
 
 // Reusable Components
-const SettingsCard = ({ title, icon, expanded, onToggle, children }) => (
+const SettingsCard = ({ title, icon, expanded, onToggle, children, hasWallpaper = false }) => (
   <div style={{
-    background: 'rgba(255, 255, 255, 0.02)',
-    border: '1px solid rgba(255, 255, 255, 0.06)',
+    background: hasWallpaper ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.02)',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
     borderRadius: '12px',
     overflow: 'visible',
     transition: 'all 0.2s ease',
     height: 'fit-content',
-    maxHeight: 'none'
+    maxHeight: 'none',
+    backdropFilter: hasWallpaper ? 'blur(16px) saturate(180%)' : 'none',
+    WebkitBackdropFilter: hasWallpaper ? 'blur(16px) saturate(180%)' : 'none',
+    zIndex: expanded ? 10 : 1,
+    position: 'relative', // Ensure z-index works
+    boxShadow: hasWallpaper ? '0 4px 30px rgba(0, 0, 0, 0.3)' : 'none'
   }}>
     <button
       onClick={(e) => {
@@ -1770,7 +2117,7 @@ const CustomSelect = ({ value, onChange, options, icon, disabled, placeholder = 
           top: 'calc(100% + 4px)',
           left: 0,
           right: 0,
-          background: 'var(--surface)',
+          background: '#121212', // Opaque background
           border: '1px solid var(--accent)',
           borderRadius: '6px',
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
@@ -1872,7 +2219,10 @@ const Button = ({ icon, children, variant = 'primary', fullWidth, ...props }) =>
       gap: '8px',
       transition: 'all 0.2s ease',
       width: fullWidth ? '100%' : 'auto',
-      whiteSpace: 'nowrap'
+      whiteSpace: 'nowrap',
+      opacity: props.disabled ? 0.6 : 1,
+      pointerEvents: props.disabled ? 'none' : 'auto',
+      ...(props.style || {})
     }}
     onMouseEnter={(e) => {
       if (variant === 'primary') {

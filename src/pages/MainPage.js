@@ -48,10 +48,13 @@ const MainPage = () => {
   const [showGuide, setShowGuide] = useState(false);
   const [renderKey, setRenderKey] = useState(0);
 
+  // DEV: Set to true to simulate update available notification for testing
+  const DEV_SIMULATE_UPDATE_AVAILABLE = false;
+
   // Update notification state
-  const [updateStatus, setUpdateStatus] = useState('idle');
-  const [currentVersion, setCurrentVersion] = useState('');
-  const [newVersion, setNewVersion] = useState('');
+  const [updateStatus, setUpdateStatus] = useState(DEV_SIMULATE_UPDATE_AVAILABLE ? 'available' : 'idle');
+  const [currentVersion, setCurrentVersion] = useState(DEV_SIMULATE_UPDATE_AVAILABLE ? '2.1.0' : '');
+  const [newVersion, setNewVersion] = useState(DEV_SIMULATE_UPDATE_AVAILABLE ? '2.2.0' : '');
   const [updateProgress, setUpdateProgress] = useState({ percent: 0, transferred: 0, total: 0 });
   const [updateError, setUpdateError] = useState('');
   const [showUpdateNotification, setShowUpdateNotification] = useState(true);
@@ -133,57 +136,70 @@ const MainPage = () => {
 
       // Listen for update events from main process
       ipcRenderer.on('update:checking', () => {
-        setUpdateStatus('checking');
-        setUpdateError('');
+        if (!DEV_SIMULATE_UPDATE_AVAILABLE) {
+          setUpdateStatus('checking');
+          setUpdateError('');
+        }
       });
 
-      // Trigger immediate update check on mount
-      try {
-        setUpdateStatus('checking'); // Show loading state immediately
-        ipcRenderer.invoke('update:check').catch(err => {
-          console.error('Error triggering update check:', err);
+      // Trigger immediate update check on mount (skip in dev simulation mode)
+      if (!DEV_SIMULATE_UPDATE_AVAILABLE) {
+        try {
+          setUpdateStatus('checking'); // Show loading state immediately
+          ipcRenderer.invoke('update:check').catch(err => {
+            console.error('Error triggering update check:', err);
+            setUpdateStatus('idle');
+          });
+        } catch (error) {
+          console.error('Error checking for updates:', error);
           setUpdateStatus('idle');
-        });
-      } catch (error) {
-        console.error('Error checking for updates:', error);
-        setUpdateStatus('idle');
+        }
       }
 
       ipcRenderer.on('update:available', (event, data) => {
-        setUpdateStatus('available');
-        setNewVersion(data.version);
-        setUpdateError('');
-        setShowUpdateNotification(true); // Show notification when update is available
-        // Don't show downloading/downloaded states on main page
+        if (!DEV_SIMULATE_UPDATE_AVAILABLE) {
+          setUpdateStatus('available');
+          setNewVersion(data.version);
+          setUpdateError('');
+          setShowUpdateNotification(true); // Show notification when update is available
+        }
       });
 
       ipcRenderer.on('update:not-available', (event, data) => {
-        setUpdateStatus('not-available'); // Keep status to show message
-        setNewVersion(data.version);
-        setUpdateError('');
-        setShowUpdateNotification(false);
-        setShowUpToDateMessage(true); // Show "up to date" message
+        if (!DEV_SIMULATE_UPDATE_AVAILABLE) {
+          setUpdateStatus('not-available'); // Keep status to show message
+          setNewVersion(data.version);
+          setUpdateError('');
+          setShowUpdateNotification(false);
+          setShowUpToDateMessage(true); // Show "up to date" message
 
-        // Hide message after 3 seconds
-        setTimeout(() => {
-          setShowUpToDateMessage(false);
-          setUpdateStatus('idle'); // Reset to idle after message is hidden
-        }, 3000);
+          // Hide message after 3 seconds
+          setTimeout(() => {
+            setShowUpToDateMessage(false);
+            setUpdateStatus('idle'); // Reset to idle after message is hidden
+          }, 3000);
+        }
       });
 
       ipcRenderer.on('update:error', (event, data) => {
-        setUpdateStatus('idle'); // Hide loading state on error
-        setUpdateError(data.message || 'Unknown error');
+        if (!DEV_SIMULATE_UPDATE_AVAILABLE) {
+          setUpdateStatus('idle'); // Hide loading state on error
+          setUpdateError(data.message || 'Unknown error');
+        }
       });
 
       ipcRenderer.on('update:download-progress', (event, data) => {
-        // Hide notification on main page during download (user should be in Settings)
-        setShowUpdateNotification(false);
+        if (!DEV_SIMULATE_UPDATE_AVAILABLE) {
+          // Hide notification on main page during download (user should be in Settings)
+          setShowUpdateNotification(false);
+        }
       });
 
       ipcRenderer.on('update:downloaded', (event, data) => {
-        // Hide notification on main page when downloaded (user should be in Settings)
-        setShowUpdateNotification(false);
+        if (!DEV_SIMULATE_UPDATE_AVAILABLE) {
+          // Hide notification on main page when downloaded (user should be in Settings)
+          setShowUpdateNotification(false);
+        }
       });
 
       // Cleanup listeners on unmount
@@ -517,7 +533,8 @@ const MainPage = () => {
                   startIcon={<SettingsIcon />}
                   sx={{
                     background: 'var(--accent)',
-                    color: 'var(--bg)',
+                    color: '#000000',
+                    fontWeight: 600,
                     fontSize: { xs: '0.7rem', sm: '0.75rem' },
                     px: { xs: 1, sm: 1.5 },
                     py: 0.5,
@@ -525,6 +542,7 @@ const MainPage = () => {
                     whiteSpace: 'nowrap',
                     '&:hover': {
                       background: 'color-mix(in srgb, var(--accent) 90%, black)',
+                      color: '#000000',
                     }
                   }}
                 >

@@ -286,6 +286,28 @@ const FileThumbnail = ({ item }) => {
                 />
             )}
             {icon}
+            {/* Shortcut indicator overlay */}
+            {item.isShortcut && (
+                <Box
+                    sx={{
+                        position: 'absolute',
+                        bottom: 2,
+                        left: 2,
+                        width: 14,
+                        height: 14,
+                        borderRadius: '2px',
+                        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '10px',
+                        color: '#fff',
+                        fontWeight: 'bold'
+                    }}
+                >
+                    ↗
+                </Box>
+            )}
         </Box>
     );
 };
@@ -322,7 +344,7 @@ const CustomExplorer = () => {
     const [originalItems, setOriginalItems] = useState([]);
     const [mode, setMode] = useState('browser'); // 'browser' | 'bin'
     const ScrollContainerRef = useRef(null);
-    
+
     // Editable address bar state
     const [isEditingPath, setIsEditingPath] = useState(false);
     const [editPath, setEditPath] = useState('');
@@ -596,13 +618,59 @@ const CustomExplorer = () => {
                 try {
                     const fullPath = pathModule.join(newPath, dirent.name);
                     const stats = fs.statSync(fullPath);
+                    const extension = pathModule.extname(dirent.name).toLowerCase();
+
+                    // Handle Windows shortcuts (.lnk files)
+                    if (extension === '.lnk' && shell && shell.readShortcutLink) {
+                        try {
+                            const shortcutDetails = shell.readShortcutLink(fullPath);
+                            if (shortcutDetails && shortcutDetails.target) {
+                                const targetPath = shortcutDetails.target;
+                                // Check if target exists and is a directory
+                                if (fs.existsSync(targetPath)) {
+                                    const targetStats = fs.statSync(targetPath);
+                                    if (targetStats.isDirectory()) {
+                                        // Treat as a folder shortcut - use target path for navigation
+                                        const displayName = dirent.name.replace(/\.lnk$/i, '');
+                                        return {
+                                            name: displayName,
+                                            path: targetPath, // Navigate to target
+                                            originalPath: fullPath, // Keep original for reference
+                                            isDirectory: true,
+                                            isShortcut: true,
+                                            size: targetStats.size,
+                                            modified: targetStats.mtime,
+                                            extension: '' // Folders don't have extensions
+                                        };
+                                    } else {
+                                        // File shortcut - show as file pointing to target
+                                        const displayName = dirent.name.replace(/\.lnk$/i, '');
+                                        return {
+                                            name: displayName,
+                                            path: targetPath,
+                                            originalPath: fullPath,
+                                            isDirectory: false,
+                                            isShortcut: true,
+                                            size: targetStats.size,
+                                            modified: targetStats.mtime,
+                                            extension: pathModule.extname(targetPath).toLowerCase()
+                                        };
+                                    }
+                                }
+                            }
+                        } catch (shortcutErr) {
+                            // Failed to read shortcut, treat as regular file
+                            console.warn('Failed to read shortcut:', fullPath, shortcutErr);
+                        }
+                    }
+
                     return {
                         name: dirent.name,
                         path: fullPath,
                         isDirectory: dirent.isDirectory(),
                         size: stats.size,
                         modified: stats.mtime,
-                        extension: pathModule.extname(dirent.name).toLowerCase()
+                        extension: extension
                     };
                 } catch (e) {
                     return null;
@@ -795,7 +863,7 @@ const CustomExplorer = () => {
                     </Box>
 
                     {/* Address Bar - Click to edit like Windows Explorer */}
-                    <Box 
+                    <Box
                         onClick={() => {
                             if (!isEditingPath) {
                                 setEditPath(currentPath);

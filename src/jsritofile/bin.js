@@ -17,7 +17,7 @@ let initPromise = null;
 async function initNodeModules() {
     if (fs && path) return;
     if (initPromise) return initPromise;
-    
+
     initPromise = (async () => {
         if (typeof window !== 'undefined' && window.require) {
             // Electron environment
@@ -39,7 +39,7 @@ async function initNodeModules() {
             }
         }
     })();
-    
+
     return initPromise;
 }
 
@@ -245,7 +245,7 @@ export class BIN {
             bs.writeU32(this.patches.length);
             for (const patch of this.patches) {
                 bs.writeU32(BINHasher.rawOrHexToHash(patch.hash));
-                
+
                 const sizeOffset = bs.tell();
                 bs.writeU32(0); // size placeholder
                 let patchSize = 1 + 2 + Buffer.from(patch.path, 'utf-8').length; // type + path size + path
@@ -263,7 +263,7 @@ export class BIN {
         }
 
         const buffer = bs.raw();
-        
+
         if (raw) {
             return buffer;
         } else {
@@ -303,12 +303,16 @@ export class BIN {
     }
 }
 
+let cachedHashtables = null;
+
 /**
  * Load hashtables from directory (optimized for speed - Python-style fixed slicing)
  * @param {string} hashtablesPath - Path to hashtables directory
  * @returns {Promise<Object>} - Hashtables object
  */
 export async function loadHashtables(hashtablesPath) {
+    if (cachedHashtables) return cachedHashtables;
+
     const hashtables = {};
     const tableNames = [
         'hashes.binentries.txt',
@@ -318,7 +322,7 @@ export async function loadHashtables(hashtablesPath) {
         'hashes.game.txt',
         'hashes.lcu.txt'
     ];
-    
+
     // WAD hashes use 16-char hex, BIN hashes use 8-char hex (like Python's get_hash_separator)
     const WAD_HASHES = ['hashes.game.txt', 'hashes.lcu.txt'];
 
@@ -327,7 +331,7 @@ export async function loadHashtables(hashtablesPath) {
         await initNodeModules();
     }
     if (!path || !fs) throw new Error('path/fs modules not available. This code requires Node.js/Electron environment.');
-    
+
     // Process all files in parallel for better performance
     const loadPromises = tableNames.map(async (tableName) => {
         const tablePath = path.join(hashtablesPath, tableName);
@@ -335,19 +339,19 @@ export async function loadHashtables(hashtablesPath) {
             // Read file asynchronously
             const content = await fs.promises.readFile(tablePath, 'utf-8');
             const table = {};
-            
+
             // Use fixed-position slicing like Python (MUCH faster than parsing)
             // Format: "XXXXXXXX path/to/file" (8 chars for BIN, 16 chars for WAD)
             const sep = WAD_HASHES.includes(tableName) ? 16 : 8;
-            
+
             let pos = 0;
             const len = content.length;
-            
+
             while (pos < len) {
                 // Find line end
                 let lineEnd = content.indexOf('\n', pos);
                 if (lineEnd === -1) lineEnd = len;
-                
+
                 // Skip short lines and comments
                 if (lineEnd - pos > sep && content[pos] !== '#') {
                     // Direct slice like Python: line[:sep] = hash, line[sep+1:-1] = name
@@ -356,25 +360,25 @@ export async function loadHashtables(hashtablesPath) {
                     let nameEnd = lineEnd;
                     if (nameEnd > 0 && content[nameEnd - 1] === '\r') nameEnd--;
                     const name = content.substring(pos + sep + 1, nameEnd);
-                    
+
                     if (hash && name) {
                         table[hash] = name;
                     }
                 }
-                
+
                 pos = lineEnd + 1;
             }
-            
+
             return { tableName, table };
         } catch (error) {
             // File doesn't exist or can't be read, skip it
             return { tableName, table: null };
         }
     });
-    
+
     // Wait for all files to load in parallel
     const results = await Promise.all(loadPromises);
-    
+
     // Build hashtables object
     for (const { tableName, table } of results) {
         if (table) {
@@ -382,7 +386,17 @@ export async function loadHashtables(hashtablesPath) {
         }
     }
 
+    cachedHashtables = hashtables;
     return hashtables;
+}
+
+/**
+ * Clear the internal hashtables cache
+ * Useful when hashes are updated at runtime
+ */
+export function clearHashtablesCache() {
+    cachedHashtables = null;
+    console.log('[bin.js] Hashtables cache cleared');
 }
 
 
