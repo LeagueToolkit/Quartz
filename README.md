@@ -44,6 +44,9 @@ A comprehensive toolkit for League of Legends modding and visual effects editing
 - **Search Functionality**: Search for emitter names, vfxsystem names, and texture names
 - **Custom Palettes**: Create and save your own color palettes for reuse
 
+<img width="1189" height="796" alt="image" src="https://github.com/user-attachments/assets/4b69e422-e487-4943-818b-e7460b2c5073" />
+
+
 ### Port - Advanced VFX Porting
 - **Load Target & Donor**: Load target and donor bin files for porting operations
 - **Port Emitters**: Transfer individual emitters between projects
@@ -56,12 +59,17 @@ A comprehensive toolkit for League of Legends modding and visual effects editing
 - **Advanced Filtering**: Filter by emitter name, vfxsystem name, texture name
 - **Empty VFXSystem Creation**: Create empty vfxsystems for nesting with emitters
 
+<img width="1189" height="784" alt="image" src="https://github.com/user-attachments/assets/f33e007e-1b99-4351-b23d-c26657fd8d0f" />
+
+
 ### VfxHub - Community VFX Database
 - **Upload VFXSystems**: Upload vfxsystems to GitHub-hosted database
 - **Image Support**: Add images to vfxsystems for better organization
 - **Download Menu**: Access uploaded vfxsystems from the top download menu
 - **Community Sharing**: Share and discover vfxsystems from other users
 - **Full Port Functionality**: Includes all features from the Port section
+
+<img width="1195" height="785" alt="image" src="https://github.com/user-attachments/assets/40420df1-5f18-4766-a99e-84633209f49c" />
 
 ### Asset Extractor - WAD Extraction & Repathing
 - **Champion & Skin Selection**: Extract assets by selecting champions and skin IDs
@@ -71,11 +79,15 @@ A comprehensive toolkit for League of Legends modding and visual effects editing
 - **Voiceover Support**: Optional voiceover file extraction
 - **Important**: Requires League of Legends Champions folder and WAD output directory configured in settings
 
+<img width="1190" height="799" alt="image" src="https://github.com/user-attachments/assets/8ab284ef-c487-4269-8242-5bdaf39a6dbd" />
+
 ### Bineditor - Parameter Scaling
 - **Emitter & VFXSystem Selection**: Select either emitters or vfxsystems for editing
 - **Scale Operations**: Scale birthscale and scale by desired values (e.g., 2x multiplier)
 - **Matrix Bug Fixes**: Useful when matrix transformations don't work properly
 - **Batch Processing**: Apply scaling to multiple elements at once
+
+<img width="1180" height="776" alt="image" src="https://github.com/user-attachments/assets/0657cf4b-1018-45af-b48c-659a7b551d49" />
 
 ### Image Recolor - Advanced Color Manipulation
 - Multi-Format Support: Load and process PNG, JPG, DDS, and TEX files
@@ -83,16 +95,25 @@ A comprehensive toolkit for League of Legends modding and visual effects editing
 - Real-Time Preview: See changes instantly before exporting
 - Batch Processing: Apply color transformations to multiple images at once
 
+<img width="1185" height="787" alt="image" src="https://github.com/user-attachments/assets/a6275d20-4955-4b44-84a6-56059be4ee17" />
+
+
 ### Upscale - AI-Powered Image Enhancement
 - **Upscayl Integration**: Powered by Upscayl for high-quality image upscaling
 - **Batch Processing**: Upscale multiple images at once
 - **Quality Preservation**: Maintains image quality during upscaling
+
+<img width="1192" height="801" alt="image" src="https://github.com/user-attachments/assets/4c06006e-ffdd-444e-876c-082e9640796b" />
+
 
 ### RGBA - Color Code Generator
 - **Custom Color Picker**: Advanced color picker with HSV, RGB, and HEX inputs
 - **Color Picker**: Pick any color with alpha value support
 - **League RGB Codes**: Get League of Legends RGB color codes
 - **Alpha Support**: Full alpha channel support for transparency
+
+<img width="1181" height="781" alt="image" src="https://github.com/user-attachments/assets/05cfcb77-9043-408c-a70c-230d6531e278" />
+
 
 ### AniPort Simple - Animation Porting
 - **Animation Porting**: Port animations between different champions and skins
