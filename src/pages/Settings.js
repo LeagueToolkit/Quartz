@@ -44,7 +44,8 @@ const ModernSettings = () => {
     bumpathEnabled: false,
     aniportEnabled: true,
     frogchangerEnabled: false,
-    glassBlur: 6
+    glassBlur: 6,
+    useNativeFileBrowser: false // Default to custom explorer
   });
 
   // Theme-related state
@@ -222,6 +223,9 @@ const ModernSettings = () => {
         case 'frogchangerEnabled':
           await electronPrefs.set('FrogChangerEnabled', value);
           break;
+        case 'useNativeFileBrowser':
+          await electronPrefs.set('UseNativeFileBrowser', value);
+          break;
         default:
           // For other settings, try to save with the key name
           await electronPrefs.set(key, value);
@@ -396,7 +400,8 @@ const ModernSettings = () => {
         bumpathEnabled: electronPrefs.obj.BumpathEnabled !== false,
         aniportEnabled: electronPrefs.obj.AniPortEnabled !== false,
         frogchangerEnabled: electronPrefs.obj.FrogChangerEnabled !== false,
-        glassBlur: electronPrefs.obj.GlassBlur !== undefined ? electronPrefs.obj.GlassBlur : 6
+        glassBlur: electronPrefs.obj.GlassBlur !== undefined ? electronPrefs.obj.GlassBlur : 6,
+        useNativeFileBrowser: electronPrefs.obj.UseNativeFileBrowser === true // Default to false
       }));
 
       // Load wallpaper settings
@@ -1321,6 +1326,35 @@ const ModernSettings = () => {
                 buttonText="Browse"
                 onButtonClick={handleBrowseRitobin}
               />
+            </FormGroup>
+
+            {/* File Browser Preference */}
+            <FormGroup
+              label="File Browser"
+              description="Choose between custom or native Windows file browser"
+            >
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                userSelect: 'none'
+              }}>
+                <input
+                  type="checkbox"
+                  checked={settings.useNativeFileBrowser}
+                  onChange={(e) => updateSetting('useNativeFileBrowser', e.target.checked)}
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    accentColor: 'var(--accent)',
+                    cursor: 'pointer'
+                  }}
+                />
+                <span style={{ fontSize: '13px', color: 'var(--text)' }}>
+                  Use native Windows file dialog instead of custom explorer
+                </span>
+              </label>
             </FormGroup>
 
             {/* Hash Management */}

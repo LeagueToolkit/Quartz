@@ -142,12 +142,14 @@
   color: var(--accent-muted);
   font-family: 'JetBrains Mono', monospace;
   font-size: small;
-  border: 1px solid var(--bg);
+  box-sizing: border-box;
+  border: none;
+  box-shadow: inset 0 0 0 1px var(--bg);
   background: var(--surface-2);
+  background-clip: padding-box;
   cursor: pointer;
-  /* GPU acceleration - no transitions */
-  contain: layout style;
-  will-change: border-color;
+  overflow: hidden;
+  /* Removed layout containment to prevent artifacts with wallpapers */
 }
 
 .Prop-Block {

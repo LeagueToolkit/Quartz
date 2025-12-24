@@ -313,6 +313,13 @@ const Paint = () => {
 
   // Python-based data structures
   const [pyContent, setPyContent] = useState('');
+
+  // Ref to hold pyContent for imperative event handlers (avoiding stale closures)
+  const pyContentRef = useRef('');
+  useEffect(() => {
+    pyContentRef.current = pyContent;
+  }, [pyContent]);
+
   const [systems, setSystems] = useState({});
   const [Palette, setPalette] = useState([]);
 
@@ -506,6 +513,7 @@ const Paint = () => {
 
   // Debounce timer for texture preview
   let texturePreviewTimer = null;
+  const textureCloseTimerRef = useRef(null);
 
   // Global conversion state to prevent multiple simultaneous conversions
   const activeConversions = useRef(new Set());
@@ -954,46 +962,46 @@ const Paint = () => {
             // Update main color block
             const colorBlock = emitterDiv.querySelector('[data-role="color"]');
             if (colorBlock && emitter.color) {
-              // Prioritize dynamics.values over constantValue when both exist
+              // Collect ALL colors: constantValue + dynamics.values when both exist
+              const allColors = [];
+              const allColorTimes = [];
+
+              if (emitter.color.constantValue) {
+                allColors.push(emitter.color.constantValue);
+                allColorTimes.push(0);
+              }
+
               if (emitter.color.dynamics && emitter.color.dynamics.values && emitter.color.dynamics.values.length > 0) {
                 const dynamicColors = emitter.color.dynamics.values;
-                if (dynamicColors.length === 1) {
-                  const colorHandler = new ColorHandler(dynamicColors[0]);
+                const dynamicTimes = emitter.color.dynamics.times || [];
+                for (let i = 0; i < dynamicColors.length; i++) {
+                  allColors.push(dynamicColors[i]);
+                  const baseTime = dynamicTimes[i] !== undefined ? dynamicTimes[i] : (i / Math.max(1, dynamicColors.length - 1));
+                  allColorTimes.push(emitter.color.constantValue ? (baseTime * 0.9 + 0.1) : baseTime);
+                }
+              }
+
+              if (allColors.length > 0) {
+                if (allColors.length === 1) {
+                  const colorHandler = new ColorHandler(allColors[0]);
                   colorBlock.style.background = colorHandler.ToHEX();
                 } else {
-                  const colorHandlers = dynamicColors.map(color => new ColorHandler(color));
+                  const colorHandlers = allColors.map(color => new ColorHandler(color));
                   const gradientColors = colorHandlers.map(handler => handler.ToHEX());
                   colorBlock.style.background = `linear-gradient(90deg, ${gradientColors.join(', ')})`;
                 }
                 colorBlock.classList.remove('Blank-Obj');
-                // Rebind click to use UPDATED emitter color dynamics
+                // Rebind click to use ALL colors (constantValue + dynamics)
                 colorBlock.onclick = (event) => {
                   try {
-                    const values = emitter.color.dynamics.values;
-                    const times = emitter.color.dynamics.times || [];
-                    const newPalette = values.map((c, idx) => {
+                    const newPalette = allColors.map((c, idx) => {
                       const handler = new ColorHandler(c);
-                      handler.SetTime(times[idx] ?? (values.length === 1 ? 0 : idx / (values.length - 1)));
+                      handler.SetTime(allColorTimes[idx] ?? (allColors.length === 1 ? 0 : idx / (allColors.length - 1)));
                       return handler;
                     });
                     setPalette(newPalette);
                     MapPalette(newPalette, setColors);
-                    savePaletteForMode(mode, newPalette, setSavedPalettes);
-                    positionColorPicker(event);
-                  } catch { }
-                };
-              } else if (emitter.color.constantValue) {
-                const colorHandler = new ColorHandler(emitter.color.constantValue);
-                colorBlock.style.background = colorHandler.ToHEX();
-                colorBlock.classList.remove('Blank-Obj');
-                // Rebind click to use UPDATED emitter color
-                colorBlock.onclick = (event) => {
-                  try {
-                    const handler = new ColorHandler(emitter.color.constantValue);
-                    const newPalette = [handler];
-                    newPalette[0].SetTime(0);
-                    setPalette(newPalette);
-                    MapPalette(newPalette, setColors);
+                    setColorCount(newPalette.length);
                     savePaletteForMode(mode, newPalette, setSavedPalettes);
                     positionColorPicker(event);
                   } catch { }
@@ -1015,6 +1023,7 @@ const Paint = () => {
                     newPalette[0].SetTime(0);
                     setPalette(newPalette);
                     MapPalette(newPalette, setColors);
+                    setColorCount(newPalette.length);
                     savePaletteForMode(mode, newPalette, setSavedPalettes);
                     positionColorPicker(event);
                   } catch { }
@@ -1041,6 +1050,7 @@ const Paint = () => {
                     });
                     setPalette(newPalette);
                     MapPalette(newPalette, setColors);
+                    setColorCount(newPalette.length);
                     savePaletteForMode(mode, newPalette, setSavedPalettes);
                     positionColorPicker(event);
                   } catch { }
@@ -1051,44 +1061,46 @@ const Paint = () => {
             // Update birth color block
             const birthColorBlock = emitterDiv.querySelector('[data-role="birth"]');
             if (birthColorBlock && emitter.birthColor) {
-              // Prioritize dynamics.values over constantValue when both exist
+              // Collect ALL colors: constantValue + dynamics.values when both exist
+              const allBirthColors = [];
+              const allBirthTimes = [];
+
+              if (emitter.birthColor.constantValue) {
+                allBirthColors.push(emitter.birthColor.constantValue);
+                allBirthTimes.push(0);
+              }
+
               if (emitter.birthColor.dynamics && emitter.birthColor.dynamics.values && emitter.birthColor.dynamics.values.length > 0) {
                 const dynamicColors = emitter.birthColor.dynamics.values;
-                if (dynamicColors.length === 1) {
-                  const colorHandler = new ColorHandler(dynamicColors[0]);
+                const dynamicTimes = emitter.birthColor.dynamics.times || [];
+                for (let i = 0; i < dynamicColors.length; i++) {
+                  allBirthColors.push(dynamicColors[i]);
+                  const baseTime = dynamicTimes[i] !== undefined ? dynamicTimes[i] : (i / Math.max(1, dynamicColors.length - 1));
+                  allBirthTimes.push(emitter.birthColor.constantValue ? (baseTime * 0.9 + 0.1) : baseTime);
+                }
+              }
+
+              if (allBirthColors.length > 0) {
+                if (allBirthColors.length === 1) {
+                  const colorHandler = new ColorHandler(allBirthColors[0]);
                   birthColorBlock.style.background = colorHandler.ToHEX();
                 } else {
-                  const colorHandlers = dynamicColors.map(color => new ColorHandler(color));
+                  const colorHandlers = allBirthColors.map(color => new ColorHandler(color));
                   const gradientColors = colorHandlers.map(handler => handler.ToHEX());
                   birthColorBlock.style.background = `linear-gradient(90deg, ${gradientColors.join(', ')})`;
                 }
                 birthColorBlock.classList.remove('Blank-Obj');
+                // Rebind click to use ALL colors (constantValue + dynamics)
                 birthColorBlock.onclick = (event) => {
                   try {
-                    const values = emitter.birthColor.dynamics.values;
-                    const times = emitter.birthColor.dynamics.times || [];
-                    const newPalette = values.map((c, idx) => {
+                    const newPalette = allBirthColors.map((c, idx) => {
                       const handler = new ColorHandler(c);
-                      handler.SetTime(times[idx] ?? (values.length === 1 ? 0 : idx / (values.length - 1)));
+                      handler.SetTime(allBirthTimes[idx] ?? (allBirthColors.length === 1 ? 0 : idx / (allBirthColors.length - 1)));
                       return handler;
                     });
                     setPalette(newPalette);
                     MapPalette(newPalette, setColors);
-                    savePaletteForMode(mode, newPalette, setSavedPalettes);
-                    positionColorPicker(event);
-                  } catch { }
-                };
-              } else if (emitter.birthColor.constantValue) {
-                const colorHandler = new ColorHandler(emitter.birthColor.constantValue);
-                birthColorBlock.style.background = colorHandler.ToHEX();
-                birthColorBlock.classList.remove('Blank-Obj');
-                birthColorBlock.onclick = (event) => {
-                  try {
-                    const handler = new ColorHandler(emitter.birthColor.constantValue);
-                    const newPalette = [handler];
-                    newPalette[0].SetTime(0);
-                    setPalette(newPalette);
-                    MapPalette(newPalette, setColors);
+                    setColorCount(newPalette.length);
                     savePaletteForMode(mode, newPalette, setSavedPalettes);
                     positionColorPicker(event);
                   } catch { }
@@ -1470,7 +1482,38 @@ const Paint = () => {
       }
     } catch { }
 
-    openAssetPreview(startPath, null, 'paint-bin');
+    // Check if user prefers native file browser
+    const useNativeFileBrowser = await electronPrefs.get('UseNativeFileBrowser');
+
+    if (useNativeFileBrowser) {
+      // Use native Windows file dialog
+      try {
+        if (window.require) {
+          const { ipcRenderer } = window.require('electron');
+          const result = await ipcRenderer.invoke('dialog:openFile', {
+            title: 'Select a .bin file',
+            defaultPath: startPath ? path.dirname(startPath) : undefined,
+            filters: [
+              { name: 'Bin Files', extensions: ['bin'] },
+              { name: 'All Files', extensions: ['*'] }
+            ],
+            properties: ['openFile']
+          });
+
+          if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
+            const selectedPath = result.filePaths[0];
+            await electronPrefs.set('PaintLastBinPath', selectedPath);
+            loadSelectedBin(selectedPath);
+          }
+        }
+      } catch (error) {
+        console.error('Error opening native file dialog:', error);
+        setStatusMessage('Error opening file dialog: ' + error.message);
+      }
+    } else {
+      // Use custom explorer
+      openAssetPreview(startPath, null, 'paint-bin');
+    }
     return;
 
     // Guard: Ritobin must be configured before conversion
@@ -2075,6 +2118,39 @@ const Paint = () => {
 
 
 
+  // Extract all texture paths from emitter content
+  const extractAllTexturesFromEmitter = (emitterData) => {
+    if (!emitterData || !emitterData.rawContent) return [];
+
+    const content = emitterData.rawContent;
+    const textures = [];
+    const textureSet = new Set(); // Prevent duplicates
+
+    // Define texture field patterns (matches what you showed me)
+    const texturePatterns = [
+      { regex: /(?<![\w])texture:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Main Texture' },
+      { regex: /erosionMapName:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Erosion Map' },
+      { regex: /particleColorTexture:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Color Texture' },
+      { regex: /textureMult:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Mult Texture' },
+      { regex: /paletteTexture:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Palette' },
+      { regex: /normalMap:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Normal Map' },
+    ];
+
+    // Extract textures for each pattern
+    for (const { regex, label } of texturePatterns) {
+      const matches = [...content.matchAll(regex)];
+      for (const match of matches) {
+        const texturePath = match[1];
+        if (texturePath && !textureSet.has(texturePath)) {
+          textureSet.add(texturePath);
+          textures.push({ path: texturePath, label });
+        }
+      }
+    }
+
+    return textures;
+  };
+
   const showTexturePreview = (texturePath, imageDataUrl, buttonElement) => {
     // Texture preview logging removed for cleaner console
 
@@ -2442,209 +2518,365 @@ const Paint = () => {
     };
 
     previewBtn.onmouseenter = async (e) => {
-      // Clear any existing timer
+      // Clear any existing hover timer
+      if (hoverTimer) {
+        clearTimeout(hoverTimer);
+        hoverTimer = null;
+      }
+
+      // Clear the shared close timer if moving back to a button or between buttons
+      if (textureCloseTimerRef.current) {
+        clearTimeout(textureCloseTimerRef.current);
+        textureCloseTimerRef.current = null;
+      }
 
       hoverTimer = setTimeout(async () => {
         try {
-          // Get texture path
-          let texturePath = emitter && emitter.texturePath ? emitter.texturePath : null;
-
-          if (!texturePath) {
-            const system = systems && systems[systemKey] ? systems[systemKey] : null;
-            if (!system) return;
-            // Ensure system.rawContent is present; if not, reconstruct from pyContent
-            let sysForLoad = system;
-            if (!system.rawContent && pyContent) {
-              try {
-                const extracted = extractVFXSystem(pyContent, system.name);
-                if (extracted && extracted.fullContent) {
-                  sysForLoad = { ...system, rawContent: extracted.fullContent };
-                }
-              } catch (_) { }
-            }
-            const fullEmitterData = loadEmitterData(sysForLoad, emitter.name);
-            texturePath = fullEmitterData && fullEmitterData.texturePath ? fullEmitterData.texturePath : null;
+          // We need to load the FULL emitter data to get allTextures
+          // 1. Get the system
+          let sysRawContent = null;
+          if (systems && systems[systemKey]) {
+            const sys = systems[systemKey];
+            sysRawContent = sys.rawContent || sys.fullContent || (Array.isArray(sys.content) ? sys.content.join('\n') : null);
           }
 
-          if (!texturePath) return;
+          // 2. If system content found, load the emitter
+          let fullEmitterData = null;
+          // Read file content directly to avoid closure/state issues
+          // Use pyContentRef for reliable access to the Python text used in the editor
+          let fileContent = pyContentRef.current;
+          const activeFilePath = currentFilePath;
 
-          // Check if this texture is already being converted
-          if (activeConversions.current.has(texturePath)) {
-            // Texture conversion logging removed for cleaner console
+          // Fallback if Ref is empty (e.g. first load) - ensuring we read .py not .bin
+          if ((!fileContent || fileContent.length === 0) && activeFilePath && window.require) {
+            try {
+              let readPath = activeFilePath;
+              if (readPath.endsWith('.bin')) {
+                readPath = readPath.replace('.bin', '.py');
+              }
+              const fs = window.require('fs');
+              if (fs.existsSync(readPath)) {
+                fileContent = fs.readFileSync(readPath, 'utf8');
+              }
+            } catch (err) {
+              console.error('[Paint] Failed to read file for preview:', err);
+            }
+          }
+
+          let allTextures = [];
+
+          if (fileContent && emitter.name) {
+            try {
+              let emitterBlock = '';
+
+              // 1. Try to find the emitter by name in the fresh content
+              const namePattern = `emitterName:\\s*string\\s*=\\s*"${emitter.name}"`;
+              const nameRegex = new RegExp(namePattern, 'i');
+              const match = fileContent.match(nameRegex);
+
+              if (match) {
+                const nameIndex = match.index;
+                const contentBefore = fileContent.substring(0, nameIndex);
+                const startMarker = "VfxEmitterDefinitionData";
+                const lastStart = contentBefore.lastIndexOf(startMarker);
+
+                if (lastStart !== -1) {
+                  let depth = 0;
+                  let foundStart = false;
+                  let endIndex = -1;
+                  const scanLimit = Math.min(fileContent.length, lastStart + 20000);
+
+                  for (let i = lastStart; i < scanLimit; i++) {
+                    if (fileContent[i] === '{') {
+                      depth++;
+                      foundStart = true;
+                    } else if (fileContent[i] === '}') {
+                      depth--;
+                      if (foundStart && depth === 0) {
+                        endIndex = i;
+                        break;
+                      }
+                    }
+                  }
+
+                  if (endIndex !== -1) {
+                    emitterBlock = fileContent.substring(lastStart, endIndex + 1);
+                  }
+                }
+              }
+
+              // 2. Fallback to line numbers
+              if (!emitterBlock && emitter.startLine !== undefined) {
+                const lines = fileContent.split('\n');
+                if (emitter.startLine < lines.length) {
+                  const safeEnd = Math.min(lines.length, (emitter.endLine || emitter.startLine + 200) + 5);
+                  emitterBlock = lines.slice(emitter.startLine, safeEnd).join('\n');
+                }
+              }
+
+              if (emitterBlock && emitterBlock.length > 0) {
+                const texturePatterns = [
+                  { regex: /(?<![a-zA-Z])texture:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Main Texture' },
+                  { regex: /particleColorTexture:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Color Texture' },
+                  { regex: /erosionMapName:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Erosion Map' },
+                  { regex: /textureMult:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Mult Texture' },
+                  { regex: /paletteTexture:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Palette' },
+                  { regex: /normalMap:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Normal Map' },
+                  { regex: /normalMapTexture:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Normal Map' },
+                ];
+
+                const textureSet = new Set();
+                for (const { regex, label } of texturePatterns) {
+                  const matches = [...emitterBlock.matchAll(regex)];
+                  for (const match of matches) {
+                    let tPath = match[1];
+                    if (tPath.includes('akitanerusera')) tPath = tPath.replace(/akitanerusera/g, 'ASSETS');
+
+                    if (!textureSet.has(tPath)) {
+                      textureSet.add(tPath);
+                      allTextures.push({ path: tPath, label });
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              // silent fail
+            }
+          }
+
+          // 3. Determine available textures
+          const texturesToShow = allTextures.length > 0
+            ? allTextures
+            : (emitter && emitter.texturePath ? [{ path: emitter.texturePath, label: 'Main Texture' }] : []);
+
+          if (texturesToShow.length === 0) {
             return;
           }
 
-          // Add to active conversions
-          activeConversions.current.add(texturePath);
+          // Use currentFilePath passed from renderSystems, fallback to filePath if it exists in scope
+          // activeFilePath already declared above
+          if (!activeFilePath || activeFilePath.length === 0) {
+            console.log('[Paint] No valid file path available');
+            return;
+          }
 
-          try {
-            // Texture conversion logging removed for cleaner console
+          const path = window.require('path');
+          const projectRoot = path.dirname(activeFilePath);
 
-            // Use currentFilePath passed from renderSystems, fallback to state
-            const activeFilePath = currentFilePath || filePath;
-
-            if (!activeFilePath || activeFilePath.length === 0) {
-              console.error('[Paint] Error: No valid file path available! Cannot resolve texture paths.');
-              showTextureError(texturePath, e.target);
-              return;
+          // Convert all textures  to data URLs
+          const textureData = [];
+          for (const { path: texturePath, label } of texturesToShow) {
+            if (activeConversions.current.has(texturePath)) {
+              continue;
             }
 
-            // Try to get the project root directory (where assets folder should be)
-            const path = window.require('path');
-            const projectRoot = path.dirname(activeFilePath);
+            activeConversions.current.add(texturePath);
+            try {
+              const result = await convertTextureToPNG(texturePath, activeFilePath, activeFilePath, projectRoot);
 
-            const result = await convertTextureToPNG(texturePath, activeFilePath, activeFilePath, projectRoot);
-
-            if (result) {
               let dataUrl;
+              if (result) {
+                if (result.startsWith('data:')) {
+                  dataUrl = result;
+                } else {
+                  const fs = window.require('fs');
+                  if (fs.existsSync(result)) {
+                    const imageBuffer = fs.readFileSync(result);
+                    const base64Image = imageBuffer.toString('base64');
+                    dataUrl = `data:image/png;base64,${base64Image}`;
+                  }
+                }
+              }
 
-              // Check if result is a data URL (new native format) or file path (old format)
-              if (result.startsWith('data:')) {
-                // Native format - already a data URL
-                dataUrl = result;
-              } else {
-                // Old format - file path, read it
-                const fs = window.require('fs');
+              if (dataUrl) {
+                // Resolve the absolute path on disk for the explorer navigation
+                let resolvedDiskPath = texturePath;
+                if (window.require) {
+                  const fs = window.require('fs');
+                  const path = window.require('path');
+                  const normalizedBin = activeFilePath.replace(/\\/g, '/');
+                  const dataMatch = normalizedBin.match(/\/data\//i);
 
-                if (!fs.existsSync(result)) {
-                  showTextureError(texturePath, e.target);
-                  return;
+                  if (dataMatch) {
+                    const projRoot = normalizedBin.substring(0, dataMatch.index);
+                    const cleanTexture = texturePath.replace(/\\/g, '/');
+                    const candidate = path.join(projRoot, cleanTexture);
+                    if (fs.existsSync(candidate)) resolvedDiskPath = candidate;
+                  }
+
+                  if (resolvedDiskPath === texturePath) {
+                    const smartPath = findActualTexturePath(texturePath, activeFilePath);
+                    if (smartPath) resolvedDiskPath = smartPath;
+                  }
                 }
 
-                const imageBuffer = fs.readFileSync(result);
-                const base64Image = imageBuffer.toString('base64');
-                dataUrl = `data:image/png;base64,${base64Image}`;
+                textureData.push({ path: texturePath, label, dataUrl, resolvedDiskPath });
               }
-
-              // Show preview immediately after conversion
-              const rect = e.target.getBoundingClientRect();
-              const left = Math.max(10, rect.left - 300);
-
-              // Check if there's enough space below the emitter
-              const previewHeight = 280; // Height of this preview (200px image + padding + text)
-              const spaceBelow = window.innerHeight - rect.bottom;
-              const spaceAbove = rect.top;
-
-              let top;
-              if (spaceBelow >= previewHeight) {
-                // Position below the emitter
-                top = rect.bottom + 10;
-              } else if (spaceAbove >= previewHeight) {
-                // Position above the emitter
-                top = rect.top - previewHeight - 10;
-              } else {
-                // Not enough space above or below, position in the middle of available space
-                top = Math.max(10, Math.min(rect.top - previewHeight / 2, window.innerHeight - previewHeight - 10));
-              }
-
-              // Remove any existing preview
-              const existingPreview = document.getElementById('paint-texture-hover-preview');
-              if (existingPreview) existingPreview.remove();
-
-              // Create and show preview immediately
-              const preview = document.createElement('div');
-              preview.id = 'paint-texture-hover-preview';
-              preview.style.position = 'fixed';
-              preview.style.left = `${left}px`;
-              preview.style.top = `${top}px`;
-              preview.style.zIndex = '99999';
-              preview.style.background = 'var(--surface)';
-              preview.style.border = '1px solid var(--accent-muted)';
-              preview.style.borderRadius = '6px';
-              preview.style.padding = '6px';
-              preview.style.maxWidth = '280px';
-              preview.style.boxShadow = '0 4px 12px var(--shadow-medium)';
-
-              preview.innerHTML = `
-               <div style="text-align: center; color: var(--accent-muted); font-family: 'JetBrains Mono', monospace; margin-bottom: 6px; font-size: 0.9rem;">
-                  Texture Preview
-                </div>
-                <img src="${processDataURL(dataUrl)}" style="width: 260px; height: 200px; object-fit: contain; display: block; border-radius: 4px;" />
-               <div style="margin-top: 8px; color: var(--accent-muted); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; word-break: break-all; opacity: 0.8;">
-                  ${texturePath}
-                </div>
-              `;
-
-              document.body.appendChild(preview);
-              // Preview position logging removed for cleaner console
-
-              // Auto-remove after 3 seconds
-              setTimeout(() => {
-                if (preview.parentNode) preview.remove();
-              }, 3000);
-            } else {
-              // Show error immediately
-              const rect = e.target.getBoundingClientRect();
-              const left = Math.max(10, rect.left - 300);
-
-              // Check if there's enough space below the emitter
-              const previewHeight = 280; // Height of this preview (error message + padding + text)
-              const spaceBelow = window.innerHeight - rect.bottom;
-              const spaceAbove = rect.top;
-
-              let top;
-              if (spaceBelow >= previewHeight) {
-                // Position below the emitter
-                top = rect.bottom + 10;
-              } else if (spaceAbove >= previewHeight) {
-                // Position above the emitter
-                top = rect.top - previewHeight - 10;
-              } else {
-                // Not enough space above or below, position in the middle of available space
-                top = Math.max(10, Math.min(rect.top - previewHeight / 2, window.innerHeight - previewHeight - 10));
-              }
-
-              // Remove any existing preview
-              const existingPreview = document.getElementById('paint-texture-hover-preview');
-              if (existingPreview) existingPreview.remove();
-
-              // Create and show error immediately
-              const preview = document.createElement('div');
-              preview.id = 'paint-texture-hover-preview';
-              preview.style.position = 'fixed';
-              preview.style.left = `${left}px`;
-              preview.style.top = `${top}px`;
-              preview.style.zIndex = '99999';
-              preview.style.background = 'var(--surface)';
-              preview.style.border = '1px solid var(--accent-muted)';
-              preview.style.borderRadius = '6px';
-              preview.style.padding = '6px';
-              preview.style.maxWidth = '280px';
-              preview.style.boxShadow = '0 4px 12px var(--shadow-medium)';
-
-              preview.innerHTML = `
-               <div style="text-align: center; color: var(--accent-muted); font-family: 'JetBrains Mono', monospace; margin-bottom: 6px; font-size: 0.9rem;">
-                  Texture Preview
-                </div>
-               <div style="color: var(--text-2); font-family: 'JetBrains Mono', monospace; text-align: center; padding: 15px; font-size: 0.9rem;">
-                  Failed to load texture
-                </div>
-               <div style="margin-top: 6px; color: var(--accent-muted); font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; word-break: break-all; opacity: 0.8;">
-                  ${texturePath}
-                </div>
-              `;
-
-              document.body.appendChild(preview);
-
-              // Auto-remove after 3 seconds
-              setTimeout(() => {
-                if (preview.parentNode) preview.remove();
-              }, 3000);
+            } catch (error) {
+              console.warn(`[Paint] Failed to convert ${texturePath}:`, error);
+            } finally {
+              activeConversions.current.delete(texturePath);
             }
-          } catch (error) {
-            console.error('Error converting texture:', error);
-            showTextureError(texturePath, e.target);
-          } finally {
-            // Always remove from active conversions
-            activeConversions.current.delete(texturePath);
           }
-        } catch (_) {
-          // Make sure to clean up on any error
-          if (texturePath) {
-            activeConversions.current.delete(texturePath);
+
+          if (textureData.length === 0) {
+            console.log('[Paint] No textures could be converted');
+            return;
           }
+
+          // Calculate preview dimensions - optimized for grid
+          const rect = e.target.getBoundingClientRect();
+          const previewWidth = textureData.length > 1 ? 380 : 280;
+
+          const left = Math.max(10, Math.min(rect.left - previewWidth - 10, window.innerWidth - previewWidth - 10));
+
+          // Re-calculate height based on content later or use a max
+          const previewMaxHeight = Math.min(700, window.innerHeight - 40);
+
+          // Position closer to the button to reduce dead zone
+          let top = rect.top - 10;
+          if (top + 400 > window.innerHeight) {
+            top = Math.max(10, window.innerHeight - 410);
+          }
+
+          // Remove any existing preview
+          const existingPreview = document.getElementById('paint-texture-hover-preview');
+          if (existingPreview) existingPreview.remove();
+
+          // Create preview
+          const preview = document.createElement('div');
+          preview.id = 'paint-texture-hover-preview';
+          preview.style.position = 'fixed';
+          preview.style.left = `${left}px`;
+          preview.style.top = `${top}px`;
+          preview.style.zIndex = '999999';
+          preview.style.background = 'rgba(15, 15, 20, 0.96)';
+          preview.style.backdropFilter = 'blur(12px) saturate(180%)';
+          preview.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+          preview.style.borderRadius = '12px';
+          preview.style.padding = '16px';
+          preview.style.width = `${previewWidth}px`;
+          preview.style.maxHeight = `${previewMaxHeight}px`;
+          preview.style.overflowY = 'auto';
+          preview.style.overflowX = 'hidden';
+          preview.style.boxSizing = 'border-box';
+          preview.style.boxShadow = '0 20px 40px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.05)';
+          preview.style.display = 'flex';
+          preview.style.flexDirection = 'column';
+          preview.style.pointerEvents = 'auto'; // Ensure we can hover it
+
+          // Build HTML for grid items using Port style
+          const gridHtml = `
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 8px;">
+              ${textureData.map((data, index) => {
+            const fileName = data.path.split(/[/\\]/).pop();
+            return `
+                <div class="tex-grid-item" data-idx="${index}" title="Left-click: Asset Preview | Right-click: Open in External App" style="
+                  cursor: pointer; 
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  gap: 8px;
+                  transition: all 0.2s ease;
+                ">
+                  <div style="width: 100%; height: 135px; background: #000; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                    <img src="${processDataURL(data.dataUrl)}" style="max-width: 100%; max-height: 100%; object-fit: contain;" />
+                  </div>
+                  <div style="width: 100%; text-align: center; font-family: 'JetBrains Mono', monospace; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    <div style="font-size: 8px; opacity: 0.5; margin-bottom: 2px; letter-spacing: 0.02em;">${fileName}</div>
+                    <div style="font-size: 10px; font-weight: 800; letter-spacing: 0.08em; opacity: 0.9;">${data.label.toUpperCase()}</div>
+                  </div>
+                </div>
+              `;
+          }).join('')}
+            </div>
+          `;
+
+          preview.innerHTML = `
+            <div style="text-align: left; color: var(--accent); font-family: 'JetBrains Mono', monospace; margin-bottom: 12px; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.12em; display: flex; align-items: center; gap: 10px; opacity: 0.9;">
+              <span style="width: 8px; height: 8px; background: var(--accent); border-radius: 50%; display: inline-block; box-shadow: 0 0 8px var(--accent);"></span>
+              TEXTURE PREVIEW (${textureData.length})
+            </div>
+            ${gridHtml}
+          `;
+
+          // Add interaction handlers for textures
+          preview.querySelectorAll('.tex-grid-item').forEach(el => {
+            el.onmouseenter = () => {
+              el.style.transform = 'translateY(-2px)';
+              const imgCont = el.querySelector('div');
+              if (imgCont) {
+                imgCont.style.borderColor = 'var(--accent)';
+                imgCont.style.boxShadow = '0 6px 16px rgba(0,0,0,0.4)';
+              }
+            };
+            el.onmouseleave = () => {
+              el.style.transform = 'translateY(0)';
+              const imgCont = el.querySelector('div');
+              if (imgCont) {
+                imgCont.style.borderColor = 'rgba(255,255,255,0.08)';
+                imgCont.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+              }
+            };
+            el.onclick = (event) => {
+              event.stopPropagation();
+              const idx = parseInt(el.getAttribute('data-idx'));
+              const data = textureData[idx];
+              if (data) {
+                // Remove preview immediately on click
+                preview.remove();
+                if (textureCloseTimerRef.current) {
+                  clearTimeout(textureCloseTimerRef.current);
+                  textureCloseTimerRef.current = null;
+                }
+                // Pass the resolved absolute path to openAssetPreview for explorer support
+                openAssetPreview(data.resolvedDiskPath || data.path, data.dataUrl);
+              }
+            };
+
+            el.oncontextmenu = (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const idx = parseInt(el.getAttribute('data-idx'));
+              const data = textureData[idx];
+              if (data && data.resolvedDiskPath && window.require) {
+                try {
+                  const { shell } = window.require('electron');
+                  if (shell) {
+                    shell.openPath(data.resolvedDiskPath);
+                    // Visual feedback
+                    el.style.borderColor = '#10b981';
+                    setTimeout(() => {
+                      el.style.borderColor = 'var(--accent)';
+                    }, 500);
+                  }
+                } catch (err) {
+                  console.error('[Paint] Error opening external app:', err);
+                }
+              }
+            };
+          });
+
+          // Persistent hover logic
+          preview.onmouseenter = () => {
+            if (textureCloseTimerRef.current) {
+              clearTimeout(textureCloseTimerRef.current);
+              textureCloseTimerRef.current = null;
+            }
+          };
+
+          preview.onmouseleave = () => {
+            textureCloseTimerRef.current = setTimeout(() => {
+              preview.remove();
+            }, 500);
+          };
+
+          document.body.appendChild(preview);
+
+        } catch (error) {
+          console.error('[Paint] Error in texture preview:', error);
         }
-      }, 200); // Back to reasonable delay
+      }, 200);
     };
 
     previewBtn.onmouseleave = () => {
@@ -2653,8 +2885,11 @@ const Paint = () => {
         hoverTimer = null;
       }
 
-      const existing = document.getElementById('paint-texture-hover-preview');
-      if (existing) existing.remove();
+      // Add a small delay to allow moving to the preview window
+      textureCloseTimerRef.current = setTimeout(() => {
+        const existing = document.getElementById('paint-texture-hover-preview');
+        if (existing) existing.remove();
+      }, 500);
     };
 
     emitterDiv.appendChild(previewBtn);
@@ -2694,32 +2929,60 @@ const Paint = () => {
     birthColorDiv.setAttribute('data-role', 'birth');
 
     if (emitter.birthColor) {
-      // Prioritize dynamics.values over constantValue when both exist
+      // Collect ALL colors: constantValue + dynamics.values when both exist
+      const allBirthColors = [];
+      const allBirthTimes = [];
+
+      // Add constantValue first if it exists
+      if (emitter.birthColor.constantValue) {
+        allBirthColors.push(emitter.birthColor.constantValue);
+        allBirthTimes.push(0); // constantValue is at time 0
+      }
+
+      // Add dynamics.values if they exist
       if (emitter.birthColor.dynamics && emitter.birthColor.dynamics.values && emitter.birthColor.dynamics.values.length > 0) {
-        // Animated birth color - show gradient or first/last colors
         const dynamicColors = emitter.birthColor.dynamics.values;
-        if (dynamicColors.length === 1) {
-          // Single color in dynamics
-          const colorHandler = new ColorHandler(dynamicColors[0]);
+        const dynamicTimes = emitter.birthColor.dynamics.times || [];
+        for (let i = 0; i < dynamicColors.length; i++) {
+          allBirthColors.push(dynamicColors[i]);
+          // Offset times slightly if constantValue exists to avoid duplicate 0
+          const baseTime = dynamicTimes[i] !== undefined ? dynamicTimes[i] : (i / Math.max(1, dynamicColors.length - 1));
+          allBirthTimes.push(emitter.birthColor.constantValue ? (baseTime * 0.9 + 0.1) : baseTime);
+        }
+      }
+
+      if (allBirthColors.length > 0) {
+        if (allBirthColors.length === 1) {
+          // Single color
+          const colorHandler = new ColorHandler(allBirthColors[0]);
           const bgColor = colorHandler.ToHEX();
           birthColorDiv.style.background = bgColor;
-        } else if (dynamicColors.length > 1) {
-          // Multiple colors - create gradient
-          const colorHandlers = dynamicColors.map(color => new ColorHandler(color));
+        } else {
+          // Multiple colors - create gradient showing ALL colors (constantValue + dynamics)
+          const colorHandlers = allBirthColors.map(color => new ColorHandler(color));
           const gradientColors = colorHandlers.map(handler => handler.ToHEX());
           birthColorDiv.style.background = `linear-gradient(90deg, ${gradientColors.join(', ')})`;
-          birthColorDiv.title = `Animated Birth Color (${dynamicColors.length} keyframes)`;
+          const hasConstant = !!emitter.birthColor.constantValue;
+          const hasDynamics = emitter.birthColor.dynamics && emitter.birthColor.dynamics.values && emitter.birthColor.dynamics.values.length > 0;
+          if (hasConstant && hasDynamics) {
+            birthColorDiv.title = `Birth Color (constant + ${emitter.birthColor.dynamics.values.length} animated keyframes)`;
+          } else if (hasDynamics) {
+            birthColorDiv.title = `Animated Birth Color (${emitter.birthColor.dynamics.values.length} keyframes)`;
+          } else {
+            birthColorDiv.title = 'Birth Color';
+          }
         }
 
         birthColorDiv.onclick = (event) => {
-          // Create palette from all dynamic colors
-          const newPalette = dynamicColors.map((color, index) => {
+          // Create palette from ALL colors (constantValue + dynamics)
+          const newPalette = allBirthColors.map((color, index) => {
             const colorHandler = new ColorHandler(color);
-            colorHandler.SetTime(emitter.birthColor.dynamics.times[index] || (index / (dynamicColors.length - 1)));
+            colorHandler.SetTime(allBirthTimes[index] || (index / Math.max(1, allBirthColors.length - 1)));
             return colorHandler;
           });
           setPalette(newPalette);
           MapPalette(newPalette, setColors);
+          setColorCount(newPalette.length);
 
           // Save the palette to preservation system
           savePaletteForMode(mode, newPalette, setSavedPalettes);
@@ -2737,6 +3000,7 @@ const Paint = () => {
           newPalette[0].SetTime(0);
           setPalette(newPalette);
           MapPalette(newPalette, setColors);
+          setColorCount(newPalette.length);
 
           // Save the palette to preservation system
           savePaletteForMode(mode, newPalette, setSavedPalettes);
@@ -2758,49 +3022,60 @@ const Paint = () => {
     colorDiv.setAttribute('data-role', 'color');
 
     if (emitter.color) {
-      // Prioritize dynamics.values over constantValue when both exist
+      // Collect ALL colors: constantValue + dynamics.values when both exist
+      const allColors = [];
+      const allColorTimes = [];
+
+      // Add constantValue first if it exists
+      if (emitter.color.constantValue) {
+        allColors.push(emitter.color.constantValue);
+        allColorTimes.push(0); // constantValue is at time 0
+      }
+
+      // Add dynamics.values if they exist
       if (emitter.color.dynamics && emitter.color.dynamics.values && emitter.color.dynamics.values.length > 0) {
-        // Animated color - show gradient or first/last colors
         const dynamicColors = emitter.color.dynamics.values;
-        if (dynamicColors.length === 1) {
-          // Single color in dynamics
-          const colorHandler = new ColorHandler(dynamicColors[0]);
+        const dynamicTimes = emitter.color.dynamics.times || [];
+        for (let i = 0; i < dynamicColors.length; i++) {
+          allColors.push(dynamicColors[i]);
+          // Offset times slightly if constantValue exists to avoid duplicate 0
+          const baseTime = dynamicTimes[i] !== undefined ? dynamicTimes[i] : (i / Math.max(1, dynamicColors.length - 1));
+          allColorTimes.push(emitter.color.constantValue ? (baseTime * 0.9 + 0.1) : baseTime);
+        }
+      }
+
+      if (allColors.length > 0) {
+        if (allColors.length === 1) {
+          // Single color
+          const colorHandler = new ColorHandler(allColors[0]);
           const bgColor = colorHandler.ToHEX();
           colorDiv.style.background = bgColor;
-        } else if (dynamicColors.length > 1) {
-          // Multiple colors - create gradient
-          const colorHandlers = dynamicColors.map(color => new ColorHandler(color));
+        } else {
+          // Multiple colors - create gradient showing ALL colors (constantValue + dynamics)
+          const colorHandlers = allColors.map(color => new ColorHandler(color));
           const gradientColors = colorHandlers.map(handler => handler.ToHEX());
           colorDiv.style.background = `linear-gradient(90deg, ${gradientColors.join(', ')})`;
-          colorDiv.title = `Animated Color (${dynamicColors.length} keyframes)`;
+          const hasConstant = !!emitter.color.constantValue;
+          const hasDynamics = emitter.color.dynamics && emitter.color.dynamics.values && emitter.color.dynamics.values.length > 0;
+          if (hasConstant && hasDynamics) {
+            colorDiv.title = `Color (constant + ${emitter.color.dynamics.values.length} animated keyframes)`;
+          } else if (hasDynamics) {
+            colorDiv.title = `Animated Color (${emitter.color.dynamics.values.length} keyframes)`;
+          } else {
+            colorDiv.title = 'Color';
+          }
         }
 
         colorDiv.onclick = (event) => {
-          // Create palette from all dynamic colors
-          const newPalette = dynamicColors.map((color, index) => {
+          // Create palette from ALL colors (constantValue + dynamics)
+          const newPalette = allColors.map((color, index) => {
             const colorHandler = new ColorHandler(color);
-            colorHandler.SetTime(emitter.color.dynamics.times[index] || (index / (dynamicColors.length - 1)));
+            colorHandler.SetTime(allColorTimes[index] || (index / Math.max(1, allColors.length - 1)));
             return colorHandler;
           });
           setPalette(newPalette);
           MapPalette(newPalette, setColors);
-
-          // Save the palette to preservation system
-          savePaletteForMode(mode, newPalette, setSavedPalettes);
-
-          // Position color picker near the clicked element
-          positionColorPicker(event);
-        };
-      } else if (emitter.color.constantValue) {
-        // Static color
-        const colorHandler = new ColorHandler(emitter.color.constantValue);
-        const bgColor = colorHandler.ToHEX();
-        colorDiv.style.background = bgColor;
-        colorDiv.onclick = (event) => {
-          const newPalette = [colorHandler];
-          newPalette[0].SetTime(0);
-          setPalette(newPalette);
-          MapPalette(newPalette, setColors);
+          setColorCount(newPalette.length);
 
           // Save the palette to preservation system
           savePaletteForMode(mode, newPalette, setSavedPalettes);
@@ -2891,6 +3166,7 @@ const Paint = () => {
         console.error('Error updating blendMode in pyContent:', error);
       }
     });
+    blendModeInput.onclick = (e) => e.stopPropagation();
     emitterDiv.appendChild(blendModeInput);
 
     return emitterDiv;
@@ -2974,6 +3250,7 @@ const Paint = () => {
           newPalette[0].SetTime(0);
           setPalette(newPalette);
           MapPalette(newPalette, setColors);
+          setColorCount(newPalette.length);
 
           // Save the palette to preservation system
           savePaletteForMode(mode, newPalette, setSavedPalettes);
@@ -3342,54 +3619,77 @@ const Paint = () => {
         };
 
         if (targets.color && emitter.color) {
-          if (emitter.color.dynamics && Array.isArray(emitter.color.dynamics.values) && emitter.color.dynamics.values.length > 0) {
-            const predicted = predictDynamicValues(emitter.color.dynamics.values, emitter.color.dynamics.times || [], skipPredicate);
-            // Only apply preview if at least one keyframe was actually changed
-            const changed = predicted.some((v, idx) => {
-              const orig = emitter.color.dynamics.values[idx];
-              return v[0] !== orig[0] || v[1] !== orig[1] || v[2] !== orig[2] || v[3] !== orig[3];
-            });
-            if (changed) {
-              setBlockGradient('[data-role="color"]', predicted, 'Animated Color (preview)');
-              // Save assignment
-              const key = `${systemKey}|${emitter.startLine}|${emitter.endLine}|color`;
-              previewAssignmentsRef.current.set(key, { type: 'emitter', systemKey, name: emitter.name, startLine: emitter.startLine, endLine: emitter.endLine, property: 'color', kind: 'dynamics', values: predicted });
-            }
-          } else if (emitter.color.constantValue) {
+          // Collect ALL colors: constantValue + dynamics when both exist
+          const allPreviewColors = [];
+          let hasConstant = false;
+          let hasDynamics = false;
+
+          // Process constantValue if it exists
+          if (emitter.color.constantValue) {
+            hasConstant = true;
             const [r, g, b] = emitter.color.constantValue;
             const isBW = (r === 0 && g === 0 && b === 0) || (r === 1 && g === 1 && b === 1);
             const shouldSkipConst = (typeof skipPredicate === 'function') ? !!skipPredicate(emitter.color.constantValue) : false;
             if ((ignoreBW && isBW) || shouldSkipConst) {
-              // keep original
+              allPreviewColors.push(emitter.color.constantValue); // Keep original
             } else {
               const c = predictVec4(emitter.color.constantValue);
-              if (c) setBlockConst('[data-role="color"]', c, 'Color');
-              if (c) {
-                const key = `${systemKey}|${emitter.startLine}|${emitter.endLine}|color`;
-                previewAssignmentsRef.current.set(key, { type: 'emitter', systemKey, name: emitter.name, startLine: emitter.startLine, endLine: emitter.endLine, property: 'color', kind: 'constant', value: c });
-                console.log(`[applyOptimisticPreview] Set preview assignment for color: key=${key}, value=`, c);
-              }
+              if (c) allPreviewColors.push(c);
+            }
+          }
+
+          // Process dynamics if they exist
+          if (emitter.color.dynamics && Array.isArray(emitter.color.dynamics.values) && emitter.color.dynamics.values.length > 0) {
+            hasDynamics = true;
+            const predicted = predictDynamicValues(emitter.color.dynamics.values, emitter.color.dynamics.times || [], skipPredicate);
+            allPreviewColors.push(...predicted);
+          }
+
+          // Apply preview based on what we collected
+          if (allPreviewColors.length > 0) {
+            if (allPreviewColors.length === 1) {
+              setBlockConst('[data-role="color"]', allPreviewColors[0], hasConstant && hasDynamics ? 'Color (constant + animated)' : 'Color');
+            } else {
+              setBlockGradient('[data-role="color"]', allPreviewColors, hasConstant && hasDynamics ? 'Color (constant + animated preview)' : 'Animated Color (preview)');
+            }
+
+            // Save assignment - combine both constant and dynamics
+            const key = `${systemKey}|${emitter.startLine}|${emitter.endLine}|color`;
+            if (hasConstant && hasDynamics) {
+              // When both exist, save as combo assignment
+              previewAssignmentsRef.current.set(key, {
+                type: 'emitter',
+                systemKey,
+                name: emitter.name,
+                startLine: emitter.startLine,
+                endLine: emitter.endLine,
+                property: 'color',
+                kind: 'combo',
+                constantValue: allPreviewColors[0],
+                dynamicsValues: allPreviewColors.slice(1)
+              });
+            } else if (hasDynamics) {
+              previewAssignmentsRef.current.set(key, { type: 'emitter', systemKey, name: emitter.name, startLine: emitter.startLine, endLine: emitter.endLine, property: 'color', kind: 'dynamics', values: allPreviewColors });
+            } else if (hasConstant) {
+              previewAssignmentsRef.current.set(key, { type: 'emitter', systemKey, name: emitter.name, startLine: emitter.startLine, endLine: emitter.endLine, property: 'color', kind: 'constant', value: allPreviewColors[0] });
+              console.log(`[applyOptimisticPreview] Set preview assignment for color: key=${key}, value=`, allPreviewColors[0]);
             }
           }
         }
         if (targets.birthColor && emitter.birthColor) {
-          if (emitter.birthColor.dynamics && Array.isArray(emitter.birthColor.dynamics.values) && emitter.birthColor.dynamics.values.length > 0) {
-            const predicted = predictDynamicValues(emitter.birthColor.dynamics.values, emitter.birthColor.dynamics.times || [], skipPredicate);
-            const changed = predicted.some((v, idx) => {
-              const orig = emitter.birthColor.dynamics.values[idx];
-              return v[0] !== orig[0] || v[1] !== orig[1] || v[2] !== orig[2] || v[3] !== orig[3];
-            });
-            if (changed) {
-              setBlockGradient('[data-role="birth"]', predicted, 'Animated Birth Color (preview)');
-              const key = `${systemKey}|${emitter.startLine}|${emitter.endLine}|birthColor`;
-              previewAssignmentsRef.current.set(key, { type: 'emitter', systemKey, name: emitter.name, startLine: emitter.startLine, endLine: emitter.endLine, property: 'birthColor', kind: 'dynamics', values: predicted });
-            }
-          } else if (emitter.birthColor.constantValue) {
+          // Collect ALL colors: constantValue + dynamics when both exist
+          const allBirthPreviewColors = [];
+          let hasConstant = false;
+          let hasDynamics = false;
+
+          // Process constantValue if it exists
+          if (emitter.birthColor.constantValue) {
+            hasConstant = true;
             const [r, g, b] = emitter.birthColor.constantValue;
             const isBW = (r === 0 && g === 0 && b === 0) || (r === 1 && g === 1 && b === 1);
             const shouldSkipConst = (typeof skipPredicate === 'function') ? !!skipPredicate(emitter.birthColor.constantValue) : false;
             if ((ignoreBW && isBW) || shouldSkipConst) {
-              // keep original
+              allBirthPreviewColors.push(emitter.birthColor.constantValue); // Keep original
             } else {
               // In shift modes, do not align birthColor to palette; preview shifted original
               let c = predictVec4(emitter.birthColor.constantValue);
@@ -3400,12 +3700,45 @@ const Paint = () => {
                   c = [first[0], first[1], first[2], alpha];
                 }
               }
-              if (c) setBlockConst('[data-role="birth"]', c, 'Birth Color');
-              if (c) {
-                const key = `${systemKey}|${emitter.startLine}|${emitter.endLine}|birthColor`;
-                previewAssignmentsRef.current.set(key, { type: 'emitter', systemKey, name: emitter.name, startLine: emitter.startLine, endLine: emitter.endLine, property: 'birthColor', kind: 'constant', value: c });
-                console.log(`[applyOptimisticPreview] Set preview assignment for birthColor: key=${key}, value=`, c);
-              }
+              if (c) allBirthPreviewColors.push(c);
+            }
+          }
+
+          // Process dynamics if they exist
+          if (emitter.birthColor.dynamics && Array.isArray(emitter.birthColor.dynamics.values) && emitter.birthColor.dynamics.values.length > 0) {
+            hasDynamics = true;
+            const predicted = predictDynamicValues(emitter.birthColor.dynamics.values, emitter.birthColor.dynamics.times || [], skipPredicate);
+            allBirthPreviewColors.push(...predicted);
+          }
+
+          // Apply preview based on what we collected
+          if (allBirthPreviewColors.length > 0) {
+            if (allBirthPreviewColors.length === 1) {
+              setBlockConst('[data-role="birth"]', allBirthPreviewColors[0], hasConstant && hasDynamics ? 'Birth Color (constant + animated)' : 'Birth Color');
+            } else {
+              setBlockGradient('[data-role="birth"]', allBirthPreviewColors, hasConstant && hasDynamics ? 'Birth Color (constant + animated preview)' : 'Animated Birth Color (preview)');
+            }
+
+            // Save assignment - combine both constant and dynamics
+            const key = `${systemKey}|${emitter.startLine}|${emitter.endLine}|birthColor`;
+            if (hasConstant && hasDynamics) {
+              // When both exist, save as combo assignment
+              previewAssignmentsRef.current.set(key, {
+                type: 'emitter',
+                systemKey,
+                name: emitter.name,
+                startLine: emitter.startLine,
+                endLine: emitter.endLine,
+                property: 'birthColor',
+                kind: 'combo',
+                constantValue: allBirthPreviewColors[0],
+                dynamicsValues: allBirthPreviewColors.slice(1)
+              });
+            } else if (hasDynamics) {
+              previewAssignmentsRef.current.set(key, { type: 'emitter', systemKey, name: emitter.name, startLine: emitter.startLine, endLine: emitter.endLine, property: 'birthColor', kind: 'dynamics', values: allBirthPreviewColors });
+            } else if (hasConstant) {
+              previewAssignmentsRef.current.set(key, { type: 'emitter', systemKey, name: emitter.name, startLine: emitter.startLine, endLine: emitter.endLine, property: 'birthColor', kind: 'constant', value: allBirthPreviewColors[0] });
+              console.log(`[applyOptimisticPreview] Set preview assignment for birthColor: key=${key}, value=`, allBirthPreviewColors[0]);
             }
           }
         }
@@ -3751,7 +4084,18 @@ const Paint = () => {
               const key = `${baseKey}|color`;
               const asn = previewAssignmentsRef.current.get(key);
               console.log(`[processChunk] Processing color for emitter ${emitter.name}, key=${key}, hasPreviewAssignment=${!!asn}, kind=${asn?.kind}`);
-              if (asn && asn.kind === 'constant') {
+              if (asn && asn.kind === 'combo') {
+                // Handle combo: write both constantValue and dynamics
+                console.log(`[processChunk] Using preview assignment for color combo, constantValue=`, asn.constantValue, `dynamicsValues count=${asn.dynamicsValues?.length}`);
+                if (asn.constantValue) {
+                  workingLines = writeEmitterConstantToLines(workingLines, systemsToUse, systemKey, emitter, 'color', asn.constantValue);
+                  colorsUpdated++;
+                }
+                if (asn.dynamicsValues && Array.isArray(asn.dynamicsValues) && asn.dynamicsValues.length > 0) {
+                  workingLines = writeEmitterDynamicsToLines(workingLines, systemsToUse, systemKey, emitter, 'color', asn.dynamicsValues);
+                  colorsUpdated += asn.dynamicsValues.length;
+                }
+              } else if (asn && asn.kind === 'constant') {
                 console.log(`[processChunk] Using preview assignment for color, value=`, asn.value);
                 workingLines = writeEmitterConstantToLines(workingLines, systemsToUse, systemKey, emitter, 'color', asn.value);
                 colorsUpdated++;
@@ -3777,7 +4121,18 @@ const Paint = () => {
               const key = `${baseKey}|birthColor`;
               const asn = previewAssignmentsRef.current.get(key);
               console.log(`[processChunk] Processing birthColor for emitter ${emitter.name}, key=${key}, hasPreviewAssignment=${!!asn}, kind=${asn?.kind}`);
-              if (asn && asn.kind === 'constant') {
+              if (asn && asn.kind === 'combo') {
+                // Handle combo: write both constantValue and dynamics
+                console.log(`[processChunk] Using preview assignment for birthColor combo, constantValue=`, asn.constantValue, `dynamicsValues count=${asn.dynamicsValues?.length}`);
+                if (asn.constantValue) {
+                  workingLines = writeEmitterConstantToLines(workingLines, systemsToUse, systemKey, emitter, 'birthColor', asn.constantValue);
+                  colorsUpdated++;
+                }
+                if (asn.dynamicsValues && Array.isArray(asn.dynamicsValues) && asn.dynamicsValues.length > 0) {
+                  workingLines = writeEmitterDynamicsToLines(workingLines, systemsToUse, systemKey, emitter, 'birthColor', asn.dynamicsValues);
+                  colorsUpdated += asn.dynamicsValues.length;
+                }
+              } else if (asn && asn.kind === 'constant') {
                 console.log(`[processChunk] Using preview assignment for birthColor, value=`, asn.value);
                 workingLines = writeEmitterConstantToLines(workingLines, systemsToUse, systemKey, emitter, 'birthColor', asn.value);
                 colorsUpdated++;

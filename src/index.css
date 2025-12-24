@@ -30,7 +30,7 @@ body,
   background-color: transparent !important;
 }
 
-/* Glassy effect for lists and containers when wallpaper is active */
+/* Glassy effect for main containers and list backgrounds - stays transparent */
 .has-wallpaper .bin-editor-container,
 .has-wallpaper .frog-changer-container,
 .has-wallpaper .vfx-hub-container,
@@ -41,10 +41,6 @@ body,
 .has-wallpaper .img-recolor-container,
 .has-wallpaper .settings-container,
 .has-wallpaper .vfx-particle-list,
-.has-wallpaper .Particle-Div,
-.has-wallpaper .Material-Div,
-.has-wallpaper .particle-div,
-.has-wallpaper .material-div,
 .has-wallpaper .bin-editor-list,
 .has-wallpaper .bin-editor-props {
   background: rgba(15, 13, 20, 0.4) !important;
@@ -53,12 +49,28 @@ body,
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
+/* Systems and Emitters - Less transparent for high readability (Port, VFX Hub, Bin Editor) */
+.has-wallpaper .Particle-Div,
+.has-wallpaper .Material-Div,
+.has-wallpaper .particle-div,
+.has-wallpaper .material-div,
 .has-wallpaper .Emitter-Div,
 .has-wallpaper .bin-editor-item,
 .has-wallpaper .bin-editor-emitter {
+  background: rgba(22, 20, 28, 0.85) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  margin-bottom: 4px;
+  backdrop-filter: blur(8px);
+}
+
+/* Paint Page Override - Keep ultra-transparent as per original design */
+.has-wallpaper .paint-container .Particle-Div,
+.has-wallpaper .paint-container .Material-Div,
+.has-wallpaper .paint-container .Emitter-Div {
   background: rgba(255, 255, 255, 0.02) !important;
   border: 1px solid rgba(255, 255, 255, 0.05) !important;
   margin-bottom: 2px;
+  backdrop-filter: none;
 }
 
 .has-wallpaper .Emitter-Div:hover,

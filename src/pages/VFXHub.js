@@ -1053,13 +1053,43 @@ const VFXHub = () => {
 
   // Copy all the existing helper functions from Port.js (for now, we'll add them later)
   const handleOpenTargetBin = async () => {
-    let path = targetPath !== 'This will show target bin' ? targetPath : undefined;
-    if (!path) {
+    let binPath = targetPath !== 'This will show target bin' ? targetPath : undefined;
+    if (!binPath) {
       try {
-        path = await electronPrefs.get('SharedLastBinPath');
+        binPath = await electronPrefs.get('SharedLastBinPath');
       } catch (e) { console.error(e); }
     }
-    openAssetPreview(path, null, 'vfxhub-target');
+
+    // Check if user prefers native file browser
+    const useNativeFileBrowser = await electronPrefs.get('UseNativeFileBrowser');
+
+    if (useNativeFileBrowser) {
+      // Use native Windows file dialog
+      try {
+        if (window.require) {
+          const { ipcRenderer } = window.require('electron');
+          const result = await ipcRenderer.invoke('dialog:openFile', {
+            title: 'Select Target .bin file',
+            defaultPath: binPath ? path.dirname(binPath) : undefined,
+            filters: [
+              { name: 'Bin Files', extensions: ['bin'] },
+              { name: 'All Files', extensions: ['*'] }
+            ],
+            properties: ['openFile']
+          });
+
+          if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
+            processTargetBin(result.filePaths[0]);
+          }
+        }
+      } catch (error) {
+        console.error('Error opening native file dialog:', error);
+        setStatusMessage('Error opening file dialog: ' + error.message);
+      }
+    } else {
+      // Use custom explorer
+      openAssetPreview(binPath, null, 'vfxhub-target');
+    }
   };
 
   const processTargetBin = async (filePath) => {

@@ -151,16 +151,6 @@ export default function BinEditorV2() {
 
     // ============ FILE OPERATIONS ============
 
-    const loadBinFile = useCallback(async () => {
-        let path = binPath || undefined;
-        if (!path) {
-            try {
-                path = await electronPrefs.get('BinEditorLastBinPath');
-            } catch (e) { }
-        }
-        openAssetPreview(path, null, 'bineditor-bin');
-    }, [binPath]);
-
     const processBinFile = useCallback(async (filePath) => {
         if (!window.require) {
             setStatusMessage('Error: Electron environment required');
@@ -237,6 +227,47 @@ export default function BinEditorV2() {
             setLoadingText('');
         }
     }, []);
+
+    const loadBinFile = useCallback(async () => {
+        let binFilePath = binPath || undefined;
+        if (!binFilePath) {
+            try {
+                binFilePath = await electronPrefs.get('BinEditorLastBinPath');
+            } catch (e) { }
+        }
+
+        // Check if user prefers native file browser
+        const useNativeFileBrowser = await electronPrefs.get('UseNativeFileBrowser');
+
+        if (useNativeFileBrowser) {
+            // Use native Windows file dialog
+            try {
+                if (window.require) {
+                    const { ipcRenderer } = window.require('electron');
+                    const path = window.require('path');
+                    const result = await ipcRenderer.invoke('dialog:openFile', {
+                        title: 'Select a .bin file',
+                        defaultPath: binFilePath ? path.dirname(binFilePath) : undefined,
+                        filters: [
+                            { name: 'Bin Files', extensions: ['bin'] },
+                            { name: 'All Files', extensions: ['*'] }
+                        ],
+                        properties: ['openFile']
+                    });
+
+                    if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
+                        processBinFile(result.filePaths[0]);
+                    }
+                }
+            } catch (error) {
+                console.error('Error opening native file dialog:', error);
+                setStatusMessage('Error opening file dialog: ' + error.message);
+            }
+        } else {
+            // Use custom explorer
+            openAssetPreview(binFilePath, null, 'bineditor-bin');
+        }
+    }, [binPath, processBinFile]);
 
     // Listen for file selection
     useEffect(() => {

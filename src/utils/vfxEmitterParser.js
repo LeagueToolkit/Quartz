@@ -385,6 +385,8 @@ const parseVfxEmitter = (lines, emitterStartLine) => {
 
       // Extract texture path from the emitter content
       emitter.texturePath = findTexturePathInContent(originalContent);
+      // Extract ALL textures from the emitter content
+      emitter.allTextures = findAllTexturesInContent(originalContent);
       // texturePath optional
 
       // parsing complete
@@ -815,63 +817,65 @@ const parseDynamics = (lines, startLine) => {
 };
 
 /**
- * Find texture paths in emitter content
+ * Find ALL texture paths in emitter content
  * @param {string} content - Emitter content
- * @returns {string|null} - Found texture path or null
+ * @returns {Array} - Array of {path, label} objects for all textures found
  */
-const findTexturePathInContent = (content) => {
-  // First, look specifically for the main texture field (not particleColorTexture or other variants)
-  // Use negative lookbehind to ensure we match only standalone "texture:" not "particleColorTexture:" etc.
-  const mainTexturePattern = /(?<![a-zA-Z])texture:\s*string\s*=\s*"([^"]+)"/gi;
-  const mainTextureMatch = content.match(mainTexturePattern);
-  if (mainTextureMatch && mainTextureMatch.length > 0) {
-    // Extract just the path from the first capture group
-    let texturePath = mainTextureMatch[0].match(/(?<![a-zA-Z])texture:\s*string\s*=\s*"([^"]+)"/i)[1];
+const findAllTexturesInContent = (content) => {
+  const textures = [];
+  const textureSet = new Set(); // Prevent duplicates
 
-    // Auto-correct known corruption patterns
-    if (texturePath.includes('akitanerusera')) {
-      const correctedPath = texturePath.replace(/akitanerusera/g, 'ASSETS');
-      texturePath = correctedPath;
+  // Auto-correct known corruption patterns
+  const cleanPath = (path) => {
+    if (path && path.includes('akitanerusera')) {
+      return path.replace(/akitanerusera/g, 'ASSETS');
     }
+    return path;
+  };
 
-    return texturePath;
-  }
-
-  // Fallback to other texture patterns if main texture field not found
+  // Define texture field patterns with labels
   const texturePatterns = [
-    /texturePath[:\s]*"([^"]+)"/gi,
-    /textureName[:\s]*"([^"]+)"/gi,
-    /"([^"]*\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi,
-    /"([^"]*\/[^"]*\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi,
-    /"([^"]*\\[^"]*\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi
+    { regex: /(?<![a-zA-Z])texture:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Main Texture' },
+    { regex: /particleColorTexture:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Color Texture' },
+    { regex: /erosionMapName:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Erosion Map' },
+    { regex: /textureMult:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Mult Texture' },
+    { regex: /paletteTexture:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Palette' },
+    { regex: /normalMap:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Normal Map' },
+    { regex: /normalMapTexture:\s*string\s*=\s*"([^"]+\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi, label: 'Normal Map' },
   ];
 
-  for (const pattern of texturePatterns) {
-    const matches = content.match(pattern);
-    if (matches && matches.length > 0) {
-      // Extract just the path from the capture group
-      let texturePath;
-      if (pattern.source.includes('\\(')) {
-        // Pattern has capture groups, extract from first capture group
-        const match = matches[0].match(pattern);
-        texturePath = match ? match[1] : matches[0].replace(/"/g, '');
-      } else {
-        // Pattern doesn't have capture groups, just remove quotes
-        texturePath = matches[0].replace(/"/g, '');
+  // Extract textures for each pattern
+  for (const { regex, label } of texturePatterns) {
+    const matches = [...content.matchAll(regex)];
+    for (const match of matches) {
+      const texturePath = cleanPath(match[1]);
+      if (texturePath && !textureSet.has(texturePath)) {
+        textureSet.add(texturePath);
+        textures.push({ path: texturePath, label });
       }
-
-      // Auto-correct known corruption patterns
-      if (texturePath.includes('akitanerusera')) {
-        const correctedPath = texturePath.replace(/akitanerusera/g, 'ASSETS');
-        texturePath = correctedPath;
-      }
-
-      // Return the first match
-      return texturePath;
     }
   }
 
-  return null;
+  return textures;
+};
+
+/**
+ * Find texture paths in emitter content (legacy - returns main texture only)
+ * @param {string} content - Emitter content
+ * @returns {string|null} - Found main texture path or null
+ */
+const findTexturePathInContent = (content) => {
+  // Use the new function and return just the main texture
+  const allTextures = findAllTexturesInContent(content);
+
+  // Find the main texture
+  const mainTexture = allTextures.find(t => t.label === 'Main Texture');
+  if (mainTexture) {
+    return mainTexture.path;
+  }
+
+  // Fallback to first texture found
+  return allTextures.length > 0 ? allTextures[0].path : null;
 };
 
 /**
@@ -1320,5 +1324,6 @@ export {
   generateColorPython,
   generateVector3Python,
   replaceEmittersInSystem,
-  generateModifiedPythonFromSystems
+  generateModifiedPythonFromSystems,
+  findAllTexturesInContent
 }; 

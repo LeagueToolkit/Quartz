@@ -614,6 +614,18 @@ const Port = () => {
   // System rename state
   const [renamingSystem, setRenamingSystem] = useState(null); // { systemKey, newName }
 
+  const textureCloseTimerRef = useRef(null);
+  const targetPyContentRef = useRef('');
+  const donorPyContentRef = useRef('');
+
+  useEffect(() => {
+    targetPyContentRef.current = targetPyContent;
+  }, [targetPyContent]);
+
+  useEffect(() => {
+    donorPyContentRef.current = donorPyContent;
+  }, [donorPyContent]);
+
   // Optimistic delete helpers
   const backgroundSaveTimerRef = useRef(null);
 
@@ -1152,13 +1164,43 @@ const Port = () => {
   // Removed batch texture preloading to eliminate performance issues
 
   const handleOpenTargetBin = async () => {
-    let path = targetPath !== 'This will show target bin' ? targetPath : undefined;
-    if (!path) {
+    let binPath = targetPath !== 'This will show target bin' ? targetPath : undefined;
+    if (!binPath) {
       try {
-        path = await electronPrefs.get('SharedLastBinPath');
+        binPath = await electronPrefs.get('SharedLastBinPath');
       } catch (e) { console.error(e); }
     }
-    openAssetPreview(path, null, 'port-target');
+
+    // Check if user prefers native file browser
+    const useNativeFileBrowser = await electronPrefs.get('UseNativeFileBrowser');
+
+    if (useNativeFileBrowser) {
+      // Use native Windows file dialog
+      try {
+        if (window.require) {
+          const { ipcRenderer } = window.require('electron');
+          const result = await ipcRenderer.invoke('dialog:openFile', {
+            title: 'Select Target .bin file',
+            defaultPath: binPath ? path.dirname(binPath) : undefined,
+            filters: [
+              { name: 'Bin Files', extensions: ['bin'] },
+              { name: 'All Files', extensions: ['*'] }
+            ],
+            properties: ['openFile']
+          });
+
+          if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
+            processTargetBin(result.filePaths[0]);
+          }
+        }
+      } catch (error) {
+        console.error('Error opening native file dialog:', error);
+        setStatusMessage('Error opening file dialog: ' + error.message);
+      }
+    } else {
+      // Use custom explorer
+      openAssetPreview(binPath, null, 'port-target');
+    }
   };
 
   const processTargetBin = async (filePath) => {
@@ -1245,13 +1287,43 @@ const Port = () => {
 
 
   const handleOpenDonorBin = async () => {
-    let path = donorPath !== 'This will show donor bin' ? donorPath : undefined;
-    if (!path) {
+    let binPath = donorPath !== 'This will show donor bin' ? donorPath : undefined;
+    if (!binPath) {
       try {
-        path = await electronPrefs.get('PortLastDonorBinPath');
+        binPath = await electronPrefs.get('PortLastDonorBinPath');
       } catch (e) { console.error(e); }
     }
-    openAssetPreview(path, null, 'port-donor');
+
+    // Check if user prefers native file browser
+    const useNativeFileBrowser = await electronPrefs.get('UseNativeFileBrowser');
+
+    if (useNativeFileBrowser) {
+      // Use native Windows file dialog
+      try {
+        if (window.require) {
+          const { ipcRenderer } = window.require('electron');
+          const result = await ipcRenderer.invoke('dialog:openFile', {
+            title: 'Select Donor .bin file',
+            defaultPath: binPath ? path.dirname(binPath) : undefined,
+            filters: [
+              { name: 'Bin Files', extensions: ['bin'] },
+              { name: 'All Files', extensions: ['*'] }
+            ],
+            properties: ['openFile']
+          });
+
+          if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
+            processDonorBin(result.filePaths[0]);
+          }
+        }
+      } catch (error) {
+        console.error('Error opening native file dialog:', error);
+        setStatusMessage('Error opening file dialog: ' + error.message);
+      }
+    } else {
+      // Use custom explorer
+      openAssetPreview(binPath, null, 'port-donor');
+    }
   };
 
   const processDonorBin = async (filePath) => {
@@ -3451,50 +3523,147 @@ const Port = () => {
 
   // Texture conversion function + color side panel
   // Simplified texture preview function like paint with colors
-  const showTexturePreview = (texturePath, imageDataUrl, buttonElement, emitterData = null) => {
-    console.log('🔍 DEBUG: showTexturePreview called with:', {
-      texturePath,
-      imageDataUrl: imageDataUrl ? 'Data URL present' : 'No data URL',
-      buttonElement: buttonElement ? 'Button element present' : 'No button element',
-      emitterData: emitterData ? 'Emitter data present' : 'No emitter data'
+  const extractTexturesFromEmitterContent = (content) => {
+    if (!content) return [];
+    const textures = [];
+    const textureSet = new Set();
+
+    // Define texture field patterns with labels
+    const texturePatterns = [
+      { key: 'texture', label: 'Main' },
+      { key: 'particleColorTexture', label: 'Color' },
+      { key: 'erosionMapName', label: 'Erosion' },
+      { key: 'textureMult', label: 'Mult' },
+      { key: 'meshColorTexture', label: 'Mesh Color' },
+      { key: 'paletteTexture', label: 'Palette' },
+      { key: 'normalMap', label: 'Normal' },
+      { key: 'normalMapTexture', label: 'Normal' },
+      { key: 'particleColorLookupTexture', label: 'Color Lookup' },
+      { key: 'reflectionMapName', label: 'Reflection' },
+      { key: 'rimColorLookupTexture', label: 'Rim Lookup' },
+      { key: 'rimColorTexture', label: 'Rim Color' },
+      { key: 'textureLookupTexture', label: 'Lookup' },
+      { key: 'distortionTexture', label: 'Distortion' },
+      { key: 'emissiveTexture', label: 'Emissive' },
+      { key: 'glossIntensityTexture', label: 'Gloss' },
+      { key: 'fresnelTexture', label: 'Fresnel' }
+    ];
+
+    texturePatterns.forEach(pattern => {
+      // Look for the specific pattern in the content (case-insensitive)
+      const regex = new RegExp(`(?<![a-zA-Z])${pattern.key}:\\s*string\\s*=\\s*"([^"]+)"`, 'gi');
+      let match;
+      while ((match = regex.exec(content)) !== null) {
+        const path = match[1].trim();
+        if (path && !textureSet.has(path)) {
+          textureSet.add(path);
+          textures.push({ path, label: pattern.label });
+        }
+      }
     });
 
-    // Remove existing hover preview and clear any timers
-    const existingPreview = document.getElementById('port-texture-hover-preview');
-    if (existingPreview) {
-      const existingContent = existingPreview.querySelector('.texture-hover-content');
-      if (existingContent && existingContent.dataset.timeoutId) {
-        clearTimeout(parseInt(existingContent.dataset.timeoutId));
+    // Fallback search for any string that looks like a texture path but wasn't caught by the names above
+    // Looks for common texture extensions: .tex, .dds, .tga, .png, .jpg, .jpeg, .bmp
+    const pathRegex = /:\s*string\s*=\s*"([^"]+\.(?:tex|dds|tga|png|jpg|jpeg|bmp))"/gi;
+    let match;
+    while ((match = pathRegex.exec(content)) !== null) {
+      const path = match[1].trim();
+      if (path && !textureSet.has(path)) {
+        // Try to guess a label from the field name
+        const line = content.substring(0, content.indexOf(path)).split('\n').pop();
+        let label = 'Other';
+        if (line) {
+          const fieldMatch = line.match(/^\s*([^:]+):/);
+          if (fieldMatch) {
+            label = fieldMatch[1].trim().replace(/^m(?=[A-Z])/, ''); // Remove 'm' prefix if it exists
+          }
+        }
+
+        textureSet.add(path);
+        textures.push({ path, label });
       }
-      existingPreview.remove();
+    }
+
+    return textures;
+  };
+
+  // Simplified texture preview function like paint with colors
+  const showTexturePreview = async (firstTexturePath, firstDataUrl, buttonElement, emitterData = null, allTextures = []) => {
+    // Clear any existing close timer
+    if (textureCloseTimerRef.current) {
+      clearTimeout(textureCloseTimerRef.current);
+      textureCloseTimerRef.current = null;
+    }
+
+    // Remove existing hover preview
+    const existing = document.getElementById('port-texture-hover-preview');
+    if (existing) existing.remove();
+
+    // Use provided allTextures or fallback to the first one
+    let textureData = [];
+    if (allTextures && allTextures.length > 0) {
+      textureData = allTextures;
+    } else {
+      textureData = [{ path: firstTexturePath, label: 'Main', dataUrl: firstDataUrl }];
     }
 
     const rect = buttonElement.getBoundingClientRect();
+    const previewWidth = textureData.length > 1 ? 380 : 280;
 
-    // Calculate position to show preview to the left of the icon with smart vertical positioning
-    const previewWidth = 260; // Updated width to match CSS
-    const previewHeight = 280; // Updated height to match CSS
-    const margin = 10;
+    const preview = document.createElement('div');
+    preview.id = 'port-texture-hover-preview';
+    preview.style.cssText = `
+      position: fixed;
+      z-index: 10000;
+      background: rgba(15, 15, 20, 0.96);
+      backdrop-filter: blur(12px) saturate(180%);
+      -webkit-backdrop-filter: blur(12px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      pointer-events: auto;
+      width: ${previewWidth}px;
+      overflow-x: hidden;
+      box-sizing: border-box;
+      transition: opacity 0.2s ease;
+    `;
 
-    // Horizontal position - to the left of the icon
-    const left = Math.max(margin, rect.left - previewWidth - margin);
+    // 2x2 Grid logic
+    const gridStyle = textureData.length > 1 ? `
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    ` : `
+      display: flex;
+      justify-content: center;
+    `;
 
-    // Vertical position - smart positioning to avoid cutoff
-    let top;
-    const spaceBelow = window.innerHeight - rect.bottom - margin;
-    const spaceAbove = rect.top - margin;
+    let itemsHtml = '';
+    textureData.forEach((data, idx) => {
+      const isSingle = textureData.length === 1;
+      const size = isSingle ? '200px' : '145px';
+      const labelFontSize = isSingle ? '11px' : '10px';
+      const fileName = data.path.split(/[/\\]/).pop();
 
-    if (spaceBelow >= previewHeight) {
-      // Enough space below - align with icon top
-      top = rect.top - 10;
-    } else if (spaceAbove >= previewHeight) {
-      // Not enough space below but enough above - show above icon
-      top = rect.top - previewHeight + rect.height + 10;
-    } else {
-      // Not enough space either way - position to fit in viewport
-      top = Math.max(margin, Math.min(rect.top - 10, window.innerHeight - previewHeight - margin));
-    }
-
+      itemsHtml += `
+        <div class="texture-item" data-idx="${idx}" style="cursor: pointer; display: flex; flex-direction: column; gap: 8px; align-items: center; transition: all 0.2s ease;" title="Left-click: Asset Preview | Right-click: Open in External App">
+          <div style="width: 100%; height: ${size}; background: #000; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+            ${data.dataUrl ?
+          `<img src="${processDataURL(data.dataUrl)}" style="width: 100%; height: 100%; object-fit: contain;" />` :
+          `<div style="color: rgba(255,255,255,0.2); font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 500;">NO PREVIEW</div>`
+        }
+          </div>
+          <div style="width: 100%; text-align: center; font-family: 'JetBrains Mono', monospace; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            <div style="font-size: 8px; opacity: 0.5; margin-bottom: 2px; letter-spacing: 0.02em;">${fileName}</div>
+            <div style="font-size: ${labelFontSize}; font-weight: 800; letter-spacing: 0.08em; opacity: 0.9;">${data.label.toUpperCase()}</div>
+          </div>
+        </div>
+      `;
+    });
 
     // Extract colors from emitter data if available
     const colorInfos = emitterData && emitterData.originalContent
@@ -3510,120 +3679,194 @@ const Port = () => {
           colors.push(...c.colors);
         }
       });
-      const unique = Array.from(new Set(colors)).slice(0, 6); // Show up to 6 colors
+      const unique = Array.from(new Set(colors)).slice(0, 8); // Show up to 8 colors
       if (unique.length > 0) {
         colorSwatches = `
-          <div style="display: flex; gap: 3px; justify-content: center; padding: 6px; background: rgba(0,0,0,0.2); border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); margin-top: 6px;">
+          <div style="display: flex; gap: 5px; justify-content: center; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); margin-top: 4px;">
             ${unique.map(col =>
-          `<div style="width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.3); background: ${col}; box-shadow: 0 1px 2px rgba(0,0,0,0.3);"></div>`
+          `<div style="width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.25); background: ${col}; box-shadow: 0 2px 6px rgba(0,0,0,0.5);" title="${col}"></div>`
         ).join('')}
           </div>
         `;
       }
     }
 
-    // Create hover preview container
-    const hoverPreview = document.createElement('div');
-    hoverPreview.id = 'port-texture-hover-preview';
-    hoverPreview.className = 'texture-hover-preview';
-    hoverPreview.style.left = `${left}px`;
-    hoverPreview.style.top = `${top}px`;
-
-    hoverPreview.innerHTML = `
-      <div class="texture-hover-content" 
-           onmouseenter="clearTimeout(this.dataset.timeoutId)" 
-           onmouseleave="this.dataset.timeoutId = setTimeout(() => this.parentElement.remove(), 1000)">
-        <div class="texture-hover-header">
-          <span>Texture Preview</span>
+    preview.innerHTML = `
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="text-align: left; color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.12em; display: flex; align-items: center; gap: 10px; opacity: 0.9;">
+           <span style="width: 8px; height: 8px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 8px var(--accent);"></span>
+           TEXTURE PREVIEW
         </div>
-        <div class="texture-hover-body">
-          <img src="${processDataURL(imageDataUrl)}" alt="Texture preview" class="texture-hover-image" />
-          ${colorSwatches}
-          <div class="texture-hover-path">${texturePath}</div>
+        <div style="${gridStyle}">
+          ${itemsHtml}
+        </div>
+        ${colorSwatches}
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: rgba(255,255,255,0.3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); letter-spacing: 0.02em;">
+          ${firstTexturePath.split('/').pop()}
         </div>
       </div>
     `;
 
-    document.body.appendChild(hoverPreview);
+    document.body.appendChild(preview);
 
-    // Set timeout ID for the preview content
-    const previewContent = hoverPreview.querySelector('.texture-hover-content');
-    const timeoutId = setTimeout(() => {
-      const existingPreview = document.getElementById('port-texture-hover-preview');
-      if (existingPreview) {
-        existingPreview.remove();
+    // Interaction logic
+    preview.querySelectorAll('.texture-item').forEach(el => {
+      // Click logic to open asset preview
+      el.onclick = (event) => {
+        event.stopPropagation();
+        const idx = parseInt(el.getAttribute('data-idx'));
+        const data = textureData[idx];
+        if (data) {
+          // Remove preview immediately on click
+          preview.remove();
+          if (textureCloseTimerRef.current) {
+            clearTimeout(textureCloseTimerRef.current);
+            textureCloseTimerRef.current = null;
+          }
+          // Pass the resolved path if available, otherwise original
+          openAssetPreview(data.resolvedDiskPath || data.path, data.dataUrl);
+        }
+      };
+
+      // Right-click logic to open in external app
+      el.oncontextmenu = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const idx = parseInt(el.getAttribute('data-idx'));
+        const data = textureData[idx];
+        if (data && data.resolvedDiskPath && window.require) {
+          try {
+            const { shell } = window.require('electron');
+            if (shell) {
+              shell.openPath(data.resolvedDiskPath);
+              // Feedback: maybe flash border?
+              el.querySelector('div').style.borderColor = '#10b981'; // Green success flash
+              setTimeout(() => {
+                el.querySelector('div').style.borderColor = 'var(--accent)';
+              }, 500);
+            }
+          } catch (err) {
+            console.error('[Port] Error opening external app:', err);
+          }
+        }
+      };
+
+      el.onmouseenter = () => {
+        el.style.transform = 'translateY(-2px)';
+        el.querySelector('div').style.borderColor = 'var(--accent)';
+        el.querySelector('div').style.boxShadow = '0 6px 16px rgba(0,0,0,0.4)';
+      };
+      el.onmouseleave = () => {
+        el.style.transform = 'translateY(0)';
+        el.querySelector('div').style.borderColor = 'rgba(255,255,255,0.08)';
+        el.querySelector('div').style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+      };
+    });
+
+    // Positioning - prefer LEFT of button like Paint
+    const previewRect = preview.getBoundingClientRect();
+    let previewTop = rect.top + (rect.height / 2) - (previewRect.height / 2);
+    let previewLeft = rect.left - previewWidth - 14;
+
+    // Check left boundary
+    if (previewLeft < 10) {
+      // If not enough space on left, spawn on right
+      previewLeft = rect.right + 14;
+    }
+
+    // Check right boundary (in case it flipped to right and is too wide)
+    if (previewLeft + previewRect.width > window.innerWidth - 10) {
+      previewLeft = window.innerWidth - previewRect.width - 10;
+    }
+
+    // Check vertical boundaries
+    if (previewTop < 10) previewTop = 10;
+    if (previewTop + previewRect.height > window.innerHeight - 10) {
+      previewTop = window.innerHeight - previewRect.height - 10;
+    }
+
+    preview.style.top = `${previewTop}px`;
+    preview.style.left = `${previewLeft}px`;
+
+    // Persistent hover logic
+    preview.onmouseenter = () => {
+      if (textureCloseTimerRef.current) {
+        clearTimeout(textureCloseTimerRef.current);
+        textureCloseTimerRef.current = null;
       }
-    }, 1500); // 1.5 second auto-hide
-    previewContent.dataset.timeoutId = timeoutId;
+    };
+
+    preview.onmouseleave = () => {
+      textureCloseTimerRef.current = setTimeout(() => {
+        preview.remove();
+      }, 500);
+    };
   };
 
   const showTextureError = (texturePath, buttonElement) => {
-    // Remove existing hover preview and clear any timers
-    const existingPreview = document.getElementById('port-texture-hover-preview');
-    if (existingPreview) {
-      const existingContent = existingPreview.querySelector('.texture-hover-content');
-      if (existingContent && existingContent.dataset.timeoutId) {
-        clearTimeout(parseInt(existingContent.dataset.timeoutId));
-      }
-      existingPreview.remove();
+    // Clear any existing close timer
+    if (textureCloseTimerRef.current) {
+      clearTimeout(textureCloseTimerRef.current);
+      textureCloseTimerRef.current = null;
     }
+
+    // Remove existing
+    const existing = document.getElementById('port-texture-hover-preview');
+    if (existing) existing.remove();
 
     const rect = buttonElement.getBoundingClientRect();
-    const previewWidth = 260; // Match success preview width
-    const previewHeight = 180; // Error preview is smaller
-    const margin = 10;
 
-    // Horizontal position - to the left of the icon
-    const left = Math.max(margin, rect.left - previewWidth - margin);
+    const preview = document.createElement('div');
+    preview.id = 'port-texture-hover-preview';
+    preview.style.cssText = `
+      position: fixed;
+      z-index: 10000;
+      background: rgba(15, 23, 42, 0.9);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+      color: #ef4444;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      max-width: 250px;
+      pointer-events: auto;
+    `;
 
-    // Vertical position - smart positioning to avoid cutoff
-    let top;
-    const spaceBelow = window.innerHeight - rect.bottom - margin;
-    const spaceAbove = rect.top - margin;
-
-    if (spaceBelow >= previewHeight) {
-      // Enough space below - align with icon top
-      top = rect.top - 10;
-    } else if (spaceAbove >= previewHeight) {
-      // Not enough space below but enough above - show above icon
-      top = rect.top - previewHeight + rect.height + 10;
-    } else {
-      // Not enough space either way - position to fit in viewport
-      top = Math.max(margin, Math.min(rect.top - 10, window.innerHeight - previewHeight - margin));
-    }
-
-    // Create hover error container
-    const hoverPreview = document.createElement('div');
-    hoverPreview.id = 'port-texture-hover-preview';
-    hoverPreview.className = 'texture-hover-preview';
-    hoverPreview.style.left = `${left}px`;
-    hoverPreview.style.top = `${top}px`;
-
-    hoverPreview.innerHTML = `
-      <div class="texture-hover-content" 
-           onmouseenter="clearTimeout(this.dataset.timeoutId)" 
-           onmouseleave="this.dataset.timeoutId = setTimeout(() => this.parentElement.remove(), 1000)">
-        <div class="texture-hover-header">
-          <span>Texture Preview</span>
-        </div>
-        <div class="texture-hover-body">
-          <div class="texture-hover-error">Failed to load texture</div>
-          <div class="texture-hover-path">${texturePath}</div>
-        </div>
+    preview.innerHTML = `
+      <div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
+        <div style="font-weight: bold;">Failed to load texture</div>
+        <div style="font-size: 10px; opacity: 0.7; word-break: break-all; text-align: center;">${texturePath}</div>
       </div>
     `;
 
-    document.body.appendChild(hoverPreview);
+    document.body.appendChild(preview);
 
-    // Set timeout ID for the preview content
-    const previewContent = hoverPreview.querySelector('.texture-hover-content');
-    const timeoutId = setTimeout(() => {
-      const existingPreview = document.getElementById('port-texture-hover-preview');
-      if (existingPreview) {
-        existingPreview.remove();
+    const previewRect = preview.getBoundingClientRect();
+    let previewTop = rect.top + (rect.height / 2) - (previewRect.height / 2);
+    let previewLeft = rect.right + 12;
+
+    if (previewLeft + previewRect.width > window.innerWidth - 10) {
+      previewLeft = rect.left - previewRect.width - 12;
+    }
+
+    preview.style.top = `${previewTop}px`;
+    preview.style.left = `${previewLeft}px`;
+
+    // Persistent hover logic for error as well
+    preview.onmouseenter = () => {
+      if (textureCloseTimerRef.current) {
+        clearTimeout(textureCloseTimerRef.current);
+        textureCloseTimerRef.current = null;
       }
-    }, 1500); // 1.5 second auto-hide for error
-    previewContent.dataset.timeoutId = timeoutId;
+    };
+
+    preview.onmouseleave = () => {
+      textureCloseTimerRef.current = setTimeout(() => {
+        preview.remove();
+      }, 500);
+    };
   };
 
 
@@ -4553,90 +4796,86 @@ const Port = () => {
                     title="Preview texture"
                     onMouseEnter={async (e) => {
                       e.stopPropagation();
-                      console.log('🖼️ MouseEnter on preview button for emitter:', emitter.name);
-                      console.log('🖼️ System:', system.name, 'Key:', system.key);
+                      // Clear the shared close timer if moving back to a button or between buttons
+                      if (textureCloseTimerRef.current) {
+                        clearTimeout(textureCloseTimerRef.current);
+                        textureCloseTimerRef.current = null;
+                      }
 
-                      // Clear any existing timer
                       if (conversionTimers.current.has('hover')) {
                         clearTimeout(conversionTimers.current.get('hover'));
                         conversionTimers.current.delete('hover');
                       }
 
-                      // Set a delay before showing preview
+                      const previewBtn = e.currentTarget;
                       const timer = setTimeout(async () => {
-                        console.log('🖼️ Timer fired, loading texture preview for:', emitter.name);
                         try {
-                          console.log('🖼️ Loading emitter data...');
                           const fullEmitterData = loadEmitterData(system, emitter.name);
-                          console.log('🖼️ Full emitter data:', fullEmitterData);
-                          if (fullEmitterData && fullEmitterData.texturePath) {
-                            console.log('🖼️ Texture path found:', fullEmitterData.texturePath);
+                          if (!fullEmitterData) return;
 
-                            // Check if this texture is already being converted
-                            if (activeConversions.current.has(fullEmitterData.texturePath)) {
-                              console.log(`[port] Texture ${fullEmitterData.texturePath} already being converted, skipping...`);
-                              return;
-                            }
+                          // Load all textures
+                          const textures = extractTexturesFromEmitterContent(fullEmitterData.originalContent);
+                          if (textures.length === 0 && fullEmitterData.texturePath) {
+                            textures.push({ path: fullEmitterData.texturePath, label: 'Main' });
+                          }
 
-                            // Add to active conversions
-                            activeConversions.current.add(fullEmitterData.texturePath);
+                          if (textures.length === 0) return;
 
+                          const textureData = [];
+                          const binPath = isTarget ? targetPath : donorPath;
+                          const projectRoot = binPath && binPath.includes(':') ? path.dirname(binPath) : '';
+
+                          // Process all textures
+                          for (const tex of textures) {
                             try {
-                              // Get project root directory for efficient texture path resolution
-                              const projectRoot = path.dirname(targetPath);
+                              // Resolve disk path for explorer support
+                              let resolvedDiskPath = tex.path;
+                              if (window.require && binPath && binPath.includes(':')) {
+                                const fs = window.require('fs');
+                                const path = window.require('path');
+                                const normalizedBin = binPath.replace(/\\/g, '/');
+                                const dataMatch = normalizedBin.match(/\/data\//i);
 
-                              console.log('🖼️ Calling convertTextureToPNG with:', {
-                                texturePath: fullEmitterData.texturePath,
-                                targetPath,
-                                donorPath,
-                                projectRoot
-                              });
-                              const result = await convertTextureToPNG(fullEmitterData.texturePath, targetPath, donorPath, projectRoot);
-                              console.log('🖼️ convertTextureToPNG returned:', result);
-
-                              if (result) {
-                                let dataUrl;
-
-                                // Check if result is a data URL (new native format) or file path (old format)
-                                if (result.startsWith('data:')) {
-                                  // Native format - already a data URL
-                                  console.log('🖼️ Using native data URL format');
-                                  dataUrl = result;
-                                } else {
-                                  // Old format - file path, read it
-                                  const fs = window.require('fs');
-
-                                  if (!fs.existsSync(result)) {
-                                    console.log('🖼️ PNG file does not exist at path:', result);
-                                    showTextureError(fullEmitterData.texturePath, e.target);
-                                    return;
-                                  }
-
-                                  console.log('🖼️ PNG file exists, reading and converting to base64...');
-                                  const imageBuffer = fs.readFileSync(result);
-                                  const base64Image = imageBuffer.toString('base64');
-                                  dataUrl = `data:image/png;base64,${base64Image}`;
+                                if (dataMatch) {
+                                  const projRoot = normalizedBin.substring(0, dataMatch.index);
+                                  const cleanTexture = tex.path.replace(/\\/g, '/');
+                                  const candidate = path.join(projRoot, cleanTexture);
+                                  if (fs.existsSync(candidate)) resolvedDiskPath = candidate;
                                 }
 
-                                console.log('🖼️ Calling showTexturePreview with data URL...');
-                                showTexturePreview(fullEmitterData.texturePath, dataUrl, e.target, fullEmitterData);
-                              } else {
-                                console.log('🖼️ convertTextureToPNG returned null/undefined');
-                                showTextureError(fullEmitterData.texturePath, e.target);
+                                if (resolvedDiskPath === tex.path) {
+                                  const smartPath = findActualTexturePath(tex.path, binPath);
+                                  if (smartPath) resolvedDiskPath = smartPath;
+                                }
                               }
-                            } catch (error) {
-                              console.error('Error converting texture:', error);
-                              showTextureError(fullEmitterData.texturePath, e.target);
-                            } finally {
-                              activeConversions.current.delete(fullEmitterData.texturePath);
+
+                              const result = await convertTextureToPNG(tex.path, targetPath, donorPath, projectRoot);
+                              let dataUrl = null;
+                              if (result) {
+                                if (result.startsWith('data:')) {
+                                  dataUrl = result;
+                                } else {
+                                  const fs = window.require('fs');
+                                  if (fs.existsSync(result)) {
+                                    const imageBuffer = fs.readFileSync(result);
+                                    dataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`;
+                                  }
+                                }
+                              }
+                              textureData.push({ ...tex, dataUrl, resolvedDiskPath });
+                            } catch (err) {
+                              console.error('Error processing texture:', tex.path, err);
+                              textureData.push({ ...tex, dataUrl: null, resolvedDiskPath: tex.path });
                             }
-                          } else {
-                            console.log('🖼️ No texture path found for emitter:', emitter.name);
+                          }
+
+                          if (textureData.length > 0) {
+                            showTexturePreview(textureData[0].path, textureData[0].dataUrl, previewBtn, fullEmitterData, textureData);
                           }
                         } catch (error) {
-                          console.error('Error loading texture preview:', error);
+                          console.error('Error loading texture objects:', error);
                         }
-                      }, 200); // Back to 200ms for smooth feel
+                      }, 200);
 
                       conversionTimers.current.set('hover', timer);
                     }}
@@ -4646,6 +4885,12 @@ const Port = () => {
                         clearTimeout(conversionTimers.current.get('hover'));
                         conversionTimers.current.delete('hover');
                       }
+
+                      // Set the shared close timer with a delay
+                      textureCloseTimerRef.current = setTimeout(() => {
+                        const existing = document.getElementById('port-texture-hover-preview');
+                        if (existing) existing.remove();
+                      }, 500);
                     }}
                     onContextMenu={async (e) => {
                       e.preventDefault();
@@ -4657,7 +4902,7 @@ const Port = () => {
                           const binPath = isTarget ? targetPath : donorPath;
                           let resolvedPath = texturePath;
 
-                          if (binPath && binPath !== 'This will show target bin') {
+                          if (binPath && binPath !== 'This will show target bin' && binPath !== 'This will show donor bin') {
                             const fs = window.require('fs');
                             const path = window.require('path');
                             const normalizedBin = binPath.replace(/\\/g, '/');
@@ -4692,75 +4937,49 @@ const Port = () => {
                     }}
                     onClick={async (e) => {
                       e.stopPropagation();
+                      // Remove preview immediately on click
                       const existingPreview = document.getElementById('port-texture-hover-preview');
                       if (existingPreview) existingPreview.remove();
-                      console.log('🖼️ Click on preview button for emitter:', emitter.name);
-                      try {
-                        const fullEmitterData = loadEmitterData(system, emitter.name);
-                        if (fullEmitterData && fullEmitterData.texturePath) {
-                          const texturePath = fullEmitterData.texturePath;
+                      if (textureCloseTimerRef.current) {
+                        clearTimeout(textureCloseTimerRef.current);
+                        textureCloseTimerRef.current = null;
+                      }
 
-                          // Resolve absolute path
-                          const binPath = isTarget ? targetPath : donorPath;
-                          let resolvedPath = texturePath;
+                      if (conversionTimers.current.has('hover')) {
+                        clearTimeout(conversionTimers.current.get('hover'));
+                        conversionTimers.current.delete('hover');
+                      }
 
-                          // Custom Path Resolution Strategy (Project Root / Data Folder split)
-                          if (binPath && binPath !== 'This will show target bin') {
-                            const fs = window.require('fs');
-                            const path = window.require('path');
+                      const fullEmitterData = loadEmitterData(system, emitter.name);
+                      if (fullEmitterData && fullEmitterData.texturePath) {
+                        const texturePath = fullEmitterData.texturePath;
+                        const binPath = isTarget ? targetPath : donorPath;
+                        let resolvedPath = texturePath;
 
-                            // 1. "Look before data" Strategy
-                            const normalizedBin = binPath.replace(/\\/g, '/');
-                            const dataMatch = normalizedBin.match(/\/data\//i);
+                        if (binPath && binPath !== 'This will show target bin' && binPath !== 'This will show donor bin') {
+                          const fs = window.require('fs');
+                          const path = window.require('path');
+                          const normalizedBin = binPath.replace(/\\/g, '/');
+                          const dataMatch = normalizedBin.match(/\/data\//i);
 
-                            if (dataMatch) {
-                              const dataIndex = dataMatch.index;
-                              const projectRoot = normalizedBin.substring(0, dataIndex);
-
-                              const cleanTexture = texturePath.replace(/\\/g, '/');
-                              const candidate1 = path.join(projectRoot, cleanTexture);
-
-                              if (fs.existsSync(candidate1)) {
-                                resolvedPath = candidate1;
-                                console.log('[Port] Resolved path via Project Root Strategy:', resolvedPath);
-                              }
-                            }
-
-                            // 2. Fallback to smart finder
-                            if (resolvedPath === texturePath) {
-                              const smartPath = findActualTexturePath(texturePath, binPath);
-                              if (smartPath) resolvedPath = smartPath;
+                          if (dataMatch) {
+                            const dataIndex = dataMatch.index;
+                            const projectRoot = normalizedBin.substring(0, dataIndex);
+                            const cleanTexture = texturePath.replace(/\\/g, '/');
+                            const candidate1 = path.join(projectRoot, cleanTexture);
+                            if (fs.existsSync(candidate1)) {
+                              resolvedPath = candidate1;
                             }
                           }
 
-                          // If already converting (from hover), just open with path for now
-                          if (activeConversions.current.has(texturePath)) {
-                            openAssetPreview(resolvedPath);
-                            return;
+                          if (resolvedPath === texturePath) {
+                            const smartPath = findActualTexturePath(texturePath, binPath);
+                            if (smartPath) resolvedPath = smartPath;
                           }
-
-                          // Convert to get dataUrl
-                          const projectRoot = path.dirname(targetPath);
-                          let dataUrl = null;
-
-                          try {
-                            const result = await convertTextureToPNG(texturePath, targetPath, donorPath, projectRoot);
-                            if (result) {
-                              if (result.startsWith('data:')) {
-                                dataUrl = result;
-                              } else if (fs && fs.existsSync(result)) {
-                                const imageBuffer = fs.readFileSync(result);
-                                dataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`;
-                              }
-                            }
-                          } catch (convErr) {
-                            console.warn('Conversion on click failed:', convErr);
-                          }
-
-                          openAssetPreview(resolvedPath, dataUrl);
                         }
-                      } catch (err) {
-                        console.error("Error opening preview modal:", err);
+
+                        // Just open Asset Preview with original or resolved path
+                        openAssetPreview(resolvedPath);
                       }
                     }}
                   >

@@ -12,12 +12,12 @@ const parsePyFile = (content) => {
     // Look for VfxSystemDefinitionData - handle both hash keys and string paths (case-insensitive)
     if (/=\s*VfxSystemDefinitionData\s*\{/i.test(line)) {
       vfxSystemCount++;
-      
+
       const keyMatch = line.match(/^(.+?)\s*=\s*VfxSystemDefinitionData\s*\{/i);
       if (keyMatch) {
         const systemKey = keyMatch[1].trim();
         const cleanSystemKey = systemKey.replace(/^"|"$/g, ''); // Remove quotes from key
-        
+
         // Extract particleName from this system block (case-insensitive)
         let particleName = null;
         let bracketDepth = 1;
@@ -26,16 +26,16 @@ const parsePyFile = (content) => {
           const openBrackets = (l.match(/\{/g) || []).length;
           const closeBrackets = (l.match(/\}/g) || []).length;
           bracketDepth += openBrackets - closeBrackets;
-          
+
           const particleMatch = l.match(/particleName:\s*string\s*=\s*"([^"]+)"/i);
           if (particleMatch) {
             particleName = particleMatch[1];
             break;
           }
-          
+
           if (bracketDepth <= 0) break;
         }
-        
+
         // Use particleName if found, otherwise fall back to cleanSystemName
         const systemName = particleName || cleanSystemName(systemKey);
 
@@ -63,10 +63,10 @@ const cleanSystemName = (fullName) => {
   if (fullName.startsWith('0x')) {
     return fullName; // Return the full hash value as-is
   }
-  
+
   // Remove quotes from string paths
   const cleanName = fullName.replace(/^"|"$/g, '');
-  
+
   // Extract meaningful name from path like "Characters/Aurora/Skins/Skin0/Particles/Aurora_Base_BA_Wand"
   const parts = cleanName.split('/');
   return parts.length > 1 ? parts[parts.length - 1] : cleanName;
@@ -272,6 +272,19 @@ const parseColorProperty = (lines, colorStartLine) => {
       // Parse times array (case-insensitive) - handle "times:" in any case
       if (/times:\s*list\[f32\]\s*=\s*\{/i.test(line)) {
         inTimes = true;
+        // Handle single-line times like "times: list[f32] = { 0 }" or "times: list[f32] = { 0, 0.5, 1 }"
+        const timesMatch = line.match(/times:\s*list\[f32\]\s*=\s*\{([^}]*)\}/i);
+        if (timesMatch && timesMatch[1]) {
+          // Extract all time values from the same line
+          const timeParts = timesMatch[1].split(',').map(v => v.trim()).filter(v => v !== '');
+          for (const timeStr of timeParts) {
+            const timeValue = parseFloat(timeStr);
+            if (!isNaN(timeValue)) {
+              dynamicsData.times.push(timeValue);
+            }
+          }
+          inTimes = false; // Completed on single line
+        }
       } else if (inTimes && line.includes('}')) {
         inTimes = false;
       } else if (inTimes && !/times:/i.test(line)) {
@@ -285,6 +298,29 @@ const parseColorProperty = (lines, colorStartLine) => {
       // Parse values array (case-insensitive) - handle "values:" in any case
       if (/values:\s*list\[vec4\]\s*=\s*\{/i.test(line)) {
         inValues = true;
+        // Handle single-line values like "values: list[vec4] = { { 0.3333, 0.6471, 0.8078, 1 } }"
+        // This regex finds all { r, g, b, a } patterns within the line
+        const valuesLineMatch = line.match(/values:\s*list\[vec4\]\s*=\s*\{(.+)\}\s*$/i);
+        if (valuesLineMatch && valuesLineMatch[1]) {
+          const innerContent = valuesLineMatch[1].trim();
+          // Match all vec4 patterns: { num, num, num, num }
+          const vec4Pattern = /\{\s*([-0-9.eE]+)\s*,\s*([-0-9.eE]+)\s*,\s*([-0-9.eE]+)\s*,\s*([-0-9.eE]+)\s*\}/g;
+          let vec4Match;
+          while ((vec4Match = vec4Pattern.exec(innerContent)) !== null) {
+            const values = [
+              parseFloat(vec4Match[1]),
+              parseFloat(vec4Match[2]),
+              parseFloat(vec4Match[3]),
+              parseFloat(vec4Match[4])
+            ];
+            if (values.every(n => !isNaN(n) && isFinite(n))) {
+              dynamicsData.values.push(values);
+            }
+          }
+          if (dynamicsData.values.length > 0) {
+            inValues = false; // Completed on single line
+          }
+        }
       } else if (inValues && line.includes('}') && !line.includes('{')) {
         inValues = false;
       } else if (inValues) {
@@ -344,7 +380,7 @@ const updateColorInPyContent = (lines, systems, systemKey, emitterRef, colorType
     colorProp = emitter.color;
   }
   if (!colorProp) {
-    try { console.warn(`[recolor] WARNING: No colorProp found for ${colorType} in emitter ${emitter.name}`); } catch {}
+    try { console.warn(`[recolor] WARNING: No colorProp found for ${colorType} in emitter ${emitter.name}`); } catch { }
     return lines;
   }
 
@@ -355,10 +391,10 @@ const updateColorInPyContent = (lines, systems, systemKey, emitterRef, colorType
     Array.isArray(currentPalette) && currentPalette.length > 0 &&
     currentPalette[0] && Array.isArray(currentPalette[0].vec4)
   );
-  try { 
-    console.log(`[recolor] type=${colorType} mode=${currentMode} RG=${useRandomGradient} paletteLen=${Array.isArray(currentPalette)?currentPalette.length:0} alignBirth=${shouldAlignBirthToPaletteStart}`);
+  try {
+    console.log(`[recolor] type=${colorType} mode=${currentMode} RG=${useRandomGradient} paletteLen=${Array.isArray(currentPalette) ? currentPalette.length : 0} alignBirth=${shouldAlignBirthToPaletteStart}`);
     console.log(`[recolor] colorProp: startLine=${colorProp.startLine}, endLine=${colorProp.endLine}, hasConstant=${!!colorProp.constantValue}, hasDynamics=${!!colorProp.dynamics}`);
-  } catch {}
+  } catch { }
 
   // Handle constant value colors
   if (colorProp.constantValue) {
@@ -375,54 +411,54 @@ const updateColorInPyContent = (lines, systems, systemKey, emitterRef, colorType
         console.log(`[recolor] ${colorType} isBlackOrWhite=${isBlackOrWhite}, ignoreBlackWhite=${ignoreBlackWhite}`);
 
         if (!(ignoreBlackWhite && isBlackOrWhite)) {
-      // Find the constantValue line and replace it (case-insensitive)
-      // Search from startLine to endLine, but also extend search if needed (in case endLine is wrong)
-      let found = false;
-      const searchEnd = Math.min(colorProp.endLine + 10, lines.length); // Extend search a bit in case endLine is wrong
-      try { console.log(`[recolor] Searching for constantValue in ${colorType} from line ${colorProp.startLine} to ${searchEnd}`); } catch {}
-      for (let i = colorProp.startLine; i < searchEnd; i++) {
-        if (!lines[i]) continue;
-        // Try multiple patterns to match constantValue/ConstantValue (case-insensitive)
-        const lineMatches = /constantvalue:\s*vec4\s*=/i.test(lines[i]);
-        if (lineMatches) {
-          try { console.log(`[recolor] Found constantValue line at index ${i}:`, lines[i].trim()); } catch {}
-          const indent = lines[i].match(/^(\s*)/)[1];
-          let writeColor = newColor;
-          
-          // For shift modes, use already-processed newColor (avoid double shifts and palette influence)
-          if (currentMode === 'shift' || currentMode === 'shift-hue') {
-            try { console.log('[recolor] constant write using shifted newColor for', colorType); } catch {}
-            writeColor = newColor;
-          } else {
-            // For other modes, use the existing logic
-            // If Random Gradient is OFF, make constant main color also follow palette[0]
-            const shouldAlignConstantToPaletteStart = (!useRandomGradient && Array.isArray(currentPalette) && currentPalette.length > 0 && currentPalette[0] && Array.isArray(currentPalette[0].vec4));
-            if (shouldAlignBirthToPaletteStart || (colorType === 'color' && shouldAlignConstantToPaletteStart)) {
-              try { console.log('[recolor] constant write aligning to palette[0] for', colorType, 'palette[0]=', currentPalette[0].vec4); } catch {}
-              const alpha = Array.isArray(colorProp.constantValue) && colorProp.constantValue.length >= 4 ? colorProp.constantValue[3] : (newColor && newColor[3] !== undefined ? newColor[3] : 1);
-              const first = currentPalette[0].vec4;
-              writeColor = [first[0], first[1], first[2], alpha];
+          // Find the constantValue line and replace it (case-insensitive)
+          // Search from startLine to endLine, but also extend search if needed (in case endLine is wrong)
+          let found = false;
+          const searchEnd = Math.min(colorProp.endLine + 10, lines.length); // Extend search a bit in case endLine is wrong
+          try { console.log(`[recolor] Searching for constantValue in ${colorType} from line ${colorProp.startLine} to ${searchEnd}`); } catch { }
+          for (let i = colorProp.startLine; i < searchEnd; i++) {
+            if (!lines[i]) continue;
+            // Try multiple patterns to match constantValue/ConstantValue (case-insensitive)
+            const lineMatches = /constantvalue:\s*vec4\s*=/i.test(lines[i]);
+            if (lineMatches) {
+              try { console.log(`[recolor] Found constantValue line at index ${i}:`, lines[i].trim()); } catch { }
+              const indent = lines[i].match(/^(\s*)/)[1];
+              let writeColor = newColor;
+
+              // For shift modes, use already-processed newColor (avoid double shifts and palette influence)
+              if (currentMode === 'shift' || currentMode === 'shift-hue') {
+                try { console.log('[recolor] constant write using shifted newColor for', colorType); } catch { }
+                writeColor = newColor;
+              } else {
+                // For other modes, use the existing logic
+                // If Random Gradient is OFF, make constant main color also follow palette[0]
+                const shouldAlignConstantToPaletteStart = (!useRandomGradient && Array.isArray(currentPalette) && currentPalette.length > 0 && currentPalette[0] && Array.isArray(currentPalette[0].vec4));
+                if (shouldAlignBirthToPaletteStart || (colorType === 'color' && shouldAlignConstantToPaletteStart)) {
+                  try { console.log('[recolor] constant write aligning to palette[0] for', colorType, 'palette[0]=', currentPalette[0].vec4); } catch { }
+                  const alpha = Array.isArray(colorProp.constantValue) && colorProp.constantValue.length >= 4 ? colorProp.constantValue[3] : (newColor && newColor[3] !== undefined ? newColor[3] : 1);
+                  const first = currentPalette[0].vec4;
+                  writeColor = [first[0], first[1], first[2], alpha];
+                }
+              }
+
+              // Preserve original case of constantValue
+              const originalLine = lines[i];
+              const caseMatch = originalLine.match(/(constantvalue)/i);
+              const casePreserved = caseMatch ? originalLine.match(/constantvalue/i)[0] : 'constantValue';
+              const oldValue = lines[i];
+              lines[i] = `${indent}${casePreserved}: vec4 = { ${writeColor[0]}, ${writeColor[1]}, ${writeColor[2]}, ${writeColor[3]} }`;
+              try { console.log(`[recolor] Updated ${colorType} constantValue at line ${i}:`, oldValue.trim(), '->', lines[i].trim()); } catch { }
+              found = true;
+              break;
             }
           }
-          
-          // Preserve original case of constantValue
-          const originalLine = lines[i];
-          const caseMatch = originalLine.match(/(constantvalue)/i);
-          const casePreserved = caseMatch ? originalLine.match(/constantvalue/i)[0] : 'constantValue';
-          const oldValue = lines[i];
-          lines[i] = `${indent}${casePreserved}: vec4 = { ${writeColor[0]}, ${writeColor[1]}, ${writeColor[2]}, ${writeColor[3]} }`;
-          try { console.log(`[recolor] Updated ${colorType} constantValue at line ${i}:`, oldValue.trim(), '->', lines[i].trim()); } catch {}
-          found = true;
-          break;
-        }
-      }
           if (!found) {
-            try { 
+            try {
               console.warn(`[recolor] WARNING: Could not find constantValue line for ${colorType} between lines ${colorProp.startLine}-${searchEnd}`);
               // Show what lines we're searching through
               const sampleLines = lines.slice(colorProp.startLine, Math.min(colorProp.startLine + 5, searchEnd));
               console.warn(`[recolor] Sample lines being searched:`, sampleLines.map((l, idx) => `${colorProp.startLine + idx}: ${l.trim()}`));
-            } catch {}
+            } catch { }
           }
         }
       }
@@ -438,34 +474,34 @@ const updateColorInPyContent = (lines, systems, systemKey, emitterRef, colorType
       if (typeof skipColorPredicate === 'function' && skipColorPredicate(colorProp.constantValue)) {
         // Skip modifying this OC constant color
       } else {
-    // Check if this constant color should be ignored (black/white check)
-    const [r, g, b] = colorProp.constantValue;
-    const isBlackOrWhite = (r === 0 && g === 0 && b === 0) || (r === 1 && g === 1 && b === 1);
+        // Check if this constant color should be ignored (black/white check)
+        const [r, g, b] = colorProp.constantValue;
+        const isBlackOrWhite = (r === 0 && g === 0 && b === 0) || (r === 1 && g === 1 && b === 1);
 
-    if (!(ignoreBlackWhite && isBlackOrWhite)) {
-      // Find the fresnelColor line and replace it (case-insensitive)
-      for (let i = colorProp.startLine; i <= colorProp.endLine; i++) {
-        if (/fresnelColor:\s*vec4\s*=/i.test(lines[i])) {
-          const indent = lines[i].match(/^(\s*)/)[1];
-          let writeColor = newColor;
-          
-          // For shift modes, use already-processed newColor (avoid double shifts and palette influence)
-          if (currentMode === 'shift' || currentMode === 'shift-hue') {
-            try { console.log('[recolor] fresnel constant write using shifted newColor'); } catch {}
-            writeColor = newColor;
+        if (!(ignoreBlackWhite && isBlackOrWhite)) {
+          // Find the fresnelColor line and replace it (case-insensitive)
+          for (let i = colorProp.startLine; i <= colorProp.endLine; i++) {
+            if (/fresnelColor:\s*vec4\s*=/i.test(lines[i])) {
+              const indent = lines[i].match(/^(\s*)/)[1];
+              let writeColor = newColor;
+
+              // For shift modes, use already-processed newColor (avoid double shifts and palette influence)
+              if (currentMode === 'shift' || currentMode === 'shift-hue') {
+                try { console.log('[recolor] fresnel constant write using shifted newColor'); } catch { }
+                writeColor = newColor;
+              }
+
+              // Preserve original case of fresnelColor
+              const originalLine = lines[i];
+              const caseMatch = originalLine.match(/(fresnelcolor)/i);
+              const casePreserved = caseMatch ? originalLine.match(/fresnelcolor/i)[0] : 'fresnelColor';
+              lines[i] = `${indent}${casePreserved}: vec4 = { ${writeColor[0]}, ${writeColor[1]}, ${writeColor[2]}, ${writeColor[3]} }`;
+              break;
+            }
           }
-          
-          // Preserve original case of fresnelColor
-          const originalLine = lines[i];
-          const caseMatch = originalLine.match(/(fresnelcolor)/i);
-          const casePreserved = caseMatch ? originalLine.match(/fresnelcolor/i)[0] : 'fresnelColor';
-          lines[i] = `${indent}${casePreserved}: vec4 = { ${writeColor[0]}, ${writeColor[1]}, ${writeColor[2]}, ${writeColor[3]} }`;
-          break;
         }
       }
-    }
-      }
-    } catch {}
+    } catch { }
   }
 
   // Helper to sample a color from the current palette at a position [0,1]
@@ -507,12 +543,12 @@ const updateColorInPyContent = (lines, systems, systemKey, emitterRef, colorType
   // Optional: randomize the order of palette stops to create a random gradient
   const buildPaletteForGradient = (palette, gradientCount = -1) => {
     console.log('buildPaletteForGradient called with:', { useRandomGradient, gradientCount, paletteLength: palette?.length });
-    
+
     if (!Array.isArray(palette)) return palette;
-    
+
     try {
       let clone = palette.map(c => ({ time: c.time, vec4: [...c.vec4] }));
-      
+
       // If gradientCount is specified and less than total colors, randomly select that many
       if (gradientCount > 0 && gradientCount < clone.length) {
         console.log(`Limiting palette from ${clone.length} to ${gradientCount} colors`);
@@ -525,7 +561,7 @@ const updateColorInPyContent = (lines, systems, systemKey, emitterRef, colorType
         }
         clone = shuffled.slice(0, gradientCount);
       }
-      
+
       // Only shuffle if random gradient is enabled
       if (useRandomGradient) {
         console.log('Shuffling palette colors');
@@ -536,13 +572,13 @@ const updateColorInPyContent = (lines, systems, systemKey, emitterRef, colorType
           clone[j] = tmp;
         }
       }
-      
+
       // Reassign even times 0..1 to shuffled entries
       const n = clone.length;
       clone.forEach((stop, idx) => {
         stop.time = n === 1 ? 0 : idx / (n - 1);
       });
-      
+
       console.log('Final palette has', clone.length, 'colors');
       return clone;
     } catch (e) {
@@ -581,18 +617,18 @@ const updateColorInPyContent = (lines, systems, systemKey, emitterRef, colorType
         if (currentMode === 'shift' || currentMode === 'shift-hue') {
           try {
             const colorHandler = new ColorHandler(currentColor);
-            
+
             if (currentMode === 'shift') {
               const hueShift = parseFloat(currentHslValues.hue) || 0;
               const satShift = parseFloat(currentHslValues.saturation) || 0;
               const lightShift = parseFloat(currentHslValues.lightness) || 0;
-              
+
               colorHandler.HSLShift(hueShift, satShift, lightShift);
               replacementColor = colorHandler.vec4;
             } else if (currentMode === 'shift-hue') {
               const targetHue = currentHueValue / 360;
               const [hue, saturation, lightness] = colorHandler.ToHSL();
-              
+
               if (isFinite(hue) && isFinite(saturation) && isFinite(lightness)) {
                 colorHandler.InputHSL([targetHue, saturation, lightness]);
                 replacementColor = colorHandler.vec4;
@@ -699,7 +735,7 @@ const updateColorInPyContent = (lines, systems, systemKey, emitterRef, colorType
     // This was missing and caused animated colors to not be processed
     let inValues = false;
     let valueIndex = 0;
-    
+
     for (let lineIndex = colorProp.startLine; lineIndex <= colorProp.endLine; lineIndex++) {
       if (/values:\s*list\[vec4\]\s*=\s*\{/i.test(lines[lineIndex])) {
         inValues = true;
