@@ -33,6 +33,9 @@ A comprehensive toolkit for League of Legends modding and visual effects editing
 - **Hash Management**: Automatic hash file download and management
 - **External Tools**: Configure ritobin CLI and manage backend services
 
+<img width="1199" height="791" alt="image" src="https://github.com/user-attachments/assets/6727bb38-3e7c-497d-9d0a-e25acb3f12a2" />
+
+
 ### Paint - Advanced Particle Recoloring
 - **Recolor Particles**: Mainly focused on recoloring particle effects with precision
 - **Shades Generator**: Create custom shades and color variations
