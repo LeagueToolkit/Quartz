@@ -13,8 +13,6 @@ A comprehensive toolkit for League of Legends modding and visual effects editing
 
 ## 🔗 Key Dependencies & Credits
 
-- **[LtMAO](https://github.com/tarngaina/LtMAO)** - For foundational modding tools and inspiration
-- **Special thanks to [tarngaina](https://github.com/tarngaina)** for letting me use his tools
 - **[Upscayl](https://github.com/upscayl)** - Free and open source AI Image Upscaler for Linux, MacOS and Windows
 - **[Upscayl NCNN](https://github.com/upscayl/upscayl-ncnn)** - The Upscayl backend powered by the NCNN framework and Real-ESRGAN architecture
 
@@ -146,7 +144,6 @@ Two distinct modes:
 - **Batch Renaming**: Process multiple files at once
 
 ### Bumpath - Mod Repathing
-- **LtMAO Integration**: Taken from LtMAO for reliable mod repathing
 - **Path Management**: Repath your mod files efficiently
 - **Automatic Hash Management**: Uses integrated hash files for seamless operation
 - **Smart Defaults**: "Ignore Missing Files" and "Combine Linked BINs" enabled by default
@@ -158,14 +155,6 @@ Two distinct modes:
 - **GitHub Repository**: [Quartz](https://github.com/RitoShark/Quartz)
 - **Issues**: Report bugs and request features
 - **Discussions**: Community discussions and support
-
-## 🆕 Recent Updates
-
-- **Automatic Hash Management**: Hash files are now automatically downloaded and managed
-- **Asset Extractor**: Renamed from FrogChanger with improved auto-detection
-- **Custom Color Picker**: Theme editor now uses the same advanced color picker as RGBA and Paint
-- **Texture Cache**: Automatic cleanup of temporary texture files on app close
-- **Log Management**: Automatic cleanup of log files on app startup
 
 ---
 
