@@ -22,6 +22,7 @@ import UniversalFileRandomizer from './pages/UniversalFileRandomizer';
 import Bumpath from './pages/Bumpath';
 import AniPort from './pages/AniPortSimple';
 import FrogChanger from './pages/FrogChanger';
+import BnkExtract from './pages/BnkExtract';
 import HashReminderModal from './components/HashReminderModal';
 import AssetPreviewModal from './components/AssetPreviewModal';
 import GlobalClickEffect from './components/ClickEffects/GlobalClickEffect';
@@ -455,6 +456,7 @@ function App() {
                 <Route path="/bumpath" element={<Bumpath />} />
                 <Route path="/aniport" element={<AniPort />} />
                 <Route path="/frogchanger" element={<FrogChanger />} />
+                <Route path="/bnk-extract" element={<BnkExtract />} />
 
 
                 <Route path="/settings" element={<Settings />} />

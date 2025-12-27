@@ -152,6 +152,8 @@ const parseEmitter = (lines, emitterStartLine) => {
     } else if (/^color:\s*embed\s*=\s*valuecolor\s*\{/i.test(line) && !/birthcolor/i.test(line) && !/fresnelcolor/i.test(line)) {
       // Match color in any case combination, but exclude birthColor and fresnelColor
       emitter.color = parseColorProperty(lines, i);
+    } else if (/SeparateLingerColor:\s*embed\s*=\s*ValueColor\s*\{/i.test(line)) {
+      emitter.lingerColor = parseColorProperty(lines, i);
     } else if (/fresnelColor:\s*vec4\s*=/i.test(line)) {
       // Simple fresnelColor constant value
       const vecStr = line.split('=')[1];
@@ -376,6 +378,8 @@ const updateColorInPyContent = (lines, systems, systemKey, emitterRef, colorType
     colorProp = emitter.birthColor;
   } else if (colorType === 'oc') {
     colorProp = emitter.fresnelColor;
+  } else if (colorType === 'lingerColor') {
+    colorProp = emitter.lingerColor;
   } else {
     colorProp = emitter.color;
   }

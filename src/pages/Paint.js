@@ -280,6 +280,7 @@ const Paint = () => {
   const [blendModeExpanded, setBlendModeExpanded] = useState(Prefs?.obj?.BlendModeExpanded !== undefined ? Prefs.obj.BlendModeExpanded : true);
   const [targets, setTargets] = useState({
     oc: false,
+    lingerColor: false,
     birthColor: true,
     color: true,
   });
@@ -2569,48 +2570,50 @@ const Paint = () => {
             try {
               let emitterBlock = '';
 
-              // 1. Try to find the emitter by name in the fresh content
-              const namePattern = `emitterName:\\s*string\\s*=\\s*"${emitter.name}"`;
-              const nameRegex = new RegExp(namePattern, 'i');
-              const match = fileContent.match(nameRegex);
-
-              if (match) {
-                const nameIndex = match.index;
-                const contentBefore = fileContent.substring(0, nameIndex);
-                const startMarker = "VfxEmitterDefinitionData";
-                const lastStart = contentBefore.lastIndexOf(startMarker);
-
-                if (lastStart !== -1) {
-                  let depth = 0;
-                  let foundStart = false;
-                  let endIndex = -1;
-                  const scanLimit = Math.min(fileContent.length, lastStart + 20000);
-
-                  for (let i = lastStart; i < scanLimit; i++) {
-                    if (fileContent[i] === '{') {
-                      depth++;
-                      foundStart = true;
-                    } else if (fileContent[i] === '}') {
-                      depth--;
-                      if (foundStart && depth === 0) {
-                        endIndex = i;
-                        break;
-                      }
-                    }
-                  }
-
-                  if (endIndex !== -1) {
-                    emitterBlock = fileContent.substring(lastStart, endIndex + 1);
-                  }
-                }
-              }
-
-              // 2. Fallback to line numbers
-              if (!emitterBlock && emitter.startLine !== undefined) {
+              // 1. Prioritize using line numbers to uniquely identify the emitter (handles multiple emitters with same name)
+              if (emitter.startLine !== undefined) {
                 const lines = fileContent.split('\n');
                 if (emitter.startLine < lines.length) {
                   const safeEnd = Math.min(lines.length, (emitter.endLine || emitter.startLine + 200) + 5);
                   emitterBlock = lines.slice(emitter.startLine, safeEnd).join('\n');
+                }
+              }
+
+              // 2. Fallback to finding emitter by name (only if line numbers not available)
+              if (!emitterBlock) {
+                const namePattern = `emitterName:\\s*string\\s*=\\s*"${emitter.name}"`;
+                const nameRegex = new RegExp(namePattern, 'i');
+                const match = fileContent.match(nameRegex);
+
+                if (match) {
+                  const nameIndex = match.index;
+                  const contentBefore = fileContent.substring(0, nameIndex);
+                  const startMarker = "VfxEmitterDefinitionData";
+                  const lastStart = contentBefore.lastIndexOf(startMarker);
+
+                  if (lastStart !== -1) {
+                    let depth = 0;
+                    let foundStart = false;
+                    let endIndex = -1;
+                    const scanLimit = Math.min(fileContent.length, lastStart + 20000);
+
+                    for (let i = lastStart; i < scanLimit; i++) {
+                      if (fileContent[i] === '{') {
+                        depth++;
+                        foundStart = true;
+                      } else if (fileContent[i] === '}') {
+                        depth--;
+                        if (foundStart && depth === 0) {
+                          endIndex = i;
+                          break;
+                        }
+                      }
+                    }
+
+                    if (endIndex !== -1) {
+                      emitterBlock = fileContent.substring(lastStart, endIndex + 1);
+                    }
+                  }
                 }
               }
 
@@ -2724,9 +2727,34 @@ const Paint = () => {
             return;
           }
 
-          // Calculate preview dimensions - optimized for grid
+          // Calculate preview dimensions - dynamic based on texture count
           const rect = e.target.getBoundingClientRect();
-          const previewWidth = textureData.length > 1 ? 380 : 280;
+          const textureCount = textureData.length;
+          let cols = 1;
+          let previewWidth = 260;
+          let itemSize = '180px';
+
+          if (textureCount === 1) {
+            cols = 1;
+            previewWidth = 260;
+            itemSize = '200px';
+          } else if (textureCount === 2) {
+            cols = 2;
+            previewWidth = 380;
+            itemSize = '150px';
+          } else if (textureCount <= 4) {
+            cols = 2;
+            previewWidth = 400;
+            itemSize = '160px';
+          } else if (textureCount <= 6) {
+            cols = 3;
+            previewWidth = 520;
+            itemSize = '140px';
+          } else {
+            cols = 3;
+            previewWidth = 560;
+            itemSize = '130px';
+          }
 
           const left = Math.max(10, Math.min(rect.left - previewWidth - 10, window.innerWidth - previewWidth - 10));
 
@@ -2765,9 +2793,14 @@ const Paint = () => {
           preview.style.flexDirection = 'column';
           preview.style.pointerEvents = 'auto'; // Ensure we can hover it
 
+          // Dynamic grid layout
+          const gridStyle = textureCount === 1
+            ? 'display: flex; justify-content: center; margin-top: 8px;'
+            : `display: grid; grid-template-columns: repeat(${cols}, 1fr); gap: 12px; margin-top: 8px;`;
+
           // Build HTML for grid items using Port style
           const gridHtml = `
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 8px;">
+            <div style="${gridStyle}">
               ${textureData.map((data, index) => {
             const fileName = data.path.split(/[/\\]/).pop();
             return `
@@ -2778,12 +2811,13 @@ const Paint = () => {
                   align-items: center;
                   gap: 8px;
                   transition: all 0.2s ease;
+                  min-width: 0;
                 ">
-                  <div style="width: 100%; height: 135px; background: #000; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                  <div style="width: 100%; height: ${itemSize}; background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%), linear-gradient(-45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%), linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%); background-size: 12px 12px; background-position: 0 0, 0 6px, 6px -6px, -6px 0px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                     <img src="${processDataURL(data.dataUrl)}" style="max-width: 100%; max-height: 100%; object-fit: contain;" />
                   </div>
-                  <div style="width: 100%; text-align: center; font-family: 'JetBrains Mono', monospace; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                    <div style="font-size: 8px; opacity: 0.5; margin-bottom: 2px; letter-spacing: 0.02em;">${fileName}</div>
+                  <div style="width: 100%; text-align: center; font-family: 'JetBrains Mono', monospace; color: var(--accent); overflow: hidden;">
+                    <div style="font-size: 8px; opacity: 0.5; margin-bottom: 2px; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${fileName}</div>
                     <div style="font-size: 10px; font-weight: 800; letter-spacing: 0.08em; opacity: 0.9;">${data.label.toUpperCase()}</div>
                   </div>
                 </div>
@@ -2893,6 +2927,70 @@ const Paint = () => {
     };
 
     emitterDiv.appendChild(previewBtn);
+
+    // Add Linger Color (LC) block - leftmost, before OC
+    const lingerColorDiv = document.createElement('div');
+    lingerColorDiv.className = 'Prop-Block-Secondary';
+    lingerColorDiv.title = 'Linger Color';
+    lingerColorDiv.setAttribute('data-role', 'linger');
+
+    if (emitter.lingerColor) {
+      // Collect ALL colors: constantValue + dynamics.values when both exist
+      const allLingerColors = [];
+      const allLingerTimes = [];
+
+      // Add constantValue first if it exists
+      if (emitter.lingerColor.constantValue) {
+        allLingerColors.push(emitter.lingerColor.constantValue);
+        allLingerTimes.push(0);
+      }
+
+      // Add dynamics.values if they exist
+      if (emitter.lingerColor.dynamics && emitter.lingerColor.dynamics.values && emitter.lingerColor.dynamics.values.length > 0) {
+        const dynamicColors = emitter.lingerColor.dynamics.values;
+        const dynamicTimes = emitter.lingerColor.dynamics.times || [];
+        for (let i = 0; i < dynamicColors.length; i++) {
+          allLingerColors.push(dynamicColors[i]);
+          const baseTime = dynamicTimes[i] !== undefined ? dynamicTimes[i] : (i / Math.max(1, dynamicColors.length - 1));
+          allLingerTimes.push(emitter.lingerColor.constantValue ? (baseTime * 0.9 + 0.1) : baseTime);
+        }
+      }
+
+      if (allLingerColors.length > 0) {
+        if (allLingerColors.length === 1) {
+          const colorHandler = new ColorHandler(allLingerColors[0]);
+          lingerColorDiv.style.background = colorHandler.ToHEX();
+        } else {
+          const colorHandlers = allLingerColors.map(color => new ColorHandler(color));
+          const gradientColors = colorHandlers.map(handler => handler.ToHEX());
+          lingerColorDiv.style.background = `linear-gradient(90deg, ${gradientColors.join(', ')})`;
+          const hasConstant = !!emitter.lingerColor.constantValue;
+          const hasDynamics = emitter.lingerColor.dynamics && emitter.lingerColor.dynamics.values && emitter.lingerColor.dynamics.values.length > 0;
+          if (hasConstant && hasDynamics) {
+            lingerColorDiv.title = `Linger Color (constant + ${emitter.lingerColor.dynamics.values.length} animated keyframes)`;
+          } else if (hasDynamics) {
+            lingerColorDiv.title = `Animated Linger Color (${emitter.lingerColor.dynamics.values.length} keyframes)`;
+          }
+        }
+
+        lingerColorDiv.onclick = (event) => {
+          const newPalette = allLingerColors.map((color, index) => {
+            const colorHandler = new ColorHandler(color);
+            colorHandler.SetTime(allLingerTimes[index] || (index / Math.max(1, allLingerColors.length - 1)));
+            return colorHandler;
+          });
+          setPalette(newPalette);
+          MapPalette(newPalette, setColors);
+          setColorCount(newPalette.length);
+          savePaletteForMode(mode, newPalette, setSavedPalettes);
+          positionColorPicker(event);
+        };
+      } else {
+        lingerColorDiv.classList.add('Blank-Obj');
+      }
+    } else {
+      lingerColorDiv.classList.add('Blank-Obj');
+    }
 
     // Add fresnel color (OC) block (optional, left-most)
     const ocDiv = document.createElement('div');
@@ -3090,7 +3188,8 @@ const Paint = () => {
       colorDiv.classList.add('Blank-Obj');
     }
 
-    // Append in desired order: OC, Birth Color, Color
+    // Append in desired order: LC, OC, Birth Color, Color
+    emitterDiv.appendChild(lingerColorDiv);
     emitterDiv.appendChild(ocDiv);
     emitterDiv.appendChild(birthColorDiv);
     emitterDiv.appendChild(colorDiv);
@@ -3742,6 +3841,53 @@ const Paint = () => {
             }
           }
         }
+        if (targets.lingerColor && emitter.lingerColor) {
+          // Linger Color Logic
+          const allLingerPreviewColors = [];
+          if (emitter.lingerColor.constantValue) {
+            const [r, g, b] = emitter.lingerColor.constantValue;
+            const isBW = (r === 0 && g === 0 && b === 0) || (r === 1 && g === 1 && b === 1);
+            const shouldSkipConst = (typeof skipPredicate === 'function') ? !!skipPredicate(emitter.lingerColor.constantValue) : false;
+            if ((ignoreBW && isBW) || shouldSkipConst) {
+              allLingerPreviewColors.push(emitter.lingerColor.constantValue);
+            } else {
+              const c = predictVec4(emitter.lingerColor.constantValue);
+              if (c) allLingerPreviewColors.push(c);
+            }
+          }
+          if (emitter.lingerColor.dynamics && Array.isArray(emitter.lingerColor.dynamics.values) && emitter.lingerColor.dynamics.values.length > 0) {
+            const predicted = predictDynamicValues(emitter.lingerColor.dynamics.values, emitter.lingerColor.dynamics.times || [], skipPredicate);
+            allLingerPreviewColors.push(...predicted);
+          }
+          if (allLingerPreviewColors.length > 0) {
+            // Update the visual block
+            if (allLingerPreviewColors.length === 1) {
+              setBlockConst('[data-role="linger"]', allLingerPreviewColors[0], 'Linger Color');
+            } else {
+              setBlockGradient('[data-role="linger"]', allLingerPreviewColors, 'Animated Linger Color (preview)');
+            }
+
+            const key = `${systemKey}|${emitter.startLine}|${emitter.endLine}|lingerColor`;
+            if (emitter.lingerColor.constantValue && emitter.lingerColor.dynamics) {
+              previewAssignmentsRef.current.set(key, {
+                type: 'emitter', systemKey, name: emitter.name, startLine: emitter.startLine, endLine: emitter.endLine,
+                property: 'lingerColor', kind: 'combo',
+                constantValue: allLingerPreviewColors[0],
+                dynamicsValues: allLingerPreviewColors.slice(1)
+              });
+            } else if (emitter.lingerColor.dynamics) {
+              previewAssignmentsRef.current.set(key, {
+                type: 'emitter', systemKey, name: emitter.name, startLine: emitter.startLine, endLine: emitter.endLine,
+                property: 'lingerColor', kind: 'dynamics', values: allLingerPreviewColors
+              });
+            } else if (emitter.lingerColor.constantValue) {
+              previewAssignmentsRef.current.set(key, {
+                type: 'emitter', systemKey, name: emitter.name, startLine: emitter.startLine, endLine: emitter.endLine,
+                property: 'lingerColor', kind: 'constant', value: allLingerPreviewColors[0]
+              });
+            }
+          }
+        }
         if (targets.oc && emitter.fresnelColor) {
           if (emitter.fresnelColor.dynamics && Array.isArray(emitter.fresnelColor.dynamics.values) && emitter.fresnelColor.dynamics.values.length > 0) {
             const predicted = predictDynamicValues(emitter.fresnelColor.dynamics.values, emitter.fresnelColor.dynamics.times || [], skipPredicate);
@@ -3846,7 +3992,7 @@ const Paint = () => {
         console.warn(`[writeEmitterConstantToLines] Emitter not found: ${emitterId.name}`);
         return lines;
       }
-      let colorProp = propertyKey === 'oc' ? e.fresnelColor : (propertyKey === 'birthColor' ? e.birthColor : e.color);
+      let colorProp = propertyKey === 'oc' ? e.fresnelColor : (propertyKey === 'lingerColor' ? e.lingerColor : (propertyKey === 'birthColor' ? e.birthColor : e.color));
       if (!colorProp) {
         console.warn(`[writeEmitterConstantToLines] Color property not found for ${propertyKey}`);
         return lines;
@@ -3900,7 +4046,7 @@ const Paint = () => {
       if (!system) return lines;
       const e = system.emitters.find(x => x.name === emitterId.name && x.startLine === emitterId.startLine && x.endLine === emitterId.endLine);
       if (!e) return lines;
-      let colorProp = propertyKey === 'oc' ? e.fresnelColor : (propertyKey === 'birthColor' ? e.birthColor : e.color);
+      let colorProp = propertyKey === 'oc' ? e.fresnelColor : (propertyKey === 'lingerColor' ? e.lingerColor : (propertyKey === 'birthColor' ? e.birthColor : e.color));
       if (!colorProp || !colorProp.dynamics) return lines;
 
       let inValues = false;
@@ -4060,6 +4206,34 @@ const Paint = () => {
           if (t.kind === 'emitter') {
             const { systemKey, emitter } = t;
             const baseKey = `${systemKey}|${emitter.startLine}|${emitter.endLine}`;
+            // Linger Color
+            if (targets.lingerColor && emitter.lingerColor) {
+              const key = `${baseKey}|lingerColor`;
+              const asn = previewAssignmentsRef.current.get(key);
+              if (asn && asn.kind === 'combo') {
+                if (asn.constantValue) {
+                  workingLines = writeEmitterConstantToLines(workingLines, systemsToUse, systemKey, emitter, 'lingerColor', asn.constantValue);
+                  colorsUpdated++;
+                }
+                if (asn.dynamicsValues) {
+                  workingLines = writeEmitterDynamicsToLines(workingLines, systemsToUse, systemKey, emitter, 'lingerColor', asn.dynamicsValues);
+                  colorsUpdated += asn.dynamicsValues.length;
+                }
+              } else if (asn && asn.kind === 'constant') {
+                workingLines = writeEmitterConstantToLines(workingLines, systemsToUse, systemKey, emitter, 'lingerColor', asn.value);
+                colorsUpdated++;
+              } else if (asn && asn.kind === 'dynamics') {
+                workingLines = writeEmitterDynamicsToLines(workingLines, systemsToUse, systemKey, emitter, 'lingerColor', asn.values);
+                colorsUpdated += asn.values.length;
+              } else {
+                const c = generateColorForProperty(emitter, emitter.lingerColor, 'lingerColor');
+                if (c) {
+                  const emitterIndex = (systemsToUse[systemKey]?.emitters || []).findIndex(e => e.name === emitter.name && e.startLine === emitter.startLine && e.endLine === emitter.endLine);
+                  workingLines = updateColorInPyContent(workingLines, systemsToUse, systemKey, { name: emitter.name, index: emitterIndex, startLine: emitter.startLine, endLine: emitter.endLine }, 'lingerColor', c, mode, hslValues, hueValue, ignoreBW, Palette, randomGradient, randomGradientCount, getColorFilterPredicate());
+                  colorsUpdated++;
+                }
+              }
+            }
             // OC
             if (targets.oc && emitter.fresnelColor) {
               const key = `${baseKey}|oc`;
@@ -5231,6 +5405,18 @@ const Paint = () => {
             setMode(savedMode);
           }
 
+          // Restore randomGradient state if saved
+          const savedRandomGradient = await electronPrefs.get('PaintRandomGradient');
+          if (savedRandomGradient !== undefined && savedRandomGradient !== null) {
+            setRandomGradient(savedRandomGradient);
+          }
+
+          // Restore randomGradientCount state if saved
+          const savedRandomGradientCount = await electronPrefs.get('PaintRandomGradientCount');
+          if (savedRandomGradientCount !== undefined && savedRandomGradientCount !== null) {
+            setRandomGradientCount(savedRandomGradientCount);
+          }
+
           // Restore saved palettes for all modes if available
           if (savedPalettesData && typeof savedPalettesData === 'object') {
             const restoredSavedPalettes = {};
@@ -5298,6 +5484,8 @@ const Paint = () => {
         await electronPrefs.set('PaintSavedPalette', paletteData);
         await electronPrefs.set('PaintSavedMode', mode);
         await electronPrefs.set('PaintSavedPalettes', savedPalettesData);
+        await electronPrefs.set('PaintRandomGradient', randomGradient);
+        await electronPrefs.set('PaintRandomGradientCount', randomGradientCount);
         console.log('💾 Saved palette to electronPrefs');
       } catch (error) {
         console.warn('Failed to save palette to electronPrefs:', error);
@@ -5307,7 +5495,7 @@ const Paint = () => {
     // Debounce saves to avoid too many writes
     const timer = setTimeout(savePaletteToPrefs, 500);
     return () => clearTimeout(timer);
-  }, [Palette, mode, savedPalettes, suppressAutoPalette]);
+  }, [Palette, mode, savedPalettes, suppressAutoPalette, randomGradient, randomGradientCount]);
 
   // Save palette when component unmounts (user navigates away)
   useEffect(() => {
@@ -5337,6 +5525,8 @@ const Paint = () => {
             await electronPrefs.set('PaintSavedPalette', paletteData);
             await electronPrefs.set('PaintSavedMode', mode);
             await electronPrefs.set('PaintSavedPalettes', savedPalettesData);
+            await electronPrefs.set('PaintRandomGradient', randomGradient);
+            await electronPrefs.set('PaintRandomGradientCount', randomGradientCount);
             console.log('💾 Saved palette on component unmount');
           } catch (error) {
             console.warn('Failed to save palette on unmount:', error);
@@ -5345,7 +5535,7 @@ const Paint = () => {
         saveOnUnmount();
       }
     };
-  }, [Palette, mode, savedPalettes]);
+  }, [Palette, mode, savedPalettes, randomGradient, randomGradientCount]);
 
   // Initialize component
   useEffect(() => {
@@ -6556,6 +6746,7 @@ const Paint = () => {
           }} />
 
           {[
+            { key: 'lingerColor', label: 'LC', width: '3rem' },
             { key: 'oc', label: 'OC', width: '3rem' },
             { key: 'birthColor', label: 'BC', width: '3rem' },
             { key: 'color', label: 'Color', width: '10rem' },

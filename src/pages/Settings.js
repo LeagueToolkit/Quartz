@@ -5,20 +5,14 @@ import {
   Download, Upload, Terminal, Trash2, Palette, HardDrive
 } from 'lucide-react';
 // Import theme management
-import themeManager, { applyThemeFromObject, setCustomTheme, getCustomThemes, deleteCustomTheme, STYLES } from '../utils/themeManager.js';
+import themeManager, { applyThemeFromObject, setCustomTheme, getCustomThemes, deleteCustomTheme, getCurrentTheme, STYLES } from '../utils/themeManager.js';
 import electronPrefs from '../utils/electronPrefs.js';
 import fontManager from '../utils/fontManager.js';
 import { CreatePicker, cleanupColorPickers } from '../utils/colorUtils.js';
 import ColorHandler from '../utils/ColorHandler.js';
 
 const ModernSettings = () => {
-  const [expandedSections, setExpandedSections] = useState({
-    appearance: false,
-    tools: false,
-    pages: false,
-    github: false,
-    themeCreator: false
-  });
+  const [selectedSection, setSelectedSection] = useState('appearance');
 
   const [settings, setSettings] = useState({
     selectedFont: 'system',
@@ -42,7 +36,7 @@ const ModernSettings = () => {
     toolsEnabled: false,
     fileRandomizerEnabled: false,
     bumpathEnabled: false,
-    aniportEnabled: true,
+    aniportEnabled: false, // Default to false on first install
     frogchangerEnabled: false,
     glassBlur: 6,
     useNativeFileBrowser: false // Default to custom explorer
@@ -133,18 +127,14 @@ const ModernSettings = () => {
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   };
 
-  const toggleSection = useCallback((section) => {
-    setExpandedSections(prev => {
-      // Create a completely new object to avoid any reference issues
-      return {
-        appearance: section === 'appearance' ? !prev.appearance : prev.appearance,
-        tools: section === 'tools' ? !prev.tools : prev.tools,
-        pages: section === 'pages' ? !prev.pages : prev.pages,
-        github: section === 'github' ? !prev.github : prev.github,
-        themeCreator: section === 'themeCreator' ? !prev.themeCreator : prev.themeCreator,
-      };
-    });
-  }, []);
+  // Section definitions for sidebar
+  const sections = [
+    { id: 'appearance', name: 'Appearance', icon: Palette },
+    { id: 'tools', name: 'External Tools', icon: Terminal },
+    { id: 'pages', name: 'Page Visibility', icon: Eye },
+    { id: 'themeCreator', name: 'Custom Theme Creator', icon: Palette },
+    { id: 'github', name: 'GitHub Integration', icon: Github }
+  ];
 
   // Auto-save settings to electronPrefs
   const updateSetting = async (key, value) => {
@@ -398,7 +388,7 @@ const ModernSettings = () => {
         toolsEnabled: electronPrefs.obj.ToolsEnabled !== false,
         fileRandomizerEnabled: electronPrefs.obj.FileRandomizerEnabled !== false,
         bumpathEnabled: electronPrefs.obj.BumpathEnabled !== false,
-        aniportEnabled: electronPrefs.obj.AniPortEnabled !== false,
+        aniportEnabled: electronPrefs.obj.AniPortEnabled === true, // Default to false on first install
         frogchangerEnabled: electronPrefs.obj.FrogChangerEnabled !== false,
         glassBlur: electronPrefs.obj.GlassBlur !== undefined ? electronPrefs.obj.GlassBlur : 6,
         useNativeFileBrowser: electronPrefs.obj.UseNativeFileBrowser === true // Default to false
@@ -574,13 +564,19 @@ const ModernSettings = () => {
 
   // Handle theme change (Color)
   const handleThemeChange = async (themeId) => {
-    setSettings(prev => ({ ...prev, themeVariant: themeId }));
+    let currentStyle;
+    setSettings(prev => {
+      currentStyle = prev.interfaceStyle || STYLES.QUARTZ; // Preserve current interface style
+      return { ...prev, themeVariant: themeId };
+    });
 
     // Save to electronPrefs
     try {
       await electronPrefs.set('ThemeVariant', themeId);
-      // Apply the theme with current style
-      themeManager.applyThemeVariables(themeId, settings.interfaceStyle);
+      // Apply the theme with preserved interface style
+      themeManager.applyThemeVariables(themeId, currentStyle);
+      // Ensure interface style is also saved (preserve it)
+      await electronPrefs.set('InterfaceStyle', currentStyle);
       window.dispatchEvent(new CustomEvent('settingsChanged'));
     } catch (error) {
       console.error('Error saving theme:', error);
@@ -698,6 +694,39 @@ const ModernSettings = () => {
       cleanupColorPickers();
     };
   }, []);
+
+  // Update custom theme creator values when theme changes
+  useEffect(() => {
+    if (!settings.themeVariant) return;
+    
+    try {
+      let themeColors = null;
+      
+      // Check if it's a custom theme
+      if (settings.themeVariant.startsWith('custom:')) {
+        const customThemeName = settings.themeVariant.replace('custom:', '');
+        const customThemes = getCustomThemes();
+        themeColors = customThemes[customThemeName];
+      } else {
+        // It's a premade theme
+        themeColors = getCurrentTheme(settings.themeVariant);
+      }
+      
+      if (themeColors) {
+        // Update custom theme values with the selected theme's colors
+        setCustomThemeValues(prev => ({
+          ...prev,
+          accent: themeColors.accent || prev.accent,
+          accent2: themeColors.accent2 || prev.accent2,
+          bg: themeColors.bg || prev.bg,
+          surface: themeColors.surface || prev.surface,
+          text: themeColors.text || prev.text,
+        }));
+      }
+    } catch (error) {
+      console.error('Error updating custom theme values from selected theme:', error);
+    }
+  }, [settings.themeVariant]);
 
   const handleToggleLivePreview = (enabled) => {
     setLivePreview(enabled);
@@ -1017,33 +1046,11 @@ const ModernSettings = () => {
     }));
   };
 
-  return (
-    <div className="settings-container" style={{
-      width: '100%',
-      minHeight: '100%',
-      background: 'var(--bg)',
-      color: 'var(--text)',
-      fontFamily: "'JetBrains Mono', monospace",
-      padding: '24px'
-    }}>
-      {/* Main Grid */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))',
-        gap: '20px',
-        maxWidth: '1400px',
-        width: '100%',
-        overflow: 'visible'
-      }}>
-        {/* Appearance Section */}
-        <SettingsCard
-          key="appearance-card"
-          title="Appearance"
-          icon={<Palette size={20} />}
-          expanded={expandedSections.appearance}
-          onToggle={() => toggleSection('appearance')}
-          hasWallpaper={!!wallpaperPath}
-        >
+  // Render section content based on selected section
+  const renderSectionContent = () => {
+    switch (selectedSection) {
+      case 'appearance':
+        return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Font Selection */}
             <FormGroup label="Font Family" description="Select the interface font">
@@ -1056,7 +1063,7 @@ const ModernSettings = () => {
                   ? availableFonts.map(font => ({
                     value: font.name,
                     label: font.displayName || font.name,
-                    fontFamily: font.name // Pass font family for preview
+                    fontFamily: font.name
                   }))
                   : [{ value: 'system', label: 'System Default' }]
                 }
@@ -1103,7 +1110,6 @@ const ModernSettings = () => {
                     onClick={() => handleThemeChange(theme.id)}
                   />
                 ))}
-                {/* Custom themes */}
                 {Object.keys(customThemesMap).map((name) => (
                   <ThemeCard
                     key={`custom-${name}`}
@@ -1118,7 +1124,6 @@ const ModernSettings = () => {
             {/* Wallpaper */}
             <FormGroup label="Wallpaper" description="Set a background image that covers the entire app">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {/* Current wallpaper preview */}
                 {wallpaperPath && (
                   <div style={{
                     width: '100%',
@@ -1157,7 +1162,6 @@ const ModernSettings = () => {
                   </div>
                 )}
 
-                {/* Wallpaper path input and browse */}
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
                     type="text"
@@ -1200,7 +1204,6 @@ const ModernSettings = () => {
                   )}
                 </div>
 
-                {/* Opacity slider */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={{ fontSize: '12px', color: 'var(--text-2)', minWidth: '60px' }}>
                     Opacity: {Math.round(wallpaperOpacity * 100)}%
@@ -1218,7 +1221,6 @@ const ModernSettings = () => {
                   />
                 </div>
 
-                {/* Glass Blur Intensity slider */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
                   <span style={{ fontSize: '12px', color: 'var(--text-2)', minWidth: '60px' }}>
                     UI Blur: {settings.glassBlur}px
@@ -1301,17 +1303,9 @@ const ModernSettings = () => {
               </Button>
             </div>
           </div>
-        </SettingsCard>
-
-        {/* External Tools */}
-        <SettingsCard
-          key="tools-card"
-          title="External Tools"
-          icon={<Terminal size={20} />}
-          expanded={expandedSections.tools}
-          onToggle={() => toggleSection('tools')}
-          hasWallpaper={!!wallpaperPath}
-        >
+        );
+      case 'tools':
+        return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Ritobin Path */}
             <FormGroup
@@ -1533,16 +1527,9 @@ const ModernSettings = () => {
               </div>
             </FormGroup>
           </div>
-        </SettingsCard>
-
-        {/* Page Visibility */}
-        <SettingsCard
-          title="Page Visibility"
-          icon={<Eye size={20} />}
-          expanded={expandedSections.pages}
-          onToggle={() => toggleSection('pages')}
-          hasWallpaper={!!wallpaperPath}
-        >
+        );
+      case 'pages':
+        return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Navigation Settings */}
             <FormGroup label="Navigation">
@@ -1640,16 +1627,9 @@ const ModernSettings = () => {
               </div>
             </FormGroup>
           </div>
-        </SettingsCard>
-
-        {/* Custom Theme Creator */}
-        <SettingsCard
-          title="Custom Theme Creator"
-          icon={<Palette size={20} />}
-          expanded={expandedSections.themeCreator}
-          onToggle={() => toggleSection('themeCreator')}
-          hasWallpaper={!!wallpaperPath}
-        >
+        );
+      case 'themeCreator':
+        return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Theme Name */}
             <FormGroup label="Theme Name" description="Name your custom theme">
@@ -1734,7 +1714,6 @@ const ModernSettings = () => {
               </button>
               {showAdvancedTheme && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
-                  {/* Advanced Color Fields */}
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
@@ -1765,7 +1744,6 @@ const ModernSettings = () => {
                     ))}
                   </div>
 
-                  {/* Glass Properties */}
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
@@ -1781,7 +1759,6 @@ const ModernSettings = () => {
                     ))}
                   </div>
 
-                  {/* Derived Color Sliders */}
                   <div style={{
                     border: '1px dashed rgba(255, 255, 255, 0.1)',
                     borderRadius: '6px',
@@ -1846,13 +1823,10 @@ const ModernSettings = () => {
                 onChange={(checked) => handleToggleLivePreview(checked)}
                 compact
               />
-              <Button icon={<RefreshCw size={16} />} variant="secondary" onClick={handleResetCustomTheme}>
+              <Button icon={<RefreshCw size={16} />} variant="secondary" onClick={handleResetCustomTheme} hasWallpaper={!!wallpaperPath}>
                 Reset
               </Button>
-              <Button icon={<Save size={16} />} variant="secondary" onClick={handleSaveCustomTheme}>
-                Save
-              </Button>
-              <Button icon={<Check size={16} />} onClick={handleApplyCustomTheme}>
+              <Button icon={<Check size={16} />} variant="secondary" onClick={handleApplyCustomTheme} hasWallpaper={!!wallpaperPath}>
                 Save & Apply
               </Button>
               {customThemeName && customThemesMap[customThemeName] && (
@@ -1860,22 +1834,16 @@ const ModernSettings = () => {
                   icon={<Trash2 size={16} />}
                   variant="secondary"
                   onClick={() => handleDeleteCustomTheme(customThemeName)}
+                  hasWallpaper={!!wallpaperPath}
                 >
                   Delete
                 </Button>
               )}
             </div>
           </div>
-        </SettingsCard>
-
-        {/* GitHub Integration */}
-        <SettingsCard
-          title="GitHub Integration"
-          icon={<Github size={20} />}
-          expanded={expandedSections.github}
-          onToggle={() => toggleSection('github')}
-          hasWallpaper={!!wallpaperPath}
-        >
+        );
+      case 'github':
+        return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <FormGroup label="Username" description="Your GitHub username">
               <Input
@@ -1940,9 +1908,100 @@ const ModernSettings = () => {
               {isTestingConnection ? 'Testing...' : 'Test Connection'}
             </Button>
           </div>
-        </SettingsCard>
-      </div>
+        );
+      default:
+        return null;
+    }
+  };
 
+  return (
+    <div className="settings-container" style={{
+      width: '100%',
+      minHeight: '100%',
+      background: 'var(--bg)',
+      color: 'var(--text)',
+      fontFamily: "'JetBrains Mono', monospace",
+      padding: '24px'
+    }}>
+      {/* Sidebar + Content Layout */}
+      <div style={{
+        display: 'flex',
+        gap: '24px',
+        maxWidth: '1400px',
+        width: '100%',
+        margin: '0 auto'
+      }}>
+        {/* Left Sidebar */}
+        <div style={{
+          width: '240px',
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}>
+          {sections.map((section) => {
+            const IconComponent = section.icon;
+            return (
+              <button
+                key={section.id}
+                onClick={() => setSelectedSection(section.id)}
+                style={{
+                  padding: '12px 16px',
+                  background: selectedSection === section.id
+                    ? (wallpaperPath ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.05)')
+                    : 'transparent',
+                  border: selectedSection === section.id
+                    ? '1px solid var(--accent)'
+                    : '1px solid rgba(255, 255, 255, 0.08)',
+                  borderRadius: '8px',
+                  color: selectedSection === section.id ? 'var(--accent)' : 'var(--accent2)',
+                  fontSize: '14px',
+                  fontWeight: selectedSection === section.id ? '600' : '500',
+                  fontFamily: 'inherit',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  transition: 'all 0.2s ease',
+                  textAlign: 'left',
+                  backdropFilter: wallpaperPath && selectedSection === section.id ? 'blur(8px) saturate(180%)' : 'none',
+                  WebkitBackdropFilter: wallpaperPath && selectedSection === section.id ? 'blur(8px) saturate(180%)' : 'none'
+                }}
+                onMouseEnter={(e) => {
+                  if (selectedSection !== section.id) {
+                    e.currentTarget.style.background = wallpaperPath ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.02)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (selectedSection !== section.id) {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+                  }
+                }}
+              >
+                <IconComponent size={18} />
+                <span>{section.name}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right Content Area */}
+        <div style={{
+          flex: 1,
+          minWidth: 0,
+          background: wallpaperPath ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.02)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          borderRadius: '12px',
+          padding: '24px',
+          backdropFilter: wallpaperPath ? 'blur(16px) saturate(180%)' : 'none',
+          WebkitBackdropFilter: wallpaperPath ? 'blur(16px) saturate(180%)' : 'none',
+          boxShadow: wallpaperPath ? '0 4px 30px rgba(0, 0, 0, 0.3)' : 'none'
+        }}>
+          {renderSectionContent()}
+        </div>
+      </div>
     </div>
   );
 };
@@ -2234,96 +2293,131 @@ const InputWithToggle = ({ showValue, onToggle, ...props }) => (
   </div>
 );
 
-const Button = ({ icon, children, variant = 'primary', fullWidth, ...props }) => (
-  <button
-    {...props}
-    style={{
-      padding: '10px 16px',
-      background: variant === 'primary' ? 'var(--accent)' : 'rgba(255, 255, 255, 0.03)',
-      color: variant === 'primary' ? 'var(--bg)' : 'var(--accent2)',
-      border: variant === 'primary' ? 'none' : '1px solid rgba(255, 255, 255, 0.1)',
-      borderRadius: '6px',
-      fontSize: '13px',
-      fontWeight: '600',
-      fontFamily: 'inherit',
-      cursor: 'pointer',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: '8px',
-      transition: 'all 0.2s ease',
-      width: fullWidth ? '100%' : 'auto',
-      whiteSpace: 'nowrap',
-      opacity: props.disabled ? 0.6 : 1,
-      pointerEvents: props.disabled ? 'none' : 'auto',
-      ...(props.style || {})
-    }}
-    onMouseEnter={(e) => {
-      if (variant === 'primary') {
-        e.currentTarget.style.background = 'color-mix(in srgb, var(--accent) 90%, black)';
-      } else {
-        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-        e.currentTarget.style.borderColor = 'var(--accent)';
-      }
-    }}
-    onMouseLeave={(e) => {
-      if (variant === 'primary') {
-        e.currentTarget.style.background = 'var(--accent)';
-      } else {
-        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-      }
-    }}
-  >
-    {icon}
-    {children}
-  </button>
-);
+const Button = ({ icon, children, variant = 'primary', fullWidth, hasWallpaper = false, ...props }) => {
+  // Check if parent has wallpaper by checking if we're inside a SettingsCard with hasWallpaper
+  // For now, we'll use the hasWallpaper prop directly
+  const isInWallpaperContext = hasWallpaper;
+  
+  return (
+    <button
+      {...props}
+      style={{
+        padding: '10px 16px',
+        background: variant === 'primary' 
+          ? 'var(--accent)' 
+          : isInWallpaperContext
+            ? 'rgba(0, 0, 0, 0.6)' 
+            : 'rgba(255, 255, 255, 0.03)',
+        color: variant === 'primary' ? 'var(--bg)' : 'var(--accent2)',
+        border: variant === 'primary' ? 'none' : '1px solid rgba(255, 255, 255, 0.15)',
+        borderRadius: '6px',
+        fontSize: '13px',
+        fontWeight: '600',
+        fontFamily: 'inherit',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '8px',
+        transition: 'all 0.2s ease',
+        width: fullWidth ? '100%' : 'auto',
+        whiteSpace: 'nowrap',
+        opacity: props.disabled ? 0.6 : 1,
+        pointerEvents: props.disabled ? 'none' : 'auto',
+        backdropFilter: isInWallpaperContext ? 'blur(12px) saturate(180%)' : 'none',
+        WebkitBackdropFilter: isInWallpaperContext ? 'blur(12px) saturate(180%)' : 'none',
+        boxShadow: isInWallpaperContext ? '0 2px 12px rgba(0, 0, 0, 0.4)' : 'none',
+        ...(props.style || {})
+      }}
+      onMouseEnter={(e) => {
+        if (variant === 'primary') {
+          e.currentTarget.style.background = 'color-mix(in srgb, var(--accent) 90%, black)';
+        } else {
+          e.currentTarget.style.background = isInWallpaperContext ? 'rgba(0, 0, 0, 0.75)' : 'rgba(255, 255, 255, 0.05)';
+          e.currentTarget.style.borderColor = 'var(--accent)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (variant === 'primary') {
+          e.currentTarget.style.background = 'var(--accent)';
+        } else {
+          e.currentTarget.style.background = isInWallpaperContext ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.03)';
+          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+        }
+      }}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+};
 
 const ToggleSwitch = ({ label, checked, onChange, compact }) => (
   <label style={{
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: '12px',
+    gap: '16px',
     cursor: 'pointer',
-    padding: compact ? '8px' : '12px',
-    background: 'rgba(255, 255, 255, 0.02)',
-    borderRadius: '6px',
-    transition: 'background 0.2s ease'
-  }}
-    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)'}
-    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)'}
-  >
+    padding: compact ? '6px 0' : '10px 0',
+    userSelect: 'none'
+  }}>
     <span style={{
       fontSize: compact ? '12px' : '13px',
-      color: 'var(--accent2)',
-      fontWeight: '500'
+      color: 'var(--text)',
+      fontWeight: '400',
+      flex: 1
     }}>
       {label}
     </span>
     <div
-      onClick={() => onChange(!checked)}
+      onClick={(e) => {
+        e.stopPropagation();
+        onChange(!checked);
+      }}
       style={{
-        width: '40px',
-        height: '22px',
-        background: checked ? 'var(--accent)' : 'rgba(255, 255, 255, 0.1)',
-        borderRadius: '11px',
+        width: '44px',
+        height: '24px',
+        background: checked 
+          ? 'var(--accent)' 
+          : 'rgba(255, 255, 255, 0.1)',
+        borderRadius: '12px',
         position: 'relative',
-        transition: 'background 0.2s ease',
-        flexShrink: 0
+        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+        flexShrink: 0,
+        border: checked 
+          ? 'none' 
+          : '1px solid rgba(255, 255, 255, 0.15)',
+        boxShadow: checked
+          ? '0 0 0 2px rgba(139, 92, 246, 0.2), 0 2px 8px rgba(139, 92, 246, 0.3)'
+          : 'inset 0 2px 4px rgba(0, 0, 0, 0.1)',
+        cursor: 'pointer'
+      }}
+      onMouseEnter={(e) => {
+        if (!checked) {
+          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
+          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!checked) {
+          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+        }
       }}
     >
       <div style={{
         width: '18px',
         height: '18px',
-        background: 'white',
+        background: checked ? '#ffffff' : 'rgba(255, 255, 255, 0.7)',
         borderRadius: '50%',
         position: 'absolute',
-        top: '2px',
-        left: checked ? '20px' : '2px',
-        transition: 'left 0.2s ease',
-        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+        top: '3px',
+        left: checked ? '23px' : '3px',
+        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+        boxShadow: checked
+          ? '0 2px 6px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2)'
+          : '0 1px 3px rgba(0, 0, 0, 0.2)'
       }} />
     </div>
   </label>

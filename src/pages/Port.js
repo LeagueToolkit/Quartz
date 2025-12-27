@@ -3608,7 +3608,34 @@ const Port = () => {
     }
 
     const rect = buttonElement.getBoundingClientRect();
-    const previewWidth = textureData.length > 1 ? 380 : 280;
+
+    // Dynamic width based on texture count
+    const textureCount = textureData.length;
+    let cols = 1;
+    let previewWidth = 240;
+    let itemSize = '180px';
+
+    if (textureCount === 1) {
+      cols = 1;
+      previewWidth = 260;
+      itemSize = '200px';
+    } else if (textureCount === 2) {
+      cols = 2;
+      previewWidth = 380;
+      itemSize = '150px';
+    } else if (textureCount <= 4) {
+      cols = 2;
+      previewWidth = 400;
+      itemSize = '160px';
+    } else if (textureCount <= 6) {
+      cols = 3;
+      previewWidth = 520;
+      itemSize = '140px';
+    } else {
+      cols = 3;
+      previewWidth = 560;
+      itemSize = '130px';
+    }
 
     const preview = document.createElement('div');
     preview.id = 'port-texture-hover-preview';
@@ -3627,198 +3654,196 @@ const Port = () => {
       gap: 14px;
       pointer-events: auto;
       width: ${previewWidth}px;
+      max-height: ${window.innerHeight - 40}px;
+      overflow-y: auto;
       overflow-x: hidden;
       box-sizing: border-box;
       transition: opacity 0.2s ease;
     `;
 
-    // 2x2 Grid logic
-    const gridStyle = textureData.length > 1 ? `
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    ` : `
+    // Dynamic grid layout
+    const gridStyle = textureCount === 1 ? `
       display: flex;
       justify-content: center;
+    ` : `
+      display: grid;
+      grid-template-columns: repeat(${cols}, 1fr);
+      gap: 12px;
     `;
 
     let itemsHtml = '';
     textureData.forEach((data, idx) => {
       const isSingle = textureData.length === 1;
-      const size = isSingle ? '200px' : '145px';
       const labelFontSize = isSingle ? '11px' : '10px';
-      const fileName = data.path.split(/[/\\]/).pop();
+      const fileName = data.path.split(/[/\\\\]/).pop();
 
       itemsHtml += `
-        <div class="texture-item" data-idx="${idx}" style="cursor: pointer; display: flex; flex-direction: column; gap: 8px; align-items: center; transition: all 0.2s ease;" title="Left-click: Asset Preview | Right-click: Open in External App">
-          <div style="width: 100%; height: ${size}; background: #000; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+        <div class="texture-item" data-idx="${idx}" style="cursor: pointer; display: flex; flex-direction: column; gap: 8px; align-items: center; transition: all 0.2s ease; min-width: 0;" title="Left-click: Asset Preview | Right-click: Open in External App">
+          <div style="width: 100%; height: ${itemSize}; background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%), linear-gradient(-45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%), linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%); background-size: 12px 12px; background-position: 0 0, 0 6px, 6px -6px, -6px 0px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
             ${data.dataUrl ?
-          `<img src="${processDataURL(data.dataUrl)}" style="width: 100%; height: 100%; object-fit: contain;" />` :
-          `<div style="color: rgba(255,255,255,0.2); font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 500;">NO PREVIEW</div>`
-        }
+        `<img src="${processDataURL(data.dataUrl)}" style="width: 100%; height: 100%; object-fit: contain;" />` :
+        `<div style="color: rgba(255,255,255,0.2); font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 500;">NO PREVIEW</div>`
+      }
           </div>
-          <div style="width: 100%; text-align: center; font-family: 'JetBrains Mono', monospace; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            <div style="font-size: 8px; opacity: 0.5; margin-bottom: 2px; letter-spacing: 0.02em;">${fileName}</div>
+          <div style="width: 100%; text-align: center; font-family: 'JetBrains Mono', monospace; color: var(--accent); overflow: hidden;">
+            <div style="font-size: 8px; opacity: 0.5; margin-bottom: 2px; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${fileName}</div>
             <div style="font-size: ${labelFontSize}; font-weight: 800; letter-spacing: 0.08em; opacity: 0.9;">${data.label.toUpperCase()}</div>
           </div>
         </div>
       `;
+  });
+
+  // Extract colors from emitter data if available
+  const colorInfos = emitterData && emitterData.originalContent
+    ? extractColorsFromEmitterContent(emitterData.originalContent)
+    : [];
+
+  // Build color swatches
+  let colorSwatches = '';
+  if (Array.isArray(colorInfos) && colorInfos.length > 0) {
+    const colors = [];
+    colorInfos.forEach(c => {
+      if (Array.isArray(c.colors) && c.colors.length > 0) {
+        colors.push(...c.colors);
+      }
     });
-
-    // Extract colors from emitter data if available
-    const colorInfos = emitterData && emitterData.originalContent
-      ? extractColorsFromEmitterContent(emitterData.originalContent)
-      : [];
-
-    // Build color swatches
-    let colorSwatches = '';
-    if (Array.isArray(colorInfos) && colorInfos.length > 0) {
-      const colors = [];
-      colorInfos.forEach(c => {
-        if (Array.isArray(c.colors) && c.colors.length > 0) {
-          colors.push(...c.colors);
-        }
-      });
-      const unique = Array.from(new Set(colors)).slice(0, 8); // Show up to 8 colors
-      if (unique.length > 0) {
-        colorSwatches = `
-          <div style="display: flex; gap: 5px; justify-content: center; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); margin-top: 4px;">
+    const unique = Array.from(new Set(colors)).slice(0, 8); // Show up to 8 colors
+    if (unique.length > 0) {
+      colorSwatches = `
+          <div style="display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); margin-top: 4px;">
             ${unique.map(col =>
-          `<div style="width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.25); background: ${col}; box-shadow: 0 2px 6px rgba(0,0,0,0.5);" title="${col}"></div>`
-        ).join('')}
+        `<div style="width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.25); background: ${col}; box-shadow: 0 2px 6px rgba(0,0,0,0.5);" title="${col}"></div>`
+      ).join('')}
           </div>
         `;
-      }
     }
+  }
 
-    preview.innerHTML = `
+  preview.innerHTML = `
       <div style="display: flex; flex-direction: column; gap: 12px;">
         <div style="text-align: left; color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.12em; display: flex; align-items: center; gap: 10px; opacity: 0.9;">
            <span style="width: 8px; height: 8px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 8px var(--accent);"></span>
-           TEXTURE PREVIEW
+           TEXTURE PREVIEW (${textureCount})
         </div>
         <div style="${gridStyle}">
           ${itemsHtml}
         </div>
         ${colorSwatches}
-        <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: rgba(255,255,255,0.3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); letter-spacing: 0.02em;">
-          ${firstTexturePath.split('/').pop()}
-        </div>
       </div>
     `;
 
-    document.body.appendChild(preview);
+  document.body.appendChild(preview);
 
-    // Interaction logic
-    preview.querySelectorAll('.texture-item').forEach(el => {
-      // Click logic to open asset preview
-      el.onclick = (event) => {
-        event.stopPropagation();
-        const idx = parseInt(el.getAttribute('data-idx'));
-        const data = textureData[idx];
-        if (data) {
-          // Remove preview immediately on click
-          preview.remove();
-          if (textureCloseTimerRef.current) {
-            clearTimeout(textureCloseTimerRef.current);
-            textureCloseTimerRef.current = null;
-          }
-          // Pass the resolved path if available, otherwise original
-          openAssetPreview(data.resolvedDiskPath || data.path, data.dataUrl);
+  // Interaction logic
+  preview.querySelectorAll('.texture-item').forEach(el => {
+    // Click logic to open asset preview
+    el.onclick = (event) => {
+      event.stopPropagation();
+      const idx = parseInt(el.getAttribute('data-idx'));
+      const data = textureData[idx];
+      if (data) {
+        // Remove preview immediately on click
+        preview.remove();
+        if (textureCloseTimerRef.current) {
+          clearTimeout(textureCloseTimerRef.current);
+          textureCloseTimerRef.current = null;
         }
-      };
-
-      // Right-click logic to open in external app
-      el.oncontextmenu = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const idx = parseInt(el.getAttribute('data-idx'));
-        const data = textureData[idx];
-        if (data && data.resolvedDiskPath && window.require) {
-          try {
-            const { shell } = window.require('electron');
-            if (shell) {
-              shell.openPath(data.resolvedDiskPath);
-              // Feedback: maybe flash border?
-              el.querySelector('div').style.borderColor = '#10b981'; // Green success flash
-              setTimeout(() => {
-                el.querySelector('div').style.borderColor = 'var(--accent)';
-              }, 500);
-            }
-          } catch (err) {
-            console.error('[Port] Error opening external app:', err);
-          }
-        }
-      };
-
-      el.onmouseenter = () => {
-        el.style.transform = 'translateY(-2px)';
-        el.querySelector('div').style.borderColor = 'var(--accent)';
-        el.querySelector('div').style.boxShadow = '0 6px 16px rgba(0,0,0,0.4)';
-      };
-      el.onmouseleave = () => {
-        el.style.transform = 'translateY(0)';
-        el.querySelector('div').style.borderColor = 'rgba(255,255,255,0.08)';
-        el.querySelector('div').style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
-      };
-    });
-
-    // Positioning - prefer LEFT of button like Paint
-    const previewRect = preview.getBoundingClientRect();
-    let previewTop = rect.top + (rect.height / 2) - (previewRect.height / 2);
-    let previewLeft = rect.left - previewWidth - 14;
-
-    // Check left boundary
-    if (previewLeft < 10) {
-      // If not enough space on left, spawn on right
-      previewLeft = rect.right + 14;
-    }
-
-    // Check right boundary (in case it flipped to right and is too wide)
-    if (previewLeft + previewRect.width > window.innerWidth - 10) {
-      previewLeft = window.innerWidth - previewRect.width - 10;
-    }
-
-    // Check vertical boundaries
-    if (previewTop < 10) previewTop = 10;
-    if (previewTop + previewRect.height > window.innerHeight - 10) {
-      previewTop = window.innerHeight - previewRect.height - 10;
-    }
-
-    preview.style.top = `${previewTop}px`;
-    preview.style.left = `${previewLeft}px`;
-
-    // Persistent hover logic
-    preview.onmouseenter = () => {
-      if (textureCloseTimerRef.current) {
-        clearTimeout(textureCloseTimerRef.current);
-        textureCloseTimerRef.current = null;
+        // Pass the resolved path if available, otherwise original
+        openAssetPreview(data.resolvedDiskPath || data.path, data.dataUrl);
       }
     };
 
-    preview.onmouseleave = () => {
-      textureCloseTimerRef.current = setTimeout(() => {
-        preview.remove();
-      }, 500);
+    // Right-click logic to open in external app
+    el.oncontextmenu = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const idx = parseInt(el.getAttribute('data-idx'));
+      const data = textureData[idx];
+      if (data && data.resolvedDiskPath && window.require) {
+        try {
+          const { shell } = window.require('electron');
+          if (shell) {
+            shell.openPath(data.resolvedDiskPath);
+            // Feedback: maybe flash border?
+            el.querySelector('div').style.borderColor = '#10b981'; // Green success flash
+            setTimeout(() => {
+              el.querySelector('div').style.borderColor = 'var(--accent)';
+            }, 500);
+          }
+        } catch (err) {
+          console.error('[Port] Error opening external app:', err);
+        }
+      }
     };
-  };
 
-  const showTextureError = (texturePath, buttonElement) => {
-    // Clear any existing close timer
+    el.onmouseenter = () => {
+      el.style.transform = 'translateY(-2px)';
+      el.querySelector('div').style.borderColor = 'var(--accent)';
+      el.querySelector('div').style.boxShadow = '0 6px 16px rgba(0,0,0,0.4)';
+    };
+    el.onmouseleave = () => {
+      el.style.transform = 'translateY(0)';
+      el.querySelector('div').style.borderColor = 'rgba(255,255,255,0.08)';
+      el.querySelector('div').style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+    };
+  });
+
+  // Positioning - prefer LEFT of button like Paint
+  const previewRect = preview.getBoundingClientRect();
+  let previewTop = rect.top + (rect.height / 2) - (previewRect.height / 2);
+  let previewLeft = rect.left - previewWidth - 14;
+
+  // Check left boundary
+  if (previewLeft < 10) {
+    // If not enough space on left, spawn on right
+    previewLeft = rect.right + 14;
+  }
+
+  // Check right boundary (in case it flipped to right and is too wide)
+  if (previewLeft + previewRect.width > window.innerWidth - 10) {
+    previewLeft = window.innerWidth - previewRect.width - 10;
+  }
+
+  // Check vertical boundaries
+  if (previewTop < 10) previewTop = 10;
+  if (previewTop + previewRect.height > window.innerHeight - 10) {
+    previewTop = window.innerHeight - previewRect.height - 10;
+  }
+
+  preview.style.top = `${previewTop}px`;
+  preview.style.left = `${previewLeft}px`;
+
+  // Persistent hover logic
+  preview.onmouseenter = () => {
     if (textureCloseTimerRef.current) {
       clearTimeout(textureCloseTimerRef.current);
       textureCloseTimerRef.current = null;
     }
+  };
 
-    // Remove existing
-    const existing = document.getElementById('port-texture-hover-preview');
-    if (existing) existing.remove();
+  preview.onmouseleave = () => {
+    textureCloseTimerRef.current = setTimeout(() => {
+      preview.remove();
+    }, 500);
+  };
+};
 
-    const rect = buttonElement.getBoundingClientRect();
+const showTextureError = (texturePath, buttonElement) => {
+  // Clear any existing close timer
+  if (textureCloseTimerRef.current) {
+    clearTimeout(textureCloseTimerRef.current);
+    textureCloseTimerRef.current = null;
+  }
 
-    const preview = document.createElement('div');
-    preview.id = 'port-texture-hover-preview';
-    preview.style.cssText = `
+  // Remove existing
+  const existing = document.getElementById('port-texture-hover-preview');
+  if (existing) existing.remove();
+
+  const rect = buttonElement.getBoundingClientRect();
+
+  const preview = document.createElement('div');
+  preview.id = 'port-texture-hover-preview';
+  preview.style.cssText = `
       position: fixed;
       z-index: 10000;
       background: rgba(15, 23, 42, 0.9);
@@ -3834,1122 +3859,1091 @@ const Port = () => {
       pointer-events: auto;
     `;
 
-    preview.innerHTML = `
+  preview.innerHTML = `
       <div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
         <div style="font-weight: bold;">Failed to load texture</div>
         <div style="font-size: 10px; opacity: 0.7; word-break: break-all; text-align: center;">${texturePath}</div>
       </div>
     `;
 
-    document.body.appendChild(preview);
+  document.body.appendChild(preview);
 
-    const previewRect = preview.getBoundingClientRect();
-    let previewTop = rect.top + (rect.height / 2) - (previewRect.height / 2);
-    let previewLeft = rect.right + 12;
+  const previewRect = preview.getBoundingClientRect();
+  let previewTop = rect.top + (rect.height / 2) - (previewRect.height / 2);
+  let previewLeft = rect.right + 12;
 
-    if (previewLeft + previewRect.width > window.innerWidth - 10) {
-      previewLeft = rect.left - previewRect.width - 12;
+  if (previewLeft + previewRect.width > window.innerWidth - 10) {
+    previewLeft = rect.left - previewRect.width - 12;
+  }
+
+  preview.style.top = `${previewTop}px`;
+  preview.style.left = `${previewLeft}px`;
+
+  // Persistent hover logic for error as well
+  preview.onmouseenter = () => {
+    if (textureCloseTimerRef.current) {
+      clearTimeout(textureCloseTimerRef.current);
+      textureCloseTimerRef.current = null;
     }
-
-    preview.style.top = `${previewTop}px`;
-    preview.style.left = `${previewLeft}px`;
-
-    // Persistent hover logic for error as well
-    preview.onmouseenter = () => {
-      if (textureCloseTimerRef.current) {
-        clearTimeout(textureCloseTimerRef.current);
-        textureCloseTimerRef.current = null;
-      }
-    };
-
-    preview.onmouseleave = () => {
-      textureCloseTimerRef.current = setTimeout(() => {
-        preview.remove();
-      }, 500);
-    };
   };
 
+  preview.onmouseleave = () => {
+    textureCloseTimerRef.current = setTimeout(() => {
+      preview.remove();
+    }, 500);
+  };
+};
 
 
 
 
 
 
-  // Remove deleted emitters from file content
-  const removeDeletedEmittersFromContent = (lines, deletedEmittersMap) => {
 
-    // Get list of systems that have deleted emitters
-    const systemsWithDeletions = new Set();
-    for (const [key, value] of deletedEmittersMap.entries()) {
-      systemsWithDeletions.add(value.systemKey);
+// Remove deleted emitters from file content
+const removeDeletedEmittersFromContent = (lines, deletedEmittersMap) => {
+
+  // Get list of systems that have deleted emitters
+  const systemsWithDeletions = new Set();
+  for (const [key, value] of deletedEmittersMap.entries()) {
+    systemsWithDeletions.add(value.systemKey);
+  }
+
+  const modifiedLines = [];
+  let currentSystemKey = null;
+  let inComplexEmitterSection = false;
+  let complexEmitterBracketDepth = 0;
+  let emitterCountInSection = 0;
+  let totalEmittersInSection = 0;
+  let shouldProcessSystem = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmedLine = line.trim();
+
+    // Check if this line starts a VfxSystemDefinitionData block (support quoted and hash keys)
+    if (trimmedLine.includes('VfxSystemDefinitionData {')) {
+      const headerMatch = trimmedLine.match(/^(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*=\s*VfxSystemDefinitionData/);
+      if (headerMatch) {
+        currentSystemKey = headerMatch[1] || headerMatch[2];
+        shouldProcessSystem = systemsWithDeletions.has(currentSystemKey);
+      } else {
+        shouldProcessSystem = false;
+      }
+      inComplexEmitterSection = false;
+      complexEmitterBracketDepth = 0;
+      emitterCountInSection = 0;
+      totalEmittersInSection = 0;
     }
 
-    const modifiedLines = [];
-    let currentSystemKey = null;
-    let inComplexEmitterSection = false;
-    let complexEmitterBracketDepth = 0;
-    let emitterCountInSection = 0;
-    let totalEmittersInSection = 0;
-    let shouldProcessSystem = false;
+    // Check if we're entering complexEmitterDefinitionData section
+    if (trimmedLine.includes('complexEmitterDefinitionData: list[pointer] = {')) {
+      inComplexEmitterSection = true;
+      complexEmitterBracketDepth = 1;
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const trimmedLine = line.trim();
+      // Count total emitters in this section first
+      let tempBracketDepth = 1;
+      for (let j = i + 1; j < lines.length; j++) {
+        const tempLine = lines[j];
+        const openBrackets = (tempLine.match(/{/g) || []).length;
+        const closeBrackets = (tempLine.match(/}/g) || []).length;
+        tempBracketDepth += openBrackets - closeBrackets;
 
-      // Check if this line starts a VfxSystemDefinitionData block (support quoted and hash keys)
-      if (trimmedLine.includes('VfxSystemDefinitionData {')) {
-        const headerMatch = trimmedLine.match(/^(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*=\s*VfxSystemDefinitionData/);
-        if (headerMatch) {
-          currentSystemKey = headerMatch[1] || headerMatch[2];
-          shouldProcessSystem = systemsWithDeletions.has(currentSystemKey);
-        } else {
-          shouldProcessSystem = false;
+        if (tempLine.trim().startsWith('VfxEmitterDefinitionData {')) {
+          totalEmittersInSection++;
         }
-        inComplexEmitterSection = false;
-        complexEmitterBracketDepth = 0;
-        emitterCountInSection = 0;
-        totalEmittersInSection = 0;
+
+        if (tempBracketDepth <= 0) {
+          break;
+        }
       }
+    }
 
-      // Check if we're entering complexEmitterDefinitionData section
-      if (trimmedLine.includes('complexEmitterDefinitionData: list[pointer] = {')) {
-        inComplexEmitterSection = true;
-        complexEmitterBracketDepth = 1;
+    // Track complexEmitterDefinitionData bracket depth
+    if (inComplexEmitterSection) {
+      const openBrackets = (line.match(/{/g) || []).length;
+      const closeBrackets = (line.match(/}/g) || []).length;
+      complexEmitterBracketDepth += openBrackets - closeBrackets;
 
-        // Count total emitters in this section first
-        let tempBracketDepth = 1;
+      if (complexEmitterBracketDepth <= 0) {
+        inComplexEmitterSection = false;
+      }
+    }
+
+    // Check if this line starts a VfxEmitterDefinitionData block
+    if (trimmedLine.startsWith('VfxEmitterDefinitionData {')) {
+      emitterCountInSection++;
+
+
+      // Only process emitters if this system has deletions
+      if (!shouldProcessSystem) {
+      } else {
+        // Look ahead to find the emitter name and end
+        let emitterName = null;
+        let emitterStartLine = i;
+        let emitterEndLine = i;
+        let emitterBracketDepth = 1;
+
+        // Search for emitterName and track bracket depth to find the entire emitter block
+        let foundEmitterName = false;
         for (let j = i + 1; j < lines.length; j++) {
-          const tempLine = lines[j];
-          const openBrackets = (tempLine.match(/{/g) || []).length;
-          const closeBrackets = (tempLine.match(/}/g) || []).length;
-          tempBracketDepth += openBrackets - closeBrackets;
+          const searchLine = lines[j];
 
-          if (tempLine.trim().startsWith('VfxEmitterDefinitionData {')) {
-            totalEmittersInSection++;
+          // Check for emitterName with flexible spacing
+          if (!foundEmitterName && searchLine.includes('emitterName: string = "')) {
+            const match = searchLine.match(/emitterName:\s*string\s*=\s*"([^"]+)"/);
+            if (match) {
+              emitterName = match[1];
+              foundEmitterName = true;
+            }
           }
 
-          if (tempBracketDepth <= 0) {
+          // Track bracket depth to find end of emitter block
+          const openBrackets = (searchLine.match(/{/g) || []).length;
+          const closeBrackets = (searchLine.match(/}/g) || []).length;
+          emitterBracketDepth += openBrackets - closeBrackets;
+
+
+          if (emitterBracketDepth <= 0) {
+            emitterEndLine = j;
             break;
           }
         }
-      }
 
-      // Track complexEmitterDefinitionData bracket depth
-      if (inComplexEmitterSection) {
-        const openBrackets = (line.match(/{/g) || []).length;
-        const closeBrackets = (line.match(/}/g) || []).length;
-        complexEmitterBracketDepth += openBrackets - closeBrackets;
-
-        if (complexEmitterBracketDepth <= 0) {
-          inComplexEmitterSection = false;
+        // Debug: Log if no emitter name was found
+        if (!emitterName) {
+          // Skip this emitter block since we can't identify it
+          i = emitterEndLine;
+          continue;
         }
-      }
 
-      // Check if this line starts a VfxEmitterDefinitionData block
-      if (trimmedLine.startsWith('VfxEmitterDefinitionData {')) {
-        emitterCountInSection++;
+        // Check if this emitter should be deleted from this specific system
+        if (emitterName && currentSystemKey) {
 
+          // Only check for deletion in the specific system where the emitter was deleted
+          const key = `${currentSystemKey}:${emitterName}`;
 
-        // Only process emitters if this system has deletions
-        if (!shouldProcessSystem) {
-        } else {
-          // Look ahead to find the emitter name and end
-          let emitterName = null;
-          let emitterStartLine = i;
-          let emitterEndLine = i;
-          let emitterBracketDepth = 1;
+          if (deletedEmittersMap.has(key)) {
 
-          // Search for emitterName and track bracket depth to find the entire emitter block
-          let foundEmitterName = false;
-          for (let j = i + 1; j < lines.length; j++) {
-            const searchLine = lines[j];
+            // Check if this is the last emitter in the section
+            const isLastEmitter = emitterCountInSection === totalEmittersInSection;
 
-            // Check for emitterName with flexible spacing
-            if (!foundEmitterName && searchLine.includes('emitterName: string = "')) {
-              const match = searchLine.match(/emitterName:\s*string\s*=\s*"([^"]+)"/);
-              if (match) {
-                emitterName = match[1];
-                foundEmitterName = true;
-              }
-            }
+            // Skip the entire emitter block
+            i = emitterEndLine; // Skip to end of emitter
 
-            // Track bracket depth to find end of emitter block
-            const openBrackets = (searchLine.match(/{/g) || []).length;
-            const closeBrackets = (searchLine.match(/}/g) || []).length;
-            emitterBracketDepth += openBrackets - closeBrackets;
-
-
-            if (emitterBracketDepth <= 0) {
-              emitterEndLine = j;
-              break;
-            }
-          }
-
-          // Debug: Log if no emitter name was found
-          if (!emitterName) {
-            // Skip this emitter block since we can't identify it
-            i = emitterEndLine;
-            continue;
-          }
-
-          // Check if this emitter should be deleted from this specific system
-          if (emitterName && currentSystemKey) {
-
-            // Only check for deletion in the specific system where the emitter was deleted
-            const key = `${currentSystemKey}:${emitterName}`;
-
-            if (deletedEmittersMap.has(key)) {
-
-              // Check if this is the last emitter in the section
-              const isLastEmitter = emitterCountInSection === totalEmittersInSection;
-
-              // Skip the entire emitter block
-              i = emitterEndLine; // Skip to end of emitter
-
-              // If this is the last emitter, don't delete the bracket under it
-              if (isLastEmitter) {
-              } else {
-                // Delete the bracket under this emitter (next line should be a closing bracket)
-                if (i + 1 < lines.length && lines[i + 1].trim() === '}') {
-                  i++; // Skip the bracket under the emitter
-                }
-              }
-
-              continue; // Don't add this emitter to modifiedLines
+            // If this is the last emitter, don't delete the bracket under it
+            if (isLastEmitter) {
             } else {
+              // Delete the bracket under this emitter (next line should be a closing bracket)
+              if (i + 1 < lines.length && lines[i + 1].trim() === '}') {
+                i++; // Skip the bracket under the emitter
+              }
             }
+
+            continue; // Don't add this emitter to modifiedLines
+          } else {
           }
         }
       }
-
-      // Keep this line
-      modifiedLines.push(line);
     }
 
-    return modifiedLines;
-  };
+    // Keep this line
+    modifiedLines.push(line);
+  }
 
-  // Generate modified Python content with updated emitters
-  const generateModifiedPyContent = (originalContent, systems) => {
+  return modifiedLines;
+};
 
-    const lines = originalContent.split('\n');
-    let modifiedLines = [...lines];
+// Generate modified Python content with updated emitters
+const generateModifiedPyContent = (originalContent, systems) => {
 
-    // First, remove deleted emitters from the file
-    if (deletedEmitters.size > 0) {
-      modifiedLines = removeDeletedEmittersFromContent(modifiedLines, deletedEmitters);
-    }
+  const lines = originalContent.split('\n');
+  let modifiedLines = [...lines];
 
-    // For each system, find where to insert the new emitters
-    Object.values(systems).forEach(system => {
-      if (system.emitters && system.emitters.length > 0) {
-        // Find ported emitters (emitters that have originalContent)
-        const portedEmitters = system.emitters.filter(emitter => emitter.originalContent);
+  // First, remove deleted emitters from the file
+  if (deletedEmitters.size > 0) {
+    modifiedLines = removeDeletedEmittersFromContent(modifiedLines, deletedEmitters);
+  }
 
-        if (portedEmitters.length === 0) {
-          return; // Skip if no ported emitters
-        }
+  // For each system, find where to insert the new emitters
+  Object.values(systems).forEach(system => {
+    if (system.emitters && system.emitters.length > 0) {
+      // Find ported emitters (emitters that have originalContent)
+      const portedEmitters = system.emitters.filter(emitter => emitter.originalContent);
 
-        const displayName = system.particleName || system.name || system.key;
+      if (portedEmitters.length === 0) {
+        return; // Skip if no ported emitters
+      }
 
-        // Show what the parser thinks this system looks like
+      const displayName = system.particleName || system.name || system.key;
 
-        // Find the complexEmitterDefinitionData section within this system using modifiedLines
-        let emitterSectionStart = -1;
-        let emitterSectionEnd = -1;
-        let bracketDepth = 0;
-        let inEmitterSection = false;
+      // Show what the parser thinks this system looks like
+
+      // Find the complexEmitterDefinitionData section within this system using modifiedLines
+      let emitterSectionStart = -1;
+      let emitterSectionEnd = -1;
+      let bracketDepth = 0;
+      let inEmitterSection = false;
 
 
-        // Search for the exact system by name to avoid confusion
-        let foundCorrectSystem = false;
-        let systemMatches = [];
+      // Search for the exact system by name to avoid confusion
+      let foundCorrectSystem = false;
+      let systemMatches = [];
 
-        // First, find all potential matches
-        for (let i = 0; i < modifiedLines.length; i++) {
-          const line = modifiedLines[i];
-          const trimmedLine = line.trim();
+      // First, find all potential matches
+      for (let i = 0; i < modifiedLines.length; i++) {
+        const line = modifiedLines[i];
+        const trimmedLine = line.trim();
 
-          if (trimmedLine.includes('= VfxSystemDefinitionData {')) {
-            // Extract the system key from this line
-            const keyMatch = trimmedLine.match(/^(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*=\s*VfxSystemDefinitionData/);
-            if (keyMatch) {
-              const foundKey = keyMatch[1] || keyMatch[2];
-              systemMatches.push({ line: i, key: foundKey, content: trimmedLine });
+        if (trimmedLine.includes('= VfxSystemDefinitionData {')) {
+          // Extract the system key from this line
+          const keyMatch = trimmedLine.match(/^(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*=\s*VfxSystemDefinitionData/);
+          if (keyMatch) {
+            const foundKey = keyMatch[1] || keyMatch[2];
+            systemMatches.push({ line: i, key: foundKey, content: trimmedLine });
 
-              if (foundKey === system.key) {
-                foundCorrectSystem = true;
+            if (foundKey === system.key) {
+              foundCorrectSystem = true;
 
-                // Now look for complexEmitterDefinitionData in the next few lines
-                for (let j = i; j < Math.min(i + 20, modifiedLines.length); j++) {
-                  const searchLine = modifiedLines[j];
-                  const searchTrimmed = searchLine.trim();
+              // Now look for complexEmitterDefinitionData in the next few lines
+              for (let j = i; j < Math.min(i + 20, modifiedLines.length); j++) {
+                const searchLine = modifiedLines[j];
+                const searchTrimmed = searchLine.trim();
 
-                  if (searchTrimmed.includes('complexEmitterDefinitionData: list[pointer] = {')) {
-                    emitterSectionStart = j;
+                if (searchTrimmed.includes('complexEmitterDefinitionData: list[pointer] = {')) {
+                  emitterSectionStart = j;
 
-                    // Check if this is an empty complexEmitterDefinitionData
-                    if (searchTrimmed.includes('complexEmitterDefinitionData: list[pointer] = {}')) {
-                      emitterSectionEnd = j; // Same line for empty sections
-                      break;
-                    } else {
-                      // Multi-line format with existing emitters
-                      inEmitterSection = true;
-                      bracketDepth = 1;
+                  // Check if this is an empty complexEmitterDefinitionData
+                  if (searchTrimmed.includes('complexEmitterDefinitionData: list[pointer] = {}')) {
+                    emitterSectionEnd = j; // Same line for empty sections
+                    break;
+                  } else {
+                    // Multi-line format with existing emitters
+                    inEmitterSection = true;
+                    bracketDepth = 1;
 
-                      // Find the end of the complexEmitterDefinitionData section
-                      for (let k = j + 1; k < modifiedLines.length; k++) {
-                        const endLine = modifiedLines[k];
-                        const endOpenBrackets = (endLine.match(/{/g) || []).length;
-                        const endCloseBrackets = (endLine.match(/}/g) || []).length;
-                        bracketDepth += endOpenBrackets - endCloseBrackets;
+                    // Find the end of the complexEmitterDefinitionData section
+                    for (let k = j + 1; k < modifiedLines.length; k++) {
+                      const endLine = modifiedLines[k];
+                      const endOpenBrackets = (endLine.match(/{/g) || []).length;
+                      const endCloseBrackets = (endLine.match(/}/g) || []).length;
+                      bracketDepth += endOpenBrackets - endCloseBrackets;
 
-                        if (bracketDepth <= 0) {
-                          emitterSectionEnd = k;
-                          break;
-                        }
+                      if (bracketDepth <= 0) {
+                        emitterSectionEnd = k;
+                        break;
                       }
-                      break;
                     }
+                    break;
                   }
                 }
-                break;
-              }
-            }
-          }
-        }
-
-
-        if (!foundCorrectSystem) {
-        } else {
-        }
-
-
-
-        if (emitterSectionStart !== -1 && emitterSectionEnd !== -1) {
-          console.log(`    Inserting ${portedEmitters.length} emitters into section (lines ${emitterSectionStart}-${emitterSectionEnd})`);
-
-          // Find the proper insertion point - look for existing emitters to match indentation
-          let insertionPoint = emitterSectionEnd;
-          let targetIndentation = '    '; // Default 4 spaces
-
-          // Check if any of the ported emitters were first in their original system
-          let needsBracketAbove = false;
-
-          // Look for existing VfxEmitterDefinitionData blocks to get indentation
-          let foundExistingEmitter = false;
-          for (let i = system.startLine; i <= system.endLine && i < modifiedLines.length; i++) {
-            const line = modifiedLines[i];
-            if (line.trim().startsWith('VfxEmitterDefinitionData {')) {
-              // Find the indentation of existing emitters
-              const match = line.match(/^(\s*)/);
-              if (match) {
-                targetIndentation = match[1];
-                console.log(`    Found existing emitter indentation: "${targetIndentation}"`);
-                foundExistingEmitter = true;
               }
               break;
             }
           }
-
-          // If no existing emitters found, use the indentation of the complexEmitterDefinitionData line
-          if (!foundExistingEmitter) {
-            const complexEmitterLine = modifiedLines[emitterSectionStart];
-            const match = complexEmitterLine.match(/^(\s*)/);
-            if (match) {
-              // Add 4 more spaces for emitter indentation
-              targetIndentation = match[1] + '    ';
-              console.log(`    Using complexEmitterDefinitionData indentation + 4 spaces: "${targetIndentation}"`);
-            }
-          }
-
-          // TEMPORARILY DISABLED - Check if any ported emitter was first in its original system
-          /*
-          for (const emitter of portedEmitters) {
-            if (emitter.wasFirstInOriginalSystem) {
-              needsBracketAbove = true;
-              console.log(`      Emitter "${emitter.name}" was first in original system, will add bracket above`);
-              break;
-            }
-          }
-          */
-
-          // Check if this is an empty complexEmitterDefinitionData section
-          const sectionContent = modifiedLines.slice(emitterSectionStart, emitterSectionEnd + 1).join('\n');
-          const isEmptySection = sectionContent.includes('complexEmitterDefinitionData: list[pointer] = {}');
-
-          if (isEmptySection) {
-            console.log(`    Empty complexEmitterDefinitionData section detected - inserting inside empty braces`);
-
-            const complexEmitterLine = modifiedLines[emitterSectionStart];
-
-            // For empty sections, modify the line to remove the closing brace
-            const modifiedComplexEmitterLine = complexEmitterLine.replace('{}', '{');
-            modifiedLines[emitterSectionStart] = modifiedComplexEmitterLine;
-            console.log(`    Modified complexEmitterDefinitionData line: "${modifiedComplexEmitterLine}"`);
-
-            // Insert right after the opening brace
-            insertionPoint = emitterSectionStart + 1;
-          } else {
-            console.log(`    Non-empty complexEmitterDefinitionData section - inserting before closing brace`);
-            // For non-empty sections, insert before the closing brace
-            insertionPoint = emitterSectionEnd;
-          }
-
-          // Generate new emitter content with proper indentation
-          let newEmitterContent = '';
-
-          // TEMPORARILY DISABLED - Add bracket only if any ported emitter was first in its original system
-          /*
-          if (needsBracketAbove) {
-            console.log(`      Adding bracket above for emitter that was first in original system`);
-            newEmitterContent += '\n            }\n';
-          } else {
-            console.log(`      No emitters were first in original system, skipping bracket addition`);
-          }
-          */
-
-          portedEmitters.forEach((emitter, index) => {
-            console.log(`      Adding emitter: ${emitter.name} (emitter #${index + 1} of ${portedEmitters.length})`);
-
-            // Use the original content but remove the last closing brace to avoid double braces
-            let emitterContent = emitter.originalContent.replace(/\n$/, '');
-            // Remove the last closing brace if it exists
-            if (emitterContent.trim().endsWith('}')) {
-              emitterContent = emitterContent.replace(/}\s*$/, '');
-            }
-            // Add proper indentation - match existing emitter indentation
-            const emitterLines = emitterContent.split('\n');
-            const indentedLines = emitterLines.map(line => {
-              if (line.trim().startsWith('VfxEmitterDefinitionData {')) {
-                return targetIndentation + line.trim(); // Match existing indentation
-              }
-              return line; // Keep existing indentation for nested content
-            });
-            emitterContent = indentedLines.join('\n');
-            // Add proper spacing and always add 1 bracket under the emitter with correct indentation
-            newEmitterContent += '\n' + emitterContent + '\n' + targetIndentation + '}\n';
-          });
-
-          // Insert the new emitters at the proper point
-          const beforeSection = modifiedLines.slice(0, insertionPoint);
-          const afterSection = modifiedLines.slice(insertionPoint);
-
-          if (isEmptySection) {
-            // For empty sections, add the closing brace after the emitter
-            const closingBrace = targetIndentation + '}';
-
-            // Split the new emitter content into lines for proper insertion
-            const emitterLines = newEmitterContent.trim().split('\n');
-            modifiedLines = [...beforeSection, ...emitterLines, closingBrace, ...afterSection];
-            console.log(`    Added closing brace for empty section: "${closingBrace}"`);
-          } else {
-            // For non-empty sections, just insert the emitter
-            const emitterLines = newEmitterContent.trim().split('\n');
-            modifiedLines = [...beforeSection, ...emitterLines, ...afterSection];
-          }
-
-          console.log(`    Successfully inserted emitters into system "${displayName}"`);
-        } else {
-          console.log(`    WARNING: Could not find complexEmitterDefinitionData section for system "${displayName}"`);
         }
       }
-    });
 
-    console.log(`Final modified content length: ${modifiedLines.join('\n').length} characters`);
-    return modifiedLines.join('\n');
-  };
 
-  const toggleSystemCollapse = (systemKey) => {
-    setCollapsedSystems(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(systemKey)) {
-        newSet.delete(systemKey);
+      if (!foundCorrectSystem) {
       } else {
-        newSet.add(systemKey);
       }
-      return newSet;
-    });
-  };
 
-  const renderParticleSystems = (systems, isTarget = true) => {
-    if (!systems || systems.length === 0) {
-      return (
-        <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--accent)' }}>
-          {isTarget ? 'No target bin loaded' : 'No donor bin loaded'}
-        </div>
-      );
+
+
+      if (emitterSectionStart !== -1 && emitterSectionEnd !== -1) {
+        console.log(`    Inserting ${portedEmitters.length} emitters into section (lines ${emitterSectionStart}-${emitterSectionEnd})`);
+
+        // Find the proper insertion point - look for existing emitters to match indentation
+        let insertionPoint = emitterSectionEnd;
+        let targetIndentation = '    '; // Default 4 spaces
+
+        // Check if any of the ported emitters were first in their original system
+        let needsBracketAbove = false;
+
+        // Look for existing VfxEmitterDefinitionData blocks to get indentation
+        let foundExistingEmitter = false;
+        for (let i = system.startLine; i <= system.endLine && i < modifiedLines.length; i++) {
+          const line = modifiedLines[i];
+          if (line.trim().startsWith('VfxEmitterDefinitionData {')) {
+            // Find the indentation of existing emitters
+            const match = line.match(/^(\s*)/);
+            if (match) {
+              targetIndentation = match[1];
+              console.log(`    Found existing emitter indentation: "${targetIndentation}"`);
+              foundExistingEmitter = true;
+            }
+            break;
+          }
+        }
+
+        // If no existing emitters found, use the indentation of the complexEmitterDefinitionData line
+        if (!foundExistingEmitter) {
+          const complexEmitterLine = modifiedLines[emitterSectionStart];
+          const match = complexEmitterLine.match(/^(\s*)/);
+          if (match) {
+            // Add 4 more spaces for emitter indentation
+            targetIndentation = match[1] + '    ';
+            console.log(`    Using complexEmitterDefinitionData indentation + 4 spaces: "${targetIndentation}"`);
+          }
+        }
+
+        // TEMPORARILY DISABLED - Check if any ported emitter was first in its original system
+        /*
+        for (const emitter of portedEmitters) {
+          if (emitter.wasFirstInOriginalSystem) {
+            needsBracketAbove = true;
+            console.log(`      Emitter "${emitter.name}" was first in original system, will add bracket above`);
+            break;
+          }
+        }
+        */
+
+        // Check if this is an empty complexEmitterDefinitionData section
+        const sectionContent = modifiedLines.slice(emitterSectionStart, emitterSectionEnd + 1).join('\n');
+        const isEmptySection = sectionContent.includes('complexEmitterDefinitionData: list[pointer] = {}');
+
+        if (isEmptySection) {
+          console.log(`    Empty complexEmitterDefinitionData section detected - inserting inside empty braces`);
+
+          const complexEmitterLine = modifiedLines[emitterSectionStart];
+
+          // For empty sections, modify the line to remove the closing brace
+          const modifiedComplexEmitterLine = complexEmitterLine.replace('{}', '{');
+          modifiedLines[emitterSectionStart] = modifiedComplexEmitterLine;
+          console.log(`    Modified complexEmitterDefinitionData line: "${modifiedComplexEmitterLine}"`);
+
+          // Insert right after the opening brace
+          insertionPoint = emitterSectionStart + 1;
+        } else {
+          console.log(`    Non-empty complexEmitterDefinitionData section - inserting before closing brace`);
+          // For non-empty sections, insert before the closing brace
+          insertionPoint = emitterSectionEnd;
+        }
+
+        // Generate new emitter content with proper indentation
+        let newEmitterContent = '';
+
+        // TEMPORARILY DISABLED - Add bracket only if any ported emitter was first in its original system
+        /*
+        if (needsBracketAbove) {
+          console.log(`      Adding bracket above for emitter that was first in original system`);
+          newEmitterContent += '\n            }\n';
+        } else {
+          console.log(`      No emitters were first in original system, skipping bracket addition`);
+        }
+        */
+
+        portedEmitters.forEach((emitter, index) => {
+          console.log(`      Adding emitter: ${emitter.name} (emitter #${index + 1} of ${portedEmitters.length})`);
+
+          // Use the original content but remove the last closing brace to avoid double braces
+          let emitterContent = emitter.originalContent.replace(/\n$/, '');
+          // Remove the last closing brace if it exists
+          if (emitterContent.trim().endsWith('}')) {
+            emitterContent = emitterContent.replace(/}\s*$/, '');
+          }
+          // Add proper indentation - match existing emitter indentation
+          const emitterLines = emitterContent.split('\n');
+          const indentedLines = emitterLines.map(line => {
+            if (line.trim().startsWith('VfxEmitterDefinitionData {')) {
+              return targetIndentation + line.trim(); // Match existing indentation
+            }
+            return line; // Keep existing indentation for nested content
+          });
+          emitterContent = indentedLines.join('\n');
+          // Add proper spacing and always add 1 bracket under the emitter with correct indentation
+          newEmitterContent += '\n' + emitterContent + '\n' + targetIndentation + '}\n';
+        });
+
+        // Insert the new emitters at the proper point
+        const beforeSection = modifiedLines.slice(0, insertionPoint);
+        const afterSection = modifiedLines.slice(insertionPoint);
+
+        if (isEmptySection) {
+          // For empty sections, add the closing brace after the emitter
+          const closingBrace = targetIndentation + '}';
+
+          // Split the new emitter content into lines for proper insertion
+          const emitterLines = newEmitterContent.trim().split('\n');
+          modifiedLines = [...beforeSection, ...emitterLines, closingBrace, ...afterSection];
+          console.log(`    Added closing brace for empty section: "${closingBrace}"`);
+        } else {
+          // For non-empty sections, just insert the emitter
+          const emitterLines = newEmitterContent.trim().split('\n');
+          modifiedLines = [...beforeSection, ...emitterLines, ...afterSection];
+        }
+
+        console.log(`    Successfully inserted emitters into system "${displayName}"`);
+      } else {
+        console.log(`    WARNING: Could not find complexEmitterDefinitionData section for system "${displayName}"`);
+      }
     }
+  });
 
-    const hasTargetSelected = !!selectedTargetSystem;
+  console.log(`Final modified content length: ${modifiedLines.join('\n').length} characters`);
+  return modifiedLines.join('\n');
+};
 
-    return systems.map(system => {
-      const isPressed = pressedSystemKey === system.key && !isTarget;
-      const isDragging = dragStartedKey === system.key && !isTarget;
+const toggleSystemCollapse = (systemKey) => {
+  setCollapsedSystems(prev => {
+    const newSet = new Set(prev);
+    if (newSet.has(systemKey)) {
+      newSet.delete(systemKey);
+    } else {
+      newSet.add(systemKey);
+    }
+    return newSet;
+  });
+};
 
-      return (
-        <div
-          key={system.key}
-          draggable={!isTarget}
-          // Removed hover preloading to eliminate scroll lag - textures will load on-demand when preview button is clicked
-          title={!isTarget ? 'Drag into Target to add full system' : undefined}
-          onMouseDown={(e) => {
-            if (isTarget || e.target.closest('button') || e.target.closest('.port-btn') || e.target.closest('.particle-title-div')) return;
-            setPressedSystemKey(system.key);
-            setDragStartedKey(null);
-          }}
-          onMouseUp={(e) => {
-            if (isTarget) return;
-            // Only reset if drag didn't start (user clicked but didn't drag)
-            if (!isDragging) {
-              setPressedSystemKey(null);
-            }
-          }}
-          onDragStart={async (e) => {
-            if (isTarget) return;
-            setDragStartedKey(system.key);
-            try {
-              // Prepare full VFX system content payload for donor systems
-              let fullContent = '';
-              try {
-                const extracted = extractVFXSystem(donorPyContent, system.name);
-                fullContent = extracted?.fullContent || extracted?.rawContent || system.rawContent || '';
-              } catch (_) {
-                fullContent = system.rawContent || '';
-              }
-              const particleNameForUi = (system && typeof system.particleName === 'string' && system.particleName.trim()) ? system.particleName : system.name;
-              const payload = {
-                name: particleNameForUi,
-                fullContent
-              };
-              e.dataTransfer.effectAllowed = 'copy';
-              e.dataTransfer.setData('application/x-vfxsys', JSON.stringify(payload));
-              // Create a drag image for better visual feedback
-              const el = e.currentTarget;
-              const dragImage = el.cloneNode(true);
-              dragImage.style.transform = 'rotate(2deg)';
-              dragImage.style.opacity = '0.9';
-              document.body.appendChild(dragImage);
-              dragImage.style.position = 'absolute';
-              dragImage.style.top = '-1000px';
-              e.dataTransfer.setDragImage(dragImage, 0, 0);
-              setTimeout(() => {
-                try {
-                  if (dragImage.parentNode === document.body) {
-                    document.body.removeChild(dragImage);
-                  }
-                } catch (e) {
-                  // Ignore - may already be removed
-                }
-              }, 0);
-            } catch (err) {
-              console.error('Drag start failed:', err);
-            }
-          }}
-          onDragEnd={(e) => {
-            if (isTarget) return;
+const renderParticleSystems = (systems, isTarget = true) => {
+  if (!systems || systems.length === 0) {
+    return (
+      <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--accent)' }}>
+        {isTarget ? 'No target bin loaded' : 'No donor bin loaded'}
+      </div>
+    );
+  }
+
+  const hasTargetSelected = !!selectedTargetSystem;
+
+  return systems.map(system => {
+    const isPressed = pressedSystemKey === system.key && !isTarget;
+    const isDragging = dragStartedKey === system.key && !isTarget;
+
+    return (
+      <div
+        key={system.key}
+        draggable={!isTarget}
+        // Removed hover preloading to eliminate scroll lag - textures will load on-demand when preview button is clicked
+        title={!isTarget ? 'Drag into Target to add full system' : undefined}
+        onMouseDown={(e) => {
+          if (isTarget || e.target.closest('button') || e.target.closest('.port-btn') || e.target.closest('.particle-title-div')) return;
+          setPressedSystemKey(system.key);
+          setDragStartedKey(null);
+        }}
+        onMouseUp={(e) => {
+          if (isTarget) return;
+          // Only reset if drag didn't start (user clicked but didn't drag)
+          if (!isDragging) {
             setPressedSystemKey(null);
-            setDragStartedKey(null);
-          }}
-          className={`particle-div ${isTarget && selectedTargetSystem === system.key ? 'selected-system' : ''}`}
-          onClick={(e) => {
-            if (isTarget) {
-              const clickedOnHeader = e.target.closest('.particle-title-div');
-
-              // Always activate/deactivate system when clicking on header or anywhere on the system
-              if (clickedOnHeader) {
-                setSelectedTargetSystem(selectedTargetSystem === system.key ? null : system.key);
-              }
-            }
-          }}
-          onDragOver={(e) => {
-            if (!isTarget) return;
-            // Allow dropping emitters into target systems
-            const types = e.dataTransfer?.types;
-            const hasEmitterType = types && (
-              Array.from(types).includes('application/x-vfxemitter') ||
-              (typeof types.contains === 'function' && types.contains('application/x-vfxemitter'))
-            );
-            const hasVfxType = types && (
-              Array.from(types).includes('application/x-vfxsys') ||
-              (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
-            );
-            // Allow VFX system drops to bubble up to parent container
-            if (hasVfxType) {
-              return; // Don't prevent default, let it bubble up
-            }
-            if (hasEmitterType) {
-              e.preventDefault();
-              e.stopPropagation();
-              e.dataTransfer.dropEffect = 'move';
-            }
-          }}
-          onDrop={(e) => {
-            if (!isTarget) return;
-            // Check if this is a VFX system drop - if so, let it bubble up to parent
-            const types = e.dataTransfer?.types;
-            const hasVfxType = types && (
-              Array.from(types).includes('application/x-vfxsys') ||
-              (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
-            );
-            if (hasVfxType) {
-              return; // Let VFX system drops bubble up to parent container
-            }
+          }
+        }}
+        onDragStart={async (e) => {
+          if (isTarget) return;
+          setDragStartedKey(system.key);
+          try {
+            // Prepare full VFX system content payload for donor systems
+            let fullContent = '';
             try {
-              e.preventDefault();
-              e.stopPropagation();
-              const data = e.dataTransfer.getData('application/x-vfxemitter');
-              if (!data) return;
-
-              const emitterData = JSON.parse(data);
-              const { sourceSystemKey, emitterName } = emitterData;
-
-              if (sourceSystemKey && emitterName && system.key !== sourceSystemKey) {
-                handleMoveEmitter(sourceSystemKey, emitterName, system.key);
-              }
-            } catch (error) {
-              console.error('Error handling emitter drop:', error);
+              const extracted = extractVFXSystem(donorPyContent, system.name);
+              fullContent = extracted?.fullContent || extracted?.rawContent || system.rawContent || '';
+            } catch (_) {
+              fullContent = system.rawContent || '';
             }
-          }}
+            const particleNameForUi = (system && typeof system.particleName === 'string' && system.particleName.trim()) ? system.particleName : system.name;
+            const payload = {
+              name: particleNameForUi,
+              fullContent
+            };
+            e.dataTransfer.effectAllowed = 'copy';
+            e.dataTransfer.setData('application/x-vfxsys', JSON.stringify(payload));
+            // Create a drag image for better visual feedback
+            const el = e.currentTarget;
+            const dragImage = el.cloneNode(true);
+            dragImage.style.transform = 'rotate(2deg)';
+            dragImage.style.opacity = '0.9';
+            document.body.appendChild(dragImage);
+            dragImage.style.position = 'absolute';
+            dragImage.style.top = '-1000px';
+            e.dataTransfer.setDragImage(dragImage, 0, 0);
+            setTimeout(() => {
+              try {
+                if (dragImage.parentNode === document.body) {
+                  document.body.removeChild(dragImage);
+                }
+              } catch (e) {
+                // Ignore - may already be removed
+              }
+            }, 0);
+          } catch (err) {
+            console.error('Drag start failed:', err);
+          }
+        }}
+        onDragEnd={(e) => {
+          if (isTarget) return;
+          setPressedSystemKey(null);
+          setDragStartedKey(null);
+        }}
+        className={`particle-div ${isTarget && selectedTargetSystem === system.key ? 'selected-system' : ''}`}
+        onClick={(e) => {
+          if (isTarget) {
+            const clickedOnHeader = e.target.closest('.particle-title-div');
+
+            // Always activate/deactivate system when clicking on header or anywhere on the system
+            if (clickedOnHeader) {
+              setSelectedTargetSystem(selectedTargetSystem === system.key ? null : system.key);
+            }
+          }
+        }}
+        onDragOver={(e) => {
+          if (!isTarget) return;
+          // Allow dropping emitters into target systems
+          const types = e.dataTransfer?.types;
+          const hasEmitterType = types && (
+            Array.from(types).includes('application/x-vfxemitter') ||
+            (typeof types.contains === 'function' && types.contains('application/x-vfxemitter'))
+          );
+          const hasVfxType = types && (
+            Array.from(types).includes('application/x-vfxsys') ||
+            (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
+          );
+          // Allow VFX system drops to bubble up to parent container
+          if (hasVfxType) {
+            return; // Don't prevent default, let it bubble up
+          }
+          if (hasEmitterType) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'move';
+          }
+        }}
+        onDrop={(e) => {
+          if (!isTarget) return;
+          // Check if this is a VFX system drop - if so, let it bubble up to parent
+          const types = e.dataTransfer?.types;
+          const hasVfxType = types && (
+            Array.from(types).includes('application/x-vfxsys') ||
+            (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
+          );
+          if (hasVfxType) {
+            return; // Let VFX system drops bubble up to parent container
+          }
+          try {
+            e.preventDefault();
+            e.stopPropagation();
+            const data = e.dataTransfer.getData('application/x-vfxemitter');
+            if (!data) return;
+
+            const emitterData = JSON.parse(data);
+            const { sourceSystemKey, emitterName } = emitterData;
+
+            if (sourceSystemKey && emitterName && system.key !== sourceSystemKey) {
+              handleMoveEmitter(sourceSystemKey, emitterName, system.key);
+            }
+          } catch (error) {
+            console.error('Error handling emitter drop:', error);
+          }
+        }}
+        style={{
+          cursor: isTarget ? 'pointer' : 'default',
+          outline: isPressed ? '2px dashed var(--accent)' : (isDragging ? '2px dashed var(--accent)' : 'none'),
+          outlineOffset: isPressed || isDragging ? '2px' : '0px',
+          userSelect: 'none',
+          outline: 'none',
+          opacity: isPressed ? '0.8' : (isDragging ? '0.7' : '1'),
+          transform: isPressed ? 'scale(0.98)' : (isDragging ? 'scale(0.95)' : 'scale(1)'),
+          transition: 'all 0.1s ease-out',
+          ...(isTarget && system.ported ? {
+            background: 'linear-gradient(180deg, color-mix(in srgb, var(--accent-green, #22c55e), transparent 65%), color-mix(in srgb, var(--accent-green, #22c55e), transparent 78%))',
+            border: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)'
+          } : {}),
+          ...(isTarget && draggedEmitter && draggedEmitter.sourceSystemKey !== system.key ? {
+            border: '2px dashed var(--accent)',
+            background: 'rgba(147, 51, 234, 0.1)'
+          } : {})
+        }}
+      >
+        <div
+          className="particle-title-div"
           style={{
-            cursor: isTarget ? 'pointer' : 'default',
-            outline: isPressed ? '2px dashed var(--accent)' : (isDragging ? '2px dashed var(--accent)' : 'none'),
-            outlineOffset: isPressed || isDragging ? '2px' : '0px',
-            userSelect: 'none',
-            outline: 'none',
-            opacity: isPressed ? '0.8' : (isDragging ? '0.7' : '1'),
-            transform: isPressed ? 'scale(0.98)' : (isDragging ? 'scale(0.95)' : 'scale(1)'),
-            transition: 'all 0.1s ease-out',
+            cursor: 'default',
+            padding: '0',
+            display: 'flex',
+            alignItems: 'stretch',
+            minHeight: '42px', // Match VFXHub height
             ...(isTarget && system.ported ? {
-              background: 'linear-gradient(180deg, color-mix(in srgb, var(--accent-green, #22c55e), transparent 65%), color-mix(in srgb, var(--accent-green, #22c55e), transparent 78%))',
-              border: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)'
-            } : {}),
-            ...(isTarget && draggedEmitter && draggedEmitter.sourceSystemKey !== system.key ? {
-              border: '2px dashed var(--accent)',
-              background: 'rgba(147, 51, 234, 0.1)'
+              background: 'color-mix(in srgb, var(--accent-green, #22c55e), transparent 75%)',
+              borderBottom: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)'
             } : {})
           }}
         >
+          {/* Expand Zone (approx 20% width area on left) */}
           <div
-            className="particle-title-div"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleSystemCollapse(system.key);
+            }}
             style={{
-              cursor: 'default',
-              padding: '0',
+              width: '40px',
               display: 'flex',
-              alignItems: 'stretch',
-              minHeight: '42px', // Match VFXHub height
-              ...(isTarget && system.ported ? {
-                background: 'color-mix(in srgb, var(--accent-green, #22c55e), transparent 75%)',
-                borderBottom: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)'
-              } : {})
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+              borderRight: '1px solid rgba(255,255,255,0.04)',
+              backgroundColor: 'rgba(255,255,255,0.02)'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+            title={collapsedSystems.has(system.key) ? "Expand" : "Collapse"}
+          >
+            <span style={{ fontSize: '14px', opacity: 0.9 }}>
+              {collapsedSystems.has(system.key) ? '🞂' : '▼'}
+            </span>
+          </div>
+
+          {/* Content Zone (The rest) */}
+          <div
+            className={`flex-1 flex items-center ${isTarget && selectedTargetSystem === system.key ? 'selected' : ''}`}
+            style={{
+              padding: '0 12px',
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            onClick={(e) => {
+              if (isTarget) {
+                setSelectedTargetSystem(selectedTargetSystem === system.key ? null : system.key);
+              }
             }}
           >
-            {/* Expand Zone (approx 20% width area on left) */}
-            <div
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleSystemCollapse(system.key);
-              }}
-              style={{
-                width: '40px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                transition: 'background 0.2s',
-                borderRight: '1px solid rgba(255,255,255,0.04)',
-                backgroundColor: 'rgba(255,255,255,0.02)'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
-              title={collapsedSystems.has(system.key) ? "Expand" : "Collapse"}
-            >
-              <span style={{ fontSize: '14px', opacity: 0.9 }}>
-                {collapsedSystems.has(system.key) ? '🞂' : '▼'}
-              </span>
-            </div>
+            {!isTarget && (
+              <button
+                className="port-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePortAllEmitters(system.key);
+                }}
+                title="Port all emitters from this system to selected target system"
+                disabled={!selectedTargetSystem}
+                style={{
+                  flexShrink: 0,
+                  minWidth: '28px',
+                  width: '28px',
+                  height: '28px',
+                  fontSize: '14px',
+                  padding: '0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ◄
+              </button>
+            )}
 
-            {/* Content Zone (The rest) */}
-            <div
-              className={`flex-1 flex items-center ${isTarget && selectedTargetSystem === system.key ? 'selected' : ''}`}
-              style={{
-                padding: '0 12px',
-                cursor: 'pointer',
-                transition: 'background 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-              onClick={(e) => {
-                if (isTarget) {
-                  setSelectedTargetSystem(selectedTargetSystem === system.key ? null : system.key);
-                }
-              }}
-            >
-              {!isTarget && (
-                <button
-                  className="port-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handlePortAllEmitters(system.key);
-                  }}
-                  title="Port all emitters from this system to selected target system"
-                  disabled={!selectedTargetSystem}
-                  style={{
-                    flexShrink: 0,
-                    minWidth: '28px',
-                    width: '28px',
-                    height: '28px',
-                    fontSize: '14px',
-                    padding: '0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  ◄
-                </button>
-              )}
-
-              {isTarget && renamingSystem && renamingSystem.systemKey === system.key ? (
-                <RenameInput
-                  initialValue={system.particleName || system.name || system.key}
-                  onConfirm={(newName) => {
-                    if (newName && newName.trim() !== '' && newName !== (system.particleName || system.name || system.key)) {
-                      handleRenameSystem(system.key, newName);
-                    } else {
-                      setRenamingSystem(null);
+            {isTarget && renamingSystem && renamingSystem.systemKey === system.key ? (
+              <RenameInput
+                initialValue={system.particleName || system.name || system.key}
+                onConfirm={(newName) => {
+                  if (newName && newName.trim() !== '' && newName !== (system.particleName || system.name || system.key)) {
+                    handleRenameSystem(system.key, newName);
+                  } else {
+                    setRenamingSystem(null);
+                  }
+                }}
+                onCancel={() => setRenamingSystem(null)}
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <div
+                className="label ellipsis flex-1"
+                title={system.particleName || system.name}
+                style={{
+                  color: 'var(--accent)',
+                  fontWeight: '600',
+                  fontSize: '0.95rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <span
+                  onDoubleClick={(e) => {
+                    if (isTarget) {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      setRenamingSystem({ systemKey: system.key, newName: system.particleName || system.name || system.key });
                     }
                   }}
-                  onCancel={() => setRenamingSystem(null)}
-                  onClick={(e) => e.stopPropagation()}
-                />
-              ) : (
-                <div
-                  className="label ellipsis flex-1"
-                  title={system.particleName || system.name}
                   style={{
-                    color: 'var(--accent)',
-                    fontWeight: '600',
-                    fontSize: '0.95rem',
                     cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
+                    display: 'inline-block',
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
                   }}
                 >
-                  <span
-                    onDoubleClick={(e) => {
-                      if (isTarget) {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        setRenamingSystem({ systemKey: system.key, newName: system.particleName || system.name || system.key });
-                      }
-                    }}
-                    style={{
-                      cursor: 'pointer',
-                      display: 'inline-block',
-                      flex: 1,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {(() => {
-                      const displayName = system.particleName || system.name || system.key;
-                      const shouldTrim = isTarget ? trimTargetNames : trimDonorNames;
-                      return shouldTrim ? getShortSystemName(displayName) : displayName;
-                    })()}
-                  </span>
-                  {selectedTargetSystem === system.key && isTarget && (
-                    <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>✓</span>
-                  )}
-                  <span style={{
-                    marginLeft: 'auto',
-                    opacity: 1.0,
-                    fontSize: '12px',
-                    background: 'rgba(255,255,255,0.08)',
-                    padding: '1px 7px',
-                    borderRadius: '12px',
-                    color: 'var(--text)',
-                    border: '1px solid rgba(255,255,255,0.05)',
-                    fontWeight: '600'
-                  }}>
-                    {system.emitters.length}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {isTarget && (
-              <div style={{ display: 'flex', alignItems: 'center', paddingRight: '8px' }}>
-                <SystemActionsButton
-                  system={system}
-                  hasResourceResolver={hasResourceResolver}
-                  hasSkinCharacterData={hasSkinCharacterData}
-                  menuAnchorEl={actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? actionsMenuAnchor.element : null}
-                  setActionsMenuAnchor={setActionsMenuAnchor}
-                  setShowMatrixModal={setShowMatrixModal}
-                  setMatrixModalState={setMatrixModalState}
-                  handleAddIdleParticles={handleAddIdleParticles}
-                  handleAddChildParticles={handleAddChildParticles}
-                  handleDeleteAllEmitters={handleDeleteAllEmitters}
-                />
+                  {(() => {
+                    const displayName = system.particleName || system.name || system.key;
+                    const shouldTrim = isTarget ? trimTargetNames : trimDonorNames;
+                    return shouldTrim ? getShortSystemName(displayName) : displayName;
+                  })()}
+                </span>
+                {selectedTargetSystem === system.key && isTarget && (
+                  <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>✓</span>
+                )}
+                <span style={{
+                  marginLeft: 'auto',
+                  opacity: 1.0,
+                  fontSize: '12px',
+                  background: 'rgba(255,255,255,0.08)',
+                  padding: '1px 7px',
+                  borderRadius: '12px',
+                  color: 'var(--text)',
+                  border: '1px solid rgba(255,255,255,0.05)',
+                  fontWeight: '600'
+                }}>
+                  {system.emitters.length}
+                </span>
               </div>
             )}
           </div>
-          {
-            !collapsedSystems.has(system.key) && system.emitters.map((emitter, index) => {
-              const isQuartzChild = isDivineLabChildParticle(emitter.name);
 
-              return (
-                <div
-                  key={index}
-                  className="emitter-div"
-                  draggable={isTarget}
-                  onDragStart={(e) => {
-                    if (!isTarget) return;
-                    e.stopPropagation();
-                    setDraggedEmitter({ sourceSystemKey: system.key, emitterName: emitter.name });
-                    e.dataTransfer.effectAllowed = 'move';
-                    e.dataTransfer.setData('application/x-vfxemitter', JSON.stringify({
-                      sourceSystemKey: system.key,
-                      emitterName: emitter.name
-                    }));
-                    // Create a drag image for better visual feedback
-                    const el = e.currentTarget;
-                    const dragImage = el.cloneNode(true);
-                    dragImage.style.transform = 'rotate(2deg)';
-                    dragImage.style.opacity = '0.9';
-                    document.body.appendChild(dragImage);
-                    dragImage.style.position = 'absolute';
-                    dragImage.style.top = '-1000px';
-                    e.dataTransfer.setDragImage(dragImage, 0, 0);
-                    setTimeout(() => {
-                      try {
-                        if (dragImage.parentNode === document.body) {
-                          document.body.removeChild(dragImage);
-                        }
-                      } catch (e) {
-                        // Ignore - may already be removed
+          {isTarget && (
+            <div style={{ display: 'flex', alignItems: 'center', paddingRight: '8px' }}>
+              <SystemActionsButton
+                system={system}
+                hasResourceResolver={hasResourceResolver}
+                hasSkinCharacterData={hasSkinCharacterData}
+                menuAnchorEl={actionsMenuAnchor && actionsMenuAnchor.systemKey === system.key ? actionsMenuAnchor.element : null}
+                setActionsMenuAnchor={setActionsMenuAnchor}
+                setShowMatrixModal={setShowMatrixModal}
+                setMatrixModalState={setMatrixModalState}
+                handleAddIdleParticles={handleAddIdleParticles}
+                handleAddChildParticles={handleAddChildParticles}
+                handleDeleteAllEmitters={handleDeleteAllEmitters}
+              />
+            </div>
+          )}
+        </div>
+        {
+          !collapsedSystems.has(system.key) && system.emitters.map((emitter, index) => {
+            const isQuartzChild = isDivineLabChildParticle(emitter.name);
+
+            return (
+              <div
+                key={index}
+                className="emitter-div"
+                draggable={isTarget}
+                onDragStart={(e) => {
+                  if (!isTarget) return;
+                  e.stopPropagation();
+                  setDraggedEmitter({ sourceSystemKey: system.key, emitterName: emitter.name });
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('application/x-vfxemitter', JSON.stringify({
+                    sourceSystemKey: system.key,
+                    emitterName: emitter.name
+                  }));
+                  // Create a drag image for better visual feedback
+                  const el = e.currentTarget;
+                  const dragImage = el.cloneNode(true);
+                  dragImage.style.transform = 'rotate(2deg)';
+                  dragImage.style.opacity = '0.9';
+                  document.body.appendChild(dragImage);
+                  dragImage.style.position = 'absolute';
+                  dragImage.style.top = '-1000px';
+                  e.dataTransfer.setDragImage(dragImage, 0, 0);
+                  setTimeout(() => {
+                    try {
+                      if (dragImage.parentNode === document.body) {
+                        document.body.removeChild(dragImage);
                       }
-                    }, 0);
-                  }}
-                  onDragEnd={(e) => {
-                    if (!isTarget) return;
-                    setDraggedEmitter(null);
-                  }}
-                  style={{
-                    border: isQuartzChild ? '2px solid #3b82f6' : undefined,
-                    borderRadius: isQuartzChild ? '6px' : undefined,
-                    background: isQuartzChild ? 'rgba(59, 130, 246, 0.05)' : undefined,
-                    cursor: isTarget ? 'grab' : 'default',
-                    opacity: draggedEmitter && draggedEmitter.sourceSystemKey === system.key && draggedEmitter.emitterName === emitter.name ? 0.5 : 1
-                  }}
-                >
-                  {!isTarget && (
-                    <button
-                      className="port-btn"
-                      onClick={() => {
-                        if (!selectedTargetSystem) {
-                          setStatusMessage('Please select a target system first');
-                          return;
-                        }
-                        handlePortEmitter(system.key, emitter.name);
-                      }}
-                      title="Port emitter to selected target system"
-                      style={{ flexShrink: 0, minWidth: '24px' }}
-                    >
-                      ◄
-                    </button>
-                  )}
-                  {isTarget && renamingEmitter && renamingEmitter.systemKey === system.key && renamingEmitter.emitterName === emitter.name ? (
-                    <RenameInput
-                      initialValue={emitter.name}
-                      onConfirm={(newName) => {
-                        if (newName && newName.trim() !== '' && newName !== emitter.name) {
-                          handleRenameEmitter(system.key, emitter.name, newName);
-                        } else {
-                          setRenamingEmitter(null);
-                        }
-                      }}
-                      onCancel={() => setRenamingEmitter(null)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <div
-                      className="label flex-1 ellipsis"
-                      style={{
-                        minWidth: 0,
-                        color: 'var(--accent)',
-                        fontWeight: '600',
-                        fontSize: '0.95rem',
-                        textShadow: '0 1px 2px rgba(0,0,0,0.5)'
-                      }}
-                    >
-                      <span
-                        onClick={(e) => {
-                          if (isTarget && !isQuartzChild) {
-                            e.stopPropagation();
-                          }
-                        }}
-                        onDoubleClick={(e) => {
-                          if (isTarget && !isQuartzChild) {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            setRenamingEmitter({ systemKey: system.key, emitterName: emitter.name, newName: emitter.name });
-                          }
-                        }}
-                        style={{
-                          cursor: isTarget && !isQuartzChild ? 'text' : 'default',
-                          display: 'inline-block'
-                        }}
-                      >
-                        {emitter.name || `Emitter ${index + 1}`}
-                      </span>
-                      {emitter.isChildParticle && (
-                        <span
-                          style={{
-                            marginLeft: '6px',
-                            fontSize: '10px',
-                            background: 'rgba(255, 193, 7, 0.2)',
-                            color: '#ffc107',
-                            padding: '1px 4px',
-                            borderRadius: '3px',
-                            border: '1px solid rgba(255, 193, 7, 0.3)',
-                            fontWeight: 'bold'
-                          }}
-                          title={`Child particle referencing: ${emitter.childSystemKey}`}
-                        >
-                          CHILD
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Color blocks */}
-                  {emitter.color && (
-                    <div
-                      className="color-block"
-                      style={{
-                        width: '16px',
-                        height: '16px',
-                        borderRadius: '3px',
-                        border: '1px solid rgba(255, 255, 255, 0.2)',
-                        marginLeft: '6px',
-                        flexShrink: 0,
-                        background: emitter.color.constantValue || '#ffffff'
-                      }}
-                      title={`Color: ${emitter.color.constantValue || 'Unknown'}`}
-                    />
-                  )}
-
-                  {/* Edit button for Quartz-created child particles */}
-                  {isQuartzChild && isTarget && (
-                    <button
-                      className="edit-child-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditChildParticle(system.key, system.name, emitter.name);
-                      }}
-                      title="Edit child particle"
-                      style={{
-                        width: '24px',
-                        height: '24px',
-                        marginLeft: '6px',
-                        flexShrink: 0,
-                        background: 'rgba(59, 130, 246, 0.1)',
-                        border: '1px solid #3b82f6',
-                        borderRadius: '4px',
-                        color: '#3b82f6',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '12px'
-                      }}
-                    >
-                      ✏️
-                    </button>
-                  )}
-
-                  {/* Preview button */}
+                    } catch (e) {
+                      // Ignore - may already be removed
+                    }
+                  }, 0);
+                }}
+                onDragEnd={(e) => {
+                  if (!isTarget) return;
+                  setDraggedEmitter(null);
+                }}
+                style={{
+                  border: isQuartzChild ? '2px solid #3b82f6' : undefined,
+                  borderRadius: isQuartzChild ? '6px' : undefined,
+                  background: isQuartzChild ? 'rgba(59, 130, 246, 0.05)' : undefined,
+                  cursor: isTarget ? 'grab' : 'default',
+                  opacity: draggedEmitter && draggedEmitter.sourceSystemKey === system.key && draggedEmitter.emitterName === emitter.name ? 0.5 : 1
+                }}
+              >
+                {!isTarget && (
                   <button
-                    className="preview-btn"
+                    className="port-btn"
+                    onClick={() => {
+                      if (!selectedTargetSystem) {
+                        setStatusMessage('Please select a target system first');
+                        return;
+                      }
+                      handlePortEmitter(system.key, emitter.name);
+                    }}
+                    title="Port emitter to selected target system"
+                    style={{ flexShrink: 0, minWidth: '24px' }}
+                  >
+                    ◄
+                  </button>
+                )}
+                {isTarget && renamingEmitter && renamingEmitter.systemKey === system.key && renamingEmitter.emitterName === emitter.name ? (
+                  <RenameInput
+                    initialValue={emitter.name}
+                    onConfirm={(newName) => {
+                      if (newName && newName.trim() !== '' && newName !== emitter.name) {
+                        handleRenameEmitter(system.key, emitter.name, newName);
+                      } else {
+                        setRenamingEmitter(null);
+                      }
+                    }}
+                    onCancel={() => setRenamingEmitter(null)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <div
+                    className="label flex-1 ellipsis"
+                    style={{
+                      minWidth: 0,
+                      color: 'var(--accent)',
+                      fontWeight: '600',
+                      fontSize: '0.95rem',
+                      textShadow: '0 1px 2px rgba(0,0,0,0.5)'
+                    }}
+                  >
+                    <span
+                      onClick={(e) => {
+                        if (isTarget && !isQuartzChild) {
+                          e.stopPropagation();
+                        }
+                      }}
+                      onDoubleClick={(e) => {
+                        if (isTarget && !isQuartzChild) {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setRenamingEmitter({ systemKey: system.key, emitterName: emitter.name, newName: emitter.name });
+                        }
+                      }}
+                      style={{
+                        cursor: isTarget && !isQuartzChild ? 'text' : 'default',
+                        display: 'inline-block'
+                      }}
+                    >
+                      {emitter.name || `Emitter ${index + 1}`}
+                    </span>
+                    {emitter.isChildParticle && (
+                      <span
+                        style={{
+                          marginLeft: '6px',
+                          fontSize: '10px',
+                          background: 'rgba(255, 193, 7, 0.2)',
+                          color: '#ffc107',
+                          padding: '1px 4px',
+                          borderRadius: '3px',
+                          border: '1px solid rgba(255, 193, 7, 0.3)',
+                          fontWeight: 'bold'
+                        }}
+                        title={`Child particle referencing: ${emitter.childSystemKey}`}
+                      >
+                        CHILD
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Color blocks */}
+                {emitter.color && (
+                  <div
+                    className="color-block"
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      borderRadius: '3px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)',
+                      marginLeft: '6px',
+                      flexShrink: 0,
+                      background: emitter.color.constantValue || '#ffffff'
+                    }}
+                    title={`Color: ${emitter.color.constantValue || 'Unknown'}`}
+                  />
+                )}
+
+                {/* Edit button for Quartz-created child particles */}
+                {isQuartzChild && isTarget && (
+                  <button
+                    className="edit-child-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditChildParticle(system.key, system.name, emitter.name);
+                    }}
+                    title="Edit child particle"
                     style={{
                       width: '24px',
                       height: '24px',
                       marginLeft: '6px',
                       flexShrink: 0,
-                      background: 'transparent',
-                      border: '1px solid rgba(255, 255, 255, 0.2)',
+                      background: 'rgba(59, 130, 246, 0.1)',
+                      border: '1px solid #3b82f6',
                       borderRadius: '4px',
-                      color: 'var(--accent, #3b82f6)',
+                      color: '#3b82f6',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       fontSize: '12px'
                     }}
-                    title="Preview texture"
-                    onMouseEnter={async (e) => {
-                      e.stopPropagation();
-                      // Clear the shared close timer if moving back to a button or between buttons
-                      if (textureCloseTimerRef.current) {
-                        clearTimeout(textureCloseTimerRef.current);
-                        textureCloseTimerRef.current = null;
-                      }
+                  >
+                    ✏️
+                  </button>
+                )}
 
-                      if (conversionTimers.current.has('hover')) {
-                        clearTimeout(conversionTimers.current.get('hover'));
-                        conversionTimers.current.delete('hover');
-                      }
+                {/* Preview button */}
+                <button
+                  className="preview-btn"
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    marginLeft: '6px',
+                    flexShrink: 0,
+                    background: 'transparent',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    borderRadius: '4px',
+                    color: 'var(--accent, #3b82f6)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '12px'
+                  }}
+                  title="Preview texture"
+                  onMouseEnter={async (e) => {
+                    e.stopPropagation();
+                    // Clear the shared close timer if moving back to a button or between buttons
+                    if (textureCloseTimerRef.current) {
+                      clearTimeout(textureCloseTimerRef.current);
+                      textureCloseTimerRef.current = null;
+                    }
 
-                      const previewBtn = e.currentTarget;
-                      const timer = setTimeout(async () => {
-                        try {
-                          const fullEmitterData = loadEmitterData(system, emitter.name);
-                          if (!fullEmitterData) return;
+                    if (conversionTimers.current.has('hover')) {
+                      clearTimeout(conversionTimers.current.get('hover'));
+                      conversionTimers.current.delete('hover');
+                    }
 
-                          // Load all textures
-                          const textures = extractTexturesFromEmitterContent(fullEmitterData.originalContent);
-                          if (textures.length === 0 && fullEmitterData.texturePath) {
-                            textures.push({ path: fullEmitterData.texturePath, label: 'Main' });
-                          }
-
-                          if (textures.length === 0) return;
-
-                          const textureData = [];
-                          const binPath = isTarget ? targetPath : donorPath;
-                          const projectRoot = binPath && binPath.includes(':') ? path.dirname(binPath) : '';
-
-                          // Process all textures
-                          for (const tex of textures) {
-                            try {
-                              // Resolve disk path for explorer support
-                              let resolvedDiskPath = tex.path;
-                              if (window.require && binPath && binPath.includes(':')) {
-                                const fs = window.require('fs');
-                                const path = window.require('path');
-                                const normalizedBin = binPath.replace(/\\/g, '/');
-                                const dataMatch = normalizedBin.match(/\/data\//i);
-
-                                if (dataMatch) {
-                                  const projRoot = normalizedBin.substring(0, dataMatch.index);
-                                  const cleanTexture = tex.path.replace(/\\/g, '/');
-                                  const candidate = path.join(projRoot, cleanTexture);
-                                  if (fs.existsSync(candidate)) resolvedDiskPath = candidate;
-                                }
-
-                                if (resolvedDiskPath === tex.path) {
-                                  const smartPath = findActualTexturePath(tex.path, binPath);
-                                  if (smartPath) resolvedDiskPath = smartPath;
-                                }
-                              }
-
-                              const result = await convertTextureToPNG(tex.path, targetPath, donorPath, projectRoot);
-                              let dataUrl = null;
-                              if (result) {
-                                if (result.startsWith('data:')) {
-                                  dataUrl = result;
-                                } else {
-                                  const fs = window.require('fs');
-                                  if (fs.existsSync(result)) {
-                                    const imageBuffer = fs.readFileSync(result);
-                                    dataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`;
-                                  }
-                                }
-                              }
-                              textureData.push({ ...tex, dataUrl, resolvedDiskPath });
-                            } catch (err) {
-                              console.error('Error processing texture:', tex.path, err);
-                              textureData.push({ ...tex, dataUrl: null, resolvedDiskPath: tex.path });
-                            }
-                          }
-
-                          if (textureData.length > 0) {
-                            showTexturePreview(textureData[0].path, textureData[0].dataUrl, previewBtn, fullEmitterData, textureData);
-                          }
-                        } catch (error) {
-                          console.error('Error loading texture objects:', error);
-                        }
-                      }, 200);
-
-                      conversionTimers.current.set('hover', timer);
-                    }}
-                    onMouseLeave={(e) => {
-                      e.stopPropagation();
-                      if (conversionTimers.current.has('hover')) {
-                        clearTimeout(conversionTimers.current.get('hover'));
-                        conversionTimers.current.delete('hover');
-                      }
-
-                      // Set the shared close timer with a delay
-                      textureCloseTimerRef.current = setTimeout(() => {
-                        const existing = document.getElementById('port-texture-hover-preview');
-                        if (existing) existing.remove();
-                      }, 500);
-                    }}
-                    onContextMenu={async (e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
+                    const previewBtn = e.currentTarget;
+                    const timer = setTimeout(async () => {
                       try {
-                        const fullEmitterData = loadEmitterData(system, emitter.name);
-                        if (fullEmitterData && fullEmitterData.texturePath) {
-                          const texturePath = fullEmitterData.texturePath;
-                          const binPath = isTarget ? targetPath : donorPath;
-                          let resolvedPath = texturePath;
+                        let fullEmitterData = null;
+                        let emitterContent = null;
 
-                          if (binPath && binPath !== 'This will show target bin' && binPath !== 'This will show donor bin') {
-                            const fs = window.require('fs');
-                            const path = window.require('path');
-                            const normalizedBin = binPath.replace(/\\/g, '/');
-                            const dataMatch = normalizedBin.match(/\/data\//i);
+                        // Prioritize using line numbers to uniquely identify the emitter (handles multiple emitters with same name)
+                        if (emitter.startLine !== undefined && system.rawContent) {
+                          const lines = system.rawContent.split('\n');
+                          if (emitter.startLine < lines.length) {
+                            const safeEnd = Math.min(lines.length, (emitter.endLine || emitter.startLine + 200) + 5);
+                            emitterContent = lines.slice(emitter.startLine, safeEnd).join('\n');
+                            
+                            // Create a minimal fullEmitterData object for compatibility
+                            fullEmitterData = {
+                              name: emitter.name,
+                              originalContent: emitterContent,
+                              texturePath: emitter.texturePath || null
+                            };
+                          }
+                        }
 
-                            if (dataMatch) {
-                              const dataIndex = dataMatch.index;
-                              const projectRoot = normalizedBin.substring(0, dataIndex);
-                              const cleanTexture = texturePath.replace(/\\/g, '/');
-                              const candidate1 = path.join(projectRoot, cleanTexture);
-                              if (fs.existsSync(candidate1)) {
-                                resolvedPath = candidate1;
+                        // Fallback to loadEmitterData if line numbers not available or extraction failed
+                        if (!fullEmitterData) {
+                          fullEmitterData = loadEmitterData(system, emitter.name);
+                          if (!fullEmitterData) return;
+                          emitterContent = fullEmitterData.originalContent;
+                        }
+
+                        // Load all textures
+                        const textures = extractTexturesFromEmitterContent(emitterContent || fullEmitterData.originalContent);
+                        if (textures.length === 0 && fullEmitterData.texturePath) {
+                          textures.push({ path: fullEmitterData.texturePath, label: 'Main' });
+                        }
+
+                        if (textures.length === 0) return;
+
+                        const textureData = [];
+                        const binPath = isTarget ? targetPath : donorPath;
+                        const projectRoot = binPath && binPath.includes(':') ? path.dirname(binPath) : '';
+
+                        // Process all textures
+                        for (const tex of textures) {
+                          try {
+                            // Resolve disk path for explorer support
+                            let resolvedDiskPath = tex.path;
+                            if (window.require && binPath && binPath.includes(':')) {
+                              const fs = window.require('fs');
+                              const path = window.require('path');
+                              const normalizedBin = binPath.replace(/\\/g, '/');
+                              const dataMatch = normalizedBin.match(/\/data\//i);
+
+                              if (dataMatch) {
+                                const projRoot = normalizedBin.substring(0, dataMatch.index);
+                                const cleanTexture = tex.path.replace(/\\/g, '/');
+                                const candidate = path.join(projRoot, cleanTexture);
+                                if (fs.existsSync(candidate)) resolvedDiskPath = candidate;
+                              }
+
+                              if (resolvedDiskPath === tex.path) {
+                                const smartPath = findActualTexturePath(tex.path, binPath);
+                                if (smartPath) resolvedDiskPath = smartPath;
                               }
                             }
 
-                            if (resolvedPath === texturePath) {
-                              const smartPath = findActualTexturePath(texturePath, binPath);
-                              if (smartPath) resolvedPath = smartPath;
+                            const result = await convertTextureToPNG(tex.path, targetPath, donorPath, projectRoot);
+                            let dataUrl = null;
+                            if (result) {
+                              if (result.startsWith('data:')) {
+                                dataUrl = result;
+                              } else {
+                                const fs = window.require('fs');
+                                if (fs.existsSync(result)) {
+                                  const imageBuffer = fs.readFileSync(result);
+                                  dataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`;
+                                }
+                              }
                             }
-                          }
-
-                          if (window.require) {
-                            const { shell } = window.require('electron');
-                            if (shell) {
-                              await shell.openPath(resolvedPath);
-                            }
+                            textureData.push({ ...tex, dataUrl, resolvedDiskPath });
+                          } catch (err) {
+                            console.error('Error processing texture:', tex.path, err);
+                            textureData.push({ ...tex, dataUrl: null, resolvedDiskPath: tex.path });
                           }
                         }
-                      } catch (err) {
-                        console.error("Error opening external app:", err);
-                      }
-                    }}
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      // Remove preview immediately on click
-                      const existingPreview = document.getElementById('port-texture-hover-preview');
-                      if (existingPreview) existingPreview.remove();
-                      if (textureCloseTimerRef.current) {
-                        clearTimeout(textureCloseTimerRef.current);
-                        textureCloseTimerRef.current = null;
-                      }
 
-                      if (conversionTimers.current.has('hover')) {
-                        clearTimeout(conversionTimers.current.get('hover'));
-                        conversionTimers.current.delete('hover');
+                        if (textureData.length > 0) {
+                          showTexturePreview(textureData[0].path, textureData[0].dataUrl, previewBtn, fullEmitterData, textureData);
+                        }
+                      } catch (error) {
+                        console.error('Error loading texture objects:', error);
                       }
+                    }, 200);
 
+                    conversionTimers.current.set('hover', timer);
+                  }}
+                  onMouseLeave={(e) => {
+                    e.stopPropagation();
+                    if (conversionTimers.current.has('hover')) {
+                      clearTimeout(conversionTimers.current.get('hover'));
+                      conversionTimers.current.delete('hover');
+                    }
+
+                    // Set the shared close timer with a delay
+                    textureCloseTimerRef.current = setTimeout(() => {
+                      const existing = document.getElementById('port-texture-hover-preview');
+                      if (existing) existing.remove();
+                    }, 500);
+                  }}
+                  onContextMenu={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    try {
                       const fullEmitterData = loadEmitterData(system, emitter.name);
                       if (fullEmitterData && fullEmitterData.texturePath) {
                         const texturePath = fullEmitterData.texturePath;
@@ -4978,808 +4972,904 @@ const Port = () => {
                           }
                         }
 
-                        // Just open Asset Preview with original or resolved path
-                        openAssetPreview(resolvedPath);
+                        if (window.require) {
+                          const { shell } = window.require('electron');
+                          if (shell) {
+                            await shell.openPath(resolvedPath);
+                          }
+                        }
                       }
-                    }}
-                  >
-                    <CropOriginalIcon sx={{ fontSize: 16 }} />
-                  </button>
-                  {
-                    isTarget && (
-                      <button
-                        className="delete-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteEmitter(system.key, index, isTarget, emitter.name);
-                        }}
-                        title="Delete emitter"
-                        style={{
-                          flexShrink: 0,
-                          background: 'transparent',
-                          border: 'none',
-                          color: '#ef4444',
-                          cursor: 'pointer',
-                          fontSize: '25px',
-                          padding: '2px 4px'
-                        }}
-                      >
-                        🗑
-                      </button>
-                    )
-                  }
-                </div>
-              )
-            })
-          }
-        </div >
-      );
-    })
+                    } catch (err) {
+                      console.error("Error opening external app:", err);
+                    }
+                  }}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    // Remove preview immediately on click
+                    const existingPreview = document.getElementById('port-texture-hover-preview');
+                    if (existingPreview) existingPreview.remove();
+                    if (textureCloseTimerRef.current) {
+                      clearTimeout(textureCloseTimerRef.current);
+                      textureCloseTimerRef.current = null;
+                    }
+
+                    if (conversionTimers.current.has('hover')) {
+                      clearTimeout(conversionTimers.current.get('hover'));
+                      conversionTimers.current.delete('hover');
+                    }
+
+                    const fullEmitterData = loadEmitterData(system, emitter.name);
+                    if (fullEmitterData && fullEmitterData.texturePath) {
+                      const texturePath = fullEmitterData.texturePath;
+                      const binPath = isTarget ? targetPath : donorPath;
+                      let resolvedPath = texturePath;
+
+                      if (binPath && binPath !== 'This will show target bin' && binPath !== 'This will show donor bin') {
+                        const fs = window.require('fs');
+                        const path = window.require('path');
+                        const normalizedBin = binPath.replace(/\\/g, '/');
+                        const dataMatch = normalizedBin.match(/\/data\//i);
+
+                        if (dataMatch) {
+                          const dataIndex = dataMatch.index;
+                          const projectRoot = normalizedBin.substring(0, dataIndex);
+                          const cleanTexture = texturePath.replace(/\\/g, '/');
+                          const candidate1 = path.join(projectRoot, cleanTexture);
+                          if (fs.existsSync(candidate1)) {
+                            resolvedPath = candidate1;
+                          }
+                        }
+
+                        if (resolvedPath === texturePath) {
+                          const smartPath = findActualTexturePath(texturePath, binPath);
+                          if (smartPath) resolvedPath = smartPath;
+                        }
+                      }
+
+                      // Just open Asset Preview with original or resolved path
+                      openAssetPreview(resolvedPath);
+                    }
+                  }}
+                >
+                  <CropOriginalIcon sx={{ fontSize: 16 }} />
+                </button>
+                {
+                  isTarget && (
+                    <button
+                      className="delete-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteEmitter(system.key, index, isTarget, emitter.name);
+                      }}
+                      title="Delete emitter"
+                      style={{
+                        flexShrink: 0,
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#ef4444',
+                        cursor: 'pointer',
+                        fontSize: '25px',
+                        padding: '2px 4px'
+                      }}
+                    >
+                      🗑
+                    </button>
+                  )
+                }
+              </div>
+            )
+          })
+        }
+      </div >
+    );
+  })
+}
+
+const getColorString = (colorData) => {
+  if (!colorData) return 'var(--accent)';
+
+  if (colorData.constantValue && colorData.constantValue.length >= 3) {
+    const [r, g, b, a = 1] = colorData.constantValue;
+    return `rgba(${Math.ceil(r * 254.9)}, ${Math.ceil(g * 254.9)}, ${Math.ceil(b * 254.9)}, ${a})`;
   }
 
-  const getColorString = (colorData) => {
-    if (!colorData) return 'var(--accent)';
+  return 'var(--accent)';
+};
 
-    if (colorData.constantValue && colorData.constantValue.length >= 3) {
-      const [r, g, b, a = 1] = colorData.constantValue;
-      return `rgba(${Math.ceil(r * 254.9)}, ${Math.ceil(g * 254.9)}, ${Math.ceil(b * 254.9)}, ${a})`;
-    }
+// Helper function to get short name from full path
+const getShortSystemName = (fullPath) => {
+  if (!fullPath) return 'Unknown System';
 
-    return 'var(--accent)';
-  };
+  // Extract the last part of the path (the actual system name)
+  const parts = fullPath.split('/');
+  let shortName = parts[parts.length - 1];
 
-  // Helper function to get short name from full path
-  const getShortSystemName = (fullPath) => {
-    if (!fullPath) return 'Unknown System';
+  // Universal prefix removal for any champion
+  // Pattern: ChampionName_Base_ or ChampionName_Skin[Number]_
+  const universalPrefixPattern = /^[A-Z][a-z]+_(Base_|Skin\d+_)/;
+  const match = shortName.match(universalPrefixPattern);
 
-    // Extract the last part of the path (the actual system name)
-    const parts = fullPath.split('/');
-    let shortName = parts[parts.length - 1];
+  if (match) {
+    // Remove the matched prefix
+    shortName = shortName.substring(match[0].length);
+  }
 
-    // Universal prefix removal for any champion
-    // Pattern: ChampionName_Base_ or ChampionName_Skin[Number]_
-    const universalPrefixPattern = /^[A-Z][a-z]+_(Base_|Skin\d+_)/;
-    const match = shortName.match(universalPrefixPattern);
+  // If it's still too long, truncate it
+  if (shortName.length > 45) {
+    return shortName.substring(0, 42) + '...';
+  }
 
-    if (match) {
-      // Remove the matched prefix
-      shortName = shortName.substring(match[0].length);
-    }
+  return shortName;
+};
 
-    // If it's still too long, truncate it
-    if (shortName.length > 45) {
-      return shortName.substring(0, 42) + '...';
-    }
-
-    return shortName;
-  };
-
-  // Celestial minimalistic button style (matching Bumpath/ImgRecolor)
-  const celestialButtonStyle = {
+// Celestial minimalistic button style (matching Bumpath/ImgRecolor)
+const celestialButtonStyle = {
+  background: 'var(--bg-2)',
+  border: '1px solid var(--accent-muted)',
+  color: 'var(--text)',
+  borderRadius: '5px',
+  transition: 'all 200ms ease',
+  textTransform: 'none',
+  fontFamily: 'JetBrains Mono, monospace',
+  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+  '&:hover': {
+    background: 'var(--surface-2)',
+    borderColor: 'var(--accent)',
+    boxShadow: '0 0 15px color-mix(in srgb, var(--accent), transparent 60%)'
+  },
+  '&:disabled': {
     background: 'var(--bg-2)',
-    border: '1px solid var(--accent-muted)',
-    color: 'var(--text)',
-    borderRadius: '5px',
-    transition: 'all 200ms ease',
-    textTransform: 'none',
-    fontFamily: 'JetBrains Mono, monospace',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-    '&:hover': {
-      background: 'var(--surface-2)',
-      borderColor: 'var(--accent)',
-      boxShadow: '0 0 15px color-mix(in srgb, var(--accent), transparent 60%)'
-    },
-    '&:disabled': {
-      background: 'var(--bg-2)',
-      borderColor: 'var(--text-2)',
-      color: 'var(--text-2)',
-      opacity: 0.6,
-      cursor: 'not-allowed'
-    },
-  };
+    borderColor: 'var(--text-2)',
+    color: 'var(--text-2)',
+    opacity: 0.6,
+    cursor: 'not-allowed'
+  },
+};
 
-  // Primary button style (accented version)
-  const primaryButtonStyle = {
-    ...celestialButtonStyle,
-    background: 'var(--bg-2)',
-    border: '1px solid var(--accent)',
-    color: 'var(--accent)',
-    fontWeight: 'bold',
-    boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent), transparent 70%), 0 2px 4px rgba(0,0,0,0.2)',
-    '&:hover': {
-      ...celestialButtonStyle['&:hover'],
-      boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent), transparent 50%), 0 2px 4px rgba(0,0,0,0.3)'
-    }
-  };
+// Primary button style (accented version)
+const primaryButtonStyle = {
+  ...celestialButtonStyle,
+  background: 'var(--bg-2)',
+  border: '1px solid var(--accent)',
+  color: 'var(--accent)',
+  fontWeight: 'bold',
+  boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent), transparent 70%), 0 2px 4px rgba(0,0,0,0.2)',
+  '&:hover': {
+    ...celestialButtonStyle['&:hover'],
+    boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent), transparent 50%), 0 2px 4px rgba(0,0,0,0.3)'
+  }
+};
 
-  // Simple section style (transparent with subtle borders)
-  const sectionStyle = {
-    background: 'transparent',
-    border: '1px solid rgba(255, 255, 255, 0.06)',
-    borderRadius: '5px'
-  };
+// Simple section style (transparent with subtle borders)
+const sectionStyle = {
+  background: 'transparent',
+  border: '1px solid rgba(255, 255, 255, 0.06)',
+  borderRadius: '5px'
+};
 
-  return (
-    <div className="port-container" style={{
-      minHeight: '100%',
-      height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
-      background: 'var(--bg)',
-      position: 'relative',
-      overflow: 'hidden',
+return (
+  <div className="port-container" style={{
+    minHeight: '100%',
+    height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
+    background: 'var(--bg)',
+    position: 'relative',
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  }}>
+    {isProcessing && <GlowingSpinner text={processingText || 'Working...'} />}
+    {/* Main Content Area */}
+    <div style={{
       display: 'flex',
-      flexDirection: 'column',
+      flex: 1,
+      gap: '20px',
+      padding: '20px',
+      overflow: 'hidden',
+      position: 'relative',
+      zIndex: 1,
     }}>
-      {isProcessing && <GlowingSpinner text={processingText || 'Working...'} />}
-      {/* Main Content Area */}
+      {/* Target Column */}
       <div style={{
-        display: 'flex',
         flex: 1,
-        gap: '20px',
-        padding: '20px',
-        overflow: 'hidden',
-        position: 'relative',
-        zIndex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '12px'
       }}>
-        {/* Target Column */}
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px'
-        }}>
-          {/* Target Button */}
-          {/* Target Button */}
-          <Button
-            onClick={handleOpenTargetBin}
-            disabled={isProcessing}
-            sx={{
-              width: '100%',
-              padding: '0 16px',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '13px',
-              fontWeight: 700,
-              height: '36px',
-              background: 'color-mix(in srgb, var(--accent), var(--bg) 85%)',
-              border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)',
-              color: 'var(--accent)',
-              borderRadius: '4px',
-              letterSpacing: '0.05em',
-              textTransform: 'uppercase',
-              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              position: 'relative',
-              '&:hover': {
-                background: 'color-mix(in srgb, var(--accent), var(--bg) 75%)',
-                borderColor: 'var(--accent)',
-                textShadow: '0 0 8px color-mix(in srgb, var(--accent), transparent 50%)',
-              },
-              '&:disabled': {
-                opacity: 0.5,
-                cursor: 'not-allowed',
-                borderColor: 'rgba(255,255,255,0.1)',
-                color: 'rgba(255,255,255,0.3)'
-              }
-            }}
-          >
-            {isProcessing ? 'Processing...' : 'Open Target Bin'}
-          </Button>
-
-
-          {/* Target Filter */}
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <SearchInput
-              initialValue={targetFilterInput}
-              placeholder={enableTargetEmitterSearch ? "Filter by Particle or Emitter Name" : "Filter by Particle Name Only"}
-              onChange={filterTargetParticles}
-            />
-            <button
-              onClick={() => setEnableTargetEmitterSearch(!enableTargetEmitterSearch)}
-              title={enableTargetEmitterSearch ? "Disable emitter search (faster)" : "Enable emitter search"}
-              style={{
-                padding: '8px 12px',
-                background: enableTargetEmitterSearch
-                  ? 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 78%), color-mix(in srgb, var(--accent), transparent 82%))'
-                  : 'var(--surface-2)',
-                border: enableTargetEmitterSearch
-                  ? '1px solid color-mix(in srgb, var(--accent), transparent 68%)'
-                  : '1px solid #444',
-                borderRadius: '6px',
-                color: enableTargetEmitterSearch ? 'var(--accent)' : 'var(--accent)',
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: '12px',
-                cursor: 'pointer',
-                marginTop: '-4px',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              {enableTargetEmitterSearch ? '🔍+' : '🔍-'}
-            </button>
-          </div>
-
-          {/* Target Content Area */}
-          <div style={{
-            flex: 1,
-            ...sectionStyle,
-            border: isDragOverVfx ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.10)',
-            borderRadius: '8px',
-            padding: '0',
-            overflow: 'hidden',
-            display: 'flex',
-            alignItems: 'stretch',
-            justifyContent: 'stretch',
-            position: 'relative'
+        {/* Target Button */}
+        {/* Target Button */}
+        <Button
+          onClick={handleOpenTargetBin}
+          disabled={isProcessing}
+          sx={{
+            width: '100%',
+            padding: '0 16px',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '13px',
+            fontWeight: 700,
+            height: '36px',
+            background: 'color-mix(in srgb, var(--accent), var(--bg) 85%)',
+            border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)',
+            color: 'var(--accent)',
+            borderRadius: '4px',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            position: 'relative',
+            '&:hover': {
+              background: 'color-mix(in srgb, var(--accent), var(--bg) 75%)',
+              borderColor: 'var(--accent)',
+              textShadow: '0 0 8px color-mix(in srgb, var(--accent), transparent 50%)',
+            },
+            '&:disabled': {
+              opacity: 0.5,
+              cursor: 'not-allowed',
+              borderColor: 'rgba(255,255,255,0.1)',
+              color: 'rgba(255,255,255,0.3)'
+            }
           }}
-            onDragOver={(e) => {
-              // Allow dropping donor systems into the target list
-              const types = e.dataTransfer?.types;
-              const hasVfxType = types && (
-                Array.from(types).includes('application/x-vfxsys') ||
-                (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
-              );
-              if (hasVfxType) {
-                e.preventDefault();
-                e.stopPropagation();
-                e.dataTransfer.dropEffect = 'copy';
-                if (!isDragOverVfx) setIsDragOverVfx(true);
-              }
-            }}
-            onDragEnter={(e) => {
-              // Prevent bubbling to avoid multiple triggers
-              e.preventDefault();
-              e.stopPropagation();
-              const types = e.dataTransfer?.types;
-              const hasVfxType = types && (
-                Array.from(types).includes('application/x-vfxsys') ||
-                (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
-              );
-              if (hasVfxType) {
-                dragEnterCounter.current += 1;
-                if (!isDragOverVfx) setIsDragOverVfx(true);
-              }
-            }}
-            onDragLeave={(e) => {
-              // Prevent bubbling and only decrement if actually leaving the drop zone
-              e.preventDefault();
-              e.stopPropagation();
-              dragEnterCounter.current -= 1;
-              // Only hide the drag overlay if we've actually left the drop zone (counter is 0 or negative)
-              if (dragEnterCounter.current <= 0) {
-                setIsDragOverVfx(false);
-                dragEnterCounter.current = 0;
-              }
-            }}
-            onDrop={(e) => {
-              try {
-                e.preventDefault();
-                e.stopPropagation();
-                console.log('🎯 Drop event triggered on target container');
-                console.log('🎯 dataTransfer.types:', Array.from(e.dataTransfer?.types || []));
-                const data = e.dataTransfer.getData('application/x-vfxsys');
-                console.log('🎯 Retrieved data:', data ? 'Data found' : 'No data');
-                if (!data) {
-                  console.warn('🎯 No data found in drop event');
-                  return;
-                }
-                setIsDragOverVfx(false);
-                dragEnterCounter.current = 0;
-                if (!targetPyContent) {
-                  setStatusMessage('No target file loaded - please open a target bin first');
-                  return;
-                }
-                if (!hasResourceResolver) {
-                  setStatusMessage('Locked: target bin missing ResourceResolver');
-                  return;
-                }
-                const payload = JSON.parse(data);
-                const { name, fullContent } = payload || {};
-                if (!fullContent) {
-                  setStatusMessage('Dropped item has no VFX content');
-                  return;
-                }
-                console.log('🎯 Opening name prompt modal for:', name);
-                // Defer insertion until user confirms name in modal
-                const defaultName = (name && typeof name === 'string') ? name : 'NewVFXSystem';
-                setPendingDrop({ fullContent, defaultName });
-                setNamePromptValue(defaultName);
-                setShowNamePromptModal(true);
+        >
+          {isProcessing ? 'Processing...' : 'Open Target Bin'}
+        </Button>
 
-                // After updating, scroll target list to top so newly added item is visible
-                requestAnimationFrame(() => {
-                  if (targetListRef.current) {
-                    try {
-                      targetListRef.current.scrollTop = 0;
-                    } catch { }
-                  }
-                });
 
-                // Copy associated assets for the inserted full VFX system
-                try {
-                  const assetFiles = findAssetFiles(fullContent);
-                  if (assetFiles && assetFiles.length > 0) {
-                    const { copiedFiles, failedFiles, skippedFiles } = copyAssetFiles(donorPath, targetPath, assetFiles);
-                    const { ipcRenderer } = window.require('electron');
-                    showAssetCopyResults(copiedFiles, failedFiles, skippedFiles, (messageData) => {
-                      ipcRenderer.send('Message', messageData);
-                    });
-                    // Status messaging for asset copy will be handled after insertion with chosen name
-                  }
-                } catch (assetError) {
-                  console.error('Error copying assets for inserted VFX system:', assetError);
-                  // Keep prior status; asset copy is best-effort
-                }
-              } catch (err) {
-                console.error('Drop failed:', err);
-                setStatusMessage('Failed to add VFX system');
-              }
+        {/* Target Filter */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <SearchInput
+            initialValue={targetFilterInput}
+            placeholder={enableTargetEmitterSearch ? "Filter by Particle or Emitter Name" : "Filter by Particle Name Only"}
+            onChange={filterTargetParticles}
+          />
+          <button
+            onClick={() => setEnableTargetEmitterSearch(!enableTargetEmitterSearch)}
+            title={enableTargetEmitterSearch ? "Disable emitter search (faster)" : "Enable emitter search"}
+            style={{
+              padding: '8px 12px',
+              background: enableTargetEmitterSearch
+                ? 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 78%), color-mix(in srgb, var(--accent), transparent 82%))'
+                : 'var(--surface-2)',
+              border: enableTargetEmitterSearch
+                ? '1px solid color-mix(in srgb, var(--accent), transparent 68%)'
+                : '1px solid #444',
+              borderRadius: '6px',
+              color: enableTargetEmitterSearch ? 'var(--accent)' : 'var(--accent)',
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '12px',
+              cursor: 'pointer',
+              marginTop: '-4px',
+              transition: 'all 0.2s ease'
             }}
           >
-            {isDragOverVfx && (
-              <div style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                pointerEvents: 'none',
-                zIndex: 2,
-                background: 'rgba(139, 92, 246, 0.15)',
-                border: '2px dashed var(--accent)',
-                borderRadius: '8px',
-                transition: 'all 0.15s ease-out'
-              }}>
-                <div style={{
-                  padding: '10px 16px',
-                  borderRadius: '6px',
-                  border: '1px dashed var(--accent)',
-                  color: 'var(--accent)',
-                  fontFamily: 'JetBrains Mono, monospace',
-                  fontSize: '13px',
-                  background: 'color-mix(in srgb, var(--accent), transparent 90%)'
-                }}>
-                  Drop to add VFX system
-                </div>
-              </div>
-            )}
-            {Object.keys(targetSystems).length > 0 ? (
-              <div
-                ref={targetListRef}
-                style={{ width: '100%', height: '100%', overflow: 'auto', background: 'rgba(255, 255, 255, 0.03)' }}
-                onDragOver={(e) => {
-                  // Allow dropping on the list container itself
-                  const types = e.dataTransfer?.types;
-                  const hasVfxType = types && (
-                    Array.from(types).includes('application/x-vfxsys') ||
-                    (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
-                  );
-                  if (hasVfxType) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.dataTransfer.dropEffect = 'copy';
-                    if (!isDragOverVfx) setIsDragOverVfx(true);
-                  }
-                }}
-                onDrop={(e) => {
-                  // Handle drop on the list container
-                  try {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log('🎯 Drop event triggered on target list container');
-                    console.log('🎯 dataTransfer.types:', Array.from(e.dataTransfer?.types || []));
-                    const data = e.dataTransfer.getData('application/x-vfxsys');
-                    console.log('🎯 Retrieved data:', data ? 'Data found' : 'No data');
-                    if (!data) {
-                      console.warn('🎯 No data found in drop event');
-                      return;
-                    }
-                    setIsDragOverVfx(false);
-                    dragEnterCounter.current = 0;
-                    if (!targetPyContent) {
-                      setStatusMessage('No target file loaded - please open a target bin first');
-                      return;
-                    }
-                    if (!hasResourceResolver) {
-                      setStatusMessage('Locked: target bin missing ResourceResolver');
-                      return;
-                    }
-                    const payload = JSON.parse(data);
-                    const { name, fullContent } = payload || {};
-                    if (!fullContent) {
-                      setStatusMessage('Dropped item has no VFX content');
-                      return;
-                    }
-                    console.log('🎯 Opening name prompt modal for:', name);
-                    // Defer insertion until user confirms name in modal
-                    const defaultName = (name && typeof name === 'string') ? name : 'NewVFXSystem';
-                    setPendingDrop({ fullContent, defaultName });
-                    setNamePromptValue(defaultName);
-                    setShowNamePromptModal(true);
-
-                    // After updating, scroll target list to top so newly added item is visible
-                    requestAnimationFrame(() => {
-                      if (targetListRef.current) {
-                        try {
-                          targetListRef.current.scrollTop = 0;
-                        } catch { }
-                      }
-                    });
-
-                    // Copy associated assets for the inserted full VFX system
-                    try {
-                      const assetFiles = findAssetFiles(fullContent);
-                      if (assetFiles && assetFiles.length > 0) {
-                        const { copiedFiles, failedFiles, skippedFiles } = copyAssetFiles(donorPath, targetPath, assetFiles);
-                        const { ipcRenderer } = window.require('electron');
-                        showAssetCopyResults(copiedFiles, failedFiles, skippedFiles, (messageData) => {
-                          ipcRenderer.send('Message', messageData);
-                        });
-                        // Status messaging for asset copy will be handled after insertion with chosen name
-                      }
-                    } catch (assetError) {
-                      console.error('Error copying assets for inserted VFX system:', assetError);
-                      // Keep prior status; asset copy is best-effort
-                    }
-                  } catch (err) {
-                    console.error('Drop failed:', err);
-                    setStatusMessage('Failed to add VFX system');
-                  }
-                }}
-              >
-                {renderParticleSystems(filteredTargetSystems, true)}
-              </div>
-            ) : (
-              <div style={{
-                color: 'var(--accent)',
-                fontSize: '16px',
-                fontFamily: 'JetBrains Mono, monospace',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '100%',
-                height: '100%',
-                textAlign: 'center'
-              }}>
-                No target bin loaded
-              </div>
-            )}
-          </div>
+            {enableTargetEmitterSearch ? '🔍+' : '🔍-'}
+          </button>
         </div>
 
-        {/* Donor Column */}
+        {/* Target Content Area */}
         <div style={{
           flex: 1,
+          ...sectionStyle,
+          border: isDragOverVfx ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.10)',
+          borderRadius: '8px',
+          padding: '0',
+          overflow: 'hidden',
           display: 'flex',
-          flexDirection: 'column',
-          gap: '12px'
-        }}>
-          {/* Donor Button */}
-          {/* Donor Button */}
-          <Button
-            onClick={handleOpenDonorBin}
-            disabled={isProcessing}
-            sx={{
-              width: '100%',
-              padding: '0 16px',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '13px',
-              fontWeight: 700,
-              height: '36px',
-              background: 'color-mix(in srgb, #ef4444, var(--bg) 85%)',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
-              color: '#ef4444',
-              borderRadius: '4px',
-              letterSpacing: '0.05em',
-              textTransform: 'uppercase',
-              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              position: 'relative',
-              '&:hover': {
-                background: 'color-mix(in srgb, #ef4444, var(--bg) 75%)',
-                borderColor: '#ef4444',
-                textShadow: '0 0 8px color-mix(in srgb, #ef4444, transparent 50%)',
-              },
-              '&:disabled': {
-                opacity: 0.5,
-                cursor: 'not-allowed',
-                borderColor: 'rgba(255,255,255,0.1)',
-                color: 'rgba(255,255,255,0.3)'
+          alignItems: 'stretch',
+          justifyContent: 'stretch',
+          position: 'relative'
+        }}
+          onDragOver={(e) => {
+            // Allow dropping donor systems into the target list
+            const types = e.dataTransfer?.types;
+            const hasVfxType = types && (
+              Array.from(types).includes('application/x-vfxsys') ||
+              (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
+            );
+            if (hasVfxType) {
+              e.preventDefault();
+              e.stopPropagation();
+              e.dataTransfer.dropEffect = 'copy';
+              if (!isDragOverVfx) setIsDragOverVfx(true);
+            }
+          }}
+          onDragEnter={(e) => {
+            // Prevent bubbling to avoid multiple triggers
+            e.preventDefault();
+            e.stopPropagation();
+            const types = e.dataTransfer?.types;
+            const hasVfxType = types && (
+              Array.from(types).includes('application/x-vfxsys') ||
+              (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
+            );
+            if (hasVfxType) {
+              dragEnterCounter.current += 1;
+              if (!isDragOverVfx) setIsDragOverVfx(true);
+            }
+          }}
+          onDragLeave={(e) => {
+            // Prevent bubbling and only decrement if actually leaving the drop zone
+            e.preventDefault();
+            e.stopPropagation();
+            dragEnterCounter.current -= 1;
+            // Only hide the drag overlay if we've actually left the drop zone (counter is 0 or negative)
+            if (dragEnterCounter.current <= 0) {
+              setIsDragOverVfx(false);
+              dragEnterCounter.current = 0;
+            }
+          }}
+          onDrop={(e) => {
+            try {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('🎯 Drop event triggered on target container');
+              console.log('🎯 dataTransfer.types:', Array.from(e.dataTransfer?.types || []));
+              const data = e.dataTransfer.getData('application/x-vfxsys');
+              console.log('🎯 Retrieved data:', data ? 'Data found' : 'No data');
+              if (!data) {
+                console.warn('🎯 No data found in drop event');
+                return;
               }
-            }}
-          >
-            {isProcessing ? 'Processing...' : 'Open Donor Bin'}
-          </Button>
+              setIsDragOverVfx(false);
+              dragEnterCounter.current = 0;
+              if (!targetPyContent) {
+                setStatusMessage('No target file loaded - please open a target bin first');
+                return;
+              }
+              if (!hasResourceResolver) {
+                setStatusMessage('Locked: target bin missing ResourceResolver');
+                return;
+              }
+              const payload = JSON.parse(data);
+              const { name, fullContent } = payload || {};
+              if (!fullContent) {
+                setStatusMessage('Dropped item has no VFX content');
+                return;
+              }
+              console.log('🎯 Opening name prompt modal for:', name);
+              // Defer insertion until user confirms name in modal
+              const defaultName = (name && typeof name === 'string') ? name : 'NewVFXSystem';
+              setPendingDrop({ fullContent, defaultName });
+              setNamePromptValue(defaultName);
+              setShowNamePromptModal(true);
 
-          {/* Donor Filter */}
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <SearchInput
-              initialValue={donorFilterInput}
-              placeholder={enableDonorEmitterSearch ? "Filter by Particle or Emitter Name" : "Filter by Particle Name Only"}
-              onChange={filterDonorParticles}
-            />
-            <button
-              onClick={() => setEnableDonorEmitterSearch(!enableDonorEmitterSearch)}
-              title={enableDonorEmitterSearch ? "Disable emitter search (faster)" : "Enable emitter search"}
-              style={{
-                padding: '8px 12px',
-                background: enableDonorEmitterSearch
-                  ? 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 78%), color-mix(in srgb, var(--accent), transparent 82%))'
-                  : 'var(--surface-2)',
-                border: enableDonorEmitterSearch
-                  ? '1px solid color-mix(in srgb, var(--accent), transparent 68%)'
-                  : '1px solid #444',
+              // After updating, scroll target list to top so newly added item is visible
+              requestAnimationFrame(() => {
+                if (targetListRef.current) {
+                  try {
+                    targetListRef.current.scrollTop = 0;
+                  } catch { }
+                }
+              });
+
+              // Copy associated assets for the inserted full VFX system
+              try {
+                const assetFiles = findAssetFiles(fullContent);
+                if (assetFiles && assetFiles.length > 0) {
+                  const { copiedFiles, failedFiles, skippedFiles } = copyAssetFiles(donorPath, targetPath, assetFiles);
+                  const { ipcRenderer } = window.require('electron');
+                  showAssetCopyResults(copiedFiles, failedFiles, skippedFiles, (messageData) => {
+                    ipcRenderer.send('Message', messageData);
+                  });
+                  // Status messaging for asset copy will be handled after insertion with chosen name
+                }
+              } catch (assetError) {
+                console.error('Error copying assets for inserted VFX system:', assetError);
+                // Keep prior status; asset copy is best-effort
+              }
+            } catch (err) {
+              console.error('Drop failed:', err);
+              setStatusMessage('Failed to add VFX system');
+            }
+          }}
+        >
+          {isDragOverVfx && (
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+              zIndex: 2,
+              background: 'rgba(139, 92, 246, 0.15)',
+              border: '2px dashed var(--accent)',
+              borderRadius: '8px',
+              transition: 'all 0.15s ease-out'
+            }}>
+              <div style={{
+                padding: '10px 16px',
                 borderRadius: '6px',
-                color: enableDonorEmitterSearch ? 'var(--accent)' : 'var(--accent)',
+                border: '1px dashed var(--accent)',
+                color: 'var(--accent)',
                 fontFamily: 'JetBrains Mono, monospace',
-                fontSize: '12px',
-                cursor: 'pointer',
-                marginTop: '-4px',
-                transition: 'all 0.2s ease'
+                fontSize: '13px',
+                background: 'color-mix(in srgb, var(--accent), transparent 90%)'
+              }}>
+                Drop to add VFX system
+              </div>
+            </div>
+          )}
+          {Object.keys(targetSystems).length > 0 ? (
+            <div
+              ref={targetListRef}
+              style={{ width: '100%', height: '100%', overflow: 'auto', background: 'rgba(255, 255, 255, 0.03)' }}
+              onDragOver={(e) => {
+                // Allow dropping on the list container itself
+                const types = e.dataTransfer?.types;
+                const hasVfxType = types && (
+                  Array.from(types).includes('application/x-vfxsys') ||
+                  (typeof types.contains === 'function' && types.contains('application/x-vfxsys'))
+                );
+                if (hasVfxType) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = 'copy';
+                  if (!isDragOverVfx) setIsDragOverVfx(true);
+                }
+              }}
+              onDrop={(e) => {
+                // Handle drop on the list container
+                try {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('🎯 Drop event triggered on target list container');
+                  console.log('🎯 dataTransfer.types:', Array.from(e.dataTransfer?.types || []));
+                  const data = e.dataTransfer.getData('application/x-vfxsys');
+                  console.log('🎯 Retrieved data:', data ? 'Data found' : 'No data');
+                  if (!data) {
+                    console.warn('🎯 No data found in drop event');
+                    return;
+                  }
+                  setIsDragOverVfx(false);
+                  dragEnterCounter.current = 0;
+                  if (!targetPyContent) {
+                    setStatusMessage('No target file loaded - please open a target bin first');
+                    return;
+                  }
+                  if (!hasResourceResolver) {
+                    setStatusMessage('Locked: target bin missing ResourceResolver');
+                    return;
+                  }
+                  const payload = JSON.parse(data);
+                  const { name, fullContent } = payload || {};
+                  if (!fullContent) {
+                    setStatusMessage('Dropped item has no VFX content');
+                    return;
+                  }
+                  console.log('🎯 Opening name prompt modal for:', name);
+                  // Defer insertion until user confirms name in modal
+                  const defaultName = (name && typeof name === 'string') ? name : 'NewVFXSystem';
+                  setPendingDrop({ fullContent, defaultName });
+                  setNamePromptValue(defaultName);
+                  setShowNamePromptModal(true);
+
+                  // After updating, scroll target list to top so newly added item is visible
+                  requestAnimationFrame(() => {
+                    if (targetListRef.current) {
+                      try {
+                        targetListRef.current.scrollTop = 0;
+                      } catch { }
+                    }
+                  });
+
+                  // Copy associated assets for the inserted full VFX system
+                  try {
+                    const assetFiles = findAssetFiles(fullContent);
+                    if (assetFiles && assetFiles.length > 0) {
+                      const { copiedFiles, failedFiles, skippedFiles } = copyAssetFiles(donorPath, targetPath, assetFiles);
+                      const { ipcRenderer } = window.require('electron');
+                      showAssetCopyResults(copiedFiles, failedFiles, skippedFiles, (messageData) => {
+                        ipcRenderer.send('Message', messageData);
+                      });
+                      // Status messaging for asset copy will be handled after insertion with chosen name
+                    }
+                  } catch (assetError) {
+                    console.error('Error copying assets for inserted VFX system:', assetError);
+                    // Keep prior status; asset copy is best-effort
+                  }
+                } catch (err) {
+                  console.error('Drop failed:', err);
+                  setStatusMessage('Failed to add VFX system');
+                }
               }}
             >
-              {enableDonorEmitterSearch ? '🔍+' : '🔍-'}
-            </button>
-          </div>
-
-          {/* Donor Content Area */}
-          <div style={{
-            flex: 1,
-            ...sectionStyle,
-            borderRadius: '8px',
-            padding: '0',
-            overflow: 'hidden',
-            display: 'flex',
-            alignItems: 'stretch',
-            justifyContent: 'stretch'
-          }}>
-            {Object.keys(donorSystems).length > 0 ? (
-              <div ref={donorListRef} style={{ width: '100%', height: '100%', overflow: 'auto' }}>
-                {renderParticleSystems(filteredDonorSystems, false)}
-              </div>
-            ) : (
-              <div style={{
-                color: 'var(--accent)',
-                fontSize: '16px',
-                fontFamily: 'JetBrains Mono, monospace',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '100%',
-                height: '100%',
-                textAlign: 'center'
-              }}>
-                No donor bin loaded
-              </div>
-            )}
-          </div>
+              {renderParticleSystems(filteredTargetSystems, true)}
+            </div>
+          ) : (
+            <div style={{
+              color: 'var(--accent)',
+              fontSize: '16px',
+              fontFamily: 'JetBrains Mono, monospace',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '100%',
+              height: '100%',
+              textAlign: 'center'
+            }}>
+              No target bin loaded
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Persistent Modal */}
-      {showPersistentModal && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.4)',
-            // backdropFilter: 'blur(4px)',
-            // WebkitBackdropFilter: 'blur(4px)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '20px',
-            paddingLeft: '100px' // Account for left navbar
+      {/* Donor Column */}
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '12px'
+      }}>
+        {/* Donor Button */}
+        {/* Donor Button */}
+        <Button
+          onClick={handleOpenDonorBin}
+          disabled={isProcessing}
+          sx={{
+            width: '100%',
+            padding: '0 16px',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '13px',
+            fontWeight: 700,
+            height: '36px',
+            background: 'color-mix(in srgb, #ef4444, var(--bg) 85%)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            color: '#ef4444',
+            borderRadius: '4px',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            position: 'relative',
+            '&:hover': {
+              background: 'color-mix(in srgb, #ef4444, var(--bg) 75%)',
+              borderColor: '#ef4444',
+              textShadow: '0 0 8px color-mix(in srgb, #ef4444, transparent 50%)',
+            },
+            '&:disabled': {
+              opacity: 0.5,
+              cursor: 'not-allowed',
+              borderColor: 'rgba(255,255,255,0.1)',
+              color: 'rgba(255,255,255,0.3)'
+            }
           }}
         >
-          <div
-            className="persistent-modal"
+          {isProcessing ? 'Processing...' : 'Open Donor Bin'}
+        </Button>
+
+        {/* Donor Filter */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <SearchInput
+            initialValue={donorFilterInput}
+            placeholder={enableDonorEmitterSearch ? "Filter by Particle or Emitter Name" : "Filter by Particle Name Only"}
+            onChange={filterDonorParticles}
+          />
+          <button
+            onClick={() => setEnableDonorEmitterSearch(!enableDonorEmitterSearch)}
+            title={enableDonorEmitterSearch ? "Disable emitter search (faster)" : "Enable emitter search"}
             style={{
-              border: '1px solid rgba(255,255,255,0.06)',
-              borderRadius: 12,
-              width: '90%',
-              maxWidth: 1000,
-              height: '80%',
-              maxHeight: 700,
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+              padding: '8px 12px',
+              background: enableDonorEmitterSearch
+                ? 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 78%), color-mix(in srgb, var(--accent), transparent 82%))'
+                : 'var(--surface-2)',
+              border: enableDonorEmitterSearch
+                ? '1px solid color-mix(in srgb, var(--accent), transparent 68%)'
+                : '1px solid #444',
+              borderRadius: '6px',
+              color: enableDonorEmitterSearch ? 'var(--accent)' : 'var(--accent)',
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '12px',
+              cursor: 'pointer',
+              marginTop: '-4px',
+              transition: 'all 0.2s ease'
             }}
-            onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div style={{
-              padding: '1.5rem',
-              borderBottom: '1px solid rgba(255,255,255,0.12)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              background: 'rgba(255,255,255,0.02)'
-            }}>
-              <h2 style={{ margin: 0, color: 'var(--accent)', fontSize: '1.5rem', fontWeight: 600 }}>Persistent Effects</h2>
-              <button
-                onClick={() => setShowPersistentModal(false)}
-                style={{
-                  background: 'rgba(255,255,255,0.1)',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  width: 32,
-                  height: 32,
-                  borderRadius: '50%',
-                  color: 'var(--accent)',
-                  cursor: 'pointer',
-                  // backdropFilter: 'saturate(180%) blur(12px)',
-                  fontSize: '18px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.15)'}
-                onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
-              >
-                ×
-              </button>
+            {enableDonorEmitterSearch ? '🔍+' : '🔍-'}
+          </button>
+        </div>
+
+        {/* Donor Content Area */}
+        <div style={{
+          flex: 1,
+          ...sectionStyle,
+          borderRadius: '8px',
+          padding: '0',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'stretch',
+          justifyContent: 'stretch'
+        }}>
+          {Object.keys(donorSystems).length > 0 ? (
+            <div ref={donorListRef} style={{ width: '100%', height: '100%', overflow: 'auto' }}>
+              {renderParticleSystems(filteredDonorSystems, false)}
             </div>
+          ) : (
+            <div style={{
+              color: 'var(--accent)',
+              fontSize: '16px',
+              fontFamily: 'JetBrains Mono, monospace',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '100%',
+              height: '100%',
+              textAlign: 'center'
+            }}>
+              No donor bin loaded
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
 
-            {/* Content */}
-            <div
+    {/* Persistent Modal */}
+    {showPersistentModal && (
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.4)',
+          // backdropFilter: 'blur(4px)',
+          // WebkitBackdropFilter: 'blur(4px)',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+          paddingLeft: '100px' // Account for left navbar
+        }}
+      >
+        <div
+          className="persistent-modal"
+          style={{
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 12,
+            width: '90%',
+            maxWidth: 1000,
+            height: '80%',
+            maxHeight: 700,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div style={{
+            padding: '1.5rem',
+            borderBottom: '1px solid rgba(255,255,255,0.12)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            background: 'rgba(255,255,255,0.02)'
+          }}>
+            <h2 style={{ margin: 0, color: 'var(--accent)', fontSize: '1.5rem', fontWeight: 600 }}>Persistent Effects</h2>
+            <button
+              onClick={() => setShowPersistentModal(false)}
               style={{
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                color: 'var(--accent)',
+                cursor: 'pointer',
+                // backdropFilter: 'saturate(180%) blur(12px)',
+                fontSize: '18px',
                 display: 'flex',
-                flex: 1,
-                overflow: 'hidden'
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s ease'
               }}
-              onClick={() => {
-                setVfxDropdownOpen({}); // Close all dropdowns when clicking in content area
-                setShowExistingConditions(false); // Close existing conditions dropdown
-              }}
+              onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.15)'}
+              onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
             >
-              {/* Left Panel - Condition */}
-              <div style={{
-                flex: '0 0 380px',
-                padding: '1.5rem',
-                borderRight: '1px solid rgba(255,255,255,0.08)',
-                overflow: 'auto'
-              }}>
-                <div style={{ marginBottom: 12, fontWeight: 600, color: 'var(--accent)', fontSize: '1.1rem' }}>Condition</div>
-                <div style={{ display: 'grid', gap: 12 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Type:</span>
-                    <div style={{ position: 'relative' }} ref={typeDropdownRef}>
-                      <button
-                        onClick={() => setTypeDropdownOpen(!typeDropdownOpen)}
-                        style={{
-                          width: '100%',
-                          padding: '12px 16px',
-                          background: 'linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))',
-                          border: '1px solid rgba(255,255,255,0.15)',
-                          borderRadius: 8,
-                          color: 'var(--accent)',
-                          fontSize: '0.9rem',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          transition: 'all 0.2s ease',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.target.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))';
-                          e.target.style.borderColor = 'rgba(255,255,255,0.25)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))';
-                          e.target.style.borderColor = 'rgba(255,255,255,0.15)';
-                        }}
-                      >
-                        <span>{typeOptions.find(opt => opt.value === persistentPreset.type)?.label || persistentPreset.type}</span>
-                        <span style={{
-                          transform: typeDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                          transition: 'transform 0.2s ease',
-                          fontSize: '0.8rem'
-                        }}>▼</span>
-                      </button>
+              ×
+            </button>
+          </div>
 
-                      {typeDropdownOpen && (
-                        <div style={{
-                          position: 'absolute',
-                          top: '100%',
-                          left: 0,
-                          right: 0,
-                          background: 'linear-gradient(135deg, rgba(0,0,0,0.85), rgba(0,0,0,0.75))',
-                          border: '1px solid rgba(255,255,255,0.3)',
-                          borderRadius: 8,
-                          marginTop: 4,
-                          zIndex: 1000,
-                          // backdropFilter: 'blur(20px)',
-                          // WebkitBackdropFilter: 'blur(20px)',
-                          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-                          overflow: 'hidden'
-                        }}>
-                          {typeOptions.map((option) => (
-                            <div
-                              key={option.value}
-                              onClick={() => {
-                                setPersistentPreset(p => ({ ...p, type: option.value }));
-                                setTypeDropdownOpen(false);
-                              }}
-                              style={{
-                                padding: '12px 16px',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease',
-                                borderBottom: '1px solid rgba(255,255,255,0.1)',
-                                color: persistentPreset.type === option.value ? '#ffffff' : 'rgba(255,255,255,0.9)',
-                                background: persistentPreset.type === option.value ? 'rgba(255,255,255,0.15)' : 'transparent'
-                              }}
-                              onMouseEnter={(e) => {
-                                if (persistentPreset.type !== option.value) {
-                                  e.target.style.background = 'rgba(255,255,255,0.1)';
-                                  e.target.style.color = '#ffffff';
-                                }
-                              }}
-                              onMouseLeave={(e) => {
-                                if (persistentPreset.type !== option.value) {
-                                  e.target.style.background = 'transparent';
-                                  e.target.style.color = 'rgba(255,255,255,0.9)';
-                                }
-                              }}
-                            >
-                              <div style={{ fontWeight: persistentPreset.type === option.value ? 600 : 400 }}>
-                                {option.label}
-                              </div>
-                              {option.description && (
-                                <div style={{
-                                  fontSize: '0.75rem',
-                                  color: 'rgba(255,255,255,0.8)',
-                                  marginTop: 2
-                                }}>
-                                  {option.description}
-                                </div>
-                              )}
+          {/* Content */}
+          <div
+            style={{
+              display: 'flex',
+              flex: 1,
+              overflow: 'hidden'
+            }}
+            onClick={() => {
+              setVfxDropdownOpen({}); // Close all dropdowns when clicking in content area
+              setShowExistingConditions(false); // Close existing conditions dropdown
+            }}
+          >
+            {/* Left Panel - Condition */}
+            <div style={{
+              flex: '0 0 380px',
+              padding: '1.5rem',
+              borderRight: '1px solid rgba(255,255,255,0.08)',
+              overflow: 'auto'
+            }}>
+              <div style={{ marginBottom: 12, fontWeight: 600, color: 'var(--accent)', fontSize: '1.1rem' }}>Condition</div>
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Type:</span>
+                  <div style={{ position: 'relative' }} ref={typeDropdownRef}>
+                    <button
+                      onClick={() => setTypeDropdownOpen(!typeDropdownOpen)}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        background: 'linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: 8,
+                        color: 'var(--accent)',
+                        fontSize: '0.9rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))';
+                        e.target.style.borderColor = 'rgba(255,255,255,0.25)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))';
+                        e.target.style.borderColor = 'rgba(255,255,255,0.15)';
+                      }}
+                    >
+                      <span>{typeOptions.find(opt => opt.value === persistentPreset.type)?.label || persistentPreset.type}</span>
+                      <span style={{
+                        transform: typeDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                        transition: 'transform 0.2s ease',
+                        fontSize: '0.8rem'
+                      }}>▼</span>
+                    </button>
+
+                    {typeDropdownOpen && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        background: 'linear-gradient(135deg, rgba(0,0,0,0.85), rgba(0,0,0,0.75))',
+                        border: '1px solid rgba(255,255,255,0.3)',
+                        borderRadius: 8,
+                        marginTop: 4,
+                        zIndex: 1000,
+                        // backdropFilter: 'blur(20px)',
+                        // WebkitBackdropFilter: 'blur(20px)',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                        overflow: 'hidden'
+                      }}>
+                        {typeOptions.map((option) => (
+                          <div
+                            key={option.value}
+                            onClick={() => {
+                              setPersistentPreset(p => ({ ...p, type: option.value }));
+                              setTypeDropdownOpen(false);
+                            }}
+                            style={{
+                              padding: '12px 16px',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease',
+                              borderBottom: '1px solid rgba(255,255,255,0.1)',
+                              color: persistentPreset.type === option.value ? '#ffffff' : 'rgba(255,255,255,0.9)',
+                              background: persistentPreset.type === option.value ? 'rgba(255,255,255,0.15)' : 'transparent'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (persistentPreset.type !== option.value) {
+                                e.target.style.background = 'rgba(255,255,255,0.1)';
+                                e.target.style.color = '#ffffff';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (persistentPreset.type !== option.value) {
+                                e.target.style.background = 'transparent';
+                                e.target.style.color = 'rgba(255,255,255,0.9)';
+                              }
+                            }}
+                          >
+                            <div style={{ fontWeight: persistentPreset.type === option.value ? 600 : 400 }}>
+                              {option.label}
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                            {option.description && (
+                              <div style={{
+                                fontSize: '0.75rem',
+                                color: 'rgba(255,255,255,0.8)',
+                                marginTop: 2
+                              }}>
+                                {option.description}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
+                </div>
 
-                  {persistentPreset.type === 'IsAnimationPlaying' && (
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Animation:</span>
-                      <MemoizedInput
-                        value={persistentPreset.animationName || ''}
-                        onChange={e => setPersistentPreset(p => ({ ...p, animationName: e.target.value }))}
-                        style={{
-                          padding: '8px 12px',
-                          background: 'rgba(255,255,255,0.05)',
-                          border: '1px solid rgba(255,255,255,0.15)',
-                          borderRadius: 6,
-                          color: 'var(--accent)',
-                          fontSize: '0.9rem'
-                        }}
-                      />
-                    </label>
-                  )}
+                {persistentPreset.type === 'IsAnimationPlaying' && (
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Animation:</span>
+                    <MemoizedInput
+                      value={persistentPreset.animationName || ''}
+                      onChange={e => setPersistentPreset(p => ({ ...p, animationName: e.target.value }))}
+                      style={{
+                        padding: '8px 12px',
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: 6,
+                        color: 'var(--accent)',
+                        fontSize: '0.9rem'
+                      }}
+                    />
+                  </label>
+                )}
 
-                  {persistentPreset.type === 'HasBuffScript' && (
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Script Name:</span>
-                      <MemoizedInput
-                        value={persistentPreset.scriptName || ''}
-                        onChange={e => setPersistentPreset(p => ({ ...p, scriptName: e.target.value }))}
-                        style={{
-                          padding: '8px 12px',
-                          background: 'rgba(255,255,255,0.05)',
-                          border: '1px solid rgba(255,255,255,0.15)',
-                          borderRadius: 6,
-                          color: 'var(--accent)',
-                          fontSize: '0.9rem'
-                        }}
-                      />
-                    </label>
-                  )}
+                {persistentPreset.type === 'HasBuffScript' && (
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Script Name:</span>
+                    <MemoizedInput
+                      value={persistentPreset.scriptName || ''}
+                      onChange={e => setPersistentPreset(p => ({ ...p, scriptName: e.target.value }))}
+                      style={{
+                        padding: '8px 12px',
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: 6,
+                        color: 'var(--accent)',
+                        fontSize: '0.9rem'
+                      }}
+                    />
+                  </label>
+                )}
 
-                  {persistentPreset.type === 'LearnedSpell' && (
+                {persistentPreset.type === 'LearnedSpell' && (
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Slot (0-3):</span>
+                    <MemoizedInput
+                      type="number"
+                      min={0}
+                      max={3}
+                      value={persistentPreset.slot ?? 3}
+                      onChange={e => setPersistentPreset(p => ({ ...p, slot: Number(e.target.value) }))}
+                      style={{
+                        padding: '8px 12px',
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: 6,
+                        color: 'var(--accent)',
+                        fontSize: '0.9rem'
+                      }}
+                    />
+                  </label>
+                )}
+
+                {persistentPreset.type === 'HasGear' && (
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Index:</span>
+                    <MemoizedInput
+                      type="number"
+                      min={0}
+                      value={persistentPreset.index ?? 0}
+                      onChange={e => setPersistentPreset(p => ({ ...p, index: Number(e.target.value) }))}
+                      style={{
+                        padding: '8px 12px',
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: 6,
+                        color: 'var(--accent)',
+                        fontSize: '0.9rem'
+                      }}
+                    />
+                  </label>
+                )}
+
+                {persistentPreset.type === 'FloatComparison' && (
+                  <>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Slot (0-3):</span>
+                      <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Spell Slot:</span>
                       <MemoizedInput
                         type="number"
                         min={0}
@@ -5796,16 +5886,12 @@ const Port = () => {
                         }}
                       />
                     </label>
-                  )}
-
-                  {persistentPreset.type === 'HasGear' && (
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Index:</span>
+                      <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Operator:</span>
                       <MemoizedInput
                         type="number"
-                        min={0}
-                        value={persistentPreset.index ?? 0}
-                        onChange={e => setPersistentPreset(p => ({ ...p, index: Number(e.target.value) }))}
+                        value={persistentPreset.operator ?? 3}
+                        onChange={e => setPersistentPreset(p => ({ ...p, operator: Number(e.target.value) }))}
                         style={{
                           padding: '8px 12px',
                           background: 'rgba(255,255,255,0.05)',
@@ -5816,2808 +5902,2770 @@ const Port = () => {
                         }}
                       />
                     </label>
-                  )}
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Value:</span>
+                      <MemoizedInput
+                        type="number"
+                        value={persistentPreset.value ?? 1}
+                        onChange={e => setPersistentPreset(p => ({ ...p, value: Number(e.target.value) }))}
+                        style={{
+                          padding: '8px 12px',
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          borderRadius: 6,
+                          color: 'var(--accent)',
+                          fontSize: '0.9rem'
+                        }}
+                      />
+                    </label>
+                  </>
+                )}
 
-                  {persistentPreset.type === 'FloatComparison' && (
-                    <>
-                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Spell Slot:</span>
-                        <MemoizedInput
-                          type="number"
-                          min={0}
-                          max={3}
-                          value={persistentPreset.slot ?? 3}
-                          onChange={e => setPersistentPreset(p => ({ ...p, slot: Number(e.target.value) }))}
-                          style={{
-                            padding: '8px 12px',
-                            background: 'rgba(255,255,255,0.05)',
-                            border: '1px solid rgba(255,255,255,0.15)',
-                            borderRadius: 6,
-                            color: 'var(--accent)',
-                            fontSize: '0.9rem'
-                          }}
-                        />
-                      </label>
-                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Operator:</span>
-                        <MemoizedInput
-                          type="number"
-                          value={persistentPreset.operator ?? 3}
-                          onChange={e => setPersistentPreset(p => ({ ...p, operator: Number(e.target.value) }))}
-                          style={{
-                            padding: '8px 12px',
-                            background: 'rgba(255,255,255,0.05)',
-                            border: '1px solid rgba(255,255,255,0.15)',
-                            borderRadius: 6,
-                            color: 'var(--accent)',
-                            fontSize: '0.9rem'
-                          }}
-                        />
-                      </label>
-                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Value:</span>
-                        <MemoizedInput
-                          type="number"
-                          value={persistentPreset.value ?? 1}
-                          onChange={e => setPersistentPreset(p => ({ ...p, value: Number(e.target.value) }))}
-                          style={{
-                            padding: '8px 12px',
-                            background: 'rgba(255,255,255,0.05)',
-                            border: '1px solid rgba(255,255,255,0.15)',
-                            borderRadius: 6,
-                            color: 'var(--accent)',
-                            fontSize: '0.9rem'
-                          }}
-                        />
-                      </label>
-                    </>
-                  )}
+                {persistentPreset.type === 'BuffCounterFloatComparison' && (
+                  <>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Spell Hash:</span>
+                      <MemoizedInput
+                        type="text"
+                        placeholder="Characters/Ezreal/Spells/EzrealPassiveAbility/EzrealPassiveStacks"
+                        value={persistentPreset.spellHash ?? ''}
+                        onChange={e => setPersistentPreset(p => ({ ...p, spellHash: e.target.value }))}
+                        style={{
+                          padding: '8px 12px',
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          borderRadius: 6,
+                          color: 'var(--accent)',
+                          fontSize: '0.9rem'
+                        }}
+                      />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Operator:</span>
+                      <MemoizedInput
+                        type="number"
+                        value={persistentPreset.operator ?? 2}
+                        onChange={e => setPersistentPreset(p => ({ ...p, operator: Number(e.target.value) }))}
+                        style={{
+                          padding: '8px 12px',
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          borderRadius: 6,
+                          color: 'var(--accent)',
+                          fontSize: '0.9rem'
+                        }}
+                      />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Value:</span>
+                      <MemoizedInput
+                        type="number"
+                        value={persistentPreset.value ?? 5}
+                        onChange={e => setPersistentPreset(p => ({ ...p, value: Number(e.target.value) }))}
+                        style={{
+                          padding: '8px 12px',
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          borderRadius: 6,
+                          color: 'var(--accent)',
+                          fontSize: '0.9rem'
+                        }}
+                      />
+                    </label>
+                  </>
+                )}
 
-                  {persistentPreset.type === 'BuffCounterFloatComparison' && (
-                    <>
-                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Spell Hash:</span>
-                        <MemoizedInput
-                          type="text"
-                          placeholder="Characters/Ezreal/Spells/EzrealPassiveAbility/EzrealPassiveStacks"
-                          value={persistentPreset.spellHash ?? ''}
-                          onChange={e => setPersistentPreset(p => ({ ...p, spellHash: e.target.value }))}
-                          style={{
-                            padding: '8px 12px',
-                            background: 'rgba(255,255,255,0.05)',
-                            border: '1px solid rgba(255,255,255,0.15)',
-                            borderRadius: 6,
-                            color: 'var(--accent)',
-                            fontSize: '0.9rem'
-                          }}
-                        />
-                      </label>
-                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Operator:</span>
-                        <MemoizedInput
-                          type="number"
-                          value={persistentPreset.operator ?? 2}
-                          onChange={e => setPersistentPreset(p => ({ ...p, operator: Number(e.target.value) }))}
-                          style={{
-                            padding: '8px 12px',
-                            background: 'rgba(255,255,255,0.05)',
-                            border: '1px solid rgba(255,255,255,0.15)',
-                            borderRadius: 6,
-                            color: 'var(--accent)',
-                            fontSize: '0.9rem'
-                          }}
-                        />
-                      </label>
-                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Value:</span>
-                        <MemoizedInput
-                          type="number"
-                          value={persistentPreset.value ?? 5}
-                          onChange={e => setPersistentPreset(p => ({ ...p, value: Number(e.target.value) }))}
-                          style={{
-                            padding: '8px 12px',
-                            background: 'rgba(255,255,255,0.05)',
-                            border: '1px solid rgba(255,255,255,0.15)',
-                            borderRadius: 6,
-                            color: 'var(--accent)',
-                            fontSize: '0.9rem'
-                          }}
-                        />
-                      </label>
-                    </>
-                  )}
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Delay On:</span>
+                  <MemoizedInput
+                    type="number"
+                    min={0}
+                    value={persistentPreset.delay?.on ?? 0}
+                    onChange={e => setPersistentPreset(p => ({ ...p, delay: { ...(p.delay || {}), on: Number(e.target.value) } }))}
+                    style={{
+                      padding: '8px 12px',
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 6,
+                      color: 'var(--accent)',
+                      fontSize: '0.9rem'
+                    }}
+                  />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Delay Off:</span>
+                  <MemoizedInput
+                    type="number"
+                    min={0}
+                    value={persistentPreset.delay?.off ?? 0}
+                    onChange={e => setPersistentPreset(p => ({ ...p, delay: { ...(p.delay || {}), off: Number(e.target.value) } }))}
+                    style={{
+                      padding: '8px 12px',
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 6,
+                      color: 'var(--accent)',
+                      fontSize: '0.9rem'
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
 
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Delay On:</span>
-                    <MemoizedInput
-                      type="number"
-                      min={0}
-                      value={persistentPreset.delay?.on ?? 0}
-                      onChange={e => setPersistentPreset(p => ({ ...p, delay: { ...(p.delay || {}), on: Number(e.target.value) } }))}
-                      style={{
-                        padding: '8px 12px',
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(255,255,255,0.15)',
-                        borderRadius: 6,
-                        color: 'var(--accent)',
-                        fontSize: '0.9rem'
-                      }}
-                    />
-                  </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Delay Off:</span>
-                    <MemoizedInput
-                      type="number"
-                      min={0}
-                      value={persistentPreset.delay?.off ?? 0}
-                      onChange={e => setPersistentPreset(p => ({ ...p, delay: { ...(p.delay || {}), off: Number(e.target.value) } }))}
-                      style={{
-                        padding: '8px 12px',
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(255,255,255,0.15)',
-                        borderRadius: 6,
-                        color: 'var(--accent)',
-                        fontSize: '0.9rem'
-                      }}
-                    />
-                  </label>
+            {/* Right Panel - Effects */}
+            <div style={{
+              flex: 1,
+              padding: '1.5rem',
+              overflow: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 20
+            }}>
+              <div style={{ marginBottom: 8, fontWeight: 600, color: 'var(--accent)', fontSize: '1.1rem' }}>Effects</div>
+
+              {/* Submeshes To Show */}
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.9)' }}>Submeshes To Show</div>
+
+                {/* Custom input for adding new submeshes */}
+                <div style={{
+                  display: 'flex',
+                  gap: 8,
+                  marginBottom: 8
+                }}>
+                  <MemoizedInput
+                    type="text"
+                    value={customShowSubmeshInput}
+                    onChange={e => setCustomShowSubmeshInput(e.target.value)}
+                    onKeyPress={e => e.key === 'Enter' && handleAddCustomShowSubmesh()}
+                    placeholder="Type custom submesh name to show..."
+                    style={{
+                      flex: 1,
+                      padding: '6px 10px',
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 4,
+                      color: 'var(--accent)',
+                      fontSize: '0.85rem'
+                    }}
+                  />
+                  <button
+                    onClick={handleAddCustomShowSubmesh}
+                    disabled={!customShowSubmeshInput.trim()}
+                    style={{
+                      padding: '6px 12px',
+                      background: customShowSubmeshInput.trim() ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.05)',
+                      border: '1px solid ' + (customShowSubmeshInput.trim() ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.1)'),
+                      borderRadius: 4,
+                      color: customShowSubmeshInput.trim() ? 'rgba(34,197,94,1)' : 'rgba(255,255,255,0.4)',
+                      fontSize: '0.85rem',
+                      cursor: customShowSubmeshInput.trim() ? 'pointer' : 'not-allowed',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    Add
+                  </button>
+                </div>
+
+                <div style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                  maxHeight: 140,
+                  overflow: 'auto',
+                  padding: '8px',
+                  background: 'rgba(255,255,255,0.02)',
+                  borderRadius: 6,
+                  border: '1px solid rgba(255,255,255,0.08)'
+                }}>
+                  {availableSubmeshes.map(s => (
+                    <label key={`show-${s}`} style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '4px 8px',
+                      background: persistentShowSubmeshes.includes(s) ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
+                      borderRadius: 4,
+                      border: '1px solid ' + (persistentShowSubmeshes.includes(s) ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)'),
+                      fontSize: '0.85rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={persistentShowSubmeshes.includes(s)}
+                        onChange={e => setPersistentShowSubmeshes(prev => e.target.checked ? [...prev, s] : prev.filter(x => x !== s))}
+                        style={{ margin: 0 }}
+                      />
+                      <span style={{ color: 'rgba(255,255,255,0.9)' }}>{s}</span>
+                    </label>
+                  ))}
+
+                  {/* Display custom submeshes that are not in availableSubmeshes */}
+                  {persistentShowSubmeshes.filter(s => !availableSubmeshes.includes(s)).map(s => (
+                    <div key={`custom-show-${s}`} style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '4px 8px',
+                      background: 'rgba(34,197,94,0.15)',
+                      borderRadius: 4,
+                      border: '1px solid rgba(34,197,94,0.3)',
+                      fontSize: '0.85rem'
+                    }}>
+                      <span style={{ color: 'rgba(34,197,94,1)' }}>✓</span>
+                      <span style={{ color: 'rgba(255,255,255,0.9)' }}>{s}</span>
+                      <button
+                        onClick={() => handleRemoveCustomSubmesh(s, 'show')}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'rgba(239,68,68,0.8)',
+                          cursor: 'pointer',
+                          padding: '2px 4px',
+                          fontSize: '0.8rem',
+                          borderRadius: 2
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              {/* Right Panel - Effects */}
-              <div style={{
-                flex: 1,
-                padding: '1.5rem',
-                overflow: 'auto',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 20
-              }}>
-                <div style={{ marginBottom: 8, fontWeight: 600, color: 'var(--accent)', fontSize: '1.1rem' }}>Effects</div>
+              {/* Submeshes To Hide */}
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.9)' }}>Submeshes To Hide</div>
 
-                {/* Submeshes To Show */}
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.9)' }}>Submeshes To Show</div>
-
-                  {/* Custom input for adding new submeshes */}
-                  <div style={{
-                    display: 'flex',
-                    gap: 8,
-                    marginBottom: 8
-                  }}>
-                    <MemoizedInput
-                      type="text"
-                      value={customShowSubmeshInput}
-                      onChange={e => setCustomShowSubmeshInput(e.target.value)}
-                      onKeyPress={e => e.key === 'Enter' && handleAddCustomShowSubmesh()}
-                      placeholder="Type custom submesh name to show..."
-                      style={{
-                        flex: 1,
-                        padding: '6px 10px',
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(255,255,255,0.15)',
-                        borderRadius: 4,
-                        color: 'var(--accent)',
-                        fontSize: '0.85rem'
-                      }}
-                    />
-                    <button
-                      onClick={handleAddCustomShowSubmesh}
-                      disabled={!customShowSubmeshInput.trim()}
-                      style={{
-                        padding: '6px 12px',
-                        background: customShowSubmeshInput.trim() ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.05)',
-                        border: '1px solid ' + (customShowSubmeshInput.trim() ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.1)'),
-                        borderRadius: 4,
-                        color: customShowSubmeshInput.trim() ? 'rgba(34,197,94,1)' : 'rgba(255,255,255,0.4)',
-                        fontSize: '0.85rem',
-                        cursor: customShowSubmeshInput.trim() ? 'pointer' : 'not-allowed',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      Add
-                    </button>
-                  </div>
-
-                  <div style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 8,
-                    maxHeight: 140,
-                    overflow: 'auto',
-                    padding: '8px',
-                    background: 'rgba(255,255,255,0.02)',
-                    borderRadius: 6,
-                    border: '1px solid rgba(255,255,255,0.08)'
-                  }}>
-                    {availableSubmeshes.map(s => (
-                      <label key={`show-${s}`} style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '4px 8px',
-                        background: persistentShowSubmeshes.includes(s) ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
-                        borderRadius: 4,
-                        border: '1px solid ' + (persistentShowSubmeshes.includes(s) ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)'),
-                        fontSize: '0.85rem',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={persistentShowSubmeshes.includes(s)}
-                          onChange={e => setPersistentShowSubmeshes(prev => e.target.checked ? [...prev, s] : prev.filter(x => x !== s))}
-                          style={{ margin: 0 }}
-                        />
-                        <span style={{ color: 'rgba(255,255,255,0.9)' }}>{s}</span>
-                      </label>
-                    ))}
-
-                    {/* Display custom submeshes that are not in availableSubmeshes */}
-                    {persistentShowSubmeshes.filter(s => !availableSubmeshes.includes(s)).map(s => (
-                      <div key={`custom-show-${s}`} style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '4px 8px',
-                        background: 'rgba(34,197,94,0.15)',
-                        borderRadius: 4,
-                        border: '1px solid rgba(34,197,94,0.3)',
-                        fontSize: '0.85rem'
-                      }}>
-                        <span style={{ color: 'rgba(34,197,94,1)' }}>✓</span>
-                        <span style={{ color: 'rgba(255,255,255,0.9)' }}>{s}</span>
-                        <button
-                          onClick={() => handleRemoveCustomSubmesh(s, 'show')}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: 'rgba(239,68,68,0.8)',
-                            cursor: 'pointer',
-                            padding: '2px 4px',
-                            fontSize: '0.8rem',
-                            borderRadius: 2
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                {/* Custom input for adding new submeshes */}
+                <div style={{
+                  display: 'flex',
+                  gap: 8,
+                  marginBottom: 8
+                }}>
+                  <MemoizedInput
+                    type="text"
+                    value={customHideSubmeshInput}
+                    onChange={e => setCustomHideSubmeshInput(e.target.value)}
+                    onKeyPress={e => e.key === 'Enter' && handleAddCustomHideSubmesh()}
+                    placeholder="Type custom submesh name to hide..."
+                    style={{
+                      flex: 1,
+                      padding: '6px 10px',
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 4,
+                      color: 'var(--accent)',
+                      fontSize: '0.85rem'
+                    }}
+                  />
+                  <button
+                    onClick={handleAddCustomHideSubmesh}
+                    disabled={!customHideSubmeshInput.trim()}
+                    style={{
+                      padding: '6px 12px',
+                      background: customHideSubmeshInput.trim() ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)',
+                      border: '1px solid ' + (customHideSubmeshInput.trim() ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'),
+                      borderRadius: 4,
+                      color: customHideSubmeshInput.trim() ? 'rgba(239,68,68,1)' : 'rgba(255,255,255,0.4)',
+                      fontSize: '0.85rem',
+                      cursor: customHideSubmeshInput.trim() ? 'pointer' : 'not-allowed',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    Add
+                  </button>
                 </div>
 
-                {/* Submeshes To Hide */}
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.9)' }}>Submeshes To Hide</div>
+                <div style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                  maxHeight: 140,
+                  overflow: 'auto',
+                  padding: '8px',
+                  background: 'rgba(255,255,255,0.02)',
+                  borderRadius: 6,
+                  border: '1px solid rgba(255,255,255,0.08)'
+                }}>
+                  {availableSubmeshes.map(s => (
+                    <label key={`hide-${s}`} style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '4px 8px',
+                      background: persistentHideSubmeshes.includes(s) ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.05)',
+                      borderRadius: 4,
+                      border: '1px solid ' + (persistentHideSubmeshes.includes(s) ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.1)'),
+                      fontSize: '0.85rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={persistentHideSubmeshes.includes(s)}
+                        onChange={e => setPersistentHideSubmeshes(prev => e.target.checked ? [...prev, s] : prev.filter(x => x !== s))}
+                        style={{ margin: 0 }}
+                      />
+                      <span style={{ color: 'rgba(255,255,255,0.9)' }}>{s}</span>
+                    </label>
+                  ))}
 
-                  {/* Custom input for adding new submeshes */}
-                  <div style={{
-                    display: 'flex',
-                    gap: 8,
-                    marginBottom: 8
-                  }}>
-                    <MemoizedInput
-                      type="text"
-                      value={customHideSubmeshInput}
-                      onChange={e => setCustomHideSubmeshInput(e.target.value)}
-                      onKeyPress={e => e.key === 'Enter' && handleAddCustomHideSubmesh()}
-                      placeholder="Type custom submesh name to hide..."
-                      style={{
-                        flex: 1,
-                        padding: '6px 10px',
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(255,255,255,0.15)',
-                        borderRadius: 4,
-                        color: 'var(--accent)',
-                        fontSize: '0.85rem'
-                      }}
-                    />
-                    <button
-                      onClick={handleAddCustomHideSubmesh}
-                      disabled={!customHideSubmeshInput.trim()}
-                      style={{
-                        padding: '6px 12px',
-                        background: customHideSubmeshInput.trim() ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)',
-                        border: '1px solid ' + (customHideSubmeshInput.trim() ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'),
-                        borderRadius: 4,
-                        color: customHideSubmeshInput.trim() ? 'rgba(239,68,68,1)' : 'rgba(255,255,255,0.4)',
-                        fontSize: '0.85rem',
-                        cursor: customHideSubmeshInput.trim() ? 'pointer' : 'not-allowed',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      Add
-                    </button>
-                  </div>
-
-                  <div style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 8,
-                    maxHeight: 140,
-                    overflow: 'auto',
-                    padding: '8px',
-                    background: 'rgba(255,255,255,0.02)',
-                    borderRadius: 6,
-                    border: '1px solid rgba(255,255,255,0.08)'
-                  }}>
-                    {availableSubmeshes.map(s => (
-                      <label key={`hide-${s}`} style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '4px 8px',
-                        background: persistentHideSubmeshes.includes(s) ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.05)',
-                        borderRadius: 4,
-                        border: '1px solid ' + (persistentHideSubmeshes.includes(s) ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.1)'),
-                        fontSize: '0.85rem',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={persistentHideSubmeshes.includes(s)}
-                          onChange={e => setPersistentHideSubmeshes(prev => e.target.checked ? [...prev, s] : prev.filter(x => x !== s))}
-                          style={{ margin: 0 }}
-                        />
-                        <span style={{ color: 'rgba(255,255,255,0.9)' }}>{s}</span>
-                      </label>
-                    ))}
-
-                    {/* Display custom submeshes that are not in availableSubmeshes */}
-                    {persistentHideSubmeshes.filter(s => !availableSubmeshes.includes(s)).map(s => (
-                      <div key={`custom-hide-${s}`} style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '4px 8px',
-                        background: 'rgba(239,68,68,0.15)',
-                        borderRadius: 4,
-                        border: '1px solid rgba(239,68,68,0.3)',
-                        fontSize: '0.85rem'
-                      }}>
-                        <span style={{ color: 'rgba(239,68,68,1)' }}>✓</span>
-                        <span style={{ color: 'rgba(255,255,255,0.9)' }}>{s}</span>
-                        <button
-                          onClick={() => handleRemoveCustomSubmesh(s, 'hide')}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: 'rgba(239,68,68,0.8)',
-                            cursor: 'pointer',
-                            padding: '2px 4px',
-                            fontSize: '0.8rem',
-                            borderRadius: 2
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  {/* Display custom submeshes that are not in availableSubmeshes */}
+                  {persistentHideSubmeshes.filter(s => !availableSubmeshes.includes(s)).map(s => (
+                    <div key={`custom-hide-${s}`} style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '4px 8px',
+                      background: 'rgba(239,68,68,0.15)',
+                      borderRadius: 4,
+                      border: '1px solid rgba(239,68,68,0.3)',
+                      fontSize: '0.85rem'
+                    }}>
+                      <span style={{ color: 'rgba(239,68,68,1)' }}>✓</span>
+                      <span style={{ color: 'rgba(255,255,255,0.9)' }}>{s}</span>
+                      <button
+                        onClick={() => handleRemoveCustomSubmesh(s, 'hide')}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'rgba(239,68,68,0.8)',
+                          cursor: 'pointer',
+                          padding: '2px 4px',
+                          fontSize: '0.8rem',
+                          borderRadius: 2
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
                 </div>
+              </div>
 
-                {/* Persistent VFX */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.9)' }}>Persistent VFX</div>
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 12,
-                    flex: 1,
-                    overflow: 'auto',
-                    padding: '8px',
-                    background: 'rgba(255,255,255,0.02)',
-                    borderRadius: 6,
-                    border: '1px solid rgba(255,255,255,0.08)'
-                  }}>
-                    {persistentVfx.map((v, idx) => (
-                      <div key={idx} style={{
-                        display: 'grid',
-                        gridTemplateColumns: '2fr 1fr auto',
-                        gap: 12,
-                        alignItems: 'start',
-                        padding: '12px',
-                        background: 'rgba(255,255,255,0.03)',
-                        borderRadius: 6,
-                        border: '1px solid rgba(255,255,255,0.1)'
-                      }}>
-                        {/* Effect Selection */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, position: 'relative' }}>
-                          <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)' }}>Effect Key:</span>
-                          <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="text"
-                              placeholder="Search or select effect key..."
-                              value={vfxSearchTerms[idx] || (v.id ? (effectKeyOptions.find(o => o.id === v.id)?.label || '').split(' → ')[0].split(' - ')[0] || '' : '')}
-                              onChange={e => {
-                                const newValue = e.target.value;
-                                setVfxSearchTerms(prev => ({ ...prev, [idx]: newValue }));
-                                setVfxDropdownOpen(prev => ({ ...prev, [idx]: true }));
-                              }}
-                              onFocus={() => setVfxDropdownOpen(prev => ({ ...prev, [idx]: true }))}
-                              style={{
-                                padding: '8px 12px',
-                                paddingRight: '32px',
-                                background: 'rgba(255,255,255,0.05)',
-                                border: '1px solid rgba(255,255,255,0.15)',
-                                borderRadius: 4,
-                                color: 'var(--accent)',
-                                fontSize: '0.85rem',
-                                width: '100%'
-                              }}
-                            />
-                            <button
-                              onClick={() => setVfxDropdownOpen(prev => ({ ...prev, [idx]: !prev[idx] }))}
-                              style={{
-                                position: 'absolute',
-                                right: '8px',
-                                top: '50%',
-                                transform: 'translateY(-50%)',
-                                background: 'none',
-                                border: 'none',
-                                color: 'rgba(255,255,255,0.6)',
-                                cursor: 'pointer',
-                                fontSize: '12px'
-                              }}
-                            >
-                              {vfxDropdownOpen[idx] ? '▲' : '▼'}
-                            </button>
-
-                            {vfxDropdownOpen[idx] && (
-                              <div style={{
-                                position: 'absolute',
-                                top: '100%',
-                                left: 0,
-                                right: 0,
-                                background: 'rgba(20,20,20,0.98)',
-                                border: '1px solid rgba(255,255,255,0.2)',
-                                borderRadius: 4,
-                                maxHeight: '120px',
-                                overflow: 'auto',
-                                zIndex: 9999,
-                                // backdropFilter: 'blur(15px)',
-                                boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
-                              }}>
-                                {effectKeyOptions
-                                  .filter(o => !vfxSearchTerms[idx] || o.label.toLowerCase().includes(vfxSearchTerms[idx].toLowerCase()))
-                                  .slice(0, 50) // Limit to first 50 results
-                                  .map(o => (
-                                    <div
-                                      key={o.id}
-                                      onClick={() => {
-                                        setPersistentVfx(list => list.map((x, i) => i === idx ? { ...x, id: o.id, key: o.key, value: o.value } : x));
-                                        setVfxSearchTerms(prev => ({ ...prev, [idx]: o.label.split(' → ')[0].split(' - ')[0] }));
-                                        setVfxDropdownOpen(prev => ({ ...prev, [idx]: false }));
-                                      }}
-                                      style={{
-                                        padding: '8px 12px',
-                                        cursor: 'pointer',
-                                        fontSize: '0.8rem',
-                                        color: 'rgba(255,255,255,0.9)',
-                                        borderBottom: '1px solid rgba(255,255,255,0.05)',
-                                        transition: 'background 0.1s ease'
-                                      }}
-                                      onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
-                                      onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                                    >
-                                      {o.label.split(' → ')[0].split(' - ')[0]}
-                                    </div>
-                                  ))}
-                                {effectKeyOptions.filter(o => !vfxSearchTerms[idx] || o.label.toLowerCase().includes(vfxSearchTerms[idx].toLowerCase())).length === 0 && (
-                                  <div style={{ padding: '8px 12px', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>
-                                    No effects found
-                                  </div>
-                                )}
-                                {effectKeyOptions.filter(o => !vfxSearchTerms[idx] || o.label.toLowerCase().includes(vfxSearchTerms[idx].toLowerCase())).length > 50 && (
-                                  <div style={{ padding: '8px 12px', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', fontStyle: 'italic' }}>
-                                    Showing first 50 results. Type to search...
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Bone Name */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)' }}>Bone Name:</span>
+              {/* Persistent VFX */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.9)' }}>Persistent VFX</div>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                  flex: 1,
+                  overflow: 'auto',
+                  padding: '8px',
+                  background: 'rgba(255,255,255,0.02)',
+                  borderRadius: 6,
+                  border: '1px solid rgba(255,255,255,0.08)'
+                }}>
+                  {persistentVfx.map((v, idx) => (
+                    <div key={idx} style={{
+                      display: 'grid',
+                      gridTemplateColumns: '2fr 1fr auto',
+                      gap: 12,
+                      alignItems: 'start',
+                      padding: '12px',
+                      background: 'rgba(255,255,255,0.03)',
+                      borderRadius: 6,
+                      border: '1px solid rgba(255,255,255,0.1)'
+                    }}>
+                      {/* Effect Selection */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, position: 'relative' }}>
+                        <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)' }}>Effect Key:</span>
+                        <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
                           <input
-                            placeholder="C_Buffbone_Glb_Layout_Loc"
-                            value={v.boneName || ''}
-                            onChange={e => setPersistentVfx(list => list.map((x, i) => i === idx ? { ...x, boneName: e.target.value } : x))}
+                            type="text"
+                            placeholder="Search or select effect key..."
+                            value={vfxSearchTerms[idx] || (v.id ? (effectKeyOptions.find(o => o.id === v.id)?.label || '').split(' → ')[0].split(' - ')[0] || '' : '')}
+                            onChange={e => {
+                              const newValue = e.target.value;
+                              setVfxSearchTerms(prev => ({ ...prev, [idx]: newValue }));
+                              setVfxDropdownOpen(prev => ({ ...prev, [idx]: true }));
+                            }}
+                            onFocus={() => setVfxDropdownOpen(prev => ({ ...prev, [idx]: true }))}
                             style={{
                               padding: '8px 12px',
+                              paddingRight: '32px',
                               background: 'rgba(255,255,255,0.05)',
                               border: '1px solid rgba(255,255,255,0.15)',
                               borderRadius: 4,
                               color: 'var(--accent)',
-                              fontSize: '0.85rem'
+                              fontSize: '0.85rem',
+                              width: '100%'
                             }}
                           />
-                        </div>
+                          <button
+                            onClick={() => setVfxDropdownOpen(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                            style={{
+                              position: 'absolute',
+                              right: '8px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              background: 'none',
+                              border: 'none',
+                              color: 'rgba(255,255,255,0.6)',
+                              cursor: 'pointer',
+                              fontSize: '12px'
+                            }}
+                          >
+                            {vfxDropdownOpen[idx] ? '▲' : '▼'}
+                          </button>
 
-                        {/* Delete Button */}
-                        <button
-                          onClick={() => setPersistentVfx(list => list.filter((_, i) => i !== idx))}
-                          style={{
-                            background: 'rgba(239,68,68,0.15)',
-                            border: '1px solid rgba(239,68,68,0.3)',
-                            borderRadius: 4,
-                            color: '#ff6b6b',
-                            cursor: 'pointer',
-                            padding: '8px',
-                            fontSize: '16px',
-                            width: '36px',
-                            height: '36px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'all 0.2s ease'
-                          }}
-                          onMouseEnter={(e) => e.target.style.background = 'rgba(239,68,68,0.25)'}
-                          onMouseLeave={(e) => e.target.style.background = 'rgba(239,68,68,0.15)'}
-                        >
-                          🗑
-                        </button>
-
-                        {/* Options */}
-                        <div style={{
-                          gridColumn: '1 / -1',
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          gap: 12,
-                          marginTop: 8,
-                          paddingTop: 8,
-                          borderTop: '1px solid rgba(255,255,255,0.08)'
-                        }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
-                            <input
-                              type="checkbox"
-                              checked={!!v.ownerOnly}
-                              onChange={e => setPersistentVfx(list => list.map((x, i) => i === idx ? { ...x, ownerOnly: e.target.checked } : x))}
-                            />
-                            <span style={{ color: 'rgba(255,255,255,0.8)' }}>Owner Only</span>
-                          </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
-                            <input
-                              type="checkbox"
-                              checked={!!v.attachToCamera}
-                              onChange={e => setPersistentVfx(list => list.map((x, i) => i === idx ? { ...x, attachToCamera: e.target.checked } : x))}
-                            />
-                            <span style={{ color: 'rgba(255,255,255,0.8)' }}>Attach to Camera</span>
-                          </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
-                            <input
-                              type="checkbox"
-                              checked={!!v.forceRenderVfx}
-                              onChange={e => setPersistentVfx(list => list.map((x, i) => i === idx ? { ...x, forceRenderVfx: e.target.checked } : x))}
-                            />
-                            <span style={{ color: 'rgba(255,255,255,0.8)' }}>Force Render VFX</span>
-                          </label>
+                          {vfxDropdownOpen[idx] && (
+                            <div style={{
+                              position: 'absolute',
+                              top: '100%',
+                              left: 0,
+                              right: 0,
+                              background: 'rgba(20,20,20,0.98)',
+                              border: '1px solid rgba(255,255,255,0.2)',
+                              borderRadius: 4,
+                              maxHeight: '120px',
+                              overflow: 'auto',
+                              zIndex: 9999,
+                              // backdropFilter: 'blur(15px)',
+                              boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
+                            }}>
+                              {effectKeyOptions
+                                .filter(o => !vfxSearchTerms[idx] || o.label.toLowerCase().includes(vfxSearchTerms[idx].toLowerCase()))
+                                .slice(0, 50) // Limit to first 50 results
+                                .map(o => (
+                                  <div
+                                    key={o.id}
+                                    onClick={() => {
+                                      setPersistentVfx(list => list.map((x, i) => i === idx ? { ...x, id: o.id, key: o.key, value: o.value } : x));
+                                      setVfxSearchTerms(prev => ({ ...prev, [idx]: o.label.split(' → ')[0].split(' - ')[0] }));
+                                      setVfxDropdownOpen(prev => ({ ...prev, [idx]: false }));
+                                    }}
+                                    style={{
+                                      padding: '8px 12px',
+                                      cursor: 'pointer',
+                                      fontSize: '0.8rem',
+                                      color: 'rgba(255,255,255,0.9)',
+                                      borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                      transition: 'background 0.1s ease'
+                                    }}
+                                    onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+                                    onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                                  >
+                                    {o.label.split(' → ')[0].split(' - ')[0]}
+                                  </div>
+                                ))}
+                              {effectKeyOptions.filter(o => !vfxSearchTerms[idx] || o.label.toLowerCase().includes(vfxSearchTerms[idx].toLowerCase())).length === 0 && (
+                                <div style={{ padding: '8px 12px', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>
+                                  No effects found
+                                </div>
+                              )}
+                              {effectKeyOptions.filter(o => !vfxSearchTerms[idx] || o.label.toLowerCase().includes(vfxSearchTerms[idx].toLowerCase())).length > 50 && (
+                                <div style={{ padding: '8px 12px', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', fontStyle: 'italic' }}>
+                                  Showing first 50 results. Type to search...
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
-                    ))}
 
-                    <button
-                      onClick={() => setPersistentVfx(list => [...list, {}])}
-                      style={{
-                        padding: '12px',
-                        background: 'rgba(34,197,94,0.15)',
-                        border: '2px dashed rgba(34,197,94,0.3)',
-                        borderRadius: 6,
-                        color: '#4ade80',
-                        cursor: 'pointer',
-                        fontSize: '0.9rem',
-                        fontWeight: 500,
-                        transition: 'all 0.2s ease',
+                      {/* Bone Name */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)' }}>Bone Name:</span>
+                        <input
+                          placeholder="C_Buffbone_Glb_Layout_Loc"
+                          value={v.boneName || ''}
+                          onChange={e => setPersistentVfx(list => list.map((x, i) => i === idx ? { ...x, boneName: e.target.value } : x))}
+                          style={{
+                            padding: '8px 12px',
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.15)',
+                            borderRadius: 4,
+                            color: 'var(--accent)',
+                            fontSize: '0.85rem'
+                          }}
+                        />
+                      </div>
+
+                      {/* Delete Button */}
+                      <button
+                        onClick={() => setPersistentVfx(list => list.filter((_, i) => i !== idx))}
+                        style={{
+                          background: 'rgba(239,68,68,0.15)',
+                          border: '1px solid rgba(239,68,68,0.3)',
+                          borderRadius: 4,
+                          color: '#ff6b6b',
+                          cursor: 'pointer',
+                          padding: '8px',
+                          fontSize: '16px',
+                          width: '36px',
+                          height: '36px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => e.target.style.background = 'rgba(239,68,68,0.25)'}
+                        onMouseLeave={(e) => e.target.style.background = 'rgba(239,68,68,0.15)'}
+                      >
+                        🗑
+                      </button>
+
+                      {/* Options */}
+                      <div style={{
+                        gridColumn: '1 / -1',
                         display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 8
-                      }}
-                      onMouseEnter={(e) => {
-                        e.target.style.background = 'rgba(34,197,94,0.2)';
-                        e.target.style.borderColor = 'rgba(34,197,94,0.4)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.background = 'rgba(34,197,94,0.15)';
-                        e.target.style.borderColor = 'rgba(34,197,94,0.3)';
-                      }}
-                    >
-                      <span style={{ fontSize: '18px' }}>＋</span>
-                      Add VFX
-                    </button>
-                  </div>
+                        flexWrap: 'wrap',
+                        gap: 12,
+                        marginTop: 8,
+                        paddingTop: 8,
+                        borderTop: '1px solid rgba(255,255,255,0.08)'
+                      }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={!!v.ownerOnly}
+                            onChange={e => setPersistentVfx(list => list.map((x, i) => i === idx ? { ...x, ownerOnly: e.target.checked } : x))}
+                          />
+                          <span style={{ color: 'rgba(255,255,255,0.8)' }}>Owner Only</span>
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={!!v.attachToCamera}
+                            onChange={e => setPersistentVfx(list => list.map((x, i) => i === idx ? { ...x, attachToCamera: e.target.checked } : x))}
+                          />
+                          <span style={{ color: 'rgba(255,255,255,0.8)' }}>Attach to Camera</span>
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={!!v.forceRenderVfx}
+                            onChange={e => setPersistentVfx(list => list.map((x, i) => i === idx ? { ...x, forceRenderVfx: e.target.checked } : x))}
+                          />
+                          <span style={{ color: 'rgba(255,255,255,0.8)' }}>Force Render VFX</span>
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    onClick={() => setPersistentVfx(list => [...list, {}])}
+                    style={{
+                      padding: '12px',
+                      background: 'rgba(34,197,94,0.15)',
+                      border: '2px dashed rgba(34,197,94,0.3)',
+                      borderRadius: 6,
+                      color: '#4ade80',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
+                      fontWeight: 500,
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = 'rgba(34,197,94,0.2)';
+                      e.target.style.borderColor = 'rgba(34,197,94,0.4)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = 'rgba(34,197,94,0.15)';
+                      e.target.style.borderColor = 'rgba(34,197,94,0.3)';
+                    }}
+                  >
+                    <span style={{ fontSize: '18px' }}>＋</span>
+                    Add VFX
+                  </button>
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Footer */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: 12,
-              padding: '1.5rem',
-              borderTop: '1px solid rgba(255,255,255,0.12)',
-              background: 'rgba(255,255,255,0.02)'
-            }}>
-              {/* Left side - Load Existing */}
-              <div style={{ position: 'relative' }}>
-                <button
-                  onClick={() => setShowExistingConditions(!showExistingConditions)}
-                  style={{
-                    padding: '10px 16px',
-                    background: 'rgba(59,130,246,0.15)',
-                    border: '1px solid rgba(59,130,246,0.3)',
-                    borderRadius: 8,
-                    color: '#60a5fa',
-                    cursor: 'pointer',
-                    fontSize: '0.9rem',
-                    transition: 'all 0.2s ease',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8
-                  }}
-                  onMouseEnter={(e) => e.target.style.background = 'rgba(59,130,246,0.2)'}
-                  onMouseLeave={(e) => e.target.style.background = 'rgba(59,130,246,0.15)'}
-                >
-                  📂 Load Existing ({existingConditions.length})
-                </button>
+          {/* Footer */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+            padding: '1.5rem',
+            borderTop: '1px solid rgba(255,255,255,0.12)',
+            background: 'rgba(255,255,255,0.02)'
+          }}>
+            {/* Left side - Load Existing */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowExistingConditions(!showExistingConditions)}
+                style={{
+                  padding: '10px 16px',
+                  background: 'rgba(59,130,246,0.15)',
+                  border: '1px solid rgba(59,130,246,0.3)',
+                  borderRadius: 8,
+                  color: '#60a5fa',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }}
+                onMouseEnter={(e) => e.target.style.background = 'rgba(59,130,246,0.2)'}
+                onMouseLeave={(e) => e.target.style.background = 'rgba(59,130,246,0.15)'}
+              >
+                📂 Load Existing ({existingConditions.length})
+              </button>
 
-                {showExistingConditions && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '100%',
-                    left: 0,
-                    marginBottom: '8px',
-                    background: 'rgba(20,20,20,0.98)',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    borderRadius: 8,
-                    minWidth: '300px',
-                    maxHeight: '200px',
-                    overflow: 'auto',
-                    zIndex: 10000,
-                    // backdropFilter: 'blur(15px)',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
-                  }}>
-                    {existingConditions.length === 0 ? (
-                      <div style={{ padding: '12px', color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>
-                        No existing conditions found
-                      </div>
-                    ) : (
-                      existingConditions.map((condition, idx) => (
-                        <div
-                          key={idx}
-                          onClick={() => handleLoadExistingCondition(condition)}
-                          style={{
-                            padding: '12px 16px',
-                            cursor: 'pointer',
-                            borderBottom: idx < existingConditions.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
-                            transition: 'background 0.1s ease'
-                          }}
-                          onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
-                          onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                        >
-                          <div style={{ color: 'rgba(255,255,255,0.9)', fontSize: '0.9rem', fontWeight: 500 }}>
-                            {condition.label}
-                          </div>
-                          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginTop: '2px' }}>
-                            {condition.vfx.length} VFX • {condition.submeshesShow.length} Show • {condition.submeshesHide.length} Hide
-                          </div>
+              {showExistingConditions && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  left: 0,
+                  marginBottom: '8px',
+                  background: 'rgba(20,20,20,0.98)',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  borderRadius: 8,
+                  minWidth: '300px',
+                  maxHeight: '200px',
+                  overflow: 'auto',
+                  zIndex: 10000,
+                  // backdropFilter: 'blur(15px)',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
+                }}>
+                  {existingConditions.length === 0 ? (
+                    <div style={{ padding: '12px', color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>
+                      No existing conditions found
+                    </div>
+                  ) : (
+                    existingConditions.map((condition, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => handleLoadExistingCondition(condition)}
+                        style={{
+                          padding: '12px 16px',
+                          cursor: 'pointer',
+                          borderBottom: idx < existingConditions.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                          transition: 'background 0.1s ease'
+                        }}
+                        onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+                        onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                      >
+                        <div style={{ color: 'rgba(255,255,255,0.9)', fontSize: '0.9rem', fontWeight: 500 }}>
+                          {condition.label}
                         </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
+                        <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginTop: '2px' }}>
+                          {condition.vfx.length} VFX • {condition.submeshesShow.length} Show • {condition.submeshesHide.length} Hide
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
 
-              {/* Right side - Action buttons */}
-              <div style={{ display: 'flex', gap: 12 }}>
-                {editingConditionIndex !== null && (
-                  <div style={{
-                    padding: '10px 16px',
-                    background: 'rgba(251,191,36,0.15)',
-                    border: '1px solid rgba(251,191,36,0.3)',
-                    borderRadius: 8,
-                    color: '#fbbf24',
-                    fontSize: '0.85rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6
-                  }}>
-                    ✏️ Editing Condition {editingConditionIndex + 1}
-                  </div>
-                )}
-                <button
-                  onClick={() => setShowPersistentModal(false)}
-                  style={{
-                    padding: '10px 20px',
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.14)',
-                    borderRadius: 8,
-                    color: 'var(--accent)',
-                    cursor: 'pointer',
-                    fontSize: '0.9rem',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
-                  onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.06)'}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleApplyPersistent}
-                  style={{
-                    padding: '10px 20px',
-                    background: 'linear-gradient(180deg, rgba(34,197,94,0.22), rgba(22,163,74,0.18))',
-                    border: '1px solid rgba(34,197,94,0.32)',
-                    borderRadius: 8,
-                    color: '#eaffef',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontSize: '0.9rem',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => e.target.style.background = 'linear-gradient(180deg, rgba(34,197,94,0.3), rgba(22,163,74,0.25)'}
-                  onMouseLeave={(e) => e.target.style.background = 'linear-gradient(180deg, rgba(34,197,94,0.22), rgba(22,163,74,0.18)'}
-                >
-                  {editingConditionIndex !== null ? 'Update' : 'Apply'}
-                </button>
-              </div>
+            {/* Right side - Action buttons */}
+            <div style={{ display: 'flex', gap: 12 }}>
+              {editingConditionIndex !== null && (
+                <div style={{
+                  padding: '10px 16px',
+                  background: 'rgba(251,191,36,0.15)',
+                  border: '1px solid rgba(251,191,36,0.3)',
+                  borderRadius: 8,
+                  color: '#fbbf24',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}>
+                  ✏️ Editing Condition {editingConditionIndex + 1}
+                </div>
+              )}
+              <button
+                onClick={() => setShowPersistentModal(false)}
+                style={{
+                  padding: '10px 20px',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.14)',
+                  borderRadius: 8,
+                  color: 'var(--accent)',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+                onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.06)'}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyPersistent}
+                style={{
+                  padding: '10px 20px',
+                  background: 'linear-gradient(180deg, rgba(34,197,94,0.22), rgba(22,163,74,0.18))',
+                  border: '1px solid rgba(34,197,94,0.32)',
+                  borderRadius: 8,
+                  color: '#eaffef',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => e.target.style.background = 'linear-gradient(180deg, rgba(34,197,94,0.3), rgba(22,163,74,0.25)'}
+                onMouseLeave={(e) => e.target.style.background = 'linear-gradient(180deg, rgba(34,197,94,0.22), rgba(22,163,74,0.18)'}
+              >
+                {editingConditionIndex !== null ? 'Update' : 'Apply'}
+              </button>
             </div>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
-      {/* Child Particle Edit Modal */}
-      <Dialog
-        open={showChildEditModal}
-        onClose={() => {
-          setShowChildEditModal(false);
-          setEditingChildEmitter(null);
-          setEditingChildSystem(null);
-          setSelectedChildSystem('');
-          setChildParticleRate('1');
-          setChildParticleLifetime('9999');
-          setChildParticleBindWeight('1');
-          setChildParticleIsSingle(true);
-          setChildParticleTimeBeforeFirstEmission('0');
-          setAvailableVfxSystems([]);
+    {/* Child Particle Edit Modal */}
+    <Dialog
+      open={showChildEditModal}
+      onClose={() => {
+        setShowChildEditModal(false);
+        setEditingChildEmitter(null);
+        setEditingChildSystem(null);
+        setSelectedChildSystem('');
+        setChildParticleRate('1');
+        setChildParticleLifetime('9999');
+        setChildParticleBindWeight('1');
+        setChildParticleIsSingle(true);
+        setChildParticleTimeBeforeFirstEmission('0');
+        setAvailableVfxSystems([]);
+      }}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          background: 'transparent',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          borderRadius: 3,
+          overflow: 'hidden',
+        }
+      }}
+    >
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '4px',
+          background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+          backgroundSize: '200% 100%',
+          animation: 'shimmer 3s ease-in-out infinite',
+          '@keyframes shimmer': {
+            '0%': { backgroundPosition: '200% 0' },
+            '100%': { backgroundPosition: '-200% 0' },
+          },
         }}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            background: 'transparent',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-            borderRadius: 3,
-            overflow: 'hidden',
-          }
-        }}
-      >
+      />
+      <DialogTitle sx={{
+        color: 'var(--accent)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1.5,
+        pb: 1.5,
+        pt: 2.5,
+        px: 3,
+        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+      }}>
         <Box
           sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '4px',
-            background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
-            backgroundSize: '200% 100%',
-            animation: 'shimmer 3s ease-in-out infinite',
-            '@keyframes shimmer': {
-              '0%': { backgroundPosition: '200% 0' },
-              '100%': { backgroundPosition: '-200% 0' },
-            },
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            backgroundColor: 'rgba(var(--accent-rgb), 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
           }}
-        />
-        <DialogTitle sx={{
+        >
+          <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
+        </Box>
+        <Typography variant="h6" sx={{
+          fontWeight: 600,
           color: 'var(--accent)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.5,
-          pb: 1.5,
-          pt: 2.5,
-          px: 3,
-          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+          fontFamily: 'JetBrains Mono, monospace',
+          fontSize: '1rem',
         }}>
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              backgroundColor: 'rgba(var(--accent-rgb), 0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
-          </Box>
-          <Typography variant="h6" sx={{
-            fontWeight: 600,
-            color: 'var(--accent)',
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '1rem',
+          Edit Child Particle
+        </Typography>
+      </DialogTitle>
+      <DialogContent sx={{ px: 3, py: 2.5 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography variant="body2" sx={{
+            color: 'var(--accent2)',
+            lineHeight: 1.6,
+            fontSize: '0.875rem',
           }}>
-            Edit Child Particle
+            VFX System: <strong style={{ color: 'var(--accent)' }}>{editingChildSystem?.name}</strong>
           </Typography>
-        </DialogTitle>
-        <DialogContent sx={{ px: 3, py: 2.5 }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Typography variant="body2" sx={{
-              color: 'var(--accent2)',
-              lineHeight: 1.6,
-              fontSize: '0.875rem',
-            }}>
-              VFX System: <strong style={{ color: 'var(--accent)' }}>{editingChildSystem?.name}</strong>
-            </Typography>
-            <Typography variant="body2" sx={{
-              color: 'var(--accent2)',
-              lineHeight: 1.6,
-              fontSize: '0.875rem',
-            }}>
-              Emitter: <strong style={{ color: 'var(--accent)' }}>{editingChildEmitter}</strong>
-            </Typography>
+          <Typography variant="body2" sx={{
+            color: 'var(--accent2)',
+            lineHeight: 1.6,
+            fontSize: '0.875rem',
+          }}>
+            Emitter: <strong style={{ color: 'var(--accent)' }}>{editingChildEmitter}</strong>
+          </Typography>
 
-            <Box>
-              <Typography variant="body2" sx={{
-                color: 'var(--accent2)',
-                mb: 1,
-                fontSize: '0.875rem',
-              }}>
-                Child VFX System:
-              </Typography>
-              <FormControl fullWidth size="small">
-                <Select
-                  value={selectedChildSystem || ''}
-                  onChange={(e) => setSelectedChildSystem(e.target.value)}
-                  sx={{
+          <Box>
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
+              mb: 1,
+              fontSize: '0.875rem',
+            }}>
+              Child VFX System:
+            </Typography>
+            <FormControl fullWidth size="small">
+              <Select
+                value={selectedChildSystem || ''}
+                onChange={(e) => setSelectedChildSystem(e.target.value)}
+                sx={{
+                  color: 'var(--accent)',
+                  backgroundColor: 'var(--surface)',
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'rgba(255, 255, 255, 0.06)',
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--accent)',
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--accent)',
+                  },
+                  '& .MuiSvgIcon-root': {
                     color: 'var(--accent)',
-                    backgroundColor: 'var(--surface)',
-                    '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'rgba(255, 255, 255, 0.06)',
-                    },
-                    '&:hover .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--accent)',
-                    },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--accent)',
-                    },
-                    '& .MuiSvgIcon-root': {
-                      color: 'var(--accent)',
-                    },
-                  }}
-                >
-                  <MenuItem value="" sx={{ color: 'var(--accent2)' }}>
-                    Select a VFX System...
+                  },
+                }}
+              >
+                <MenuItem value="" sx={{ color: 'var(--accent2)' }}>
+                  Select a VFX System...
+                </MenuItem>
+                {availableVfxSystems.map(system => (
+                  <MenuItem key={system.key} value={system.key} sx={{ color: 'var(--accent2)' }}>
+                    {system.name} {system.key.startsWith('0x') ? `(${system.key})` : ''}
                   </MenuItem>
-                  {availableVfxSystems.map(system => (
-                    <MenuItem key={system.key} value={system.key} sx={{ color: 'var(--accent2)' }}>
-                      {system.name} {system.key.startsWith('0x') ? `(${system.key})` : ''}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
 
-            <Box>
-              <Typography variant="body2" sx={{
-                color: 'var(--accent2)',
-                mb: 1,
+          <Box>
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
+              mb: 1,
+              fontSize: '0.875rem',
+            }}>
+              Rate:
+            </Typography>
+            <MemoizedInput
+              type="number"
+              value={childParticleRate}
+              onChange={(e) => setChildParticleRate(e.target.value)}
+              step="0.1"
+              min="0"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'var(--surface)',
+                color: 'var(--accent)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: '6px',
                 fontSize: '0.875rem',
-              }}>
-                Rate:
-              </Typography>
-              <MemoizedInput
-                type="number"
-                value={childParticleRate}
-                onChange={(e) => setChildParticleRate(e.target.value)}
-                step="0.1"
-                min="0"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'var(--surface)',
-                  color: 'var(--accent)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              />
-            </Box>
-
-            <Box>
-              <Typography variant="body2" sx={{
-                color: 'var(--accent2)',
-                mb: 1,
-                fontSize: '0.875rem',
-              }}>
-                Lifetime:
-              </Typography>
-              <MemoizedInput
-                type="number"
-                value={childParticleLifetime}
-                onChange={(e) => setChildParticleLifetime(e.target.value)}
-                min="0"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'var(--surface)',
-                  color: 'var(--accent)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              />
-            </Box>
-
-            <Box>
-              <Typography variant="body2" sx={{
-                color: 'var(--accent2)',
-                mb: 1,
-                fontSize: '0.875rem',
-              }}>
-                Bind Weight:
-              </Typography>
-              <MemoizedInput
-                type="number"
-                value={childParticleBindWeight}
-                onChange={(e) => setChildParticleBindWeight(e.target.value)}
-                step="0.1"
-                min="0"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'var(--surface)',
-                  color: 'var(--accent)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              />
-            </Box>
-
-            <Box>
-              <Typography variant="body2" sx={{
-                color: 'var(--accent2)',
-                mb: 1,
-                fontSize: '0.875rem',
-                fontWeight: 500,
-              }}>
-                Time Before First Emission:
-              </Typography>
-              <MemoizedInput
-                type="number"
-                value={childParticleTimeBeforeFirstEmission}
-                onChange={(e) => setChildParticleTimeBeforeFirstEmission(e.target.value)}
-                step="0.01"
-                min="0"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'var(--surface)',
-                  color: 'var(--accent)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              />
-            </Box>
-
-            <Box>
-              <Typography variant="body2" sx={{
-                color: 'var(--accent2)',
-                mb: 1,
-                fontSize: '0.875rem',
-                fontWeight: 500,
-              }}>
-                Translation Override:
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1.5 }}>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{
-                    color: 'var(--accent2)',
-                    mb: 0.5,
-                    fontSize: '0.75rem',
-                  }}>
-                    X:
-                  </Typography>
-                  <MemoizedInput
-                    type="number"
-                    value={childParticleTranslationOverrideX}
-                    onChange={(e) => setChildParticleTranslationOverrideX(e.target.value)}
-                    step="0.1"
-                    style={{
-                      width: '100%',
-                      padding: '6px 8px',
-                      background: 'var(--surface)',
-                      color: 'var(--accent)',
-                      border: '1px solid rgba(255, 255, 255, 0.06)',
-                      borderRadius: '6px',
-                      fontSize: '0.75rem',
-                      fontFamily: 'JetBrains Mono, monospace',
-                    }}
-                  />
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{
-                    color: 'var(--accent2)',
-                    mb: 0.5,
-                    fontSize: '0.75rem',
-                  }}>
-                    Y:
-                  </Typography>
-                  <MemoizedInput
-                    type="number"
-                    value={childParticleTranslationOverrideY}
-                    onChange={(e) => setChildParticleTranslationOverrideY(e.target.value)}
-                    step="0.1"
-                    style={{
-                      width: '100%',
-                      padding: '6px 8px',
-                      background: 'var(--surface)',
-                      color: 'var(--accent)',
-                      border: '1px solid rgba(255, 255, 255, 0.06)',
-                      borderRadius: '6px',
-                      fontSize: '0.75rem',
-                      fontFamily: 'JetBrains Mono, monospace',
-                    }}
-                  />
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{
-                    color: 'var(--accent2)',
-                    mb: 0.5,
-                    fontSize: '0.75rem',
-                  }}>
-                    Z:
-                  </Typography>
-                  <MemoizedInput
-                    type="number"
-                    value={childParticleTranslationOverrideZ}
-                    onChange={(e) => setChildParticleTranslationOverrideZ(e.target.value)}
-                    step="0.1"
-                    style={{
-                      width: '100%',
-                      padding: '6px 8px',
-                      background: 'var(--surface)',
-                      color: 'var(--accent)',
-                      border: '1px solid rgba(255, 255, 255, 0.06)',
-                      borderRadius: '6px',
-                      fontSize: '0.75rem',
-                      fontFamily: 'JetBrains Mono, monospace',
-                    }}
-                  />
-                </Box>
-              </Box>
-            </Box>
-
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={childParticleIsSingle}
-                  onChange={(e) => setChildParticleIsSingle(e.target.checked)}
-                  sx={{
-                    color: 'var(--accent2)',
-                    '&.Mui-checked': {
-                      color: 'var(--accent)',
-                    },
-                  }}
-                />
-              }
-              label={
-                <Typography variant="body2" sx={{
-                  color: 'var(--accent2)',
-                  fontSize: '0.875rem',
-                }}>
-                  Is Single Particle
-                </Typography>
-              }
+                fontFamily: 'JetBrains Mono, monospace',
+              }}
             />
           </Box>
-        </DialogContent>
-        <DialogActions sx={{
-          p: 2.5,
-          pt: 2,
-          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-          gap: 1.5,
-        }}>
-          <Button
-            onClick={() => {
-              setShowChildEditModal(false);
-              setEditingChildEmitter(null);
-              setEditingChildSystem(null);
-              setSelectedChildSystem('');
-              setChildParticleRate('1');
-              setChildParticleLifetime('9999');
-              setChildParticleBindWeight('1');
-              setChildParticleIsSingle(true);
-              setChildParticleTimeBeforeFirstEmission('0');
-              setAvailableVfxSystems([]);
-            }}
-            variant="outlined"
-            sx={{
+
+          <Box>
+            <Typography variant="body2" sx={{
               color: 'var(--accent2)',
-              borderColor: 'rgba(255, 255, 255, 0.06)',
-              textTransform: 'none',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.8rem',
-              px: 2,
-              '&:hover': {
-                borderColor: 'var(--accent)',
-                backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
-              },
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleConfirmChildParticleEdit}
-            variant="contained"
-            sx={{
-              backgroundColor: 'var(--accent)',
-              color: 'var(--surface)',
-              textTransform: 'none',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              px: 2.5,
-              '&:hover': {
-                backgroundColor: 'var(--accent2)',
-              },
-            }}
-          >
-            Update
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Matrix Editor Modal */}
-      {showMatrixModal && (
-        <MatrixEditor
-          open={showMatrixModal}
-          initialMatrix={matrixModalState.initial}
-          onApply={(mat) => {
-            try {
-              // Save state before applying matrix changes
-              const sys = targetSystems[matrixModalState.systemKey];
-              if (!sys) { setShowMatrixModal(false); return; }
-              saveStateToHistory(`Update matrix for "${sys.name}"`);
-
-              // Get current system content from the updated targetPyContent instead of stale rawContent
-              const currentSysText = sys.rawContent || extractVFXSystem(targetPyContent, sys.key)?.fullContent || '';
-
-              // Build updated system block
-              const updatedSystemText = upsertSystemMatrix(currentSysText, mat);
-              const updatedFile = replaceSystemBlockInFile(targetPyContent || '', sys.key, updatedSystemText);
-
-              // 1) Update file text
-              setTargetPyContent(updatedFile);
-              try { setFileSaved(false); } catch { }
-
-              // 2) Preserve in-memory emitters; update only this system's rawContent
-              setTargetSystems(prev => {
-                const copy = { ...prev };
-                const old = copy[matrixModalState.systemKey];
-                if (old) {
-                  copy[matrixModalState.systemKey] = {
-                    ...old,
-                    rawContent: updatedSystemText
-                  };
-                }
-                return copy;
-              });
-              // Do NOT re-parse all systems here to avoid losing emitter originalContent
-            } catch (err) {
-              console.error('Apply matrix failed:', err);
-            } finally {
-              setShowMatrixModal(false);
-              setMatrixModalState({ systemKey: null, initial: null });
-            }
-          }}
-          onClose={() => {
-            setShowMatrixModal(false);
-            setMatrixModalState({ systemKey: null, initial: null });
-          }}
-        />
-      )}
-
-      {/* New VFX System Modal */}
-      <Dialog
-        open={showNewSystemModal}
-        onClose={() => setShowNewSystemModal(false)}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            background: 'transparent',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-            borderRadius: 3,
-            overflow: 'hidden',
-          }
-        }}
-      >
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '4px',
-            background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
-            backgroundSize: '200% 100%',
-            animation: 'shimmer 3s ease-in-out infinite',
-            '@keyframes shimmer': {
-              '0%': { backgroundPosition: '200% 0' },
-              '100%': { backgroundPosition: '-200% 0' },
-            },
-          }}
-        />
-        <DialogTitle sx={{
-          color: 'var(--accent)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.5,
-          pb: 1.5,
-          pt: 2.5,
-          px: 3,
-          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-        }}>
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              backgroundColor: 'rgba(var(--accent-rgb), 0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
-          </Box>
-          <Typography variant="h6" sx={{
-            fontWeight: 600,
-            color: 'var(--accent)',
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '1rem',
-          }}>
-            New VFX System
-          </Typography>
-        </DialogTitle>
-        <DialogContent sx={{ px: 3, py: 2.5 }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Box>
-              <Typography variant="body2" sx={{
-                color: 'var(--accent2)',
-                mb: 1,
+              mb: 1,
+              fontSize: '0.875rem',
+            }}>
+              Lifetime:
+            </Typography>
+            <MemoizedInput
+              type="number"
+              value={childParticleLifetime}
+              onChange={(e) => setChildParticleLifetime(e.target.value)}
+              min="0"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'var(--surface)',
+                color: 'var(--accent)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: '6px',
                 fontSize: '0.875rem',
-              }}>
-                System Name
-              </Typography>
-              <MemoizedInput
-                autoFocus
-                value={newSystemName}
-                onChange={e => setNewSystemName(e.target.value)}
-                placeholder="Enter a unique name (e.g., testname)"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'var(--surface)',
-                  color: 'var(--accent)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              />
-            </Box>
-            <Typography variant="body2" sx={{
-              color: 'var(--accent-muted)',
-              fontSize: '0.75rem',
-              fontStyle: 'italic',
-            }}>
-              This will create a minimal system with empty emitters list and add a resolver mapping.
-            </Typography>
+                fontFamily: 'JetBrains Mono, monospace',
+              }}
+            />
           </Box>
-        </DialogContent>
-        <DialogActions sx={{
-          p: 2.5,
-          pt: 2,
-          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-          gap: 1.5,
-        }}>
-          <Button
-            onClick={() => setShowNewSystemModal(false)}
-            variant="outlined"
-            sx={{
-              color: 'var(--accent2)',
-              borderColor: 'rgba(255, 255, 255, 0.06)',
-              textTransform: 'none',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.8rem',
-              px: 2,
-              '&:hover': {
-                borderColor: 'var(--accent)',
-                backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
-              },
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleCreateNewSystem}
-            variant="contained"
-            sx={{
-              backgroundColor: 'var(--accent)',
-              color: 'var(--surface)',
-              textTransform: 'none',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              px: 2.5,
-              '&:hover': {
-                backgroundColor: 'var(--accent2)',
-              },
-            }}
-          >
-            Create
-          </Button>
-        </DialogActions>
-      </Dialog>
 
-      {/* Name Prompt for Drag-and-Drop Full VFX System */}
-      <Dialog
-        open={showNamePromptModal}
-        onClose={() => {
-          setShowNamePromptModal(false);
-          setPendingDrop(null);
-        }}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            background: 'transparent',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-            borderRadius: 3,
-            overflow: 'hidden',
-          }
-        }}
-      >
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '4px',
-            background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
-            backgroundSize: '200% 100%',
-            animation: 'shimmer 3s ease-in-out infinite',
-            '@keyframes shimmer': {
-              '0%': { backgroundPosition: '200% 0' },
-              '100%': { backgroundPosition: '-200% 0' },
-            },
-          }}
-        />
-        <DialogTitle sx={{
-          color: 'var(--accent)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.5,
-          pb: 1.5,
-          pt: 2.5,
-          px: 3,
-          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-        }}>
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              background: 'rgba(139, 92, 246, 0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <WarningIcon sx={{ color: 'var(--accent)', fontSize: 24 }} />
-          </Box>
-          <Typography variant="h6" sx={{ fontWeight: 600, flex: 1 }}>
-            Name New VFX System
-          </Typography>
-        </DialogTitle>
-        <DialogContent sx={{ px: 3, py: 2.5 }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Box>
-              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)', mb: 1 }}>
-                System Name
-              </Typography>
-              <MemoizedInput
-                autoFocus
-                value={namePromptValue}
-                onChange={e => setNamePromptValue(e.target.value)}
-                placeholder="Enter a unique name (e.g., testname)"
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  borderRadius: 8,
-                  color: 'var(--accent)',
-                  fontSize: '0.95rem'
-                }}
-              />
-            </Box>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)', fontSize: 12 }}>
-              This will be used for the VfxSystemDefinitionData key, particleName, and particlePath, and linked in ResourceResolver.
-            </Typography>
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1.5 }}>
-          <Button
-            onClick={() => {
-              setShowNamePromptModal(false);
-              setPendingDrop(null);
-            }}
-            sx={{
-              color: '#ddd',
-              border: '1px solid rgba(255,255,255,0.18)',
-              '&:hover': {
-                background: 'rgba(255,255,255,0.1)',
-                border: '1px solid rgba(255,255,255,0.25)',
-              }
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={() => {
-              try {
-                const chosen = (namePromptValue || (pendingDrop?.defaultName || 'NewVFXSystem')).trim();
-                if (!chosen) {
-                  setStatusMessage('Enter a system name');
-                  return;
-                }
-                if (!pendingDrop) return;
-
-                if (!hasResourceResolver) {
-                  setStatusMessage('Locked: target bin missing ResourceResolver');
-                  return;
-                }
-                // Save state before insertion
-                saveStateToHistory(`Add VFX system "${chosen}"`);
-
-                const { fullContent, defaultName } = pendingDrop;
-                const prevKeys = new Set(Object.keys(targetSystems || {}));
-
-                // Check if user kept the original name (preservation mode)
-                const isPreservationMode = chosen === defaultName;
-                let updatedPy;
-
-                if (isPreservationMode) {
-                  // Use preservation function to maintain original ResourceResolver names and system structure
-                  console.log(`[Drag Drop] Using preservation mode for system "${chosen}"`);
-                  updatedPy = insertVFXSystemWithPreservedNames(targetPyContent || '', fullContent, chosen, donorPyContent);
-                } else {
-                  // Use standard insertion for renamed systems
-                  console.log(`[Drag Drop] Using standard insertion for renamed system "${chosen}"`);
-                  updatedPy = insertVFXSystemIntoFile(targetPyContent || '', fullContent, chosen);
-                }
-
-                setTargetPyContent(updatedPy);
-                try { setFileSaved(false); } catch { }
-                const systems = parseVfxEmitters(updatedPy);
-                const nowTs = Date.now();
-
-                // Apply deleted emitters state to the newly parsed systems
-                const systemsWithDeletedEmitters = Object.fromEntries(
-                  Object.entries(systems).map(([key, sys]) => {
-                    if (sys.emitters) {
-                      // Filter out deleted emitters for this system
-                      const filteredEmitters = sys.emitters.filter(emitter => {
-                        const emitterKey = `${key}:${emitter.name}`;
-                        return !deletedEmitters.has(emitterKey);
-                      });
-                      return [key, { ...sys, emitters: filteredEmitters }];
-                    }
-                    return [key, sys];
-                  })
-                );
-
-                const entries = Object.entries(systemsWithDeletedEmitters).map(([key, sys]) => (
-                  !prevKeys.has(key)
-                    ? [key, { ...sys, ported: true, portedAt: nowTs }]
-                    : [key, sys]
-                ));
-                const newEntries = entries.filter(([key]) => !prevKeys.has(key));
-                const oldEntries = entries.filter(([key]) => prevKeys.has(key));
-                const ordered = Object.fromEntries([...newEntries, ...oldEntries]);
-                setTargetSystems(ordered);
-
-                // Preserve deleted emitters state - don't reset it when adding new systems
-                // The deletedEmitters Map should remain unchanged during drag and drop operations
-
-                const modeText = isPreservationMode ? 'with preserved ResourceResolver names' : 'with updated names';
-                setStatusMessage(`Added VFX system "${chosen}" to target ${modeText}`);
-              } catch (e) {
-                console.error('Insert VFX system failed:', e);
-                setStatusMessage('Failed to add VFX system');
-              } finally {
-                setShowNamePromptModal(false);
-                setPendingDrop(null);
-              }
-            }}
-            variant="contained"
-            sx={{
-              background: 'var(--accent-green, #22c55e)',
-              color: '#0b131a',
-              fontWeight: 600,
-              '&:hover': {
-                background: 'color-mix(in srgb, var(--accent-green, #22c55e), black 10%)',
-              }
-            }}
-          >
-            Insert
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Idle Particles Modal */}
-      <Dialog
-        open={showIdleParticleModal}
-        onClose={() => {
-          setShowIdleParticleModal(false);
-          setSelectedSystemForIdle(null);
-          setIsEditingIdle(false);
-          setExistingIdleBones([]);
-          setIdleBonesList([{ id: Date.now(), boneName: 'head', customBoneName: '' }]);
-        }}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            background: 'transparent',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-            borderRadius: 3,
-            overflow: 'hidden',
-          }
-        }}
-      >
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '4px',
-            background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
-            backgroundSize: '200% 100%',
-            animation: 'shimmer 3s ease-in-out infinite',
-            '@keyframes shimmer': {
-              '0%': { backgroundPosition: '200% 0' },
-              '100%': { backgroundPosition: '-200% 0' },
-            },
-          }}
-        />
-        <DialogTitle sx={{
-          color: 'var(--accent)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.5,
-          pb: 1.5,
-          pt: 2.5,
-          px: 3,
-          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-        }}>
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              backgroundColor: 'rgba(var(--accent-rgb), 0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
-          </Box>
-          <Typography variant="h6" sx={{
-            fontWeight: 600,
-            color: 'var(--accent)',
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '1rem',
-          }}>
-            {isEditingIdle ? 'Edit Idle Particles' : 'Add Idle Particles'}
-          </Typography>
-        </DialogTitle>
-        <DialogContent sx={{ px: 3, py: 2.5 }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box>
             <Typography variant="body2" sx={{
               color: 'var(--accent2)',
-              lineHeight: 1.6,
+              mb: 1,
               fontSize: '0.875rem',
             }}>
-              VFX System: <strong style={{ color: 'var(--accent)' }}>{selectedSystemForIdle?.name}</strong>
+              Bind Weight:
             </Typography>
+            <MemoizedInput
+              type="number"
+              value={childParticleBindWeight}
+              onChange={(e) => setChildParticleBindWeight(e.target.value)}
+              step="0.1"
+              min="0"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'var(--surface)',
+                color: 'var(--accent)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: '6px',
+                fontSize: '0.875rem',
+                fontFamily: 'JetBrains Mono, monospace',
+              }}
+            />
+          </Box>
 
+          <Box>
             <Typography variant="body2" sx={{
               color: 'var(--accent2)',
+              mb: 1,
               fontSize: '0.875rem',
-              fontWeight: 600,
+              fontWeight: 500,
             }}>
-              {isEditingIdle ? `Edit idle particles (${idleBonesList.length}):` : 'Add idle particles:'}
+              Time Before First Emission:
             </Typography>
+            <MemoizedInput
+              type="number"
+              value={childParticleTimeBeforeFirstEmission}
+              onChange={(e) => setChildParticleTimeBeforeFirstEmission(e.target.value)}
+              step="0.01"
+              min="0"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'var(--surface)',
+                color: 'var(--accent)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: '6px',
+                fontSize: '0.875rem',
+                fontFamily: 'JetBrains Mono, monospace',
+              }}
+            />
+          </Box>
 
-            {idleBonesList.length === 0 && (
-              <Box sx={{
-                backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
-                border: '1px dashed rgba(255, 255, 255, 0.06)',
-                borderRadius: 1.5,
-                p: 3,
-                textAlign: 'center',
-              }}>
+          <Box>
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
+              mb: 1,
+              fontSize: '0.875rem',
+              fontWeight: 500,
+            }}>
+              Translation Override:
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1.5 }}>
+              <Box sx={{ flex: 1 }}>
                 <Typography variant="body2" sx={{
                   color: 'var(--accent2)',
-                  fontSize: '0.8rem',
+                  mb: 0.5,
+                  fontSize: '0.75rem',
                 }}>
-                  No idle particles yet. Click "Add Another Bone" below to add one.
+                  X:
                 </Typography>
-              </Box>
-            )}
-
-            {idleBonesList.map((item, index) => (
-              <Box key={item.id} sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 1.5,
-                p: 2,
-                backgroundColor: 'rgba(var(--accent-rgb), 0.03)',
-                borderRadius: 1.5,
-                border: '1px solid rgba(255, 255, 255, 0.06)',
-              }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" sx={{
+                <MemoizedInput
+                  type="number"
+                  value={childParticleTranslationOverrideX}
+                  onChange={(e) => setChildParticleTranslationOverrideX(e.target.value)}
+                  step="0.1"
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    background: 'var(--surface)',
                     color: 'var(--accent)',
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    minWidth: '60px',
-                  }}>
-                    Bone #{index + 1}
-                  </Typography>
-                  <Button
-                    size="small"
-                    onClick={() => {
-                      const newList = idleBonesList.filter(bone => bone.id !== item.id);
-                      setIdleBonesList(newList);
-                    }}
-                    sx={{
-                      minWidth: 'auto',
-                      padding: '2px 8px',
-                      fontSize: '0.7rem',
-                      color: '#ff6b6b',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    borderRadius: '6px',
+                    fontSize: '0.75rem',
+                    fontFamily: 'JetBrains Mono, monospace',
+                  }}
+                />
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" sx={{
+                  color: 'var(--accent2)',
+                  mb: 0.5,
+                  fontSize: '0.75rem',
+                }}>
+                  Y:
+                </Typography>
+                <MemoizedInput
+                  type="number"
+                  value={childParticleTranslationOverrideY}
+                  onChange={(e) => setChildParticleTranslationOverrideY(e.target.value)}
+                  step="0.1"
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    background: 'var(--surface)',
+                    color: 'var(--accent)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    borderRadius: '6px',
+                    fontSize: '0.75rem',
+                    fontFamily: 'JetBrains Mono, monospace',
+                  }}
+                />
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" sx={{
+                  color: 'var(--accent2)',
+                  mb: 0.5,
+                  fontSize: '0.75rem',
+                }}>
+                  Z:
+                </Typography>
+                <MemoizedInput
+                  type="number"
+                  value={childParticleTranslationOverrideZ}
+                  onChange={(e) => setChildParticleTranslationOverrideZ(e.target.value)}
+                  step="0.1"
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    background: 'var(--surface)',
+                    color: 'var(--accent)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    borderRadius: '6px',
+                    fontSize: '0.75rem',
+                    fontFamily: 'JetBrains Mono, monospace',
+                  }}
+                />
+              </Box>
+            </Box>
+          </Box>
+
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={childParticleIsSingle}
+                onChange={(e) => setChildParticleIsSingle(e.target.checked)}
+                sx={{
+                  color: 'var(--accent2)',
+                  '&.Mui-checked': {
+                    color: 'var(--accent)',
+                  },
+                }}
+              />
+            }
+            label={
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
+                fontSize: '0.875rem',
+              }}>
+                Is Single Particle
+              </Typography>
+            }
+          />
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{
+        p: 2.5,
+        pt: 2,
+        borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+        gap: 1.5,
+      }}>
+        <Button
+          onClick={() => {
+            setShowChildEditModal(false);
+            setEditingChildEmitter(null);
+            setEditingChildSystem(null);
+            setSelectedChildSystem('');
+            setChildParticleRate('1');
+            setChildParticleLifetime('9999');
+            setChildParticleBindWeight('1');
+            setChildParticleIsSingle(true);
+            setChildParticleTimeBeforeFirstEmission('0');
+            setAvailableVfxSystems([]);
+          }}
+          variant="outlined"
+          sx={{
+            color: 'var(--accent2)',
+            borderColor: 'rgba(255, 255, 255, 0.06)',
+            textTransform: 'none',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '0.8rem',
+            px: 2,
+            '&:hover': {
+              borderColor: 'var(--accent)',
+              backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
+            },
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleConfirmChildParticleEdit}
+          variant="contained"
+          sx={{
+            backgroundColor: 'var(--accent)',
+            color: 'var(--surface)',
+            textTransform: 'none',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            px: 2.5,
+            '&:hover': {
+              backgroundColor: 'var(--accent2)',
+            },
+          }}
+        >
+          Update
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+    {/* Matrix Editor Modal */}
+    {showMatrixModal && (
+      <MatrixEditor
+        open={showMatrixModal}
+        initialMatrix={matrixModalState.initial}
+        onApply={(mat) => {
+          try {
+            // Save state before applying matrix changes
+            const sys = targetSystems[matrixModalState.systemKey];
+            if (!sys) { setShowMatrixModal(false); return; }
+            saveStateToHistory(`Update matrix for "${sys.name}"`);
+
+            // Get current system content from the updated targetPyContent instead of stale rawContent
+            const currentSysText = sys.rawContent || extractVFXSystem(targetPyContent, sys.key)?.fullContent || '';
+
+            // Build updated system block
+            const updatedSystemText = upsertSystemMatrix(currentSysText, mat);
+            const updatedFile = replaceSystemBlockInFile(targetPyContent || '', sys.key, updatedSystemText);
+
+            // 1) Update file text
+            setTargetPyContent(updatedFile);
+            try { setFileSaved(false); } catch { }
+
+            // 2) Preserve in-memory emitters; update only this system's rawContent
+            setTargetSystems(prev => {
+              const copy = { ...prev };
+              const old = copy[matrixModalState.systemKey];
+              if (old) {
+                copy[matrixModalState.systemKey] = {
+                  ...old,
+                  rawContent: updatedSystemText
+                };
+              }
+              return copy;
+            });
+            // Do NOT re-parse all systems here to avoid losing emitter originalContent
+          } catch (err) {
+            console.error('Apply matrix failed:', err);
+          } finally {
+            setShowMatrixModal(false);
+            setMatrixModalState({ systemKey: null, initial: null });
+          }
+        }}
+        onClose={() => {
+          setShowMatrixModal(false);
+          setMatrixModalState({ systemKey: null, initial: null });
+        }}
+      />
+    )}
+
+    {/* New VFX System Modal */}
+    <Dialog
+      open={showNewSystemModal}
+      onClose={() => setShowNewSystemModal(false)}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          background: 'transparent',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          borderRadius: 3,
+          overflow: 'hidden',
+        }
+      }}
+    >
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '4px',
+          background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+          backgroundSize: '200% 100%',
+          animation: 'shimmer 3s ease-in-out infinite',
+          '@keyframes shimmer': {
+            '0%': { backgroundPosition: '200% 0' },
+            '100%': { backgroundPosition: '-200% 0' },
+          },
+        }}
+      />
+      <DialogTitle sx={{
+        color: 'var(--accent)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1.5,
+        pb: 1.5,
+        pt: 2.5,
+        px: 3,
+        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+      }}>
+        <Box
+          sx={{
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            backgroundColor: 'rgba(var(--accent-rgb), 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
+        </Box>
+        <Typography variant="h6" sx={{
+          fontWeight: 600,
+          color: 'var(--accent)',
+          fontFamily: 'JetBrains Mono, monospace',
+          fontSize: '1rem',
+        }}>
+          New VFX System
+        </Typography>
+      </DialogTitle>
+      <DialogContent sx={{ px: 3, py: 2.5 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box>
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
+              mb: 1,
+              fontSize: '0.875rem',
+            }}>
+              System Name
+            </Typography>
+            <MemoizedInput
+              autoFocus
+              value={newSystemName}
+              onChange={e => setNewSystemName(e.target.value)}
+              placeholder="Enter a unique name (e.g., testname)"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'var(--surface)',
+                color: 'var(--accent)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: '6px',
+                fontSize: '0.875rem',
+                fontFamily: 'JetBrains Mono, monospace',
+              }}
+            />
+          </Box>
+          <Typography variant="body2" sx={{
+            color: 'var(--accent-muted)',
+            fontSize: '0.75rem',
+            fontStyle: 'italic',
+          }}>
+            This will create a minimal system with empty emitters list and add a resolver mapping.
+          </Typography>
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{
+        p: 2.5,
+        pt: 2,
+        borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+        gap: 1.5,
+      }}>
+        <Button
+          onClick={() => setShowNewSystemModal(false)}
+          variant="outlined"
+          sx={{
+            color: 'var(--accent2)',
+            borderColor: 'rgba(255, 255, 255, 0.06)',
+            textTransform: 'none',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '0.8rem',
+            px: 2,
+            '&:hover': {
+              borderColor: 'var(--accent)',
+              backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
+            },
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleCreateNewSystem}
+          variant="contained"
+          sx={{
+            backgroundColor: 'var(--accent)',
+            color: 'var(--surface)',
+            textTransform: 'none',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            px: 2.5,
+            '&:hover': {
+              backgroundColor: 'var(--accent2)',
+            },
+          }}
+        >
+          Create
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+    {/* Name Prompt for Drag-and-Drop Full VFX System */}
+    <Dialog
+      open={showNamePromptModal}
+      onClose={() => {
+        setShowNamePromptModal(false);
+        setPendingDrop(null);
+      }}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          background: 'transparent',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          borderRadius: 3,
+          overflow: 'hidden',
+        }
+      }}
+    >
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '4px',
+          background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+          backgroundSize: '200% 100%',
+          animation: 'shimmer 3s ease-in-out infinite',
+          '@keyframes shimmer': {
+            '0%': { backgroundPosition: '200% 0' },
+            '100%': { backgroundPosition: '-200% 0' },
+          },
+        }}
+      />
+      <DialogTitle sx={{
+        color: 'var(--accent)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1.5,
+        pb: 1.5,
+        pt: 2.5,
+        px: 3,
+        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+      }}>
+        <Box
+          sx={{
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            background: 'rgba(139, 92, 246, 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <WarningIcon sx={{ color: 'var(--accent)', fontSize: 24 }} />
+        </Box>
+        <Typography variant="h6" sx={{ fontWeight: 600, flex: 1 }}>
+          Name New VFX System
+        </Typography>
+      </DialogTitle>
+      <DialogContent sx={{ px: 3, py: 2.5 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box>
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)', mb: 1 }}>
+              System Name
+            </Typography>
+            <MemoizedInput
+              autoFocus
+              value={namePromptValue}
+              onChange={e => setNamePromptValue(e.target.value)}
+              placeholder="Enter a unique name (e.g., testname)"
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: 8,
+                color: 'var(--accent)',
+                fontSize: '0.95rem'
+              }}
+            />
+          </Box>
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)', fontSize: 12 }}>
+            This will be used for the VfxSystemDefinitionData key, particleName, and particlePath, and linked in ResourceResolver.
+          </Typography>
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2.5, gap: 1.5 }}>
+        <Button
+          onClick={() => {
+            setShowNamePromptModal(false);
+            setPendingDrop(null);
+          }}
+          sx={{
+            color: '#ddd',
+            border: '1px solid rgba(255,255,255,0.18)',
+            '&:hover': {
+              background: 'rgba(255,255,255,0.1)',
+              border: '1px solid rgba(255,255,255,0.25)',
+            }
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={() => {
+            try {
+              const chosen = (namePromptValue || (pendingDrop?.defaultName || 'NewVFXSystem')).trim();
+              if (!chosen) {
+                setStatusMessage('Enter a system name');
+                return;
+              }
+              if (!pendingDrop) return;
+
+              if (!hasResourceResolver) {
+                setStatusMessage('Locked: target bin missing ResourceResolver');
+                return;
+              }
+              // Save state before insertion
+              saveStateToHistory(`Add VFX system "${chosen}"`);
+
+              const { fullContent, defaultName } = pendingDrop;
+              const prevKeys = new Set(Object.keys(targetSystems || {}));
+
+              // Check if user kept the original name (preservation mode)
+              const isPreservationMode = chosen === defaultName;
+              let updatedPy;
+
+              if (isPreservationMode) {
+                // Use preservation function to maintain original ResourceResolver names and system structure
+                console.log(`[Drag Drop] Using preservation mode for system "${chosen}"`);
+                updatedPy = insertVFXSystemWithPreservedNames(targetPyContent || '', fullContent, chosen, donorPyContent);
+              } else {
+                // Use standard insertion for renamed systems
+                console.log(`[Drag Drop] Using standard insertion for renamed system "${chosen}"`);
+                updatedPy = insertVFXSystemIntoFile(targetPyContent || '', fullContent, chosen);
+              }
+
+              setTargetPyContent(updatedPy);
+              try { setFileSaved(false); } catch { }
+              const systems = parseVfxEmitters(updatedPy);
+              const nowTs = Date.now();
+
+              // Apply deleted emitters state to the newly parsed systems
+              const systemsWithDeletedEmitters = Object.fromEntries(
+                Object.entries(systems).map(([key, sys]) => {
+                  if (sys.emitters) {
+                    // Filter out deleted emitters for this system
+                    const filteredEmitters = sys.emitters.filter(emitter => {
+                      const emitterKey = `${key}:${emitter.name}`;
+                      return !deletedEmitters.has(emitterKey);
+                    });
+                    return [key, { ...sys, emitters: filteredEmitters }];
+                  }
+                  return [key, sys];
+                })
+              );
+
+              const entries = Object.entries(systemsWithDeletedEmitters).map(([key, sys]) => (
+                !prevKeys.has(key)
+                  ? [key, { ...sys, ported: true, portedAt: nowTs }]
+                  : [key, sys]
+              ));
+              const newEntries = entries.filter(([key]) => !prevKeys.has(key));
+              const oldEntries = entries.filter(([key]) => prevKeys.has(key));
+              const ordered = Object.fromEntries([...newEntries, ...oldEntries]);
+              setTargetSystems(ordered);
+
+              // Preserve deleted emitters state - don't reset it when adding new systems
+              // The deletedEmitters Map should remain unchanged during drag and drop operations
+
+              const modeText = isPreservationMode ? 'with preserved ResourceResolver names' : 'with updated names';
+              setStatusMessage(`Added VFX system "${chosen}" to target ${modeText}`);
+            } catch (e) {
+              console.error('Insert VFX system failed:', e);
+              setStatusMessage('Failed to add VFX system');
+            } finally {
+              setShowNamePromptModal(false);
+              setPendingDrop(null);
+            }
+          }}
+          variant="contained"
+          sx={{
+            background: 'var(--accent-green, #22c55e)',
+            color: '#0b131a',
+            fontWeight: 600,
+            '&:hover': {
+              background: 'color-mix(in srgb, var(--accent-green, #22c55e), black 10%)',
+            }
+          }}
+        >
+          Insert
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+    {/* Idle Particles Modal */}
+    <Dialog
+      open={showIdleParticleModal}
+      onClose={() => {
+        setShowIdleParticleModal(false);
+        setSelectedSystemForIdle(null);
+        setIsEditingIdle(false);
+        setExistingIdleBones([]);
+        setIdleBonesList([{ id: Date.now(), boneName: 'head', customBoneName: '' }]);
+      }}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          background: 'transparent',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          borderRadius: 3,
+          overflow: 'hidden',
+        }
+      }}
+    >
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '4px',
+          background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+          backgroundSize: '200% 100%',
+          animation: 'shimmer 3s ease-in-out infinite',
+          '@keyframes shimmer': {
+            '0%': { backgroundPosition: '200% 0' },
+            '100%': { backgroundPosition: '-200% 0' },
+          },
+        }}
+      />
+      <DialogTitle sx={{
+        color: 'var(--accent)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1.5,
+        pb: 1.5,
+        pt: 2.5,
+        px: 3,
+        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+      }}>
+        <Box
+          sx={{
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            backgroundColor: 'rgba(var(--accent-rgb), 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
+        </Box>
+        <Typography variant="h6" sx={{
+          fontWeight: 600,
+          color: 'var(--accent)',
+          fontFamily: 'JetBrains Mono, monospace',
+          fontSize: '1rem',
+        }}>
+          {isEditingIdle ? 'Edit Idle Particles' : 'Add Idle Particles'}
+        </Typography>
+      </DialogTitle>
+      <DialogContent sx={{ px: 3, py: 2.5 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography variant="body2" sx={{
+            color: 'var(--accent2)',
+            lineHeight: 1.6,
+            fontSize: '0.875rem',
+          }}>
+            VFX System: <strong style={{ color: 'var(--accent)' }}>{selectedSystemForIdle?.name}</strong>
+          </Typography>
+
+          <Typography variant="body2" sx={{
+            color: 'var(--accent2)',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+          }}>
+            {isEditingIdle ? `Edit idle particles (${idleBonesList.length}):` : 'Add idle particles:'}
+          </Typography>
+
+          {idleBonesList.length === 0 && (
+            <Box sx={{
+              backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
+              border: '1px dashed rgba(255, 255, 255, 0.06)',
+              borderRadius: 1.5,
+              p: 3,
+              textAlign: 'center',
+            }}>
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
+                fontSize: '0.8rem',
+              }}>
+                No idle particles yet. Click "Add Another Bone" below to add one.
+              </Typography>
+            </Box>
+          )}
+
+          {idleBonesList.map((item, index) => (
+            <Box key={item.id} sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1.5,
+              p: 2,
+              backgroundColor: 'rgba(var(--accent-rgb), 0.03)',
+              borderRadius: 1.5,
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body2" sx={{
+                  color: 'var(--accent)',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  minWidth: '60px',
+                }}>
+                  Bone #{index + 1}
+                </Typography>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    const newList = idleBonesList.filter(bone => bone.id !== item.id);
+                    setIdleBonesList(newList);
+                  }}
+                  sx={{
+                    minWidth: 'auto',
+                    padding: '2px 8px',
+                    fontSize: '0.7rem',
+                    color: '#ff6b6b',
+                    borderColor: '#ff6b6b',
+                    '&:hover': {
+                      backgroundColor: 'rgba(255, 107, 107, 0.1)',
                       borderColor: '#ff6b6b',
-                      '&:hover': {
-                        backgroundColor: 'rgba(255, 107, 107, 0.1)',
-                        borderColor: '#ff6b6b',
-                      },
-                    }}
-                    variant="outlined"
-                  >
-                    Remove
-                  </Button>
-                </Box>
+                    },
+                  }}
+                  variant="outlined"
+                >
+                  Remove
+                </Button>
+              </Box>
 
-                <Box>
-                  <Typography variant="body2" sx={{
-                    color: 'var(--accent2)',
-                    mb: 0.5,
-                    fontSize: '0.75rem',
-                  }}>
-                    Select bone:
-                  </Typography>
-                  <FormControl fullWidth size="small">
-                    <Select
-                      value={item.boneName}
-                      onChange={(e) => {
-                        const newList = idleBonesList.map(bone =>
-                          bone.id === item.id ? { ...bone, boneName: e.target.value } : bone
-                        );
-                        setIdleBonesList(newList);
-                      }}
-                      sx={{
-                        color: 'var(--accent)',
-                        backgroundColor: 'var(--surface)',
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(255, 255, 255, 0.06)',
-                        },
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'var(--accent)',
-                        },
-                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'var(--accent)',
-                        },
-                        '& .MuiSvgIcon-root': {
-                          color: 'var(--accent)',
-                        },
-                      }}
-                    >
-                      {BONE_NAMES.map(bone => (
-                        <MenuItem key={bone} value={bone} sx={{ color: 'var(--accent2)' }}>
-                          {bone}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Box>
-
-                <Box>
-                  <Typography variant="body2" sx={{
-                    color: 'var(--accent2)',
-                    mb: 0.5,
-                    fontSize: '0.75rem',
-                  }}>
-                    Or custom bone name:
-                  </Typography>
-                  <input
-                    type="text"
-                    value={item.customBoneName}
+              <Box>
+                <Typography variant="body2" sx={{
+                  color: 'var(--accent2)',
+                  mb: 0.5,
+                  fontSize: '0.75rem',
+                }}>
+                  Select bone:
+                </Typography>
+                <FormControl fullWidth size="small">
+                  <Select
+                    value={item.boneName}
                     onChange={(e) => {
                       const newList = idleBonesList.map(bone =>
-                        bone.id === item.id ? { ...bone, customBoneName: e.target.value } : bone
+                        bone.id === item.id ? { ...bone, boneName: e.target.value } : bone
                       );
                       setIdleBonesList(newList);
                     }}
-                    placeholder="e.g., r_weapon, C_Head_Jnt"
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      background: 'var(--surface)',
+                    sx={{
                       color: 'var(--accent)',
-                      border: '1px solid rgba(255, 255, 255, 0.06)',
-                      borderRadius: '6px',
-                      fontSize: '0.75rem',
-                      fontFamily: 'JetBrains Mono, monospace',
+                      backgroundColor: 'var(--surface)',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'rgba(255, 255, 255, 0.06)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--accent)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--accent)',
+                      },
+                      '& .MuiSvgIcon-root': {
+                        color: 'var(--accent)',
+                      },
                     }}
-                  />
-                </Box>
+                  >
+                    {BONE_NAMES.map(bone => (
+                      <MenuItem key={bone} value={bone} sx={{ color: 'var(--accent2)' }}>
+                        {bone}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Box>
-            ))}
 
-            <Button
-              onClick={() => {
-                setIdleBonesList([...idleBonesList, { id: Date.now(), boneName: 'head', customBoneName: '' }]);
-              }}
-              variant="outlined"
-              startIcon={<AddIcon />}
-              sx={{
-                color: 'var(--accent)',
-                borderColor: 'rgba(255, 255, 255, 0.06)',
-                textTransform: 'none',
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: '0.75rem',
-                '&:hover': {
-                  borderColor: 'var(--accent)',
-                  backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
-                },
-              }}
-            >
-              Add Another Bone
-            </Button>
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{
-          p: 2.5,
-          pt: 2,
-          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-          gap: 1.5,
-        }}>
-          <Button
-            onClick={() => {
-              setShowIdleParticleModal(false);
-              setSelectedSystemForIdle(null);
-              setIsEditingIdle(false);
-              setExistingIdleBones([]);
-              setIdleBonesList([]);
-            }}
-            variant="outlined"
-            sx={{
-              color: 'var(--accent2)',
-              borderColor: 'rgba(255, 255, 255, 0.06)',
-              textTransform: 'none',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.8rem',
-              px: 2,
-              '&:hover': {
-                borderColor: 'var(--accent)',
-                backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
-              },
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleConfirmIdleParticles}
-            variant="contained"
-            sx={{
-              backgroundColor: 'var(--accent)',
-              color: 'var(--surface)',
-              textTransform: 'none',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              px: 2.5,
-              '&:hover': {
-                backgroundColor: 'var(--accent2)',
-              },
-            }}
-          >
-            {isEditingIdle ? `Add ${idleBonesList.length} More` : `Add ${idleBonesList.length} Idle Particle${idleBonesList.length > 1 ? 's' : ''}`}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Child Particles Modal */}
-      <Dialog
-        open={showChildModal}
-        onClose={() => {
-          setShowChildModal(false);
-          setSelectedSystemForChild(null);
-          setSelectedChildSystem('');
-          setChildEmitterName('');
-          setAvailableVfxSystems([]);
-        }}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            background: 'transparent',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-            borderRadius: 3,
-            overflow: 'hidden',
-          }
-        }}
-      >
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '4px',
-            background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
-            backgroundSize: '200% 100%',
-            animation: 'shimmer 3s ease-in-out infinite',
-            '@keyframes shimmer': {
-              '0%': { backgroundPosition: '200% 0' },
-              '100%': { backgroundPosition: '-200% 0' },
-            },
-          }}
-        />
-        <DialogTitle sx={{
-          color: 'var(--accent)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.5,
-          pb: 1.5,
-          pt: 2.5,
-          px: 3,
-          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-        }}>
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              backgroundColor: 'rgba(var(--accent-rgb), 0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
-          </Box>
-          <Typography variant="h6" sx={{
-            fontWeight: 600,
-            color: 'var(--accent)',
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '1rem',
-          }}>
-            Add Child Particles
-          </Typography>
-        </DialogTitle>
-        <DialogContent sx={{ px: 3, py: 2.5 }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-
-            <Typography variant="body2" sx={{
-              color: 'var(--accent2)',
-              lineHeight: 1.6,
-              fontSize: '0.875rem',
-            }}>
-              VFX System: <strong style={{ color: 'var(--accent)' }}>{selectedSystemForChild?.name}</strong>
-            </Typography>
-
-            <Box>
-              <Typography variant="body2" sx={{
-                color: 'var(--accent2)',
-                mb: 1,
-                fontSize: '0.875rem',
-              }}>
-                Select Child VFX System:
-              </Typography>
-              <FormControl fullWidth size="small">
-                <Select
-                  value={selectedChildSystem || ''}
-                  onChange={(e) => setSelectedChildSystem(e.target.value)}
-                  sx={{
-                    color: 'var(--accent)',
-                    backgroundColor: 'var(--surface)',
-                    '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'rgba(255, 255, 255, 0.06)',
-                    },
-                    '&:hover .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--accent)',
-                    },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--accent)',
-                    },
-                    '& .MuiSvgIcon-root': {
-                      color: 'var(--accent)',
-                    },
-                  }}
-                >
-                  <MenuItem value="" sx={{ color: 'var(--accent2)' }}>
-                    Select a VFX System...
-                  </MenuItem>
-                  {availableVfxSystems.map(system => (
-                    <MenuItem key={system.key} value={system.key} sx={{ color: 'var(--accent2)' }}>
-                      {system.name} {system.key.startsWith('0x') ? `(${system.key})` : ''}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
-
-            <Box>
-              <Typography variant="body2" sx={{
-                color: 'var(--accent2)',
-                mb: 1,
-                fontSize: '0.875rem',
-              }}>
-                Emitter Name:
-              </Typography>
-              <MemoizedInput
-                type="text"
-                value={childEmitterName}
-                onChange={(e) => setChildEmitterName(e.target.value)}
-                placeholder="Enter emitter name..."
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'var(--surface)',
-                  color: 'var(--accent)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              />
-            </Box>
-
-            <Box>
-              <Typography variant="body2" sx={{
-                color: 'var(--accent2)',
-                mb: 1,
-                fontSize: '0.875rem',
-              }}>
-                Rate (default: 1):
-              </Typography>
-              <MemoizedInput
-                type="number"
-                value={childParticleRate}
-                onChange={(e) => setChildParticleRate(e.target.value)}
-                placeholder="1"
-                step="0.1"
-                min="0"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'var(--surface)',
-                  color: 'var(--accent)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              />
-            </Box>
-
-            <Box>
-              <Typography variant="body2" sx={{
-                color: 'var(--accent2)',
-                mb: 1,
-                fontSize: '0.875rem',
-              }}>
-                Lifetime (default: 9999):
-              </Typography>
-              <MemoizedInput
-                type="number"
-                value={childParticleLifetime}
-                onChange={(e) => setChildParticleLifetime(e.target.value)}
-                placeholder="9999"
-                min="0"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'var(--surface)',
-                  color: 'var(--accent)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              />
-            </Box>
-
-            <Box>
-              <Typography variant="body2" sx={{
-                color: 'var(--accent2)',
-                mb: 1,
-                fontSize: '0.875rem',
-              }}>
-                Bind Weight (default: 1):
-              </Typography>
-              <MemoizedInput
-                type="number"
-                value={childParticleBindWeight}
-                onChange={(e) => setChildParticleBindWeight(e.target.value)}
-                placeholder="1"
-                step="0.1"
-                min="0"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'var(--surface)',
-                  color: 'var(--accent)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              />
-            </Box>
-
-            <Box>
-              <Typography variant="body2" sx={{
-                color: 'var(--accent2)',
-                mb: 1,
-                fontSize: '0.875rem',
-                fontWeight: 500,
-              }}>
-                Time Before First Emission (default: 0):
-              </Typography>
-              <MemoizedInput
-                type="number"
-                value={childParticleTimeBeforeFirstEmission}
-                onChange={(e) => setChildParticleTimeBeforeFirstEmission(e.target.value)}
-                placeholder="0"
-                step="0.01"
-                min="0"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'var(--surface)',
-                  color: 'var(--accent)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  fontFamily: 'JetBrains Mono, monospace',
-                }}
-              />
-            </Box>
-
-            <Box>
-              <Typography variant="body2" sx={{
-                color: 'var(--accent2)',
-                mb: 1,
-                fontSize: '0.875rem',
-                fontWeight: 500,
-              }}>
-                Translation Override (default: 0, 0, 0):
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1.5 }}>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{
-                    color: 'var(--accent2)',
-                    mb: 0.5,
-                    fontSize: '0.75rem',
-                  }}>
-                    X:
-                  </Typography>
-                  <MemoizedInput
-                    type="number"
-                    value={childParticleTranslationOverrideX}
-                    onChange={(e) => setChildParticleTranslationOverrideX(e.target.value)}
-                    placeholder="0"
-                    step="0.1"
-                    style={{
-                      width: '100%',
-                      padding: '6px 8px',
-                      background: 'var(--surface)',
-                      color: 'var(--accent)',
-                      border: '1px solid rgba(255, 255, 255, 0.06)',
-                      borderRadius: '6px',
-                      fontSize: '0.75rem',
-                      fontFamily: 'JetBrains Mono, monospace',
-                    }}
-                  />
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{
-                    color: 'var(--accent2)',
-                    mb: 0.5,
-                    fontSize: '0.75rem',
-                  }}>
-                    Y:
-                  </Typography>
-                  <MemoizedInput
-                    type="number"
-                    value={childParticleTranslationOverrideY}
-                    onChange={(e) => setChildParticleTranslationOverrideY(e.target.value)}
-                    placeholder="0"
-                    step="0.1"
-                    style={{
-                      width: '100%',
-                      padding: '6px 8px',
-                      background: 'var(--surface)',
-                      color: 'var(--accent)',
-                      border: '1px solid rgba(255, 255, 255, 0.06)',
-                      borderRadius: '6px',
-                      fontSize: '0.75rem',
-                      fontFamily: 'JetBrains Mono, monospace',
-                    }}
-                  />
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{
-                    color: 'var(--accent2)',
-                    mb: 0.5,
-                    fontSize: '0.75rem',
-                  }}>
-                    Z:
-                  </Typography>
-                  <MemoizedInput
-                    type="number"
-                    value={childParticleTranslationOverrideZ}
-                    onChange={(e) => setChildParticleTranslationOverrideZ(e.target.value)}
-                    placeholder="0"
-                    step="0.1"
-                    style={{
-                      width: '100%',
-                      padding: '6px 8px',
-                      background: 'var(--surface)',
-                      color: 'var(--accent)',
-                      border: '1px solid rgba(255, 255, 255, 0.06)',
-                      borderRadius: '6px',
-                      fontSize: '0.75rem',
-                      fontFamily: 'JetBrains Mono, monospace',
-                    }}
-                  />
-                </Box>
-              </Box>
-            </Box>
-
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={childParticleIsSingle}
-                  onChange={(e) => setChildParticleIsSingle(e.target.checked)}
-                  sx={{
-                    color: 'var(--accent2)',
-                    '&.Mui-checked': {
-                      color: 'var(--accent)',
-                    },
-                  }}
-                />
-              }
-              label={
+              <Box>
                 <Typography variant="body2" sx={{
                   color: 'var(--accent2)',
-                  fontSize: '0.875rem',
+                  mb: 0.5,
+                  fontSize: '0.75rem',
                 }}>
-                  Is Single Particle (default: true)
+                  Or custom bone name:
                 </Typography>
-              }
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{
-          p: 2.5,
-          pt: 2,
-          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-          gap: 1.5,
-        }}>
+                <input
+                  type="text"
+                  value={item.customBoneName}
+                  onChange={(e) => {
+                    const newList = idleBonesList.map(bone =>
+                      bone.id === item.id ? { ...bone, customBoneName: e.target.value } : bone
+                    );
+                    setIdleBonesList(newList);
+                  }}
+                  placeholder="e.g., r_weapon, C_Head_Jnt"
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'var(--surface)',
+                    color: 'var(--accent)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    borderRadius: '6px',
+                    fontSize: '0.75rem',
+                    fontFamily: 'JetBrains Mono, monospace',
+                  }}
+                />
+              </Box>
+            </Box>
+          ))}
+
           <Button
             onClick={() => {
-              setShowChildModal(false);
-              setSelectedSystemForChild(null);
-              setSelectedChildSystem('');
-              setChildEmitterName('');
-              setAvailableVfxSystems([]);
+              setIdleBonesList([...idleBonesList, { id: Date.now(), boneName: 'head', customBoneName: '' }]);
             }}
             variant="outlined"
+            startIcon={<AddIcon />}
             sx={{
-              color: 'var(--accent2)',
+              color: 'var(--accent)',
               borderColor: 'rgba(255, 255, 255, 0.06)',
               textTransform: 'none',
               fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.8rem',
-              px: 2,
+              fontSize: '0.75rem',
               '&:hover': {
                 borderColor: 'var(--accent)',
                 backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
               },
             }}
           >
-            Cancel
+            Add Another Bone
           </Button>
-          <Button
-            onClick={handleConfirmChildParticles}
-            disabled={!selectedChildSystem || !childEmitterName.trim()}
-            variant="contained"
-            sx={{
-              backgroundColor: 'var(--accent)',
-              color: 'var(--surface)',
-              textTransform: 'none',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              px: 2.5,
-              '&:hover': {
-                backgroundColor: 'var(--accent2)',
-              },
-              '&:disabled': {
-                backgroundColor: '#666',
-                color: 'rgba(255,255,255,0.6)',
-              },
-            }}
-          >
-            Add Child Particles
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Thin Status Bar */}
-      <div style={{
-        padding: '6px 20px',
-        background: 'rgba(255,255,255,0.06)',
-        borderTop: '1px solid rgba(255,255,255,0.12)',
-        borderBottom: '1px solid rgba(255,255,255,0.12)',
-        color: 'var(--accent)',
-        fontFamily: 'JetBrains Mono, monospace',
-        fontSize: '12px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '20px'
-      }}>
-        <span style={{ flex: 1 }}>{statusMessage}</span>
-        {targetPyContent && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            fontSize: '11px',
-            color: 'rgba(255,255,255,0.7)'
-          }}>
-            <label style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap'
-            }}>
-              <input
-                type="checkbox"
-                checked={trimTargetNames}
-                onChange={(e) => setTrimTargetNames(e.target.checked)}
-                style={{ cursor: 'pointer' }}
-              />
-              <span>Trim Target Names</span>
-            </label>
-            <label style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap'
-            }}>
-              <input
-                type="checkbox"
-                checked={trimDonorNames}
-                onChange={(e) => setTrimDonorNames(e.target.checked)}
-                style={{ cursor: 'pointer' }}
-              />
-              <span>Trim Donor Names</span>
-            </label>
-          </div>
-        )}
-      </div>
-
-      {/* Bottom Controls - Thinner */}
-      <div style={{
-        display: 'flex',
-        gap: '12px',
-        padding: '12px 20px',
-        background: 'transparent'
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{
+        p: 2.5,
+        pt: 2,
+        borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+        gap: 1.5,
       }}>
         <Button
-          onClick={handleUndo}
-          disabled={undoHistory.length === 0}
-          sx={{
-            flex: 1,
-            padding: '0 16px',
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '13px',
-            fontWeight: 700,
-            height: '36px',
-            background: 'color-mix(in srgb, #9ca3af, var(--bg) 85%)',
-            border: '1px solid rgba(156, 163, 175, 0.3)',
-            color: '#9ca3af',
-            borderRadius: '4px',
-            letterSpacing: '0.05em',
-            textTransform: 'uppercase',
-            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-            position: 'relative',
-            '&:hover': {
-              background: 'color-mix(in srgb, #9ca3af, var(--bg) 75%)',
-              borderColor: '#9ca3af',
-              textShadow: '0 0 8px color-mix(in srgb, #9ca3af, transparent 50%)',
-            },
-            '&:disabled': {
-              opacity: 0.5,
-              cursor: 'not-allowed',
-              borderColor: 'rgba(156,163,175,0.32)',
-              color: 'rgba(156,163,175,0.32)'
-            }
+          onClick={() => {
+            setShowIdleParticleModal(false);
+            setSelectedSystemForIdle(null);
+            setIsEditingIdle(false);
+            setExistingIdleBones([]);
+            setIdleBonesList([]);
           }}
-          title={undoHistory.length > 0 ? `Undo: ${undoHistory[undoHistory.length - 1]?.action}` : 'Nothing to undo'}
+          variant="outlined"
+          sx={{
+            color: 'var(--accent2)',
+            borderColor: 'rgba(255, 255, 255, 0.06)',
+            textTransform: 'none',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '0.8rem',
+            px: 2,
+            '&:hover': {
+              borderColor: 'var(--accent)',
+              backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
+            },
+          }}
         >
-          Undo ({undoHistory.length})
+          Cancel
         </Button>
         <Button
-          onClick={handleSave}
-          disabled={isProcessing || !hasChangesToSave()}
+          onClick={handleConfirmIdleParticles}
+          variant="contained"
           sx={{
-            flex: 1,
-            padding: '0 16px',
+            backgroundColor: 'var(--accent)',
+            color: 'var(--surface)',
+            textTransform: 'none',
             fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '13px',
-            fontWeight: 700,
-            height: '36px',
-            background: 'color-mix(in srgb, #22c55e, var(--bg) 85%)',
-            border: '1px solid rgba(34, 197, 94, 0.3)',
-            color: '#22c55e',
-            borderRadius: '4px',
-            letterSpacing: '0.05em',
-            textTransform: 'uppercase',
-            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-            position: 'relative',
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            px: 2.5,
             '&:hover': {
-              background: 'color-mix(in srgb, #22c55e, var(--bg) 75%)',
-              borderColor: '#22c55e',
-              textShadow: '0 0 8px color-mix(in srgb, #22c55e, transparent 50%)',
+              backgroundColor: 'var(--accent2)',
             },
-            '&:disabled': {
-              opacity: 0.5,
-              cursor: 'not-allowed',
-              borderColor: 'rgba(34, 197, 94, 0.3)',
-              color: 'rgba(34, 197, 94, 0.3)'
-            }
           }}
-          title={hasChangesToSave() ? 'Save changes to file' : 'No changes to save'}
         >
-          Save
+          {isEditingIdle ? `Add ${idleBonesList.length} More` : `Add ${idleBonesList.length} Idle Particle${idleBonesList.length > 1 ? 's' : ''}`}
         </Button>
-      </div>
+      </DialogActions>
+    </Dialog>
 
-
-
-      {/* Floating Backup Viewer Button */}
-      {targetPyContent && !isProcessing && (
-        <Tooltip title="Backup History" placement="top" arrow componentsProps={{ tooltip: { sx: { pointerEvents: 'none' } } }}>
-          <IconButton
-            onClick={handleOpenBackupViewer}
-            aria-label="View Backup History"
-            sx={{
-              position: 'fixed',
-              bottom: 130,
-              right: 24,
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              zIndex: 4500,
-              background: 'rgba(147, 51, 234, 0.15)',
-              color: '#c084fc',
-              border: '1px solid rgba(147, 51, 234, 0.3)',
-              boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(147, 51, 234, 0.2)',
-              // backdropFilter: 'blur(15px)',
-              // WebkitBackdropFilter: 'blur(15px)',
-              '&:hover': {
-                transform: 'translateY(-2px)',
-                boxShadow: '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(147, 51, 234, 0.3)',
-                background: 'rgba(147, 51, 234, 0.25)',
-                border: '1px solid rgba(147, 51, 234, 0.5)'
-              },
-              overflow: 'hidden',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <FolderIcon sx={{ fontSize: 18 }} />
-          </IconButton>
-        </Tooltip>
-      )}
-
-      {/* Floating Persistent Button */}
-      {targetPyContent && !isProcessing && (
-        <Tooltip title="Persistent Effects" placement="top" arrow componentsProps={{ tooltip: { sx: { pointerEvents: 'none' } } }}>
-          <IconButton
-            onClick={handleOpenPersistent}
-            aria-label="Open Persistent Effects"
-            disabled={!hasResourceResolver || !hasSkinCharacterData}
-            sx={{
-              position: 'fixed',
-              bottom: 80,
-              right: 24,
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              zIndex: 4500,
-              background: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.06)' : 'rgba(34, 197, 94, 0.15)',
-              color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : '#4ade80',
-              border: '1px solid rgba(34, 197, 94, 0.3)',
-              boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(34, 197, 94, 0.2)',
-              // backdropFilter: 'blur(15px)',
-              // WebkitBackdropFilter: 'blur(15px)',
-              '&:hover': {
-                transform: (!hasResourceResolver || !hasSkinCharacterData) ? 'none' : 'translateY(-2px)',
-                boxShadow: (!hasResourceResolver || !hasSkinCharacterData) ? '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(34, 197, 94, 0.2)' : '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(34, 197, 94, 0.3)',
-                background: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.06)' : 'rgba(34, 197, 94, 0.25)',
-                border: '1px solid rgba(34, 197, 94, 0.5)'
-              },
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <AppsIcon sx={{ fontSize: 18 }} />
-          </IconButton>
-        </Tooltip>
-      )}
-
-      {/* Floating New VFX System Button */}
-      {targetPyContent && !isProcessing && (
-        <Tooltip title="New VFX System" placement="top" arrow componentsProps={{ tooltip: { sx: { pointerEvents: 'none' } } }}>
-          <IconButton
-            onClick={handleOpenNewSystemModal}
-            aria-label="Create New VFX System"
-            disabled={!hasResourceResolver}
-            sx={{
-              position: 'fixed',
-              bottom: 80,
-              right: 72,
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              zIndex: 4500,
-              background: !hasResourceResolver ? 'rgba(255,255,255,0.06)' : 'rgba(236, 185, 106, 0.15)',
-              color: !hasResourceResolver ? 'rgba(255,255,255,0.35)' : '#fbbf24',
-              border: '1px solid rgba(236, 185, 106, 0.3)',
-              boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(236, 185, 106, 0.2)',
-              '&:hover': {
-                transform: !hasResourceResolver ? 'none' : 'translateY(-2px)',
-                boxShadow: !hasResourceResolver ? '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(236, 185, 106, 0.2)' : '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(236, 185, 106, 0.3)',
-                background: !hasResourceResolver ? 'rgba(255,255,255,0.06)' : 'rgba(236, 185, 106, 0.25)',
-                border: '1px solid rgba(236, 185, 106, 0.5)'
-              },
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <AddIcon sx={{ fontSize: 20, fontWeight: 700 }} />
-          </IconButton>
-        </Tooltip>
-      )}
-
-      {/* Floating Port All Button */}
-      {targetPyContent && donorPyContent && (
-        <Tooltip title={isPortAllLoading ? "Porting all systems..." : "Port All VFX Systems"} placement="top" arrow componentsProps={{ tooltip: { sx: { pointerEvents: 'none' } } }}>
-          <IconButton
-            onClick={handlePortAllSystems}
-            aria-label="Port All VFX Systems"
-            disabled={!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading}
-            sx={{
-              position: 'fixed',
-              bottom: 80,
-              right: 120,
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              zIndex: 4500,
-              background: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'rgba(255,255,255,0.06)' : 'rgba(59, 130, 246, 0.15)',
-              color: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'rgba(255,255,255,0.35)' : '#3b82f6',
-              border: '1px solid rgba(59, 130, 246, 0.3)',
-              boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(59, 130, 246, 0.2)',
-              // backdropFilter: 'blur(15px)',
-              // WebkitBackdropFilter: 'blur(15px)',
-              '&:hover': {
-                transform: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'none' : 'translateY(-2px)',
-                boxShadow: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(59, 130, 246, 0.2)' : '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(59, 130, 246, 0.3)',
-                background: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'rgba(255,255,255,0.06)' : 'rgba(59, 130, 246, 0.25)',
-                border: '1px solid rgba(59, 130, 246, 0.5)'
-              },
-              transition: 'all 0.2s ease'
-            }}
-          >
-            {isPortAllLoading ? (
-              <CircularProgress size={18} sx={{ color: '#3b82f6' }} />
-            ) : (
-              <ArrowBackIcon sx={{ fontSize: 18 }} />
-            )}
-          </IconButton>
-        </Tooltip>
-      )}
-
-      {/* Backup Viewer Dialog */}
-      <BackupViewer
-        open={showBackupViewer}
-        onClose={(restored) => {
-          setShowBackupViewer(false);
-          if (restored) {
-            // Check if there are unsaved changes before restoring
-            if (!fileSaved) {
-              if (window.confirm('You have unsaved changes. Restoring a backup will overwrite them. Continue?')) {
-                performBackupRestore();
-              } else {
-                setStatusMessage('Backup restore cancelled - unsaved changes preserved');
-                return;
-              }
-            } else {
-              performBackupRestore();
-            }
-          }
-        }}
-        filePath={targetPath !== 'This will show target bin' ? targetPath.replace('.bin', '.py') : null}
-        component="port"
-      />
-
-      {/* Unsaved Changes Dialog */}
-      <Dialog
-        open={showUnsavedDialog}
-        onClose={handleUnsavedCancel}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            background: 'transparent',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            borderRadius: '5px',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-            overflow: 'hidden'
+    {/* Child Particles Modal */}
+    <Dialog
+      open={showChildModal}
+      onClose={() => {
+        setShowChildModal(false);
+        setSelectedSystemForChild(null);
+        setSelectedChildSystem('');
+        setChildEmitterName('');
+        setAvailableVfxSystems([]);
+      }}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          background: 'transparent',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          borderRadius: 3,
+          overflow: 'hidden',
+        }
+      }}
+    >
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '4px',
+          background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+          backgroundSize: '200% 100%',
+          animation: 'shimmer 3s ease-in-out infinite',
+          '@keyframes shimmer': {
+            '0%': { backgroundPosition: '200% 0' },
+            '100%': { backgroundPosition: '-200% 0' },
           },
         }}
-      >
-        {/* Animated Top Bar */}
+      />
+      <DialogTitle sx={{
+        color: 'var(--accent)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1.5,
+        pb: 1.5,
+        pt: 2.5,
+        px: 3,
+        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+      }}>
         <Box
           sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '4px',
-            background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
-            backgroundSize: '200% 100%',
-            animation: 'shimmer 3s ease-in-out infinite',
-            '@keyframes shimmer': {
-              '0%': { backgroundPosition: '200% 0' },
-              '100%': { backgroundPosition: '-200% 0' },
-            },
-          }}
-        />
-        {/* Header Bar */}
-        <Box sx={{
-          padding: '1.5rem',
-          borderBottom: '1px solid rgba(255,255,255,0.12)',
-          display: 'flex',
-          alignItems: 'center',
-          background: 'rgba(255,255,255,0.02)'
-        }}>
-          <Typography sx={{
-            margin: 0,
-            color: 'var(--accent)',
-            fontSize: '1.5rem',
-            fontWeight: 600,
-            fontFamily: 'JetBrains Mono, monospace'
-          }}>
-            ⚠️ Unsaved Changes
-          </Typography>
-        </Box>
-
-        <DialogContent sx={{ pt: 2, background: 'transparent' }}>
-          <Typography sx={{
-            color: 'var(--text)',
-            fontFamily: 'JetBrains Mono, monospace',
-            lineHeight: 1.5,
-            fontSize: '0.9rem'
-          }}>
-            You have unsaved changes. What would you like to do?
-          </Typography>
-        </DialogContent>
-
-        <DialogActions sx={{ p: 2, gap: 1, borderTop: '1px solid rgba(255, 255, 255, 0.06)', background: 'transparent' }}>
-          <Button
-            onClick={handleUnsavedCancel}
-            sx={{
-              ...celestialButtonStyle,
-              color: 'var(--text-2)',
-              borderColor: 'rgba(255, 255, 255, 0.2)',
-              '&:hover': {
-                background: 'rgba(255, 255, 255, 0.05)',
-                borderColor: 'var(--text)',
-                color: 'var(--text)'
-              }
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleUnsavedDiscard}
-            sx={{
-              ...celestialButtonStyle,
-              borderColor: '#ef4444',
-              color: '#ef4444',
-              background: 'rgba(239, 68, 68, 0.05)',
-              '&:hover': {
-                background: 'rgba(239, 68, 68, 0.15)',
-                borderColor: '#ef4444',
-                boxShadow: '0 0 15px rgba(239, 68, 68, 0.25)'
-              }
-            }}
-          >
-            Discard Changes
-          </Button>
-          <Button
-            onClick={handleUnsavedSave}
-            sx={{
-              ...celestialButtonStyle,
-              borderColor: '#22c55e',
-              color: '#22c55e',
-              background: 'rgba(34, 197, 94, 0.05)',
-              fontWeight: 'bold',
-              px: 2,
-              '&:hover': {
-                background: 'rgba(34, 197, 94, 0.15)',
-                borderColor: '#22c55e',
-                boxShadow: '0 0 15px rgba(34, 197, 94, 0.25)'
-              }
-            }}
-          >
-            Save & Leave
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* RitoBin Error Dialog */}
-      <Dialog
-        open={showRitoBinErrorDialog}
-        onClose={() => setShowRitoBinErrorDialog(false)}
-        PaperProps={{
-          sx: {
-            background: 'var(--bg-primary)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            minWidth: '450px',
-            borderRadius: '12px',
-            boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
-          }
-        }}
-      >
-        <Box sx={{
-          padding: '1.5rem',
-          borderBottom: '1px solid rgba(255,255,255,0.12)',
-          display: 'flex',
-          alignItems: 'center',
-          background: 'rgba(239, 68, 68, 0.05)'
-        }}>
-          <Typography sx={{
-            margin: 0,
-            color: '#ef4444',
-            fontSize: '1.5rem',
-            fontWeight: 600,
-            fontFamily: 'JetBrains Mono, monospace',
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            backgroundColor: 'rgba(var(--accent-rgb), 0.15)',
             display: 'flex',
             alignItems: 'center',
-            gap: 1.5
-          }}>
-            <WarningIcon sx={{ fontSize: '1.75rem' }} />
-            Conversion Failed
-          </Typography>
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
         </Box>
+        <Typography variant="h6" sx={{
+          fontWeight: 600,
+          color: 'var(--accent)',
+          fontFamily: 'JetBrains Mono, monospace',
+          fontSize: '1rem',
+        }}>
+          Add Child Particles
+        </Typography>
+      </DialogTitle>
+      <DialogContent sx={{ px: 3, py: 2.5 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
 
-        <DialogContent sx={{ pt: 2.5, background: 'transparent' }}>
-          <Typography sx={{
-            color: 'var(--text)',
-            fontFamily: 'JetBrains Mono, monospace',
+          <Typography variant="body2" sx={{
+            color: 'var(--accent2)',
             lineHeight: 1.6,
-            fontSize: '0.9rem',
-            mb: 2
+            fontSize: '0.875rem',
           }}>
-            RitoBin failed to convert the file. This usually means the App broke the code or the Python code was invalid before.
+            VFX System: <strong style={{ color: 'var(--accent)' }}>{selectedSystemForChild?.name}</strong>
           </Typography>
-          <Typography sx={{
-            color: 'var(--text-2)',
-            fontFamily: 'JetBrains Mono, monospace',
-            lineHeight: 1.6,
-            fontSize: '0.9rem'
-          }}>
-            Would you like to restore the file to its previous state from the latest backup?
-          </Typography>
-        </DialogContent>
 
-        <DialogActions sx={{ p: 2, gap: 1, borderTop: '1px solid rgba(255, 255, 255, 0.06)', background: 'transparent' }}>
-          <Button
-            onClick={() => setShowRitoBinErrorDialog(false)}
-            sx={{
-              ...celestialButtonStyle,
-              color: 'var(--text-2)',
-              borderColor: 'rgba(255, 255, 255, 0.2)',
-              '&:hover': {
-                background: 'rgba(255, 255, 255, 0.05)',
-                borderColor: 'var(--text)',
-                color: 'var(--text)'
-              }
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={() => {
-              performBackupRestore();
-              setShowRitoBinErrorDialog(false);
-            }}
-            sx={{
-              ...celestialButtonStyle,
-              borderColor: '#ef4444',
-              color: '#ef4444',
-              background: 'rgba(239, 68, 68, 0.05)',
-              '&:hover': {
-                background: 'rgba(239, 68, 68, 0.15)',
-                borderColor: '#ef4444',
-                boxShadow: '0 0 15px rgba(239, 68, 68, 0.25)'
-              }
-            }}
-          >
-            Restore Backup
-          </Button>
-        </DialogActions>
-      </Dialog>
+          <Box>
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
+              mb: 1,
+              fontSize: '0.875rem',
+            }}>
+              Select Child VFX System:
+            </Typography>
+            <FormControl fullWidth size="small">
+              <Select
+                value={selectedChildSystem || ''}
+                onChange={(e) => setSelectedChildSystem(e.target.value)}
+                sx={{
+                  color: 'var(--accent)',
+                  backgroundColor: 'var(--surface)',
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'rgba(255, 255, 255, 0.06)',
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--accent)',
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--accent)',
+                  },
+                  '& .MuiSvgIcon-root': {
+                    color: 'var(--accent)',
+                  },
+                }}
+              >
+                <MenuItem value="" sx={{ color: 'var(--accent2)' }}>
+                  Select a VFX System...
+                </MenuItem>
+                {availableVfxSystems.map(system => (
+                  <MenuItem key={system.key} value={system.key} sx={{ color: 'var(--accent2)' }}>
+                    {system.name} {system.key.startsWith('0x') ? `(${system.key})` : ''}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+
+          <Box>
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
+              mb: 1,
+              fontSize: '0.875rem',
+            }}>
+              Emitter Name:
+            </Typography>
+            <MemoizedInput
+              type="text"
+              value={childEmitterName}
+              onChange={(e) => setChildEmitterName(e.target.value)}
+              placeholder="Enter emitter name..."
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'var(--surface)',
+                color: 'var(--accent)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: '6px',
+                fontSize: '0.875rem',
+                fontFamily: 'JetBrains Mono, monospace',
+              }}
+            />
+          </Box>
+
+          <Box>
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
+              mb: 1,
+              fontSize: '0.875rem',
+            }}>
+              Rate (default: 1):
+            </Typography>
+            <MemoizedInput
+              type="number"
+              value={childParticleRate}
+              onChange={(e) => setChildParticleRate(e.target.value)}
+              placeholder="1"
+              step="0.1"
+              min="0"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'var(--surface)',
+                color: 'var(--accent)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: '6px',
+                fontSize: '0.875rem',
+                fontFamily: 'JetBrains Mono, monospace',
+              }}
+            />
+          </Box>
+
+          <Box>
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
+              mb: 1,
+              fontSize: '0.875rem',
+            }}>
+              Lifetime (default: 9999):
+            </Typography>
+            <MemoizedInput
+              type="number"
+              value={childParticleLifetime}
+              onChange={(e) => setChildParticleLifetime(e.target.value)}
+              placeholder="9999"
+              min="0"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'var(--surface)',
+                color: 'var(--accent)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: '6px',
+                fontSize: '0.875rem',
+                fontFamily: 'JetBrains Mono, monospace',
+              }}
+            />
+          </Box>
+
+          <Box>
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
+              mb: 1,
+              fontSize: '0.875rem',
+            }}>
+              Bind Weight (default: 1):
+            </Typography>
+            <MemoizedInput
+              type="number"
+              value={childParticleBindWeight}
+              onChange={(e) => setChildParticleBindWeight(e.target.value)}
+              placeholder="1"
+              step="0.1"
+              min="0"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'var(--surface)',
+                color: 'var(--accent)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: '6px',
+                fontSize: '0.875rem',
+                fontFamily: 'JetBrains Mono, monospace',
+              }}
+            />
+          </Box>
+
+          <Box>
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
+              mb: 1,
+              fontSize: '0.875rem',
+              fontWeight: 500,
+            }}>
+              Time Before First Emission (default: 0):
+            </Typography>
+            <MemoizedInput
+              type="number"
+              value={childParticleTimeBeforeFirstEmission}
+              onChange={(e) => setChildParticleTimeBeforeFirstEmission(e.target.value)}
+              placeholder="0"
+              step="0.01"
+              min="0"
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'var(--surface)',
+                color: 'var(--accent)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: '6px',
+                fontSize: '0.875rem',
+                fontFamily: 'JetBrains Mono, monospace',
+              }}
+            />
+          </Box>
+
+          <Box>
+            <Typography variant="body2" sx={{
+              color: 'var(--accent2)',
+              mb: 1,
+              fontSize: '0.875rem',
+              fontWeight: 500,
+            }}>
+              Translation Override (default: 0, 0, 0):
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1.5 }}>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" sx={{
+                  color: 'var(--accent2)',
+                  mb: 0.5,
+                  fontSize: '0.75rem',
+                }}>
+                  X:
+                </Typography>
+                <MemoizedInput
+                  type="number"
+                  value={childParticleTranslationOverrideX}
+                  onChange={(e) => setChildParticleTranslationOverrideX(e.target.value)}
+                  placeholder="0"
+                  step="0.1"
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    background: 'var(--surface)',
+                    color: 'var(--accent)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    borderRadius: '6px',
+                    fontSize: '0.75rem',
+                    fontFamily: 'JetBrains Mono, monospace',
+                  }}
+                />
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" sx={{
+                  color: 'var(--accent2)',
+                  mb: 0.5,
+                  fontSize: '0.75rem',
+                }}>
+                  Y:
+                </Typography>
+                <MemoizedInput
+                  type="number"
+                  value={childParticleTranslationOverrideY}
+                  onChange={(e) => setChildParticleTranslationOverrideY(e.target.value)}
+                  placeholder="0"
+                  step="0.1"
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    background: 'var(--surface)',
+                    color: 'var(--accent)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    borderRadius: '6px',
+                    fontSize: '0.75rem',
+                    fontFamily: 'JetBrains Mono, monospace',
+                  }}
+                />
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" sx={{
+                  color: 'var(--accent2)',
+                  mb: 0.5,
+                  fontSize: '0.75rem',
+                }}>
+                  Z:
+                </Typography>
+                <MemoizedInput
+                  type="number"
+                  value={childParticleTranslationOverrideZ}
+                  onChange={(e) => setChildParticleTranslationOverrideZ(e.target.value)}
+                  placeholder="0"
+                  step="0.1"
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    background: 'var(--surface)',
+                    color: 'var(--accent)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    borderRadius: '6px',
+                    fontSize: '0.75rem',
+                    fontFamily: 'JetBrains Mono, monospace',
+                  }}
+                />
+              </Box>
+            </Box>
+          </Box>
+
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={childParticleIsSingle}
+                onChange={(e) => setChildParticleIsSingle(e.target.checked)}
+                sx={{
+                  color: 'var(--accent2)',
+                  '&.Mui-checked': {
+                    color: 'var(--accent)',
+                  },
+                }}
+              />
+            }
+            label={
+              <Typography variant="body2" sx={{
+                color: 'var(--accent2)',
+                fontSize: '0.875rem',
+              }}>
+                Is Single Particle (default: true)
+              </Typography>
+            }
+          />
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{
+        p: 2.5,
+        pt: 2,
+        borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+        gap: 1.5,
+      }}>
+        <Button
+          onClick={() => {
+            setShowChildModal(false);
+            setSelectedSystemForChild(null);
+            setSelectedChildSystem('');
+            setChildEmitterName('');
+            setAvailableVfxSystems([]);
+          }}
+          variant="outlined"
+          sx={{
+            color: 'var(--accent2)',
+            borderColor: 'rgba(255, 255, 255, 0.06)',
+            textTransform: 'none',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '0.8rem',
+            px: 2,
+            '&:hover': {
+              borderColor: 'var(--accent)',
+              backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
+            },
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleConfirmChildParticles}
+          disabled={!selectedChildSystem || !childEmitterName.trim()}
+          variant="contained"
+          sx={{
+            backgroundColor: 'var(--accent)',
+            color: 'var(--surface)',
+            textTransform: 'none',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            px: 2.5,
+            '&:hover': {
+              backgroundColor: 'var(--accent2)',
+            },
+            '&:disabled': {
+              backgroundColor: '#666',
+              color: 'rgba(255,255,255,0.6)',
+            },
+          }}
+        >
+          Add Child Particles
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+    {/* Thin Status Bar */}
+    <div style={{
+      padding: '6px 20px',
+      background: 'rgba(255,255,255,0.06)',
+      borderTop: '1px solid rgba(255,255,255,0.12)',
+      borderBottom: '1px solid rgba(255,255,255,0.12)',
+      color: 'var(--accent)',
+      fontFamily: 'JetBrains Mono, monospace',
+      fontSize: '12px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '20px'
+    }}>
+      <span style={{ flex: 1 }}>{statusMessage}</span>
+      {targetPyContent && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px',
+          fontSize: '11px',
+          color: 'rgba(255,255,255,0.7)'
+        }}>
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap'
+          }}>
+            <input
+              type="checkbox"
+              checked={trimTargetNames}
+              onChange={(e) => setTrimTargetNames(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            <span>Trim Target Names</span>
+          </label>
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap'
+          }}>
+            <input
+              type="checkbox"
+              checked={trimDonorNames}
+              onChange={(e) => setTrimDonorNames(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            <span>Trim Donor Names</span>
+          </label>
+        </div>
+      )}
     </div>
-  );
+
+    {/* Bottom Controls - Thinner */}
+    <div style={{
+      display: 'flex',
+      gap: '12px',
+      padding: '12px 20px',
+      background: 'transparent'
+    }}>
+      <Button
+        onClick={handleUndo}
+        disabled={undoHistory.length === 0}
+        sx={{
+          flex: 1,
+          padding: '0 16px',
+          fontFamily: 'JetBrains Mono, monospace',
+          fontSize: '13px',
+          fontWeight: 700,
+          height: '36px',
+          background: 'color-mix(in srgb, #9ca3af, var(--bg) 85%)',
+          border: '1px solid rgba(156, 163, 175, 0.3)',
+          color: '#9ca3af',
+          borderRadius: '4px',
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
+          transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+          position: 'relative',
+          '&:hover': {
+            background: 'color-mix(in srgb, #9ca3af, var(--bg) 75%)',
+            borderColor: '#9ca3af',
+            textShadow: '0 0 8px color-mix(in srgb, #9ca3af, transparent 50%)',
+          },
+          '&:disabled': {
+            opacity: 0.5,
+            cursor: 'not-allowed',
+            borderColor: 'rgba(156,163,175,0.32)',
+            color: 'rgba(156,163,175,0.32)'
+          }
+        }}
+        title={undoHistory.length > 0 ? `Undo: ${undoHistory[undoHistory.length - 1]?.action}` : 'Nothing to undo'}
+      >
+        Undo ({undoHistory.length})
+      </Button>
+      <Button
+        onClick={handleSave}
+        disabled={isProcessing || !hasChangesToSave()}
+        sx={{
+          flex: 1,
+          padding: '0 16px',
+          fontFamily: 'JetBrains Mono, monospace',
+          fontSize: '13px',
+          fontWeight: 700,
+          height: '36px',
+          background: 'color-mix(in srgb, #22c55e, var(--bg) 85%)',
+          border: '1px solid rgba(34, 197, 94, 0.3)',
+          color: '#22c55e',
+          borderRadius: '4px',
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
+          transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+          position: 'relative',
+          '&:hover': {
+            background: 'color-mix(in srgb, #22c55e, var(--bg) 75%)',
+            borderColor: '#22c55e',
+            textShadow: '0 0 8px color-mix(in srgb, #22c55e, transparent 50%)',
+          },
+          '&:disabled': {
+            opacity: 0.5,
+            cursor: 'not-allowed',
+            borderColor: 'rgba(34, 197, 94, 0.3)',
+            color: 'rgba(34, 197, 94, 0.3)'
+          }
+        }}
+        title={hasChangesToSave() ? 'Save changes to file' : 'No changes to save'}
+      >
+        Save
+      </Button>
+    </div>
+
+
+
+    {/* Floating Backup Viewer Button */}
+    {targetPyContent && !isProcessing && (
+      <Tooltip title="Backup History" placement="top" arrow componentsProps={{ tooltip: { sx: { pointerEvents: 'none' } } }}>
+        <IconButton
+          onClick={handleOpenBackupViewer}
+          aria-label="View Backup History"
+          sx={{
+            position: 'fixed',
+            bottom: 130,
+            right: 24,
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            zIndex: 4500,
+            background: 'rgba(147, 51, 234, 0.15)',
+            color: '#c084fc',
+            border: '1px solid rgba(147, 51, 234, 0.3)',
+            boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(147, 51, 234, 0.2)',
+            // backdropFilter: 'blur(15px)',
+            // WebkitBackdropFilter: 'blur(15px)',
+            '&:hover': {
+              transform: 'translateY(-2px)',
+              boxShadow: '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(147, 51, 234, 0.3)',
+              background: 'rgba(147, 51, 234, 0.25)',
+              border: '1px solid rgba(147, 51, 234, 0.5)'
+            },
+            overflow: 'hidden',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <FolderIcon sx={{ fontSize: 18 }} />
+        </IconButton>
+      </Tooltip>
+    )}
+
+    {/* Floating Persistent Button */}
+    {targetPyContent && !isProcessing && (
+      <Tooltip title="Persistent Effects" placement="top" arrow componentsProps={{ tooltip: { sx: { pointerEvents: 'none' } } }}>
+        <IconButton
+          onClick={handleOpenPersistent}
+          aria-label="Open Persistent Effects"
+          disabled={!hasResourceResolver || !hasSkinCharacterData}
+          sx={{
+            position: 'fixed',
+            bottom: 80,
+            right: 24,
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            zIndex: 4500,
+            background: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.06)' : 'rgba(34, 197, 94, 0.15)',
+            color: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.35)' : '#4ade80',
+            border: '1px solid rgba(34, 197, 94, 0.3)',
+            boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(34, 197, 94, 0.2)',
+            // backdropFilter: 'blur(15px)',
+            // WebkitBackdropFilter: 'blur(15px)',
+            '&:hover': {
+              transform: (!hasResourceResolver || !hasSkinCharacterData) ? 'none' : 'translateY(-2px)',
+              boxShadow: (!hasResourceResolver || !hasSkinCharacterData) ? '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(34, 197, 94, 0.2)' : '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(34, 197, 94, 0.3)',
+              background: (!hasResourceResolver || !hasSkinCharacterData) ? 'rgba(255,255,255,0.06)' : 'rgba(34, 197, 94, 0.25)',
+              border: '1px solid rgba(34, 197, 94, 0.5)'
+            },
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <AppsIcon sx={{ fontSize: 18 }} />
+        </IconButton>
+      </Tooltip>
+    )}
+
+    {/* Floating New VFX System Button */}
+    {targetPyContent && !isProcessing && (
+      <Tooltip title="New VFX System" placement="top" arrow componentsProps={{ tooltip: { sx: { pointerEvents: 'none' } } }}>
+        <IconButton
+          onClick={handleOpenNewSystemModal}
+          aria-label="Create New VFX System"
+          disabled={!hasResourceResolver}
+          sx={{
+            position: 'fixed',
+            bottom: 80,
+            right: 72,
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            zIndex: 4500,
+            background: !hasResourceResolver ? 'rgba(255,255,255,0.06)' : 'rgba(236, 185, 106, 0.15)',
+            color: !hasResourceResolver ? 'rgba(255,255,255,0.35)' : '#fbbf24',
+            border: '1px solid rgba(236, 185, 106, 0.3)',
+            boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(236, 185, 106, 0.2)',
+            '&:hover': {
+              transform: !hasResourceResolver ? 'none' : 'translateY(-2px)',
+              boxShadow: !hasResourceResolver ? '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(236, 185, 106, 0.2)' : '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(236, 185, 106, 0.3)',
+              background: !hasResourceResolver ? 'rgba(255,255,255,0.06)' : 'rgba(236, 185, 106, 0.25)',
+              border: '1px solid rgba(236, 185, 106, 0.5)'
+            },
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <AddIcon sx={{ fontSize: 20, fontWeight: 700 }} />
+        </IconButton>
+      </Tooltip>
+    )}
+
+    {/* Floating Port All Button */}
+    {targetPyContent && donorPyContent && (
+      <Tooltip title={isPortAllLoading ? "Porting all systems..." : "Port All VFX Systems"} placement="top" arrow componentsProps={{ tooltip: { sx: { pointerEvents: 'none' } } }}>
+        <IconButton
+          onClick={handlePortAllSystems}
+          aria-label="Port All VFX Systems"
+          disabled={!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading}
+          sx={{
+            position: 'fixed',
+            bottom: 80,
+            right: 120,
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            zIndex: 4500,
+            background: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'rgba(255,255,255,0.06)' : 'rgba(59, 130, 246, 0.15)',
+            color: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'rgba(255,255,255,0.35)' : '#3b82f6',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            boxShadow: '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(59, 130, 246, 0.2)',
+            // backdropFilter: 'blur(15px)',
+            // WebkitBackdropFilter: 'blur(15px)',
+            '&:hover': {
+              transform: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'none' : 'translateY(-2px)',
+              boxShadow: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? '0 8px 22px rgba(0,0,0,0.35), 0 0 8px rgba(59, 130, 246, 0.2)' : '0 10px 26px rgba(0,0,0,0.45), 0 0 12px rgba(59, 130, 246, 0.3)',
+              background: (!hasResourceResolver || Object.values(donorSystems).length === 0 || isPortAllLoading) ? 'rgba(255,255,255,0.06)' : 'rgba(59, 130, 246, 0.25)',
+              border: '1px solid rgba(59, 130, 246, 0.5)'
+            },
+            transition: 'all 0.2s ease'
+          }}
+        >
+          {isPortAllLoading ? (
+            <CircularProgress size={18} sx={{ color: '#3b82f6' }} />
+          ) : (
+            <ArrowBackIcon sx={{ fontSize: 18 }} />
+          )}
+        </IconButton>
+      </Tooltip>
+    )}
+
+    {/* Backup Viewer Dialog */}
+    <BackupViewer
+      open={showBackupViewer}
+      onClose={(restored) => {
+        setShowBackupViewer(false);
+        if (restored) {
+          // Check if there are unsaved changes before restoring
+          if (!fileSaved) {
+            if (window.confirm('You have unsaved changes. Restoring a backup will overwrite them. Continue?')) {
+              performBackupRestore();
+            } else {
+              setStatusMessage('Backup restore cancelled - unsaved changes preserved');
+              return;
+            }
+          } else {
+            performBackupRestore();
+          }
+        }
+      }}
+      filePath={targetPath !== 'This will show target bin' ? targetPath.replace('.bin', '.py') : null}
+      component="port"
+    />
+
+    {/* Unsaved Changes Dialog */}
+    <Dialog
+      open={showUnsavedDialog}
+      onClose={handleUnsavedCancel}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          background: 'transparent',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          borderRadius: '5px',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          overflow: 'hidden'
+        },
+      }}
+    >
+      {/* Animated Top Bar */}
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '4px',
+          background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+          backgroundSize: '200% 100%',
+          animation: 'shimmer 3s ease-in-out infinite',
+          '@keyframes shimmer': {
+            '0%': { backgroundPosition: '200% 0' },
+            '100%': { backgroundPosition: '-200% 0' },
+          },
+        }}
+      />
+      {/* Header Bar */}
+      <Box sx={{
+        padding: '1.5rem',
+        borderBottom: '1px solid rgba(255,255,255,0.12)',
+        display: 'flex',
+        alignItems: 'center',
+        background: 'rgba(255,255,255,0.02)'
+      }}>
+        <Typography sx={{
+          margin: 0,
+          color: 'var(--accent)',
+          fontSize: '1.5rem',
+          fontWeight: 600,
+          fontFamily: 'JetBrains Mono, monospace'
+        }}>
+          ⚠️ Unsaved Changes
+        </Typography>
+      </Box>
+
+      <DialogContent sx={{ pt: 2, background: 'transparent' }}>
+        <Typography sx={{
+          color: 'var(--text)',
+          fontFamily: 'JetBrains Mono, monospace',
+          lineHeight: 1.5,
+          fontSize: '0.9rem'
+        }}>
+          You have unsaved changes. What would you like to do?
+        </Typography>
+      </DialogContent>
+
+      <DialogActions sx={{ p: 2, gap: 1, borderTop: '1px solid rgba(255, 255, 255, 0.06)', background: 'transparent' }}>
+        <Button
+          onClick={handleUnsavedCancel}
+          sx={{
+            ...celestialButtonStyle,
+            color: 'var(--text-2)',
+            borderColor: 'rgba(255, 255, 255, 0.2)',
+            '&:hover': {
+              background: 'rgba(255, 255, 255, 0.05)',
+              borderColor: 'var(--text)',
+              color: 'var(--text)'
+            }
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleUnsavedDiscard}
+          sx={{
+            ...celestialButtonStyle,
+            borderColor: '#ef4444',
+            color: '#ef4444',
+            background: 'rgba(239, 68, 68, 0.05)',
+            '&:hover': {
+              background: 'rgba(239, 68, 68, 0.15)',
+              borderColor: '#ef4444',
+              boxShadow: '0 0 15px rgba(239, 68, 68, 0.25)'
+            }
+          }}
+        >
+          Discard Changes
+        </Button>
+        <Button
+          onClick={handleUnsavedSave}
+          sx={{
+            ...celestialButtonStyle,
+            borderColor: '#22c55e',
+            color: '#22c55e',
+            background: 'rgba(34, 197, 94, 0.05)',
+            fontWeight: 'bold',
+            px: 2,
+            '&:hover': {
+              background: 'rgba(34, 197, 94, 0.15)',
+              borderColor: '#22c55e',
+              boxShadow: '0 0 15px rgba(34, 197, 94, 0.25)'
+            }
+          }}
+        >
+          Save & Leave
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+    {/* RitoBin Error Dialog */}
+    <Dialog
+      open={showRitoBinErrorDialog}
+      onClose={() => setShowRitoBinErrorDialog(false)}
+      PaperProps={{
+        sx: {
+          background: 'var(--bg-primary)',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          minWidth: '450px',
+          borderRadius: '12px',
+          boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
+        }
+      }}
+    >
+      <Box sx={{
+        padding: '1.5rem',
+        borderBottom: '1px solid rgba(255,255,255,0.12)',
+        display: 'flex',
+        alignItems: 'center',
+        background: 'rgba(239, 68, 68, 0.05)'
+      }}>
+        <Typography sx={{
+          margin: 0,
+          color: '#ef4444',
+          fontSize: '1.5rem',
+          fontWeight: 600,
+          fontFamily: 'JetBrains Mono, monospace',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5
+        }}>
+          <WarningIcon sx={{ fontSize: '1.75rem' }} />
+          Conversion Failed
+        </Typography>
+      </Box>
+
+      <DialogContent sx={{ pt: 2.5, background: 'transparent' }}>
+        <Typography sx={{
+          color: 'var(--text)',
+          fontFamily: 'JetBrains Mono, monospace',
+          lineHeight: 1.6,
+          fontSize: '0.9rem',
+          mb: 2
+        }}>
+          RitoBin failed to convert the file. This usually means the App broke the code or the Python code was invalid before.
+        </Typography>
+        <Typography sx={{
+          color: 'var(--text-2)',
+          fontFamily: 'JetBrains Mono, monospace',
+          lineHeight: 1.6,
+          fontSize: '0.9rem'
+        }}>
+          Would you like to restore the file to its previous state from the latest backup?
+        </Typography>
+      </DialogContent>
+
+      <DialogActions sx={{ p: 2, gap: 1, borderTop: '1px solid rgba(255, 255, 255, 0.06)', background: 'transparent' }}>
+        <Button
+          onClick={() => setShowRitoBinErrorDialog(false)}
+          sx={{
+            ...celestialButtonStyle,
+            color: 'var(--text-2)',
+            borderColor: 'rgba(255, 255, 255, 0.2)',
+            '&:hover': {
+              background: 'rgba(255, 255, 255, 0.05)',
+              borderColor: 'var(--text)',
+              color: 'var(--text)'
+            }
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={() => {
+            performBackupRestore();
+            setShowRitoBinErrorDialog(false);
+          }}
+          sx={{
+            ...celestialButtonStyle,
+            borderColor: '#ef4444',
+            color: '#ef4444',
+            background: 'rgba(239, 68, 68, 0.05)',
+            '&:hover': {
+              background: 'rgba(239, 68, 68, 0.15)',
+              borderColor: '#ef4444',
+              boxShadow: '0 0 15px rgba(239, 68, 68, 0.25)'
+            }
+          }}
+        >
+          Restore Backup
+        </Button>
+      </DialogActions>
+    </Dialog>
+  </div>
+);
 };
 
 export default Port; 

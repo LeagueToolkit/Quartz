@@ -14,7 +14,8 @@ import {
   FileDigit,
   Wrench,
   Settings,
-  CircleHelp
+  CircleHelp,
+  Music
 } from 'lucide-react';
 import electronPrefs from '../utils/electronPrefs.js';
 import NavButton from './NavButton';
@@ -41,6 +42,7 @@ const ModernNavigation = () => {
         { text: 'Upscale', icon: Maximize, path: '/upscale', key: 'upscale' },
         { text: 'RGBA', icon: Pipette, path: '/rgba', key: 'rgba' },
         { text: 'File Handler', icon: FileDigit, path: '/file-randomizer', key: 'fileRandomizer' },
+        { text: 'BNK Extract', icon: Music, path: '/bnk-extract', key: 'bnkExtract' },
         { text: 'Tools', icon: Wrench, path: '/tools', key: 'tools' },
       ];
 
@@ -54,6 +56,7 @@ const ModernNavigation = () => {
           case 'binEditor': settingKey = 'BinEditorEnabled'; break;
           case 'aniport': settingKey = 'AniPortEnabled'; break;
           case 'frogchanger': settingKey = 'FrogChangerEnabled'; break;
+          case 'bnkExtract': settingKey = 'BnkExtractEnabled'; break;
           default: settingKey = `${item.key.charAt(0).toUpperCase() + item.key.slice(1)}Enabled`;
         }
         return electronPrefs.obj[settingKey] !== false;

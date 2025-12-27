@@ -40,13 +40,22 @@ body,
 .has-wallpaper .bumpath-container,
 .has-wallpaper .img-recolor-container,
 .has-wallpaper .settings-container,
+.has-wallpaper .bnk-extract-container,
 .has-wallpaper .vfx-particle-list,
 .has-wallpaper .bin-editor-list,
 .has-wallpaper .bin-editor-props {
-  background: rgba(15, 13, 20, 0.4) !important;
+  background: rgba(15, 13, 20, 0.6) !important;
   backdrop-filter: blur(var(--glass-blur, 10px));
   -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* BNK Extract specific - darker panels for readability */
+.has-wallpaper .bnk-extract-tree,
+.has-wallpaper .bnk-extract-header {
+  background: rgba(10, 10, 15, 0.75) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 /* Systems and Emitters - Less transparent for high readability (Port, VFX Hub, Bin Editor) */

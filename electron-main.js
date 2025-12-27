@@ -182,6 +182,10 @@ ipcMain.handle('get-user-data-path', () => {
   return app.getPath('userData');
 });
 
+ipcMain.handle('getAppPath', () => {
+  return app.getAppPath();
+});
+
 // IPC handler to open log file location
 ipcMain.handle('open-log-folder', async () => {
   try {
@@ -567,7 +571,8 @@ ipcMain.handle('dialog:openFile', async (event, options) => {
       window = BrowserWindow.getFocusedWindow();
     }
     const result = await dialog.showOpenDialog(window, {
-      properties: ['openFile'],
+      title: options?.title || 'Open File',
+      properties: options?.properties || ['openFile'],
       filters: options?.filters || [{ name: 'All Files', extensions: ['*'] }]
     });
     return result;
@@ -577,14 +582,33 @@ ipcMain.handle('dialog:openFile', async (event, options) => {
   }
 });
 
-ipcMain.handle('dialog:openDirectory', async (event) => {
+ipcMain.handle('dialog:saveFile', async (event, options) => {
+  try {
+    let window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) {
+      window = BrowserWindow.getFocusedWindow();
+    }
+    const result = await dialog.showSaveDialog(window, {
+      title: options?.title || 'Save File',
+      defaultPath: options?.defaultPath,
+      filters: options?.filters || [{ name: 'All Files', extensions: ['*'] }]
+    });
+    return result;
+  } catch (error) {
+    console.error('Error opening save dialog:', error);
+    return { canceled: true, error: error.message };
+  }
+});
+
+ipcMain.handle('dialog:openDirectory', async (event, options) => {
   try {
     let window = BrowserWindow.fromWebContents(event.sender);
     if (!window) {
       window = BrowserWindow.getFocusedWindow();
     }
     const result = await dialog.showOpenDialog(window, {
-      properties: ['openDirectory']
+      title: options?.title || 'Select Folder',
+      properties: options?.properties || ['openDirectory']
     });
     return result;
   } catch (error) {
