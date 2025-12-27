@@ -59,12 +59,11 @@ temp_build/
 
 # Application specific
 skin0.json
-*.bin
 *.rar
 *.zip
 debug_*.js
 test-*.html
-test-*.js
+
 debug-*.html
 debug-*.js
 
@@ -113,6 +112,7 @@ repath tool test/
 
 # Third-party tools and external projects
 League Mod Repather/
+bnk-extract-GUI-master/
 
 # Optional development/build scripts (user-specific convenience files)
 setup.bat
