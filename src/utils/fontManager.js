@@ -115,8 +115,40 @@ class FontManager {
   }
 
   async scanFonts() {
-    // Always ensure system font is available first
-    this.availableFonts = [{ name: 'system', displayName: 'System Default' }];
+    // System fonts that are commonly available on Windows/Mac/Linux
+    const commonSystemFonts = [
+      { name: 'system', displayName: 'System Default' },
+      // Windows fonts
+      { name: 'Segoe UI', displayName: 'Segoe UI', isSystem: true },
+      { name: 'Consolas', displayName: 'Consolas (Mono)', isSystem: true },
+      { name: 'Cascadia Code', displayName: 'Cascadia Code (Mono)', isSystem: true },
+      { name: 'Arial', displayName: 'Arial', isSystem: true },
+      { name: 'Verdana', displayName: 'Verdana', isSystem: true },
+      { name: 'Tahoma', displayName: 'Tahoma', isSystem: true },
+      { name: 'Trebuchet MS', displayName: 'Trebuchet MS', isSystem: true },
+      { name: 'Georgia', displayName: 'Georgia', isSystem: true },
+      { name: 'Calibri', displayName: 'Calibri', isSystem: true },
+      { name: 'Cambria', displayName: 'Cambria', isSystem: true },
+      { name: 'Lucida Console', displayName: 'Lucida Console (Mono)', isSystem: true },
+      { name: 'Courier New', displayName: 'Courier New (Mono)', isSystem: true },
+      // Mac fonts
+      { name: 'SF Pro', displayName: 'SF Pro (Mac)', isSystem: true },
+      { name: 'SF Mono', displayName: 'SF Mono (Mac)', isSystem: true },
+      { name: 'Menlo', displayName: 'Menlo (Mac Mono)', isSystem: true },
+      { name: 'Monaco', displayName: 'Monaco (Mac Mono)', isSystem: true },
+      { name: 'Helvetica Neue', displayName: 'Helvetica Neue', isSystem: true },
+      // Linux fonts
+      { name: 'Ubuntu', displayName: 'Ubuntu', isSystem: true },
+      { name: 'Ubuntu Mono', displayName: 'Ubuntu Mono', isSystem: true },
+      { name: 'DejaVu Sans', displayName: 'DejaVu Sans', isSystem: true },
+      { name: 'DejaVu Sans Mono', displayName: 'DejaVu Sans Mono', isSystem: true },
+      // Common web-safe fonts
+      { name: 'Comic Sans MS', displayName: 'Comic Sans MS', isSystem: true },
+      { name: 'Impact', displayName: 'Impact', isSystem: true },
+      { name: 'Palatino Linotype', displayName: 'Palatino', isSystem: true },
+    ];
+    
+    this.availableFonts = [...commonSystemFonts];
     
     if (!window.require) return;
     
@@ -141,14 +173,100 @@ class FontManager {
         let fontFamily = name;
         
         // Handle special font names that need specific font-family declarations
+        // Good readable fonts for UI/code work
         const specialFonts = {
+          // Retro/Pixel fonts
           'PressStart2P': 'Press Start 2P',
           'pressstart2p': 'Press Start 2P',
           'press-start-2p': 'Press Start 2P',
+          
+          // Monospace - excellent for code and data
           'JetBrainsMono': 'JetBrains Mono',
           'jetbrainsmono': 'JetBrains Mono',
+          'jetbrains-mono': 'JetBrains Mono',
           'SourceCodePro': 'Source Code Pro',
-          'sourcecodepro': 'Source Code Pro'
+          'sourcecodepro': 'Source Code Pro',
+          'source-code-pro': 'Source Code Pro',
+          'FiraCode': 'Fira Code',
+          'firacode': 'Fira Code',
+          'fira-code': 'Fira Code',
+          'CascadiaCode': 'Cascadia Code',
+          'cascadiacode': 'Cascadia Code',
+          'cascadia-code': 'Cascadia Code',
+          'CascadiaMono': 'Cascadia Mono',
+          'cascadiamono': 'Cascadia Mono',
+          'Consolas': 'Consolas',
+          'consolas': 'Consolas',
+          'Inconsolata': 'Inconsolata',
+          'inconsolata': 'Inconsolata',
+          'UbuntuMono': 'Ubuntu Mono',
+          'ubuntumono': 'Ubuntu Mono',
+          'ubuntu-mono': 'Ubuntu Mono',
+          'RobotoMono': 'Roboto Mono',
+          'robotomono': 'Roboto Mono',
+          'roboto-mono': 'Roboto Mono',
+          'IBMPlexMono': 'IBM Plex Mono',
+          'ibmplexmono': 'IBM Plex Mono',
+          'ibm-plex-mono': 'IBM Plex Mono',
+          'HackFont': 'Hack',
+          'hack': 'Hack',
+          
+          // Sans-serif - clean and modern
+          'Inter': 'Inter',
+          'inter': 'Inter',
+          'Roboto': 'Roboto',
+          'roboto': 'Roboto',
+          'OpenSans': 'Open Sans',
+          'opensans': 'Open Sans',
+          'open-sans': 'Open Sans',
+          'Lato': 'Lato',
+          'lato': 'Lato',
+          'Nunito': 'Nunito',
+          'nunito': 'Nunito',
+          'NunitoSans': 'Nunito Sans',
+          'nunitosans': 'Nunito Sans',
+          'nunito-sans': 'Nunito Sans',
+          'Poppins': 'Poppins',
+          'poppins': 'Poppins',
+          'Montserrat': 'Montserrat',
+          'montserrat': 'Montserrat',
+          'Outfit': 'Outfit',
+          'outfit': 'Outfit',
+          'SpaceGrotesk': 'Space Grotesk',
+          'spacegrotesk': 'Space Grotesk',
+          'space-grotesk': 'Space Grotesk',
+          'Manrope': 'Manrope',
+          'manrope': 'Manrope',
+          'Lexend': 'Lexend',
+          'lexend': 'Lexend',
+          'Geist': 'Geist',
+          'geist': 'Geist',
+          'GeistMono': 'Geist Mono',
+          'geistmono': 'Geist Mono',
+          'geist-mono': 'Geist Mono',
+          
+          // Gaming/Stylized fonts
+          'Orbitron': 'Orbitron',
+          'orbitron': 'Orbitron',
+          'Rajdhani': 'Rajdhani',
+          'rajdhani': 'Rajdhani',
+          'Audiowide': 'Audiowide',
+          'audiowide': 'Audiowide',
+          'Oxanium': 'Oxanium',
+          'oxanium': 'Oxanium',
+          'Exo2': 'Exo 2',
+          'exo2': 'Exo 2',
+          'exo-2': 'Exo 2',
+          'Michroma': 'Michroma',
+          'michroma': 'Michroma',
+          'ShareTechMono': 'Share Tech Mono',
+          'sharetechmono': 'Share Tech Mono',
+          'share-tech-mono': 'Share Tech Mono',
+          'VT323': 'VT323',
+          'vt323': 'VT323',
+          'PixelifySans': 'Pixelify Sans',
+          'pixelifysans': 'Pixelify Sans',
+          'pixelify-sans': 'Pixelify Sans'
         };
         
         // Check if this is a special font that needs a specific font-family name
@@ -238,9 +356,85 @@ class FontManager {
       }
       
       const font = this.availableFonts.find(f => f.name === fontName);
-      if (!font || !font.file) {
+      if (!font) {
         console.warn('❌ Font not found:', fontName);
         return false;
+      }
+      
+      // Handle system fonts (no file needed)
+      if (font.isSystem || !font.file) {
+        const style = document.createElement('style');
+        style.id = `font-${fontName.replace(/\s+/g, '-')}`;
+        style.setAttribute('data-font-style', 'true');
+        
+        style.textContent = `
+          /* Global font application with high specificity */
+          html {
+            --app-font-family: '${fontName}', 'Segoe UI', sans-serif;
+          }
+          
+          /* Apply to all elements */
+          *, *::before, *::after {
+            font-family: '${fontName}', 'Segoe UI', sans-serif !important;
+          }
+          
+          /* Specific Material-UI overrides */
+          .MuiTypography-root,
+          .MuiButton-root,
+          .MuiTextField-root input,
+          .MuiTextField-root textarea,
+          .MuiSelect-root,
+          .MuiMenuItem-root,
+          .MuiFormLabel-root,
+          .MuiInputBase-root,
+          .MuiOutlinedInput-root,
+          .MuiCard-root,
+          .MuiCardContent-root,
+          .MuiBox-root,
+          .MuiGrid-root {
+            font-family: '${fontName}', 'Segoe UI', sans-serif !important;
+          }
+          
+          /* Navigation and header elements */
+          nav, header, .navigation, .navbar,
+          .MuiAppBar-root, .MuiToolbar-root,
+          .MuiDrawer-root, .MuiList-root,
+          .MuiListItem-root, .MuiListItemText-root {
+            font-family: '${fontName}', 'Segoe UI', sans-serif !important;
+          }
+          
+          /* Form elements */
+          input, textarea, select, button, label {
+            font-family: '${fontName}', 'Segoe UI', sans-serif !important;
+          }
+        `;
+        
+        document.head.appendChild(style);
+        
+        // Apply font globally
+        document.documentElement.style.setProperty('--app-font-family', `'${fontName}', 'Segoe UI', sans-serif`);
+        document.documentElement.setAttribute('data-current-font', fontName);
+        
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('frogsaw-current-font', fontName);
+        }
+        document.body.setAttribute('data-current-font', fontName);
+        
+        window.dispatchEvent(new CustomEvent('globalFontChange', {
+          detail: { fontName, fontFamily: `'${fontName}', 'Segoe UI', sans-serif` }
+        }));
+        
+        this.currentFont = fontName;
+        this.fontApplied = true;
+        
+        try {
+          await electronPrefs.set('SelectedFont', fontName);
+        } catch (error) {
+          console.error('❌ Error saving font preference:', error);
+        }
+        
+        console.log('✅ System font applied:', fontName);
+        return true;
       }
       
       if (!window.require) {

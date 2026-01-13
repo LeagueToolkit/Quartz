@@ -8,6 +8,7 @@ import ModernNavigation from './components/ModernNavigation';
 import CustomTitleBar, { TITLE_BAR_HEIGHT } from './components/CustomTitleBar';
 import MainPage from './pages/MainPage';
 import Paint from './pages/Paint';
+import Paint2 from './pages/paint2';
 import Port from './pages/Port';
 import VFXHub from './pages/VFXHub';
 import RGBA from './pages/RGBA';
@@ -23,6 +24,7 @@ import Bumpath from './pages/Bumpath';
 import AniPort from './pages/AniPortSimple';
 import FrogChanger from './pages/FrogChanger';
 import BnkExtract from './pages/BnkExtract';
+import FakeGearSkin from './pages/FakeGearSkin';
 import HashReminderModal from './components/HashReminderModal';
 import AssetPreviewModal from './components/AssetPreviewModal';
 import GlobalClickEffect from './components/ClickEffects/GlobalClickEffect';
@@ -202,6 +204,7 @@ function App() {
   const [currentFont, setCurrentFont] = useState('system');
   const [fontFamily, setFontFamily] = useState('');
   const [themeVariant, setThemeVariant] = useState('onyx');
+  const [interfaceStyle, setInterfaceStyle] = useState('quartz');
   const [themeReady, setThemeReady] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [wallpaperPath, setWallpaperPath] = useState('');
@@ -226,6 +229,11 @@ function App() {
           setThemeVariant(electronPrefs.obj.ThemeVariant);
         }
 
+        // Load Interface Style
+        if (electronPrefs.obj.InterfaceStyle) {
+          setInterfaceStyle(electronPrefs.obj.InterfaceStyle);
+        }
+
         // Load wallpaper settings
         if (electronPrefs.obj.WallpaperPath) {
           setWallpaperPath(electronPrefs.obj.WallpaperPath);
@@ -245,6 +253,10 @@ function App() {
         // Use saved theme directly (no fallback)
         if (electronPrefs.obj.ThemeVariant) {
           setThemeVariant(electronPrefs.obj.ThemeVariant);
+        }
+        // Check for style change
+        if (electronPrefs.obj.InterfaceStyle) {
+          setInterfaceStyle(electronPrefs.obj.InterfaceStyle);
         }
       } catch { }
     };
@@ -345,11 +357,11 @@ function App() {
   // Pre-apply CSS variables synchronously before paint to prevent flash with wrong colors
   useLayoutEffect(() => {
     try {
-      themeManager.applyThemeVariables(themeVariant);
+      themeManager.applyThemeVariables(themeVariant, interfaceStyle);
     } finally {
       setThemeReady(true);
     }
-  }, [themeVariant]);
+  }, [themeVariant, interfaceStyle]);
 
   // Apply glass blur intensity to CSS variable
   useLayoutEffect(() => {
@@ -368,13 +380,13 @@ function App() {
       themeFontFamily = fontFamily;
     }
 
-    console.log('🎨 Creating theme with variant:', themeVariant, 'font:', currentFont, 'family:', themeFontFamily);
+    console.log('🎨 Creating theme with variant:', themeVariant, 'style:', interfaceStyle, 'font:', currentFont, 'family:', themeFontFamily);
 
     // Ensure variables also applied when theme object rebuilds (idempotent)
-    try { themeManager.applyThemeVariables(themeVariant); } catch { }
+    try { themeManager.applyThemeVariables(themeVariant, interfaceStyle); } catch { }
 
     return createDynamicTheme(themeFontFamily);
-  }, [currentFont, fontFamily, themeVariant]);
+  }, [currentFont, fontFamily, themeVariant, interfaceStyle]);
 
   return (
     themeReady && (
@@ -439,7 +451,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<MainPage />} />
                 <Route path="/main" element={<MainPage />} />
-                <Route path="/paint" element={<Paint />} />
+                <Route path="/paint" element={<Paint2 />} />
                 <Route path="/port" element={<Port />} />
                 <Route path="/vfx-hub" element={<VFXHub />} />
                 <Route path="/ " element={<div>  feature removed</div>} />
@@ -457,6 +469,7 @@ function App() {
                 <Route path="/aniport" element={<AniPort />} />
                 <Route path="/frogchanger" element={<FrogChanger />} />
                 <Route path="/bnk-extract" element={<BnkExtract />} />
+                <Route path="/fakegear" element={<FakeGearSkin />} />
 
 
                 <Route path="/settings" element={<Settings />} />

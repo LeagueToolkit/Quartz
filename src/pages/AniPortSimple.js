@@ -8,6 +8,7 @@ import { parseIndividualVFXSystems } from '../utils/vfxSystemParser.js';
 import { insertVFXSystemIntoFile } from '../utils/vfxInsertSystem.js';
 import { createBackup } from '../utils/backupManager.js';
 import { ToPyWithPath } from '../utils/fileOperations.js';
+import RitobinWarningModal, { detectHashedContent } from '../components/RitobinWarningModal';
 import electronPrefs from '../utils/electronPrefs.js';
 import { findAssetFiles, copyAssetFiles, showAssetCopyResults } from '../utils/assetCopier.js';
 
@@ -271,6 +272,8 @@ const AniPortSimple = () => {
   const [vfxDeleteConfirmOpen, setVfxDeleteConfirmOpen] = useState(false);
   const vfxDeleteCallbackRef = useRef(null);
   const [vfxDeleteEffectKey, setVfxDeleteEffectKey] = useState(null);
+  const [showRitobinWarning, setShowRitobinWarning] = useState(false);
+  const [ritobinWarningContent, setRitobinWarningContent] = useState(null);
 
   // Recent files state
   const [recentDonorFiles, setRecentDonorFiles] = useState([]);
@@ -343,10 +346,25 @@ const AniPortSimple = () => {
   // Process animation file (convert .bin to .py if needed)
   const processAnimationFile = async (filePath, type) => {
     try {
+      // Check ritobin path first if it's a bin file
+      const isBinFile = filePath.toLowerCase().endsWith('.bin');
+      if (isBinFile) {
+        let ritobinPath = null;
+        if (electronPrefs) {
+          await electronPrefs.initPromise;
+          ritobinPath = await electronPrefs.get('RitoBinPath');
+        }
+        if (!ritobinPath) {
+          setStatusMessage("Error: Ritobin path not configured");
+          setRitobinWarningContent(null);
+          setShowRitobinWarning(true);
+          return;
+        }
+      }
+
       setIsLoading(true);
       setLoadingMessage('Processing animation file...');
 
-      const isBinFile = filePath.toLowerCase().endsWith('.bin');
       let finalPath = filePath;
 
       if (isBinFile) {
@@ -369,6 +387,16 @@ const AniPortSimple = () => {
       // Validate the file content
       setLoadingMessage('Validating animation file structure...');
       const content = fs.readFileSync(finalPath, 'utf8');
+
+      // Check for hashed content (always check, whether new or existing file)
+      const isHashed = detectHashedContent(content);
+      if (isHashed) {
+        setRitobinWarningContent(content);
+        setShowRitobinWarning(true);
+        setStatusMessage('Warning: File appears to have hashed content - check Ritobin configuration');
+      } else {
+        setRitobinWarningContent(null);
+      }
 
       if (!validateAnimationFile(content)) {
         setSnackbar({
@@ -419,10 +447,25 @@ const AniPortSimple = () => {
   // Process skins file
   const processSkinsFile = async (filePath, type) => {
     try {
+      // Check ritobin path first if it's a bin file
+      const isBinFile = filePath.toLowerCase().endsWith('.bin');
+      if (isBinFile) {
+        let ritobinPath = null;
+        if (electronPrefs) {
+          await electronPrefs.initPromise;
+          ritobinPath = await electronPrefs.get('RitoBinPath');
+        }
+        if (!ritobinPath) {
+          setStatusMessage("Error: Ritobin path not configured");
+          setRitobinWarningContent(null);
+          setShowRitobinWarning(true);
+          return;
+        }
+      }
+
       setIsLoading(true);
       setLoadingMessage('Processing skins file...');
 
-      const isBinFile = filePath.toLowerCase().endsWith('.bin');
       let finalPath = filePath;
 
       if (isBinFile) {
@@ -439,6 +482,19 @@ const AniPortSimple = () => {
           fs.writeFileSync(pyFilePath, pyContent);
           createBackup(pyFilePath, pyContent, 'aniport');
           finalPath = pyFilePath;
+        }
+      }
+
+      // Check for hashed content (always check, whether new or existing file)
+      if (isBinFile) {
+        const content = fs.readFileSync(finalPath, 'utf8');
+        const isHashed = detectHashedContent(content);
+        if (isHashed) {
+          setRitobinWarningContent(content);
+          setShowRitobinWarning(true);
+          setStatusMessage('Warning: File appears to have hashed content - check Ritobin configuration');
+        } else {
+          setRitobinWarningContent(null);
         }
       }
 
@@ -5625,6 +5681,23 @@ const AniPortSimple = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Ritobin Warning Modal */}
+      <RitobinWarningModal
+        open={showRitobinWarning}
+        onClose={() => {
+          setShowRitobinWarning(false);
+          setRitobinWarningContent(null);
+        }}
+        navigate={null}
+        content={ritobinWarningContent}
+        onContinueAnyway={() => {
+          setShowRitobinWarning(false);
+          setRitobinWarningContent(null);
+          // File processing continues normally, just clear the warning
+          setStatusMessage('File loaded successfully');
+        }}
+      />
     </div>
   );
 };

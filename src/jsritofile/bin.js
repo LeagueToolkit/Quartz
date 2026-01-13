@@ -398,5 +398,3 @@ export function clearHashtablesCache() {
     cachedHashtables = null;
     console.log('[bin.js] Hashtables cache cleared');
 }
-
-

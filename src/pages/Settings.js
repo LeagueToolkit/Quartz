@@ -38,6 +38,7 @@ const ModernSettings = () => {
     bumpathEnabled: false,
     aniportEnabled: false, // Default to false on first install
     frogchangerEnabled: false,
+    fakeGearEnabled: false, // Default to false (experimental feature)
     glassBlur: 6,
     useNativeFileBrowser: false // Default to custom explorer
   });
@@ -93,6 +94,8 @@ const ModernSettings = () => {
   const [updateError, setUpdateError] = useState('');
   const [highlightUpdateSection, setHighlightUpdateSection] = useState(false);
   const updateSectionRef = useRef(null);
+  const [highlightRitobin, setHighlightRitobin] = useState(false);
+  const ritobinRef = useRef(null);
 
   // DEV: Set to true to simulate update highlight for testing
   const DEV_SIMULATE_UPDATE_HIGHLIGHT = false;
@@ -213,6 +216,9 @@ const ModernSettings = () => {
         case 'frogchangerEnabled':
           await electronPrefs.set('FrogChangerEnabled', value);
           break;
+        case 'fakeGearEnabled':
+          await electronPrefs.set('FakeGearEnabled', value);
+          break;
         case 'useNativeFileBrowser':
           await electronPrefs.set('UseNativeFileBrowser', value);
           break;
@@ -222,7 +228,7 @@ const ModernSettings = () => {
       }
 
       // Dispatch settings changed event for navigation updates (matching Settings4.js)
-      if (['themeVariant', 'interfaceStyle', 'paintEnabled', 'portEnabled', 'vfxHubEnabled', 'rgbaEnabled', 'imgRecolorEnabled', 'binEditorEnabled', 'toolsEnabled', 'fileRandomizerEnabled', 'bumpathEnabled', 'aniportEnabled', 'frogchangerEnabled', 'UpscaleEnabled'].includes(key)) {
+      if (['themeVariant', 'interfaceStyle', 'paintEnabled', 'portEnabled', 'vfxHubEnabled', 'rgbaEnabled', 'imgRecolorEnabled', 'binEditorEnabled', 'toolsEnabled', 'fileRandomizerEnabled', 'bumpathEnabled', 'aniportEnabled', 'frogchangerEnabled', 'fakeGearEnabled', 'UpscaleEnabled'].includes(key)) {
         window.dispatchEvent(new CustomEvent('settingsChanged'));
       }
     } catch (error) {
@@ -232,12 +238,18 @@ const ModernSettings = () => {
 
   const handleBrowseRitobin = async () => {
     try {
+      if (!window.require) {
+        console.error('window.require not available');
+        return;
+      }
+
       const newPath = await electronPrefs.RitoBinPath();
       if (newPath) {
         updateSetting('ritobinPath', newPath);
       }
     } catch (error) {
       console.error('Error setting RitoBinPath:', error);
+      // Don't let errors cause navigation issues - just log and continue
     }
   };
 
@@ -343,6 +355,22 @@ const ModernSettings = () => {
       // Load ritobin path
       let ritobinPath = electronPrefs.obj.RitoBinPath || '';
 
+      // If no saved path, check for default location in FrogTools
+      if (!ritobinPath && window.require) {
+        try {
+          const { ipcRenderer } = window.require('electron');
+          const defaultRitobin = await ipcRenderer.invoke('ritobin:get-default-path');
+          if (defaultRitobin && defaultRitobin.exists) {
+            ritobinPath = defaultRitobin.path;
+            // Save the default path automatically
+            await electronPrefs.set('RitoBinPath', ritobinPath);
+            console.log('💾 Auto-detected and saved default ritobin path:', ritobinPath);
+          }
+        } catch (error) {
+          console.error('Error getting default ritobin path:', error);
+        }
+      }
+
       // Load hash settings
       const loadHashSettings = async () => {
         try {
@@ -390,6 +418,7 @@ const ModernSettings = () => {
         bumpathEnabled: electronPrefs.obj.BumpathEnabled !== false,
         aniportEnabled: electronPrefs.obj.AniPortEnabled === true, // Default to false on first install
         frogchangerEnabled: electronPrefs.obj.FrogChangerEnabled !== false,
+        fakeGearEnabled: electronPrefs.obj.FakeGearEnabled === true, // Default to false (experimental)
         glassBlur: electronPrefs.obj.GlassBlur !== undefined ? electronPrefs.obj.GlassBlur : 6,
         useNativeFileBrowser: electronPrefs.obj.UseNativeFileBrowser === true // Default to false
       }));
@@ -437,39 +466,85 @@ const ModernSettings = () => {
     loadSettings();
   }, []);
 
-  // Check for update highlight flag (when user navigates from update notification)
+  // Check for update/ritobin highlight flag (when user navigates from notifications)
   useEffect(() => {
     const checkHighlightFlag = () => {
       try {
         const shouldHighlight = localStorage.getItem('settings:highlight-update') === 'true' || DEV_SIMULATE_UPDATE_HIGHLIGHT;
+        const shouldHighlightRitobin = localStorage.getItem('settings:highlight-ritobin') === 'true';
+        const sectionToOpen = localStorage.getItem('settings:open-section');
+
+        if (sectionToOpen === 'tools') {
+          // Open the External Tools section first
+          setSelectedSection('tools');
+          localStorage.removeItem('settings:open-section');
+        }
+
+        // Handle ritobin highlight
+        if (shouldHighlightRitobin) {
+          localStorage.removeItem('settings:highlight-ritobin');
+          
+          // Ensure tools section is selected
+          if (selectedSection !== 'tools') {
+            setSelectedSection('tools');
+          }
+          
+          setTimeout(() => {
+            setHighlightRitobin(true);
+            
+            if (ritobinRef.current) {
+              ritobinRef.current.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+              });
+            }
+            
+            // Remove highlight after 5 seconds
+            setTimeout(() => {
+              setHighlightRitobin(false);
+            }, 5000);
+          }, 200);
+        }
 
         if (shouldHighlight) {
           // Clear the flag
           localStorage.removeItem('settings:highlight-update');
 
-          // Expand the tools section
-          setExpandedSections(prev => ({
-            ...prev,
-            tools: true
-          }));
+          // Ensure tools section is selected
+          if (selectedSection !== 'tools') {
+            setSelectedSection('tools');
+          }
 
-          // Set highlight state
-          setHighlightUpdateSection(true);
-
-          // Scroll to update section after a short delay (let the section expand first)
+          // Set highlight state after a short delay to ensure section is rendered
           setTimeout(() => {
+            setHighlightUpdateSection(true);
+
+            // Scroll to update section
             if (updateSectionRef.current) {
               updateSectionRef.current.scrollIntoView({
                 behavior: 'smooth',
                 block: 'center'
               });
             }
-          }, 300);
 
-          // Remove highlight after 3 seconds
+            // Optionally trigger check for updates if update is available
+            if (updateStatus === 'available' || updateStatus === 'idle') {
+              // Small delay before triggering to ensure UI is ready
+              setTimeout(() => {
+                if (window.require) {
+                  const { ipcRenderer } = window.require('electron');
+                  ipcRenderer.invoke('update:check').catch(err => {
+                    console.error('Error triggering update check:', err);
+                  });
+                }
+              }, 500);
+            }
+          }, 200);
+
+          // Remove highlight after 5 seconds
           setTimeout(() => {
             setHighlightUpdateSection(false);
-          }, 3000);
+          }, 5000);
         }
       } catch (e) {
         console.error('Error checking highlight flag:', e);
@@ -479,7 +554,7 @@ const ModernSettings = () => {
     // Check after a brief delay to ensure component is mounted
     const timer = setTimeout(checkHighlightFlag, 100);
     return () => clearTimeout(timer);
-  }, [DEV_SIMULATE_UPDATE_HIGHLIGHT]);
+  }, [DEV_SIMULATE_UPDATE_HIGHLIGHT, selectedSection, updateStatus]);
 
   // Setup update listeners and check version on mount
   useEffect(() => {
@@ -698,10 +773,10 @@ const ModernSettings = () => {
   // Update custom theme creator values when theme changes
   useEffect(() => {
     if (!settings.themeVariant) return;
-    
+
     try {
       let themeColors = null;
-      
+
       // Check if it's a custom theme
       if (settings.themeVariant.startsWith('custom:')) {
         const customThemeName = settings.themeVariant.replace('custom:', '');
@@ -711,7 +786,7 @@ const ModernSettings = () => {
         // It's a premade theme
         themeColors = getCurrentTheme(settings.themeVariant);
       }
-      
+
       if (themeColors) {
         // Update custom theme values with the selected theme's colors
         setCustomThemeValues(prev => ({
@@ -1308,19 +1383,38 @@ const ModernSettings = () => {
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Ritobin Path */}
-            <FormGroup
-              label="Ritobin CLI Path"
-              description="Path to ritobin_cli.exe for .bin file conversion"
+            <div
+              ref={ritobinRef}
+              style={{
+                background: highlightRitobin
+                  ? 'rgba(239, 68, 68, 0.15)'
+                  : 'transparent',
+                border: highlightRitobin
+                  ? '2px solid rgba(239, 68, 68, 0.6)'
+                  : '2px solid transparent',
+                borderRadius: '8px',
+                padding: highlightRitobin ? '12px' : '0',
+                margin: highlightRitobin ? '-12px' : '0',
+                transition: 'all 0.3s ease',
+                boxShadow: highlightRitobin
+                  ? '0 0 20px rgba(239, 68, 68, 0.3)'
+                  : 'none'
+              }}
             >
-              <InputWithButton
-                value={settings.ritobinPath}
-                onChange={(e) => updateSetting('ritobinPath', e.target.value)}
-                placeholder="C:\FrogTools\ritobin_cli.exe"
-                buttonIcon={<Folder size={16} />}
-                buttonText="Browse"
-                onButtonClick={handleBrowseRitobin}
-              />
-            </FormGroup>
+              <FormGroup
+                label="Ritobin CLI Path"
+                description="Path to ritobin_cli.exe for .bin file conversion"
+              >
+                <InputWithButton
+                  value={settings.ritobinPath}
+                  onChange={(e) => updateSetting('ritobinPath', e.target.value)}
+                  placeholder="C:\FrogTools\ritobin_cli.exe"
+                  buttonIcon={<Folder size={16} />}
+                  buttonText="Browse"
+                  onButtonClick={handleBrowseRitobin}
+                />
+              </FormGroup>
+            </div>
 
             {/* File Browser Preference */}
             <FormGroup
@@ -1553,18 +1647,6 @@ const ModernSettings = () => {
                 gap: '8px'
               }}>
                 <ToggleSwitch
-                  label="Paint Page"
-                  checked={settings.paintEnabled}
-                  onChange={(checked) => updateSetting('paintEnabled', checked)}
-                  compact
-                />
-                <ToggleSwitch
-                  label="Port"
-                  checked={settings.portEnabled}
-                  onChange={(checked) => updateSetting('portEnabled', checked)}
-                  compact
-                />
-                <ToggleSwitch
                   label="VFX Hub"
                   checked={settings.vfxHubEnabled}
                   onChange={(checked) => updateSetting('vfxHubEnabled', checked)}
@@ -1622,6 +1704,12 @@ const ModernSettings = () => {
                   label="Frog Changer"
                   checked={settings.frogchangerEnabled}
                   onChange={(checked) => updateSetting('frogchangerEnabled', checked)}
+                  compact
+                />
+                <ToggleSwitch
+                  label="FakeGear"
+                  checked={settings.fakeGearEnabled}
+                  onChange={(checked) => updateSetting('fakeGearEnabled', checked)}
                   compact
                 />
               </div>
@@ -2297,16 +2385,16 @@ const Button = ({ icon, children, variant = 'primary', fullWidth, hasWallpaper =
   // Check if parent has wallpaper by checking if we're inside a SettingsCard with hasWallpaper
   // For now, we'll use the hasWallpaper prop directly
   const isInWallpaperContext = hasWallpaper;
-  
+
   return (
     <button
       {...props}
       style={{
         padding: '10px 16px',
-        background: variant === 'primary' 
-          ? 'var(--accent)' 
+        background: variant === 'primary'
+          ? 'var(--accent)'
           : isInWallpaperContext
-            ? 'rgba(0, 0, 0, 0.6)' 
+            ? 'rgba(0, 0, 0, 0.6)'
             : 'rgba(255, 255, 255, 0.03)',
         color: variant === 'primary' ? 'var(--bg)' : 'var(--accent2)',
         border: variant === 'primary' ? 'none' : '1px solid rgba(255, 255, 255, 0.15)',
@@ -2378,15 +2466,15 @@ const ToggleSwitch = ({ label, checked, onChange, compact }) => (
       style={{
         width: '44px',
         height: '24px',
-        background: checked 
-          ? 'var(--accent)' 
+        background: checked
+          ? 'var(--accent)'
           : 'rgba(255, 255, 255, 0.1)',
         borderRadius: '12px',
         position: 'relative',
         transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
         flexShrink: 0,
-        border: checked 
-          ? 'none' 
+        border: checked
+          ? 'none'
           : '1px solid rgba(255, 255, 255, 0.15)',
         boxShadow: checked
           ? '0 0 0 2px rgba(139, 92, 246, 0.2), 0 2px 8px rgba(139, 92, 246, 0.3)'

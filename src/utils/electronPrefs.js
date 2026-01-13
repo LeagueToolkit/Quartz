@@ -121,20 +121,28 @@ class ElectronPrefs {
 
   async RitoBinPath() {
     try {
-      if (window.require) {
-        const { ipcRenderer } = window.require('electron');
-        const result = await ipcRenderer.invoke('dialog:openRitobinExe');
-        if (!result.canceled && result.filePaths.length > 0) {
-          this.obj.RitoBinPath = result.filePaths[0];
-          await this.save();
-          console.log('RitoBinPath set to:', this.obj.RitoBinPath);
-          return this.obj.RitoBinPath;
-        }
+      if (!window.require) {
+        console.error('window.require not available in RitoBinPath');
+        return '';
       }
+      
+      const { ipcRenderer } = window.require('electron');
+      const result = await ipcRenderer.invoke('dialog:openRitobinExe');
+      
+      if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+        this.obj.RitoBinPath = result.filePaths[0];
+        await this.save();
+        console.log('RitoBinPath set to:', this.obj.RitoBinPath);
+        return this.obj.RitoBinPath;
+      }
+      
+      // User canceled or no file selected
+      return '';
     } catch (error) {
       console.error('Error setting RitoBinPath:', error);
+      // Return empty string instead of throwing to prevent navigation issues
+      return '';
     }
-    return '';
   }
 
   async get(key) {

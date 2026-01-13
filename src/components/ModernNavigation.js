@@ -15,7 +15,8 @@ import {
   Wrench,
   Settings,
   CircleHelp,
-  Music
+  Music,
+  Sparkles
 } from 'lucide-react';
 import electronPrefs from '../utils/electronPrefs.js';
 import NavButton from './NavButton';
@@ -43,13 +44,17 @@ const ModernNavigation = () => {
         { text: 'RGBA', icon: Pipette, path: '/rgba', key: 'rgba' },
         { text: 'File Handler', icon: FileDigit, path: '/file-randomizer', key: 'fileRandomizer' },
         { text: 'BNK Extract', icon: Music, path: '/bnk-extract', key: 'bnkExtract' },
+        { text: 'FakeGear', icon: Sparkles, path: '/fakegear', key: 'fakeGear' },
         { text: 'Tools', icon: Wrench, path: '/tools', key: 'tools' },
       ];
 
       const filteredItems = allItems.filter(item => {
         let settingKey;
+        // Always show Paint and Port
+        if (item.key === 'paint' || item.key === 'port') return true;
+
         switch (item.key) {
-          case 'vfxHub': settingKey = 'VFXHubEnabled'; break;
+          case 'vfxHub': settingKey = 'VFXHubEnabled'; break; // Fixed case from 'vfxHub' to 'VFXHubEnabled' (already correct below but ensuring clarity)
           case 'upscale': settingKey = 'UpscaleEnabled'; break;
           case 'rgba': settingKey = 'RGBAEnabled'; break;
           case 'imgRecolor': settingKey = 'ImgRecolorEnabled'; break;
@@ -57,7 +62,12 @@ const ModernNavigation = () => {
           case 'aniport': settingKey = 'AniPortEnabled'; break;
           case 'frogchanger': settingKey = 'FrogChangerEnabled'; break;
           case 'bnkExtract': settingKey = 'BnkExtractEnabled'; break;
+          case 'fakeGear': settingKey = 'FakeGearEnabled'; break;
           default: settingKey = `${item.key.charAt(0).toUpperCase() + item.key.slice(1)}Enabled`;
+        }
+        // FakeGear defaults to hidden (experimental)
+        if (item.key === 'fakeGear') {
+          return electronPrefs.obj[settingKey] === true;
         }
         return electronPrefs.obj[settingKey] !== false;
       });

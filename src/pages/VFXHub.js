@@ -9,6 +9,7 @@ import GlowingSpinner from '../components/GlowingSpinner';
 import { ToPyWithPath } from '../utils/fileOperations.js';
 import { loadFileWithBackup, createBackup } from '../utils/backupManager.js';
 import BackupViewer from '../components/BackupViewer';
+import RitobinWarningModal, { detectHashedContent } from '../components/RitobinWarningModal';
 
 // Import necessary Node.js modules for Electron
 const fs = window.require ? window.require('fs') : null;
@@ -257,6 +258,8 @@ const VFXHub = () => {
   const [deletedEmitters, setDeletedEmitters] = useState(new Map());
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [showRitoBinErrorDialog, setShowRitoBinErrorDialog] = useState(false);
+  const [showRitobinWarning, setShowRitobinWarning] = useState(false);
+  const [ritobinWarningContent, setRitobinWarningContent] = useState(null);
 
   // Toggle system collapse state
   const toggleSystemCollapse = (systemKey) => {
@@ -1094,6 +1097,19 @@ const VFXHub = () => {
 
   const processTargetBin = async (filePath) => {
     try {
+      // Check ritobin path first
+      let ritobinPath = null;
+      if (electronPrefs) {
+        await electronPrefs.initPromise;
+        ritobinPath = await electronPrefs.get('RitoBinPath');
+      }
+      if (!ritobinPath) {
+        setStatusMessage("Error: Ritobin path not configured");
+        setRitobinWarningContent(null);
+        setShowRitobinWarning(true);
+        return;
+      }
+
       setStatusMessage('Loading target bin...');
       setIsProcessing(true);
       setTargetPath(filePath);
@@ -1122,6 +1138,16 @@ const VFXHub = () => {
       }
       setTargetPyContent(pyContent);
       try { setFileSaved(false); } catch { }
+
+      // Check for hashed content
+      const isHashed = detectHashedContent(pyContent);
+      if (isHashed) {
+        setRitobinWarningContent(pyContent);
+        setShowRitobinWarning(true);
+        setStatusMessage('Warning: File appears to have hashed content - check Ritobin configuration');
+      } else {
+        setRitobinWarningContent(null);
+      }
 
       const systems = parseVfxEmitters(pyContent);
 
@@ -6790,6 +6816,25 @@ const VFXHub = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Ritobin Warning Modal */}
+      <RitobinWarningModal
+        open={showRitobinWarning}
+        onClose={() => {
+          setShowRitobinWarning(false);
+          setRitobinWarningContent(null);
+        }}
+        navigate={navigate}
+        content={ritobinWarningContent}
+        onContinueAnyway={() => {
+          setShowRitobinWarning(false);
+          setRitobinWarningContent(null);
+          // File is already loaded, just update status message
+          if (targetSystems && Object.keys(targetSystems).length > 0) {
+            setStatusMessage(`Target bin loaded: ${Object.keys(targetSystems).length} systems found`);
+          }
+        }}
+      />
 
       {/* RitoBin Error Dialog */}
       <Dialog

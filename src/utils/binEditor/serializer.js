@@ -94,7 +94,7 @@ export function updateBirthScale(emitter, newValue) {
     let content = emitter.rawContent;
     let modified = false;
 
-    // Find and replace the constantValue in the birthScale0 block
+    // 1. Update constantValue
     const pattern = /(birthScale0:\s*embed\s*=\s*ValueVector3\s*\{[^}]*constantValue:\s*vec3\s*=\s*\{)\s*[^}]+(\})/i;
     const replacement = `$1 ${newValue.x}, ${newValue.y}, ${newValue.z} $2`;
 
@@ -104,69 +104,10 @@ export function updateBirthScale(emitter, newValue) {
         modified = true;
     }
 
-    // Also update the dynamics values: list[vec3] if present WITHIN birthScale0 block only
-    // Don't rely on parser - check raw content for dynamics block
-    const birthScaleBlockMatch = content.match(/birthScale0:\s*embed\s*=\s*ValueVector3\s*\{/i);
-    if (birthScaleBlockMatch) {
-        const blockStart = birthScaleBlockMatch.index;
-
-        // Find where birthScale0 block ends using bracket counting
-        let depth = 0;
-        let blockEnd = blockStart;
-        let foundFirstBrace = false;
-
-        for (let i = blockStart; i < content.length; i++) {
-            const char = content[i];
-            if (char === '{') {
-                depth++;
-                foundFirstBrace = true;
-            } else if (char === '}') {
-                depth--;
-                if (foundFirstBrace && depth === 0) {
-                    blockEnd = i + 1;
-                    break;
-                }
-            }
-        }
-
-        // Extract just the birthScale0 block
-        const birthScaleBlock = content.substring(blockStart, blockEnd);
-
-        // Check if this block has dynamics with values: list[vec3]
-        if (birthScaleBlock.includes('dynamics:') && birthScaleBlock.includes('values: list[vec3]')) {
-            // Update dynamics values only within this block
-            const dynamicsPattern = /(values:\s*list\[vec3\]\s*=\s*\{[\s\S]*?)(\{\s*)-?[\d.]+\s*,\s*-?[\d.]+\s*,\s*-?[\d.]+(\s*\})/gi;
-
-            const updatedBlock = birthScaleBlock.replace(dynamicsPattern, `$1$2${newValue.x}, ${newValue.y}, ${newValue.z}$3`);
-
-            if (updatedBlock !== birthScaleBlock) {
-                content = content.substring(0, blockStart) + updatedBlock + content.substring(blockEnd);
-                modified = true;
-            }
-        }
-    }
-
     if (modified) {
         emitter.rawContent = content;
         emitter.birthScale0.constantValue = { ...newValue };
-        // Also update dynamicsValues if present
-        if (emitter.birthScale0.dynamicsValues && emitter.birthScale0.dynamicsValues.length > 0) {
-            emitter.birthScale0.dynamicsValues = emitter.birthScale0.dynamicsValues.map(() => ({ ...newValue }));
-        }
         return true;
-    }
-
-    // Fallback: Try simpler pattern if the block structure is different
-    if (emitter.birthScale0.constantValue) {
-        const simplePattern = createVec3ReplacePattern('birthScale0', emitter.birthScale0.constantValue);
-        const simpleReplacement = createVec3Replacement('birthScale0', newValue);
-
-        const fallbackContent = content.replace(simplePattern, simpleReplacement);
-        if (fallbackContent !== content) {
-            emitter.rawContent = fallbackContent;
-            emitter.birthScale0.constantValue = { ...newValue };
-            return true;
-        }
     }
 
     return false;
@@ -175,7 +116,6 @@ export function updateBirthScale(emitter, newValue) {
 
 /**
  * Update scale0 constantValue in an emitter's rawContent
- * Also updates dynamics values if present
  * @param {Object} emitter - Emitter object
  * @param {{x: number, y: number, z: number}} newValue - New scale values
  * @returns {boolean} Success
@@ -186,6 +126,7 @@ export function updateScale0(emitter, newValue) {
     let content = emitter.rawContent;
     let modified = false;
 
+    // 1. Update constantValue
     const pattern = /(scale0:\s*embed\s*=\s*ValueVector3\s*\{[^}]*constantValue:\s*vec3\s*=\s*\{)\s*[^}]+(\})/i;
     const replacement = `$1 ${newValue.x}, ${newValue.y}, ${newValue.z} $2`;
 
@@ -195,67 +136,10 @@ export function updateScale0(emitter, newValue) {
         modified = true;
     }
 
-    // Also update the dynamics values: list[vec3] if present WITHIN scale0 block only
-    const scale0BlockMatch = content.match(/scale0:\s*embed\s*=\s*ValueVector3\s*\{/i);
-    if (scale0BlockMatch) {
-        const blockStart = scale0BlockMatch.index;
-
-        // Find where scale0 block ends using bracket counting
-        let depth = 0;
-        let blockEnd = blockStart;
-        let foundFirstBrace = false;
-
-        for (let i = blockStart; i < content.length; i++) {
-            const char = content[i];
-            if (char === '{') {
-                depth++;
-                foundFirstBrace = true;
-            } else if (char === '}') {
-                depth--;
-                if (foundFirstBrace && depth === 0) {
-                    blockEnd = i + 1;
-                    break;
-                }
-            }
-        }
-
-        // Extract just the scale0 block
-        const scale0Block = content.substring(blockStart, blockEnd);
-
-        // Check if this block has dynamics with values: list[vec3]
-        if (scale0Block.includes('dynamics:') && scale0Block.includes('values: list[vec3]')) {
-            // Update dynamics values only within this block
-            const dynamicsPattern = /(values:\s*list\[vec3\]\s*=\s*\{[\s\S]*?)(\{\s*)-?[\d.]+\s*,\s*-?[\d.]+\s*,\s*-?[\d.]+(\s*\})/gi;
-
-            const updatedBlock = scale0Block.replace(dynamicsPattern, `$1$2${newValue.x}, ${newValue.y}, ${newValue.z}$3`);
-
-            if (updatedBlock !== scale0Block) {
-                content = content.substring(0, blockStart) + updatedBlock + content.substring(blockEnd);
-                modified = true;
-            }
-        }
-    }
-
     if (modified) {
         emitter.rawContent = content;
         emitter.scale0.constantValue = { ...newValue };
-        if (emitter.scale0.dynamicsValues && emitter.scale0.dynamicsValues.length > 0) {
-            emitter.scale0.dynamicsValues = emitter.scale0.dynamicsValues.map(() => ({ ...newValue }));
-        }
         return true;
-    }
-
-    // Fallback
-    if (emitter.scale0.constantValue) {
-        const simplePattern = createVec3ReplacePattern('scale0', emitter.scale0.constantValue);
-        const simpleReplacement = createVec3Replacement('scale0', newValue);
-
-        const fallbackContent = content.replace(simplePattern, simpleReplacement);
-        if (fallbackContent !== content) {
-            emitter.rawContent = fallbackContent;
-            emitter.scale0.constantValue = { ...newValue };
-            return true;
-        }
     }
 
     return false;
@@ -264,69 +148,77 @@ export function updateScale0(emitter, newValue) {
 
 /**
  * Update scale0 dynamics values in an emitter's rawContent
- * @param {Object} emitter - Emitter object
- * @param {Array<{x: number, y: number, z: number}>} newValues - New values array
- * @returns {boolean} Success
  */
 export function updateScale0Dynamics(emitter, newValues) {
     if (!emitter.scale0 || !emitter.scale0.dynamicsValues || newValues.length === 0) return false;
+    return updateGenericVec3List(emitter, 'scale0', newValues);
+}
 
-    let content = emitter.rawContent;
-    let modified = false;
-
-    // Find the values: list[vec3] section within scale0's dynamics block
-    const valuesPattern = /(scale0:[\s\S]*?dynamics:\s*pointer\s*=\s*VfxAnimatedVector3fVariableData\s*\{[\s\S]*?values:\s*list\[vec3\]\s*=\s*\{)([\s\S]*?)(\}\s*\})/i;
-
-    const match = content.match(valuesPattern);
-    if (match) {
-        // Build new values string - match original indentation
-        const valueStrings = newValues.map(v => `                            { ${v.x}, ${v.y}, ${v.z} }`);
-        const newValuesSection = '\n' + valueStrings.join('\n') + '\n                        ';
-
-        content = content.replace(valuesPattern, `$1${newValuesSection}$3`);
-        modified = content !== emitter.rawContent;
-    }
-
-    if (modified) {
-        emitter.rawContent = content;
-        emitter.scale0.dynamicsValues = newValues.map(v => ({ ...v }));
-    }
-
-    return modified;
+export function updateBirthScaleDynamics(emitter, newValues) {
+    if (!emitter.birthScale0 || !emitter.birthScale0.dynamicsValues || newValues.length === 0) return false;
+    return updateGenericVec3List(emitter, 'birthScale0', newValues);
 }
 
 /**
- * Update birthScale0 dynamics values in an emitter's rawContent
- * @param {Object} emitter - Emitter object
- * @param {Array<{x: number, y: number, z: number}>} newValues - New values array
- * @returns {boolean} Success
+ * Generic helper to update a values: list[vec3] block using bracket counting
  */
-export function updateBirthScaleDynamics(emitter, newValues) {
-    if (!emitter.birthScale0 || !emitter.birthScale0.dynamicsValues || newValues.length === 0) return false;
-
+function updateGenericVec3List(emitter, propName, newValues) {
     let content = emitter.rawContent;
-    let modified = false;
 
-    // Find the values: list[vec3] section within birthScale0's dynamics block
-    // Pattern: look for birthScale0 -> dynamics -> values: list[vec3] = { ... }
-    const valuesPattern = /(birthScale0:[\s\S]*?dynamics:\s*pointer\s*=\s*VfxAnimatedVector3fVariableData\s*\{[\s\S]*?values:\s*list\[vec3\]\s*=\s*\{)([\s\S]*?)(\}\s*\})/i;
+    // 1. Find the property block (birthScale0 or scale0)
+    const blockMatch = content.match(new RegExp(`${propName}:\\s*embed\\s*=\\s*ValueVector3\\s*\\{`, 'i'));
+    if (!blockMatch) return false;
 
-    const match = content.match(valuesPattern);
-    if (match) {
-        // Build new values string - match original indentation
-        const valueStrings = newValues.map(v => `                            { ${v.x}, ${v.y}, ${v.z} }`);
-        const newValuesSection = '\n' + valueStrings.join('\n') + '\n                        ';
+    const blockStart = blockMatch.index;
+    const blockEnd = findClosingBrace(content, blockStart);
+    if (blockEnd === -1) return false;
 
-        content = content.replace(valuesPattern, `$1${newValuesSection}$3`);
-        modified = content !== emitter.rawContent;
+    const blockContent = content.substring(blockStart, blockEnd);
+
+    // 2. Find the values: list[vec3] section within that block
+    const valuesMatch = blockContent.match(/(values:\s*list\[vec3\]\s*=\s*\{)/i);
+    if (!valuesMatch) return false;
+
+    const listRelStart = valuesMatch.index;
+    const listRelEnd = findClosingBrace(blockContent, listRelStart);
+    if (listRelEnd === -1) return false;
+
+    // 3. Construct new list content
+    const header = valuesMatch[1];
+    const valueStrings = newValues.map(v => `                            { ${v.x}, ${v.y}, ${v.z} }`);
+    const newListContent = `${header}\n${valueStrings.join('\n')}\n                        }`;
+
+    // 4. Update the emitter content by replacing only the relevant slice
+    const globalListStart = blockStart + listRelStart;
+    const globalListEnd = blockStart + listRelEnd;
+
+    emitter.rawContent = content.substring(0, globalListStart) + newListContent + content.substring(globalListEnd);
+
+    if (emitter[propName] && emitter[propName].dynamicsValues) {
+        emitter[propName].dynamicsValues = newValues.map(v => ({ ...v }));
     }
 
-    if (modified) {
-        emitter.rawContent = content;
-        emitter.birthScale0.dynamicsValues = newValues.map(v => ({ ...v }));
-    }
+    return true;
+}
 
-    return modified;
+/**
+ * Helper to find the matching closing brace for a block starting before or at index
+ */
+function findClosingBrace(text, startIndex) {
+    let depth = 0;
+    let foundStart = false;
+
+    for (let i = startIndex; i < text.length; i++) {
+        const char = text[i];
+        if (char === '{') {
+            depth++;
+            foundStart = true;
+        } else if (char === '}') {
+            depth--;
+            if (foundStart && depth === 0) return i + 1;
+        }
+    }
+    return -1;
 }
 
 
@@ -548,6 +440,77 @@ export function updateParticleLinger(emitter, newValue) {
     if (newContent !== emitter.rawContent) {
         emitter.rawContent = newContent;
         emitter.particleLinger.value = newValue;
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Update rate constantValue and dynamics values
+ * Rate controls the emission rate of particles
+ * @param {Object} emitter - Emitter object
+ * @param {number} newValue - New value
+ * @returns {boolean} Success
+ */
+export function updateRate(emitter, newValue) {
+    if (!emitter.rate) return false;
+
+    let content = emitter.rawContent;
+    let modified = false;
+
+    // Update constantValue
+    const constantPattern = /(rate:\s*embed\s*=\s*ValueFloat\s*\{[^}]*constantValue:\s*f32\s*=\s*)(-?[\d.]+)/i;
+    const constantReplacement = `$1${newValue}`;
+
+    content = content.replace(constantPattern, constantReplacement);
+    if (content !== emitter.rawContent) {
+        modified = true;
+    }
+
+    // Also update the dynamics values list if it exists
+    // For rate, we need to update ALL values in the list, not just the first one
+    // Pattern: values: list[f32] = { value1 value2 ... }
+    const dynamicsMatch = content.match(/rate:[\s\S]*?dynamics:[\s\S]*?values:\s*list\[f32\]\s*=\s*\{([^}]+)\}/i);
+
+    if (dynamicsMatch) {
+        const oldValuesList = dynamicsMatch[1];
+        // Parse existing values to maintain the number of entries
+        const existingValues = oldValuesList.split(/\n/).map(line => {
+            const num = line.trim();
+            return num ? parseFloat(num) : null;
+        }).filter(v => v !== null && !isNaN(v));
+
+        if (existingValues.length > 0) {
+            // Calculate the ratio to scale all dynamics values proportionally
+            const oldConstant = emitter.rate.constantValue;
+            const ratio = oldConstant !== 0 ? newValue / oldConstant : 1;
+
+            // Scale each dynamics value by the same ratio
+            const newValues = existingValues.map(v => {
+                const scaled = v * ratio;
+                // Format nicely - use integer if whole number, otherwise 2 decimal places
+                return Number.isInteger(scaled) ? scaled : parseFloat(scaled.toFixed(2));
+            });
+
+            // Build new values list with proper formatting
+            const newValuesList = newValues.map(v => `                            ${v}`).join('\n');
+
+            // Replace the old values list with the new one
+            const dynamicsPattern = /(rate:[\s\S]*?dynamics:[\s\S]*?values:\s*list\[f32\]\s*=\s*\{)[^}]+(\})/i;
+            const dynamicsReplacement = `$1\n${newValuesList}\n                        $2`;
+
+            const newContentWithDynamics = content.replace(dynamicsPattern, dynamicsReplacement);
+            if (newContentWithDynamics !== content) {
+                content = newContentWithDynamics;
+                modified = true;
+            }
+        }
+    }
+
+    if (modified) {
+        emitter.rawContent = content;
+        emitter.rate.constantValue = newValue;
         return true;
     }
 

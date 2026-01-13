@@ -8,6 +8,7 @@ import CropOriginalIcon from '@mui/icons-material/CropOriginal';
 import { ToPyWithPath } from '../utils/fileOperations.js';
 import { loadFileWithBackup, createBackup } from '../utils/backupManager.js';
 import BackupViewer from '../components/BackupViewer';
+import RitobinWarningModal, { detectHashedContent } from '../components/RitobinWarningModal';
 import electronPrefs from '../utils/electronPrefs.js';
 
 // Import necessary Node.js modules for Electron
@@ -514,6 +515,8 @@ const Port = () => {
   const [deletedEmitters, setDeletedEmitters] = useState(new Map());
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [showRitoBinErrorDialog, setShowRitoBinErrorDialog] = useState(false);
+  const [showRitobinWarning, setShowRitobinWarning] = useState(false);
+  const [ritobinWarningContent, setRitobinWarningContent] = useState(null);
   const pendingNavigationPathRef = useRef(null);
 
   // Idle particles states
@@ -921,6 +924,16 @@ const Port = () => {
           setTargetPyContent(pyContent);
           try { setFileSaved(true); } catch { } // File is loaded from disk, so it's saved
 
+          // Check for hashed content
+          const isHashed = detectHashedContent(pyContent);
+          if (isHashed) {
+            setRitobinWarningContent(pyContent);
+            setShowRitobinWarning(true);
+            setStatusMessage('Warning: File appears to have hashed content - check Ritobin configuration');
+          } else {
+            setRitobinWarningContent(null);
+          }
+
           // Parse the Python content using VFX emitter parser
           const systems = parseVfxEmitters(pyContent);
           setTargetSystems(systems);
@@ -1205,6 +1218,19 @@ const Port = () => {
 
   const processTargetBin = async (filePath) => {
     try {
+      // Check ritobin path first
+      let ritobinPath = null;
+      if (electronPrefs) {
+        await electronPrefs.initPromise;
+        ritobinPath = await electronPrefs.get('RitoBinPath');
+      }
+      if (!ritobinPath) {
+        setStatusMessage("Error: Ritobin path not configured");
+        setRitobinWarningContent(null);
+        setShowRitobinWarning(true);
+        return;
+      }
+
       setStatusMessage('Loading target bin...');
       setIsProcessing(true);
       setTargetPath(filePath);
@@ -1234,6 +1260,15 @@ const Port = () => {
       setTargetPyContent(pyContent);
       try { setFileSaved(true); } catch { } // File is loaded from disk, so it's saved
 
+      // Check for hashed content
+      const isHashed = detectHashedContent(pyContent);
+      if (isHashed) {
+        setRitobinWarningContent(pyContent);
+        setShowRitobinWarning(true);
+        setStatusMessage('Warning: File appears to have hashed content - check Ritobin configuration');
+      } else {
+        setRitobinWarningContent(null);
+      }
 
       // Parse the Python content using VFX emitter parser
       const systems = parseVfxEmitters(pyContent);
@@ -1328,6 +1363,19 @@ const Port = () => {
 
   const processDonorBin = async (filePath) => {
     try {
+      // Check ritobin path first
+      let ritobinPath = null;
+      if (electronPrefs) {
+        await electronPrefs.initPromise;
+        ritobinPath = await electronPrefs.get('RitoBinPath');
+      }
+      if (!ritobinPath) {
+        setStatusMessage("Error: Ritobin path not configured");
+        setRitobinWarningContent(null);
+        setShowRitobinWarning(true);
+        return;
+      }
+
       setStatusMessage('Loading donor bin...');
       setIsProcessing(true);
       setDonorPath(filePath);
@@ -1355,6 +1403,16 @@ const Port = () => {
         }
       }
       setDonorPyContent(pyContent);
+
+      // Check for hashed content
+      const isHashed = detectHashedContent(pyContent);
+      if (isHashed) {
+        setRitobinWarningContent(pyContent);
+        setShowRitobinWarning(true);
+        setStatusMessage('Warning: File appears to have hashed content - check Ritobin configuration');
+      } else {
+        setRitobinWarningContent(null);
+      }
 
       // Parse the Python content using VFX emitter parser
       const systems = parseVfxEmitters(pyContent);
@@ -8569,6 +8627,27 @@ return (
         </Button>
       </DialogActions>
     </Dialog>
+
+    {/* Ritobin Warning Modal */}
+    <RitobinWarningModal
+      open={showRitobinWarning}
+      onClose={() => {
+        setShowRitobinWarning(false);
+        setRitobinWarningContent(null);
+      }}
+      navigate={navigate}
+      content={ritobinWarningContent}
+      onContinueAnyway={() => {
+        setShowRitobinWarning(false);
+        setRitobinWarningContent(null);
+        // File is already loaded, just update status message
+        if (targetSystems && Object.keys(targetSystems).length > 0) {
+          setStatusMessage(`Target bin loaded: ${Object.keys(targetSystems).length} systems found`);
+        } else if (donorSystems && Object.keys(donorSystems).length > 0) {
+          setStatusMessage(`Donor bin loaded: ${Object.keys(donorSystems).length} systems found`);
+        }
+      }}
+    />
 
     {/* RitoBin Error Dialog */}
     <Dialog

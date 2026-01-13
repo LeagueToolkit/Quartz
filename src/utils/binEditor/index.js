@@ -10,7 +10,8 @@ export {
     markSystemModified,
     updateParticleLifetime,
     updateLifetime,
-    updateParticleLinger
+    updateParticleLinger,
+    updateRate
 } from './serializer.js';
 export {
     scaleBirthScale,

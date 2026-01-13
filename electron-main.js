@@ -186,6 +186,15 @@ ipcMain.handle('getAppPath', () => {
   return app.getAppPath();
 });
 
+ipcMain.handle('getResourcesPath', () => {
+  if (app.isPackaged) {
+    return process.resourcesPath;
+  } else {
+    // In development, resources are in public folder
+    return path.join(app.getAppPath(), 'public');
+  }
+});
+
 // IPC handler to open log file location
 ipcMain.handle('open-log-folder', async () => {
   try {
@@ -661,13 +670,21 @@ ipcMain.handle('dialog:openFiles', async (event, options) => {
 
 ipcMain.handle('dialog:openRitobinExe', async (event) => {
   try {
-    const result = await dialog.showOpenDialog({
+    // Get the window that sent the request
+    let window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) {
+      window = BrowserWindow.getFocusedWindow();
+    }
+    
+    const result = await dialog.showOpenDialog(window || undefined, {
+      title: 'Select ritobin_cli.exe',
       properties: ['openFile'],
       filters: [{ name: 'Executable', extensions: ['exe'] }]
     });
     return result;
   } catch (error) {
     console.error('Error opening ritobin exe dialog:', error);
+    logToFile(`Error opening ritobin exe dialog: ${error.message}`, 'ERROR');
     return { canceled: true, error: error.message };
   }
 });

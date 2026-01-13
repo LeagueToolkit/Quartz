@@ -4,18 +4,23 @@ const CheckToggle = (checked, particleListRef, colorFilterFn = null, systemsData
   if (!particleListRef.current) return;
 
   const ParticleListChildren = particleListRef.current.children;
-  
+
   // Collect all checkboxes to update (batch operation)
   const checkboxesToUpdate = [];
   const systemHeadersToUpdate = [];
-  
+
   // First pass: collect all checkboxes that need updating
   for (let I = 0; I < ParticleListChildren.length; I++) {
     const node = ParticleListChildren[I];
     if (node.style.display === "none") continue;
-    
+
     // Skip StaticMaterialDef blocks (id starts with 'material_') to avoid bulk-selecting materials
     if (node.id && node.id.startsWith('material_')) {
+      continue;
+    }
+
+    // Skip locked systems
+    if (node.dataset.locked === 'true') {
       continue;
     }
 
@@ -38,7 +43,7 @@ const CheckToggle = (checked, particleListRef, colorFilterFn = null, systemsData
         checkboxesToUpdate.push(firstChild);
       }
     }
-    
+
     // Collect system header for later batch update
     if (children[0]) {
       systemHeadersToUpdate.push(children[0]);
@@ -51,14 +56,14 @@ const CheckToggle = (checked, particleListRef, colorFilterFn = null, systemsData
 
   const processChunk = () => {
     const endIndex = Math.min(currentIndex + CHUNK_SIZE, checkboxesToUpdate.length);
-    
+
     // Update checkboxes in this chunk
     for (let i = currentIndex; i < endIndex; i++) {
       checkboxesToUpdate[i].checked = checked;
     }
-    
+
     currentIndex = endIndex;
-    
+
     if (currentIndex < checkboxesToUpdate.length) {
       // More work to do, schedule next chunk
       requestAnimationFrame(processChunk);
@@ -85,7 +90,12 @@ const CheckToggle = (checked, particleListRef, colorFilterFn = null, systemsData
 const CheckChildren = (children, checked, colorFilterFn = null, systemsData = null, systemKey = null) => {
   // children[0] is the header; apply only to emitter rows that have a checkbox as first child
   const checkboxesToUpdate = [];
-  
+
+  // Check if parent system is locked (the parent is children's parentNode)
+  if (children[0] && children[0].parentNode && children[0].parentNode.dataset.locked === 'true') {
+    return; // Don't modify checkboxes in locked systems
+  }
+
   for (let i = 1; i < children.length; i++) {
     const row = children[i];
     if (row.style.display === "none") continue;
@@ -124,32 +134,32 @@ const CheckChildren = (children, checked, colorFilterFn = null, systemsData = nu
 const checkEmitterColorFilterFromData = (emitterRow, colorFilterFn, systemsData, systemKey) => {
   try {
     if (!systemsData || !systemKey) return false;
-    
+
     const system = systemsData[systemKey];
     if (!system || !system.emitters) return false;
-    
+
     // Find the emitter by matching the row index
     const emitterIndex = Array.from(emitterRow.parentNode.children).indexOf(emitterRow) - 1; // -1 for header
     const emitter = system.emitters[emitterIndex];
     if (!emitter) return false;
-    
+
     // Check all color properties (removed console.logs for performance)
     const colorProperties = [
       { prop: emitter.color, name: 'color' },
       { prop: emitter.birthColor, name: 'birthColor' },
       { prop: emitter.fresnelColor, name: 'fresnelColor' }
     ];
-    
+
     for (const { prop, name } of colorProperties) {
       if (!prop) continue;
-      
+
       // Check constant value
       if (prop.constantValue && Array.isArray(prop.constantValue)) {
         if (colorFilterFn(prop.constantValue)) {
           return true;
         }
       }
-      
+
       // Check dynamic values
       if (prop.dynamics && prop.dynamics.values && Array.isArray(prop.dynamics.values)) {
         for (const value of prop.dynamics.values) {
@@ -161,7 +171,7 @@ const checkEmitterColorFilterFromData = (emitterRow, colorFilterFn, systemsData,
         }
       }
     }
-    
+
     return false;
   } catch (error) {
     console.error('Error checking emitter color filter from data:', error);
@@ -174,7 +184,7 @@ const checkEmitterColorFilter = (emitterRow, colorFilterFn) => {
   try {
     // Look for color blocks in the emitter row
     const colorBlocks = emitterRow.querySelectorAll('[data-role="color"], [data-role="birth"], [data-role="oc"]');
-    
+
     for (const block of colorBlocks) {
       // Try to extract color from the background style
       const bgStyle = block.style.background;
@@ -257,7 +267,7 @@ const updateSystemCheckboxState = (headerDiv) => {
   for (let i = 1; i < children.length; i++) {
     const emitterDiv = children[i];
     if (emitterDiv.style.display === "none") continue;
-    
+
     visibleCount++;
     const checkbox = emitterDiv.children[0];
     if (checkbox && checkbox.type === 'checkbox' && checkbox.checked) {
@@ -359,13 +369,18 @@ const selectByBlendMode = (blendModeFilter, blendModeSlider, particleListRef, se
   // Single pass: collect everything we need
   for (let i = 0; i < SystemListChildren.length; i++) {
     const systemDiv = SystemListChildren[i];
-    
+
     if (systemDiv.style.display === "none" || systemDiv.className !== "Particle-Div") {
       continue;
     }
 
     // Skip StaticMaterialDef blocks (they don't have blend modes)
     if (systemDiv.id && systemDiv.id.startsWith('material_')) {
+      continue;
+    }
+
+    // Skip locked systems
+    if (systemDiv.dataset.locked === 'true') {
       continue;
     }
 
@@ -379,7 +394,7 @@ const selectByBlendMode = (blendModeFilter, blendModeSlider, particleListRef, se
     const emitterChildren = systemDiv.children;
     for (let j = 1; j < emitterChildren.length; j++) {
       const emitterDiv = emitterChildren[j];
-      
+
       // Collect checkbox for unchecking
       const checkbox = emitterDiv.children[0];
       if (checkbox && checkbox.type === 'checkbox') {

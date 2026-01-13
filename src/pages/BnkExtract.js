@@ -344,6 +344,7 @@ export default function BnkExtract() {
     const [statusMessage, setStatusMessage] = useState('Ready');
     const [contextMenu, setContextMenu] = useState(null);
     const [rightTreeData, setRightTreeData] = useState([]);
+    const [rightPaneDragOver, setRightPaneDragOver] = useState(false);
 
     // Settings
     const [autoPlay, setAutoPlay] = useState(true);
@@ -552,27 +553,31 @@ export default function BnkExtract() {
                     const fs = window.require('fs');
                     const path = window.require('path');
 
-                    // Get app path - try multiple methods
-                    let appPath = process.cwd();
+                    // Get resources path (where extraResources files are in production)
+                    let resourcesPath = null;
                     try {
                         const { ipcRenderer } = window.require('electron');
-                        const result = await ipcRenderer.invoke('getAppPath');
-                        if (result) appPath = result;
+                        // Get resources path (where extraResources files are in production)
+                        const resourcesPathResult = await ipcRenderer.invoke('getResourcesPath');
+                        if (resourcesPathResult) {
+                            resourcesPath = resourcesPathResult;
+                        } else {
+                            // Fallback: try to calculate resources path
+                            const appPathResult = await ipcRenderer.invoke('getAppPath');
+                            if (appPathResult) {
+                                resourcesPath = path.join(appPathResult, '..', 'resources');
+                            }
+                        }
                     } catch (e) {
-                        console.log('[BnkExtract] Could not get app path via IPC, using cwd:', appPath);
+                        console.log('[BnkExtract] Could not get resources path via IPC:', e);
                     }
 
+                    // Only check resources folder (for production testing)
                     const possiblePaths = [
-                        path.join(appPath, 'public', 'codebook.bin'),
-                        path.join(appPath, 'build', 'codebook.bin'),
-                        path.join(appPath, 'bnk-extract-GUI-master', 'bnk-extract', 'ww2ogg', 'codebook.bin'),
-                        path.join(appPath, 'resources', 'codebook.bin'),
-                        // Also try absolute paths from project root
-                        'C:/Users/Frog/Desktop/Projects coding/DivineLab-main/public/codebook.bin',
-                        'C:/Users/Frog/Desktop/Projects coding/DivineLab-main/bnk-extract-GUI-master/bnk-extract/ww2ogg/codebook.bin',
-                    ];
+                        resourcesPath ? path.join(resourcesPath, 'codebook.bin') : null,
+                    ].filter(p => p !== null); // Remove null entries
 
-                    console.log('[BnkExtract] Trying filesystem paths, appPath:', appPath);
+                    console.log('[BnkExtract] Checking resources folder for codebook.bin, resourcesPath:', resourcesPath);
 
                     for (const codebookPath of possiblePaths) {
                         try {
@@ -587,28 +592,13 @@ export default function BnkExtract() {
                             // Try next path
                         }
                     }
-                    console.log('[BnkExtract] No codebook found in filesystem paths');
+                    console.log('[BnkExtract] No codebook found in resources folder');
+                    console.warn('[BnkExtract] ✗ Could not load codebook from resources folder - audio playback will not work');
+                    setStatusMessage('Warning: Codebook not found in resources - audio playback disabled');
+                } else {
+                    console.warn('[BnkExtract] ✗ Could not load codebook - window.require not available');
+                    setStatusMessage('Warning: Codebook not found - audio playback disabled');
                 }
-
-                // Fallback: try to fetch from public URL
-                console.log('[BnkExtract] Trying fetch from public URL...');
-                try {
-                    const response = await fetch(`${process.env.PUBLIC_URL || ''}/codebook.bin`);
-                    if (response.ok) {
-                        const buffer = await response.arrayBuffer();
-                        codebookDataRef.current = new Uint8Array(buffer);
-                        console.log('[BnkExtract] ✓ Loaded codebook from public URL, size:', buffer.byteLength);
-                        setStatusMessage('Codebook loaded - ready');
-                        return;
-                    } else {
-                        console.warn('[BnkExtract] Fetch failed with status:', response.status);
-                    }
-                } catch (e) {
-                    console.warn('[BnkExtract] Could not fetch codebook from public URL:', e);
-                }
-
-                console.warn('[BnkExtract] ✗ Could not load codebook - audio playback will not work');
-                setStatusMessage('Warning: Codebook not found - audio playback disabled');
             } catch (error) {
                 console.warn('[BnkExtract] Could not load codebook:', error);
                 setStatusMessage('Warning: Codebook load error');
@@ -1060,6 +1050,7 @@ export default function BnkExtract() {
 
     /**
      * Drop Replace Logic (Split View)
+     * Replaces ALL nodes with the same audio ID to handle duplicates in the tree
      */
     const handleDropReplace = useCallback((sourceId, targetId) => {
         // Find source node in right tree
@@ -1077,10 +1068,20 @@ export default function BnkExtract() {
         const sourceNode = findNode(rightTreeData, sourceId);
         if (!sourceNode || !sourceNode.audioData) return;
 
-        // Update target in main tree - ONLY replace the raw data, keep target's ID and metadata
+        // Find the target node to get its audio ID
+        const targetNode = findNode(treeData, targetId);
+        if (!targetNode || !targetNode.audioData) return;
+
+        const targetAudioId = targetNode.audioData.id;
+        let replacedCount = 0;
+
+        // Update ALL nodes in main tree that have the same audioData.id
+        // This ensures duplicates (same WEM in multiple events) all get updated
         setTreeData(prev => {
             const updateInTree = (nodes) => nodes.map(n => {
-                if (n.id === targetId && n.audioData) {
+                // Check if this node has the same audio ID as the target
+                if (n.audioData && n.audioData.id === targetAudioId) {
+                    replacedCount++;
                     // Keep the target's id, offset, and other metadata - only swap the raw WEM data
                     return {
                         ...n,
@@ -1099,8 +1100,113 @@ export default function BnkExtract() {
             return updateInTree(prev);
         });
 
-        setStatusMessage(`Replaced WEM data of ${targetId} with data from ${sourceNode.name}`);
-    }, [rightTreeData]);
+        setStatusMessage(`Replaced ${replacedCount} instance(s) of ${targetAudioId}.wem with data from ${sourceNode.name}`);
+    }, [rightTreeData, treeData]);
+
+    /**
+     * Handle WEM files dropped into right pane
+     */
+    const handleRightPaneFileDrop = useCallback(async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setRightPaneDragOver(false);
+
+        if (!window.require) {
+            setStatusMessage('Electron not available for file reading');
+            return;
+        }
+
+        const fs = window.require('fs');
+        const path = window.require('path');
+
+        // Get dropped files
+        const files = e.dataTransfer?.files;
+        if (!files || files.length === 0) return;
+
+        const wemFiles = Array.from(files).filter(f =>
+            f.name.toLowerCase().endsWith('.wem')
+        );
+
+        if (wemFiles.length === 0) {
+            setStatusMessage('No .wem files found in dropped files');
+            return;
+        }
+
+        setStatusMessage(`Loading ${wemFiles.length} WEM file(s)...`);
+
+        try {
+            let idCounter = Date.now(); // Use timestamp as base for unique IDs
+            const newNodes = [];
+
+            for (const file of wemFiles) {
+                try {
+                    // Read file data - file.path gives us the full path in Electron
+                    const filePath = file.path;
+                    const fileData = fs.readFileSync(filePath);
+                    const wemData = new Uint8Array(fileData);
+
+                    // Create audio node
+                    const audioId = idCounter++;
+                    const audioNode = {
+                        id: `dropped-${audioId}`,
+                        name: file.name,
+                        audioData: {
+                            id: audioId,
+                            data: wemData,
+                            offset: 0,
+                            length: wemData.length
+                        },
+                        children: []
+                    };
+
+                    newNodes.push(audioNode);
+                } catch (err) {
+                    console.error(`[BnkExtract] Failed to read ${file.name}:`, err);
+                }
+            }
+
+            if (newNodes.length > 0) {
+                // Create a container node for the dropped files or add directly
+                const containerNode = {
+                    id: `dropped-container-${Date.now()}`,
+                    name: `Dropped Files (${newNodes.length})`,
+                    audioData: null,
+                    isRoot: true,
+                    children: newNodes
+                };
+
+                setRightTreeData(prev => [...prev, containerNode]);
+
+                // Auto-expand the new container
+                setRightExpandedNodes(prev => {
+                    const next = new Set(prev);
+                    next.add(containerNode.id);
+                    return next;
+                });
+
+                setStatusMessage(`Added ${newNodes.length} WEM file(s) to right pane`);
+            }
+        } catch (error) {
+            console.error('[BnkExtract] File drop error:', error);
+            setStatusMessage(`Error loading files: ${error.message}`);
+        }
+    }, []);
+
+    const handleRightPaneDragOver = useCallback((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Check if files are being dragged (not internal tree nodes)
+        if (e.dataTransfer?.types?.includes('Files')) {
+            setRightPaneDragOver(true);
+        }
+    }, []);
+
+    const handleRightPaneDragLeave = useCallback((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setRightPaneDragOver(false);
+    }, []);
+
     /**
      * Play selected audio
      */
@@ -1966,14 +2072,26 @@ export default function BnkExtract() {
 
                 {/* Right Tree View (Reference Banks) */}
                 {viewMode === 'split' && (
-                    <Box className="bnk-extract-tree-right" sx={{
-                        ...treeViewStyle,
-                        marginLeft: 0,
-                        border: activePane === 'right' ? '1px solid var(--accent)' : treeViewStyle.border,
-                        position: 'relative',
-                        display: 'flex',
-                        flexDirection: 'column'
-                    }}>
+                    <Box
+                        className="bnk-extract-tree-right"
+                        onDragOver={handleRightPaneDragOver}
+                        onDragLeave={handleRightPaneDragLeave}
+                        onDrop={handleRightPaneFileDrop}
+                        sx={{
+                            ...treeViewStyle,
+                            marginLeft: 0,
+                            border: rightPaneDragOver
+                                ? '2px dashed var(--accent)'
+                                : (activePane === 'right' ? '1px solid var(--accent)' : treeViewStyle.border),
+                            position: 'relative',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            background: rightPaneDragOver
+                                ? 'rgba(var(--accent-rgb), 0.1)'
+                                : treeViewStyle.background,
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
                         {/* Pane Search */}
                         <Box sx={{ p: 1, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 1 }}>
                             <TextField
@@ -2014,7 +2132,15 @@ export default function BnkExtract() {
                                     color: 'rgba(255, 255, 255, 0.6)',
                                     fontWeight: 500
                                 }}>
-                                    {rightSearchQuery ? 'No matches' : 'Load banks here to drag replacement audio'}
+                                    {rightSearchQuery ? 'No matches' : (
+                                        <>
+                                            <Box sx={{ mb: 1, opacity: 0.6 }}>📁</Box>
+                                            Drop .wem files here
+                                            <Box sx={{ fontSize: '0.65rem', mt: 0.5, opacity: 0.5 }}>
+                                                or load banks to drag replacement audio
+                                            </Box>
+                                        </>
+                                    )}
                                 </Typography>
                             ) : (
                                 filteredRightTree.map((node, index) => (

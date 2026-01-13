@@ -25,16 +25,19 @@ import {
     createEmitterKey,
     updateParticleLifetime,
     updateLifetime,
-    updateParticleLinger
+    updateParticleLinger,
+    updateRate
 } from '../utils/binEditor/index.js';
 import {
     updateBirthScale,
     updateScale0,
     updateBindWeight,
     updateTranslationOverride,
-    markSystemModified
+    markSystemModified,
+    updateRate as updateRateSerializer
 } from '../utils/binEditor/serializer.js';
 import GlowingSpinner from '../components/GlowingSpinner.js';
+import RitobinWarningModal, { detectHashedContent } from '../components/RitobinWarningModal';
 import electronPrefs from '../utils/electronPrefs.js';
 import { openAssetPreview } from '../utils/assetPreviewEvent';
 import { convertTextureToPNG, findActualTexturePath } from '../utils/textureConverter';
@@ -43,13 +46,13 @@ import CropOriginalIcon from '@mui/icons-material/CropOriginal';
 
 // Icons (using simple Unicode for now)
 const ICONS = {
-    folder: '📁',
-    save: '💾',
-    undo: '↩️',
+    folder: '',
+    save: '',
+    undo: '',
     expand: '▼',
-    collapse: '🞂',
-    search: '🔍',
-    scale: '📐',
+    collapse: '▶',
+    search: '',
+    scale: '',
     check: '✓'
 };
 
@@ -79,6 +82,8 @@ export default function BinEditorV2() {
     const [loadingText, setLoadingText] = useState('');
     const [statusMessage, setStatusMessage] = useState('Load a .bin file to start');
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const [showRitobinWarning, setShowRitobinWarning] = useState(false);
+    const [ritobinWarningContent, setRitobinWarningContent] = useState(null);
 
     // Scale multiplier
     const [scaleMultiplier, setScaleMultiplier] = useState(2);
@@ -162,6 +167,8 @@ export default function BinEditorV2() {
             let ritobinPath = await electronPrefs.get('RitoBinPath');
             if (!ritobinPath) {
                 setStatusMessage('Error: Configure ritobin path in Settings first');
+                setRitobinWarningContent(null);
+                setShowRitobinWarning(true);
                 return;
             }
 
@@ -205,6 +212,17 @@ export default function BinEditorV2() {
 
             // Read and parse
             const content = fs.readFileSync(pyPath, 'utf8');
+            
+            // Check for hashed content
+            const isHashed = detectHashedContent(content);
+            if (isHashed) {
+                setRitobinWarningContent(content);
+                setShowRitobinWarning(true);
+                setStatusMessage('Warning: File appears to have hashed content - check Ritobin configuration');
+            } else {
+                setRitobinWarningContent(null);
+            }
+            
             const parsed = parsePyFile(content);
 
             setData(parsed);
@@ -217,7 +235,9 @@ export default function BinEditorV2() {
             setHasUnsavedChanges(false);
 
             const parseStats = getParseStats(parsed);
-            setStatusMessage(`Loaded: ${parseStats.systemCount} systems, ${parseStats.emitterCount} emitters`);
+            if (!isHashed) {
+                setStatusMessage(`Loaded: ${parseStats.systemCount} systems, ${parseStats.emitterCount} emitters`);
+            }
 
         } catch (error) {
             console.error('Load error:', error);
@@ -683,6 +703,8 @@ export default function BinEditorV2() {
             success = updateLifetime(selectedEmitter, numValue);
         } else if (property === 'particleLinger') {
             success = updateParticleLinger(selectedEmitter, numValue);
+        } else if (property === 'rate') {
+            success = updateRate(selectedEmitter, numValue);
         }
 
         if (success) {
@@ -694,185 +716,394 @@ export default function BinEditorV2() {
 
     // ============ RENDER HELPERS ============
 
-    // Extract texture path from emitter rawContent (similar to vfxEmitterParser.js)
-    const findTexturePathInEmitter = useCallback((emitter) => {
-        if (!emitter || !emitter.rawContent) return null;
+    // Extract ALL texture paths from emitter rawContent (matches Paint.js/Port.js)
+    const extractAllTexturesFromEmitter = useCallback((emitter) => {
+        if (!emitter || !emitter.rawContent) return [];
         const content = emitter.rawContent;
+        const textures = [];
+        const textureSet = new Set();
 
-        // First, look specifically for the main texture field (not particleColorTexture or other variants)
-        const mainTexturePattern = /(?<![a-zA-Z])texture:\s*string\s*=\s*"([^"]+)"/gi;
-        const mainTextureMatch = content.match(mainTexturePattern);
-        if (mainTextureMatch && mainTextureMatch.length > 0) {
-            let texturePath = mainTextureMatch[0].match(/(?<![a-zA-Z])texture:\s*string\s*=\s*"([^"]+)"/i)[1];
-            return texturePath;
-        }
-
-        // Fallback to other texture patterns
-        const fallbackPatterns = [
-            /texturePath[:\s]*"([^"]+)"/gi,
-            /textureName[:\s]*"([^"]+)"/gi,
-            /"([^"]*\.(?:tex|dds|png|jpg|jpeg|tga|bmp))"/gi
+        // Define texture field patterns with labels (same as Port.js)
+        const texturePatterns = [
+            { key: 'texture', label: 'Main' },
+            { key: 'particleColorTexture', label: 'Color' },
+            { key: 'erosionMapName', label: 'Erosion' },
+            { key: 'textureMult', label: 'Mult' },
+            { key: 'meshColorTexture', label: 'Mesh Color' },
+            { key: 'paletteTexture', label: 'Palette' },
+            { key: 'normalMap', label: 'Normal' },
+            { key: 'normalMapTexture', label: 'Normal' },
+            { key: 'particleColorLookupTexture', label: 'Color Lookup' },
+            { key: 'reflectionMapName', label: 'Reflection' },
+            { key: 'rimColorLookupTexture', label: 'Rim Lookup' },
+            { key: 'rimColorTexture', label: 'Rim Color' },
+            { key: 'textureLookupTexture', label: 'Lookup' },
+            { key: 'distortionTexture', label: 'Distortion' },
+            { key: 'emissiveTexture', label: 'Emissive' },
+            { key: 'glossIntensityTexture', label: 'Gloss' },
+            { key: 'fresnelTexture', label: 'Fresnel' }
         ];
 
-        for (const pattern of fallbackPatterns) {
-            const matches = content.match(pattern);
-            if (matches && matches.length > 0) {
-                const texturePath = matches[0].replace(/"/g, '');
-                return texturePath;
+        texturePatterns.forEach(pattern => {
+            const regex = new RegExp(`(?<![a-zA-Z])${pattern.key}:\\s*string\\s*=\\s*"([^"]+)"`, 'gi');
+            let match;
+            while ((match = regex.exec(content)) !== null) {
+                const path = match[1].trim();
+                if (path && !textureSet.has(path)) {
+                    textureSet.add(path);
+                    textures.push({ path, label: pattern.label });
+                }
+            }
+        });
+
+        // Fallback: find any texture paths by extension
+        const pathRegex = /:\s*string\s*=\s*"([^"]+\.(?:tex|dds|tga|png|jpg|jpeg|bmp))"/gi;
+        let match;
+        while ((match = pathRegex.exec(content)) !== null) {
+            const path = match[1].trim();
+            if (path && !textureSet.has(path)) {
+                textureSet.add(path);
+                textures.push({ path, label: 'Other' });
             }
         }
 
-        return null;
+        return textures;
     }, []);
 
-    // Show texture preview (simplified version for BinEditor)
-    const showTexturePreview = useCallback((texturePath, imageDataUrl, buttonElement) => {
+    // Find single texture path (for hasTexture check)
+    const findTexturePathInEmitter = useCallback((emitter) => {
+        const textures = extractAllTexturesFromEmitter(emitter);
+        return textures.length > 0 ? textures[0].path : null;
+    }, [extractAllTexturesFromEmitter]);
+
+    // Extract colors from emitter content (same as Port.js)
+    const extractColorsFromEmitterContent = useCallback((originalContent) => {
+        try {
+            if (!originalContent) return [];
+
+            const results = [];
+
+            // Match ValueColor blocks with constantValue (case-insensitive)
+            const valueColorRegex = /(\w*color\w*)\s*:\s*embed\s*=\s*valuecolor\s*\{[\s\S]*?constantvalue\s*:\s*vec4\s*=\s*\{\s*([^}]+)\s*\}[\s\S]*?\}/gi;
+            let match;
+            while ((match = valueColorRegex.exec(originalContent)) !== null) {
+                const name = match[1] || 'color';
+                const vec = match[2]
+                    .split(',')
+                    .map((v) => parseFloat(v.trim()))
+                    .filter((n) => !Number.isNaN(n));
+                if (vec.length >= 3) {
+                    const [r, g, b, a = 1] = vec;
+                    const css = `rgba(${Math.ceil(r * 254.9)}, ${Math.ceil(g * 254.9)}, ${Math.ceil(b * 254.9)}, ${a})`;
+                    results.push({ name, colors: [css] });
+                }
+            }
+
+            // Match Animated color lists (case-insensitive)
+            const animatedRegex = /(\w*color\w*)[\s\S]*?vfxanimatedcolorvariabledata\s*\{[\s\S]*?values\s*:\s*list\[vec4\]\s*=\s*\{([\s\S]*?)\}[\s\S]*?\}/gi;
+            let anim;
+            while ((anim = animatedRegex.exec(originalContent)) !== null) {
+                const name = anim[1] || 'colorAnim';
+                const body = anim[2] || '';
+                const stops = [];
+                const vecLineRegex = /\{\s*([^}]+?)\s*\}/g;
+                let line;
+                while ((line = vecLineRegex.exec(body)) !== null) {
+                    const vec = line[1]
+                        .split(',')
+                        .map((v) => parseFloat(v.trim()))
+                        .filter((n) => !Number.isNaN(n));
+                    if (vec.length >= 3) {
+                        const [r, g, b, a = 1] = vec;
+                        stops.push(`rgba(${Math.ceil(r * 254.9)}, ${Math.ceil(g * 254.9)}, ${Math.ceil(b * 254.9)}, ${a})`);
+                    }
+                }
+                if (stops.length > 0) results.push({ name, colors: stops });
+            }
+
+            // Deduplicate by name keeping first
+            const seen = new Set();
+            return results.filter((c) => {
+                if (seen.has(c.name)) return false;
+                seen.add(c.name);
+                return true;
+            });
+        } catch (_) {
+            return [];
+        }
+    }, []);
+
+    // Ref for texture close timer
+    const textureCloseTimerRef = useRef(null);
+
+    // Show texture preview with grid layout (matches Paint.js/Port.js exactly)
+    const showTexturePreview = useCallback((textureData, buttonElement, colorData = []) => {
+        // Clear any existing close timer
+        if (textureCloseTimerRef.current) {
+            clearTimeout(textureCloseTimerRef.current);
+            textureCloseTimerRef.current = null;
+        }
+
         // Remove existing preview
-        const existingPreview = document.getElementById('bineditor-texture-hover-preview');
-        if (existingPreview) {
-            existingPreview.remove();
-        }
-
-        const rect = buttonElement.getBoundingClientRect();
-        const previewWidth = 260;
-        const previewHeight = 220;
-        const margin = 10;
-
-        // Horizontal position - to the left of the button
-        const left = Math.max(margin, rect.left - previewWidth - margin);
-
-        // Smart vertical positioning to avoid cutoff at top or bottom
-        let top;
-        const spaceBelow = window.innerHeight - rect.bottom - margin;
-        const spaceAbove = rect.top - margin;
-
-        if (spaceBelow >= previewHeight) {
-            // Enough space below - align with button top
-            top = rect.top - 10;
-        } else if (spaceAbove >= previewHeight) {
-            // Not enough space below but enough above - show above button
-            top = rect.top - previewHeight + rect.height + 10;
-        } else {
-            // Not enough space either way - center in viewport
-            top = Math.max(margin, Math.min(rect.top - previewHeight / 2, window.innerHeight - previewHeight - margin));
-        }
-
-        // Final boundary check
-        top = Math.max(margin, Math.min(top, window.innerHeight - previewHeight - margin));
-
-        const hoverPreview = document.createElement('div');
-        hoverPreview.id = 'bineditor-texture-hover-preview';
-        hoverPreview.style.cssText = `
-            position: fixed;
-            left: ${left}px;
-            top: ${top}px;
-            z-index: 10000;
-            max-width: 260px;
-        `;
-
-        hoverPreview.innerHTML = `
-            <div class="bineditor-texture-hover-content" 
-                 style="background: linear-gradient(135deg, rgba(40, 40, 45, 0.98) 0%, rgba(30, 30, 35, 0.98) 100%);
-                        border: 1px solid rgba(255, 255, 255, 0.15);
-                        border-radius: 12px;
-                        backdrop-filter: saturate(180%) blur(20px);
-                        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-                        overflow: hidden;"
-                 onmouseenter="clearTimeout(parseInt(this.dataset.timeoutId))"
-                 onmouseleave="this.dataset.timeoutId = setTimeout(() => this.parentElement.remove(), 1000)">
-                <div style="padding: 8px; background: rgba(0,0,0,0.3); border-bottom: 1px solid rgba(255,255,255,0.1); text-align: center;">
-                    <span style="font-weight: bold; color: var(--accent-muted); font-family: 'JetBrains Mono', monospace; font-size: 0.9rem;">Texture Preview</span>
-                </div>
-                <div style="padding: 1rem; text-align: center;">
-                    <img src="${processDataURL(imageDataUrl)}" alt="Texture preview" style="width: 200px; height: 140px; object-fit: contain; display: block; border-radius: 4px; margin: 0 auto;" />
-                    <div style="margin-top: 8px; color: rgba(255,255,255,0.8); font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; word-break: break-all; max-height: 3em; overflow: hidden;">${texturePath}</div>
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(hoverPreview);
-
-        // Set timeout ID for the preview content (like Port.js)
-        const previewContent = hoverPreview.querySelector('.bineditor-texture-hover-content');
-        const timeoutId = setTimeout(() => {
-            const existingPreview = document.getElementById('bineditor-texture-hover-preview');
-            if (existingPreview) {
-                existingPreview.remove();
-            }
-        }, 1500); // 1.5 second auto-hide like Port.js
-        previewContent.dataset.timeoutId = timeoutId;
-    }, []);
-
-    // Show texture error preview
-    const showTextureError = useCallback((texturePath, buttonElement) => {
         const existingPreview = document.getElementById('bineditor-texture-hover-preview');
         if (existingPreview) existingPreview.remove();
 
         const rect = buttonElement.getBoundingClientRect();
-        const previewWidth = 260;
-        const previewHeight = 80;
-        const margin = 10;
+        const textureCount = textureData.length;
 
-        const left = Math.max(margin, rect.left - previewWidth - margin);
+        // Dynamic grid layout based on texture count (same as Port.js)
+        let cols = 1;
+        let previewWidth = 260;
+        let itemSize = '200px';
 
-        // Smart vertical positioning
-        let top;
-        const spaceBelow = window.innerHeight - rect.bottom - margin;
-        const spaceAbove = rect.top - margin;
-
-        if (spaceBelow >= previewHeight) {
-            top = rect.top - 10;
-        } else if (spaceAbove >= previewHeight) {
-            top = rect.top - previewHeight + rect.height + 10;
+        if (textureCount === 1) {
+            cols = 1; previewWidth = 260; itemSize = '200px';
+        } else if (textureCount === 2) {
+            cols = 2; previewWidth = 380; itemSize = '150px';
+        } else if (textureCount <= 4) {
+            cols = 2; previewWidth = 400; itemSize = '160px';
+        } else if (textureCount <= 6) {
+            cols = 3; previewWidth = 520; itemSize = '140px';
         } else {
-            top = Math.max(margin, Math.min(rect.top - previewHeight / 2, window.innerHeight - previewHeight - margin));
+            cols = 3; previewWidth = 560; itemSize = '130px';
         }
-        top = Math.max(margin, Math.min(top, window.innerHeight - previewHeight - margin));
 
-        const hoverPreview = document.createElement('div');
-        hoverPreview.id = 'bineditor-texture-hover-preview';
-        hoverPreview.style.cssText = `
+        const preview = document.createElement('div');
+        preview.id = 'bineditor-texture-hover-preview';
+        preview.style.cssText = `
             position: fixed;
-            left: ${left}px;
-            top: ${top}px;
             z-index: 10000;
-            max-width: 260px;
+            background: rgba(15, 15, 20, 0.96);
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            pointer-events: auto;
+            width: ${previewWidth}px;
+            max-height: ${window.innerHeight - 40}px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            box-sizing: border-box;
+            transition: opacity 0.2s ease;
         `;
 
-        hoverPreview.innerHTML = `
-            <div class="bineditor-texture-hover-content"
-                 style="background: rgba(30, 30, 30, 0.95);
-                        border: 1px solid rgba(255, 100, 100, 0.3);
-                        border-radius: 8px;
-                        backdrop-filter: blur(10px);
-                        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-                        padding: 12px;"
-                 onmouseenter="clearTimeout(parseInt(this.dataset.timeoutId))"
-                 onmouseleave="this.dataset.timeoutId = setTimeout(() => this.parentElement.remove(), 1000)">
-                <div style="color: #f87171; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; margin-bottom: 8px;">Failed to load texture</div>
-                <div style="color: rgba(255,255,255,0.6); font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; word-break: break-all;">${texturePath}</div>
+        // Dynamic grid style
+        const gridStyle = textureCount === 1
+            ? 'display: flex; justify-content: center;'
+            : `display: grid; grid-template-columns: repeat(${cols}, 1fr); gap: 12px;`;
+
+        // Build grid items HTML
+        let itemsHtml = textureData.map((data, idx) => {
+            const fileName = data.path.split(/[/\\]/).pop();
+            return `
+                <div class="texture-item" data-idx="${idx}" title="Left-click: Asset Preview | Right-click: Open in External App" style="cursor: pointer; display: flex; flex-direction: column; gap: 8px; align-items: center; transition: all 0.2s ease; min-width: 0;">
+                    <div style="width: 100%; height: ${itemSize}; background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%), linear-gradient(-45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%), linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%); background-size: 12px 12px; background-position: 0 0, 0 6px, 6px -6px, -6px 0px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                        ${data.dataUrl
+                    ? `<img src="${processDataURL(data.dataUrl)}" style="width: 100%; height: 100%; object-fit: contain;" />`
+                    : `<div style="color: rgba(255,255,255,0.2); font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 500;">LOADING...</div>`
+                }
+                    </div>
+                    <div style="width: 100%; text-align: center; font-family: 'JetBrains Mono', monospace; color: var(--accent); overflow: hidden;">
+                        <div style="font-size: 8px; opacity: 0.5; margin-bottom: 2px; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${fileName}</div>
+                        <div style="font-size: 10px; font-weight: 800; letter-spacing: 0.08em; opacity: 0.9;">${data.label.toUpperCase()}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Build color swatches HTML (same as Port.js)
+        let colorSwatches = '';
+        if (Array.isArray(colorData) && colorData.length > 0) {
+            const colors = [];
+            colorData.forEach(c => {
+                if (Array.isArray(c.colors) && c.colors.length > 0) {
+                    colors.push(...c.colors);
+                }
+            });
+            const unique = Array.from(new Set(colors)).slice(0, 8); // Show up to 8 colors
+            if (unique.length > 0) {
+                colorSwatches = `
+                    <div style="display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); margin-top: 4px;">
+                        ${unique.map(col =>
+                    `<div style="width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.25); background: ${col}; box-shadow: 0 2px 6px rgba(0,0,0,0.5);" title="${col}"></div>`
+                ).join('')}
+                    </div>
+                `;
+            }
+        }
+
+        preview.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="text-align: left; color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.12em; display: flex; align-items: center; gap: 10px; opacity: 0.9;">
+                    <span style="width: 8px; height: 8px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 8px var(--accent);"></span>
+                    TEXTURE PREVIEW (${textureCount})
+                </div>
+                <div style="${gridStyle}">
+                    ${itemsHtml}
+                </div>
+                ${colorSwatches}
             </div>
         `;
 
-        document.body.appendChild(hoverPreview);
+        document.body.appendChild(preview);
 
-        // Set timeout ID for the preview content (like Port.js)
-        const previewContent = hoverPreview.querySelector('.bineditor-texture-hover-content');
-        const timeoutId = setTimeout(() => {
-            const existingPreview = document.getElementById('bineditor-texture-hover-preview');
-            if (existingPreview) {
-                existingPreview.remove();
+        // Add click/hover handlers to texture items
+        preview.querySelectorAll('.texture-item').forEach(el => {
+            el.onclick = (event) => {
+                event.stopPropagation();
+                const idx = parseInt(el.getAttribute('data-idx'));
+                const data = textureData[idx];
+                if (data) {
+                    preview.remove();
+                    if (textureCloseTimerRef.current) {
+                        clearTimeout(textureCloseTimerRef.current);
+                        textureCloseTimerRef.current = null;
+                    }
+                    openAssetPreview(data.resolvedDiskPath || data.path, data.dataUrl);
+                }
+            };
+
+            el.oncontextmenu = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const idx = parseInt(el.getAttribute('data-idx'));
+                const data = textureData[idx];
+                if (data && data.resolvedDiskPath && window.require) {
+                    try {
+                        const { shell } = window.require('electron');
+                        if (shell) {
+                            shell.openPath(data.resolvedDiskPath);
+                            const imgCont = el.querySelector('div');
+                            if (imgCont) {
+                                imgCont.style.borderColor = '#10b981';
+                                setTimeout(() => { imgCont.style.borderColor = 'rgba(255,255,255,0.08)'; }, 500);
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Error opening external app:', err);
+                    }
+                }
+            };
+
+            el.onmouseenter = () => {
+                el.style.transform = 'translateY(-2px)';
+                const imgCont = el.querySelector('div');
+                if (imgCont) {
+                    imgCont.style.borderColor = 'var(--accent)';
+                    imgCont.style.boxShadow = '0 6px 16px rgba(0,0,0,0.4)';
+                }
+            };
+
+            el.onmouseleave = () => {
+                el.style.transform = 'translateY(0)';
+                const imgCont = el.querySelector('div');
+                if (imgCont) {
+                    imgCont.style.borderColor = 'rgba(255,255,255,0.08)';
+                    imgCont.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+                }
+            };
+        });
+
+        // Positioning - prefer left of button
+        const previewRect = preview.getBoundingClientRect();
+        let previewTop = rect.top + (rect.height / 2) - (previewRect.height / 2);
+        let previewLeft = rect.left - previewWidth - 14;
+
+        if (previewLeft < 10) previewLeft = rect.right + 14;
+        if (previewLeft + previewRect.width > window.innerWidth - 10) previewLeft = window.innerWidth - previewRect.width - 10;
+        if (previewTop < 10) previewTop = 10;
+        if (previewTop + previewRect.height > window.innerHeight - 10) previewTop = window.innerHeight - previewRect.height - 10;
+
+        preview.style.top = `${previewTop}px`;
+        preview.style.left = `${previewLeft}px`;
+
+        // Persistent hover logic
+        preview.onmouseenter = () => {
+            if (textureCloseTimerRef.current) {
+                clearTimeout(textureCloseTimerRef.current);
+                textureCloseTimerRef.current = null;
             }
-        }, 1500);
-        previewContent.dataset.timeoutId = timeoutId;
+        };
+
+        preview.onmouseleave = () => {
+            textureCloseTimerRef.current = setTimeout(() => {
+                preview.remove();
+            }, 500);
+        };
     }, []);
 
-    // Handle texture preview on hover
-    const handleTexturePreview = useCallback(async (e, emitter) => {
-        const texturePath = findTexturePathInEmitter(emitter);
-        if (!texturePath) return;
+    // Show texture error preview
+    const showTextureError = useCallback((texturePath, buttonElement) => {
+        if (textureCloseTimerRef.current) {
+            clearTimeout(textureCloseTimerRef.current);
+            textureCloseTimerRef.current = null;
+        }
 
-        // Capture the button element before async operations (e.currentTarget becomes null after event)
+        const existingPreview = document.getElementById('bineditor-texture-hover-preview');
+        if (existingPreview) existingPreview.remove();
+
+        const rect = buttonElement.getBoundingClientRect();
+
+        const preview = document.createElement('div');
+        preview.id = 'bineditor-texture-hover-preview';
+        preview.style.cssText = `
+            position: fixed;
+            z-index: 10000;
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            padding: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+            color: #ef4444;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            max-width: 250px;
+            pointer-events: auto;
+        `;
+
+        preview.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
+                <div style="font-weight: bold;">Failed to load texture</div>
+                <div style="font-size: 10px; opacity: 0.7; word-break: break-all; text-align: center;">${texturePath}</div>
+            </div>
+        `;
+
+        document.body.appendChild(preview);
+
+        const previewRect = preview.getBoundingClientRect();
+        let top = rect.top + (rect.height / 2) - (previewRect.height / 2);
+        let left = rect.left - previewRect.width - 14;
+
+        if (left < 10) left = rect.right + 14;
+        if (top < 10) top = 10;
+        if (top + previewRect.height > window.innerHeight - 10) top = window.innerHeight - previewRect.height - 10;
+
+        preview.style.top = `${top}px`;
+        preview.style.left = `${left}px`;
+
+        preview.onmouseenter = () => {
+            if (textureCloseTimerRef.current) {
+                clearTimeout(textureCloseTimerRef.current);
+                textureCloseTimerRef.current = null;
+            }
+        };
+
+        preview.onmouseleave = () => {
+            textureCloseTimerRef.current = setTimeout(() => preview.remove(), 500);
+        };
+    }, []);
+
+    // Handle texture preview on hover - loads ALL textures like Paint.js
+    const handleTexturePreview = useCallback(async (e, emitter) => {
+        const allTextures = extractAllTexturesFromEmitter(emitter);
+        if (allTextures.length === 0) return;
+
         const buttonElement = e.currentTarget;
         if (!buttonElement) return;
 
@@ -881,45 +1112,79 @@ export default function BinEditorV2() {
             clearTimeout(conversionTimers.current.get('hover'));
         }
 
+        // Clear texture close timer when entering a new button
+        if (textureCloseTimerRef.current) {
+            clearTimeout(textureCloseTimerRef.current);
+            textureCloseTimerRef.current = null;
+        }
+
         const timer = setTimeout(async () => {
-            if (activeConversions.current.has(texturePath)) return;
+            const textureData = [];
 
-            activeConversions.current.add(texturePath);
+            // Extract colors from emitter content
+            const colorData = extractColorsFromEmitterContent(emitter.rawContent);
 
-            try {
-                const projectRoot = binPath ? window.require('path').dirname(binPath) : null;
-                const result = await convertTextureToPNG(texturePath, binPath, binPath, projectRoot);
+            for (const { path: texturePath, label } of allTextures) {
+                if (activeConversions.current.has(texturePath)) continue;
+                activeConversions.current.add(texturePath);
 
-                if (result) {
-                    let dataUrl;
-                    if (result.startsWith('data:')) {
-                        dataUrl = result;
-                    } else {
+                try {
+                    const projectRoot = binPath ? window.require('path').dirname(binPath) : null;
+                    const result = await convertTextureToPNG(texturePath, binPath, binPath, projectRoot);
+
+                    let dataUrl = null;
+                    if (result) {
+                        if (result.startsWith('data:')) {
+                            dataUrl = result;
+                        } else if (window.require) {
+                            const fs = window.require('fs');
+                            if (fs.existsSync(result)) {
+                                const imageBuffer = fs.readFileSync(result);
+                                dataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`;
+                            }
+                        }
+                    }
+
+                    // Resolve disk path for explorer navigation
+                    let resolvedDiskPath = texturePath;
+                    if (window.require) {
                         const fs = window.require('fs');
-                        if (fs.existsSync(result)) {
-                            const imageBuffer = fs.readFileSync(result);
-                            dataUrl = `data:image/png;base64,${imageBuffer.toString('base64')}`;
+                        const path = window.require('path');
+                        const normalizedBin = binPath.replace(/\\/g, '/');
+                        const dataMatch = normalizedBin.match(/\/data\//i);
+
+                        if (dataMatch) {
+                            const projRoot = normalizedBin.substring(0, dataMatch.index);
+                            const cleanTexture = texturePath.replace(/\\/g, '/');
+                            const candidate = path.join(projRoot, cleanTexture);
+                            if (fs.existsSync(candidate)) resolvedDiskPath = candidate;
+                        }
+
+                        if (resolvedDiskPath === texturePath) {
+                            const smartPath = findActualTexturePath(texturePath, binPath);
+                            if (smartPath) resolvedDiskPath = smartPath;
                         }
                     }
 
                     if (dataUrl) {
-                        showTexturePreview(texturePath, dataUrl, buttonElement);
-                    } else {
-                        showTextureError(texturePath, buttonElement);
+                        textureData.push({ path: texturePath, label, dataUrl, resolvedDiskPath });
                     }
-                } else {
-                    showTextureError(texturePath, buttonElement);
+                } catch (error) {
+                    console.warn(`Failed to convert ${texturePath}:`, error);
+                } finally {
+                    activeConversions.current.delete(texturePath);
                 }
-            } catch (error) {
-                console.error('Error loading texture preview:', error);
-                showTextureError(texturePath, buttonElement);
-            } finally {
-                activeConversions.current.delete(texturePath);
+            }
+
+            if (textureData.length === 0) {
+                showTextureError(allTextures[0]?.path || 'Unknown', buttonElement);
+            } else {
+                showTexturePreview(textureData, buttonElement, colorData);
             }
         }, 200);
 
         conversionTimers.current.set('hover', timer);
-    }, [binPath, findTexturePathInEmitter, showTexturePreview, showTextureError]);
+    }, [binPath, extractAllTexturesFromEmitter, extractColorsFromEmitterContent, showTexturePreview, showTextureError]);
 
     // Handle texture click (open in asset preview)
     const handleTextureClick = useCallback(async (e, emitter) => {
@@ -1027,6 +1292,9 @@ export default function BinEditorV2() {
                         {emitter.lifetime?.value != null && (
                             <span style={{ color: '#22c55e' }} title="Emitter Lifetime">LT: {emitter.lifetime.value.toFixed(2)}</span>
                         )}
+                        {emitter.rate?.constantValue != null && (
+                            <span style={{ color: '#06b6d4' }} title="Emission Rate">R: {emitter.rate.constantValue}</span>
+                        )}
                     </div>
                 </div>
                 {/* Texture Preview Button */}
@@ -1038,6 +1306,14 @@ export default function BinEditorV2() {
                             if (conversionTimers.current.has('hover')) {
                                 clearTimeout(conversionTimers.current.get('hover'));
                                 conversionTimers.current.delete('hover');
+                            }
+                            // Start close timer for texture preview (like Paint.js/Port.js)
+                            if (!textureCloseTimerRef.current) {
+                                textureCloseTimerRef.current = setTimeout(() => {
+                                    const existingPreview = document.getElementById('bineditor-texture-hover-preview');
+                                    if (existingPreview) existingPreview.remove();
+                                    textureCloseTimerRef.current = null;
+                                }, 500);
                             }
                         }}
                         style={{
@@ -1330,10 +1606,33 @@ export default function BinEditorV2() {
                     </div>
                 )}
 
+                {selectedEmitter.rate?.constantValue != null && (
+                    <div style={{ marginBottom: '16px' }}>
+                        <div style={{ fontWeight: 600, color: '#06b6d4', marginBottom: '8px' }}>Emission Rate</div>
+                        <input
+                            type="text"
+                            key={`${selectedEmitter.name}-rate`}
+                            defaultValue={selectedEmitter.rate.constantValue}
+                            onBlur={(e) => handlePropertyChange('rate', null, e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                            style={{
+                                width: '100%',
+                                padding: '6px 8px',
+                                background: 'rgba(0,0,0,0.3)',
+                                border: '1px solid rgba(6, 182, 212, 0.3)',
+                                borderRadius: '4px',
+                                color: '#06b6d4',
+                                fontFamily: 'JetBrains Mono, monospace',
+                                fontSize: '13px'
+                            }}
+                        />
+                    </div>
+                )}
+
                 {!selectedEmitter.birthScale0 && !selectedEmitter.scale0 &&
                     !selectedEmitter.bindWeight && !selectedEmitter.translationOverride &&
                     !selectedEmitter.particleLifetime && !selectedEmitter.lifetime &&
-                    !selectedEmitter.particleLinger && (
+                    !selectedEmitter.particleLinger && !selectedEmitter.rate && (
                         <div style={{ color: '#666', fontStyle: 'italic' }}>
                             No editable properties found
                         </div>
@@ -1600,6 +1899,26 @@ export default function BinEditorV2() {
                     {data && renderPropertyEditor()}
                 </div>
             </div>
+
+            {/* Ritobin Warning Modal */}
+            <RitobinWarningModal
+                open={showRitobinWarning}
+                onClose={() => {
+                    setShowRitobinWarning(false);
+                    setRitobinWarningContent(null);
+                }}
+                navigate={null}
+                content={ritobinWarningContent}
+                onContinueAnyway={() => {
+                    setShowRitobinWarning(false);
+                    setRitobinWarningContent(null);
+                    // File is already loaded, just update status message
+                    if (data) {
+                        const parseStats = getParseStats(data);
+                        setStatusMessage(`Loaded: ${parseStats.systemCount} systems, ${parseStats.emitterCount} emitters`);
+                    }
+                }}
+            />
         </div>
     );
 }

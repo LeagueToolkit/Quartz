@@ -303,6 +303,9 @@ const Paint = () => {
   });
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(null);
   const searchButtonRef = useRef(null);
+
+  // Variant filter: 'all' | 'variant1' | 'variant2' | 'original' (no suffix)
+  const [variantFilter, setVariantFilter] = useState('all');
   const [filePath, setFilePath] = useState('');
   const [pyPath, setPyPath] = useState('');
   const [fileCache, setFileCache] = useState([]);
@@ -331,6 +334,15 @@ const Paint = () => {
   const [previewColors, setPreviewColors] = useState([]);
   // Track which target color is selected for deletion (turns into '-')
   const [deleteTargetIndex, setDeleteTargetIndex] = useState(null);
+
+  // Track which VFX systems are locked (prevents recoloring and selection)
+  const [lockedSystems, setLockedSystems] = useState(new Set());
+
+  // Ref to hold lockedSystems for DOM event handlers (avoiding stale closures)
+  const lockedSystemsRef = useRef(new Set());
+  useEffect(() => {
+    lockedSystemsRef.current = lockedSystems;
+  }, [lockedSystems]);
 
   // Non-mutating color picker for filter UI (prevents global Palette changes)
   const openFilterPicker = useCallback((event, initialVec4, onCommit) => {
@@ -1947,14 +1959,113 @@ const Paint = () => {
     emitterCountLabel.style.marginLeft = 'auto';
     emitterCountLabel.textContent = `${system.emitters.length} emitters`;
 
+    // Create lock button
+    const lockBtn = document.createElement('button');
+    lockBtn.className = 'system-lock-btn';
+    lockBtn.title = 'Lock/Unlock system (locked systems cannot be recolored or selected)';
+    lockBtn.style.cssText = `
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 4px 6px;
+      margin-left: 8px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, transform 0.15s;
+      opacity: 0.6;
+      font-size: 14px;
+    `;
+
+    // Check if system is already locked
+    const isLocked = lockedSystemsRef.current.has(system.key);
+    lockBtn.innerHTML = isLocked ? '🔒' : '🔓';
+    lockBtn.dataset.locked = isLocked ? 'true' : 'false';
+    lockBtn.dataset.systemKey = system.key;
+
+    if (isLocked) {
+      lockBtn.style.opacity = '1';
+      lockBtn.style.background = 'rgba(239, 68, 68, 0.2)';
+      systemDiv.style.opacity = '0.6';
+      systemDiv.dataset.locked = 'true';
+    }
+
+    lockBtn.onmouseenter = () => {
+      lockBtn.style.opacity = '1';
+      lockBtn.style.transform = 'scale(1.1)';
+    };
+
+    lockBtn.onmouseleave = () => {
+      const isCurrentlyLocked = lockBtn.dataset.locked === 'true';
+      lockBtn.style.opacity = isCurrentlyLocked ? '1' : '0.6';
+      lockBtn.style.transform = 'scale(1)';
+    };
+
+    lockBtn.onclick = (event) => {
+      event.stopPropagation();
+      const systemKey = lockBtn.dataset.systemKey;
+      const currentlyLocked = lockBtn.dataset.locked === 'true';
+
+      if (currentlyLocked) {
+        // Unlock
+        lockBtn.innerHTML = '🔓';
+        lockBtn.dataset.locked = 'false';
+        lockBtn.style.background = 'transparent';
+        lockBtn.style.opacity = '0.6';
+        systemDiv.style.opacity = '1';
+        systemDiv.dataset.locked = 'false';
+
+        // Update state
+        setLockedSystems(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(systemKey);
+          return newSet;
+        });
+        setStatusMessage(`Unlocked: ${system.name}`);
+      } else {
+        // Lock
+        lockBtn.innerHTML = '🔒';
+        lockBtn.dataset.locked = 'true';
+        lockBtn.style.background = 'rgba(239, 68, 68, 0.2)';
+        lockBtn.style.opacity = '1';
+        systemDiv.style.opacity = '0.6';
+        systemDiv.dataset.locked = 'true';
+
+        // Uncheck all emitters in this system
+        const emitterDivs = systemDiv.querySelectorAll('.Emitter-Div');
+        emitterDivs.forEach(emitterDiv => {
+          const checkbox = emitterDiv.querySelector('input[type="checkbox"]');
+          if (checkbox) checkbox.checked = false;
+        });
+        // Also uncheck the system checkbox
+        systemCheckbox.checked = false;
+        systemCheckbox.indeterminate = false;
+
+        // Update state
+        setLockedSystems(prev => {
+          const newSet = new Set(prev);
+          newSet.add(systemKey);
+          return newSet;
+        });
+        setStatusMessage(`Locked: ${system.name} - cannot be recolored or selected`);
+      }
+    };
+
     headerContent.appendChild(systemCheckbox);
     headerContent.appendChild(systemNameLabel);
     headerContent.appendChild(emitterCountLabel);
+    headerContent.appendChild(lockBtn);
 
     // Make the entire header clickable
     headerContent.onclick = (event) => {
-      // Don't trigger if clicking on the checkbox itself
-      if (event.target !== systemCheckbox) {
+      // Don't trigger if clicking on the checkbox itself or lock button
+      if (event.target !== systemCheckbox && !event.target.closest('.system-lock-btn')) {
+        // Don't allow toggling if system is locked
+        if (systemDiv.dataset.locked === 'true') {
+          setStatusMessage(`System "${system.name}" is locked - unlock it first to select emitters`);
+          return;
+        }
         systemCheckbox.checked = !systemCheckbox.checked;
         CheckChildren(systemDiv.children, systemCheckbox.checked);
       }
@@ -2307,19 +2418,31 @@ const Paint = () => {
     checkbox.style.borderRadius = '4px';
     checkbox.style.background = 'rgba(255, 255, 255, 0.06)';
     checkbox.onchange = () => {
-      // Update the system checkbox state when an emitter checkbox changes
+      // Check if parent system is locked
       const systemDiv = emitterDiv.parentNode;
+      if (systemDiv && systemDiv.dataset.locked === 'true') {
+        // Revert the checkbox change
+        checkbox.checked = false;
+        setStatusMessage('This system is locked - unlock it first to select emitters');
+        return;
+      }
+      // Update the system checkbox state when an emitter checkbox changes
       const headerDiv = systemDiv.children[0];
       updateSystemCheckboxState(headerDiv);
     };
 
     // Make the entire emitter div clickable
     emitterDiv.onclick = (event) => {
+      // Check if parent system is locked
+      const systemDiv = emitterDiv.parentNode;
+      if (systemDiv && systemDiv.dataset.locked === 'true') {
+        setStatusMessage('This system is locked - unlock it first to select emitters');
+        return;
+      }
       // Don't trigger if clicking on the checkbox itself or color blocks
       if (event.target !== checkbox && !event.target.classList.contains('Prop-Block') && !event.target.classList.contains('Prop-Block-Secondary')) {
         checkbox.checked = !checkbox.checked;
         // Update the system checkbox state when an emitter checkbox changes
-        const systemDiv = emitterDiv.parentNode;
         const headerDiv = systemDiv.children[0];
         updateSystemCheckboxState(headerDiv);
       }
@@ -4467,6 +4590,11 @@ const Paint = () => {
         const system = systems[systemKey];
         if (!system) continue;
 
+        // Skip locked systems
+        if (systemDiv.dataset.locked === 'true' || lockedSystemsRef.current.has(systemKey)) {
+          continue;
+        }
+
         // Check emitters in this system
         for (let j = 1; j < systemDiv.children.length; j++) {
           const emitterDiv = systemDiv.children[j];
@@ -5079,6 +5207,92 @@ const Paint = () => {
     setSearchDropdownOpen(null);
   };
 
+  // Apply variant filter to show/hide emitters based on their name suffix
+  const applyVariantFilter = useCallback((filter) => {
+    if (!particleListRef.current) return;
+
+    const systemDivs = particleListRef.current.children;
+    let shownEmitters = 0;
+    let hiddenEmitters = 0;
+
+    for (let i = 0; i < systemDivs.length; i++) {
+      const systemDiv = systemDivs[i];
+
+      // Skip materials
+      if (systemDiv.id && systemDiv.id.startsWith('material_')) continue;
+
+      let anyEmitterVisible = false;
+
+      // Process emitters in this system (skip header at index 0)
+      for (let j = 1; j < systemDiv.children.length; j++) {
+        const emitterDiv = systemDiv.children[j];
+        const emitterNameLabel = emitterDiv.children[1]; // Second child is the name label
+        const emitterName = emitterNameLabel?.textContent || '';
+
+        let shouldShow = true;
+
+        if (filter === 'variant1') {
+          // Only show emitters ending with _Variant1
+          shouldShow = emitterName.endsWith('_Variant1');
+        } else if (filter === 'variant2') {
+          // Only show emitters ending with _Variant2
+          shouldShow = emitterName.endsWith('_Variant2');
+        } else if (filter === 'original') {
+          // Only show emitters that don't have _Variant1 or _Variant2 suffix
+          shouldShow = !emitterName.endsWith('_Variant1') && !emitterName.endsWith('_Variant2');
+        }
+        // 'all' shows everything
+
+        if (shouldShow) {
+          emitterDiv.style.display = null;
+          anyEmitterVisible = true;
+          shownEmitters++;
+        } else {
+          emitterDiv.style.display = 'none';
+          hiddenEmitters++;
+        }
+      }
+
+      // Hide the system if no emitters are visible
+      if (filter !== 'all' && !anyEmitterVisible) {
+        systemDiv.style.display = 'none';
+      } else {
+        systemDiv.style.display = null;
+      }
+    }
+
+    // Update status
+    if (filter === 'all') {
+      setStatusMessage('Showing all emitters');
+    } else {
+      const filterLabel = filter === 'variant1' ? '_Variant1' : filter === 'variant2' ? '_Variant2' : 'Original (no variant)';
+      setStatusMessage(`Variant filter: ${filterLabel} - Showing ${shownEmitters} emitters, hidden ${hiddenEmitters}`);
+    }
+  }, []);
+
+  // Handle variant filter change
+  const handleVariantFilterChange = useCallback((newFilter) => {
+    setVariantFilter(newFilter);
+    applyVariantFilter(newFilter);
+
+    // Also clear the text search filter since we're applying a new filter
+    if (filterText.trim()) {
+      setFilterText('');
+    }
+  }, [applyVariantFilter, filterText]);
+
+  // Apply variant filter when systems are loaded or lazy loading completes
+  useEffect(() => {
+    // Only apply if not 'all' (default) and systems exist
+    if (variantFilter !== 'all' && Object.keys(systems).length > 0 && !isLazyLoading) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        applyVariantFilter(variantFilter);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [systems, isLazyLoading, variantFilter, applyVariantFilter]);
+
   const handleSelectByBlendMode = () => {
     selectByBlendMode(blendModeFilter, blendModeSlider, particleListRef, setStatusMessage);
   };
@@ -5417,6 +5631,12 @@ const Paint = () => {
             setRandomGradientCount(savedRandomGradientCount);
           }
 
+          // Restore variant filter if saved
+          const savedVariantFilter = await electronPrefs.get('PaintVariantFilter');
+          if (savedVariantFilter && ['all', 'variant1', 'variant2', 'original'].includes(savedVariantFilter)) {
+            setVariantFilter(savedVariantFilter);
+          }
+
           // Restore saved palettes for all modes if available
           if (savedPalettesData && typeof savedPalettesData === 'object') {
             const restoredSavedPalettes = {};
@@ -5536,6 +5756,20 @@ const Paint = () => {
       }
     };
   }, [Palette, mode, savedPalettes, randomGradient, randomGradientCount]);
+
+  // Save variant filter to electronPrefs when it changes
+  useEffect(() => {
+    const saveVariantFilter = async () => {
+      try {
+        await electronPrefs.initPromise;
+        await electronPrefs.set('PaintVariantFilter', variantFilter);
+        console.log('💾 Saved variant filter:', variantFilter);
+      } catch (error) {
+        console.warn('Failed to save variant filter:', error);
+      }
+    };
+    saveVariantFilter();
+  }, [variantFilter]);
 
   // Initialize component
   useEffect(() => {
@@ -7041,6 +7275,41 @@ const Paint = () => {
             >
               <TuneIcon fontSize="small" />
             </IconButton>
+
+            {/* Variant Filter Badge */}
+            {variantFilter !== 'all' && (
+              <Box
+                onClick={() => handleVariantFilterChange('all')}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  px: 1,
+                  py: 0.25,
+                  borderRadius: '4px',
+                  background: variantFilter === 'variant1' ? 'rgba(59, 130, 246, 0.2)' :
+                    variantFilter === 'variant2' ? 'rgba(168, 85, 247, 0.2)' :
+                      'rgba(16, 185, 129, 0.2)',
+                  border: `1px solid ${variantFilter === 'variant1' ? 'rgba(59, 130, 246, 0.4)' :
+                    variantFilter === 'variant2' ? 'rgba(168, 85, 247, 0.4)' :
+                      'rgba(16, 185, 129, 0.4)'}`,
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  color: variantFilter === 'variant1' ? '#60a5fa' :
+                    variantFilter === 'variant2' ? '#c084fc' :
+                      '#34d399',
+                  transition: 'opacity 0.2s',
+                  '&:hover': {
+                    opacity: 0.8
+                  }
+                }}
+                title="Click to clear variant filter"
+              >
+                {variantFilter === 'variant1' ? 'V1' : variantFilter === 'variant2' ? 'V2' : 'OG'}
+                <span style={{ fontSize: '10px', opacity: 0.7 }}>✕</span>
+              </Box>
+            )}
           </div>
         </Box>
       )}
@@ -7144,6 +7413,46 @@ const Paint = () => {
           label="Texture Paths"
           sx={{ color: 'var(--accent)', fontSize: '12px', display: 'block', px: 1, py: 0.5 }}
         />
+
+        {/* Divider */}
+        <Box sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', my: 1.5, mx: 1 }} />
+
+        {/* Variant Filter Section */}
+        <Typography variant="caption" sx={{ color: 'var(--accent)', fontWeight: 'bold', mb: 1, display: 'block', px: 1 }}>
+          Variant Filter
+        </Typography>
+
+        {[
+          { value: 'all', label: 'Show All' },
+          { value: 'variant1', label: 'Variant 1 Only' },
+          { value: 'variant2', label: 'Variant 2 Only' },
+          { value: 'original', label: 'Original Only' }
+        ].map(({ value, label }) => (
+          <FormControlLabel
+            key={value}
+            control={
+              <Checkbox
+                checked={variantFilter === value}
+                onChange={() => handleVariantFilterChange(value)}
+                size="small"
+                sx={{
+                  color: 'var(--accent2)',
+                  '&.Mui-checked': { color: 'var(--accent)' },
+                }}
+              />
+            }
+            label={label}
+            sx={{
+              color: variantFilter === value ? 'var(--accent)' : 'var(--accent2)',
+              fontSize: '12px',
+              display: 'block',
+              px: 1,
+              py: 0.25,
+              transition: 'color 0.2s',
+              '&:hover': { color: 'var(--accent)' }
+            }}
+          />
+        ))}
       </Menu>
 
       {/* Particle List */}

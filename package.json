@@ -1,7 +1,7 @@
 {
   "name": "quartz",
   "productName": "Quartz",
-  "version": "2.3.5",
+  "version": "2.5.0",
   "description": "Quartz - League of Legends Modding Suite",
   "homepage": "./",
   "main": "electron-main.js",
@@ -31,9 +31,11 @@
       "artifactName": "quartz-${version}-setup.${ext}",
       "oneClick": false,
       "perMachine": false,
-      "runAfterFinish": false,
+      "runAfterFinish": true,
       "deleteAppDataOnUninstall": true,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     },
     "extraResources": [
       {
@@ -54,6 +56,18 @@
       {
         "from": "public/celestia.webp",
         "to": "assets/celestia.webp"
+      },
+      {
+        "from": "public/codebook.bin",
+        "to": "codebook.bin"
+      },
+      {
+        "from": "public/screen.dds",
+        "to": "public/screen.dds"
+      },
+      {
+        "from": "public/screen.scb",
+        "to": "public/screen.scb"
       }
     ],
     "publish": [

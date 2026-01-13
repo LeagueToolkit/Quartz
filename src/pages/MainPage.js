@@ -522,9 +522,10 @@ const MainPage = () => {
                   size="small"
                   variant="contained"
                   onClick={() => {
-                    // Set flag in localStorage to highlight update section
+                    // Set flag in localStorage to highlight update section and open External Tools
                     try {
                       localStorage.setItem('settings:highlight-update', 'true');
+                      localStorage.setItem('settings:open-section', 'tools');
                     } catch (e) {
                       console.error('Error setting highlight flag:', e);
                     }

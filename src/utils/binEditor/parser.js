@@ -265,7 +265,10 @@ function parseEmitter(rawContent, localStartLine) {
         // Lifetime properties
         particleLifetime: parseFloatProperty(rawContent, 'particleLifetime'),
         lifetime: parseOptionFloat(rawContent, 'lifetime'),
-        particleLinger: parseOptionFloat(rawContent, 'particleLinger')
+        particleLinger: parseOptionFloat(rawContent, 'particleLinger'),
+
+        // Rate property (emission rate)
+        rate: parseFloatProperty(rawContent, 'rate')
     };
 
     return emitter;
@@ -319,31 +322,28 @@ function parseVec3Property(content, propName) {
         }
     }
 
-    // Parse dynamics values (list of vec3) - improved pattern
-    // Look for "values: list[vec3] = {" followed by vec3 entries within dynamics block
-    const dynamicsSection = blockContent.match(/dynamics:\s*pointer\s*=\s*VfxAnimatedVector3fVariableData\s*\{[\s\S]*?values:\s*list\[vec3\]\s*=\s*\{([\s\S]*?)\}\s*\}/i);
-    if (dynamicsSection) {
-        const valuesContent = dynamicsSection[1];
-        // Match individual vec3 values: { x, y, z }
-        const vectorMatches = valuesContent.matchAll(/\{\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\}/g);
-        for (const vm of vectorMatches) {
-            result.dynamicsValues.push({
-                x: parseFloat(vm[1]),
-                y: parseFloat(vm[2]),
-                z: parseFloat(vm[3])
-            });
-        }
-    }
+    // Parse dynamics values (list of vec3) - robust approach
+    const dynamicsMatch = blockContent.match(/dynamics:\s*pointer\s*=\s*VfxAnimatedVector3fVariableData\s*\{/i);
+    if (dynamicsMatch) {
+        const dynStart = dynamicsMatch.index;
+        const dynBlock = extractBlock(blockContent, dynStart + dynamicsMatch[0].length - 1);
 
-    // Fallback to simpler pattern if the above didn't match
-    if (result.dynamicsValues.length === 0) {
-        const simpleMatch = blockContent.match(/values:\s*list\[vec3\]\s*=\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/i);
-        if (simpleMatch) {
-            const vectorMatches = simpleMatch[1].matchAll(/\{\s*([^}]+)\}/g);
-            for (const vm of vectorMatches) {
-                const values = vm[1].split(',').map(v => parseFloat(v.trim()));
-                if (values.length >= 3 && !isNaN(values[0])) {
-                    result.dynamicsValues.push({ x: values[0], y: values[1], z: values[2] });
+        if (dynBlock) {
+            const valuesMatch = dynBlock.match(/values:\s*list\[vec3\]\s*=\s*\{/i);
+            if (valuesMatch) {
+                const valuesStart = valuesMatch.index;
+                const valuesBlock = extractBlock(dynBlock, valuesStart + valuesMatch[0].length - 1);
+
+                if (valuesBlock) {
+                    // Match individual vec3 values: { x, y, z }
+                    const vectorMatches = valuesBlock.matchAll(/\{\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\}/g);
+                    for (const vm of vectorMatches) {
+                        result.dynamicsValues.push({
+                            x: parseFloat(vm[1]),
+                            y: parseFloat(vm[2]),
+                            z: parseFloat(vm[3])
+                        });
+                    }
                 }
             }
         }
