@@ -1,0 +1,24 @@
+{
+  "name": "cs16.css",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:css": "pnpm run build:autoprefix && pnpm run build:cleancss",
+    "build:autoprefix": "postcss --use autoprefixer postcss-pxtorem --no-map --output css/cs16.css src/cs16.css",
+    "build:cleancss": "postcss --use cssnano --no-map -o css/cs16.min.css src/cs16.css"
+  },
+  "devDependencies": {
+    "vite": "^6.0.5"
+  },
+  "packageManager": "pnpm@9.15.3+sha512.1f79bc245a66eb0b07c5d4d83131240774642caaa86ef7d0434ab47c0d16f66b04e21e0c086eb61e62c77efc4d7f7ec071afad3796af64892fae66509173893a",
+  "dependencies": {
+    "autoprefixer": "^10.4.20",
+    "cssnano": "^7.0.6",
+    "postcss-cli": "^11.0.0",
+    "postcss-pxtorem": "^6.1.0"
+  }
+}

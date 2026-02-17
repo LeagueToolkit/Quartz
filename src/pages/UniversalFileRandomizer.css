@@ -1,0 +1,222 @@
+/* UniversalFileRandomizer.css */
+
+/* WinForms Theme Overrides */
+[data-style="winforms"] .universal-file-randomizer-root {
+    background: var(--surface) !important;
+    background-image: none !important;
+}
+
+[data-style="winforms"] .background-lights {
+    display: none !important;
+}
+
+[data-style="winforms"] .glass-section,
+[data-style="winforms"] .glass-button {
+    background: var(--surface) !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+[data-style="winforms"] .mode-dropdown {
+    background: var(--surface) !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+[data-style="winforms"] .glass-modal-content {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+[data-style="winforms"] .glass-modal-header {
+    background: var(--surface) !important;
+    border-bottom: 1px solid var(--border) !important;
+}
+
+/* CS1.6 Theme Overrides */
+[data-style="cs16"] .universal-file-randomizer-root {
+    background: var(--bg) !important;
+    background-image: none !important;
+    font-family: 'ArialPixel', system-ui, sans-serif !important;
+}
+
+[data-style="cs16"] .universal-file-randomizer-root * {
+    font-family: 'ArialPixel', system-ui, sans-serif !important;
+}
+
+[data-style="cs16"] .background-lights {
+    display: none !important;
+}
+
+[data-style="cs16"] .glass-section {
+    background: var(--surface) !important;
+    border: 1px solid !important;
+    border-color: var(--border-light) var(--border-dark) var(--border-dark) var(--border-light) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 4px !important;
+    /* Match Card padding */
+}
+
+[data-style="cs16"] .glass-button {
+    background: var(--bg) !important;
+    color: #fff !important;
+    border: 1px solid !important;
+    border-color: var(--border-light) var(--border-dark) var(--border-dark) var(--border-light) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 4px 5px 3px !important;
+    /* Exact match to theme-variables.css */
+    font-size: 1rem !important;
+    /* Exact match */
+    line-height: 0.9375rem !important;
+    /* Exact match */
+    height: auto !important;
+    min-height: 24px !important;
+    background-image: none !important;
+    text-transform: none !important;
+    font-weight: normal !important;
+    font-family: 'ArialPixel', system-ui, sans-serif !important;
+    transition: none !important;
+}
+
+[data-style="cs16"] .glass-button:hover {
+    background: var(--bg) !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+[data-style="cs16"] .glass-button:active {
+    border-color: var(--border-dark) var(--border-light) var(--border-light) var(--border-dark) !important;
+    transform: translate(1px, 1px) !important;
+    /* Physical click effect */
+}
+
+[data-style="cs16"] .mode-dropdown {
+    background: var(--surface) !important;
+    border: 1px solid !important;
+    border-color: var(--border-light) var(--border-dark) var(--border-dark) var(--border-light) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+[data-style="cs16"] .glass-modal-content {
+    background: var(--surface) !important;
+    border: 1px solid !important;
+    border-color: var(--border-light) var(--border-dark) var(--border-dark) var(--border-light) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+[data-style="cs16"] .glass-modal-header {
+    background: var(--surface) !important;
+    border-bottom: 1px solid !important;
+    border-color: var(--border-light) var(--border-dark) var(--border-dark) var(--border-light) !important;
+}
+
+/* Ensure text colors are correct */
+[data-style="winforms"] .MuiTypography-root,
+[data-style="cs16"] .MuiTypography-root {
+    color: var(--text) !important;
+}
+
+[data-style="winforms"] .MuiSvgIcon-root,
+[data-style="cs16"] .MuiSvgIcon-root {
+    color: var(--text) !important;
+}
+
+/* CS1.6 Radio Buttons */
+[data-style="cs16"] input[type="radio"] {
+    opacity: 0 !important;
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    clip: rect(1px, 1px, 1px, 1px) !important;
+}
+
+[data-style="cs16"] input[type="radio"]+label {
+    position: relative !important;
+    cursor: pointer !important;
+    padding-left: 18px !important;
+    /* Space for the custom radio icon */
+    user-select: none !important;
+    color: var(--text) !important;
+    display: inline-block !important;
+    line-height: 15px !important;
+    font-size: 1rem !important;
+    /* Match ArialPixel size */
+}
+
+/* Unchecked State - Custom Circle */
+[data-style="cs16"] input[type="radio"]+label::before {
+    content: "" !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 1px !important;
+    width: 12px !important;
+    height: 12px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M10,2 11,2 11,3 10,3 M10,3 11,3 11,4 10,4 M11,4 12,4 12,5 11,5 M11,5 12,5 12,6 11,6 M11,6 12,6 12,7 11,7 M11,7 12,7 12,8 11,8 M10,8 11,8 11,9 10,9 M10,9 11,9 11,10 10,10 M8,10 9,10 9,11 8,11 M9,10 10,10 10,11 9,11 M7,11 8,11 8,12 7,12 M6,11 7,11 7,12 6,12 M5,11 6,11 6,12 5,12 M2,10 3,10 3,11 2,11 M3,10 4,10 4,11 3,11 M4,11 5,11 5,12 4,12 ' fill='%23889180'/%3E%3Cpath d='M1,2 2,2 2,3 1,3 M1,3 2,3 2,4 1,4 M2,1 3,1 3,2 2,2 M3,1 4,1 4,2 3,2 M4,0 5,0 5,1 4,1 M5,0 6,0 6,1 5,1 M6,0 7,0 7,1 6,1 M7,0 8,0 8,1 7,1 M8,1 9,1 9,2 8,2 M9,1 10,1 10,2 9,2 M0,4 1,4 1,5 0,5 M0,5 1,5 1,6 0,6 M0,6 1,6 1,7 0,7 M0,7 1,7 1,8 0,8 M1,8 2,8 2,9 1,9 M1,9 2,9 2,10 1,10 ' fill='%23292c21'/%3E%3Cpath d='M4,1 5,1 5,2 4,2 M5,1 6,1 6,2 5,2 M6,1 7,1 7,2 6,2 M7,1 8,1 8,2 7,2 M8,2 9,2 9,3 8,3 M9,2 10,2 10,3 9,3 M9,3 10,3 10,4 9,4 M9,4 10,4 10,5 9,5 M10,4 11,4 11,5 10,5 M10,5 11,5 11,6 10,6 M10,6 11,6 11,7 10,7 M10,7 11,7 11,8 10,8 M9,7 10,7 10,8 9,8 M9,8 10,8 10,9 9,9 M9,9 10,9 10,10 9,10 M8,9 9,9 9,10 8,10 M7,9 8,9 8,10 7,10 M7,10 8,10 8,11 7,11 M6,10 7,10 7,11 6,11 M5,10 6,10 6,11 5,11 M4,10 5,10 5,11 4,11 M6,9 7,9 7,10 6,10 M5,9 6,9 6,10 5,10 M4,9 5,9 5,10 4,10 M3,9 4,9 4,10 3,10 M2,9 3,9 3,10 2,10 M2,8 3,8 3,9 2,9 M1,7 2,7 2,8 1,8 M1,4 2,4 2,5 1,5 M2,3 3,3 3,4 2,4 M2,2 3,2 3,3 2,3 M3,2 4,2 4,3 3,3 M4,2 5,2 5,3 4,3 M5,2 6,2 6,3 5,3 M6,2 7,2 7,3 6,3 M7,2 8,2 8,3 7,3 M3,3 4,3 4,4 3,4 M2,4 3,4 3,5 2,5 M2,5 3,5 3,6 2,6 M1,5 2,5 2,6 1,6 M1,6 2,6 2,7 1,7 M2,6 3,6 3,7 2,7 M2,7 3,7 3,8 2,8 M3,8 4,8 4,9 3,9 M3,7 4,7 4,8 3,8 M3,6 4,6 4,7 3,7 M3,5 4,5 4,6 3,6 M3,4 4,4 4,5 3,5 M4,3 5,3 5,4 4,4 M5,3 6,3 6,4 5,4 M5,4 6,4 6,5 5,5 M4,8 5,8 5,9 4,9 M4,7 5,7 5,8 4,8 M4,6 5,6 5,7 4,7 M4,4 5,4 5,5 4,5 M4,5 5,5 5,6 4,6 M5,5 6,5 6,6 5,6 M5,6 6,6 6,7 5,7 M5,7 6,7 6,8 5,8 M5,8 6,8 6,9 5,9 M6,8 7,8 7,9 6,9 M6,7 7,7 7,8 6,8 M6,6 7,6 7,7 6,7 M6,3 7,3 7,4 6,4 M6,4 7,4 7,5 6,5 M6,5 7,5 7,6 6,6 M7,7 8,7 8,8 7,8 M7,8 8,8 8,9 7,9 M8,8 9,8 9,9 8,9 M8,7 9,7 9,8 8,8 M7,6 8,6 8,7 7,7 M7,5 8,5 8,6 7,6 M7,4 8,4 8,5 7,5 M7,3 8,3 8,4 7,4 M8,3 9,3 9,4 8,4 M8,4 9,4 9,5 8,5 M8,5 9,5 9,6 8,6 M8,6 9,6 9,7 8,7 M9,6 10,6 10,7 9,7 M9,5 10,5 10,6 9,6 ' fill='%233e4637'/%3E%3C/svg%3E") !important;
+}
+
+/* Checked State - Add Dot */
+[data-style="cs16"] input[type="radio"]:checked+label {
+    color: var(--accent) !important;
+}
+
+[data-style="cs16"] input[type="radio"]:checked+label::after {
+    content: "" !important;
+    position: absolute !important;
+    left: 3px !important;
+    top: 4px !important;
+    width: 6px !important;
+    height: 6px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6' viewBox='0 0 6 6'%3E%3Cpath d='M1,0 2,0 2,1 1,1 M3,0 4,0 4,1 3,1 M4,0 5,0 5,1 4,1 M4,1 5,1 5,2 4,2 M5,1 6,1 6,2 5,2 M5,2 6,2 6,3 5,3 M5,3 6,3 6,4 5,4 M5,4 6,4 6,5 5,5 M4,5 5,5 5,6 4,6 M3,5 4,5 4,6 3,6 M2,5 3,5 3,6 2,6 M1,5 2,5 2,6 1,6 M0,4 1,4 1,5 0,5 M0,3 1,3 1,4 0,4 M0,2 1,2 1,3 0,3 M1,2 2,2 2,3 1,3 M1,3 2,3 2,4 1,4 M1,4 2,4 2,5 1,5 M2,4 3,4 3,5 2,5 M2,3 3,3 3,4 2,4 M2,0 3,0 3,1 2,1 M2,1 3,1 3,2 2,2 M3,1 4,1 4,2 3,2 M3,3 4,3 4,4 3,4 M3,4 4,4 4,5 3,5 M4,4 5,4 5,5 4,5 M4,3 5,3 5,4 4,4 M4,2 5,2 5,3 4,3 M3,2 4,2 4,3 3,3 M2,2 3,2 3,3 2,3 M1,1 2,1 2,2 1,2 M0,1 1,1 1,2 0,2 ' fill='%23c4b550'/%3E%3C/svg%3E") !important;
+}
+
+/* CS1.6 Mode Dropdown */
+[data-style="cs16"] .mode-dropdown {
+    background-color: var(--secondary-bg) !important;
+    border: 1px solid !important;
+    border-color: var(--border-dark) var(--border-light) var(--border-light) var(--border-dark) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    color: var(--text) !important;
+}
+
+[data-style="cs16"] .mode-dropdown-menu {
+    background-color: var(--bg) !important;
+    border: 1px solid !important;
+    border-color: var(--border-light) var(--border-dark) var(--border-dark) var(--border-light) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    margin-top: 0 !important;
+}
+
+[data-style="cs16"] .mode-dropdown-item {
+    color: var(--text-2) !important;
+    border-radius: 0 !important;
+}
+
+[data-style="cs16"] .mode-dropdown-item:hover {
+    background-color: var(--accent) !important;
+    color: var(--surface) !important;
+}

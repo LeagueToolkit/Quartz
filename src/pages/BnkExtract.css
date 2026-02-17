@@ -1,0 +1,290 @@
+/**
+ * BnkExtract.css - Styles for the BNK Extract audio tool
+ */
+
+.bnk-extract-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.bnk-extract-header {
+    display: flex;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.bnk-extract-header h1 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    margin: 0;
+}
+
+.bnk-extract-main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.bnk-extract-tree {
+    flex: 1;
+    overflow: auto;
+    background: rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    margin: 1.25rem;
+    padding: 0.75rem;
+}
+
+.bnk-extract-tree::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.bnk-extract-tree::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 5px;
+}
+
+.bnk-extract-tree::-webkit-scrollbar-thumb {
+    background: rgba(var(--accent-rgb), 0.3);
+    border-radius: 5px;
+}
+
+.bnk-extract-tree::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--accent-rgb), 0.5);
+}
+
+.bnk-extract-sidebar {
+    width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1.25rem;
+    padding-left: 0;
+}
+
+.bnk-extract-btn {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--accent);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    text-transform: none;
+    text-align: left;
+    padding: 0.65rem 1.25rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    transition: all 0.15s ease;
+}
+
+.bnk-extract-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--accent);
+}
+
+.bnk-extract-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.bnk-extract-btn.primary {
+    background: rgba(var(--accent-rgb), 0.2);
+}
+
+/* Tree Node Styles */
+.tree-node {
+    user-select: none;
+}
+
+.tree-node-row {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.1s ease;
+}
+
+.tree-node-row:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.tree-node-row.selected {
+    background: rgba(var(--accent-rgb), 0.2);
+}
+
+.tree-node-row.selected:hover {
+    background: rgba(var(--accent-rgb), 0.25);
+}
+
+.tree-node-toggle {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+}
+
+.tree-node-icon {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.5;
+}
+
+.tree-node-label {
+    font-size: 0.85rem;
+    font-family: 'JetBrains Mono', monospace;
+    margin-left: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tree-node-label.audio {
+    color: var(--accent);
+}
+
+.tree-node-label.folder {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.tree-node-children {
+    margin-left: 0;
+}
+
+/* Input Styles */
+.bnk-extract-input {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    padding: 10px 14px;
+    flex: 1;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.bnk-extract-input:focus {
+    border-color: var(--accent);
+}
+
+.bnk-extract-input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+/* File Selection Row */
+.file-select-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+/* Status Bar */
+.bnk-extract-status {
+    font-size: 0.75rem;
+    opacity: 0.5;
+}
+
+/* Context Menu */
+.bnk-extract-context-menu {
+    background: rgba(20, 20, 25, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 0.25rem 0;
+    min-width: 180px;
+}
+
+.bnk-extract-context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent);
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.bnk-extract-context-menu-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.bnk-extract-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 0.25rem 0;
+}
+
+/* Settings Menu */
+.bnk-extract-settings {
+    background: rgba(20, 20, 25, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 0.5rem;
+}
+
+.bnk-extract-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.bnk-extract-checkbox input {
+    accent-color: var(--accent);
+}
+
+/* Empty State */
+.bnk-extract-empty {
+    opacity: 0.3;
+    text-align: center;
+    margin-top: 2rem;
+    font-size: 0.8rem;
+}
+
+/* Loading */
+.bnk-extract-loading {
+    height: 2px;
+    background: linear-gradient(90deg,
+            transparent 0%,
+            var(--accent) 50%,
+            transparent 100%);
+    animation: loading-slide 1.5s infinite ease-in-out;
+}
+
+@keyframes loading-slide {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(100%);
+    }
+}

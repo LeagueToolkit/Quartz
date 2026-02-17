@@ -1,0 +1,148 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme Variables */
+@import './styles/theme-variables.css';
+
+
+
+/* App-level defaults */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* Wallpaper Overrides - Ultra Transparent */
+.has-wallpaper {
+  --mui-background: transparent !important;
+  --bg: rgba(0, 0, 0, 0.15) !important;
+  --bg-2: rgba(15, 15, 15, 0.2) !important;
+  --surface: rgba(10, 10, 15, 0.25) !important;
+  --surface-2: rgba(20, 20, 30, 0.2) !important;
+  --glass-bg: rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Target the main content container specifically */
+.has-wallpaper .main-content-area,
+.has-wallpaper .modern-navigation {
+  background-color: transparent !important;
+}
+
+/* Glassy effect for main containers and list backgrounds - stays transparent */
+.has-wallpaper .bin-editor-container,
+.has-wallpaper .frog-changer-container,
+.has-wallpaper .vfx-hub-container,
+.has-wallpaper .port-container,
+.has-wallpaper .paint-container,
+.has-wallpaper .upscale-container,
+.has-wallpaper .bumpath-container,
+.has-wallpaper .img-recolor-container,
+.has-wallpaper .settings-container,
+.has-wallpaper .bnk-extract-container,
+.has-wallpaper .vfx-particle-list,
+.has-wallpaper .bin-editor-list,
+.has-wallpaper .bin-editor-props {
+  background: rgba(15, 13, 20, 0.6) !important;
+  backdrop-filter: blur(var(--glass-blur, 10px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Tinted cards with increased transparency as requested */
+.has-wallpaper .main-page-card {
+  background: rgba(22, 20, 28, 0.35) !important;
+  backdrop-filter: blur(var(--glass-blur, 10px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* BNK Extract specific - darker panels for readability */
+.has-wallpaper .bnk-extract-tree,
+.has-wallpaper .bnk-extract-header {
+  background: rgba(10, 10, 15, 0.75) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Systems and Emitters - Less transparent for high readability (Port, VFX Hub, Bin Editor) */
+.has-wallpaper .Particle-Div,
+.has-wallpaper .Material-Div,
+.has-wallpaper .particle-div,
+.has-wallpaper .material-div,
+.has-wallpaper .Emitter-Div,
+.has-wallpaper .bin-editor-item,
+.has-wallpaper .bin-editor-emitter {
+  background: rgba(22, 20, 28, 0.85) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  margin-bottom: 4px;
+  backdrop-filter: blur(8px);
+}
+
+/* Paint Page Override - Keep ultra-transparent as per original design */
+.has-wallpaper .paint-container .Particle-Div,
+.has-wallpaper .paint-container .Material-Div,
+.has-wallpaper .paint-container .Emitter-Div {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  margin-bottom: 2px;
+  backdrop-filter: none;
+}
+
+.has-wallpaper .Emitter-Div:hover,
+.has-wallpaper .bin-editor-item:hover,
+.has-wallpaper .bin-editor-emitter:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Bin Editor Selection */
+.has-wallpaper .bin-editor-item.selected,
+.has-wallpaper .bin-editor-emitter.selected {
+  background: rgba(157, 140, 217, 0.2) !important;
+  border: 1px solid rgba(157, 140, 217, 0.4) !important;
+}
+
+.has-wallpaper .bin-editor-emitter.selected {
+  background: rgba(236, 185, 106, 0.2) !important;
+  border: 1px solid rgba(236, 185, 106, 0.4) !important;
+}
+
+/* Port Selection & Highlights */
+.has-wallpaper .particle-div.selected-system {
+  border: 1px solid rgba(var(--accent-rgb, 236, 185, 106), 0.4) !important;
+}
+
+.has-wallpaper .selected-system .particle-title-div {
+  background: rgba(var(--accent-rgb, 236, 185, 106), 0.25) !important;
+  border-bottom: 1px solid rgba(var(--accent-rgb, 236, 185, 106), 0.2) !important;
+}
+
+.has-wallpaper .selected-system .particle-title-div .selected {
+  background: transparent !important;
+  /* Prevent double background since parent handles it */
+}
+
+.has-wallpaper .Particle-Title-Div {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Special case for pages with hardcoded background variables */
+.has-wallpaper [style*="--bg"] {
+  background-color: var(--bg) !important;
+}
+
+/* Persistent Modal - Fix for wallpaper transparency */
+.persistent-modal {
+  background: var(--bg-2);
+}
+
+.has-wallpaper .persistent-modal {
+  background: rgba(18, 18, 24, 0.95) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}

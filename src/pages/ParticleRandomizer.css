@@ -1,0 +1,531 @@
+/* ParticleRandomizer.css */
+
+.particle-randomizer {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--app-font-family), -apple-system, sans-serif;
+    overflow: hidden;
+}
+
+/* ── Header ─────────────────────────────────────────── */
+.pr-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.pr-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.pr-header h1 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pr-header h1 span {
+    font-size: 12px;
+    color: var(--text-2, #888);
+    font-weight: 400;
+}
+
+.pr-status {
+    font-size: 12px;
+    color: #888;
+}
+
+.pr-status.success {
+    color: #22c55e;
+}
+
+.pr-status.error {
+    color: #ef4444;
+}
+
+/* ── Buttons ────────────────────────────────────────── */
+.pr-btn {
+    padding: 8px 14px;
+    border-radius: var(--border-radius, 6px);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    outline: none;
+    white-space: nowrap;
+}
+
+.pr-btn:hover {
+    filter: brightness(1.2);
+}
+
+.pr-btn-green {
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid #22c55e;
+    color: #22c55e;
+}
+
+.pr-btn-accent {
+    background: rgba(139, 92, 246, 0.15);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+}
+
+.pr-btn-amber {
+    background: rgba(236, 185, 106, 0.15);
+    border: 1px solid #ecb96a;
+    color: #ecb96a;
+}
+
+.pr-btn-blue {
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid #3b82f6;
+    color: #3b82f6;
+}
+
+.pr-btn-red {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid #ef4444;
+    color: #ef4444;
+}
+
+.pr-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: none;
+}
+
+.pr-btn-small {
+    padding: 4px 10px;
+    font-size: 11px;
+}
+
+/* ── Main Layout ────────────────────────────────────── */
+.pr-main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}
+
+/* ── Left Panel (VFX list) ──────────────────────────── */
+.pr-left-panel {
+    width: 50%;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.pr-search-bar {
+    padding: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.pr-search-input {
+    flex: 1;
+    min-width: 150px;
+    padding: 6px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--border-radius, 4px);
+    color: #e8e6e3;
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.pr-search-input:focus {
+    border-color: var(--accent);
+}
+
+.pr-search-count {
+    font-size: 11px;
+    color: #888;
+    white-space: nowrap;
+}
+
+.pr-selection-bar {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.pr-selection-count {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.pr-vfx-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
+}
+
+.pr-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #666;
+    gap: 12px;
+}
+
+.pr-empty-state .icon {
+    font-size: 48px;
+}
+
+/* ── VFX Entry Items ────────────────────────────────── */
+.pr-vfx-item {
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: var(--border-radius, 4px);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    user-select: none;
+}
+
+.pr-vfx-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.pr-vfx-item.selected {
+    background: rgba(236, 185, 106, 0.2);
+    border-color: rgba(236, 185, 106, 0.4);
+}
+
+.pr-vfx-item.hidden {
+    display: none;
+}
+
+.pr-vfx-checkbox {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.pr-vfx-label {
+    flex: 1;
+    font-size: 12px;
+    font-weight: 500;
+    color: #e8e6e3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.pr-vfx-item.selected .pr-vfx-label {
+    color: #ecb96a;
+}
+
+/* ── Right Panel (Config / Output) ──────────────────── */
+.pr-right-panel {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.pr-config-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+}
+
+.pr-section {
+    margin-bottom: 20px;
+}
+
+.pr-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pr-section-title .badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    background: rgba(139, 92, 246, 0.15);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 12px;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* ── Number Input ───────────────────────────────────── */
+.pr-number-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.pr-number-row label {
+    font-size: 12px;
+    color: #aaa;
+    white-space: nowrap;
+}
+
+.pr-number-input {
+    width: 70px;
+    padding: 6px 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--border-radius, 4px);
+    color: #e8e6e3;
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+    text-align: center;
+    outline: none;
+}
+
+.pr-number-input:focus {
+    border-color: var(--accent);
+}
+
+/* ── Checkbox Options ───────────────────────────────── */
+.pr-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    cursor: pointer;
+}
+
+.pr-option input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+
+.pr-option label {
+    font-size: 12px;
+    color: #ccc;
+    cursor: pointer;
+    user-select: none;
+}
+
+.pr-option .hint {
+    font-size: 10px;
+    color: #666;
+    margin-left: 4px;
+}
+
+/* ── Prefix Inputs ──────────────────────────────────── */
+.pr-prefix-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 10px;
+    align-items: center;
+    margin-top: 8px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--border-radius, 6px);
+}
+
+.pr-prefix-grid label {
+    font-size: 11px;
+    color: #888;
+    white-space: nowrap;
+}
+
+.pr-prefix-input {
+    padding: 5px 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--border-radius, 4px);
+    color: #e8e6e3;
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+}
+
+.pr-prefix-input:focus {
+    border-color: var(--accent);
+}
+
+/* ── Asset Folder Inputs ────────────────────────────── */
+.pr-asset-grid {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 6px 10px;
+    align-items: center;
+    margin-top: 8px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--border-radius, 6px);
+}
+
+.pr-asset-grid .path-hint {
+    font-size: 10px;
+    color: #555;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* ── Assets Output ──────────────────────────────────── */
+.pr-assets-output {
+    margin-top: 12px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--border-radius, 6px);
+}
+
+.pr-assets-folder {
+    margin-bottom: 12px;
+}
+
+.pr-assets-folder-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 4px;
+}
+
+.pr-assets-folder-path {
+    font-size: 10px;
+    color: #555;
+    font-family: 'JetBrains Mono', monospace;
+    margin-bottom: 6px;
+}
+
+.pr-assets-folder ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 80px;
+    overflow-y: auto;
+}
+
+.pr-assets-folder li {
+    font-size: 11px;
+    color: #999;
+    padding: 2px 0;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* ── Action Bar ─────────────────────────────────────── */
+.pr-action-bar {
+    padding: 12px 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* ── Scrollbar ──────────────────────────────────────── */
+.pr-vfx-list::-webkit-scrollbar,
+.pr-config-area::-webkit-scrollbar {
+    width: 6px;
+}
+
+.pr-vfx-list::-webkit-scrollbar-track,
+.pr-config-area::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.pr-vfx-list::-webkit-scrollbar-thumb,
+.pr-config-area::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+
+.pr-vfx-list::-webkit-scrollbar-thumb:hover,
+.pr-config-area::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Info tooltip ───────────────────────────────────── */
+.pr-info-tip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    color: #888;
+    font-size: 10px;
+    cursor: help;
+    flex-shrink: 0;
+}
+
+/* ── Badges (variant / randomizer indicators) ───────── */
+.pr-badge {
+    padding: 1px 7px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.pr-badge-variant {
+    background: rgba(157, 140, 217, 0.15);
+    border: 1px solid rgba(157, 140, 217, 0.35);
+    color: #9d8cd9;
+}
+
+.pr-badge-randomizer {
+    background: rgba(236, 185, 106, 0.15);
+    border: 1px solid rgba(236, 185, 106, 0.35);
+    color: #ecb96a;
+    font-size: 12px;
+}
+
+/* ── Asset hint text ────────────────────────────────── */
+.pr-asset-hint {
+    font-size: 11px;
+    color: #666;
+    margin-bottom: 8px;
+    line-height: 1.5;
+}
+
+.pr-asset-hint code {
+    background: rgba(255, 255, 255, 0.06);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: #ecb96a;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+}

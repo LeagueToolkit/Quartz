@@ -1,0 +1,127 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+build/
+dist/
+out/
+coverage/
+.cache/
+.eslintcache
+
+# OS / Editor files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+*.orig
+*.tmp
+*.bak
+*.backup
+*.old
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+testlog.log
+localhost-*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-*
+
+# Temporary folders
+tmp/
+temp/
+temp_build/
+
+# Application specific
+skin0.json
+*.rar
+*.zip
+debug_*.js
+test-*.html
+
+debug-*.html
+debug-*.js
+
+# Electron packaging artifacts
+*.exe
+*.dmg
+*.msi
+*.deb
+*.rpm
+*.AppImage
+*.asar
+release/
+electron-out/
+
+# App-specific user prefs
+preferences.json
+
+# Tools and binaries
+tools/executables/
+tools/ritobin_cli.exe
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Project specific ignores
+# Ignore the entire LtMAO-hai folder
+LtMAO-hai/
+
+# Ignore palette folder
+palette/
+
+# Ignore vfxhub assets
+assets/vfxhub/
+
+# Ignore repath tool test files
+repath tool test/
+
+# Third-party tools and external projects
+League Mod Repather/
+bnk-extract-GUI-master/
+
+# Optional development/build scripts (user-specific convenience files)
+setup.bat
+start_bumpath_backend.bat
+create-minimal-ltmao.bat
+
+# PyInstaller spec files with hardcoded paths (keep standalone_final.spec if it's path-agnostic)
+bumpath_backend.spec
+
+# Keep Python files in main folder (not ignored)
+# All .py files in root directory are kept
+# requirements.txt is kept (needed for dependencies)

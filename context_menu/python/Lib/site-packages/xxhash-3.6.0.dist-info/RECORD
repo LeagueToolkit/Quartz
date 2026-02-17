@@ -1,0 +1,14 @@
+xxhash-3.6.0.dist-info/INSTALLER,sha256=zuuue4knoyJ-UwPPXg8fezS7VCrXJQrAP7zeNuwvFQg,4
+xxhash-3.6.0.dist-info/METADATA,sha256=mPxw1RoX3qQxbuYGaGeu-Oi04-y7D3HFycbAhyHToAg,13721
+xxhash-3.6.0.dist-info/RECORD,,
+xxhash-3.6.0.dist-info/REQUESTED,sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0
+xxhash-3.6.0.dist-info/WHEEL,sha256=8UP9x9puWI0P1V_d7K2oMTBqfeLNm21CTzZ_Ptr0NXU,101
+xxhash-3.6.0.dist-info/licenses/LICENSE,sha256=s8YgrcmogSzAw8f8CVZ_qamTDTVG3pVd-5VbFoz5iaw,1313
+xxhash-3.6.0.dist-info/top_level.txt,sha256=1PPSBP-gnjG59E5bigzMTzmT6BVWjHwnpzMiisPWZ5I,15
+xxhash/__init__.py,sha256=mPEdihxDMU0rjLWum3FrU9Ua2jQ-rzfewYgIg-J-Jlc,1147
+xxhash/__init__.pyi,sha256=wtUIx1kTqei5PRPbaSfCrax9v9E3GoGHa5UN5s_1Jyc,1899
+xxhash/__pycache__/__init__.cpython-312.pyc,,
+xxhash/__pycache__/version.cpython-312.pyc,,
+xxhash/_xxhash.cp312-win_amd64.pyd,sha256=FSJBQ0d0pTDmPKjh4HwY0-S12UR-QD1OIWbCjwsVy9o,59904
+xxhash/py.typed,sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0
+xxhash/version.py,sha256=mAU8_8ohXNGl5LtYt2yUduSKweEkEK0R3U_-zZXyHNI,101

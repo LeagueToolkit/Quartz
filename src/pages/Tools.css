@@ -1,0 +1,35 @@
+/* Tools.css */
+
+/* Default Styles (Quartz/Modern) */
+.tools-root {
+    background: var(--bg);
+}
+
+.background-lights {
+    display: block;
+}
+
+/* WinForms Overrides */
+[data-style="winforms"] .tools-root {
+    background: var(--surface) !important;
+    background-image: none !important;
+}
+
+[data-style="winforms"] .background-lights {
+    display: none !important;
+}
+
+/* CS1.6 Theme Overrides */
+[data-style="cs16"] .tools-root {
+    background: var(--bg) !important;
+    background-image: none !important;
+    font-family: 'ArialPixel', system-ui, sans-serif !important;
+}
+
+[data-style="cs16"] .tools-root * {
+    font-family: 'ArialPixel', system-ui, sans-serif !important;
+}
+
+[data-style="cs16"] .background-lights {
+    display: none !important;
+}

@@ -1,0 +1,180 @@
+{
+  "name": "quartz",
+  "productName": "Quartz",
+  "version": "2.7.0",
+  "description": "Quartz - League of Legends Modding Suite",
+  "homepage": "./",
+  "main": "electron-main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RitoShark/DivineLab"
+  },
+  "build": {
+    "appId": "com.github.ritoshark.quartz",
+    "directories": {
+      "buildResources": "assets"
+    },
+    "files": [
+      "build/**/*",
+      "electron-main.js",
+      "package.json",
+      "javascript/utils.js",
+      "src/utils/hashManager.js"
+    ],
+    "extraMetadata": {
+      "main": "electron-main.js"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "./public/divinelab.ico"
+    },
+    "nsis": {
+      "artifactName": "quartz-${version}-setup.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "include": "installer.nsh"
+    },
+    "extraResources": [
+      {
+        "from": "tools/ritobin_cli.exe",
+        "to": "ritobin_cli.exe"
+      },
+      {
+        "from": "context_menu",
+        "to": "context_menu",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "public/your-logo.gif",
+        "to": "assets/navbar.gif"
+      },
+      {
+        "from": "public/celestia.webp",
+        "to": "assets/celestia.webp"
+      },
+      {
+        "from": "public/codebook.bin",
+        "to": "codebook.bin"
+      },
+      {
+        "from": "public/silence.wem",
+        "to": "silence.wem"
+      },
+      {
+        "from": "public/screen.dds",
+        "to": "public/screen.dds"
+      },
+      {
+        "from": "public/divinelab.ico",
+        "to": "divinelab.ico"
+      },
+      {
+        "from": "public/screen.scb",
+        "to": "public/screen.scb"
+      },
+      {
+        "from": "public/UxYW2KY_x2.png",
+        "to": "UxYW2KY_x2.png"
+      },
+      {
+        "from": "public/cursors",
+        "to": "cursors",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "RitoShark",
+        "repo": "Quartz",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "scripts": {
+    "dev": "concurrently \"react-scripts start\" \"wait-on http://localhost:3000 && electron .\"",
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "package": "electron-forge package",
+    "electron-build": "electron-builder build --win --publish never",
+    "deploy": "electron-builder build --win --publish always",
+    "release:win": "npm run build && electron-builder --win --publish never",
+    "build:all": "npm run build && npm run electron-build",
+    "dist": "npm run build && electron-builder --win --publish never",
+    "dist:no-backend": "npm run build && electron-builder --win --publish never",
+    "dev:test-updates": "cross-env ENABLE_AUTO_UPDATER=true concurrently \"react-scripts start\" \"wait-on http://localhost:3000 && electron .\""
+  },
+  "keywords": [
+    "league-of-legends",
+    "modding",
+    "electron",
+    "react"
+  ],
+  "author": {
+    "name": "Frog"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "dependencies": {
+    "@emotion/react": "^11.11.1",
+    "@emotion/styled": "^11.11.0",
+    "@mongodb-js/zstd": "^2.0.1",
+    "@mui/icons-material": "^5.15.0",
+    "@mui/material": "^5.15.0",
+    "@mui/x-data-grid": "^6.18.0",
+    "electron-color-picker": "^0.2.0",
+    "electron-is-dev": "^2.0.0",
+    "electron-store": "^10.1.0",
+    "electron-updater": "^6.1.7",
+    "fraction.js": "^5.2.2",
+    "lamejs": "^1.2.1",
+    "lodash": "^4.17.21",
+    "lucide-react": "^0.539.0",
+    "open": "^8.4.0",
+    "path-sort": "^0.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.1",
+    "react-scripts": "5.0.1",
+    "react-window": "^2.2.3",
+    "ts-ritofile": "^1.4.0",
+    "wavesurfer.js": "^7.12.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^8.2.2",
+    "electron": "^26.2.1",
+    "electron-builder": "^24.6.4",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.9.2",
+    "wait-on": "^7.2.0"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
