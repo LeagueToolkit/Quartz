@@ -1,7 +1,7 @@
 {
   "name": "quartz",
   "productName": "Quartz",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "description": "Quartz - League of Legends Modding Suite",
   "homepage": "./",
   "main": "electron-main.js",
@@ -19,7 +19,7 @@
       "electron-main.js",
       "package.json",
       "javascript/utils.js",
-      "src/utils/hashManager.js"
+      "src/utils/io/hashManager.js"
     ],
     "extraMetadata": {
       "main": "electron-main.js"

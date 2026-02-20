@@ -15,8 +15,8 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PaletteIcon from '@mui/icons-material/Palette';
 import ColorBlock from './ColorBlock';
-import { getEmitterColors } from '../../../utils/paint2/parser.js';
-import { getMaterialColors } from '../../../utils/paint2/staticMaterialParser.js';
+import { getEmitterColors } from '../utils/parser.js';
+import { getMaterialColors } from '../utils/staticMaterialParser.js';
 
 const ROW_HEIGHT = 42;
 

@@ -26,7 +26,7 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
-import { CreatePicker, cleanupColorPickers } from '../utils/colorUtils';
+import { CreatePicker, cleanupColorPickers } from '../utils/colors/colorUtils';
 
 const RGBA = () => {
   // State for vec4 format (0-1 range for all components)

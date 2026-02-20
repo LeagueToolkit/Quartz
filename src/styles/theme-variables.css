@@ -565,13 +565,6 @@
 
 
 
-@font-face {
-    font-family: 'ArialPixel';
-    src: url('../assets/fonts/ArialPixel.ttf') format('truetype');
-    font-weight: 400;
-    font-style: normal;
-}
-
 /* CS 1.6 - Locked Style (Overrides data-theme colors) */
 [data-style="cs16"] {
     --accent: #c4b550;
@@ -602,7 +595,7 @@
     --scrollbar-track: #5a6a50;
 
     --backdrop-filter: none;
-    font-family: 'ArialPixel', system-ui, sans-serif !important;
+    font-family: system-ui, sans-serif !important;
 }
 
 /* Global Overrides for CS1.6 */
@@ -610,7 +603,7 @@
     border-radius: 0 !important;
     text-shadow: none !important;
     box-shadow: none !important;
-    font-family: 'ArialPixel', system-ui, sans-serif !important;
+    font-family: system-ui, sans-serif !important;
 }
 
 /* Typography Overrides */
@@ -625,7 +618,7 @@
 [data-style="cs16"] div,
 [data-style="cs16"] button,
 [data-style="cs16"] input {
-    font-family: 'ArialPixel', system-ui, sans-serif !important;
+    font-family: system-ui, sans-serif !important;
 }
 
 /* Scrollbars */
@@ -909,7 +902,7 @@
     border-radius: 0 !important;
     color: var(--text) !important;
     padding: 4px 8px !important;
-    font-family: 'ArialPixel', system-ui, sans-serif !important;
+    font-family: system-ui, sans-serif !important;
     min-width: 60px !important;
     height: 28px !important;
 }

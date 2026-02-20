@@ -4,38 +4,38 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { Box } from '@mui/material';
 import './styles/theme-variables.css';
-import ModernNavigation from './components/ModernNavigation';
-import CustomTitleBar, { TITLE_BAR_HEIGHT } from './components/CustomTitleBar';
+import ModernNavigation from './components/app-shell/ModernNavigation';
+import CustomTitleBar, { TITLE_BAR_HEIGHT } from './components/app-shell/CustomTitleBar';
 import MainPage from './pages/MainPage';
-import Paint from './pages/Paint';
 import Paint2 from './pages/paint2';
-import Port from './pages/Port';
-import VFXHub from './pages/VFXHub';
+import Port from './pages/port2';
+import VFXHub from './pages/vfxhub/VFXHub';
 import RGBA from './pages/RGBA';
 
-import ImgRecolor from './pages/ImgRecolor';
-import BinEditorV2 from './pages/BinEditorV2';
+import ImgRecolor from './pages/imgrecolor/ImgRecolor';
+import BinEditorV2 from './pages/bineditor/BinEditorV2';
 import Tools from './pages/Tools';
-import Settings from './pages/Settings';
+import Settings from './pages/settings';
 // HUD Editor moved to archived/removed-features/hud-editor/
 import Upscale from './pages/Upscale';
 import UniversalFileRandomizer from './pages/UniversalFileRandomizer';
-import Bumpath from './pages/Bumpath';
-import AniPort from './pages/AniPortSimple';
-import FrogChanger from './pages/FrogChanger';
-import BnkExtract from './pages/BnkExtract';
-import FakeGearSkin from './pages/FakeGearSkin';
+import Bumpath from './pages/bumpath';
+import AniPort from './pages/aniport/AniPortSimple';
+import FrogChanger from './pages/frogchanger/FrogChanger';
+import BnkExtract from './pages/bnkextract/BnkExtract';
+import FakeGearSkin from './pages/fakegearskin/FakeGearSkin';
 import ParticleRandomizer from './pages/ParticleRandomizer';
-import HashReminderModal from './components/HashReminderModal';
-import AssetPreviewModal from './components/AssetPreviewModal';
+import HashReminderModal from './components/modals/HashReminderModal';
+import AssetPreviewModal from './components/modals/AssetPreviewModal';
 import GlobalClickEffect from './components/ClickEffects/GlobalClickEffect';
 import GlobalBackgroundEffect from './components/BackgroundEffects/GlobalBackgroundEffect';
 import GlobalCursorEffect from './components/CursorEffects/GlobalCursorEffect';
-import GlobalUpdateNotification from './components/GlobalUpdateNotification';
+import GlobalUpdateNotification from './components/app-shell/GlobalUpdateNotification';
+import AppModalWheel from './components/debug/AppModalWheel';
 
-import fontManager from './utils/fontManager.js';
-import electronPrefs from './utils/electronPrefs.js';
-import themeManager from './utils/themeManager.js';
+import fontManager from './utils/theme/fontManager.js';
+import electronPrefs from './utils/core/electronPrefs.js';
+import themeManager from './utils/theme/themeManager.js';
 
 // Component to handle font persistence on route changes
 const FontPersistenceHandler = () => {
@@ -445,6 +445,7 @@ function App() {
           <FontPersistenceHandler />
           <CelestiaNavigationBridge />
           <GlobalUpdateNotification />
+          {false && <AppModalWheel />}
           <GlobalClickEffect enabled={clickEffectEnabled} type={clickEffectType} />
           <GlobalBackgroundEffect enabled={backgroundEffectEnabled} type={backgroundEffectType} />
           <GlobalCursorEffect enabled={cursorEffectEnabled} path={cursorEffectPath} size={cursorEffectSize} />

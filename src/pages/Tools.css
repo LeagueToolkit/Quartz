@@ -23,11 +23,11 @@
 [data-style="cs16"] .tools-root {
     background: var(--bg) !important;
     background-image: none !important;
-    font-family: 'ArialPixel', system-ui, sans-serif !important;
+    font-family: system-ui, sans-serif !important;
 }
 
 [data-style="cs16"] .tools-root * {
-    font-family: 'ArialPixel', system-ui, sans-serif !important;
+    font-family: system-ui, sans-serif !important;
 }
 
 [data-style="cs16"] .background-lights {

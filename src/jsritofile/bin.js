@@ -303,28 +303,35 @@ export class BIN {
     }
 }
 
-let cachedHashtables = null;
+const DEFAULT_TABLE_NAMES = [
+    'hashes.binentries.txt',
+    'hashes.binhashes.txt',
+    'hashes.bintypes.txt',
+    'hashes.binfields.txt',
+    'hashes.game.txt',
+    'hashes.lcu.txt'
+];
+const WAD_HASHES = ['hashes.game.txt', 'hashes.lcu.txt'];
+const hashtablesCache = new Map();
 
 /**
  * Load hashtables from directory (optimized for speed - Python-style fixed slicing)
  * @param {string} hashtablesPath - Path to hashtables directory
+ * @param {Object} options - Optional settings
+ * @param {string[]} options.tables - Subset of table names to load
  * @returns {Promise<Object>} - Hashtables object
  */
-export async function loadHashtables(hashtablesPath) {
-    if (cachedHashtables) return cachedHashtables;
+export async function loadHashtables(hashtablesPath, options = {}) {
+    const requestedTables = Array.isArray(options.tables) && options.tables.length > 0
+        ? options.tables
+        : DEFAULT_TABLE_NAMES;
+    const tableNames = Array.from(new Set(requestedTables)).sort();
+    const cacheKey = `${hashtablesPath}::${tableNames.join('|')}`;
+    if (hashtablesCache.has(cacheKey)) {
+        return hashtablesCache.get(cacheKey);
+    }
 
     const hashtables = {};
-    const tableNames = [
-        'hashes.binentries.txt',
-        'hashes.binhashes.txt',
-        'hashes.bintypes.txt',
-        'hashes.binfields.txt',
-        'hashes.game.txt',
-        'hashes.lcu.txt'
-    ];
-
-    // WAD hashes use 16-char hex, BIN hashes use 8-char hex (like Python's get_hash_separator)
-    const WAD_HASHES = ['hashes.game.txt', 'hashes.lcu.txt'];
 
     // Initialize fs/path if not already done
     if (!fs || !path) {
@@ -386,7 +393,7 @@ export async function loadHashtables(hashtablesPath) {
         }
     }
 
-    cachedHashtables = hashtables;
+    hashtablesCache.set(cacheKey, hashtables);
     return hashtables;
 }
 
@@ -395,6 +402,6 @@ export async function loadHashtables(hashtablesPath) {
  * Useful when hashes are updated at runtime
  */
 export function clearHashtablesCache() {
-    cachedHashtables = null;
+    hashtablesCache.clear();
     console.log('[bin.js] Hashtables cache cleared');
 }

@@ -1,18 +1,7 @@
-/**
- * ParticleRandomizer - VFX Particle Randomizer
- *
- * Duplicates VfxSystemDefinitionData entries with per-copy suffixes,
- * adds ResourceResolver entries, injects a randomizer emitter into the
- * original system, and separates assets per copy by default.
- *
- * Uses the same ritobin .bin → .py → edit → .py → .bin pipeline as BinEditorV2.
- * Uses the same backup system as Paint2 / Port.
- */
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import electronPrefs from '../utils/electronPrefs.js';
-import { loadFileWithBackup, createBackup } from '../utils/backupManager.js';
-import { openAssetPreview } from '../utils/assetPreviewEvent';
+import electronPrefs from '../utils/core/electronPrefs.js';
+import { loadFileWithBackup, createBackup } from '../utils/io/backupManager.js';
+import { openAssetPreview } from '../utils/assets/assetPreviewEvent';
 import GlowingSpinner from '../components/GlowingSpinner.js';
 import './ParticleRandomizer.css';
 
@@ -27,7 +16,7 @@ function escapeRegex(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** Find all VfxSystemDefinitionData paths in .py content */
+
 function findVfxEntries(content) {
     const regex = /"([^"]+)"\s*=\s*VfxSystemDefinitionData\s*\{/g;
     const entries = [];
@@ -38,15 +27,12 @@ function findVfxEntries(content) {
     return entries;
 }
 
-/**
- * Analyze VFX entries and detect which ones already have variants or randomizer emitters.
- * Also identifies which entries are "sub-variants" (children of a randomizer).
- */
+
 function analyzeExistingVariants(content, entries) {
     const info = {};
     const subVariants = new Set();
 
-    // First pass: identify who has a randomizer and what its children are
+
     for (const entry of entries) {
         const startPattern = `"${entry}" = VfxSystemDefinitionData {`;
         const startIndex = content.indexOf(startPattern);
@@ -363,17 +349,6 @@ ${childrenIdentifiers}
     return content.slice(0, openBracePos + 1) + randomizerEmitter + content.slice(closeBracePos);
 }
 
-/**
- * For each duplicate, repath ALL its ASSETS/... string values to ASSETS/<folderName>/<filename>.
- * This flattens deep paths so each variant has its own isolated asset folder.
- * Also creates a _backup entry tracking the original asset paths.
- *
- * Example: "ASSETS/petalsofspringvfx/Characters/Jayce/.../Lillia_Skin19_E_Mote.tex"
- *        → "ASSETS/variant_1/Lillia_Skin19_E_Mote.tex"
- *
- * Returns { content, assetsByFolder } where each folder maps to an array of
- *   { original: "ASSETS/deep/path/file.tex", filename: "file.tex" }
- */
 function separateAssetsPerCopy(content, originalPaths, numCopies, customPrefixes, assetFolderNames) {
     let modifiedContent = content;
     const assetsByFolder = {};

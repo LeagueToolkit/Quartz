@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-globals */
 /**
  * Web Worker for image processing
  * Handles HSL adjustments off the main thread

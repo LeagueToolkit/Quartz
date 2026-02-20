@@ -12,31 +12,40 @@ import PaletteIcon from '@mui/icons-material/Palette';
 import TuneIcon from '@mui/icons-material/Tune';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
-import CloseIcon from '@mui/icons-material/Close';
 
 
 // Utils
-import { parseVfxFile } from '../../utils/paint2/parser.js';
-import { applyPaletteToEmitters, applyPaletteToMaterials } from '../../utils/paint2/colorOps.js';
-import { ToPyWithPath, ToBin } from '../../utils/fileOperations.js';
-import { loadFileWithBackup, createBackup } from '../../utils/backupManager.js';
-import ColorHandler from '../../utils/ColorHandler.js';
-import { savePalette, loadAllPalettes, deletePalette } from '../../utils/paletteManager.js';
-import { createColorFilter, getColorDescription } from '../../utils/colorFilter.js';
-import { CreatePicker } from '../../utils/colorUtils.js';
+import { parseVfxFile } from './utils/parser.js';
+import { applyPaletteToEmitters, applyPaletteToMaterials } from './utils/colorOps.js';
+import { ToPyWithPath, ToBin } from '../../utils/io/fileOperations.js';
+import { loadFileWithBackup, createBackup } from '../../utils/io/backupManager.js';
+import { reparseBinWithFreshPy } from '../../utils/io/reparseHelpers.js';
+import ColorHandler from '../../utils/colors/ColorHandler.js';
+import { savePalette, loadAllPalettes, deletePalette } from './utils/paletteManager.js';
+import { createColorFilter, getColorDescription } from '../../utils/colors/colorFilter.js';
+import { CreatePicker } from '../../utils/colors/colorUtils.js';
 
 // Components
 import Toolbar from './components/Toolbar';
 import SystemList from './components/SystemList';
 import PaletteManager from './components/PaletteManager';
-import BackupViewer from '../../components/BackupViewer';
-import RitobinWarningModal, { detectHashedContent } from '../../components/RitobinWarningModal';
-import electronPrefs from '../../utils/electronPrefs.js';
+import BackupViewer from '../../components/modals/BackupViewer';
+import RitobinWarningModal, { detectHashedContent } from '../../components/modals/RitobinWarningModal';
+import RitoBinErrorDialog from '../../components/modals/RitoBinErrorDialog';
+import UnsavedChangesModal from '../../components/modals/UnsavedChangesModal';
+import electronPrefs from '../../utils/core/electronPrefs.js';
 import HistoryIcon from '@mui/icons-material/History';
 import { Popover } from '@mui/material'; // Kept if needed elsewhere, but unmounting for texture
-import { convertTextureToPNG, findActualTexturePath } from '../../utils/textureConverter.js';
-import { openAssetPreview } from '../../utils/assetPreviewEvent.js';
-import { processDataURL } from '../../utils/rgbaDataURL.js';
+import { convertTextureToPNG, findActualTexturePath } from '../../utils/assets/textureConverter.js';
+import { openAssetPreview } from '../../utils/assets/assetPreviewEvent.js';
+import useUnsavedNavigationGuard from '../../hooks/navigation/useUnsavedNavigationGuard.js';
+import {
+    cancelTextureHoverClose,
+    removeTextureHoverPreview,
+    scheduleTextureHoverClose,
+    showTextureHoverError,
+    showTextureHoverPreview
+} from '../../components/modals/textureHoverPreview.js';
 
 const fs = window.require ? window.require('fs') : null;
 const path = window.require ? window.require('path') : null;
@@ -60,6 +69,10 @@ function Paint2() {
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [paletteToDelete, setPaletteToDelete] = useState(null);
     const [newPaletteName, setNewPaletteName] = useState('');
+    const [showBackupViewer, setShowBackupViewer] = useState(false);
+    const [showRitobinWarning, setShowRitobinWarning] = useState(false);
+    const [ritobinWarningContent, setRitobinWarningContent] = useState(null);
+    const [showRitoBinErrorDialog, setShowRitoBinErrorDialog] = useState(false);
 
     // === SELECTION ===
     const [selection, setSelection] = useState(new Set());
@@ -77,126 +90,7 @@ function Paint2() {
     };
     const [filterAnchor, setFilterAnchor] = useState(null);
     const [variantFilter, setVariantFilter] = useState('all'); // 'all', 'v1', 'v2'
-    const [searchByTexture, setSearchByTexture] = useState(false); // New state for texture search toggle
-
-    // === UNSAVED CHANGES MODAL STATE ===
-    const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
-    const pendingNavigationPathRef = useRef(null);
-
-    // === BACKUP VIEWER STATE ===
-    const [showBackupViewer, setShowBackupViewer] = useState(false);
-
-    // === RITOBIN WARNING MODAL STATE ===
-    const [showRitobinWarning, setShowRitobinWarning] = useState(false);
-    const [ritobinWarningContent, setRitobinWarningContent] = useState(null);
-
-    // Reflect unsaved state globally for navigation guard
-    useEffect(() => {
-        try { window.__DL_unsavedBin = !fileSaved; } catch { }
-    }, [fileSaved]);
-
-    // Intercept navigation when unsaved changes exist
-    useEffect(() => {
-        const handleNavigationBlock = (e) => {
-            console.log('🔒 Navigation blocked event received:', e.detail);
-
-            if (!fileSaved && !window.__DL_forceClose) {
-                // Prevent default and stop propagation
-                if (e.preventDefault) e.preventDefault();
-                if (e.stopPropagation) e.stopPropagation();
-
-                const targetPath = e.detail?.path;
-                console.log('🔒 Target path:', targetPath, 'File saved:', fileSaved);
-
-                if (targetPath) {
-                    // Store navigation path in ref (not state) to avoid render issues
-                    pendingNavigationPathRef.current = targetPath;
-                    setShowUnsavedDialog(true);
-                }
-            }
-        };
-
-        // Listen for custom navigation-block event from ModernNavigation
-        // Use capture phase to catch event early
-        window.addEventListener('navigation-blocked', handleNavigationBlock, true);
-        return () => {
-            window.removeEventListener('navigation-blocked', handleNavigationBlock, true);
-        };
-    }, [fileSaved, navigate]);
-
-    // Warn on window/tab close if unsaved (native dialog for window closing)
-    useEffect(() => {
-        const handleBeforeUnload = (e) => {
-            try {
-                const forceClose = Boolean(window.__DL_forceClose);
-                if (!fileSaved && !forceClose) {
-                    e.preventDefault();
-                    e.returnValue = '';
-                }
-            } catch {
-                if (!fileSaved) {
-                    e.preventDefault();
-                    e.returnValue = '';
-                }
-            }
-        };
-        window.addEventListener('beforeunload', handleBeforeUnload);
-        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, [fileSaved]);
-
-    // Handle unsaved dialog actions
-    const handleUnsavedSave = async () => {
-        const targetPath = pendingNavigationPathRef.current;
-        setShowUnsavedDialog(false);
-        pendingNavigationPathRef.current = null;
-
-        try {
-            await handleSave();
-            // After save, allow navigation
-            window.__DL_forceClose = true;
-            window.__DL_unsavedBin = false;
-
-            if (targetPath) {
-                // Execute navigation after state updates
-                setTimeout(() => {
-                    console.log('🚀 Executing navigation to:', targetPath);
-                    navigate(targetPath);
-                    setTimeout(() => {
-                        window.__DL_forceClose = false;
-                    }, 100);
-                }, 50);
-            }
-        } catch (error) {
-            console.error('Error saving before navigation:', error);
-        }
-    };
-
-    const handleUnsavedDiscard = () => {
-        const targetPath = pendingNavigationPathRef.current;
-        setShowUnsavedDialog(false);
-        pendingNavigationPathRef.current = null;
-
-        // Clear the unsaved flag to allow navigation
-        setFileSaved(true);
-        window.__DL_forceClose = true;
-        window.__DL_unsavedBin = false;
-
-        if (targetPath) {
-            // Execute navigation after state updates
-            setTimeout(() => {
-                console.log('🚀 Executing navigation to:', targetPath);
-                navigate(targetPath);
-                setTimeout(() => {
-                    window.__DL_forceClose = false;
-                }, 100);
-            }, 50);
-        }
-    };
-
-    const handleUnsavedCancel = () => {
-        setShowUnsavedDialog(false);
-        pendingNavigationPathRef.current = null;
-    };
+    const [searchByTexture, setSearchByTexture] = useState(false);
 
     // Persist auto-expand across sessions/navigations
     useEffect(() => {
@@ -204,7 +98,13 @@ function Paint2() {
             if (electronPrefs) {
                 await electronPrefs.initPromise; // Ensure prefs loaded
                 const savedExpand = await electronPrefs.get('PaintAutoExpand');
-                if (savedExpand !== undefined) setAutoExpandWithRef(savedExpand);
+                if (savedExpand === undefined) {
+                    // First install/default: enable auto-expand on load.
+                    setAutoExpandWithRef(true);
+                    await electronPrefs.set('PaintAutoExpand', true);
+                } else {
+                    setAutoExpandWithRef(savedExpand);
+                }
 
                 // RESTORE PALETTE (for random/linear modes)
                 const savedPalette = await electronPrefs.get('Paint2LastPalette');
@@ -478,10 +378,21 @@ function Paint2() {
         } catch (error) {
             console.error('Error saving:', error);
             setStatusMessage(`Save error: ${error.message}`);
+            const errorText = String(error?.message || '').toLowerCase();
+            if (errorText.includes('bin conversion failed') || errorText.includes('ritobin')) {
+                setShowRitoBinErrorDialog(true);
+            }
         } finally {
             setIsLoading(false);
         }
     }, [filePath]);
+
+    const unsavedGuard = useUnsavedNavigationGuard({
+        fileSaved,
+        setFileSaved,
+        onSave: handleSave,
+        navigate,
+    });
 
     // ============================================================
     // COLOR FILTER
@@ -543,9 +454,31 @@ function Paint2() {
                     const picker = document.querySelector('.color-picker-container');
                     if (picker && event?.target) {
                         const rect = event.target.getBoundingClientRect();
+                        const vw = window.innerWidth || document.documentElement.clientWidth;
+                        const vh = window.innerHeight || document.documentElement.clientHeight;
+                        const margin = 8;
+                        const pickerWidth = picker.offsetWidth || 280;
+                        const pickerHeight = picker.offsetHeight || 320;
+
+                        let left = rect.left;
+                        let top = rect.bottom + 6;
+
+                        if (left + pickerWidth + margin > vw) {
+                            left = Math.max(margin, vw - pickerWidth - margin);
+                        }
+
+                        if (top + pickerHeight + margin > vh) {
+                            const aboveTop = rect.top - pickerHeight - 6;
+                            if (aboveTop >= margin) {
+                                top = aboveTop;
+                            } else {
+                                top = Math.max(margin, vh - pickerHeight - margin);
+                            }
+                        }
+
                         picker.style.position = 'fixed';
-                        picker.style.left = `${rect.left}px`;
-                        picker.style.top = `${rect.bottom + 6}px`;
+                        picker.style.left = `${Math.round(left)}px`;
+                        picker.style.top = `${Math.round(top)}px`;
                         picker.style.zIndex = '9999';
                     }
                 } catch { }
@@ -1043,207 +976,27 @@ function Paint2() {
     const activeConversions = useRef(new Set());
 
     // Show texture preview with grid layout
-    const showTexturePreview = useCallback((textureData, buttonElement) => {
-        // Clear any existing close timer
-        if (textureCloseTimerRef.current) {
-            clearTimeout(textureCloseTimerRef.current);
-            textureCloseTimerRef.current = null;
-        }
-
-        // Remove existing preview
-        const existingPreview = document.getElementById('paint2-texture-hover-preview');
-        if (existingPreview) existingPreview.remove();
-
-        const rect = buttonElement.getBoundingClientRect();
-        const textureCount = textureData.length;
-
-        // Dynamic grid layout based on texture count
-        let cols = 1;
-        let previewWidth = 260;
-        let itemSize = '200px';
-
-        if (textureCount === 1) {
-            cols = 1; previewWidth = 260; itemSize = '200px';
-        } else if (textureCount === 2) {
-            cols = 2; previewWidth = 380; itemSize = '150px';
-        } else if (textureCount <= 4) {
-            cols = 2; previewWidth = 400; itemSize = '160px';
-        } else if (textureCount <= 6) {
-            cols = 3; previewWidth = 520; itemSize = '140px';
-        } else {
-            cols = 3; previewWidth = 560; itemSize = '130px';
-        }
-
-        const preview = document.createElement('div');
-        preview.id = 'paint2-texture-hover-preview';
-        preview.style.cssText = `
-            position: fixed;
-            z-index: 10000;
-            background: rgba(15, 15, 20, 0.96);
-            backdrop-filter: blur(12px) saturate(180%);
-            -webkit-backdrop-filter: blur(12px) saturate(180%);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 16px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-            display: flex;
-            flex-direction: column;
-            gap: 14px;
-            pointer-events: auto;
-            width: ${previewWidth}px;
-            max-height: ${window.innerHeight - 40}px;
-            overflow-y: auto;
-            overflow-x: hidden;
-            box-sizing: border-box;
-            transition: opacity 0.2s ease;
-        `;
-
-        // Dynamic grid style
-        const gridStyle = textureCount === 1
-            ? 'display: flex; justify-content: center;'
-            : `display: grid; grid-template-columns: repeat(${cols}, 1fr); gap: 12px;`;
-
-        // Build grid items HTML
-        // Build grid items HTML
-        let itemsHtml = textureData.map((data, idx) => {
-            const fileName = data.path.split(/[/\\]/).pop();
-            return `
-                <div class="texture-item" data-idx="${idx}" title="Left-click: Asset Preview | Right-click: Open in External App" style="cursor: pointer; display: flex; flex-direction: column; gap: 8px; align-items: center; transition: all 0.2s ease; min-width: 0;">
-                    <div style="width: 100%; height: ${itemSize}; background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%), linear-gradient(-45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%), linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%); background-size: 12px 12px; background-position: 0 0, 0 6px, 6px -6px, -6px 0px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-                        ${data.dataUrl
-                    ? `<img src="${processDataURL(data.dataUrl)}" style="width: 100%; height: 100%; object-fit: contain;" />`
-                    : `<div style="color: rgba(255,255,255,0.2); font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 500;">LOADING...</div>`
-                }
-                    </div>
-                    <div style="width: 100%; text-align: center; font-family: 'JetBrains Mono', monospace; color: var(--accent); overflow: hidden;">
-                        <div style="font-size: 8px; opacity: 0.5; margin-bottom: 2px; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${fileName}</div>
-                        <div style="font-size: 10px; font-weight: 800; letter-spacing: 0.08em; opacity: 0.9;">${data.label.toUpperCase()}</div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        preview.innerHTML = `
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-                <div style="text-align: left; color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.12em; display: flex; align-items: center; gap: 10px; opacity: 0.9;">
-                    <span style="width: 8px; height: 8px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 8px var(--accent);"></span>
-                    TEXTURE PREVIEW (${textureCount})
-                </div>
-                <div style="${gridStyle}">
-                    ${itemsHtml}
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(preview);
-
-        // Add handlers
-        preview.querySelectorAll('.texture-item').forEach(el => {
-            el.onclick = (event) => {
-                event.stopPropagation();
-                const idx = parseInt(el.getAttribute('data-idx'));
-                const data = textureData[idx];
-                if (data) {
-                    preview.remove();
-                    if (textureCloseTimerRef.current) {
-                        clearTimeout(textureCloseTimerRef.current);
-                        textureCloseTimerRef.current = null;
-                    }
-                    openAssetPreview(data.resolvedDiskPath || data.path, data.dataUrl);
-                }
-            };
-            el.oncontextmenu = (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                const idx = parseInt(el.getAttribute('data-idx'));
-                const data = textureData[idx];
-                if (data && data.resolvedDiskPath && window.require) {
-                    try {
-                        const { shell } = window.require('electron');
-                        if (shell) shell.openPath(data.resolvedDiskPath);
-                    } catch (err) { console.error(err); }
-                }
-            };
-            // Hover clean up
-            el.onmouseenter = () => {
-                el.style.transform = 'translateY(-2px)';
-                const imgCont = el.querySelector('div');
-                if (imgCont) {
-                    imgCont.style.borderColor = 'var(--accent)';
-                    imgCont.style.boxShadow = '0 6px 16px rgba(0,0,0,0.4)';
-                }
-            };
-            el.onmouseleave = () => {
-                el.style.transform = 'translateY(0)';
-                const imgCont = el.querySelector('div');
-                if (imgCont) {
-                    imgCont.style.borderColor = 'rgba(255,255,255,0.08)';
-                    imgCont.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
-                }
-            };
+    const showTexturePreview = useCallback((textureData, buttonElement, colorData = []) => {
+        showTextureHoverPreview({
+            previewId: "shared-texture-hover-preview",
+            textureData,
+            buttonElement,
+            colorData,
         });
-
-        // Positioning
-        const previewRect = preview.getBoundingClientRect();
-        let previewTop = rect.top + (rect.height / 2) - (previewRect.height / 2);
-        let previewLeft = rect.left - previewWidth - 14;
-
-        if (previewLeft < 10) previewLeft = rect.right + 14;
-        if (previewLeft + previewRect.width > window.innerWidth - 10) previewLeft = window.innerWidth - previewRect.width - 10;
-        if (previewTop < 10) previewTop = 10;
-        if (previewTop + previewRect.height > window.innerHeight - 10) previewTop = window.innerHeight - previewRect.height - 10;
-
-        preview.style.top = `${previewTop}px`;
-        preview.style.left = `${previewLeft}px`;
-
-        // Keep open on hover
-        preview.onmouseenter = () => {
-            if (textureCloseTimerRef.current) {
-                clearTimeout(textureCloseTimerRef.current);
-                textureCloseTimerRef.current = null;
-            }
-        };
-        preview.onmouseleave = () => {
-            textureCloseTimerRef.current = setTimeout(() => preview.remove(), 500);
-        };
-
     }, []);
-
     const showTextureError = useCallback((texturePath, buttonElement) => {
-        if (textureCloseTimerRef.current) {
-            clearTimeout(textureCloseTimerRef.current);
-            textureCloseTimerRef.current = null;
-        }
-        const existingPreview = document.getElementById('paint2-texture-hover-preview');
-        if (existingPreview) existingPreview.remove();
-
-        const rect = buttonElement.getBoundingClientRect();
-        const preview = document.createElement('div');
-        preview.id = 'paint2-texture-hover-preview';
-        preview.style.cssText = `
-            position: fixed; z-index: 10000; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(12px);
-            border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 12px; padding: 12px;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); color: #ef4444; font-family: 'JetBrains Mono', monospace;
-            font-size: 12px; max-width: 250px; pointer-events: auto;
-        `;
-        preview.innerHTML = `<div style="text-align:center;">Failed to load<br/><span style="font-size:10px;opacity:0.7">${texturePath}</span></div>`;
-        document.body.appendChild(preview);
-
-        const previewRect = preview.getBoundingClientRect();
-        let top = rect.top + (rect.height / 2) - (previewRect.height / 2);
-        let left = rect.left - previewRect.width - 14;
-        if (left < 10) left = rect.right + 14;
-        preview.style.top = `${top}px`;
-        preview.style.left = `${left}px`;
-
-        preview.onmouseleave = () => {
-            textureCloseTimerRef.current = setTimeout(() => preview.remove(), 500);
-        };
+        showTextureHoverError({
+            previewId: "shared-texture-hover-preview",
+            texturePath,
+            buttonElement,
+        });
     }, []);
+
 
     const handleTextureHover = useCallback(async (event, emitter) => {
         const buttonElement = event.currentTarget;
         if (!buttonElement) return;
+        cancelTextureHoverClose('shared-texture-hover-preview');
 
         // Clean up previous timers
         if (conversionTimers.current.has('hover')) {
@@ -1319,11 +1072,8 @@ function Paint2() {
             conversionTimers.current.delete('hover');
         }
         if (!textureCloseTimerRef.current) {
-            textureCloseTimerRef.current = setTimeout(() => {
-                const existing = document.getElementById('paint2-texture-hover-preview');
-                if (existing) existing.remove();
-                textureCloseTimerRef.current = null;
-            }, 500);
+            scheduleTextureHoverClose('shared-texture-hover-preview', 500);
+            textureCloseTimerRef.current = null;
         }
     }, []);
 
@@ -1339,6 +1089,7 @@ function Paint2() {
             // If we want the nice preview, we rely on the hover menu.
             // But user might click the icon directly.
             // Let's just open the basic one.
+            removeTextureHoverPreview('shared-texture-hover-preview');
             openAssetPreview(resolved);
         }
     }, [filePath]);
@@ -2112,145 +1863,13 @@ function Paint2() {
                 </DialogActions>
             </Dialog>
 
-            {/* Unsaved Changes Dialog - Upscale Aesthetic Refactor */}
-            <Dialog
-                open={showUnsavedDialog}
-                onClose={handleUnsavedCancel}
-                maxWidth="xs"
-                fullWidth
-                PaperProps={{
-                    sx: {
-                        background: '#020203',
-                        border: '1px solid rgba(255, 255, 255, 0.12)',
-                        borderRadius: '24px',
-                        boxShadow: '0 50px 120px rgba(0, 0, 0, 1)',
-                        overflow: 'hidden',
-                        position: 'relative'
-                    }
-                }}
-            >
-                {/* Dual Accent Animated Bar - Solid Color Refactor */}
-                <Box
-                    sx={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        height: '4px',
-                        background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
-                        backgroundSize: '200% 100%',
-                        animation: 'shimmer 3s linear infinite',
-                        zIndex: 10,
-                        '@keyframes shimmer': {
-                            '0%': { backgroundPosition: '200% 0' },
-                            '100%': { backgroundPosition: '-200% 0' },
-                        },
-                    }}
-                />
-                {/* Header Bar */}
-                <Box sx={{
-                    p: 2.2,
-                    borderBottom: '1px solid rgba(255,255,255,0.08)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: 'rgba(255,255,255,0.03)'
-                }}>
-                    <Typography sx={{
-                        fontWeight: 800,
-                        fontSize: '0.8rem',
-                        letterSpacing: '0.05em',
-                        color: 'var(--accent)',
-                        textTransform: 'uppercase'
-                    }}>
-                        ⚠️ Unsaved Changes
-                    </Typography>
-                    <IconButton size="small" onClick={handleUnsavedCancel} sx={{ color: 'rgba(255,255,255,0.35)', '&:hover': { color: '#f87171' } }}>
-                        <CloseIcon sx={{ fontSize: 18 }} />
-                    </IconButton>
-                </Box>
-
-                <DialogContent sx={{ p: 4, textAlign: 'center', background: 'transparent' }}>
-                    <Typography sx={{
-                        color: 'var(--text)',
-                        fontSize: '1rem',
-                        fontWeight: 500,
-                        mb: 1.5
-                    }}>
-                        You have unsaved changes in <Box component="span" sx={{ color: 'var(--accent)', fontWeight: 700 }}>{fileName}</Box>.
-                    </Typography>
-                    <Typography sx={{
-                        color: 'rgba(255, 255, 255, 0.5)',
-                        fontSize: '0.85rem',
-                        lineHeight: 1.6
-                    }}>
-                        What would you like to do before leaving?
-                    </Typography>
-                </DialogContent>
-
-                <DialogActions sx={{ p: 3, pt: 0, flexDirection: 'column', gap: 1.25, background: 'transparent' }}>
-                    <Button
-                        fullWidth
-                        variant="contained"
-                        onClick={handleUnsavedSave}
-                        sx={{
-                            background: '#14aa4bff !important',
-                            color: '#f3fff3ff !important',
-                            fontWeight: 900,
-                            textTransform: 'none',
-                            fontSize: '0.85rem',
-                            borderRadius: '12px',
-                            py: 1.25,
-                            boxShadow: '0 4px 14px rgba(34, 197, 94, 0.3)',
-                            '&:hover': {
-                                background: '#22c55e',
-                                filter: 'brightness(1.15)',
-                                transform: 'translateY(-1.5px)',
-                                boxShadow: '0 6px 20px rgba(34, 197, 94, 0.4)'
-                            },
-                        }}
-                    >
-                        Save & Continue
-                    </Button>
-
-                    <Box sx={{ display: 'flex', width: '100%', gap: 1.25 }}>
-                        <Button
-                            fullWidth
-                            onClick={handleUnsavedDiscard}
-                            sx={{
-                                background: 'rgba(239, 68, 68, 0.05)',
-                                color: '#f87171',
-                                border: '1px solid rgba(239, 68, 68, 0.2)',
-                                fontWeight: 700,
-                                textTransform: 'none',
-                                fontSize: '0.75rem',
-                                borderRadius: '10px',
-                                py: 1,
-                                '&:hover': { background: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444' }
-                            }}
-                        >
-                            Discard Changes
-                        </Button>
-                        <Button
-                            fullWidth
-                            onClick={handleUnsavedCancel}
-                            sx={{
-                                background: 'rgba(255, 255, 255, 0.03)',
-                                color: 'rgba(255, 255, 255, 0.4)',
-                                border: '1px solid rgba(255, 255, 255, 0.06)',
-                                fontWeight: 700,
-                                textTransform: 'none',
-                                fontSize: '0.75rem',
-                                borderRadius: '10px',
-                                py: 1,
-                                '&:hover': { background: 'rgba(255, 255, 255, 0.06)', color: '#fff' }
-                            }}
-                        >
-                            Stay Here
-                        </Button>
-                    </Box>
-                </DialogActions>
-            </Dialog>
+            <UnsavedChangesModal
+                open={unsavedGuard.showUnsavedDialog}
+                onCancel={unsavedGuard.handleUnsavedCancel}
+                onSave={unsavedGuard.handleUnsavedSave}
+                onDiscard={unsavedGuard.handleUnsavedDiscard}
+                fileName={fileName}
+            />
 
             {/* Floating Backup Viewer Button */}
             {filePath && (
@@ -2312,6 +1931,15 @@ function Paint2() {
                 }}
                 navigate={navigate}
                 content={ritobinWarningContent}
+                onReparseFromBin={async () => {
+                    if (filePath) {
+                        await reparseBinWithFreshPy({
+                            sourcePath: filePath,
+                            reparseFn: loadBinFile,
+                            logPrefix: '[Paint2]',
+                        });
+                    }
+                }}
                 onContinueAnyway={() => {
                     setShowRitobinWarning(false);
                     setRitobinWarningContent(null);
@@ -2321,8 +1949,18 @@ function Paint2() {
                     }
                 }}
             />
+
+            <RitoBinErrorDialog
+                open={showRitoBinErrorDialog}
+                onClose={() => setShowRitoBinErrorDialog(false)}
+                onRestoreBackup={() => {
+                    performBackupRestore();
+                    setShowRitoBinErrorDialog(false);
+                }}
+            />
         </Box >
     );
 }
 
 export default Paint2;
+

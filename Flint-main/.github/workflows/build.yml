@@ -1,0 +1,148 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Lint Backend
+        run: cargo clippy --lib --bins -- -D warnings -A clippy::needless_return
+        working-directory: src-tauri
+
+      - name: Build Application
+        run: npm run tauri build
+
+      - name: Upload Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: flint-windows-installer
+          path: src-tauri/target/release/bundle/nsis/*.exe
+
+      - name: Get Version
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Generate Smart Release Notes
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: release_notes
+        shell: pwsh
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Prevent PS 7.3+ from turning non-zero native exit codes into errors
+          $ErrorActionPreference = 'Continue'
+          if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor -ge 3) {
+            $PSNativeCommandUseErrorActionPreference = $false
+          }
+
+          # Collect commits and changed files since the last tag
+          $lastTag = $null
+          try { $lastTag = (git describe --tags --abbrev=0 2>$null) } catch {}
+          if ($lastTag) { $lastTag = $lastTag.Trim() }
+
+          if ($lastTag) {
+            $commits = (git log "$lastTag..HEAD" --pretty=format:"- %s") -join "`n"
+            $files   = (git diff "$lastTag..HEAD" --name-only 2>$null) -join "`n"
+          } else {
+            $commits = (git log --pretty=format:"- %s" -30) -join "`n"
+            $files   = (git diff HEAD~3..HEAD --name-only 2>$null) -join "`n"
+          }
+
+          $notes = ""
+
+          if ($env:ANTHROPIC_API_KEY) {
+            $prompt = @"
+          You are writing release notes for Flint v$env:VERSION, a League of Legends asset extractor and modding IDE (Tauri + React + Rust).
+
+          Commits since last release:
+          $commits
+
+          Changed files:
+          $files
+
+          Write release notes in this exact format:
+          1. One short paragraph (2-3 sentences) summarising what this release improves or fixes — written for end users, no jargon.
+          2. A markdown bullet list of the concrete changes, grouped logically (e.g. "Performance", "Bug fixes", "UI"). Keep each bullet to one line.
+
+          Do not mention commit hashes. Do not add a heading for the paragraph. Start the bullet list with a blank line.
+          "@
+
+            $payload = @{
+              model      = "claude-haiku-4-5-20251001"
+              max_tokens = 600
+              messages   = @(@{ role = "user"; content = $prompt })
+            } | ConvertTo-Json -Depth 5
+
+            try {
+              $resp  = Invoke-RestMethod -Uri "https://api.anthropic.com/v1/messages" `
+                         -Method POST `
+                         -Headers @{
+                           "x-api-key"         = $env:ANTHROPIC_API_KEY
+                           "anthropic-version" = "2023-06-01"
+                           "content-type"      = "application/json"
+                         } `
+                         -Body $payload
+              $notes = $resp.content[0].text
+            } catch {
+              Write-Warning "Claude API call failed: $_"
+            }
+          }
+
+          # Fallback: plain commit list
+          if (-not $notes) {
+            $notes = "### Changes`n$commits"
+          }
+
+          $notes = $notes -replace "`r", ""
+          $delim = "RELNOTES_" + [System.Guid]::NewGuid().ToString("N")
+          "notes<<$delim"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $notes           | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $delim           | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          exit 0
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Flint v${{ steps.version.outputs.version }}
+          body: ${{ steps.release_notes.outputs.notes }}
+          files: src-tauri/target/release/bundle/nsis/*.exe
+          draft: false
+          prerelease: false
+          make_latest: "true"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

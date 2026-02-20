@@ -1,0 +1,10 @@
+/* Flint Default Theme - Gray/Red
+   This is the default theme with red accents */
+
+:root {
+  --accent-primary: #EF4444;
+  --accent-hover: #DC2626;
+  --accent-secondary: #F87171;
+  --accent-muted: #991B1B;
+  --button-primary: #EF4444;
+}

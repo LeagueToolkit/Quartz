@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Box, Typography, Slider, Tooltip, Button, Menu, MenuItem, Checkbox, IconButton } from '@mui/material';
-import ColorHandler from '../../../utils/ColorHandler';
-import { CreatePicker } from '../../../utils/colorUtils';
+import ColorHandler from '../../../utils/colors/ColorHandler.js';
+import { CreatePicker } from '../../../utils/colors/colorUtils.js';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
 import BookmarkIcon from '@mui/icons-material/Bookmark';

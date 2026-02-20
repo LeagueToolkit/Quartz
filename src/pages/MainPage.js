@@ -33,8 +33,8 @@ import {
   Dices as ParticleRandIcon,
   Rocket as LaunchIcon,
 } from 'lucide-react';
-import CelestialWelcome from '../components/CelestialWelcome';
-import CelestiaGuide from '../components/CelestiaGuide';
+import CelestialWelcome from '../components/celestia/CelestiaWelcome';
+import CelestiaGuide from '../components/celestia/CelestiaGuide';
 
 const MainPage = () => {
   const navigate = useNavigate();

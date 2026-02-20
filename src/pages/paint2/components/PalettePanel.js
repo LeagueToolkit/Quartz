@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { Box, Typography, Button, Checkbox, FormControlLabel, Slider, Select, MenuItem, TextField } from '@mui/material';
-import ColorHandler from '../../../utils/ColorHandler.js';
+import ColorHandler from '../../../utils/colors/ColorHandler.js';
 
 const buttonStyle = {
     background: 'var(--bg-2)',

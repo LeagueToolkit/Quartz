@@ -45,11 +45,11 @@
 [data-style="cs16"] .universal-file-randomizer-root {
     background: var(--bg) !important;
     background-image: none !important;
-    font-family: 'ArialPixel', system-ui, sans-serif !important;
+    font-family: system-ui, sans-serif !important;
 }
 
 [data-style="cs16"] .universal-file-randomizer-root * {
-    font-family: 'ArialPixel', system-ui, sans-serif !important;
+    font-family: system-ui, sans-serif !important;
 }
 
 [data-style="cs16"] .background-lights {
@@ -88,7 +88,7 @@
     background-image: none !important;
     text-transform: none !important;
     font-weight: normal !important;
-    font-family: 'ArialPixel', system-ui, sans-serif !important;
+    font-family: system-ui, sans-serif !important;
     transition: none !important;
 }
 
