@@ -43,13 +43,13 @@ class FontManager {
     if (window.require) {
       try {
         const path = window.require('path');
-        return path.join(basePath, 'DivineLab', 'fonts');
+        return path.join(basePath, 'Quartz', 'fonts');
       } catch (error) {
         console.warn('Error resolving fonts directory path, using fallback:', error);
       }
     }
 
-    return `${basePath}/DivineLab/fonts`;
+    return `${basePath}/Quartz/fonts`;
   }
 
   async init() {

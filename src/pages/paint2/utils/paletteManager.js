@@ -1,17 +1,28 @@
 // Palette Manager - Save and load color palettes
 const fs = window.require ? window.require('fs') : null;
 const path = window.require ? window.require('path') : null;
+const os = window.require ? window.require('os') : null;
 
 // We'll import ColorHandler dynamically when needed to avoid circular dependencies
 
 const getUserDataBasePath = () => {
-  if (process.platform === 'win32') {
-    return process.env.APPDATA || process.env.USERPROFILE || process.env.HOME || null;
+  if (!path) return null;
+
+  const proc = typeof process !== 'undefined' ? process : null;
+  const env = proc?.env || {};
+  const platform = proc?.platform || (os?.platform ? os.platform() : null);
+  const home = env.HOME || env.USERPROFILE || (os?.homedir ? os.homedir() : null);
+
+  if (!platform) return null;
+
+  if (platform === 'win32') {
+    // Prefer real roaming AppData, with stable home fallback in dev renderer contexts.
+    return env.APPDATA || (home ? path.join(home, 'AppData', 'Roaming') : null);
   }
-  if (process.platform === 'darwin') {
-    return process.env.HOME ? path.join(process.env.HOME, 'Library', 'Preferences') : null;
+  if (platform === 'darwin') {
+    return home ? path.join(home, 'Library', 'Preferences') : null;
   }
-  return process.env.XDG_DATA_HOME || (process.env.HOME ? path.join(process.env.HOME, '.local', 'share') : null);
+  return env.XDG_DATA_HOME || (home ? path.join(home, '.local', 'share') : null);
 };
 
 // Get the palette directory path
@@ -24,7 +35,7 @@ const getPaletteDirectory = () => {
       console.warn('[PaletteManager] Could not resolve user data base path');
       return null;
     }
-    return path.join(userDataBasePath, 'DivineLab', 'palette');
+    return path.join(userDataBasePath, 'Quartz', 'palette');
   } catch (e) {
     console.warn('[PaletteManager] Error determining palette path:', e);
     return null;
