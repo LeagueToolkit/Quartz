@@ -6,7 +6,13 @@
 import { BytesStream } from './stream.js';
 import { FNV1a, hashToHex } from './helper.js';
 
-const fs = window.require('fs');
+let _fs = null;
+function getFs() {
+    if (_fs) return _fs;
+    if (typeof window !== 'undefined' && window.require) _fs = window.require('fs');
+    else _fs = require('fs');
+    return _fs;
+}
 
 export class SKLJoint {
     constructor() {
@@ -43,7 +49,7 @@ export class SKL {
      * @param {string} path - File path
      */
     read(path) {
-        const buffer = fs.readFileSync(path);
+        const buffer = getFs().readFileSync(path);
         return this.readBuffer(buffer);
     }
 

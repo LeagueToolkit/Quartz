@@ -30,6 +30,7 @@ import useVfxHubFilters from './hooks/useVfxHubFilters';
 import useVfxHubThemeEffects from './hooks/useVfxHubThemeEffects';
 import { extractTexturesFromEmitterContent } from '../port2/utils/vfxUtils.js';
 import useUnsavedNavigationGuard from '../../hooks/navigation/useUnsavedNavigationGuard.js';
+import CombineLinkedBinsModal from '../../components/modals/CombineLinkedBinsModal';
 import { sectionStyle, celestialButtonStyle, primaryButtonStyle } from './styles';
 
 const VFXHub = () => {
@@ -167,6 +168,9 @@ const VFXHub = () => {
     handleOpenTargetBin,
     processTargetBin,
     performBackupRestore,
+    combineModalState,
+    handleCombineYes,
+    handleCombineNo,
   } = file;
 
   useEffect(() => {
@@ -272,6 +276,19 @@ const VFXHub = () => {
   );
 
   const handleUndo = useCallback(async () => {
+    const getShortUndoAction = (action) => {
+      if (!action || typeof action !== 'string') return 'Undo';
+      if (action.startsWith('Delete emitter from ')) return 'Delete emitter';
+      if (action.startsWith('Delete all emitters from ')) return 'Delete all emitters';
+      if (action.startsWith('Rename emitter "')) return 'Rename emitter';
+      if (action.startsWith('Rename system "')) return 'Rename system';
+      if (action.startsWith('Port emitter "')) return 'Port emitter';
+      if (action.startsWith('Port all emitters from "')) return 'Port all emitters';
+      if (action.startsWith('Port all ') && action.includes(' VFX systems from donor')) return 'Port all VFX systems';
+      if (action.startsWith('Create new VFX system "')) return 'Create VFX system';
+      return action.length > 48 ? `${action.slice(0, 48)}...` : action;
+    };
+
     const lastState = popUndoState((restored) => {
       setTargetSystems(restored.targetSystems);
       setTargetPyContent(restored.targetPyContent);
@@ -285,7 +302,8 @@ const VFXHub = () => {
       return;
     }
 
-    setStatusMessage(`Undone: ${lastState.action} - Saving to file...`);
+    const shortAction = getShortUndoAction(lastState.action);
+    setStatusMessage(`Undone: ${shortAction} - Applying...`);
 
     try {
       const fsNode = window.require('fs');
@@ -294,10 +312,10 @@ const VFXHub = () => {
       const targetName = pathNode.basename(targetPath, '.bin');
       const outputPyPath = pathNode.join(targetDir, `${targetName}.py`);
       fsNode.writeFileSync(outputPyPath, lastState.targetPyContent);
-      setStatusMessage(`Undone: ${lastState.action} - Saved to ${outputPyPath}`);
+      setStatusMessage(`Undone: ${shortAction} - Applied`);
     } catch (error) {
       console.error('Error saving undone state to file:', error);
-      setStatusMessage(`Undone: ${lastState.action} - Failed to save to file: ${error.message}`);
+      setStatusMessage(`Undone: ${shortAction} - Save failed: ${error.message}`);
     }
   }, [popUndoState, setTargetSystems, setTargetPyContent, setSelectedTargetSystem, setDeletedEmitters, targetPath]);
 
@@ -665,6 +683,14 @@ const VFXHub = () => {
         targetSystemEntries={targetSystemEntries}
         setStatusMessage={setStatusMessage}
       />
+      {/* Combine Linked BINs Modal */}
+      <CombineLinkedBinsModal
+        open={combineModalState.open}
+        linkCount={combineModalState.linkCount}
+        onYes={handleCombineYes}
+        onNo={handleCombineNo}
+      />
+
       <VfxHubDialogs
         persistent={persistent}
         typeOptions={persistent.typeOptions}

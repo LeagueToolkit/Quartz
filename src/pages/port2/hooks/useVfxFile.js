@@ -4,6 +4,7 @@ import { ToPyWithPath } from '../../../utils/io/fileOperations.js';
 import { loadFileWithBackup, createBackup } from '../../../utils/io/backupManager.js';
 import { parseVfxEmitters } from '../../../utils/vfx/vfxEmitterParser.js';
 import { openAssetPreview } from '../../../utils/assets/assetPreviewEvent.js';
+import { useCombineLinkedBinsCheck } from '../../../hooks/useCombineLinkedBinsCheck.js';
 
 const fs = window.require ? window.require('fs') : null;
 const path = window.require ? window.require('path') : null;
@@ -40,6 +41,7 @@ export default function useVfxFile(
     const [donorSystems, setDonorSystems] = useState({});
     const [showRitoBinErrorDialog, setShowRitoBinErrorDialog] = useState(false);
     const [showBackupViewer, setShowBackupViewer] = useState(false);
+    const { checkAndPromptCombine, combineModalState, handleCombineYes, handleCombineNo } = useCombineLinkedBinsCheck();
     const hasResourceResolver = useMemo(
         () => /\bResourceResolver\s*\{/m.test(targetPyContent || ''),
         [targetPyContent]
@@ -73,6 +75,7 @@ export default function useVfxFile(
                 await new Promise(resolve => setTimeout(resolve, 500));
             } else if (!isPy) {
                 console.log(`[useVfxFile] .py NOT found. Converting .bin via ToPyWithPath.`);
+                await checkAndPromptCombine(filePath);
                 setProcessingText('Converting .bin to .py...');
                 pyContent = await ToPyWithPath(filePath);
                 if (fs?.existsSync(pyFilePath)) {
@@ -149,6 +152,7 @@ export default function useVfxFile(
                 await new Promise(resolve => setTimeout(resolve, 500));
             } else if (!isPy) {
                 console.log(`[useVfxFile] .py NOT found. Converting .bin via ToPyWithPath.`);
+                await checkAndPromptCombine(filePath);
                 setProcessingText('Converting .bin to .py...');
                 pyContent = await ToPyWithPath(filePath);
                 if (fs?.existsSync(pyFilePath)) {
@@ -268,10 +272,15 @@ export default function useVfxFile(
     // Auto-reload last opened bins on mount
     useEffect(() => {
         const autoReloadLastBins = async () => {
+            // Match legacy behavior: only auto-load when nothing is already loaded.
+            if (targetPath !== 'This will show target bin') return;
+
             try {
                 await electronPrefs.initPromise;
-                const autoLoadEnabled = await electronPrefs.get('AutoLoadEnabled');
-                if (autoLoadEnabled === false) return;
+                const autoLoadRaw = await electronPrefs.get('AutoLoadEnabled');
+                // Only explicit true enables auto-load (supports older serialized values).
+                const autoLoadEnabled = autoLoadRaw === true || autoLoadRaw === 'true' || autoLoadRaw === 1;
+                if (!autoLoadEnabled) return;
             } catch { }
 
             try {
@@ -299,7 +308,7 @@ export default function useVfxFile(
 
         const timer = setTimeout(autoReloadLastBins, 100);
         return () => clearTimeout(timer);
-    }, [autoReloadDonor, enableDonor, processTargetBin, processDonorBin]); // eslint-disable-line
+    }, []); // eslint-disable-line
 
     const performBackupRestore = useCallback(() => {
         try {
@@ -332,6 +341,9 @@ export default function useVfxFile(
         processDonorBin,
         handleOpenTargetBin,
         handleOpenDonorBin,
-        performBackupRestore
+        performBackupRestore,
+        combineModalState,
+        handleCombineYes,
+        handleCombineNo,
     };
 }

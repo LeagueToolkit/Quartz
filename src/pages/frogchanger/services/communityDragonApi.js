@@ -2,8 +2,125 @@ const DDRAGON_BASE_URL = 'https://ddragon.leagueoflegends.com';
 export const CDRAGON_BASE_URL = 'https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default';
 
 let globalChromaData = null;
+let frogDataStatus = {
+  offlineDetected: false,
+  usedCache: false,
+  source: {
+    champions: 'none',
+    skins: 'none',
+  },
+};
+
+const isFrogOfflineSimulationEnabled = () => {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('frogchanger_force_offline') === '1';
+  } catch {
+    return false;
+  }
+};
+
+export const setFrogOfflineSimulationEnabled = (enabled) => {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    if (enabled) {
+      localStorage.setItem('frogchanger_force_offline', '1');
+    } else {
+      localStorage.removeItem('frogchanger_force_offline');
+    }
+  } catch {
+    // no-op
+  }
+};
+
+export const getFrogOfflineSimulationEnabled = () => isFrogOfflineSimulationEnabled();
+
+const getFsTools = () => {
+  if (!window.require) return null;
+  try {
+    const fs = window.require('fs');
+    const path = window.require('path');
+    const os = window.require('os');
+    return { fs, path, os };
+  } catch {
+    return null;
+  }
+};
+
+const getCacheDir = () => {
+  const tools = getFsTools();
+  if (!tools) return null;
+  const appData = (typeof process !== 'undefined' && process.env && process.env.APPDATA) ? process.env.APPDATA : null;
+  const baseDir = appData || tools.path.join(tools.os.homedir(), '.quartz');
+  return tools.path.join(baseDir, 'Quartz', 'frogchanger-cache');
+};
+
+const ensureCacheDir = () => {
+  const tools = getFsTools();
+  const dir = getCacheDir();
+  if (!tools || !dir) return null;
+  try {
+    if (!tools.fs.existsSync(dir)) {
+      tools.fs.mkdirSync(dir, { recursive: true });
+    }
+    return dir;
+  } catch {
+    return null;
+  }
+};
+
+const readJsonCache = (fileName) => {
+  const tools = getFsTools();
+  const dir = ensureCacheDir();
+  if (!tools || !dir) return null;
+  const filePath = tools.path.join(dir, fileName);
+  try {
+    if (!tools.fs.existsSync(filePath)) return null;
+    const raw = tools.fs.readFileSync(filePath, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const writeJsonCache = (fileName, data) => {
+  const tools = getFsTools();
+  const dir = ensureCacheDir();
+  if (!tools || !dir) return false;
+  const filePath = tools.path.join(dir, fileName);
+  try {
+    tools.fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const isOfflineNow = () => {
+  if (isFrogOfflineSimulationEnabled()) return true;
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+};
+const isLikelyNetworkError = (error) => Boolean(error?.isOffline) || Boolean(error instanceof TypeError) || isOfflineNow();
+
+const setFrogDataStatus = (next) => {
+  frogDataStatus = {
+    ...frogDataStatus,
+    ...next,
+    source: {
+      ...frogDataStatus.source,
+      ...(next?.source || {}),
+    },
+  };
+};
+
+export const getFrogDataStatus = () => ({ ...frogDataStatus, source: { ...frogDataStatus.source } });
 
 const fetchWithRetry = async (url, maxRetries = 3) => {
+  if (isOfflineNow()) {
+    const offlineError = new Error('No internet connection detected');
+    offlineError.isOffline = true;
+    throw offlineError;
+  }
+
   for (let i = 0; i < maxRetries; i++) {
     try {
       const response = await fetch(url);
@@ -94,6 +211,12 @@ export const fetchAllChromaData = async () => {
     return globalChromaData;
   }
 
+  setFrogDataStatus({
+    offlineDetected: isOfflineNow(),
+    usedCache: false,
+    source: { skins: 'none' },
+  });
+
   try {
     console.log('Fetching all chroma data from Community Dragon...');
     const url = `${CDRAGON_BASE_URL}/v1/skins.json`;
@@ -108,10 +231,25 @@ export const fetchAllChromaData = async () => {
 
     const skinsJson = await response.json();
     globalChromaData = skinsJson;
+    writeJsonCache('skins.json', skinsJson);
+    setFrogDataStatus({
+      source: { skins: 'network' },
+    });
     console.log(`Loaded chroma data for ${Object.keys(skinsJson).length} skins`);
     return skinsJson;
   } catch (error) {
     console.error('Failed to fetch chroma data:', error);
+    const cached = readJsonCache('skins.json');
+    if (cached && typeof cached === 'object') {
+      globalChromaData = cached;
+      setFrogDataStatus({
+        offlineDetected: isLikelyNetworkError(error),
+        usedCache: true,
+        source: { skins: 'cache' },
+      });
+      console.warn('Using cached skins.json data');
+      return cached;
+    }
     return {};
   }
 };
@@ -140,6 +278,12 @@ export const getChromaDataForSkin = async (championId, skinId) => {
 
 export const api = {
   getChampions: async () => {
+    setFrogDataStatus({
+      offlineDetected: isOfflineNow(),
+      usedCache: false,
+      source: { champions: 'none' },
+    });
+
     try {
       console.log('Fetching champions from Community Dragon...');
       const champResponse = await fetch(`${CDRAGON_BASE_URL}/v1/champion-summary.json`);
@@ -157,10 +301,24 @@ export const api = {
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
+      writeJsonCache('champions.json', champions);
+      setFrogDataStatus({
+        source: { champions: 'network' },
+      });
       console.log('Champions loaded from Community Dragon:', champions.slice(0, 3));
       return champions;
     } catch (error) {
       console.error('Error fetching champions:', error);
+      const cachedChampions = readJsonCache('champions.json');
+      if (Array.isArray(cachedChampions) && cachedChampions.length > 0) {
+        setFrogDataStatus({
+          offlineDetected: isLikelyNetworkError(error),
+          usedCache: true,
+          source: { champions: 'cache' },
+        });
+        console.warn('Using cached champion-summary data');
+        return cachedChampions;
+      }
       throw error;
     }
   },

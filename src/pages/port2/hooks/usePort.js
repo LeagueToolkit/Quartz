@@ -338,12 +338,7 @@ export default function usePort() {
               );
               const prior = priorByKey || priorByName;
               if (!prior) return [key, sys];
-              return [key, {
-                ...sys,
-                ported: prior.ported === true ? true : sys.ported,
-                portedAt: prior.portedAt || sys.portedAt,
-                createdAt: prior.createdAt || sys.createdAt,
-              }];
+              return [key, { ...sys }];
             })
           );
           file.setTargetSystems(mergedSystems);

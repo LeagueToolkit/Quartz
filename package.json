@@ -1,7 +1,7 @@
 {
   "name": "quartz",
   "productName": "Quartz",
-  "version": "2.7.1",
+  "version": "2.8.1",
   "description": "Quartz - League of Legends Modding Suite",
   "homepage": "./",
   "main": "electron-main.js",
@@ -12,14 +12,16 @@
   "build": {
     "appId": "com.github.ritoshark.quartz",
     "directories": {
-      "buildResources": "assets"
+      "buildResources": "."
     },
     "files": [
       "build/**/*",
       "electron-main.js",
       "package.json",
       "javascript/utils.js",
-      "src/utils/io/hashManager.js"
+      "src/main/**/*",
+      "src/utils/**/*",
+      "src/jsritofile/**/*"
     ],
     "extraMetadata": {
       "main": "electron-main.js"
@@ -103,7 +105,7 @@
     ]
   },
   "scripts": {
-    "dev": "concurrently \"react-scripts start\" \"wait-on http://localhost:3000 && electron .\"",
+    "dev": "concurrently \"react-scripts start\" \"wait-on http://localhost:3000 && electron --js-flags=--expose-gc .\"",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",

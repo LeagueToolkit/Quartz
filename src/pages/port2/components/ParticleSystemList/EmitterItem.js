@@ -3,6 +3,7 @@ import { RenameInput } from '../common/Inputs';
 import { isDivineLabChildParticle } from '../../../../utils/vfx/mutations/childParticlesManager';
 import CropOriginalIcon from '@mui/icons-material/CropOriginal';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 
 const EmitterItem = ({
     emitter,
@@ -243,7 +244,6 @@ const EmitterItem = ({
                         border: 'none',
                         color: '#ef4444',
                         cursor: 'pointer',
-                        fontSize: '25px',
                         padding: '2px 4px',
                         display: 'flex',
                         alignItems: 'center',
@@ -251,7 +251,7 @@ const EmitterItem = ({
                         lineHeight: 1
                     }}
                 >
-                    🗑
+                    <DeleteOutlineIcon sx={{ fontSize: 22 }} />
                 </button>
             )}
         </div>
@@ -259,4 +259,5 @@ const EmitterItem = ({
 };
 
 export default EmitterItem;
+
 

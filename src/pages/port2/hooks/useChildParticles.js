@@ -22,9 +22,10 @@ export default function useChildParticles(
     setStatusMessage
 ) {
     const [showChildModal, setShowChildModal] = useState(false);
-    const [selectedSystemForChild, setSelectedSystemForChild] = useState(null);
-    const [selectedChildSystem, setSelectedChildSystem] = useState('');
-    const [childEmitterName, setChildEmitterName] = useState('');
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [selectedSystemForChild, setSelectedSystemForChild] = useState(null); // The system we are adding/editing in
+    const [selectedChildSystem, setSelectedChildSystem] = useState('');     // The child system being referenced
+    const [emitterName, setEmitterName] = useState('');                     // The name of the emitter
     const [availableVfxSystems, setAvailableVfxSystems] = useState([]);
     const [childParticleRate, setChildParticleRate] = useState('1');
     const [childParticleLifetime, setChildParticleLifetime] = useState('9999');
@@ -35,12 +36,24 @@ export default function useChildParticles(
     const [childParticleTranslationOverrideY, setChildParticleTranslationOverrideY] = useState('0');
     const [childParticleTranslationOverrideZ, setChildParticleTranslationOverrideZ] = useState('0');
 
-    // Child particle edit states
-    const [showChildEditModal, setShowChildEditModal] = useState(false);
-    const [editingChildEmitter, setEditingChildEmitter] = useState(null);
-    const [editingChildSystem, setEditingChildSystem] = useState(null);
+    const resetChildState = useCallback(() => {
+        setShowChildModal(false);
+        setIsEditMode(false);
+        setSelectedSystemForChild(null);
+        setSelectedChildSystem('');
+        setEmitterName('');
+        setChildParticleRate('1');
+        setChildParticleLifetime('9999');
+        setChildParticleBindWeight('1');
+        setChildParticleIsSingle(true);
+        setChildParticleTimeBeforeFirstEmission('0');
+        setChildParticleTranslationOverrideX('0');
+        setChildParticleTranslationOverrideY('0');
+        setChildParticleTranslationOverrideZ('0');
+        setAvailableVfxSystems([]);
+    }, []);
 
-    // Handle adding child particles to a VFX system (TARGET list only)
+    // Handle opening modal in ADD mode
     const handleAddChildParticles = useCallback((systemKey, systemName) => {
         if (!targetPyContent) {
             setStatusMessage('No target file loaded - Please open a target bin file first');
@@ -55,8 +68,8 @@ export default function useChildParticles(
             const systems = findAvailableVfxSystems(targetPyContent);
             setAvailableVfxSystems(systems);
             setSelectedSystemForChild({ key: systemKey, name: systemName });
-            setSelectedChildSystem('');
-            setChildEmitterName('');
+            setIsEditMode(false);
+            setEmitterName('');
             setChildParticleRate('1');
             setChildParticleLifetime('9999');
             setChildParticleBindWeight('1');
@@ -73,82 +86,21 @@ export default function useChildParticles(
         }
     }, [targetPyContent, hasResourceResolver, hasSkinCharacterData, setStatusMessage]);
 
-    // Confirm adding child particles
-    const handleConfirmChildParticles = useCallback(() => {
-        if (!selectedSystemForChild || !selectedChildSystem || !childEmitterName.trim()) {
-            setStatusMessage('Please fill in all fields (VFX system and emitter name)');
-            return;
-        }
-
+    // Handle opening modal in EDIT mode
+    const handleEditChildParticle = useCallback((systemKey, systemName, editingEmitterName) => {
         try {
-            // Save state before adding child particles
-            saveStateToHistory(`Add child particles to "${selectedSystemForChild.name}"`);
-
-            const updated = addChildParticleEffect(
-                targetPyContent,
-                selectedSystemForChild.key,
-                selectedChildSystem,
-                childEmitterName.trim(),
-                deletedEmitters,
-                parseFloat(childParticleRate),
-                parseFloat(childParticleLifetime),
-                parseFloat(childParticleBindWeight),
-                childParticleIsSingle,
-                parseFloat(childParticleTimeBeforeFirstEmission),
-                parseFloat(childParticleTranslationOverrideX),
-                parseFloat(childParticleTranslationOverrideY),
-                parseFloat(childParticleTranslationOverrideZ)
-            );
-
-            setTargetPyContent(updated);
-            try { setFileSaved(false); } catch { }
-
-            // Re-parse systems to update UI and ensure child particles are properly reflected
-            try {
-                const systems = parseVfxEmitters(updated);
-                setTargetSystems(systems);
-            } catch (parseError) {
-                console.warn('Failed to re-parse systems after adding child particles:', parseError);
-            }
-
-            setStatusMessage(`Added child particles "${childEmitterName}" to "${selectedSystemForChild.name}"`);
-            setShowChildModal(false);
-            setSelectedSystemForChild(null);
-            setSelectedChildSystem('');
-            setChildEmitterName('');
-            setChildParticleRate('1');
-            setChildParticleLifetime('9999');
-            setChildParticleBindWeight('1');
-            setChildParticleIsSingle(true);
-            setChildParticleTimeBeforeFirstEmission('0');
-            setChildParticleTranslationOverrideX('0');
-            setChildParticleTranslationOverrideY('0');
-            setChildParticleTranslationOverrideZ('0');
-            setAvailableVfxSystems([]);
-        } catch (error) {
-            console.error('Error adding child particles:', error);
-            setStatusMessage(`Failed to add child particles: ${error.message}`);
-        }
-    }, [selectedSystemForChild, selectedChildSystem, childEmitterName, targetPyContent, deletedEmitters, childParticleRate, childParticleLifetime, childParticleBindWeight, childParticleIsSingle, childParticleTimeBeforeFirstEmission, childParticleTranslationOverrideX, childParticleTranslationOverrideY, childParticleTranslationOverrideZ, saveStateToHistory, setTargetPyContent, setTargetSystems, setFileSaved, setStatusMessage]);
-
-    // Handle editing a Quartz-created child particle emitter
-    const handleEditChildParticle = useCallback((systemKey, systemName, emitterName) => {
-        try {
-            // Extract the current data from the emitter
-            const currentData = extractChildParticleData(targetPyContent, systemKey, emitterName);
-
+            const currentData = extractChildParticleData(targetPyContent, systemKey, editingEmitterName);
             if (!currentData) {
-                setStatusMessage(`Could not find child particle data for "${emitterName}"`);
+                setStatusMessage(`Could not find child particle data for "${editingEmitterName}"`);
                 return;
             }
 
-            // Load available VFX systems for the dropdown
             const systems = findAvailableVfxSystems(targetPyContent);
             setAvailableVfxSystems(systems);
 
-            // Set up the edit modal
-            setEditingChildEmitter(emitterName);
-            setEditingChildSystem({ key: systemKey, name: systemName });
+            setSelectedSystemForChild({ key: systemKey, name: systemName });
+            setEmitterName(editingEmitterName);
+            setIsEditMode(true);
 
             const matchingSystem = systems.find(sys => sys.key === currentData.effectKey);
             setSelectedChildSystem(matchingSystem ? matchingSystem.key : currentData.effectKey);
@@ -161,73 +113,86 @@ export default function useChildParticles(
             setChildParticleTranslationOverrideX(currentData.translationOverrideX.toString());
             setChildParticleTranslationOverrideY(currentData.translationOverrideY.toString());
             setChildParticleTranslationOverrideZ(currentData.translationOverrideZ.toString());
-            setShowChildEditModal(true);
+            setShowChildModal(true);
 
-            setStatusMessage(`Editing child particle "${emitterName}" in "${systemName}"`);
+            setStatusMessage(`Editing child particle "${editingEmitterName}" in "${systemName}"`);
         } catch (error) {
             console.error('Error preparing child particle edit:', error);
             setStatusMessage(`Failed to prepare child particle edit: ${error.message}`);
         }
     }, [targetPyContent, setStatusMessage]);
 
-    // Handle confirming child particle edit
-    const handleConfirmChildParticleEdit = useCallback(() => {
-        if (!editingChildEmitter || !editingChildSystem) {
-            setStatusMessage('Missing emitter or system information');
+    // Combined Confirm handler
+    const handleConfirmChildParticles = useCallback(() => {
+        if (!selectedSystemForChild || !selectedChildSystem || !emitterName.trim()) {
+            setStatusMessage('Please fill in all fields (VFX system and emitter name)');
             return;
         }
 
         try {
-            // Save state before editing
-            saveStateToHistory(`Edit child particle "${editingChildEmitter}" in "${editingChildSystem.name}"`);
+            saveStateToHistory(`${isEditMode ? 'Edit' : 'Add'} child particles ${isEditMode ? `"${emitterName}" in` : 'to'} "${selectedSystemForChild.name}"`);
 
-            const updated = updateChildParticleEmitter(
-                targetPyContent,
-                editingChildSystem.key,
-                editingChildEmitter,
-                selectedChildSystem,
-                parseFloat(childParticleRate),
-                parseFloat(childParticleLifetime),
-                parseFloat(childParticleBindWeight),
-                childParticleIsSingle,
-                parseFloat(childParticleTimeBeforeFirstEmission),
-                parseFloat(childParticleTranslationOverrideX),
-                parseFloat(childParticleTranslationOverrideY),
-                parseFloat(childParticleTranslationOverrideZ)
-            );
+            let updated;
+            if (isEditMode) {
+                updated = updateChildParticleEmitter(
+                    targetPyContent,
+                    selectedSystemForChild.key,
+                    emitterName,
+                    selectedChildSystem,
+                    parseFloat(childParticleRate),
+                    parseFloat(childParticleLifetime),
+                    parseFloat(childParticleBindWeight),
+                    childParticleIsSingle,
+                    parseFloat(childParticleTimeBeforeFirstEmission),
+                    parseFloat(childParticleTranslationOverrideX),
+                    parseFloat(childParticleTranslationOverrideY),
+                    parseFloat(childParticleTranslationOverrideZ)
+                );
+            } else {
+                updated = addChildParticleEffect(
+                    targetPyContent,
+                    selectedSystemForChild.key,
+                    selectedChildSystem,
+                    emitterName.trim(),
+                    deletedEmitters,
+                    parseFloat(childParticleRate),
+                    parseFloat(childParticleLifetime),
+                    parseFloat(childParticleBindWeight),
+                    childParticleIsSingle,
+                    parseFloat(childParticleTimeBeforeFirstEmission),
+                    parseFloat(childParticleTranslationOverrideX),
+                    parseFloat(childParticleTranslationOverrideY),
+                    parseFloat(childParticleTranslationOverrideZ)
+                );
+            }
 
             setTargetPyContent(updated);
             try { setFileSaved(false); } catch { }
 
-            // Re-parse systems to update UI
             try {
                 const systems = parseVfxEmitters(updated);
                 setTargetSystems(systems);
-            } catch (parseError) {
-                console.warn('Failed to re-parse systems after editing child particles:', parseError);
+            } catch (err) {
+                console.warn('Failed to re-parse systems after mutation:', err);
             }
 
-            setStatusMessage(`Updated child particle "${editingChildEmitter}" in "${editingChildSystem.name}"`);
-            setShowChildEditModal(false);
-            setEditingChildEmitter(null);
-            setEditingChildSystem(null);
+            setStatusMessage(`${isEditMode ? 'Updated' : 'Added'} child particle "${emitterName}" in "${selectedSystemForChild.name}"`);
+            resetChildState();
         } catch (error) {
-            console.error('Error updating child particle:', error);
-            setStatusMessage(`Failed to update child particle: ${error.message}`);
+            console.error('Error confirming child particles:', error);
+            setStatusMessage(`Failed to process child particles: ${error.message}`);
         }
-    }, [editingChildEmitter, editingChildSystem, targetPyContent, selectedChildSystem, childParticleRate, childParticleLifetime, childParticleBindWeight, childParticleIsSingle, childParticleTimeBeforeFirstEmission, childParticleTranslationOverrideX, childParticleTranslationOverrideY, childParticleTranslationOverrideZ, saveStateToHistory, setTargetPyContent, setTargetSystems, setFileSaved, setStatusMessage]);
+    }, [isEditMode, selectedSystemForChild, selectedChildSystem, emitterName, targetPyContent, deletedEmitters, childParticleRate, childParticleLifetime, childParticleBindWeight, childParticleIsSingle, childParticleTimeBeforeFirstEmission, childParticleTranslationOverrideX, childParticleTranslationOverrideY, childParticleTranslationOverrideZ, saveStateToHistory, setTargetPyContent, setTargetSystems, setFileSaved, setStatusMessage, resetChildState]);
 
     return {
         showChildModal,
-        setShowChildModal,
+        isEditMode,
         selectedSystemForChild,
-        setSelectedSystemForChild,
         selectedChildSystem,
         setSelectedChildSystem,
-        childEmitterName,
-        setChildEmitterName,
+        emitterName,
+        setEmitterName,
         availableVfxSystems,
-        setAvailableVfxSystems,
         childParticleRate,
         setChildParticleRate,
         childParticleLifetime,
@@ -244,15 +209,9 @@ export default function useChildParticles(
         setChildParticleTranslationOverrideY,
         childParticleTranslationOverrideZ,
         setChildParticleTranslationOverrideZ,
-        showChildEditModal,
-        setShowChildEditModal,
-        editingChildEmitter,
-        setEditingChildEmitter,
-        editingChildSystem,
-        setEditingChildSystem,
         handleAddChildParticles,
         handleConfirmChildParticles,
         handleEditChildParticle,
-        handleConfirmChildParticleEdit
+        resetChildState
     };
 }

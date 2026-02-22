@@ -12,6 +12,7 @@ const ChampionSidebar = ({
   selectedChampion,
   onSelectChampion,
   getChampionIconUrl,
+  offlineMode = false,
 }) => (
   <aside className="w-64 border-r border-gray-800 p-4 overflow-y-auto">
     <div className="relative mb-4">
@@ -60,11 +61,17 @@ const ChampionSidebar = ({
           className={`w-full flex items-center gap-3 p-2 rounded-lg text-left transition-all duration-200 hover:bg-gray-800 hover:border-l-4 hover:border-green-400 group ${selectedChampion?.id === champion.id ? 'bg-gray-800 border-l-4 border-green-400' : ''
             }`}
         >
-          <img
-            src={getChampionIconUrl(champion.id)}
-            alt={champion.name}
-            className="w-8 h-8 rounded-full group-hover:ring-2 group-hover:ring-green-400 transition-all duration-200"
-          />
+          {!offlineMode ? (
+            <img
+              src={getChampionIconUrl(champion.id)}
+              alt={champion.name}
+              className="w-8 h-8 rounded-full group-hover:ring-2 group-hover:ring-green-400 transition-all duration-200"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-gray-700 text-[9px] text-gray-300 flex items-center justify-center">
+              N/A
+            </div>
+          )}
           <div>
             <div className="text-sm font-medium text-white group-hover:text-green-400 transition-colors">
               {champion.name}

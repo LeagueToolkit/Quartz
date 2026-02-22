@@ -150,10 +150,15 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
     container.className = 'color-picker-container';
     container.style.position = 'fixed';
     container.style.zIndex = '9999';
-    container.style.background = '#1a1a1a';
-    container.style.border = '1px solid #333';
-    container.style.borderRadius = '4px';
-    container.style.padding = '8px';
+    container.style.background = 'var(--glass-bg, rgba(20, 20, 24, 0.92))';
+    container.style.border = '1px solid var(--glass-border, rgba(255,255,255,0.1))';
+    container.style.borderRadius = '14px';
+    container.style.padding = '12px';
+    container.style.minWidth = '272px';
+    container.style.boxShadow = '0 22px 55px rgba(0,0,0,0.5), 0 0 18px color-mix(in srgb, var(--accent2, #f0b35f), transparent 82%)';
+    container.style.backdropFilter = 'saturate(180%) blur(14px)';
+    container.style.WebkitBackdropFilter = 'saturate(180%) blur(14px)';
+    container.style.userSelect = 'none';
 
     // Position near the clicked element if event is provided
     const positionContainerNearTarget = (targetEl) => {
@@ -162,8 +167,8 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
       const vw = window.innerWidth || document.documentElement.clientWidth;
       const vh = window.innerHeight || document.documentElement.clientHeight;
       const margin = 8;
-      const pickerWidth = container.offsetWidth || 280;
-      const pickerHeight = container.offsetHeight || 320;
+      const pickerWidth = container.offsetWidth || 286;
+      const pickerHeight = container.offsetHeight || 372;
 
       let left = rect.left;
       let top = rect.bottom + 6;
@@ -204,26 +209,29 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
 
     // Preview swatch
     const preview = document.createElement('div');
-    preview.style.width = '28px';
-    preview.style.height = '28px';
+    preview.style.width = '30px';
+    preview.style.height = '30px';
     preview.style.borderRadius = '50%';
-    preview.style.border = '2px solid #333';
+    preview.style.border = '2px solid rgba(255,255,255,0.2)';
     preview.style.background = initialHex;
+    preview.style.boxShadow = '0 0 0 2px rgba(0,0,0,0.35) inset';
 
     // HEX input
     const hexInput = document.createElement('input');
     hexInput.type = 'text';
     hexInput.value = initialHex;
     hexInput.placeholder = '#RRGGBB';
-    hexInput.style.width = '100px';
-    hexInput.style.height = '28px';
-    hexInput.style.background = '#0f0f14';
-    hexInput.style.color = '#fff';
-    hexInput.style.border = '1px solid #333';
-    hexInput.style.borderRadius = '4px';
-    hexInput.style.padding = '0 8px';
+    hexInput.style.width = '120px';
+    hexInput.style.height = '32px';
+    hexInput.style.background = 'rgba(0,0,0,0.35)';
+    hexInput.style.color = 'var(--text, #fff)';
+    hexInput.style.border = '1px solid rgba(255,255,255,0.14)';
+    hexInput.style.borderRadius = '8px';
+    hexInput.style.padding = '0 10px';
     hexInput.style.fontFamily = 'JetBrains Mono, monospace';
     hexInput.style.fontSize = '12px';
+    hexInput.style.fontWeight = '600';
+    hexInput.style.outline = 'none';
 
     // RGB inputs
     const makeNum = (label) => {
@@ -235,20 +243,25 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
       inp.type = 'number';
       inp.min = '0';
       inp.max = '255';
-      inp.style.width = '64px';
-      inp.style.height = '26px';
-      inp.style.background = '#0f0f14';
-      inp.style.color = '#fff';
-      inp.style.border = '1px solid #333';
-      inp.style.borderRadius = '4px';
-      inp.style.padding = '0 6px';
+      inp.style.width = '72px';
+      inp.style.height = '30px';
+      inp.style.background = 'rgba(0,0,0,0.35)';
+      inp.style.color = 'var(--accent, #ecb96a)';
+      inp.style.border = '1px solid rgba(255,255,255,0.14)';
+      inp.style.borderRadius = '6px';
+      inp.style.padding = '0 8px';
       inp.style.fontFamily = 'JetBrains Mono, monospace';
       inp.style.fontSize = '12px';
+      inp.style.textAlign = 'center';
+      inp.style.outline = 'none';
+      inp.style.fontWeight = '600';
       const lab = document.createElement('div');
       lab.textContent = label;
       lab.style.fontSize = '10px';
-      lab.style.color = '#aaa';
-      lab.style.marginTop = '4px';
+      lab.style.color = 'rgba(255,255,255,0.65)';
+      lab.style.marginTop = '5px';
+      lab.style.letterSpacing = '0.06em';
+      lab.style.textTransform = 'uppercase';
       wrap.appendChild(inp); wrap.appendChild(lab);
       return { wrap, inp };
     };
@@ -326,16 +339,20 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
     visualWrap.style.flexDirection = 'column';
     visualWrap.style.gap = '8px';
     visualWrap.style.marginBottom = '10px';
+    visualWrap.style.padding = '8px';
+    visualWrap.style.borderRadius = '10px';
+    visualWrap.style.border = '1px solid rgba(255,255,255,0.08)';
+    visualWrap.style.background = 'rgba(255,255,255,0.02)';
 
     const svCanvas = document.createElement('canvas');
     svCanvas.width = 220; svCanvas.height = 140;
-    svCanvas.style.border = '1px solid #333';
-    svCanvas.style.borderRadius = '4px';
+    svCanvas.style.border = '1px solid rgba(255,255,255,0.14)';
+    svCanvas.style.borderRadius = '6px';
 
     const hueCanvas = document.createElement('canvas');
     hueCanvas.width = 220; hueCanvas.height = 14;
-    hueCanvas.style.border = '1px solid #333';
-    hueCanvas.style.borderRadius = '4px';
+    hueCanvas.style.border = '1px solid rgba(255,255,255,0.14)';
+    hueCanvas.style.borderRadius = '8px';
 
     visualWrap.appendChild(svCanvas);
     visualWrap.appendChild(hueCanvas);
@@ -455,15 +472,16 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
     // Row layouts
     const topRow = document.createElement('div');
     topRow.style.display = 'flex';
-    topRow.style.gap = '8px';
+    topRow.style.gap = '10px';
     topRow.style.alignItems = 'center';
+    topRow.style.marginTop = '2px';
     topRow.appendChild(preview);
     topRow.appendChild(hexInput);
 
     const midRow = document.createElement('div');
     midRow.style.display = 'flex';
-    midRow.style.gap = '8px';
-    midRow.style.marginTop = '8px';
+    midRow.style.gap = '10px';
+    midRow.style.marginTop = '10px';
     midRow.appendChild(rWrap);
     midRow.appendChild(gWrap);
     midRow.appendChild(bWrap);
@@ -471,46 +489,83 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
     const btnRow = document.createElement('div');
     btnRow.style.display = 'flex';
     btnRow.style.gap = '8px';
-    btnRow.style.marginTop = '10px';
+    btnRow.style.marginTop = '12px';
+    btnRow.style.paddingTop = '10px';
+    btnRow.style.borderTop = '1px solid rgba(255,255,255,0.1)';
     
     const applyBtn = document.createElement('button');
     applyBtn.textContent = 'Apply';
-    applyBtn.style.height = '28px';
-    applyBtn.style.padding = '0 10px';
-    applyBtn.style.background = 'var(--accent, #6b46c1)';
-    applyBtn.style.color = '#fff';
-    applyBtn.style.border = '1px solid #333';
-    applyBtn.style.borderRadius = '6px';
+    applyBtn.style.height = '32px';
+    applyBtn.style.padding = '0 14px';
+    applyBtn.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.62), rgba(16, 185, 129, 0.5))';
+    applyBtn.style.color = '#ffffff';
+    applyBtn.style.border = '1px solid rgba(167, 243, 208, 0.82)';
+    applyBtn.style.borderRadius = '10px';
     applyBtn.style.cursor = 'pointer';
+    applyBtn.style.fontWeight = '700';
+    applyBtn.style.boxShadow = '0 8px 20px rgba(16, 185, 129, 0.28), inset 0 1px 0 rgba(255,255,255,0.18)';
 
     const cancelBtn = document.createElement('button');
     cancelBtn.textContent = 'Cancel';
-    cancelBtn.style.height = '28px';
-    cancelBtn.style.padding = '0 10px';
-    cancelBtn.style.background = '#222';
-    cancelBtn.style.color = '#ddd';
-    cancelBtn.style.border = '1px solid #333';
-    cancelBtn.style.borderRadius = '6px';
+    cancelBtn.style.height = '32px';
+    cancelBtn.style.padding = '0 14px';
+    cancelBtn.style.background = 'rgba(18, 20, 28, 0.55)';
+    cancelBtn.style.color = '#ffffff';
+    cancelBtn.style.border = '1px solid rgba(255, 255, 255, 0.32)';
+    cancelBtn.style.borderRadius = '10px';
     cancelBtn.style.cursor = 'pointer';
+    cancelBtn.style.fontWeight = '700';
 
     // Optional eyedropper (Electron)
     const eyeBtn = document.createElement('button');
-    eyeBtn.innerHTML = '📍';
-    eyeBtn.style.height = '28px';
-    eyeBtn.style.padding = '0 10px';
-    eyeBtn.style.background = '#2a2a2a';
-    eyeBtn.style.color = '#bdbdbd';
-    eyeBtn.style.border = '1px solid #333';
-    eyeBtn.style.borderRadius = '6px';
+    eyeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M2.5 12s3.6-6 9.5-6 9.5 6 9.5 6-3.6 6-9.5 6-9.5-6-9.5-6z" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-width="1.35"/></svg>';
+    eyeBtn.style.height = '32px';
+    eyeBtn.style.width = '40px';
+    eyeBtn.style.padding = '0';
+    eyeBtn.style.background = 'rgba(18, 20, 28, 0.55)';
+    eyeBtn.style.color = '#ffffff';
+    eyeBtn.style.border = '1px solid rgba(255, 255, 255, 0.32)';
+    eyeBtn.style.borderRadius = '10px';
     eyeBtn.style.cursor = 'pointer';
+    eyeBtn.style.display = 'inline-flex';
+    eyeBtn.style.alignItems = 'center';
+    eyeBtn.style.justifyContent = 'center';
+
+    applyBtn.addEventListener('mouseenter', () => {
+      applyBtn.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.82), rgba(16, 185, 129, 0.72))';
+      applyBtn.style.boxShadow = '0 14px 28px rgba(16, 185, 129, 0.45), 0 0 18px rgba(110, 231, 183, 0.35)';
+      applyBtn.style.filter = 'brightness(1.08)';
+    });
+    applyBtn.addEventListener('mouseleave', () => {
+      applyBtn.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.62), rgba(16, 185, 129, 0.5))';
+      applyBtn.style.boxShadow = '0 8px 20px rgba(16, 185, 129, 0.28), inset 0 1px 0 rgba(255,255,255,0.18)';
+      applyBtn.style.filter = 'none';
+    });
+    cancelBtn.addEventListener('mouseenter', () => {
+      cancelBtn.style.background = 'rgba(34, 38, 52, 0.62)';
+      cancelBtn.style.borderColor = 'rgba(255, 255, 255, 0.52)';
+    });
+    cancelBtn.addEventListener('mouseleave', () => {
+      cancelBtn.style.background = 'rgba(18, 20, 28, 0.55)';
+      cancelBtn.style.borderColor = 'rgba(255, 255, 255, 0.32)';
+    });
+    eyeBtn.addEventListener('mouseenter', () => {
+      eyeBtn.style.background = 'rgba(34, 38, 52, 0.62)';
+      eyeBtn.style.borderColor = 'rgba(255, 255, 255, 0.52)';
+    });
+    eyeBtn.addEventListener('mouseleave', () => {
+      eyeBtn.style.background = 'rgba(18, 20, 28, 0.55)';
+      eyeBtn.style.borderColor = 'rgba(255, 255, 255, 0.32)';
+    });
 
     btnRow.appendChild(applyBtn);
     btnRow.appendChild(cancelBtn);
-    // Only show eyedropper in Electron builds where the module is present
+    // Only show eyedropper in Electron builds where the module is present.
+    // Place it on the right side of HEX input (top row), not in footer.
     try {
       const picker = window.require ? window.require('electron-color-picker') : null;
       if (picker && picker.getColorHexRGB) {
-        btnRow.appendChild(eyeBtn);
+        topRow.appendChild(eyeBtn);
       }
     } catch {}
 
@@ -679,3 +734,5 @@ export {
   CreatePicker,
   cleanupColorPickers
 }; 
+
+

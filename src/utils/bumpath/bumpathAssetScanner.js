@@ -143,8 +143,8 @@ export async function copyAsset(assetPath, outputDir, prefix, sourceDirs, source
     // Normalize path to lowercase (like bumpath does)
     const normalizedPath = assetPathLower;
     
-    // Create repathed output path (using normalized lowercase path)
-    const repathedPath = bumPath(normalizedPath, prefix);
+    // Create output path — if prefix is null (skipRepath mode), keep original path
+    const repathedPath = prefix !== null ? bumPath(normalizedPath, prefix) : normalizedPath;
     // Use forward slashes for cross-platform compatibility like bumpath
     const outputPath = path.join(outputDir, repathedPath).replace(/\\/g, '/');
     const outputDirPath = path.dirname(outputPath);

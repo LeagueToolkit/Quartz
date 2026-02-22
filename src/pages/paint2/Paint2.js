@@ -31,6 +31,8 @@ import SystemList from './components/SystemList';
 import PaletteManager from './components/PaletteManager';
 import BackupViewer from '../../components/modals/BackupViewer';
 import RitobinWarningModal, { detectHashedContent } from '../../components/modals/RitobinWarningModal';
+import CombineLinkedBinsModal from '../../components/modals/CombineLinkedBinsModal';
+import { useCombineLinkedBinsCheck } from '../../hooks/useCombineLinkedBinsCheck.js';
 import RitoBinErrorDialog from '../../components/modals/RitoBinErrorDialog';
 import UnsavedChangesModal from '../../components/modals/UnsavedChangesModal';
 import electronPrefs from '../../utils/core/electronPrefs.js';
@@ -39,6 +41,7 @@ import { Popover } from '@mui/material'; // Kept if needed elsewhere, but unmoun
 import { convertTextureToPNG, findActualTexturePath } from '../../utils/assets/textureConverter.js';
 import { openAssetPreview } from '../../utils/assets/assetPreviewEvent.js';
 import useUnsavedNavigationGuard from '../../hooks/navigation/useUnsavedNavigationGuard.js';
+import VfxFloatingActions from '../../components/floating/VfxFloatingActions';
 import {
     cancelTextureHoverClose,
     removeTextureHoverPreview,
@@ -53,6 +56,7 @@ const path = window.require ? window.require('path') : null;
 
 function Paint2() {
     const navigate = useNavigate();
+    const { checkAndPromptCombine, combineModalState, handleCombineYes, handleCombineNo } = useCombineLinkedBinsCheck();
 
     // === FILE STATE ===
     const [filePath, setFilePath] = useState('');
@@ -216,6 +220,7 @@ function Paint2() {
 
             if (!fs.existsSync(pyPath)) {
                 setStatusMessage('Converting bin to py...');
+                await checkAndPromptCombine(binPath);
                 await ToPyWithPath(binPath);
             }
 
@@ -951,8 +956,9 @@ function Paint2() {
                 if (autoExpandPref !== undefined) setAutoExpandWithRef(autoExpandPref);
 
                 if (filePath) return;
-                const autoEnabled = await electronPrefs.get('AutoLoadEnabled');
-                if (autoEnabled === false) return;
+                const autoLoadRaw = await electronPrefs.get('AutoLoadEnabled');
+                const autoEnabled = autoLoadRaw === true || autoLoadRaw === 'true' || autoLoadRaw === 1;
+                if (!autoEnabled) return;
 
                 let lastPath = await electronPrefs.get('PaintLastBinPath');
                 if (!lastPath) {
@@ -1139,6 +1145,15 @@ function Paint2() {
         return count;
     }, [parsedFile, selection, searchQuery, variantFilter, searchByTexture]);
 
+    const hasResourceResolver = useMemo(
+        () => parsedFile?.lines?.some(l => /\bResourceResolver\s*\{/m.test(l)) || false,
+        [parsedFile]
+    );
+    const hasSkinCharacterData = useMemo(
+        () => parsedFile?.lines?.some(l => /=\s*SkinCharacterDataProperties\s*\{/m.test(l)) || false,
+        [parsedFile]
+    );
+
     return (
         <Box sx={{
             display: 'flex',
@@ -1245,9 +1260,9 @@ function Paint2() {
                 colorCount={colorCount}
                 setColorCount={setColorCount}
                 savedPalettesList={savedPalettesList}
-                onSavePalette={handleSavePalette}
                 onLoadPalette={handleLoadPalette}
-                onDeletePalette={handleDeletePalette}
+                onPalettesChanged={refreshSavedPalettes}
+                onStatus={setStatusMessage}
                 sx={{ flexShrink: 0 }}
             />
 
@@ -1274,10 +1289,49 @@ function Paint2() {
                                 onChange={(e) => setBlendModeSelect(e.target.value)}
                                 size="small"
                                 sx={{
-                                    height: 24, fontSize: '0.75rem', color: 'var(--accent)',
+                                    fontFamily: 'JetBrains Mono, monospace',
+                                    fontSize: '0.82rem',
+                                    color: 'var(--text)',
+                                    height: '26px',
+                                    minWidth: '60px',
+                                    borderRadius: '8px',
+                                    background: 'rgba(18, 20, 28, 0.55)',
+                                    border: '1px solid rgba(255, 255, 255, 0.24)',
+                                    transition: 'all 160ms ease',
+                                    '& .MuiSelect-select': { padding: '3px 10px', paddingRight: '28px !important' },
+                                    '& .MuiSelect-icon': { color: 'rgba(255,255,255,0.78)', fontSize: '1rem' },
+                                    '&:hover': { background: 'rgba(34, 38, 52, 0.62)', borderColor: 'rgba(255,255,255,0.52)', boxShadow: '0 8px 18px rgba(0,0,0,0.28)' },
+                                    '&.Mui-focused': { borderColor: 'color-mix(in srgb, var(--accent2), transparent 35%)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent2), transparent 75%)' },
                                     '& fieldset': { border: 'none' },
-                                    background: 'rgba(255,255,255,0.05)',
-                                    borderRadius: '4px'
+                                    '&:hover fieldset': { border: 'none' },
+                                    '&.Mui-focused fieldset': { border: 'none' }
+                                }}
+                                MenuProps={{
+                                    PaperProps: {
+                                        sx: {
+                                            mt: 0.6,
+                                            background: 'var(--glass-bg, rgba(20, 20, 24, 0.94))',
+                                            border: '1px solid var(--glass-border, rgba(255,255,255,0.12))',
+                                            borderRadius: '12px',
+                                            boxShadow: '0 20px 48px rgba(0,0,0,0.5), 0 0 16px color-mix(in srgb, var(--accent2), transparent 80%)',
+                                            backdropFilter: 'saturate(180%) blur(12px)',
+                                            WebkitBackdropFilter: 'saturate(180%) blur(12px)',
+                                            overflow: 'hidden',
+                                            '& .MuiMenu-list': { py: 0.5 },
+                                            '& .MuiMenuItem-root': {
+                                                fontFamily: 'JetBrains Mono, monospace',
+                                                fontSize: '0.82rem',
+                                                color: 'var(--text-2)',
+                                                mx: 0.6,
+                                                borderRadius: '8px',
+                                                minHeight: '34px',
+                                                transition: 'all 140ms ease',
+                                                '&:hover': { background: 'rgba(255,255,255,0.07)', color: 'var(--text)' },
+                                                '&.Mui-selected': { background: 'color-mix(in srgb, var(--accent), transparent 85%)', color: 'var(--accent)', fontWeight: 700 },
+                                                '&.Mui-selected:hover': { background: 'color-mix(in srgb, var(--accent), transparent 80%)' }
+                                            }
+                                        }
+                                    }
                                 }}
                             >
                                 <MenuItem value={0}>0</MenuItem>
@@ -1292,9 +1346,17 @@ function Paint2() {
                             size="small"
                             onClick={handleSelectByBlendMode}
                             sx={{
-                                height: 24, textTransform: 'none', background: 'rgba(255,255,255,0.05)',
-                                color: 'var(--accent-muted)', fontSize: '0.75rem', px: 1,
-                                '&:hover': { background: 'rgba(255,255,255,0.1)' }
+                                background: 'color-mix(in srgb, var(--accent), transparent 95%)',
+                                border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)',
+                                color: 'var(--accent)',
+                                borderRadius: '4px',
+                                textTransform: 'none',
+                                fontFamily: 'JetBrains Mono, monospace',
+                                fontSize: '0.78rem',
+                                padding: '1px 10px',
+                                minWidth: 'auto',
+                                height: '26px',
+                                '&:hover': { background: 'color-mix(in srgb, var(--accent), transparent 90%)', borderColor: 'var(--accent)' }
                             }}
                         >
                             Select BM{blendModeSelect}
@@ -1871,33 +1933,18 @@ function Paint2() {
                 fileName={fileName}
             />
 
-            {/* Floating Backup Viewer Button */}
+            {/* Floating Tools Drawer */}
             {filePath && (
-                <Tooltip title="Backup History" placement="left" arrow>
-                    <IconButton
-                        onClick={handleOpenBackupViewer}
-                        aria-label="View Backup History"
-                        sx={{
-                            position: 'fixed',
-                            bottom: 80,
-                            right: 24,
-                            width: 40,
-                            height: 40,
-                            background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent), transparent 85%), color-mix(in srgb, var(--accent), transparent 92%))',
-                            border: '1px solid color-mix(in srgb, var(--accent), transparent 60%)',
-                            color: 'var(--accent)',
-                            backdropFilter: 'blur(8px)',
-                            transition: 'all 0.2s ease',
-                            '&:hover': {
-                                background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent), transparent 75%), color-mix(in srgb, var(--accent), transparent 85%))',
-                                transform: 'scale(1.05)',
-                                boxShadow: '0 4px 20px color-mix(in srgb, var(--accent), transparent 70%)'
-                            }
-                        }}
-                    >
-                        <HistoryIcon sx={{ fontSize: 20 }} />
-                    </IconButton>
-                </Tooltip>
+                <VfxFloatingActions
+                    targetPyContent={parsedFile?.lines?.join('\n')}
+                    isProcessing={isLoading}
+                    handleOpenBackupViewer={handleOpenBackupViewer}
+                    hasResourceResolver={hasResourceResolver}
+                    hasSkinCharacterData={hasSkinCharacterData}
+                    showPortAllButton={false}
+                    showNewSystemButton={false}
+                    showPersistentButton={false}
+                />
             )}
 
             {/* Backup Viewer Dialog */}
@@ -1948,6 +1995,14 @@ function Paint2() {
                         setStatusMessage(`Loaded ${parsedFile.stats.systemCount} systems and ${parsedFile.stats.emitterCount} emitters`);
                     }
                 }}
+            />
+
+            {/* Combine Linked BINs Modal */}
+            <CombineLinkedBinsModal
+                open={combineModalState.open}
+                linkCount={combineModalState.linkCount}
+                onYes={handleCombineYes}
+                onNo={handleCombineNo}
             />
 
             <RitoBinErrorDialog

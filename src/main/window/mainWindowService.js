@@ -24,6 +24,7 @@ function createMainWindowService({
         nodeIntegration: true,
         contextIsolation: false,
         enableRemoteModule: false,
+        preload: path.join(baseDir, 'preload.js'),
       },
     });
 

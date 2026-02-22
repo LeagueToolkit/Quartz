@@ -13,10 +13,13 @@ import NoChampionSelectedView from './components/NoChampionSelectedView.js';
 import SelectionSummaryBar from './components/SelectionSummaryBar.js';
 import SettingsModal from './components/SettingsModal.js';
 import CustomPrefixModal from './components/CustomPrefixModal.js';
+import ExtractionModeModal from './components/ExtractionModeModal.js';
 import WarningModal from './components/WarningModal.js';
 import {
   api,
   fetchAllChromaData,
+  getFrogDataStatus,
+  getFrogOfflineSimulationEnabled,
   getChromaDataForSkin,
   getDefaultChromaColor,
 } from './services/communityDragonApi.js';
@@ -35,7 +38,6 @@ import {
   loadFrogSettings,
   validateFrogSetup,
 } from './services/setupService.js';
-import { clearHashtablesCache } from '../../jsritofile/index.js';
 
 const FrogChanger = () => {
   const [champions, setChampions] = useState([]);
@@ -122,6 +124,8 @@ const FrogChanger = () => {
   const [isCancelling, setIsCancelling] = useState(false);
   const [extractVoiceover, setExtractVoiceover] = useState(false);
   const [showPrefixModal, setShowPrefixModal] = useState(false);
+  const [showExtractionModeModal, setShowExtractionModeModal] = useState(false);
+  const [pendingExtractionSkins, setPendingExtractionSkins] = useState([]);
   const [customPrefix, setCustomPrefix] = useState('');
   const [pendingRepathData, setPendingRepathData] = useState(null);
   const [currentSkinIndex, setCurrentSkinIndex] = useState(0);
@@ -136,6 +140,9 @@ const FrogChanger = () => {
   const [showCelestiaGuide, setShowCelestiaGuide] = useState(false);
   const [isSetupValid, setIsSetupValid] = useState(true);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [offlineMode, setOfflineMode] = useState(false);
+  const [offlineSimulationEnabled, setOfflineSimulationEnabled] = useState(false);
+  const hasShownOfflineNoticeRef = useRef(false);
   const leaguePathRef = useRef(null);
   const extractionPathRef = useRef(null);
 
@@ -145,14 +152,31 @@ const FrogChanger = () => {
     loadSettings();
   }, []);
 
-  // Clear shared hashtable cache only when leaving FrogChanger.
+  useEffect(() => {
+    const updateOfflineFromNavigator = () => {
+      const simulationEnabled = getFrogOfflineSimulationEnabled();
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      setOfflineSimulationEnabled(simulationEnabled);
+      setOfflineMode(offline || simulationEnabled);
+      if (!offline && !simulationEnabled) {
+        hasShownOfflineNoticeRef.current = false;
+      }
+    };
+    updateOfflineFromNavigator();
+    window.addEventListener('online', updateOfflineFromNavigator);
+    window.addEventListener('offline', updateOfflineFromNavigator);
+    return () => {
+      window.removeEventListener('online', updateOfflineFromNavigator);
+      window.removeEventListener('offline', updateOfflineFromNavigator);
+    };
+  }, []);
+
+  // Clear main-process hashtable cache when leaving FrogChanger.
+  // Must go through IPC — calling clearHashtablesCache() here only affects the
+  // renderer's empty copy, not the main-process copy that holds 200-400MB.
   useEffect(() => {
     return () => {
-      try {
-        clearHashtablesCache();
-      } catch (e) {
-        console.warn('Failed clearing hashtable cache on FrogChanger unmount:', e);
-      }
+      window.electronAPI?.hashtable?.clearCache?.();
     };
   }, []);
 
@@ -561,11 +585,27 @@ const FrogChanger = () => {
       setLoading(true);
       setError(null);
       const data = await api.getChampions();
+      const status = getFrogDataStatus();
+      const noInternetDetected = status.offlineDetected || (typeof navigator !== 'undefined' && navigator.onLine === false);
+      const simulationEnabled = getFrogOfflineSimulationEnabled();
+      const usingCache = status.usedCache || status.source.champions === 'cache' || status.source.skins === 'cache';
+      const shouldUseOfflineMode = noInternetDetected || usingCache || simulationEnabled;
+      setOfflineSimulationEnabled(simulationEnabled);
+      setOfflineMode(shouldUseOfflineMode);
+      if (shouldUseOfflineMode && !hasShownOfflineNoticeRef.current) {
+        addConsoleLog(simulationEnabled
+          ? 'Offline simulation enabled. Using cached files if available.'
+          : 'No internet connection detected. Using cached files if available.', 'warning');
+        hasShownOfflineNoticeRef.current = true;
+      }
       console.log('Loaded champions:', data.length, data.slice(0, 3)); // Debug log
       setChampions(data);
       setFilteredChampions(data);
     } catch (err) {
-      setError('Failed to load champions');
+      const offline = (typeof navigator !== 'undefined' && navigator.onLine === false);
+      setError(offline
+        ? 'No internet connection detected and no cached files are available.'
+        : 'Failed to load champions');
       console.error('Error loading champions:', err);
     } finally {
       setLoading(false);
@@ -748,54 +788,61 @@ const FrogChanger = () => {
 
   const handleExtractWad = async () => {
     const setupReady = await ensureSetupReady('extracting');
-    if (!setupReady) {
-      return;
-    }
+    if (!setupReady) return;
 
     const normalizedSelections = getNormalizedSelectedSkins();
-    if (normalizedSelections.length > 0) {
-      setIsExtracting(true);
-      addConsoleLog(`Extracting ${normalizedSelections.length} skin(s)...`, 'info');
-      try {
-        // Extract WAD files for all selected skins
-        for (let i = 0; i < normalizedSelections.length; i++) {
-          // Check for cancellation (but not immediately)
-          if (isCancelling) {
-            addConsoleLog('Extraction cancelled by user', 'warning');
-            break;
-          }
+    if (normalizedSelections.length === 0) return;
 
-          const { championName, skinId, skinName } = normalizedSelections[i];
-          const progress = `${i + 1}/${normalizedSelections.length}`;
-          if (extractVoiceover) {
-            addConsoleLog(`${progress} Extracting ${skinName} (${championName}) - Normal & Voiceover WADs...`, 'info');
-          } else {
-            addConsoleLog(`${progress} Extracting ${skinName} (${championName}) - Normal WAD only (Voiceover disabled)...`, 'info');
-          }
+    // Show the extraction mode modal — the actual loop runs in executeExtraction()
+    setPendingExtractionSkins(normalizedSelections);
+    setShowExtractionModeModal(true);
+  };
 
-          const skinKey = `${championName}_${skinId}`;
-          const selectedChroma = selectedChromas[skinKey];
+  const executeExtraction = async (decisions) => {
+    setShowExtractionModeModal(false);
+    const normalizedSelections = pendingExtractionSkins;
 
-          // Extract with chroma if one is selected
-          if (selectedChroma) {
-            addConsoleLog(`${progress} Extracting with chroma ${selectedChroma.id}...`, 'info');
-            await extractWadFile(championName, skinId, skinName, selectedChroma.id);
-          } else {
-            await extractWadFile(championName, skinId, skinName);
-          }
-
-          addConsoleLog(`${progress} Successfully extracted ${skinName} (${championName})`, 'success');
+    setIsExtracting(true);
+    addConsoleLog(`Extracting ${normalizedSelections.length} skin(s)...`, 'info');
+    try {
+      for (let i = 0; i < normalizedSelections.length; i++) {
+        if (isCancelling) {
+          addConsoleLog('Extraction cancelled by user', 'warning');
+          break;
         }
-        setSelectedSkins([]);
-        setSelectedChromas({});
-        addConsoleLog(`All extractions completed successfully!`, 'success');
-      } catch (error) {
-        console.error('Error during WAD extraction:', error);
-        addConsoleLog(`Extraction failed: ${error.message}`, 'error');
-        alert(`Failed to extract WAD files: ${error.message}`);
-      } finally {
-        setIsExtracting(false);
+
+        const { championName, skinId, skinName } = normalizedSelections[i];
+        const skinKey = `${championName}_${skinId}`;
+        const decision = decisions.find(d => d.skinKey === skinKey);
+        const cleanAfterExtract = decision?.clean ?? false;
+        const progress = `${i + 1}/${normalizedSelections.length}`;
+
+        if (extractVoiceover) {
+          addConsoleLog(`${progress} Extracting ${skinName} (${championName}) - Normal & Voiceover WADs...`, 'info');
+        } else {
+          addConsoleLog(`${progress} Extracting ${skinName} (${championName}) - Normal WAD only (Voiceover disabled)...`, 'info');
+        }
+
+        const selectedChroma = selectedChromas[skinKey];
+        if (selectedChroma) {
+          addConsoleLog(`${progress} Extracting with chroma ${selectedChroma.id}...`, 'info');
+          await extractWadFile(championName, skinId, skinName, selectedChroma.id, cleanAfterExtract);
+        } else {
+          await extractWadFile(championName, skinId, skinName, null, cleanAfterExtract);
+        }
+
+        addConsoleLog(`${progress} Successfully extracted ${skinName} (${championName})`, 'success');
       }
+      setSelectedSkins([]);
+      setSelectedChromas({});
+      addConsoleLog(`All extractions completed successfully!`, 'success');
+    } catch (error) {
+      console.error('Error during WAD extraction:', error);
+      addConsoleLog(`Extraction failed: ${error.message}`, 'error');
+      alert(`Failed to extract WAD files: ${error.message}`);
+    } finally {
+      setIsExtracting(false);
+      setPendingExtractionSkins([]);
     }
   };
 
@@ -971,7 +1018,7 @@ const FrogChanger = () => {
       alert(`Failed to download splash art: ${error.message}`);
     }
   };
-  const extractWadFile = async (championName, skinId, skinName = null, chromaId = null) => {
+  const extractWadFile = async (championName, skinId, skinName = null, chromaId = null, cleanAfterExtract = false) => {
     if (!leaguePath) {
       alert('Please set the League of Legends Games folder path in settings first!');
       return;
@@ -995,6 +1042,7 @@ const FrogChanger = () => {
         extractionPath,
         hashPath,
         extractVoiceover,
+        cleanAfterExtract,
         onProgress: (message) => {
           setExtractionProgress(prev => ({ ...prev, [skinKey]: message }));
         },
@@ -1044,10 +1092,18 @@ const FrogChanger = () => {
           selectedChampion={selectedChampion}
           onSelectChampion={handleChampionSelect}
           getChampionIconUrl={getChampionIconUrl}
+          offlineMode={offlineMode}
         />
 
         {/* Main Content */}
         <main className="flex-1 p-6 overflow-y-auto relative">
+          {offlineMode && (
+            <div className="mb-4 px-3 py-2 rounded-md border border-yellow-600/40 bg-yellow-500/10 text-yellow-300 text-sm">
+              {offlineSimulationEnabled
+                ? 'Offline simulation enabled. Using cached files if available.'
+                : 'No internet connection detected. Using cached files if available.'}
+            </div>
+          )}
           <TopControls
             consoleLogs={consoleLogs}
             showSearchInfo={showSearchInfo}
@@ -1072,6 +1128,7 @@ const FrogChanger = () => {
               onSkinClick={handleSkinlineSkinClick}
               onChromaClick={handleChromaClick}
               onDownloadSplashArt={downloadSplashArt}
+              offlineMode={offlineMode}
             />
           ) : selectedChampion ? (
             <ChampionSkinsPanel
@@ -1088,6 +1145,7 @@ const FrogChanger = () => {
               onSkinClick={handleSkinClick}
               onChromaClick={handleChromaClick}
               onDownloadSplashArt={downloadSplashArt}
+              offlineMode={offlineMode}
             />
           ) : (
             <NoChampionSelectedView loading={loading} />
@@ -1140,6 +1198,16 @@ const FrogChanger = () => {
         onCancel={handleCancelPrefixModal}
         onPrevious={handlePreviousPrefix}
         onNextOrStart={handleNextOrStartPrefix}
+      />
+
+            <ExtractionModeModal
+        open={showExtractionModeModal}
+        skins={pendingExtractionSkins}
+        onDecide={executeExtraction}
+        onCancel={() => {
+          setShowExtractionModeModal(false);
+          setPendingExtractionSkins([]);
+        }}
       />
 
             <WarningModal

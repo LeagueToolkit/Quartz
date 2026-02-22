@@ -4,33 +4,34 @@ const path = window.require ? window.require('path') : null;
 
 // We'll import ColorHandler dynamically when needed to avoid circular dependencies
 
+const getUserDataBasePath = () => {
+  if (process.platform === 'win32') {
+    return process.env.APPDATA || process.env.USERPROFILE || process.env.HOME || null;
+  }
+  if (process.platform === 'darwin') {
+    return process.env.HOME ? path.join(process.env.HOME, 'Library', 'Preferences') : null;
+  }
+  return process.env.XDG_DATA_HOME || (process.env.HOME ? path.join(process.env.HOME, '.local', 'share') : null);
+};
+
 // Get the palette directory path
 const getPaletteDirectory = () => {
   if (!path) return null;
 
   try {
-    // In production, we should use the user data path
-    if (window.require) {
-      const { ipcRenderer } = window.require('electron');
-      // We'll use a sync call if possible, but since we don't have one, 
-      // we'll check if we're in a packaged app environment
-      const isProd = process.env.NODE_ENV === 'production' || !process.env.NODE_ENV;
-
-      if (isProd) {
-        // For production, we can usually find a 'palette' folder relative to the executable
-        // or we can use a fixed path structure. 
-        // Best practice: use the app's userData folder
-        // We'll try to get it from process context if available in Electron renderer
-        const userDataPath = process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Preferences' : process.env.HOME + '/.local/share');
-        return path.join(userDataPath, 'DivineLab', 'palette');
-      }
+    const userDataBasePath = getUserDataBasePath();
+    if (!userDataBasePath) {
+      console.warn('[PaletteManager] Could not resolve user data base path');
+      return null;
     }
+    return path.join(userDataBasePath, 'DivineLab', 'palette');
   } catch (e) {
-    console.warn('[PaletteManager] Error determining production path:', e);
+    console.warn('[PaletteManager] Error determining palette path:', e);
+    return null;
   }
-
-  return path.join(process.cwd(), 'palette');
 };
+
+export const getPaletteDirectoryPath = () => getPaletteDirectory();
 
 // Ensure palette directory exists
 const ensurePaletteDirectory = () => {

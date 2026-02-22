@@ -1,3 +1,27 @@
+/**
+ * WAD + Bumpath IPC channels
+ *
+ * wad:extract        — single WAD extraction (legacy, kept for compatibility)
+ * wad:extractBundle  — full champion bundle: main WAD + voiceover WADs, with
+ *                      live progress events pushed to renderer via 'wad:progress'
+ * bumpath:repath     — Bumpath repath
+ */
+
+const path = require('path');
+
+// Mirrors operationsService.getChampionFileName in the renderer
+const CHAMPION_SPECIAL_CASES = {
+  wukong: 'monkeyking',
+  monkeyking: 'monkeyking',
+  'nunu & willump': 'nunu',
+  nunu: 'nunu',
+};
+
+function getChampionFileName(championName) {
+  const lower = championName.toLowerCase();
+  return CHAMPION_SPECIAL_CASES[lower] || lower.replace(/['"\s]/g, '');
+}
+
 function registerWadBumpathChannels({
   ipcMain,
   fs,
@@ -6,49 +30,36 @@ function registerWadBumpathChannels({
   loadJsRitoModule,
   loadBumpathModule,
 }) {
-  // WAD extraction handler - Using JavaScript implementation instead of Python backend
+  // ---------------------------------------------------------------------------
+  // wad:extract — single WAD (legacy, kept working now that loadWadModule resolves)
+  // ---------------------------------------------------------------------------
   ipcMain.handle('wad:extract', async (_event, data) => {
     try {
       console.log('WAD extraction request received:', JSON.stringify(data, null, 2));
 
-      // Validate required parameters
-      if (!data || !data.wadPath || !data.outputDir || data.skinId === undefined || data.skinId === null) {
-        console.error('Missing required parameters:', {
-          wadPath: data?.wadPath,
-          outputDir: data?.outputDir,
-          skinId: data?.skinId,
-        });
+      if (!data?.wadPath || !data?.outputDir || data.skinId == null) {
         return { error: 'Missing required parameters: wadPath, outputDir, skinId' };
       }
-
-      // Validate WAD file exists
       if (!fs.existsSync(data.wadPath)) {
         return { error: `WAD file not found: ${data.wadPath}` };
       }
 
-      // Use integrated hash location if not provided
       const hashPath = getHashPath(data.hashPath);
       console.log('Using hash path:', hashPath);
 
-      // Import ES modules
       const { unpackWAD } = await loadWadModule();
       const { loadHashtables } = await loadJsRitoModule();
 
-      // Load hashtables if hash path exists
       let hashtables = null;
       if (hashPath && fs.existsSync(hashPath)) {
         try {
-          console.log('Loading hashtables from:', hashPath);
           hashtables = await loadHashtables(hashPath);
           console.log('Hashtables loaded successfully');
-        } catch (hashError) {
-          console.warn('Failed to load hashtables, continuing without them:', hashError.message);
+        } catch (e) {
+          console.warn('[wad:extract] Hashtable load failed:', e.message);
         }
-      } else {
-        console.log('No hashtables path provided, files will use hash names');
       }
 
-      // Progress callback
       let lastProgress = 0;
       const progressCallback = (count, message) => {
         if (count > lastProgress + 50 || message) {
@@ -57,22 +68,8 @@ function registerWadBumpathChannels({
         }
       };
 
-      // Extract WAD file using JavaScript implementation
-      console.log('Starting WAD extraction with JavaScript implementation...');
-      const result = await unpackWAD(
-        data.wadPath,
-        data.outputDir,
-        hashtables,
-        null, // no filter
-        progressCallback
-      );
-
-      console.log('WAD extraction completed:', {
-        extractedCount: result.extractedCount,
-        outputDir: result.outputDir,
-        hashedFilesCount: Object.keys(result.hashedFiles || {}).length,
-      });
-
+      const result = await unpackWAD(data.wadPath, data.outputDir, hashtables, null, progressCallback);
+      console.log('WAD extraction completed:', { extractedCount: result.extractedCount, outputDir: result.outputDir });
       return {
         success: true,
         extractedCount: result.extractedCount,
@@ -80,44 +77,220 @@ function registerWadBumpathChannels({
         hashedFiles: result.hashedFiles || {},
       };
     } catch (error) {
-      console.error('WAD extraction error:', error);
+      console.error('[wad:extract] Error:', error);
       return { error: error.message, stack: error.stack };
     }
   });
 
-  // Bumpath repath handler - Using JavaScript implementation instead of Python backend
+  // ---------------------------------------------------------------------------
+  // wad:extractBundle — full champion bundle with voiceover + live progress
+  //
+  // Progress is pushed to the renderer window via event.sender.send('wad:progress').
+  // The renderer subscribes with window.electronAPI.wad.onProgress(cb).
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('wad:extractBundle', async (event, data) => {
+    try {
+      const {
+        championName,
+        skinId,
+        skinName = null,
+        chromaId = null,
+        leaguePath,
+        extractionPath,
+        hashPath: rawHashPath,
+        extractVoiceover,
+        cleanAfterExtract = false,
+      } = data || {};
+
+      if (!championName || !leaguePath || !extractionPath) {
+        return { error: 'Missing required parameters: championName, leaguePath, extractionPath' };
+      }
+
+      // Safe progress sender — renderer may have navigated away
+      const sendProgress = (count, message) => {
+        try {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('wad:progress', { count, message });
+          }
+        } catch (_) { /* ignore */ }
+      };
+
+      sendProgress(0, 'Reading WAD files...');
+
+      // P1-13: path.join — no hardcoded backslash concatenation
+      const championFileName = getChampionFileName(championName);
+      const wadFileName = `${championFileName}.wad.client`;
+      const wadFilePath = path.join(leaguePath, wadFileName);
+
+      const skinNameSafe = skinName ? skinName.replace(/[^a-zA-Z0-9]/g, '_') : String(skinId);
+      const outputDir = chromaId
+        ? path.join(extractionPath, `${championFileName}_extracted_${skinNameSafe}_chroma_${chromaId}`)
+        : path.join(extractionPath, `${championFileName}_extracted_${skinNameSafe}`);
+
+      // Find voiceover WADs (sync readdir is fine in main process)
+      let voiceoverWadFiles = [];
+      try {
+        const dirEntries = fs.readdirSync(leaguePath);
+        const wadFilenameLower = wadFileName.toLowerCase();
+        voiceoverWadFiles = dirEntries.filter(file => {
+          const lower = file.toLowerCase();
+          return lower.startsWith(championFileName) &&
+            lower.endsWith('.wad.client') &&
+            lower !== wadFilenameLower &&
+            (file[championFileName.length] === '.' || file[championFileName.length] === '_');
+        });
+      } catch (err) {
+        console.warn('[wad:extractBundle] Could not scan voiceover WADs:', err.message);
+      }
+
+      // Validate main WAD exists
+      if (!fs.existsSync(wadFilePath)) {
+        return { error: `WAD file not found: ${wadFilePath}` };
+      }
+
+      // Load hashtables
+      const hashPath = getHashPath(rawHashPath);
+      let hashtables = null;
+      if (hashPath && fs.existsSync(hashPath)) {
+        try {
+          const { loadHashtables } = await loadJsRitoModule();
+          const htStart = Date.now();
+          hashtables = await loadHashtables(hashPath, {
+            tables: ['hashes.game.txt', 'hashes.lcu.txt'],
+          });
+          console.log(`[wad:extractBundle] Hashtables loaded in ${Date.now() - htStart}ms`);
+        } catch (hashErr) {
+          console.warn('[wad:extractBundle] Failed to load hashtables:', hashErr.message);
+        }
+      }
+
+      const { unpackWAD } = await loadWadModule();
+      const progressCallback = (count, message) => sendProgress(count, message);
+
+      // Extract main WAD
+      sendProgress(0, 'Extracting WAD file...');
+      const normalResult = await unpackWAD(wadFilePath, outputDir, hashtables, null, progressCallback);
+      sendProgress(normalResult.extractedCount, `Extracted ${normalResult.extractedCount} files successfully!`);
+
+      // Extract voiceover WADs (different files, different namespaces — no collision risk)
+      let successfulVoiceovers = 0;
+      let failedVoiceovers = 0;
+
+      if (voiceoverWadFiles.length > 0 && extractVoiceover) {
+        sendProgress(0, `Extracting ${voiceoverWadFiles.length} voiceover WAD(s)...`);
+        for (const voFile of voiceoverWadFiles) {
+          try {
+            await unpackWAD(path.join(leaguePath, voFile), outputDir, hashtables, null, progressCallback);
+            successfulVoiceovers++;
+          } catch (err) {
+            console.warn(`[wad:extractBundle] Voiceover failed (${voFile}):`, err.message);
+            failedVoiceovers++;
+          }
+        }
+      }
+
+      // Final status message
+      let finalMessage;
+      if (voiceoverWadFiles.length > 0 && extractVoiceover) {
+        if (successfulVoiceovers > 0 && failedVoiceovers === 0) {
+          finalMessage = `Normal WAD + ${successfulVoiceovers} voiceover WAD(s) extracted successfully!`;
+        } else if (successfulVoiceovers > 0) {
+          finalMessage = `Normal WAD + ${successfulVoiceovers}/${voiceoverWadFiles.length} voiceover WAD(s) extracted`;
+        } else {
+          finalMessage = 'Normal WAD extracted, voiceover WADs failed';
+        }
+      } else if (voiceoverWadFiles.length > 0 && !extractVoiceover) {
+        finalMessage = 'Normal WAD extracted successfully! (Voiceover disabled)';
+      } else {
+        finalMessage = 'Normal WAD extracted successfully!';
+      }
+
+      sendProgress(normalResult.extractedCount, finalMessage);
+
+      // ── Skin-files-only clean step ────────────────────────────────────────
+      // Runs BumpathCore in skipRepath mode: filters referenced assets,
+      // merges linked BINs, keeps original paths. Then swaps directories.
+      if (cleanAfterExtract) {
+        try {
+          sendProgress(0, 'Filtering skin files...');
+          const { BumpathCore } = await loadBumpathModule();
+          const cleanDir = outputDir + '_clean';
+
+          const bum = new BumpathCore();
+          await bum.addSourceDirs([outputDir]);
+
+          // Select only the BIN for the target skinId
+          const binSelections = {};
+          for (const key in bum.sourceBins) binSelections[key] = false;
+
+          for (const key in bum.sourceBins) {
+            const fileInfo = bum.sourceFiles[key];
+            if (fileInfo?.relPath?.toLowerCase().endsWith('.bin')) {
+              const skinMatch = fileInfo.relPath.toLowerCase().match(/\/skins\/skin(\d+)\.bin/);
+              if (skinMatch && parseInt(skinMatch[1], 10) === skinId) {
+                binSelections[key] = true;
+                console.log(`[wad:extractBundle] Clean: selected ${fileInfo.relPath}`);
+              }
+            }
+          }
+
+          bum.updateBinSelection(binSelections);
+          await bum.scan(hashPath);
+          console.log(`[wad:extractBundle] Clean: ${Object.keys(bum.scannedTree).length} entries found`);
+
+          await bum.process(cleanDir, true, true, progressCallback, true);
+
+          // Swap: delete full extraction, rename clean dir to final outputDir
+          sendProgress(0, 'Finalizing...');
+          fs.rmSync(outputDir, { recursive: true, force: true });
+          fs.renameSync(cleanDir, outputDir);
+          sendProgress(0, 'Skin files ready!');
+          console.log(`[wad:extractBundle] Clean complete: ${outputDir}`);
+        } catch (cleanErr) {
+          console.error('[wad:extractBundle] Clean step failed:', cleanErr);
+          sendProgress(0, `Warning: clean step failed — ${cleanErr.message}`);
+        }
+      }
+
+      return {
+        success: true,
+        championFileName,
+        wadFilePath,
+        outputDir,
+        normalResult,
+        voiceoverWadFiles,
+        successfulVoiceovers,
+        failedVoiceovers,
+        finalMessage,
+      };
+    } catch (error) {
+      console.error('[wad:extractBundle] Error:', error);
+      return { error: error.message, stack: error.stack };
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // bumpath:repath
+  // ---------------------------------------------------------------------------
   ipcMain.handle('bumpath:repath', async (_event, data) => {
     try {
       console.log('Bumpath repath request received:', JSON.stringify(data, null, 2));
 
-      // Validate required parameters
-      if (!data || !data.sourceDir || !data.outputDir || !data.selectedSkinIds) {
-        console.error('Missing required parameters:', {
-          sourceDir: data?.sourceDir,
-          outputDir: data?.outputDir,
-          selectedSkinIds: data?.selectedSkinIds,
-        });
+      if (!data?.sourceDir || !data?.outputDir || !data?.selectedSkinIds) {
         return { error: 'Missing required parameters: sourceDir, outputDir, selectedSkinIds' };
       }
-
-      // Validate source directory exists
       if (!fs.existsSync(data.sourceDir)) {
         return { error: `Source directory not found: ${data.sourceDir}` };
       }
 
-      // Use integrated hash location if not provided
       const hashPath = getHashPath(data.hashPath);
-      console.log('Using hash path:', hashPath);
-
-      const ignoreMissing = data.ignoreMissing !== false; // Default true
-      const combineLinked = data.combineLinked !== false; // Default true
+      const ignoreMissing = data.ignoreMissing !== false;
+      const combineLinked = data.combineLinked !== false;
       const customPrefix = data.customPrefix || 'bum';
       const processTogether = data.processTogether || false;
 
-      // Import ES modules
       const { BumpathCore } = await loadBumpathModule();
 
-      // Progress callback
       let lastProgress = 0;
       const progressCallback = (count, message) => {
         if (count > lastProgress + 10 || message) {
@@ -126,141 +299,87 @@ function registerWadBumpathChannels({
         }
       };
 
-      if (processTogether) {
-        // Process all skins together
-        console.log(`Processing ${data.selectedSkinIds.length} skins together...`);
+      const runPass = async (skinIdsForPass) => {
+        const bum = new BumpathCore();
+        await bum.addSourceDirs([data.sourceDir]);
 
-        const bumInstance = new BumpathCore();
-
-        // Add source directory
-        console.log(`Adding source directory: ${data.sourceDir}`);
-        await bumInstance.addSourceDirs([data.sourceDir]);
-
-        // Reset all BIN files to unselected
         const binSelections = {};
-        for (const unifyFile in bumInstance.sourceBins) {
-          binSelections[unifyFile] = false;
-        }
+        for (const key in bum.sourceBins) binSelections[key] = false;
 
-        // Select BIN files matching selected skin IDs
         let selectedCount = 0;
-        for (const unifyFile in bumInstance.sourceBins) {
-          const fileInfo = bumInstance.sourceFiles[unifyFile];
-          if (fileInfo && fileInfo.relPath.toLowerCase().endsWith('.bin')) {
-            const relPath = fileInfo.relPath.toLowerCase();
-            if (relPath.includes('skin')) {
-              const skinMatch = relPath.match(/\/skins\/skin(\d+)\.bin/);
-              if (skinMatch) {
-                const skinId = parseInt(skinMatch[1]);
-                if (data.selectedSkinIds.includes(skinId)) {
-                  binSelections[unifyFile] = true;
-                  selectedCount++;
-                  console.log(`  Selected: ${fileInfo.relPath} (skin ${skinId})`);
-                }
-              }
+        for (const key in bum.sourceBins) {
+          const fileInfo = bum.sourceFiles[key];
+          if (fileInfo?.relPath?.toLowerCase().endsWith('.bin')) {
+            const skinMatch = fileInfo.relPath.toLowerCase().match(/\/skins\/skin(\d+)\.bin/);
+            if (skinMatch && skinIdsForPass.includes(parseInt(skinMatch[1], 10))) {
+              binSelections[key] = true;
+              selectedCount++;
+              console.log(`  Selected: ${fileInfo.relPath}`);
             }
           }
         }
 
-        bumInstance.updateBinSelection(binSelections);
-        console.log(`Marked ${selectedCount} BIN files for skins ${data.selectedSkinIds.join(', ')}`);
+        bum.updateBinSelection(binSelections);
+        console.log(`[bumpath:repath] Marked ${selectedCount} BIN files for skins [${skinIdsForPass.join(', ')}]`);
 
-        // Scan
-        console.log('Scanning BIN files...');
-        await bumInstance.scan(hashPath);
-        console.log(`Found ${Object.keys(bumInstance.scannedTree).length} entries`);
+        await bum.scan(hashPath);
+        console.log(`Found ${Object.keys(bum.scannedTree).length} entries`);
 
-        // Apply custom prefix if provided
         if (customPrefix !== 'bum') {
-          console.log(`Applying custom prefix '${customPrefix}' to all entries...`);
-          const allEntryHashes = Object.keys(bumInstance.entryPrefix).filter(hash => hash !== 'All_BINs');
-          bumInstance.applyPrefix(allEntryHashes, customPrefix);
-          console.log(`Applied prefix to ${allEntryHashes.length} entries`);
+          const hashes = Object.keys(bum.entryPrefix).filter(h => h !== 'All_BINs');
+          bum.applyPrefix(hashes, customPrefix);
+          console.log(`Applied prefix '${customPrefix}' to ${hashes.length} entries`);
         }
 
-        // Process
-        console.log('Starting Bumpath process...');
-        await bumInstance.process(data.outputDir, ignoreMissing, combineLinked, progressCallback);
-        console.log('Bumpath repath completed');
+        await bum.process(data.outputDir, ignoreMissing, combineLinked, progressCallback);
+      };
 
-        return {
-          success: true,
-          message: `Processed ${data.selectedSkinIds.length} skins together`,
-        };
+      if (processTogether) {
+        console.log(`Processing ${data.selectedSkinIds.length} skins together...`);
+        await runPass(data.selectedSkinIds);
+        return { success: true, message: `Processed ${data.selectedSkinIds.length} skins together` };
       }
 
-      // Process each skin individually
       console.log(`Processing ${data.selectedSkinIds.length} skins individually...`);
       const results = [];
       for (let i = 0; i < data.selectedSkinIds.length; i++) {
         const skinId = data.selectedSkinIds[i];
-        console.log(`\n--- Processing skin ${skinId} (${i + 1}/${data.selectedSkinIds.length}) ---`);
-
-        const bumInstance = new BumpathCore();
-        await bumInstance.addSourceDirs([data.sourceDir]);
-
-        // Reset all BIN files to unselected
-        const binSelections = {};
-        for (const unifyFile in bumInstance.sourceBins) {
-          binSelections[unifyFile] = false;
-        }
-
-        // Select only the current skin's BIN file
-        let selectedCount = 0;
-        for (const unifyFile in bumInstance.sourceBins) {
-          const fileInfo = bumInstance.sourceFiles[unifyFile];
-          if (fileInfo && fileInfo.relPath.toLowerCase().endsWith('.bin')) {
-            const relPath = fileInfo.relPath.toLowerCase();
-            if (relPath.includes('skin')) {
-              const skinMatch = relPath.match(/\/skins\/skin(\d+)\.bin/);
-              if (skinMatch) {
-                const currentSkinId = parseInt(skinMatch[1]);
-                if (currentSkinId === skinId) {
-                  binSelections[unifyFile] = true;
-                  selectedCount++;
-                  console.log(`  Selected: ${fileInfo.relPath} (skin ${currentSkinId})`);
-                }
-              }
-            }
-          }
-        }
-
-        bumInstance.updateBinSelection(binSelections);
-        console.log(`Marked ${selectedCount} BIN files for skin ${skinId}`);
-
-        // Scan
-        console.log(`Scanning BIN files for skin ${skinId}...`);
-        await bumInstance.scan(hashPath);
-        console.log(`Found ${Object.keys(bumInstance.scannedTree).length} entries`);
-
-        // Apply custom prefix if provided
-        if (customPrefix !== 'bum') {
-          console.log(`Applying custom prefix '${customPrefix}' to all entries...`);
-          const allEntryHashes = Object.keys(bumInstance.entryPrefix).filter(hash => hash !== 'All_BINs');
-          bumInstance.applyPrefix(allEntryHashes, customPrefix);
-        }
-
-        // Process
-        console.log(`Starting Bumpath process for skin ${skinId}...`);
-        await bumInstance.process(data.outputDir, ignoreMissing, combineLinked, progressCallback);
-        console.log(`Completed skin ${skinId}`);
-
+        console.log(`\n--- Skin ${skinId} (${i + 1}/${data.selectedSkinIds.length}) ---`);
+        await runPass([skinId]);
         results.push({ skinId, success: true });
       }
 
-      console.log('Bumpath repath completed for all skins');
       return {
         success: true,
         message: `Processed ${data.selectedSkinIds.length} skins individually`,
         results,
       };
     } catch (error) {
-      console.error('Bumpath repath error:', error);
+      console.error('[bumpath:repath] Error:', error);
       return { error: error.message, stack: error.stack };
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // hashtable:clearCache — called from renderer when user leaves FrogChanger.
+  // Clears the main-process hashtablesCache immediately and requests a GC.
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('hashtable:clearCache', async () => {
+    try {
+      const { clearHashtablesCache } = await loadJsRitoModule();
+      clearHashtablesCache();
+      if (typeof global.gc === 'function') {
+        global.gc();
+        console.log('[hashtable:clearCache] Cache cleared + GC triggered');
+      } else {
+        console.log('[hashtable:clearCache] Cache cleared');
+      }
+      return { success: true };
+    } catch (e) {
+      console.warn('[hashtable:clearCache] Error:', e.message);
+      return { success: false };
     }
   });
 }
 
-module.exports = {
-  registerWadBumpathChannels,
-};
+module.exports = { registerWadBumpathChannels };

@@ -12,6 +12,7 @@ import {
 } from '../../../utils/vfx/vfxEmitterParser.js';
 import { replaceSystemBlockInFile } from '../../../utils/vfx/mutations/matrixUtils.js';
 import { removeEmitterBlockFromSystem } from '../utils/pyContentUtils.js';
+
 import { findAssetFiles, copyAssetFiles, showAssetCopyResults } from '../../../utils/assets/assetCopier.js';
 import { createBackup } from '../../../utils/io/backupManager.js';
 
@@ -44,7 +45,8 @@ export default function useVfxMutations(
     backgroundSaveTimerRef,
     targetPyContentRef,
     recentCreatedSystemKeys,
-    selectedTargetSystem
+    selectedTargetSystem,
+    setShowNewSystemModal
 ) {
     const cancelPendingBackgroundSave = useCallback(() => {
         if (backgroundSaveTimerRef?.current) {
@@ -54,7 +56,7 @@ export default function useVfxMutations(
     }, [backgroundSaveTimerRef]);
 
     // Create a new minimal VFX system and insert it into the current file
-    const handleCreateNewSystem = useCallback((newSystemName) => {
+    const handleCreateNewSystem = useCallback((newSystemName, setShowNewSystemModal) => {
         cancelPendingBackgroundSave();
         try {
             console.log(`[handleCreateNewSystem] Called with:`, newSystemName, typeof newSystemName);
@@ -76,34 +78,31 @@ export default function useVfxMutations(
                 const entries = Object.entries(systems);
                 if (entries.length > 0) {
                     const nowTs = Date.now();
-                    // Detect the most recently inserted by highest startLine
-                    let newestIndex = 0;
-                    let newestStart = -1;
-                    for (let i = 0; i < entries.length; i++) {
-                        const start = typeof entries[i][1]?.startLine === 'number' ? entries[i][1].startLine : -1;
-                        if (start > newestStart) { newestStart = start; newestIndex = i; }
-                    }
-                    const createdKey = entries[newestIndex][0];
-                    const pinned = [createdKey, ...recentCreatedSystemKeys.filter(k => k !== createdKey)];
-                    setRecentCreatedSystemKeys(pinned);
-                    // Build ordered map: pinned first (if present), then others in file order
-                    const pinnedSet = new Set(pinned);
+                    // Use the name we just created — no heuristic needed
+                    const createdKey = systems[name] ? name : entries[entries.length - 1][0];
+                    // Only pin the single newly created key (don't accumulate old ones)
+                    setRecentCreatedSystemKeys([createdKey]);
+                    // Build ordered map: new system first (marked green), then rest in file order
                     const ordered = {};
-                    for (const key of pinned) {
-                        if (systems[key]) ordered[key] = { ...systems[key], createdAt: nowTs };
+                    if (systems[createdKey]) {
+                        ordered[createdKey] = { ...systems[createdKey], ported: true, portedAt: nowTs, createdAt: nowTs };
                     }
-                    for (const [k, v] of entries) { if (!pinnedSet.has(k)) ordered[k] = v; }
+                    for (const [k, v] of entries) { if (k !== createdKey) ordered[k] = v; }
                     setTargetSystems(ordered);
                 } else {
                     setTargetSystems(systems);
+
                 }
             } catch { }
             setStatusMessage(`Created VFX system "${name}" and updated ResourceResolver`);
         } catch (e) {
             console.error('Error creating new VFX system:', e);
             setStatusMessage('Failed to create VFX system');
+        } finally {
+            // Always close the modal whether creation succeeded or failed
+            if (typeof setShowNewSystemModal === 'function') setShowNewSystemModal(false);
         }
-    }, [targetPyContent, recentCreatedSystemKeys, saveStateToHistory, setTargetPyContent, setTargetSystems, setRecentCreatedSystemKeys, setFileSaved, setStatusMessage, cancelPendingBackgroundSave]);
+    }, [targetPyContent, recentCreatedSystemKeys, saveStateToHistory, setTargetPyContent, setTargetSystems, setRecentCreatedSystemKeys, setFileSaved, setStatusMessage, cancelPendingBackgroundSave, setShowNewSystemModal]);
 
     // Port all VFX systems from donor to target
     const handlePortAllSystems = useCallback(async (hasResourceResolver) => {

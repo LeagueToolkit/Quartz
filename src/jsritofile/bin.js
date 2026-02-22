@@ -314,6 +314,28 @@ const DEFAULT_TABLE_NAMES = [
 const WAD_HASHES = ['hashes.game.txt', 'hashes.lcu.txt'];
 const hashtablesCache = new Map();
 
+// ---------------------------------------------------------------------------
+// Idle TTL: cache stays warm across consecutive extractions in a session,
+// but is freed 30 s after the last call to loadHashtables.
+// ---------------------------------------------------------------------------
+const HASHTABLE_IDLE_TTL_MS = 30_000;
+let _ttlTimer = null;
+
+function _resetHashtableTTL() {
+    if (_ttlTimer !== null) clearTimeout(_ttlTimer);
+    _ttlTimer = setTimeout(() => {
+        hashtablesCache.clear();
+        _ttlTimer = null;
+        console.log('[bin.js] Hashtables cache cleared after idle TTL');
+        // Request V8 to return freed pages to the OS immediately.
+        // Only available when Electron/Node is launched with --expose-gc.
+        if (typeof global !== 'undefined' && typeof global.gc === 'function') {
+            global.gc();
+            console.log('[bin.js] global.gc() called to return heap pages to OS');
+        }
+    }, HASHTABLE_IDLE_TTL_MS);
+}
+
 /**
  * Load hashtables from directory (optimized for speed - Python-style fixed slicing)
  * @param {string} hashtablesPath - Path to hashtables directory
@@ -327,6 +349,10 @@ export async function loadHashtables(hashtablesPath, options = {}) {
         : DEFAULT_TABLE_NAMES;
     const tableNames = Array.from(new Set(requestedTables)).sort();
     const cacheKey = `${hashtablesPath}::${tableNames.join('|')}`;
+
+    // Reset idle timer on every call — keeps cache alive during active use
+    _resetHashtableTTL();
+
     if (hashtablesCache.has(cacheKey)) {
         return hashtablesCache.get(cacheKey);
     }

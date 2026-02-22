@@ -42,6 +42,8 @@ import {
 } from './utils/binEditor/serializer.js';
 import GlowingSpinner from '../../components/GlowingSpinner.js';
 import RitobinWarningModal, { detectHashedContent } from '../../components/modals/RitobinWarningModal';
+import CombineLinkedBinsModal from '../../components/modals/CombineLinkedBinsModal';
+import { useCombineLinkedBinsCheck } from '../../hooks/useCombineLinkedBinsCheck.js';
 import electronPrefs from '../../utils/core/electronPrefs.js';
 import { openAssetPreview } from '../../utils/assets/assetPreviewEvent';
 import { convertTextureToPNG, findActualTexturePath } from '../../utils/assets/textureConverter';
@@ -79,6 +81,7 @@ const parseLocaleFloat = (value) => {
 
 export default function BinEditorV2() {
     const navigate = useNavigate();
+    const { checkAndPromptCombine, combineModalState, handleCombineYes, handleCombineNo } = useCombineLinkedBinsCheck();
     // ============ STATE ============
     const [data, setData] = useState(null);                    // Parsed file data
     const [originalContent, setOriginalContent] = useState(''); // Content when file was loaded (for restore)
@@ -197,6 +200,7 @@ export default function BinEditorV2() {
             // Check if .py already exists
             if (!fs.existsSync(pyPath)) {
                 setLoadingText('Converting .bin to .py...');
+                await checkAndPromptCombine(filePath);
 
                 try {
                     execSync(`"${ritobinPath}" "${filePath}"`, {
@@ -1812,6 +1816,14 @@ export default function BinEditorV2() {
                         setStatusMessage(`Loaded: ${parseStats.systemCount} systems, ${parseStats.emitterCount} emitters`);
                     }
                 }}
+            />
+
+            {/* Combine Linked BINs Modal */}
+            <CombineLinkedBinsModal
+                open={combineModalState.open}
+                linkCount={combineModalState.linkCount}
+                onYes={handleCombineYes}
+                onNo={handleCombineNo}
             />
 
             <UnsavedChangesModal

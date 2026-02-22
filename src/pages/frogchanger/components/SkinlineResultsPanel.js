@@ -12,6 +12,7 @@ const SkinlineResultsPanel = ({
   onSkinClick,
   onChromaClick,
   onDownloadSplashArt,
+  offlineMode = false,
 }) => {
   if (loading) {
     return (
@@ -57,24 +58,36 @@ const SkinlineResultsPanel = ({
                 }`}
             >
               <div className="aspect-[3/4] relative overflow-hidden">
-                <img
-                  src={`https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${skin.championAlias}_${skin.skinNumber}.jpg`}
-                  alt={skin.name}
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                  draggable={false}
-                  onError={(e) => {
-                    e.target.src = `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${skin.championAlias}_0.jpg`;
-                  }}
-                />
+                {!offlineMode ? (
+                  <img
+                    src={`https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${skin.championAlias}_${skin.skinNumber}.jpg`}
+                    alt={skin.name}
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                    draggable={false}
+                    onError={(e) => {
+                      e.target.src = `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${skin.championAlias}_0.jpg`;
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gray-800 text-gray-300 text-xs flex items-center justify-center px-2 text-center">
+                    Image unavailable offline
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
                 <div className="absolute top-2 left-2">
-                  <img
-                    src={getRarityIconUrl(skin)}
-                    alt={skin.rarity || 'No Rarity'}
-                    className="w-6 h-6 rounded"
-                    title={skin.rarity || 'No Rarity'}
-                  />
+                  {!offlineMode ? (
+                    <img
+                      src={getRarityIconUrl(skin)}
+                      alt={skin.rarity || 'No Rarity'}
+                      className="w-6 h-6 rounded"
+                      title={skin.rarity || 'No Rarity'}
+                    />
+                  ) : (
+                    <div className="bg-gray-900/80 text-white px-2 py-1 rounded text-[10px] font-semibold" title={skin.rarity || 'No Rarity'}>
+                      {skin.rarity || 'Base'}
+                    </div>
+                  )}
                 </div>
 
                 <div className="absolute top-2 left-10 bg-gray-900/80 text-white px-2 py-1 rounded text-xs font-bold">
@@ -87,18 +100,20 @@ const SkinlineResultsPanel = ({
                   </div>
                 )}
 
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDownloadSplashArt(champion.name, skin.championAlias, skin.skinNumber, skin.name);
-                  }}
-                  className="absolute bottom-2 right-2 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-full transition-colors duration-200 opacity-0 group-hover:opacity-100"
-                  title="Download Splash Art"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </button>
+                {!offlineMode && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDownloadSplashArt(champion.name, skin.championAlias, skin.skinNumber, skin.name);
+                    }}
+                    className="absolute bottom-2 right-2 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-full transition-colors duration-200 opacity-0 group-hover:opacity-100"
+                    title="Download Splash Art"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </button>
+                )}
               </div>
 
               <div className="p-3">
@@ -130,14 +145,20 @@ const SkinlineResultsPanel = ({
                             >
                               <div className="chroma-tooltip">
                                 <div className="chroma-preview-image">
-                                  <img
-                                    src={chroma.image_url}
-                                    alt={chroma.name || `Chroma ${index + 1}`}
-                                    className="w-32 h-32 object-cover rounded"
-                                    onError={(e) => {
-                                      e.target.style.display = 'none';
-                                    }}
-                                  />
+                                  {!offlineMode ? (
+                                    <img
+                                      src={chroma.image_url}
+                                      alt={chroma.name || `Chroma ${index + 1}`}
+                                      className="w-32 h-32 object-cover rounded"
+                                      onError={(e) => {
+                                        e.target.style.display = 'none';
+                                      }}
+                                    />
+                                  ) : (
+                                    <div className="w-32 h-32 rounded bg-gray-800 text-gray-300 text-xs flex items-center justify-center text-center px-2">
+                                      No image (offline)
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="chroma-preview-name">
                                   {chroma.name || `Chroma ${index + 1}`}

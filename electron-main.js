@@ -28,6 +28,7 @@ const { registerAudioChannels } = require('./src/main/ipc/channels/audio');
 const { registerUpscaleChannels } = require('./src/main/ipc/channels/upscale');
 const { registerWadBumpathChannels } = require('./src/main/ipc/channels/wadBumpath');
 const { registerFileRandomizerChannels } = require('./src/main/ipc/channels/fileRandomizer');
+const { registerBinToolsChannels } = require('./src/main/ipc/channels/binTools');
 
 // Register custom protocols as privileged as early as possible
 protocol.registerSchemesAsPrivileged([
@@ -267,6 +268,8 @@ registerFileRandomizerChannels({
   processRef: process,
 });
 
+registerBinToolsChannels({ ipcMain, fs, path });
+
 // Backend service removed - using JavaScript implementations instead
 // WAD + Bumpath handlers
 registerWadBumpathChannels({
@@ -274,7 +277,7 @@ registerWadBumpathChannels({
   fs,
   getHashPath,
   loadWadModule: async () => import('./src/utils/wad/index.js'),
-  loadJsRitoModule: async () => import('./src/jsritofile/index.js'),
+  loadJsRitoModule: async () => import('./src/jsritofile/bin.js'),
   loadBumpathModule: async () => import('./src/utils/bumpath/bumpathCore.js'),
 });
 
@@ -286,7 +289,7 @@ registerHashChannels({
   path,
   fs,
   clearBackendHashCache: async () => {
-    const { clearHashtablesCache } = await import('./src/jsritofile/index.js');
+    const { clearHashtablesCache } = await import('./src/jsritofile/bin.js');
     clearHashtablesCache();
   },
   getHomeDir: () => require('os').homedir(),

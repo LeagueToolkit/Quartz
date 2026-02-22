@@ -1,52 +1,61 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
-  Typography,
-  Box,
-  Chip,
-  Tooltip,
-  Alert,
-  LinearProgress,
-  Switch,
-  FormControlLabel,
-  FormGroup
-} from '@mui/material';
-import {
-  Restore as RestoreIcon,
-  Delete as DeleteIcon,
-  Folder as FolderIcon,
-  Info as InfoIcon
-} from '@mui/icons-material';
-import { listBackups, restoreBackup, formatFileSize } from '../../utils/io/backupManager.js';
-import { glassButton, glassButtonOutlined, glassPanel } from '../../utils/theme/glassStyles';
+import { Restore as RestoreIcon, Info as InfoIcon } from '@mui/icons-material';
+import { listBackups, restoreBackup } from '../../utils/io/backupManager.js';
+
+/* ── shared button tokens ── */
+const ghostBtn = {
+  padding: '6px 14px',
+  background: 'rgba(255,255,255,0.05)',
+  border: '1px solid rgba(255,255,255,0.18)',
+  borderRadius: 6,
+  color: 'rgba(255,255,255,0.85)',
+  cursor: 'pointer',
+  fontFamily: 'JetBrains Mono, monospace',
+  fontSize: '0.75rem',
+  fontWeight: 600,
+  transition: 'all 0.22s ease',
+  outline: 'none',
+  display: 'inline-flex',
+  alignItems: 'center',
+};
+
+const accentBtn = (color) => ({
+  padding: '6px 14px',
+  background: `color-mix(in srgb, ${color}, transparent 90%)`,
+  border: '1px solid rgba(255,255,255,0.08)',
+  borderRadius: 6,
+  color,
+  fontFamily: 'JetBrains Mono, monospace',
+  fontSize: '0.75rem',
+  fontWeight: 700,
+  cursor: 'pointer',
+  transition: 'all 0.22s ease',
+  outline: 'none',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+});
+
+const compColor = (c) => {
+  if (c === 'paint') return '#4ade80';
+  if (c === 'port') return '#c084fc';
+  return '#60a5fa';
+};
 
 const BackupViewer = ({ open, onClose, filePath, component }) => {
   const [backups, setBackups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [restoring, setRestoring] = useState(false);
+  const [restoring, setRestoring] = useState(null); // holds path being restored
 
   useEffect(() => {
-    if (open && filePath) {
-      loadBackups();
-    }
+    if (open && filePath) loadBackups();
   }, [open, filePath, component]);
 
   const loadBackups = () => {
     try {
-      setLoading(true);
-      setError(null);
-      const backupList = listBackups(filePath, component);
-      setBackups(backupList);
+      setLoading(true); setError(null);
+      setBackups(listBackups(filePath, component));
     } catch (err) {
       setError(`Error loading backups: ${err.message}`);
     } finally {
@@ -56,343 +65,295 @@ const BackupViewer = ({ open, onClose, filePath, component }) => {
 
   const handleRestore = async (backupPath) => {
     try {
-      setRestoring(true);
-      const success = restoreBackup(backupPath, filePath);
-      if (success) {
-        // Close the dialog and notify parent
-        onClose(true); // true indicates a restore was performed
-      } else {
-        setError('Failed to restore backup');
-      }
+      setRestoring(backupPath);
+      const ok = restoreBackup(backupPath, filePath);
+      if (ok) { onClose(true); }
+      else { setError('Failed to restore backup'); }
     } catch (err) {
       setError(`Error restoring backup: ${err.message}`);
     } finally {
-      setRestoring(false);
+      setRestoring(null);
     }
   };
 
-  const formatDate = (date) => {
-    return new Date(date).toLocaleString();
-  };
+  const fmt = (d) => new Date(d).toLocaleString();
+  const shortName = filePath
+    ? (filePath.split('\\').pop() || filePath.split('/').pop())
+    : null;
 
-  const getComponentColor = (comp) => {
-    switch (comp) {
-      case 'VFXHub': return 'primary';
-      case 'port': return 'secondary';
-      case 'paint': return 'success';
-      default: return 'default';
-    }
-  };
+  if (!open) return null;
 
   return (
-    <Dialog
-      open={open}
-      onClose={() => onClose(false)}
-      maxWidth="md"
-      fullWidth
-      sx={{
-        '& .MuiBackdrop-root': {
-          background: 'rgba(0,0,0,0.4)',
-          backdropFilter: 'blur(6px)',
-          WebkitBackdropFilter: 'blur(6px)'
-        }
-      }}
-      PaperProps={{
-        sx: {
-          background: 'rgba(26,24,35,0.6)',
-          border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)',
-          borderRadius: '14px',
-          boxShadow: '0 25px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          overflow: 'hidden'
-        }
-      }}
-    >
-      <DialogTitle sx={{
-        background: 'linear-gradient(135deg, rgba(147,51,234,0.15), rgba(126,34,206,0.08))',
-        borderBottom: '1px solid rgba(147,51,234,0.3)',
-        backdropFilter: 'blur(15px)',
-        WebkitBackdropFilter: 'blur(15px)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1)'
-      }}>
-        <Box display="flex" alignItems="center" gap={1}>
-          <FolderIcon sx={{ color: '#c084fc' }} />
-          <Typography variant="h6" sx={{
-            color: '#c084fc',
-            fontFamily: 'JetBrains Mono, monospace',
-            fontWeight: 'bold'
-          }}>
-            Backup History
-          </Typography>
-          {component && (
-            <Chip
-              label={component}
-              color={getComponentColor(component)}
-              size="small"
-              sx={{
-                background: 'rgba(147,51,234,0.15)',
-                border: '1px solid rgba(147,51,234,0.3)',
-                color: '#c084fc',
-                backdropFilter: 'blur(5px)',
-                WebkitBackdropFilter: 'blur(5px)'
-              }}
-            />
-          )}
-        </Box>
-        <Typography variant="body2" sx={{
-          color: 'rgba(255,255,255,0.7)',
-          fontFamily: 'JetBrains Mono, monospace',
-          fontSize: '0.85rem',
-          mt: 0.5
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 5000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 20,
+    }}>
+      {/* backdrop */}
+      <div
+        style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
+        }}
+        onClick={() => onClose(false)}
+      />
+
+      {/* modal */}
+      <div
+        style={{
+          position: 'relative',
+          width: '100%', maxWidth: 740,
+          maxHeight: '80vh',
+          display: 'flex', flexDirection: 'column',
+          background: 'var(--glass-bg)',
+          border: '1px solid var(--glass-border)',
+          backdropFilter: 'saturate(180%) blur(16px)',
+          WebkitBackdropFilter: 'saturate(180%) blur(16px)',
+          borderRadius: 16,
+          boxShadow: '0 30px 70px rgba(0,0,0,0.55), 0 0 30px rgba(192,132,252,0.12)',
+          overflow: 'hidden',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* shimmer accent bar */}
+        <div style={{
+          height: 3, flexShrink: 0,
+          background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+          backgroundSize: '200% 100%',
+          animation: 'shimmer 3s linear infinite',
+        }} />
+
+        {/* header */}
+        <div style={{
+          padding: '16px 20px',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          flexShrink: 0,
         }}>
-          {filePath ? `File: ${filePath.split('\\').pop() || filePath.split('/').pop()}` : 'No file selected'}
-        </Typography>
-      </DialogTitle>
-
-      <DialogContent sx={{
-        background: 'rgba(26,24,35,0.3)',
-        backdropFilter: 'blur(15px)',
-        WebkitBackdropFilter: 'blur(15px)',
-        p: 0,
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)'
-      }}>
-        {error && (
-          <Alert severity="error" sx={{
-            mb: 2,
-            mx: 2,
-            mt: 2,
-            background: 'rgba(239,68,68,0.1)',
-            border: '1px solid rgba(239,68,68,0.3)',
-            backdropFilter: 'blur(5px)',
-            WebkitBackdropFilter: 'blur(5px)'
-          }}>
-            {error}
-          </Alert>
-        )}
-
-        {loading ? (
-          <Box display="flex" flexDirection="column" alignItems="center" p={4} gap={2}>
-            <LinearProgress sx={{
-              width: '100%',
-              height: 4,
-              borderRadius: 2,
-              background: 'rgba(147,51,234,0.1)',
-              '& .MuiLinearProgress-bar': {
-                background: 'linear-gradient(90deg, #c084fc, #a855f7)',
-                borderRadius: 2
-              }
-            }} />
-            <Typography sx={{
-              color: '#c084fc',
-              fontFamily: 'JetBrains Mono, monospace'
-            }}>
-              Loading backups...
-            </Typography>
-          </Box>
-        ) : backups.length === 0 ? (
-          <Box display="flex" flexDirection="column" alignItems="center" p={4} gap={2}>
-            <InfoIcon sx={{
-              fontSize: 48,
-              color: 'rgba(255,255,255,0.4)',
-              mb: 1
-            }} />
-            <Typography variant="h6" sx={{
-              color: 'rgba(255,255,255,0.6)',
-              fontFamily: 'JetBrains Mono, monospace'
-            }}>
-              No backups found
-            </Typography>
-            <Typography variant="body2" sx={{
-              color: 'rgba(255,255,255,0.5)',
-              textAlign: 'center',
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h2 style={{
+              margin: 0,
               fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.85rem'
+              fontSize: '1.05rem', letterSpacing: '0.08em',
+              textTransform: 'uppercase', fontWeight: 700,
+              color: 'var(--text)',
+            }}>Backup History</h2>
+            {component && (
+              <span style={{
+                padding: '2px 8px',
+                borderRadius: 4,
+                fontSize: '0.7rem',
+                fontFamily: 'JetBrains Mono, monospace',
+                fontWeight: 700,
+                background: `color-mix(in srgb, ${compColor(component)}, transparent 85%)`,
+                border: `1px solid color-mix(in srgb, ${compColor(component)}, transparent 60%)`,
+                color: compColor(component),
+              }}>{component}</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <button
+              onClick={() => onClose(false)}
+              style={{
+                width: 28, height: 28, borderRadius: 8,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 13, color: 'rgba(255,255,255,0.5)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'rgba(255,255,255,0.04)',
+                cursor: 'pointer', transition: 'all 0.22s ease', outline: 'none',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'color-mix(in srgb, var(--accent2), transparent 75%)';
+                e.currentTarget.style.color = 'var(--accent2)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                e.currentTarget.style.color = 'rgba(255,255,255,0.5)';
+              }}
+            >{'\u2715'}</button>
+          </div>
+        </div>
+
+        {/* body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0' }}>
+
+          {/* error banner */}
+          {error && (
+            <div style={{
+              margin: '12px 16px', padding: '10px 14px',
+              background: 'rgba(239,68,68,0.10)',
+              border: '1px solid rgba(239,68,68,0.28)',
+              borderRadius: 8, color: '#fca5a5',
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '0.78rem',
+            }}>{error}</div>
+          )}
+
+          {/* loading */}
+          {loading && (
+            <div style={{
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              padding: 48, gap: 14,
             }}>
-              Backups are created automatically when you load .py files in {component || 'this component'}.
-            </Typography>
-          </Box>
-        ) : (
-          <List sx={{ p: 0 }}>
-            {backups.map((backup, index) => (
-              <ListItem
-                key={backup.path}
-                sx={{
-                  background: index % 2 === 0 ? 'rgba(147,51,234,0.08)' : 'rgba(147,51,234,0.03)',
-                  borderBottom: index < backups.length - 1 ? '1px solid rgba(147,51,234,0.15)' : 'none',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
-                  '&:hover': {
-                    background: 'rgba(147,51,234,0.15)',
-                    backdropFilter: 'blur(15px)',
-                    WebkitBackdropFilter: 'blur(15px)',
-                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1)'
-                  },
-                  transition: 'all 0.3s ease'
-                }}
-              >
-                <ListItemText
-                  primary={
-                    <Typography sx={{
-                      fontFamily: 'JetBrains Mono, monospace',
-                      fontSize: '0.9rem',
-                      color: '#c084fc',
-                      fontWeight: 'bold',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      maxWidth: '300px'
-                    }}>
-                      {backup.name.length > 40 ? backup.name.substring(0, 37) + '...' : backup.name}
-                    </Typography>
-                  }
-                  secondary={
-                    <Box sx={{ mt: 0.5 }}>
-                      <Typography variant="body2" sx={{
-                        color: 'rgba(255,255,255,0.6)',
+              <div style={{
+                width: 200, height: 3, borderRadius: 2,
+                background: 'rgba(192,132,252,0.15)',
+                overflow: 'hidden', position: 'relative',
+              }}>
+                <div style={{
+                  position: 'absolute', left: '-60%', width: '60%', height: '100%',
+                  background: 'linear-gradient(90deg, transparent, #c084fc, transparent)',
+                  animation: 'shimmer 1.2s linear infinite',
+                }} />
+              </div>
+              <span style={{
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: '0.8rem', color: '#c084fc',
+              }}>Loading backups…</span>
+            </div>
+          )}
+
+          {/* empty */}
+          {!loading && !error && backups.length === 0 && (
+            <div style={{
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              padding: 48, gap: 12,
+            }}>
+              <InfoIcon sx={{ fontSize: 40, color: 'rgba(255,255,255,0.25)' }} />
+              <div style={{
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: '0.88rem', color: 'rgba(255,255,255,0.5)',
+                fontWeight: 600,
+              }}>No backups found</div>
+              <div style={{
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: '0.74rem', color: 'rgba(255,255,255,0.32)',
+                textAlign: 'center', maxWidth: 320, lineHeight: 1.6,
+              }}>
+                Backups are created automatically when you load .py files
+                in {component || 'this component'}.
+              </div>
+            </div>
+          )}
+
+          {/* backup list */}
+          {!loading && backups.length > 0 && (
+            <>
+              {backups.map((backup, i) => {
+                const col = compColor(backup.component);
+                const isRestoring = restoring === backup.path;
+                return (
+                  <div
+                    key={backup.path}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '16px 20px',
+                      borderBottom: i < backups.length - 1
+                        ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                      background: i % 2 === 0
+                        ? 'rgba(255,255,255,0.01)' : 'transparent',
+                      transition: 'background 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = i % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent'}
+                  >
+                    {/* info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
                         fontFamily: 'JetBrains Mono, monospace',
-                        fontSize: '0.75rem'
+                        fontSize: '0.9rem', fontWeight: 600,
+                        color: 'var(--text)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       }}>
-                        Created: {formatDate(backup.modified)} - {backup.component}
-                      </Typography>
-                      <Typography variant="body2" sx={{
-                        color: 'rgba(255,255,255,0.6)',
-                        fontFamily: 'JetBrains Mono, monospace',
-                        fontSize: '0.75rem'
+                        {backup.name.length > 42 ? backup.name.slice(0, 39) + '…' : backup.name}
+                      </div>
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap',
                       }}>
-                        Size: {backup.sizeFormatted}
-                      </Typography>
-                      <Box sx={{ mt: 0.5 }}>
-                        <Chip
-                          label={backup.component}
-                          size="small"
-                          color={getComponentColor(backup.component)}
-                          sx={{
-                            fontSize: '0.65rem',
-                            height: '20px',
-                            background: `rgba(${backup.component === 'paint' ? '34,197,94' : backup.component === 'port' ? '147,51,234' : '59,130,246'},0.2)`,
-                            border: `1px solid rgba(${backup.component === 'paint' ? '34,197,94' : backup.component === 'port' ? '147,51,234' : '59,130,246'},0.4)`,
-                            color: backup.component === 'paint' ? '#4ade80' : backup.component === 'port' ? '#c084fc' : '#60a5fa',
-                            backdropFilter: 'blur(10px)',
-                            WebkitBackdropFilter: 'blur(10px)'
-                          }}
-                        />
-                      </Box>
-                    </Box>
-                  }
-                />
-                <ListItemSecondaryAction sx={{ pr: 2 }}>
-                  <Tooltip title="Restore this backup">
-                    <IconButton
-                      edge="end"
-                      onClick={() => handleRestore(backup.path)}
-                      disabled={restoring}
-                      sx={{
-                        background: 'rgba(34,197,94,0.2)',
-                        border: '1px solid rgba(34,197,94,0.4)',
-                        color: '#4ade80',
-                        backdropFilter: 'blur(15px)',
-                        WebkitBackdropFilter: 'blur(15px)',
-                        boxShadow: '0 4px 12px rgba(34,197,94,0.2)',
-                        '&:hover': {
-                          background: 'rgba(34,197,94,0.3)',
-                          border: '1px solid rgba(34,197,94,0.6)',
-                          transform: 'scale(1.05)',
-                          boxShadow: '0 6px 16px rgba(34,197,94,0.3)'
-                        },
-                        '&:disabled': {
-                          background: 'rgba(255,255,255,0.06)',
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          color: 'rgba(255,255,255,0.3)',
-                          boxShadow: 'none'
-                        },
-                        transition: 'all 0.3s ease'
+                        <span style={{
+                          fontFamily: 'JetBrains Mono, monospace',
+                          fontSize: '0.7rem', color: 'rgba(255,255,255,0.38)',
+                        }}>{fmt(backup.modified)}</span>
+                        <span style={{
+                          fontFamily: 'JetBrains Mono, monospace',
+                          fontSize: '0.76rem', color: 'rgba(255,255,255,0.28)',
+                        }}>·</span>
+                        <span style={{
+                          fontFamily: 'JetBrains Mono, monospace',
+                          fontSize: '0.7rem', color: 'rgba(255,255,255,0.38)',
+                        }}>{backup.sizeFormatted}</span>
+                        <span style={{
+                          padding: '1px 6px',
+                          borderRadius: 3,
+                          fontSize: '0.65rem',
+                          fontFamily: 'JetBrains Mono, monospace',
+                          fontWeight: 700,
+                          background: `color-mix(in srgb, ${col}, transparent 85%)`,
+                          border: `1px solid color-mix(in srgb, ${col}, transparent 65%)`,
+                          color: col,
+                        }}>{backup.component}</span>
+                      </div>
+                    </div>
+
+                    {/* restore button */}
+                    <button
+                      onClick={() => !isRestoring && handleRestore(backup.path)}
+                      disabled={!!restoring}
+                      style={{
+                        width: 40, height: 40, borderRadius: '50%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: restoring ? 'rgba(255,255,255,0.04)' : 'rgba(74,222,128,0.12)',
+                        border: restoring ? '1px solid rgba(255,255,255,0.07)' : '1px solid rgba(74,222,128,0.28)',
+                        color: restoring ? 'rgba(255,255,255,0.2)' : '#4ade80',
+                        cursor: restoring ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s ease',
+                        outline: 'none', flexShrink: 0,
                       }}
+                      onMouseEnter={(e) => {
+                        if (restoring) return;
+                        e.currentTarget.style.background = 'rgba(74,222,128,0.22)';
+                        e.currentTarget.style.boxShadow = '0 0 12px rgba(74,222,128,0.3)';
+                        e.currentTarget.style.transform = 'scale(1.08)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (restoring) return;
+                        e.currentTarget.style.background = 'rgba(74,222,128,0.12)';
+                        e.currentTarget.style.boxShadow = '';
+                        e.currentTarget.style.transform = '';
+                      }}
+                      title={isRestoring ? 'Restoring…' : 'Restore this backup'}
                     >
-                      <RestoreIcon />
-                    </IconButton>
-                  </Tooltip>
-                </ListItemSecondaryAction>
-              </ListItem>
-            ))}
-          </List>
-        )}
+                      <RestoreIcon sx={{ fontSize: 20 }} />
+                    </button>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
 
+        {/* sticky bottom note — always visible */}
         {backups.length > 0 && (
-          <Box sx={{
-            mt: 2,
-            mx: 2,
-            mb: 2,
-            p: 2,
-            background: 'rgba(147,51,234,0.12)',
-            border: '1px solid rgba(147,51,234,0.3)',
-            borderRadius: 2,
-            backdropFilter: 'blur(15px)',
-            WebkitBackdropFilter: 'blur(15px)',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1)'
-          }}>
-            <Typography variant="body2" sx={{
-              color: 'rgba(255,255,255,0.7)',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.8rem',
-              textAlign: 'center'
-            }}>
-              <strong>Note:</strong> Only the 10 most recent backups are kept. Older backups are automatically deleted.
-            </Typography>
-          </Box>
-        )}
-      </DialogContent>
-
-      <DialogActions sx={{
-        background: 'rgba(26,24,35,0.4)',
-        borderTop: '1px solid rgba(147,51,234,0.3)',
-        backdropFilter: 'blur(15px)',
-        WebkitBackdropFilter: 'blur(15px)',
-        p: 2,
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)'
-      }}>
-        <Button
-          onClick={() => onClose(false)}
-          sx={{
-            ...glassButtonOutlined,
-            background: 'rgba(255,255,255,0.1)',
-            border: '1px solid rgba(255,255,255,0.2)',
-            color: 'rgba(255,255,255,0.8)',
+          <div style={{
+            padding: '10px 20px',
+            borderTop: '1px solid rgba(255,255,255,0.06)',
+            background: 'rgba(192,132,252,0.05)',
+            flexShrink: 0,
             fontFamily: 'JetBrains Mono, monospace',
-            '&:hover': {
-              background: 'rgba(255,255,255,0.15)',
-              border: '1px solid rgba(255,255,255,0.3)'
-            }
-          }}
-        >
-          Close
-        </Button>
-        {backups.length > 0 && (
-          <Button
-            onClick={loadBackups}
-            disabled={loading}
-            sx={{
-              ...glassButton,
-              background: 'rgba(147,51,234,0.2)',
-              border: '1px solid rgba(147,51,234,0.4)',
-              color: '#c084fc',
-              fontFamily: 'JetBrains Mono, monospace',
-              '&:hover': {
-                background: 'rgba(147,51,234,0.3)',
-                border: '1px solid rgba(147,51,234,0.5)'
-              },
-              '&:disabled': {
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                color: 'rgba(255,255,255,0.3)'
-              }
-            }}
-          >
-            Refresh
-          </Button>
+            fontSize: '0.72rem',
+            color: 'rgba(255,255,255,0.35)',
+            lineHeight: 1.5,
+          }}>
+            Only the 10 most recent backups are kept. Older backups are automatically deleted.
+          </div>
         )}
-      </DialogActions>
-    </Dialog>
+
+      </div>
+    </div>
   );
 };
 

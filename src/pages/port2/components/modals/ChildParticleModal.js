@@ -1,12 +1,53 @@
 import React from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, Select, MenuItem, FormControl, FormControlLabel, Checkbox } from '@mui/material';
-import { Warning as WarningIcon } from '@mui/icons-material';
+import { Warning as WarningIcon, Add as AddIcon, Edit as EditIcon } from '@mui/icons-material';
+
+/* ── shared button tokens ── */
+const btnBase = {
+  padding: '7px 18px',
+  borderRadius: 6,
+  fontFamily: 'JetBrains Mono, monospace',
+  fontSize: '0.78rem',
+  fontWeight: 700,
+  cursor: 'pointer',
+  transition: 'all 0.22s ease',
+  outline: 'none',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  border: '1px solid',
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '10px 14px',
+  background: 'rgba(255,255,255,0.04)',
+  color: 'var(--text)',
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: 8,
+  fontSize: '0.85rem',
+  fontFamily: 'JetBrains Mono, monospace',
+  outline: 'none',
+  transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+  boxSizing: 'border-box',
+};
+
+const selectStyle = {
+  ...inputStyle,
+  appearance: 'none',
+  WebkitAppearance: 'none',
+  cursor: 'pointer',
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.4)' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 12px center',
+  paddingRight: 34,
+};
 
 // Memoized input — defers onChange to blur to avoid re-renders while typing
-const MemoizedInput = React.memo(({ value, onChange, type = 'text', placeholder = '', min, max, style = {}, step }) => {
+const MemoizedInput = React.memo(({ value, onChange, type = 'text', placeholder = '', min, max, step, style = {} }) => {
   const [localValue, setLocalValue] = React.useState(value || '');
   const valueRef = React.useRef(value || '');
   const isFocusedRef = React.useRef(false);
+
   React.useEffect(() => {
     const propValue = value || '';
     if (propValue !== valueRef.current && !isFocusedRef.current) {
@@ -14,476 +55,368 @@ const MemoizedInput = React.memo(({ value, onChange, type = 'text', placeholder 
       valueRef.current = propValue;
     }
   }, [value]);
-  const handleChange = (e) => { const v = e.target.value; setLocalValue(v); valueRef.current = v; };
-  const handleFocus = () => { isFocusedRef.current = true; };
-  const handleBlur = () => {
+
+  const handleChange = (e) => {
+    const v = e.target.value;
+    setLocalValue(v);
+    valueRef.current = v;
+  };
+
+  const handleFocus = (e) => {
+    isFocusedRef.current = true;
+    e.target.style.borderColor = 'var(--accent2)';
+    e.target.style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--accent2), transparent 80%)';
+  };
+
+  const handleBlur = (e) => {
     isFocusedRef.current = false;
+    e.target.style.borderColor = 'rgba(255,255,255,0.1)';
+    e.target.style.boxShadow = 'none';
     if (valueRef.current !== value) onChange({ target: { value: valueRef.current } });
   };
-  return <input type={type} value={localValue} onChange={handleChange} onFocus={handleFocus} onBlur={handleBlur} placeholder={placeholder} min={min} max={max} step={step} style={style} />;
+
+  return (
+    <input
+      type={type}
+      value={localValue}
+      onChange={handleChange}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+      placeholder={placeholder}
+      min={min}
+      max={max}
+      step={step}
+      style={{ ...inputStyle, ...style }}
+    />
+  );
 });
 
-
 const ChildParticleModal = ({
-  showChildModal,
-  setShowChildModal,
-  selectedSystemForChild,
-  setSelectedSystemForChild,
+  open,
+  onClose,
+  isEdit = false,
+  targetSystem, // { key, name }
   selectedChildSystem,
   setSelectedChildSystem,
-  childEmitterName,
-  setChildEmitterName,
-  childParticleRate,
-  setChildParticleRate,
-  childParticleLifetime,
-  setChildParticleLifetime,
-  childParticleBindWeight,
-  setChildParticleBindWeight,
-  childParticleTimeBeforeFirstEmission,
-  setChildParticleTimeBeforeFirstEmission,
-  childParticleTranslationOverrideX,
-  setChildParticleTranslationOverrideX,
-  childParticleTranslationOverrideY,
-  setChildParticleTranslationOverrideY,
-  childParticleTranslationOverrideZ,
-  setChildParticleTranslationOverrideZ,
-  childParticleIsSingle,
-  setChildParticleIsSingle,
-  availableVfxSystems,
-  setAvailableVfxSystems,
-  handleConfirmChildParticles,
+  emitterName,
+  setEmitterName,
+  rate,
+  setRate,
+  lifetime,
+  setLifetime,
+  bindWeight,
+  setBindWeight,
+  timeBeforeFirstEmission,
+  setTimeBeforeFirstEmission,
+  translationOverrideX,
+  setTranslationOverrideX,
+  translationOverrideY,
+  setTranslationOverrideY,
+  translationOverrideZ,
+  setTranslationOverrideZ,
+  isSingle,
+  setIsSingle,
+  availableSystems,
+  onConfirm,
 }) => {
+  if (!open) return null;
+
   return (
-    <Dialog
-  open={showChildModal}
-  onClose={() => {
-    setShowChildModal(false);
-    setSelectedSystemForChild(null);
-    setSelectedChildSystem('');
-    setChildEmitterName('');
-    setAvailableVfxSystems([]);
-  }}
-  maxWidth="sm"
-  fullWidth
-  PaperProps={{
-    sx: {
-      background: 'transparent',
-      border: '1px solid rgba(255, 255, 255, 0.06)',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-      borderRadius: 3,
-      overflow: 'hidden',
-    }
-  }}
->
-  <Box
-    sx={{
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      height: '4px',
-      background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
-      backgroundSize: '200% 100%',
-      animation: 'shimmer 3s ease-in-out infinite',
-      '@keyframes shimmer': {
-        '0%': { backgroundPosition: '200% 0' },
-        '100%': { backgroundPosition: '-200% 0' },
-      },
-    }}
-  />
-  <DialogTitle sx={{
-    color: 'var(--accent)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 1.5,
-    pb: 1.5,
-    pt: 2.5,
-    px: 3,
-    borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-  }}>
-    <Box
-      sx={{
-        width: 40,
-        height: 40,
-        borderRadius: '50%',
-        backgroundColor: 'rgba(var(--accent-rgb), 0.15)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-      }}
-    >
-      <WarningIcon sx={{ color: 'var(--accent)', fontSize: '1.5rem' }} />
-    </Box>
-    <Typography variant="h6" sx={{
-      fontWeight: 600,
-      color: 'var(--accent)',
-      fontFamily: 'JetBrains Mono, monospace',
-      fontSize: '1rem',
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 5000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 20,
     }}>
-      Add Child Particles
-    </Typography>
-  </DialogTitle>
-  <DialogContent sx={{ px: 3, py: 2.5 }}>
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* backdrop */}
+      <div
+        style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
+        }}
+        onClick={onClose}
+      />
 
-      <Typography variant="body2" sx={{
-        color: 'var(--accent2)',
-        lineHeight: 1.6,
-        fontSize: '0.875rem',
-      }}>
-        VFX System: <strong style={{ color: 'var(--accent)' }}>{selectedSystemForChild?.name}</strong>
-      </Typography>
+      {/* modal */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'relative',
+          width: '100%', maxWidth: 540,
+          maxHeight: '90vh',
+          display: 'flex', flexDirection: 'column',
+          background: 'var(--glass-bg)',
+          border: '1px solid var(--glass-border)',
+          backdropFilter: 'saturate(180%) blur(16px)',
+          WebkitBackdropFilter: 'saturate(180%) blur(16px)',
+          borderRadius: 16,
+          boxShadow: '0 30px 70px rgba(0,0,0,0.55), 0 0 30px rgba(var(--accent-rgb),0.08)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* shimmer bar */}
+        <div style={{
+          height: 3, flexShrink: 0,
+          background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+          backgroundSize: '200% 100%',
+          animation: 'shimmer 3s linear infinite',
+        }} />
 
-      <Box>
-        <Typography variant="body2" sx={{
-          color: 'var(--accent2)',
-          mb: 1,
-          fontSize: '0.875rem',
+        {/* header */}
+        <div style={{
+          padding: '16px 20px',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          flexShrink: 0,
         }}>
-          Select Child VFX System:
-        </Typography>
-        <FormControl fullWidth size="small">
-          <Select
-            value={selectedChildSystem || ''}
-            onChange={(e) => setSelectedChildSystem(e.target.value)}
-            sx={{
-              color: 'var(--accent)',
-              backgroundColor: 'var(--surface)',
-              '& .MuiOutlinedInput-notchedOutline': {
-                borderColor: 'rgba(255, 255, 255, 0.06)',
-              },
-              '&:hover .MuiOutlinedInput-notchedOutline': {
-                borderColor: 'var(--accent)',
-              },
-              '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                borderColor: 'var(--accent)',
-              },
-              '& .MuiSvgIcon-root': {
-                color: 'var(--accent)',
-              },
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: '50%',
+              background: 'rgba(var(--accent-rgb), 0.15)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {isEdit ? <EditIcon sx={{ color: 'var(--accent)', fontSize: 18 }} /> : <AddIcon sx={{ color: 'var(--accent)', fontSize: 18 }} />}
+            </div>
+            <h2 style={{
+              margin: 0,
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '0.95rem', letterSpacing: '0.08em',
+              textTransform: 'uppercase', fontWeight: 700,
+              color: 'var(--text)',
+            }}>
+              {isEdit ? 'Edit Child Particle' : 'Add Child Particle'}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 28, height: 28, borderRadius: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 13, color: 'rgba(255,255,255,0.5)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(255,255,255,0.04)',
+              cursor: 'pointer', transition: 'all 0.22s ease', outline: 'none',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'color-mix(in srgb, var(--accent2), transparent 75%)';
+              e.currentTarget.style.color = 'var(--accent2)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+              e.currentTarget.style.color = 'rgba(255,255,255,0.5)';
+            }}
+          >{'\u2715'}</button>
+        </div>
+
+        {/* body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* info labels */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{
+              padding: '10px 14px',
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 8,
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '0.8rem',
+              color: 'rgba(255,255,255,0.45)',
+            }}>
+              Parent System: <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{targetSystem?.name || 'N/A'}</span>
+            </div>
+            {isEdit && (
+              <div style={{
+                padding: '10px 14px',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: 8,
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: '0.8rem',
+                color: 'rgba(255,255,255,0.45)',
+              }}>
+                Emitter: <span style={{ color: 'var(--accent2)', fontWeight: 700 }}>{emitterName}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Child VFX System Select */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Child VFX System
+            </label>
+            <select
+              value={selectedChildSystem || ''}
+              onChange={(e) => setSelectedChildSystem(e.target.value)}
+              style={selectStyle}
+              onFocus={(e) => {
+                e.target.style.borderColor = 'var(--accent2)';
+                e.target.style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--accent2), transparent 80%)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = 'rgba(255,255,255,0.1)';
+                e.target.style.boxShadow = 'none';
+              }}
+            >
+              <option value="" style={{ background: '#1a1825' }}>Select a VFX System...</option>
+              {availableSystems.map(sys => (
+                <option key={sys.key} value={sys.key} style={{ background: '#1a1825' }}>
+                  {sys.name} {sys.key.startsWith('0x') ? `(${sys.key})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Emitter Name (Create mode only) */}
+          {!isEdit && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Emitter Name
+              </label>
+              <MemoizedInput
+                value={emitterName}
+                onChange={(e) => setEmitterName(e.target.value)}
+                placeholder="Enter emitter name..."
+              />
+            </div>
+          )}
+
+          {/* Rate & Lifetime */}
+          <div style={{ display: 'flex', gap: 16 }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
+                Rate
+              </label>
+              <MemoizedInput
+                type="number"
+                value={rate}
+                onChange={(e) => setRate(e.target.value)}
+                step="0.1"
+                min="0"
+              />
+            </div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
+                Lifetime
+              </label>
+              <MemoizedInput
+                type="number"
+                value={lifetime}
+                onChange={(e) => setLifetime(e.target.value)}
+                min="0"
+              />
+            </div>
+          </div>
+
+          {/* Bind Weight & First Emission */}
+          <div style={{ display: 'flex', gap: 16 }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
+                Bind Weight
+              </label>
+              <MemoizedInput
+                type="number"
+                value={bindWeight}
+                onChange={(e) => setBindWeight(e.target.value)}
+                step="0.1"
+                min="0"
+              />
+            </div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', lineHeight: 1.1 }}>
+                Time Before Emission
+              </label>
+              <MemoizedInput
+                type="number"
+                value={timeBeforeFirstEmission}
+                onChange={(e) => setTimeBeforeFirstEmission(e.target.value)}
+                step="0.01"
+              />
+            </div>
+          </div>
+
+          {/* Translation Override */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Translation Override
+            </label>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {['X', 'Y', 'Z'].map(axis => (
+                <div key={axis} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', color: 'var(--accent)' }}>{axis}</span>
+                  <MemoizedInput
+                    type="number"
+                    value={axis === 'X' ? translationOverrideX : axis === 'Y' ? translationOverrideY : translationOverrideZ}
+                    onChange={(e) => {
+                      if (axis === 'X') setTranslationOverrideX(e.target.value);
+                      if (axis === 'Y') setTranslationOverrideY(e.target.value);
+                      if (axis === 'Z') setTranslationOverrideZ(e.target.value);
+                    }}
+                    step="0.1"
+                    style={{ padding: '6px 10px', fontSize: '0.8rem' }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Is Single Checkbox */}
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}
+            onClick={() => setIsSingle(!isSingle)}
+          >
+            <div style={{
+              width: 18, height: 18, borderRadius: 4,
+              border: isSingle ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.2)',
+              background: isSingle ? 'var(--accent)' : 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.2s ease',
+            }}>
+              {isSingle && <div style={{ width: 10, height: 10, borderRadius: 2, background: '#1a1825' }} />}
+            </div>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: isSingle ? 'var(--text)' : 'rgba(255,255,255,0.5)' }}>
+              Is Single Particle
+            </span>
+          </div>
+
+        </div>
+
+        {/* footer */}
+        <div style={{
+          padding: '14px 20px',
+          borderTop: '1px solid rgba(255,255,255,0.08)',
+          display: 'flex', justifyContent: 'flex-end', gap: 10,
+          flexShrink: 0,
+        }}>
+          <button
+            disabled={!selectedChildSystem || (!isEdit && !emitterName.trim())}
+            onClick={onConfirm}
+            style={{
+              ...btnBase,
+              background: 'color-mix(in srgb, var(--accent2), transparent 88%)',
+              borderColor: 'color-mix(in srgb, var(--accent2), transparent 55%)',
+              color: 'var(--accent2)',
+              opacity: (!selectedChildSystem || (!isEdit && !emitterName.trim())) ? 0.5 : 1,
+              cursor: (!selectedChildSystem || (!isEdit && !emitterName.trim())) ? 'not-allowed' : 'pointer',
+            }}
+            onMouseEnter={(e) => {
+              if (e.currentTarget.disabled) return;
+              e.currentTarget.style.background = 'color-mix(in srgb, var(--accent2), transparent 75%)';
+              e.currentTarget.style.boxShadow = '0 0 16px color-mix(in srgb, var(--accent2), transparent 60%)';
+              e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--accent2), transparent 35%)';
+            }}
+            onMouseLeave={(e) => {
+              if (e.currentTarget.disabled) return;
+              e.currentTarget.style.background = 'color-mix(in srgb, var(--accent2), transparent 88%)';
+              e.currentTarget.style.boxShadow = '';
+              e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--accent2), transparent 55%)';
             }}
           >
-            <MenuItem value="" sx={{ color: 'var(--accent2)' }}>
-              Select a VFX System...
-            </MenuItem>
-            {availableVfxSystems.map(system => (
-              <MenuItem key={system.key} value={system.key} sx={{ color: 'var(--accent2)' }}>
-                {system.name} {system.key.startsWith('0x') ? `(${system.key})` : ''}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Box>
-
-      <Box>
-        <Typography variant="body2" sx={{
-          color: 'var(--accent2)',
-          mb: 1,
-          fontSize: '0.875rem',
-        }}>
-          Emitter Name:
-        </Typography>
-        <MemoizedInput
-          type="text"
-          value={childEmitterName}
-          onChange={(e) => setChildEmitterName(e.target.value)}
-          placeholder="Enter emitter name..."
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            background: 'var(--surface)',
-            color: 'var(--accent)',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            borderRadius: '6px',
-            fontSize: '0.875rem',
-            fontFamily: 'JetBrains Mono, monospace',
-          }}
-        />
-      </Box>
-
-      <Box>
-        <Typography variant="body2" sx={{
-          color: 'var(--accent2)',
-          mb: 1,
-          fontSize: '0.875rem',
-        }}>
-          Rate (default: 1):
-        </Typography>
-        <MemoizedInput
-          type="number"
-          value={childParticleRate}
-          onChange={(e) => setChildParticleRate(e.target.value)}
-          placeholder="1"
-          step="0.1"
-          min="0"
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            background: 'var(--surface)',
-            color: 'var(--accent)',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            borderRadius: '6px',
-            fontSize: '0.875rem',
-            fontFamily: 'JetBrains Mono, monospace',
-          }}
-        />
-      </Box>
-
-      <Box>
-        <Typography variant="body2" sx={{
-          color: 'var(--accent2)',
-          mb: 1,
-          fontSize: '0.875rem',
-        }}>
-          Lifetime (default: 9999):
-        </Typography>
-        <MemoizedInput
-          type="number"
-          value={childParticleLifetime}
-          onChange={(e) => setChildParticleLifetime(e.target.value)}
-          placeholder="9999"
-          min="0"
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            background: 'var(--surface)',
-            color: 'var(--accent)',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            borderRadius: '6px',
-            fontSize: '0.875rem',
-            fontFamily: 'JetBrains Mono, monospace',
-          }}
-        />
-      </Box>
-
-      <Box>
-        <Typography variant="body2" sx={{
-          color: 'var(--accent2)',
-          mb: 1,
-          fontSize: '0.875rem',
-        }}>
-          Bind Weight (default: 1):
-        </Typography>
-        <MemoizedInput
-          type="number"
-          value={childParticleBindWeight}
-          onChange={(e) => setChildParticleBindWeight(e.target.value)}
-          placeholder="1"
-          step="0.1"
-          min="0"
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            background: 'var(--surface)',
-            color: 'var(--accent)',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            borderRadius: '6px',
-            fontSize: '0.875rem',
-            fontFamily: 'JetBrains Mono, monospace',
-          }}
-        />
-      </Box>
-
-      <Box>
-        <Typography variant="body2" sx={{
-          color: 'var(--accent2)',
-          mb: 1,
-          fontSize: '0.875rem',
-          fontWeight: 500,
-        }}>
-          Time Before First Emission (default: 0):
-        </Typography>
-        <MemoizedInput
-          type="number"
-          value={childParticleTimeBeforeFirstEmission}
-          onChange={(e) => setChildParticleTimeBeforeFirstEmission(e.target.value)}
-          placeholder="0"
-          step="0.01"
-          min="0"
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            background: 'var(--surface)',
-            color: 'var(--accent)',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
-            borderRadius: '6px',
-            fontSize: '0.875rem',
-            fontFamily: 'JetBrains Mono, monospace',
-          }}
-        />
-      </Box>
-
-      <Box>
-        <Typography variant="body2" sx={{
-          color: 'var(--accent2)',
-          mb: 1,
-          fontSize: '0.875rem',
-          fontWeight: 500,
-        }}>
-          Translation Override (default: 0, 0, 0):
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1.5 }}>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="body2" sx={{
-              color: 'var(--accent2)',
-              mb: 0.5,
-              fontSize: '0.75rem',
-            }}>
-              X:
-            </Typography>
-            <MemoizedInput
-              type="number"
-              value={childParticleTranslationOverrideX}
-              onChange={(e) => setChildParticleTranslationOverrideX(e.target.value)}
-              placeholder="0"
-              step="0.1"
-              style={{
-                width: '100%',
-                padding: '6px 8px',
-                background: 'var(--surface)',
-                color: 'var(--accent)',
-                border: '1px solid rgba(255, 255, 255, 0.06)',
-                borderRadius: '6px',
-                fontSize: '0.75rem',
-                fontFamily: 'JetBrains Mono, monospace',
-              }}
-            />
-          </Box>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="body2" sx={{
-              color: 'var(--accent2)',
-              mb: 0.5,
-              fontSize: '0.75rem',
-            }}>
-              Y:
-            </Typography>
-            <MemoizedInput
-              type="number"
-              value={childParticleTranslationOverrideY}
-              onChange={(e) => setChildParticleTranslationOverrideY(e.target.value)}
-              placeholder="0"
-              step="0.1"
-              style={{
-                width: '100%',
-                padding: '6px 8px',
-                background: 'var(--surface)',
-                color: 'var(--accent)',
-                border: '1px solid rgba(255, 255, 255, 0.06)',
-                borderRadius: '6px',
-                fontSize: '0.75rem',
-                fontFamily: 'JetBrains Mono, monospace',
-              }}
-            />
-          </Box>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="body2" sx={{
-              color: 'var(--accent2)',
-              mb: 0.5,
-              fontSize: '0.75rem',
-            }}>
-              Z:
-            </Typography>
-            <MemoizedInput
-              type="number"
-              value={childParticleTranslationOverrideZ}
-              onChange={(e) => setChildParticleTranslationOverrideZ(e.target.value)}
-              placeholder="0"
-              step="0.1"
-              style={{
-                width: '100%',
-                padding: '6px 8px',
-                background: 'var(--surface)',
-                color: 'var(--accent)',
-                border: '1px solid rgba(255, 255, 255, 0.06)',
-                borderRadius: '6px',
-                fontSize: '0.75rem',
-                fontFamily: 'JetBrains Mono, monospace',
-              }}
-            />
-          </Box>
-        </Box>
-      </Box>
-
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={childParticleIsSingle}
-            onChange={(e) => setChildParticleIsSingle(e.target.checked)}
-            sx={{
-              color: 'var(--accent2)',
-              '&.Mui-checked': {
-                color: 'var(--accent)',
-              },
-            }}
-          />
-        }
-        label={
-          <Typography variant="body2" sx={{
-            color: 'var(--accent2)',
-            fontSize: '0.875rem',
-          }}>
-            Is Single Particle (default: true)
-          </Typography>
-        }
-      />
-    </Box>
-  </DialogContent>
-  <DialogActions sx={{
-    p: 2.5,
-    pt: 2,
-    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-    gap: 1.5,
-  }}>
-    <Button
-      onClick={() => {
-        setShowChildModal(false);
-        setSelectedSystemForChild(null);
-        setSelectedChildSystem('');
-        setChildEmitterName('');
-        setAvailableVfxSystems([]);
-      }}
-      variant="outlined"
-      sx={{
-        color: 'var(--accent2)',
-        borderColor: 'rgba(255, 255, 255, 0.06)',
-        textTransform: 'none',
-        fontFamily: 'JetBrains Mono, monospace',
-        fontSize: '0.8rem',
-        px: 2,
-        '&:hover': {
-          borderColor: 'var(--accent)',
-          backgroundColor: 'rgba(var(--accent-rgb), 0.05)',
-        },
-      }}
-    >
-      Cancel
-    </Button>
-    <Button
-      onClick={handleConfirmChildParticles}
-      disabled={!selectedChildSystem || !childEmitterName.trim()}
-      variant="contained"
-      sx={{
-        backgroundColor: 'var(--accent)',
-        color: 'var(--surface)',
-        textTransform: 'none',
-        fontFamily: 'JetBrains Mono, monospace',
-        fontSize: '0.8rem',
-        fontWeight: 600,
-        px: 2.5,
-        '&:hover': {
-          backgroundColor: 'var(--accent2)',
-        },
-        '&:disabled': {
-          backgroundColor: '#666',
-          color: 'rgba(255,255,255,0.6)',
-        },
-      }}
-    >
-      Add Child Particles
-    </Button>
-  </DialogActions>
-</Dialog>
+            {isEdit ? 'Update' : 'Add Child Particle'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
 

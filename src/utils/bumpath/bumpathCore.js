@@ -473,11 +473,14 @@ export class BumpathCore {
      * @param {Function} progressCallback - Progress callback (optional)
      * @returns {Object} - Process result
      */
-    async process(outputDir, ignoreMissing = false, combineLinked = false, progressCallback = null) {
+    async process(outputDir, ignoreMissing = false, combineLinked = false, progressCallback = null, skipRepath = false) {
         console.log(`[BumpathCore] Starting process:`);
         console.log(`  OutputDir: ${outputDir}`);
         console.log(`  IgnoreMissing: ${ignoreMissing}`);
         console.log(`  CombineLinked: ${combineLinked}`);
+        console.log(`  SkipRepath: ${skipRepath}`);
+        // Store for use in private methods (_copyAssetFiles)
+        this._skipRepath = skipRepath;
         
         if (Object.keys(this.scannedTree).length === 0) {
             throw new Error('No entries scanned. Please scan first.');
@@ -534,8 +537,9 @@ export class BumpathCore {
                 if (!existed) continue;
                 
                 // Python: if not short_file.endswith('.bin'): short_file = bum_path(short_file, prefix)
+                // skipRepath: keep original paths, no prefix transformation
                 let outputRelPath = shortFile;
-                if (!shortFile.toLowerCase().endsWith('.bin')) {
+                if (!skipRepath && !shortFile.toLowerCase().endsWith('.bin')) {
                     outputRelPath = bumPath(shortFile, prefix);
                 }
                 
@@ -572,7 +576,7 @@ export class BumpathCore {
                 }
                 
                 // Python: if output_file.endswith('.bin'): bum_bin(output_file)
-                if (outputPath.toLowerCase().endsWith('.bin')) {
+                if (!skipRepath && outputPath.toLowerCase().endsWith('.bin')) {
                     await this._repathBin(outputPath, entryHash);
                 }
                 
@@ -626,8 +630,10 @@ export class BumpathCore {
                 throw error;
             }
             
-            // Repath BIN file (modify paths inside)
-            await this._repathBin(outputPath, null);
+            // Repath BIN file (modify paths inside) — skipped when skipRepath=true
+            if (!skipRepath) {
+                await this._repathBin(outputPath, null);
+            }
             
             processedFiles.set(unifyPathKey, outputPath);
             totalProcessed++;
@@ -739,7 +745,7 @@ export class BumpathCore {
             const entryHash = assetToEntryMap.get(assetPath.toLowerCase());
             const prefix = entryHash ? (this.entryPrefix[entryHash] || 'bum') : 'bum';
             
-            const outputPath = await copyAsset(assetPath, outputDir, prefix, this.sourceDirs, this.sourceFiles);
+            const outputPath = await copyAsset(assetPath, outputDir, this._skipRepath ? null : prefix, this.sourceDirs, this.sourceFiles);
             if (outputPath) {
                 copiedCount++;
                 if (copiedCount % 50 === 0 && progressCallback) {

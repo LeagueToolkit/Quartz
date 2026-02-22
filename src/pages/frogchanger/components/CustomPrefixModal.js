@@ -171,7 +171,7 @@ const CustomPrefixModal = ({
                 e.currentTarget.style.color = 'rgba(255,255,255,0.5)';
               }}
             >
-              âœ•
+              {'\u2715'}
             </button>
           </div>
 

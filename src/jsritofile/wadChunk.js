@@ -1,73 +1,57 @@
 /**
  * WAD Chunk
- * Represents a single chunk in a WAD file
+ * Represents a single chunk in a WAD file.
+ *
+ * readData() now takes a FileHandle (fs.promises.open) rather than a BytesStream.
+ * This eliminates the need to load the full WAD buffer into memory.
  */
 
 import { WADCompressionType } from './wadTypes.js';
 import { WADExtensioner } from './wadExtensioner.js';
-import { BytesStream } from './stream.js';
 import { WADHasher } from './wadHasher.js';
 
-// Get Node.js modules for compression (cached after first init)
 let zlib = null;
+let gunzip = null;        // promisified async version (no UI freeze)
 let zstdDecompress = null;
 let compressionInitialized = false;
 let compressionInitPromise = null;
 
-// Initialize compression modules (only runs ONCE, cached)
-// Exported so it can be called once before processing many chunks
 export async function initCompressionModules() {
-    // Fast path: already initialized
     if (compressionInitialized) return;
-    
-    // Prevent multiple concurrent initializations
     if (compressionInitPromise) return compressionInitPromise;
-    
+
     compressionInitPromise = (async () => {
         try {
-            // zlib is built-in Node.js
-            if (typeof process !== 'undefined' && process.versions && process.versions.node) {
-                // In Electron, use window.require if available
-                if (typeof window !== 'undefined' && window.require) {
-                    // Electron renderer process
-                    zlib = window.require('zlib');
-                    
-                    // Use @mongodb-js/zstd (recommended)
-                    try {
-                        const mongodbZstd = window.require('@mongodb-js/zstd');
-                        zstdDecompress = mongodbZstd.decompress;
-                        console.log('[WADChunk] Using @mongodb-js/zstd for Zstd decompression');
-                    } catch (e) {
-                        console.error('[WADChunk] Failed to load @mongodb-js/zstd:', e.message);
-                        throw new Error('@mongodb-js/zstd not available. Install with: npm install @mongodb-js/zstd');
-                    }
-                } else if (typeof __webpack_require__ === 'undefined') {
-                    // Pure Node.js (not webpack) - use createRequire
-                    const { createRequire } = await import('module');
-                    const nodeRequire = createRequire(import.meta.url);
-                    zlib = nodeRequire('zlib');
-                    
-                    // Use @mongodb-js/zstd (recommended)
-                    try {
-                        const mongodbZstd = nodeRequire('@mongodb-js/zstd');
-                        zstdDecompress = mongodbZstd.decompress;
-                        console.log('[WADChunk] Using @mongodb-js/zstd for Zstd decompression');
-                    } catch (e) {
-                        console.error('[WADChunk] Failed to load @mongodb-js/zstd:', e.message);
-                        throw new Error('@mongodb-js/zstd not available. Install with: npm install @mongodb-js/zstd');
-                    }
-                } else {
-                    // Webpack environment - cannot load native modules
-                    throw new Error('Cannot load compression modules in webpack environment');
-                }
+            let nodeRequire;
+            if (typeof window !== 'undefined' && window.require) {
+                nodeRequire = window.require;
+            } else if (typeof process !== 'undefined' && process.versions?.node && typeof __webpack_require__ === 'undefined') {
+                const { createRequire } = await import('module');
+                nodeRequire = createRequire(import.meta.url);
+            } else {
+                throw new Error('Cannot load compression modules in this environment');
             }
+
+            zlib = nodeRequire('zlib');
+            // P0-1: Use promisified async gunzip — never blocks the event loop
+            const { promisify } = nodeRequire('util');
+            gunzip = promisify(zlib.gunzip);
+
+            try {
+                const mongodbZstd = nodeRequire('@mongodb-js/zstd');
+                zstdDecompress = mongodbZstd.decompress;
+                console.log('[WADChunk] Using @mongodb-js/zstd for Zstd decompression');
+            } catch (e) {
+                throw new Error(`@mongodb-js/zstd not available: ${e.message}`);
+            }
+
             compressionInitialized = true;
         } catch (e) {
             console.error('[WADChunk] Failed to initialize compression modules:', e);
             throw e;
         }
     })();
-    
+
     return compressionInitPromise;
 }
 
@@ -88,90 +72,66 @@ export class WADChunk {
     }
 
     /**
-     * Read and decompress chunk data
-     * @param {BytesStream} bs - BytesStream positioned at chunk data
+     * Read and decompress chunk data using a file descriptor.
+     * P0-2: reads only the bytes for this chunk at its offset — no full-file buffer needed.
+     *
+     * @param {import('fs').promises.FileHandle} fd
      */
-    async readData(bs) {
-        // Initialize compression modules if needed
+    async readData(fd) {
         await initCompressionModules();
-        
-        // Save current position
-        const savedOffset = bs.tell();
-        
-        // Seek to chunk offset
-        bs.seek(this.offset);
-        
-        // Read compressed data
-        const raw = bs.read(this.compressed_size);
-        
-        // Decompress based on compression type
+
+        if (this.compressed_size === 0) {
+            this.data = Buffer.alloc(0);
+            return;
+        }
+
+        // Read compressed bytes directly at the chunk's absolute file offset
+        const raw = Buffer.alloc(this.compressed_size);
+        try {
+            const { bytesRead } = await fd.read(raw, 0, this.compressed_size, this.offset);
+            if (bytesRead < this.compressed_size) {
+                console.warn(`[WADChunk] Short read on chunk ${this.id}: expected ${this.compressed_size}, got ${bytesRead}`);
+            }
+        } catch (readErr) {
+            throw new Error(`Failed to read chunk ${this.id} at offset ${this.offset}: ${readErr.message}`);
+        }
+
+        // Decompress
         if (this.compression_type === WADCompressionType.Raw) {
             this.data = raw;
         } else if (this.compression_type === WADCompressionType.Gzip) {
-            if (!zlib) {
-                throw new Error('zlib module not available for Gzip decompression');
-            }
-            this.data = zlib.gunzipSync(raw);
+            if (!gunzip) throw new Error('zlib not available for Gzip decompression');
+            // P0-1: async — does not block the renderer event loop
+            this.data = await gunzip(raw);
         } else if (this.compression_type === WADCompressionType.Satellite) {
-            // Satellite is not supported
             this.data = null;
-            console.warn(`[WADChunk] Satellite compression not supported for chunk ${this.id}`);
+            console.warn(`[WADChunk] Satellite compression not supported (chunk ${this.id})`);
         } else if (this.compression_type === WADCompressionType.Zstd) {
-            if (!zstdDecompress) {
-                throw new Error(`Zstd decompression not available for chunk ${this.id}. Install @mongodb-js/zstd: npm install @mongodb-js/zstd`);
-            }
-            try {
-                // @mongodb-js/zstd.decompress returns a Promise
-                this.data = await zstdDecompress(raw);
-            } catch (error) {
-                throw new Error(`Failed to decompress Zstd chunk ${this.id}: ${error.message}`);
-            }
+            if (!zstdDecompress) throw new Error(`Zstd not available (chunk ${this.id})`);
+            this.data = await zstdDecompress(raw);
         } else if (this.compression_type === WADCompressionType.ZstdChunked) {
-            // Check if it starts with zstd magic
             if (raw.length >= 4 && raw[0] === 0x28 && raw[1] === 0xB5 && raw[2] === 0x2F && raw[3] === 0xFD) {
-                if (!zstdDecompress) {
-                    throw new Error(`Zstd decompression not available for chunk ${this.id}. Install @mongodb-js/zstd: npm install @mongodb-js/zstd`);
-                }
-                try {
-                    // @mongodb-js/zstd.decompress returns a Promise
-                    this.data = await zstdDecompress(raw);
-                } catch (error) {
-                    throw new Error(`Failed to decompress ZstdChunked chunk ${this.id}: ${error.message}`);
-                }
+                if (!zstdDecompress) throw new Error(`Zstd not available (chunk ${this.id})`);
+                this.data = await zstdDecompress(raw);
             } else {
-                // Not actually compressed
                 this.data = raw;
             }
         } else {
-            throw new Error(`Unknown compression type: ${this.compression_type}`);
+            throw new Error(`Unknown compression type ${this.compression_type} on chunk ${this.id}`);
         }
-        
-        // Verify decompressed size
+
+        // Size validation
         if (this.data && this.data.length !== this.decompressed_size) {
-            console.warn(`[WADChunk] Decompressed size mismatch: expected ${this.decompressed_size}, got ${this.data.length}`);
+            console.warn(`[WADChunk] Size mismatch on chunk ${this.id}: expected ${this.decompressed_size}, got ${this.data.length}`);
         }
-        
-        // Guess extension if not set
+
+        // Guess extension from magic bytes if not already known
         if (this.extension === null && this.data) {
             this.extension = WADExtensioner.guessExtension(this.data);
         }
-        
-        // Restore position
-        bs.seek(savedOffset);
     }
 
-    /**
-     * Free chunk data to save memory
-     */
     freeData() {
         this.data = null;
     }
 }
-
-
-
-
-
-
-
-

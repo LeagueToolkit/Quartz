@@ -7,7 +7,6 @@ import VfxFloatingActions from '../../../components/floating/VfxFloatingActions'
 import PersistentEffectsModal from '../../port2/components/modals/PersistentEffectsModal';
 import IdleParticleModal from '../../port2/components/modals/IdleParticleModal';
 import ChildParticleModal from '../../port2/components/modals/ChildParticleModal';
-import ChildParticleEditModal from '../../port2/components/modals/ChildParticleEditModal';
 import VfxMatrixEditorAdapter from '../../port2/components/VfxMatrixEditorAdapter';
 import NewVfxSystemModal from '../../port2/components/modals/NewVfxSystemModal';
 import { reparseBinWithFreshPy } from '../../../utils/io/reparseHelpers.js';
@@ -116,63 +115,32 @@ function VfxHubDialogs({
       />
 
       <ChildParticleModal
-        showChildModal={child.showChildModal}
-        setShowChildModal={child.setShowChildModal}
-        selectedSystemForChild={child.selectedSystemForChild}
-        setSelectedSystemForChild={child.setSelectedSystemForChild}
+        open={child.showChildModal}
+        onClose={child.resetChildState}
+        isEdit={child.isEditMode}
+        targetSystem={child.selectedSystemForChild}
         selectedChildSystem={child.selectedChildSystem}
         setSelectedChildSystem={child.setSelectedChildSystem}
-        childEmitterName={child.childEmitterName}
-        setChildEmitterName={child.setChildEmitterName}
-        childParticleRate={child.childParticleRate}
-        setChildParticleRate={child.setChildParticleRate}
-        childParticleLifetime={child.childParticleLifetime}
-        setChildParticleLifetime={child.setChildParticleLifetime}
-        childParticleBindWeight={child.childParticleBindWeight}
-        setChildParticleBindWeight={child.setChildParticleBindWeight}
-        childParticleTimeBeforeFirstEmission={child.childParticleTimeBeforeFirstEmission}
-        setChildParticleTimeBeforeFirstEmission={child.setChildParticleTimeBeforeFirstEmission}
-        childParticleTranslationOverrideX={child.childParticleTranslationOverrideX}
-        setChildParticleTranslationOverrideX={child.setChildParticleTranslationOverrideX}
-        childParticleTranslationOverrideY={child.childParticleTranslationOverrideY}
-        setChildParticleTranslationOverrideY={child.setChildParticleTranslationOverrideY}
-        childParticleTranslationOverrideZ={child.childParticleTranslationOverrideZ}
-        setChildParticleTranslationOverrideZ={child.setChildParticleTranslationOverrideZ}
-        childParticleIsSingle={child.childParticleIsSingle}
-        setChildParticleIsSingle={child.setChildParticleIsSingle}
-        availableVfxSystems={child.availableVfxSystems}
-        setAvailableVfxSystems={child.setAvailableVfxSystems}
-        handleConfirmChildParticles={child.handleConfirmChildParticles}
-      />
-
-      <ChildParticleEditModal
-        showChildEditModal={child.showChildEditModal}
-        setShowChildEditModal={child.setShowChildEditModal}
-        editingChildEmitter={child.editingChildEmitter}
-        setEditingChildEmitter={child.setEditingChildEmitter}
-        editingChildSystem={child.editingChildSystem}
-        setEditingChildSystem={child.setEditingChildSystem}
-        selectedChildSystem={child.selectedChildSystem}
-        setSelectedChildSystem={child.setSelectedChildSystem}
-        childParticleRate={child.childParticleRate}
-        setChildParticleRate={child.setChildParticleRate}
-        childParticleLifetime={child.childParticleLifetime}
-        setChildParticleLifetime={child.setChildParticleLifetime}
-        childParticleBindWeight={child.childParticleBindWeight}
-        setChildParticleBindWeight={child.setChildParticleBindWeight}
-        childParticleTimeBeforeFirstEmission={child.childParticleTimeBeforeFirstEmission}
-        setChildParticleTimeBeforeFirstEmission={child.setChildParticleTimeBeforeFirstEmission}
-        childParticleTranslationOverrideX={child.childParticleTranslationOverrideX}
-        setChildParticleTranslationOverrideX={child.setChildParticleTranslationOverrideX}
-        childParticleTranslationOverrideY={child.childParticleTranslationOverrideY}
-        setChildParticleTranslationOverrideY={child.setChildParticleTranslationOverrideY}
-        childParticleTranslationOverrideZ={child.childParticleTranslationOverrideZ}
-        setChildParticleTranslationOverrideZ={child.setChildParticleTranslationOverrideZ}
-        childParticleIsSingle={child.childParticleIsSingle}
-        setChildParticleIsSingle={child.setChildParticleIsSingle}
-        availableVfxSystems={child.availableVfxSystems}
-        setAvailableVfxSystems={child.setAvailableVfxSystems}
-        handleConfirmChildParticleEdit={child.handleConfirmChildParticleEdit}
+        emitterName={child.emitterName}
+        setEmitterName={child.setEmitterName}
+        rate={child.childParticleRate}
+        setRate={child.setChildParticleRate}
+        lifetime={child.childParticleLifetime}
+        setLifetime={child.setChildParticleLifetime}
+        bindWeight={child.childParticleBindWeight}
+        setBindWeight={child.setChildParticleBindWeight}
+        timeBeforeFirstEmission={child.childParticleTimeBeforeFirstEmission}
+        setTimeBeforeFirstEmission={child.setChildParticleTimeBeforeFirstEmission}
+        translationOverrideX={child.childParticleTranslationOverrideX}
+        setTranslationOverrideX={child.setChildParticleTranslationOverrideX}
+        translationOverrideY={child.childParticleTranslationOverrideY}
+        setTranslationOverrideY={child.setChildParticleTranslationOverrideY}
+        translationOverrideZ={child.childParticleTranslationOverrideZ}
+        setTranslationOverrideZ={child.setChildParticleTranslationOverrideZ}
+        isSingle={child.childParticleIsSingle}
+        setIsSingle={child.setChildParticleIsSingle}
+        availableSystems={child.availableVfxSystems}
+        onConfirm={child.handleConfirmChildParticles}
       />
 
       <VfxMatrixEditorAdapter

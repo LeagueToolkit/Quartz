@@ -20,7 +20,8 @@ export const findChampionWadFiles = async (championName, leaguePath) => {
   if (window.require) {
     try {
       const fs = window.require('fs');
-      const files = fs.readdirSync(leaguePath);
+      // P1-11: async readdir — was readdirSync which blocked the renderer
+      const files = await fs.promises.readdir(leaguePath);
       const championFileName = getChampionFileName(championName);
 
       return files.filter(file => {

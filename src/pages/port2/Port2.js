@@ -3,7 +3,6 @@ import './Port.css';
 import PersistentEffectsModal from './components/modals/PersistentEffectsModal';
 import IdleParticleModal from './components/modals/IdleParticleModal';
 import ChildParticleModal from './components/modals/ChildParticleModal';
-import ChildParticleEditModal from './components/modals/ChildParticleEditModal';
 import TargetColumn from './components/TargetColumn';
 import DonorColumn from './components/DonorColumn';
 import PortStatusBar from './components/PortStatusBar';
@@ -16,6 +15,7 @@ import { ChevronRight as ChevronRightIcon, ChevronLeft as ChevronLeftIcon, MoreH
 import CropOriginalIcon from '@mui/icons-material/CropOriginal';
 import BackupViewer from '../../components/modals/BackupViewer';
 import RitobinWarningModal from '../../components/modals/RitobinWarningModal';
+import CombineLinkedBinsModal from '../../components/modals/CombineLinkedBinsModal';
 import RitoBinErrorDialog from '../../components/modals/RitoBinErrorDialog';
 import VfxFloatingActions from '../../components/floating/VfxFloatingActions';
 import NewVfxSystemModal from './components/modals/NewVfxSystemModal';
@@ -43,7 +43,8 @@ const Port2 = () => {
     availableSubmeshes,
     availableVfxSystems,
     backgroundSaveTimerRef,
-    childEmitterName,
+    emitterName,
+    setEmitterName,
     childParticleBindWeight,
     childParticleIsSingle,
     childParticleLifetime,
@@ -70,8 +71,8 @@ const Port2 = () => {
     dragEnterCounter,
     dragStartedKey,
     draggedEmitter,
-    editingChildEmitter,
-    editingChildSystem,
+    isEditMode,
+    resetChildState,
     editingConditionIndex,
     effectKeyOptions,
     enableDonorEmitterSearch,
@@ -91,7 +92,6 @@ const Port2 = () => {
     handleAddIdleParticles,
     handleApplyPersistent,
     handleClearSelection,
-    handleConfirmChildParticleEdit,
     handleConfirmChildParticles,
     handleConfirmIdleParticles,
     handleCreateNewSystem,
@@ -156,7 +156,6 @@ const Port2 = () => {
     textureCloseTimerRef,
     setAvailableSubmeshes,
     setAvailableVfxSystems,
-    setChildEmitterName,
     setChildParticleBindWeight,
     setChildParticleIsSingle,
     setChildParticleLifetime,
@@ -177,8 +176,6 @@ const Port2 = () => {
     setDonorSystems,
     setDragStartedKey,
     setDraggedEmitter,
-    setEditingChildEmitter,
-    setEditingChildSystem,
     setEditingConditionIndex,
     setEffectKeyOptions,
     setEnableDonorEmitterSearch,
@@ -210,8 +207,6 @@ const Port2 = () => {
     setSelectedSystemForIdle,
     setSelectedTargetSystem,
     setShowBackupViewer,
-    setShowChildEditModal,
-    setShowChildModal,
     setShowExistingConditions,
     setShowIdleParticleModal,
     setShowMatrixModal,
@@ -233,7 +228,6 @@ const Port2 = () => {
     setVfxDropdownOpen,
     setVfxSearchTerms,
     showBackupViewer,
-    showChildEditModal,
     showChildModal,
     showExistingConditions,
     showIdleParticleModal,
@@ -263,7 +257,11 @@ const Port2 = () => {
     undoHistory,
     vfxDropdownOpen,
     vfxSearchTerms,
+    combineModalState,
+    handleCombineYes,
+    handleCombineNo,
   } = usePort();
+
 
   console.log('[Port2] Handlers loaded:', {
     handleOpenTargetBin: typeof handleOpenTargetBin,
@@ -649,37 +647,6 @@ const Port2 = () => {
         editingConditionIndex={editingConditionIndex}
         handleApplyPersistent={handleApplyPersistent}
       />
-      {/* Child Particle Edit Modal */}
-      <ChildParticleEditModal
-        showChildEditModal={showChildEditModal}
-        setShowChildEditModal={setShowChildEditModal}
-        editingChildEmitter={editingChildEmitter}
-        setEditingChildEmitter={setEditingChildEmitter}
-        editingChildSystem={editingChildSystem}
-        setEditingChildSystem={setEditingChildSystem}
-        selectedChildSystem={selectedChildSystem}
-        setSelectedChildSystem={setSelectedChildSystem}
-        childParticleRate={childParticleRate}
-        setChildParticleRate={setChildParticleRate}
-        childParticleLifetime={childParticleLifetime}
-        setChildParticleLifetime={setChildParticleLifetime}
-        childParticleBindWeight={childParticleBindWeight}
-        setChildParticleBindWeight={setChildParticleBindWeight}
-        childParticleTimeBeforeFirstEmission={childParticleTimeBeforeFirstEmission}
-        setChildParticleTimeBeforeFirstEmission={setChildParticleTimeBeforeFirstEmission}
-        childParticleTranslationOverrideX={childParticleTranslationOverrideX}
-        setChildParticleTranslationOverrideX={setChildParticleTranslationOverrideX}
-        childParticleTranslationOverrideY={childParticleTranslationOverrideY}
-        setChildParticleTranslationOverrideY={setChildParticleTranslationOverrideY}
-        childParticleTranslationOverrideZ={childParticleTranslationOverrideZ}
-        setChildParticleTranslationOverrideZ={setChildParticleTranslationOverrideZ}
-        childParticleIsSingle={childParticleIsSingle}
-        setChildParticleIsSingle={setChildParticleIsSingle}
-        availableVfxSystems={availableVfxSystems}
-        setAvailableVfxSystems={setAvailableVfxSystems}
-        handleConfirmChildParticleEdit={handleConfirmChildParticleEdit}
-      />
-      {/* Matrix Editor Modal */}
       <VfxMatrixEditorAdapter
         showMatrixModal={showMatrixModal}
         setShowMatrixModal={setShowMatrixModal}
@@ -692,16 +659,15 @@ const Port2 = () => {
         setFileSaved={setFileSaved}
         saveStateToHistory={saveStateToHistory}
       />
-      {/* New VFX System Modal */}
+
       <NewVfxSystemModal
         open={showNewSystemModal}
         onClose={() => setShowNewSystemModal(false)}
         newSystemName={newSystemName}
         setNewSystemName={setNewSystemName}
-        onCreate={() => handleCreateNewSystem(newSystemName)}
+        onCreate={() => handleCreateNewSystem(newSystemName, setShowNewSystemModal)}
       />
 
-      {/* Name Prompt for Drag-and-Drop Full VFX System */}
       <VfxSystemNamePromptModal
         open={showNamePromptModal}
         value={namePromptValue}
@@ -713,7 +679,6 @@ const Port2 = () => {
         onInsert={handleInsertDroppedVfxSystem}
       />
 
-      {/* Idle Particles Modal */}
       <IdleParticleModal
         showIdleParticleModal={showIdleParticleModal}
         setShowIdleParticleModal={setShowIdleParticleModal}
@@ -727,35 +692,34 @@ const Port2 = () => {
         setExistingIdleBones={setExistingIdleBones}
         handleConfirmIdleParticles={handleConfirmIdleParticles}
       />
-      {/* Child Particles Modal */}
+
       <ChildParticleModal
-        showChildModal={showChildModal}
-        setShowChildModal={setShowChildModal}
-        selectedSystemForChild={selectedSystemForChild}
-        setSelectedSystemForChild={setSelectedSystemForChild}
+        open={showChildModal}
+        onClose={resetChildState}
+        isEdit={isEditMode}
+        targetSystem={selectedSystemForChild}
         selectedChildSystem={selectedChildSystem}
         setSelectedChildSystem={setSelectedChildSystem}
-        childEmitterName={childEmitterName}
-        setChildEmitterName={setChildEmitterName}
-        childParticleRate={childParticleRate}
-        setChildParticleRate={setChildParticleRate}
-        childParticleLifetime={childParticleLifetime}
-        setChildParticleLifetime={setChildParticleLifetime}
-        childParticleBindWeight={childParticleBindWeight}
-        setChildParticleBindWeight={setChildParticleBindWeight}
-        childParticleTimeBeforeFirstEmission={childParticleTimeBeforeFirstEmission}
-        setChildParticleTimeBeforeFirstEmission={setChildParticleTimeBeforeFirstEmission}
-        childParticleTranslationOverrideX={childParticleTranslationOverrideX}
-        setChildParticleTranslationOverrideX={setChildParticleTranslationOverrideX}
-        childParticleTranslationOverrideY={childParticleTranslationOverrideY}
-        setChildParticleTranslationOverrideY={setChildParticleTranslationOverrideY}
-        childParticleTranslationOverrideZ={childParticleTranslationOverrideZ}
-        setChildParticleTranslationOverrideZ={setChildParticleTranslationOverrideZ}
-        childParticleIsSingle={childParticleIsSingle}
-        setChildParticleIsSingle={setChildParticleIsSingle}
-        availableVfxSystems={availableVfxSystems}
-        setAvailableVfxSystems={setAvailableVfxSystems}
-        handleConfirmChildParticles={handleConfirmChildParticles}
+        emitterName={emitterName}
+        setEmitterName={setEmitterName}
+        rate={childParticleRate}
+        setRate={setChildParticleRate}
+        lifetime={childParticleLifetime}
+        setLifetime={setChildParticleLifetime}
+        bindWeight={childParticleBindWeight}
+        setBindWeight={setChildParticleBindWeight}
+        timeBeforeFirstEmission={childParticleTimeBeforeFirstEmission}
+        setTimeBeforeFirstEmission={setChildParticleTimeBeforeFirstEmission}
+        translationOverrideX={childParticleTranslationOverrideX}
+        setTranslationOverrideX={setChildParticleTranslationOverrideX}
+        translationOverrideY={childParticleTranslationOverrideY}
+        setTranslationOverrideY={setChildParticleTranslationOverrideY}
+        translationOverrideZ={childParticleTranslationOverrideZ}
+        setTranslationOverrideZ={setChildParticleTranslationOverrideZ}
+        isSingle={childParticleIsSingle}
+        setIsSingle={setChildParticleIsSingle}
+        availableSystems={availableVfxSystems}
+        onConfirm={handleConfirmChildParticles}
       />
       <PortStatusBar
         statusMessage={statusMessage}
@@ -851,6 +815,14 @@ const Port2 = () => {
             setStatusMessage(`Donor bin loaded: ${Object.keys(donorSystems).length} systems found`);
           }
         }}
+      />
+
+      {/* Combine Linked BINs Modal */}
+      <CombineLinkedBinsModal
+        open={combineModalState.open}
+        linkCount={combineModalState.linkCount}
+        onYes={handleCombineYes}
+        onNo={handleCombineNo}
       />
 
       {/* RitoBin Error Dialog */}

@@ -25,6 +25,9 @@ const GlobalUpdateNotification = () => {
     const [updateError, setUpdateError] = useState('');
     const [showUpdateNotification, setShowUpdateNotification] = useState(true);
     const [showUpToDateMessage, setShowUpToDateMessage] = useState(false);
+    const [dismissedVersion, setDismissedVersion] = useState(() => {
+        try { return localStorage.getItem('update:dismissed-version') || ''; } catch { return ''; }
+    });
 
     const fetchReleaseNotes = async (version) => {
         try {
@@ -45,17 +48,28 @@ const GlobalUpdateNotification = () => {
         }
     }, []);
 
-    const handleDismissUpdate = () => setShowUpdateNotification(false);
+    const handleDismissUpdate = () => {
+        const toDismiss = newVersion || '';
+        try { if (toDismiss) localStorage.setItem('update:dismissed-version', toDismiss); } catch { }
+        setDismissedVersion(toDismiss);
+        setShowUpdateNotification(false);
+    };
 
     useEffect(() => {
         const setupUpdateListeners = async () => {
             if (!window.require) return;
             const { ipcRenderer } = window.require('electron');
 
+            let isDev = false;
             try {
                 const versionResult = await ipcRenderer.invoke('update:get-version');
-                if (versionResult.success) setCurrentVersion(versionResult.version);
+                if (versionResult.success) {
+                    setCurrentVersion(versionResult.version);
+                    isDev = versionResult.isDev;
+                }
             } catch (error) { console.error('Error getting version:', error); }
+
+            if (isDev) return;
 
             ipcRenderer.on('update:checking', () => {
                 if (!DEV_SIMULATE_UPDATE_AVAILABLE) { setUpdateStatus('checking'); setUpdateError(''); }
@@ -76,11 +90,16 @@ const GlobalUpdateNotification = () => {
 
             ipcRenderer.on('update:available', (event, data) => {
                 if (!DEV_SIMULATE_UPDATE_AVAILABLE) {
+                    const incomingVersion = data?.version || '';
                     setUpdateStatus('available');
-                    setNewVersion(data.version);
+                    setNewVersion(incomingVersion);
                     setUpdateError('');
-                    setShowUpdateNotification(true);
-                    fetchReleaseNotes(data.version);
+                    if (!dismissedVersion || dismissedVersion !== incomingVersion) {
+                        setShowUpdateNotification(true);
+                    } else {
+                        setShowUpdateNotification(false);
+                    }
+                    fetchReleaseNotes(incomingVersion);
                 }
             });
 
@@ -117,7 +136,7 @@ const GlobalUpdateNotification = () => {
             };
         };
         setupUpdateListeners();
-    }, []);
+    }, [dismissedVersion]);
 
     return (
         <Box sx={{
@@ -232,7 +251,9 @@ const GlobalUpdateNotification = () => {
                                 try {
                                     localStorage.setItem('settings:highlight-update', 'true');
                                     localStorage.setItem('settings:open-section', 'tools');
+                                    if (newVersion) localStorage.setItem('update:dismissed-version', newVersion);
                                 } catch { }
+                                setDismissedVersion(newVersion || '');
                                 setShowUpdateNotification(false);
                                 navigate('/settings');
                             }}

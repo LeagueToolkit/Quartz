@@ -2,7 +2,7 @@ import electronPrefs from '../core/electronPrefs.js';
 
 class FontManager {
   constructor() {
-    this.fontsDirectory = './css/font/';
+    this.fontsDirectory = this.getFontsDirectoryPath();
     this.availableFonts = [];
     this.lastScanTime = 0;
     this.currentFont = 'system';
@@ -22,6 +22,34 @@ class FontManager {
         }
       }
     }
+  }
+
+  getUserDataBasePath() {
+    if (typeof process === 'undefined') return null;
+
+    if (process.platform === 'win32') {
+      return process.env.APPDATA || process.env.USERPROFILE || process.env.HOME || null;
+    }
+    if (process.platform === 'darwin') {
+      return process.env.HOME ? `${process.env.HOME}/Library/Preferences` : null;
+    }
+    return process.env.XDG_DATA_HOME || (process.env.HOME ? `${process.env.HOME}/.local/share` : null);
+  }
+
+  getFontsDirectoryPath() {
+    const basePath = this.getUserDataBasePath();
+    if (!basePath) return null;
+
+    if (window.require) {
+      try {
+        const path = window.require('path');
+        return path.join(basePath, 'DivineLab', 'fonts');
+      } catch (error) {
+        console.warn('Error resolving fonts directory path, using fallback:', error);
+      }
+    }
+
+    return `${basePath}/DivineLab/fonts`;
   }
 
   async init() {
@@ -148,6 +176,7 @@ class FontManager {
     try {
       const fs = window.require('fs');
       const path = window.require('path');
+      if (!this.fontsDirectory) return;
       
       const fontsPath = path.resolve(this.fontsDirectory);
       if (!fs.existsSync(fontsPath)) {
@@ -441,6 +470,7 @@ class FontManager {
         // Read font file as base64 to bypass Electron file URL restrictions
         const fs = window.require('fs');
         const path = window.require('path');
+        if (!this.fontsDirectory) return false;
         
         const fontPath = path.resolve(this.fontsDirectory, font.file);
         
@@ -583,6 +613,7 @@ class FontManager {
     try {
       const { shell } = window.require('electron');
       const path = window.require('path');
+      if (!this.fontsDirectory) return;
       const fontsPath = path.resolve(this.fontsDirectory);
       shell.openPath(fontsPath);
       console.log('📁 Opened fonts folder:', fontsPath);

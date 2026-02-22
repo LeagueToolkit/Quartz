@@ -16,7 +16,7 @@ A comprehensive toolkit for League of Legends modding and visual effects editing
 - **[Upscayl](https://github.com/upscayl)** - Free and open source AI Image Upscaler for Linux, MacOS and Windows
 - **[Upscayl NCNN](https://github.com/upscayl/upscayl-ncnn)** - The Upscayl backend powered by the NCNN framework and Real-ESRGAN architecture
 
-<img width="1190" height="796" alt="image" src="https://github.com/user-attachments/assets/c491ceff-8f2c-44d0-8f8f-c54f8cfa5adc" />
+<img width="1187" height="784" alt="image" src="https://github.com/user-attachments/assets/7ad56d42-d7dd-49f0-b599-0fb861dc747b" />
 
 
 ## 🚀 Main Features
