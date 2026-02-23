@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 const { spawn, exec } = require('child_process');
 const isDev = require('electron-is-dev');
 const https = require('https');
@@ -30,6 +31,37 @@ const { registerWadBumpathChannels } = require('./src/main/ipc/channels/wadBumpa
 const { registerModelInspectChannels } = require('./src/main/ipc/channels/modelInspect');
 const { registerFileRandomizerChannels } = require('./src/main/ipc/channels/fileRandomizer');
 const { registerBinToolsChannels } = require('./src/main/ipc/channels/binTools');
+
+function importLocalModule(relativePath) {
+  const rel = String(relativePath || '').replace(/^\.?[\\/]/, '').replace(/\//g, path.sep);
+  const candidatePaths = [];
+
+  // In production, ESM import() cannot read from .asar archives —
+  // try the unpacked location first (asarUnpack puts files here).
+  if (process.resourcesPath) {
+    candidatePaths.push(path.join(process.resourcesPath, 'app.asar.unpacked', rel));
+  }
+
+  // In dev, __dirname is the real project folder (not asar), so this works.
+  candidatePaths.push(path.join(__dirname, rel));
+
+  const uniqueCandidates = [...new Set(candidatePaths)];
+
+  const load = async () => {
+    let lastError = null;
+    for (const candidate of uniqueCandidates) {
+      try {
+        const specifier = pathToFileURL(candidate).href;
+        return await import(specifier);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError || new Error(`Failed to import module: ${relativePath}`);
+  };
+
+  return load();
+}
 
 // Register custom protocols as privileged as early as possible
 protocol.registerSchemesAsPrivileged([
@@ -277,9 +309,9 @@ registerWadBumpathChannels({
   ipcMain,
   fs,
   getHashPath,
-  loadWadModule: async () => import('./src/utils/wad/index.js'),
-  loadJsRitoModule: async () => import('./src/jsritofile/bin.js'),
-  loadBumpathModule: async () => import('./src/utils/bumpath/bumpathCore.js'),
+  loadWadModule: async () => importLocalModule('./src/utils/wad/index.js'),
+  loadJsRitoModule: async () => importLocalModule('./src/jsritofile/bin.js'),
+  loadBumpathModule: async () => importLocalModule('./src/utils/bumpath/bumpathCore.js'),
 });
 
 registerModelInspectChannels({
@@ -287,11 +319,11 @@ registerModelInspectChannels({
   fs,
   app,
   getHashPath,
-  loadWadModule: async () => import('./src/utils/wad/index.js'),
-  loadJsRitoModule: async () => import('./src/jsritofile/bin.js'),
-  loadBinModule: async () => import('./src/jsritofile/bin.js'),
-  loadBinHasherModule: async () => import('./src/jsritofile/binHasher.js'),
-  loadWadHasherModule: async () => import('./src/jsritofile/wadHasher.js'),
+  loadWadModule: async () => importLocalModule('./src/utils/wad/index.js'),
+  loadJsRitoModule: async () => importLocalModule('./src/jsritofile/bin.js'),
+  loadBinModule: async () => importLocalModule('./src/jsritofile/bin.js'),
+  loadBinHasherModule: async () => importLocalModule('./src/jsritofile/binHasher.js'),
+  loadWadHasherModule: async () => importLocalModule('./src/jsritofile/wadHasher.js'),
 });
 
 registerHashChannels({
@@ -302,7 +334,7 @@ registerHashChannels({
   path,
   fs,
   clearBackendHashCache: async () => {
-    const { clearHashtablesCache } = await import('./src/jsritofile/bin.js');
+    const { clearHashtablesCache } = await importLocalModule('./src/jsritofile/bin.js');
     clearHashtablesCache();
   },
   getHomeDir: () => require('os').homedir(),
@@ -365,7 +397,3 @@ function getHashPath(userProvidedPath) {
   // Fall back to integrated location
   return hashManager.getHashDirectory();
 }
-
-
-
-

@@ -1,7 +1,7 @@
 {
   "name": "quartz",
   "productName": "Quartz",
-  "version": "2.8.1",
+  "version": "2.8.5",
   "description": "Quartz - League of Legends Modding Suite",
   "homepage": "./",
   "main": "electron-main.js",
@@ -17,11 +17,20 @@
     "files": [
       "build/**/*",
       "electron-main.js",
+      "preload.js",
       "package.json",
       "javascript/utils.js",
       "src/main/**/*",
       "src/utils/**/*",
       "src/jsritofile/**/*"
+    ],
+    "asarUnpack": [
+      "src/jsritofile/**/*",
+      "src/utils/wad/**/*",
+      "src/utils/bumpath/**/*",
+      "node_modules/@mongodb-js/zstd/**/*",
+      "node_modules/zstd-napi/**/*",
+      "**/*.node"
     ],
     "extraMetadata": {
       "main": "electron-main.js"

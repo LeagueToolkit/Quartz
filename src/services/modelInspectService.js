@@ -7,7 +7,30 @@ export const prepareModelInspectAssets = async ({
   hashPath,
   onProgress,
 }) => {
-  if (!window.electronAPI?.modelInspect?.prepareSkinAssets) {
+  const getBridge = () => {
+    if (window.electronAPI?.modelInspect?.prepareSkinAssets) {
+      return window.electronAPI.modelInspect;
+    }
+
+    // Fallback for cases where preload bridge is unavailable in packaged builds.
+    if (typeof window.require === 'function') {
+      try {
+        const { ipcRenderer } = window.require('electron');
+        return {
+          prepareSkinAssets: (params) => ipcRenderer.invoke('modelInspect:prepareSkinAssets', params),
+          onProgress: (callback) => ipcRenderer.on('modelInspect:progress', callback),
+          offProgress: (callback) => ipcRenderer.removeListener('modelInspect:progress', callback),
+        };
+      } catch (_) {
+        // no-op
+      }
+    }
+
+    return null;
+  };
+
+  const bridge = getBridge();
+  if (!bridge?.prepareSkinAssets) {
     throw new Error('Model Inspect IPC bridge not available');
   }
 
@@ -15,9 +38,9 @@ export const prepareModelInspectAssets = async ({
     onProgress?.(payload?.message || '');
   };
 
-  window.electronAPI.modelInspect.onProgress(listener);
+  bridge.onProgress(listener);
   try {
-    const result = await window.electronAPI.modelInspect.prepareSkinAssets({
+    const result = await bridge.prepareSkinAssets({
       championName,
       skinId,
       chromaId,
@@ -31,6 +54,6 @@ export const prepareModelInspectAssets = async ({
     }
     return result;
   } finally {
-    window.electronAPI.modelInspect.offProgress(listener);
+    bridge.offProgress(listener);
   }
 };

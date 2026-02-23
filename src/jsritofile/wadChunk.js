@@ -42,7 +42,13 @@ export async function initCompressionModules() {
                 zstdDecompress = mongodbZstd.decompress;
                 console.log('[WADChunk] Using @mongodb-js/zstd for Zstd decompression');
             } catch (e) {
-                throw new Error(`@mongodb-js/zstd not available: ${e.message}`);
+                try {
+                    const zstdNapi = nodeRequire('zstd-napi');
+                    zstdDecompress = zstdNapi.decompress;
+                    console.log('[WADChunk] Using zstd-napi fallback for Zstd decompression');
+                } catch (e2) {
+                    throw new Error(`No Zstd backend available (@mongodb-js/zstd: ${e.message}; zstd-napi: ${e2.message})`);
+                }
             }
 
             compressionInitialized = true;
