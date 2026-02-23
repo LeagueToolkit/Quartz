@@ -35,7 +35,13 @@ import {
     ColorLens
 } from '@mui/icons-material';
 import { ASSET_PREVIEW_EVENT } from '../../utils/assets/assetPreviewEvent';
-import { convertTextureToPNG } from '../../utils/assets/textureConverter';
+import { convertTextureToPNG, findActualTexturePath } from '../../utils/assets/textureConverter';
+import { OPEN_SCB_INSPECT_EVENT } from '../model-inspect/ScbInspectModalHost';
+import { OPEN_INLINE_MODEL_INSPECT_EVENT } from '../model-inspect/InlineModelInspectHost';
+import { SCB } from '../../jsritofile/scb.js';
+import { buildGeometryFromScb, MeshScene } from '../model-inspect/ScbInspectModal.js';
+import { Canvas } from '@react-three/fiber';
+import * as THREE from 'three';
 
 // Dynamically import electron modules
 const electron = window.require ? window.require('electron') : null;
@@ -73,15 +79,9 @@ const textureQueue = {
         this.isProcessing = true;
 
         while (this.queue.length > 0) {
-            // Process usually LIFO (newest first) for UI responsiveness? 
-            // Actually, IntersectionObserver already filters for visibility. 
-            // We use FIFO to ensure order, but important: YIELD between tasks.
             const job = this.queue.shift();
-
             try {
-                // Critical: Yield to event loop to allow UI updates/scrolling
                 await new Promise(r => setTimeout(r, 16));
-
                 if (job.task) {
                     const result = await job.task();
                     job.resolve(result);
@@ -92,6 +92,93 @@ const textureQueue = {
         }
         this.isProcessing = false;
     }
+};
+
+const ScbPreviewPane = ({ path }) => {
+    const [loading, setLoading] = useState(false);
+    const [geometry, setGeometry] = useState(null);
+    const [textureUrl, setTextureUrl] = useState('');
+
+    useEffect(() => {
+        if (!path) return;
+        let alive = true;
+
+        const load = async () => {
+            setLoading(true);
+            setGeometry(null);
+            setTextureUrl('');
+
+            try {
+                const scb = new SCB();
+                scb.read(path);
+                if (!alive) return;
+
+                const geom = buildGeometryFromScb(scb);
+                if (geom) setGeometry(geom);
+
+                // Quick Discovery
+                const scbDir = path.substring(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')));
+                const scbBase = path.split(/[\\/]/).pop();
+                const scbNameNoExt = scbBase.replace(/\.scb$/i, '');
+
+                const cand = `${scbDir}/${scbNameNoExt}.dds`;
+                const pathResult = findActualTexturePath(cand);
+
+                if (pathResult) {
+                    const dataUrl = await convertTextureToPNG(pathResult);
+                    if (alive && dataUrl) {
+                        setTextureUrl(processDataURL(dataUrl));
+                    }
+                } else if (scb.material) {
+                    const matPath = findActualTexturePath(String(scb.material), null, null, scbDir);
+                    if (matPath) {
+                        const dataUrl = await convertTextureToPNG(matPath);
+                        if (alive && dataUrl) {
+                            setTextureUrl(processDataURL(dataUrl));
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("Preview load failed", e);
+            } finally {
+                if (alive) setLoading(false);
+            }
+        };
+
+        load();
+        return () => {
+            alive = false;
+            geometry?.dispose();
+        };
+    }, [path]);
+
+    if (!path) return null;
+
+    return (
+        <Box sx={{ width: '100%', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ flex: 1, position: 'relative', bgcolor: 'rgba(0,0,0,0.3)', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                {loading && (
+                    <Box sx={{ position: 'absolute', inset: 0, zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+                        <CircularProgress size={24} sx={{ color: 'var(--accent)' }} />
+                    </Box>
+                )}
+                <Canvas gl={{ antialias: true, alpha: true }}>
+                    <MeshScene
+                        geometry={geometry}
+                        textureUrl={textureUrl}
+                        wireframe={false}
+                        autoRotate={true}
+                        flatLighting={true}
+                        showTexture={true}
+                    />
+                </Canvas>
+            </Box>
+            <Box sx={{ p: 1, pt: 1.5 }}>
+                <Typography variant="overline" sx={{ color: 'var(--accent)', fontWeight: 800, letterSpacing: '0.1em' }}>3D Preview</Typography>
+                <Typography variant="body2" sx={{ color: 'var(--text)', fontSize: '0.75rem', opacity: 0.8, wordBreak: 'break-all' }}>{path.split(/[\\/]/).pop()}</Typography>
+            </Box>
+        </Box>
+    );
 };
 
 const FileThumbnail = ({ item }) => {
@@ -262,6 +349,8 @@ const FileThumbnail = ({ item }) => {
                 icon = <CodeIcon sx={{ fontSize: 40, color: '#60a5fa' }} />; break;
             case '.txt': case '.md':
                 icon = <DescriptionIcon sx={{ fontSize: 40, color: '#94a3b8' }} />; break;
+            case '.scb': case '.sco':
+                icon = <CodeIcon sx={{ fontSize: 40, color: 'var(--accent2)' }} />; break;
             case '.bin': case '.dll': case '.exe':
                 icon = <TerminalIcon sx={{ fontSize: 40, color: '#a78bfa' }} />; break;
         }
@@ -393,6 +482,28 @@ const CustomExplorer = () => {
                     autoSelectFile: itemPath
                 }
             });
+        }
+        handleCloseContextMenu();
+    };
+
+    const handleInspectModel = () => {
+        if (contextMenu && contextMenu.item && contextMenu.item.path) {
+            const lower = String(contextMenu.item.path).toLowerCase();
+            if (lower.endsWith('.skn')) {
+                window.dispatchEvent(new CustomEvent(OPEN_INLINE_MODEL_INSPECT_EVENT, {
+                    detail: {
+                        modelPath: contextMenu.item.path,
+                        texturePath: '',
+                    }
+                }));
+            } else {
+                window.dispatchEvent(new CustomEvent(OPEN_SCB_INSPECT_EVENT, {
+                    detail: {
+                        path: contextMenu.item.path,
+                        texturePath: '',
+                    }
+                }));
+            }
         }
         handleCloseContextMenu();
     };
@@ -769,7 +880,21 @@ const CustomExplorer = () => {
                 if (pathModule) {
                     addToRecent(pathModule.dirname(item.path));
                 }
-                if (shell) shell.openPath(item.path);
+
+                if (['.scb', '.sco', '.skn'].includes(item.extension)) {
+                    const lower = String(item.extension || '').toLowerCase();
+                    if (lower === '.skn') {
+                        window.dispatchEvent(new CustomEvent(OPEN_INLINE_MODEL_INSPECT_EVENT, {
+                            detail: { modelPath: item.path, texturePath: '' }
+                        }));
+                    } else {
+                        window.dispatchEvent(new CustomEvent(OPEN_SCB_INSPECT_EVENT, {
+                            detail: { path: item.path, texturePath: '' }
+                        }));
+                    }
+                } else if (shell) {
+                    shell.openPath(item.path);
+                }
             }
         }
     };
@@ -1116,51 +1241,95 @@ const CustomExplorer = () => {
                         )}
                     </Box>
 
-                    {/* Main File Grid */}
-                    <Box
-                        ref={ScrollContainerRef}
-                        sx={{
-                            flex: 1,
-                            overflow: 'auto',
-                            p: 2,
-                            background: 'var(--bg-3)',
-                            backgroundImage: `
-                                radial-gradient(circle at center, rgba(255,255,255,0.02) 1px, transparent 1px)
-                            `,
-                            backgroundSize: '24px 24px'
-                        }}
-                    >
-                        {loading ? (
-                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                                <CircularProgress size={40} sx={{ color: 'var(--accent)' }} />
-                            </Box>
-                        ) : error ? (
-                            <Box sx={{ color: '#ef4444', textAlign: 'center', mt: 4 }}>
-                                <Typography variant="h6">Error loading directory</Typography>
-                                <Typography variant="body2">{error}</Typography>
-                            </Box>
-                        ) : (
-                            <Box sx={{
-                                display: viewMode === 'grid' ? 'grid' : 'flex',
-                                flexDirection: viewMode === 'grid' ? 'row' : 'column',
-                                gridTemplateColumns: viewMode === 'grid' ? 'repeat(auto-fill, minmax(100px, 1fr))' : 'none',
-                                gap: viewMode === 'grid' ? 2 : 0.5
-                            }}>
-                                {items.map((item) => {
-                                    const isSelected = selectedItem === item.name;
+                    {/* Main Content Area */}
+                    <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                        {/* Main File Grid */}
+                        <Box
+                            ref={ScrollContainerRef}
+                            sx={{
+                                flex: 1,
+                                overflow: 'auto',
+                                p: 2,
+                                background: 'var(--bg-3)',
+                                backgroundImage: `
+                                    radial-gradient(circle at center, rgba(255,255,255,0.02) 1px, transparent 1px)
+                                `,
+                                backgroundSize: '24px 24px'
+                            }}
+                        >
+                            {loading ? (
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                                    <CircularProgress size={40} sx={{ color: 'var(--accent)' }} />
+                                </Box>
+                            ) : error ? (
+                                <Box sx={{ color: '#ef4444', textAlign: 'center', mt: 4 }}>
+                                    <Typography variant="h6">Error loading directory</Typography>
+                                    <Typography variant="body2">{error}</Typography>
+                                </Box>
+                            ) : (
+                                <Box sx={{
+                                    display: viewMode === 'grid' ? 'grid' : 'flex',
+                                    flexDirection: viewMode === 'grid' ? 'row' : 'column',
+                                    gridTemplateColumns: viewMode === 'grid' ? 'repeat(auto-fill, minmax(100px, 1fr))' : 'none',
+                                    gap: viewMode === 'grid' ? 2 : 0.5
+                                }}>
+                                    {items.map((item) => {
+                                        const isSelected = selectedItem === item.name;
 
-                                    // Smart Truncate Logic - List Mode Only
-                                    // In Grid mode, we prefer multi-line wrapping
-                                    let displayName = item.name;
-                                    if (viewMode === 'list') {
-                                        const charLimit = 60;
-                                        if (item.name.length > charLimit) {
-                                            const half = Math.floor(charLimit / 2);
-                                            displayName = `${item.name.slice(0, half)}...${item.name.slice(-(half))}`;
+                                        // Smart Truncate Logic - List Mode Only
+                                        // In Grid mode, we prefer multi-line wrapping
+                                        let displayName = item.name;
+                                        if (viewMode === 'list') {
+                                            const charLimit = 60;
+                                            if (item.name.length > charLimit) {
+                                                const half = Math.floor(charLimit / 2);
+                                                displayName = `${item.name.slice(0, half)}...${item.name.slice(-(half))}`;
+                                            }
                                         }
-                                    }
 
-                                    if (viewMode === 'list') {
+                                        if (viewMode === 'list') {
+                                            return (
+                                                <Box
+                                                    key={item.name}
+                                                    id={`file-item-${item.name}`}
+                                                    onClick={() => handleItemClick(item)}
+                                                    onDoubleClick={() => handleItemDoubleClick(item)}
+                                                    onContextMenu={(e) => handleContextMenu(e, item)}
+                                                    sx={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 2,
+                                                        p: 0.5,
+                                                        px: 1,
+                                                        borderRadius: '4px',
+                                                        cursor: 'pointer',
+                                                        backgroundColor: isSelected ? 'rgba(var(--accent-rgb), 0.15)' : 'transparent',
+                                                        border: isSelected ? '1px solid var(--accent)' : '1px solid transparent',
+                                                        // Prevent horizontal scroll
+                                                        minWidth: 0,
+                                                        width: '100%',
+                                                        userSelect: 'none',
+                                                        '&:hover': {
+                                                            backgroundColor: isSelected ? 'rgba(var(--accent-rgb), 0.25)' : 'rgba(255,255,255,0.05)',
+                                                        }
+                                                    }}
+                                                >
+                                                    {/* Smaller Thumbnail for List */}
+                                                    <Box sx={{ transform: 'scale(0.5)', transformOrigin: 'left center', width: 32, height: 32, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                                                        <FileThumbnail item={item} />
+                                                    </Box>
+
+                                                    <Typography variant="body2" sx={{ flex: 1, fontFamily: 'Inter, sans-serif', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                        {displayName}
+                                                    </Typography>
+
+                                                    <Typography variant="caption" sx={{ color: 'var(--text-2)', width: '80px', textAlign: 'right', flexShrink: 0 }}>
+                                                        {item.isDirectory ? '--' : formatSize(item.size)}
+                                                    </Typography>
+                                                </Box>
+                                            );
+                                        }
+
                                         return (
                                             <Box
                                                 key={item.name}
@@ -1170,94 +1339,69 @@ const CustomExplorer = () => {
                                                 onContextMenu={(e) => handleContextMenu(e, item)}
                                                 sx={{
                                                     display: 'flex',
+                                                    flexDirection: 'column',
                                                     alignItems: 'center',
-                                                    gap: 2,
-                                                    p: 0.5,
-                                                    px: 1,
-                                                    borderRadius: '4px',
+                                                    p: 1,
+                                                    borderRadius: '6px',
                                                     cursor: 'pointer',
                                                     backgroundColor: isSelected ? 'rgba(var(--accent-rgb), 0.15)' : 'transparent',
                                                     border: isSelected ? '1px solid var(--accent)' : '1px solid transparent',
-                                                    // Prevent horizontal scroll
-                                                    minWidth: 0,
+                                                    animation: isSelected ? 'flashHighlight 1.5s ease-out' : 'none',
+                                                    transition: 'all 0.1s ease',
                                                     width: '100%',
                                                     userSelect: 'none',
+                                                    overflow: 'hidden',
                                                     '&:hover': {
                                                         backgroundColor: isSelected ? 'rgba(var(--accent-rgb), 0.25)' : 'rgba(255,255,255,0.05)',
                                                     }
                                                 }}
+                                                title={item.name}
                                             >
-                                                {/* Smaller Thumbnail for List */}
-                                                <Box sx={{ transform: 'scale(0.5)', transformOrigin: 'left center', width: 32, height: 32, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                                                <Box sx={{ mb: 1, position: 'relative' }}>
                                                     <FileThumbnail item={item} />
                                                 </Box>
 
-                                                <Typography variant="body2" sx={{ flex: 1, fontFamily: 'Inter, sans-serif', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                    {displayName}
-                                                </Typography>
-
-                                                <Typography variant="caption" sx={{ color: 'var(--text-2)', width: '80px', textAlign: 'right', flexShrink: 0 }}>
-                                                    {item.isDirectory ? '--' : formatSize(item.size)}
+                                                <Typography
+                                                    variant="caption"
+                                                    sx={{
+                                                        textAlign: 'center',
+                                                        color: isSelected ? 'var(--text)' : 'var(--text-2)',
+                                                        fontFamily: 'Inter, sans-serif',
+                                                        fontSize: '0.8rem',
+                                                        width: '100%',
+                                                        // Restore Multi-line Wrapping for Grid
+                                                        wordBreak: 'break-word',
+                                                        display: '-webkit-box',
+                                                        WebkitLineClamp: 2,
+                                                        WebkitBoxOrient: 'vertical',
+                                                        overflow: 'hidden',
+                                                        lineHeight: 1.2
+                                                    }}
+                                                >
+                                                    {item.name}
                                                 </Typography>
                                             </Box>
                                         );
-                                    }
+                                    })}
+                                </Box>
+                            )}
+                        </Box>
 
-                                    return (
-                                        <Box
-                                            key={item.name}
-                                            id={`file-item-${item.name}`}
-                                            onClick={() => handleItemClick(item)}
-                                            onDoubleClick={() => handleItemDoubleClick(item)}
-                                            onContextMenu={(e) => handleContextMenu(e, item)}
-                                            sx={{
-                                                display: 'flex',
-                                                flexDirection: 'column',
-                                                alignItems: 'center',
-                                                p: 1,
-                                                borderRadius: '6px',
-                                                cursor: 'pointer',
-                                                backgroundColor: isSelected ? 'rgba(var(--accent-rgb), 0.15)' : 'transparent',
-                                                border: isSelected ? '1px solid var(--accent)' : '1px solid transparent',
-                                                animation: isSelected ? 'flashHighlight 1.5s ease-out' : 'none',
-                                                transition: 'all 0.1s ease',
-                                                width: '100%',
-                                                userSelect: 'none',
-                                                overflow: 'hidden',
-                                                '&:hover': {
-                                                    backgroundColor: isSelected ? 'rgba(var(--accent-rgb), 0.25)' : 'rgba(255,255,255,0.05)',
-                                                }
-                                            }}
-                                            title={item.name}
-                                        >
-                                            <Box sx={{ mb: 1, position: 'relative' }}>
-                                                <FileThumbnail item={item} />
-                                            </Box>
-
-                                            <Typography
-                                                variant="caption"
-                                                sx={{
-                                                    textAlign: 'center',
-                                                    color: isSelected ? 'var(--text)' : 'var(--text-2)',
-                                                    fontFamily: 'Inter, sans-serif',
-                                                    fontSize: '0.8rem',
-                                                    width: '100%',
-                                                    // Restore Multi-line Wrapping for Grid
-                                                    wordBreak: 'break-word',
-                                                    display: '-webkit-box',
-                                                    WebkitLineClamp: 2,
-                                                    WebkitBoxOrient: 'vertical',
-                                                    overflow: 'hidden',
-                                                    lineHeight: 1.2
-                                                }}
-                                            >
-                                                {item.name}
-                                            </Typography>
-                                        </Box>
-                                    );
-                                })}
-
-
+                        {/* Preview Pane */}
+                        {selectedItem && items.find(i => i.name === selectedItem && ['.scb', '.sco'].includes(i.extension)) && (
+                            <Box sx={{
+                                width: '300px',
+                                borderLeft: '1px solid rgba(255,255,255,0.08)',
+                                background: 'rgba(0,0,0,0.15)',
+                                p: 2,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 2,
+                                boxSizing: 'border-box'
+                            }}>
+                                <ScbPreviewPane
+                                    path={items.find(i => i.name === selectedItem).path}
+                                />
                             </Box>
                         )}
                     </Box>
@@ -1339,6 +1483,15 @@ const CustomExplorer = () => {
                             <ColorLens fontSize="small" sx={{ color: 'var(--accent)' }} />
                         </ListItemIcon>
                         <Typography variant="body2" sx={{ fontFamily: 'Inter, sans-serif' }}>Open in ImgRecolor</Typography>
+                    </MenuItem>
+                )}
+
+                {contextMenu?.item && !contextMenu.item.isDirectory && ['.scb', '.sco', '.skn'].includes(contextMenu.item.extension?.toLowerCase()) && (
+                    <MenuItem onClick={handleInspectModel}>
+                        <ListItemIcon sx={{ minWidth: 'auto !important' }}>
+                            <CodeIcon fontSize="small" sx={{ color: 'var(--accent2)' }} />
+                        </ListItemIcon>
+                        <Typography variant="body2" sx={{ fontFamily: 'Inter, sans-serif' }}>Inspect Model</Typography>
                     </MenuItem>
                 )}
             </Menu>

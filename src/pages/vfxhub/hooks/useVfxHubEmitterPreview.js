@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { loadEmitterData } from '../../../utils/vfx/vfxEmitterParser.js';
 import { convertTextureToPNG, findActualTexturePath } from '../../../utils/assets/textureConverter.js';
 import { openAssetPreview } from '../../../utils/assets/assetPreviewEvent';
-import { extractColorsFromEmitterContent, extractTexturesFromEmitterContent } from '../../port2/utils/vfxUtils.js';
+import { extractColorsFromEmitterContent, extractMeshesFromEmitterContent, extractTexturesFromEmitterContent } from '../../port2/utils/vfxUtils.js';
 import {
   cancelTextureHoverClose,
   removeTextureHoverPreview,
@@ -18,10 +18,10 @@ export default function useVfxHubEmitterPreview({
   conversionTimers,
   textureCloseTimerRef,
 }) {
-  const showTexturePreview = useCallback(async (firstTexturePath, firstDataUrl, buttonElement, emitterData = null, allTextures = []) => {
+  const showTexturePreview = useCallback(async (firstTexturePath, firstDataUrl, buttonElement, emitterData = null, allTextures = [], allMeshes = []) => {
     const textureData = (allTextures && allTextures.length > 0)
       ? allTextures
-      : [{ path: firstTexturePath, label: 'Main', dataUrl: firstDataUrl }];
+      : (firstTexturePath ? [{ path: firstTexturePath, label: 'Main', dataUrl: firstDataUrl }] : []);
 
     const colorData = emitterData?.originalContent
       ? extractColorsFromEmitterContent(emitterData.originalContent)
@@ -30,6 +30,7 @@ export default function useVfxHubEmitterPreview({
     showTextureHoverPreview({
       previewId: 'shared-texture-hover-preview',
       textureData,
+      meshData: allMeshes,
       buttonElement,
       colorData,
     });
@@ -55,12 +56,14 @@ export default function useVfxHubEmitterPreview({
         const emitterContent = fullEmitterData.originalContent || '';
 
         const textures = extractTexturesFromEmitterContent(emitterContent);
+        const meshes = extractMeshesFromEmitterContent(emitterContent);
         if (textures.length === 0 && fullEmitterData.texturePath) {
           textures.push({ path: fullEmitterData.texturePath, label: 'Main' });
         }
-        if (textures.length === 0) return;
+        if (textures.length === 0 && meshes.length === 0) return;
 
         const textureData = [];
+        const meshData = [];
         const binPath = isTarget ? targetPath : donorPath;
         const projectRoot = binPath && binPath.includes(':') ? path.dirname(binPath) : '';
 
@@ -104,8 +107,83 @@ export default function useVfxHubEmitterPreview({
           }
         }
 
-        if (textureData.length > 0) {
-          showTexturePreview(textureData[0].path, textureData[0].dataUrl, previewBtn, fullEmitterData, textureData);
+        for (const mesh of meshes) {
+          try {
+            let resolvedDiskPath = mesh.path;
+            let resolvedSkeletonPath = mesh.skeletonPath || '';
+            let resolvedAnimationPath = mesh.animationPath || '';
+            if (window.require && binPath && binPath.includes(':')) {
+              const fsNode = window.require('fs');
+              const pathNode = window.require('path');
+              const normalizedBin = binPath.replace(/\\/g, '/');
+              const dataMatch = normalizedBin.match(/\/data\//i);
+              if (dataMatch) {
+                const projRoot = normalizedBin.substring(0, dataMatch.index);
+                const cleanMesh = mesh.path.replace(/\\/g, '/');
+                const candidate = pathNode.join(projRoot, cleanMesh);
+                if (fsNode.existsSync(candidate)) resolvedDiskPath = candidate;
+              }
+              if (resolvedDiskPath === mesh.path) {
+                const smartPath = findActualTexturePath(mesh.path, binPath);
+                if (smartPath) resolvedDiskPath = smartPath;
+              }
+
+              if (resolvedSkeletonPath) {
+                const cleanSkeleton = resolvedSkeletonPath.replace(/\\/g, '/');
+                if (dataMatch) {
+                  const projRoot = normalizedBin.substring(0, dataMatch.index);
+                  const candidate = pathNode.join(projRoot, cleanSkeleton);
+                  if (fsNode.existsSync(candidate)) resolvedSkeletonPath = candidate;
+                }
+                if (resolvedSkeletonPath === mesh.skeletonPath) {
+                  const smartPath = findActualTexturePath(mesh.skeletonPath, binPath);
+                  if (smartPath) resolvedSkeletonPath = smartPath;
+                }
+              }
+
+              if (resolvedAnimationPath) {
+                const cleanAnimation = resolvedAnimationPath.replace(/\\/g, '/');
+                if (dataMatch) {
+                  const projRoot = normalizedBin.substring(0, dataMatch.index);
+                  const candidate = pathNode.join(projRoot, cleanAnimation);
+                  if (fsNode.existsSync(candidate)) resolvedAnimationPath = candidate;
+                }
+                if (resolvedAnimationPath === mesh.animationPath) {
+                  const smartPath = findActualTexturePath(mesh.animationPath, binPath);
+                  if (smartPath) resolvedAnimationPath = smartPath;
+                }
+              }
+            }
+            meshData.push({
+              ...mesh,
+              resolvedDiskPath,
+              resolvedSkeletonPath,
+              resolvedAnimationPath,
+              texturePath: textureData?.[0]?.resolvedDiskPath || textureData?.[0]?.path || '',
+              texturePreviewDataUrl: textureData?.[0]?.dataUrl || '',
+            });
+          } catch (err) {
+            console.error('Error processing mesh:', mesh.path, err);
+            meshData.push({
+              ...mesh,
+              resolvedDiskPath: mesh.path,
+              resolvedSkeletonPath: mesh.skeletonPath || '',
+              resolvedAnimationPath: mesh.animationPath || '',
+              texturePath: textureData?.[0]?.resolvedDiskPath || textureData?.[0]?.path || '',
+              texturePreviewDataUrl: textureData?.[0]?.dataUrl || '',
+            });
+          }
+        }
+
+        if (textureData.length > 0 || meshData.length > 0) {
+          showTexturePreview(
+            textureData[0]?.path || null,
+            textureData[0]?.dataUrl || null,
+            previewBtn,
+            fullEmitterData,
+            textureData,
+            meshData
+          );
         }
       } catch (error) {
         console.error('Error loading texture preview:', error);
@@ -210,4 +288,3 @@ export default function useVfxHubEmitterPreview({
     handleEmitterContextMenu,
   };
 }
-

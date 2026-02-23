@@ -27,6 +27,8 @@ import FakeGearSkin from './pages/fakegearskin/FakeGearSkin';
 import ParticleRandomizer from './pages/ParticleRandomizer';
 import HashReminderModal from './components/modals/HashReminderModal';
 import AssetPreviewModal from './components/modals/AssetPreviewModal';
+import ScbInspectModalHost from './components/model-inspect/ScbInspectModalHost';
+import InlineModelInspectHost from './components/model-inspect/InlineModelInspectHost';
 import GlobalClickEffect from './components/ClickEffects/GlobalClickEffect';
 import GlobalBackgroundEffect from './components/BackgroundEffects/GlobalBackgroundEffect';
 import GlobalCursorEffect from './components/CursorEffects/GlobalCursorEffect';
@@ -442,6 +444,8 @@ function App() {
         <Router>
           <HashReminderModal />
           <AssetPreviewModal />
+          <ScbInspectModalHost />
+          <InlineModelInspectHost />
           <FontPersistenceHandler />
           <CelestiaNavigationBridge />
           <GlobalUpdateNotification />

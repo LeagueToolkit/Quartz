@@ -28,6 +28,7 @@ import useVfxFile from './useVfxFile';
 // Utils
 import {
   extractColorsFromEmitterContent,
+  extractMeshesFromEmitterContent,
   extractTextureNamesFromEmitter,
   extractTexturesFromEmitterContent
 } from '../utils/vfxUtils.js';
@@ -387,10 +388,10 @@ export default function usePort() {
   };
   const handleClearSelection = () => setSelectedTargetSystem(null);
 
-  const showTexturePreview = async (firstTexturePath, firstDataUrl, buttonElement, emitterData = null, allTextures = []) => {
+  const showTexturePreview = async (firstTexturePath, firstDataUrl, buttonElement, emitterData = null, allTextures = [], allMeshes = []) => {
     const textureData = (allTextures && allTextures.length > 0)
       ? allTextures
-      : [{ path: firstTexturePath, label: 'Main', dataUrl: firstDataUrl }];
+      : (firstTexturePath ? [{ path: firstTexturePath, label: 'Main', dataUrl: firstDataUrl }] : []);
 
     const colorData = emitterData?.originalContent
       ? extractColorsFromEmitterContent(emitterData.originalContent)
@@ -399,6 +400,7 @@ export default function usePort() {
     showTextureHoverPreview({
       previewId: 'shared-texture-hover-preview',
       textureData,
+      meshData: allMeshes,
       buttonElement,
       colorData,
     });
@@ -520,13 +522,15 @@ export default function usePort() {
           }
 
           const textures = extractTexturesFromEmitterContent(emitterContent || fullEmitterData.originalContent);
+          const meshes = extractMeshesFromEmitterContent(emitterContent || fullEmitterData.originalContent);
           if (textures.length === 0 && fullEmitterData.texturePath) {
             textures.push({ path: fullEmitterData.texturePath, label: 'Main' });
           }
 
-          if (textures.length === 0) return;
+          if (textures.length === 0 && meshes.length === 0) return;
 
           const textureData = [];
+          const meshData = [];
           const binPath = isTarget ? file.targetPath : file.donorPath;
           const projectRoot = binPath && binPath.includes(':') ? path.dirname(binPath) : '';
 
@@ -572,8 +576,85 @@ export default function usePort() {
             }
           }
 
-          if (textureData.length > 0) {
-            showTexturePreview(textureData[0].path, textureData[0].dataUrl, previewBtn, fullEmitterData, textureData);
+          for (const mesh of meshes) {
+            try {
+              let resolvedDiskPath = mesh.path;
+              let resolvedSkeletonPath = mesh.skeletonPath || '';
+              let resolvedAnimationPath = mesh.animationPath || '';
+              if (window.require && binPath && binPath.includes(':')) {
+                const fs = window.require('fs');
+                const path = window.require('path');
+                const normalizedBin = binPath.replace(/\\/g, '/');
+                const dataMatch = normalizedBin.match(/\/data\//i);
+
+                if (dataMatch) {
+                  const projRoot = normalizedBin.substring(0, dataMatch.index);
+                  const cleanMesh = mesh.path.replace(/\\/g, '/');
+                  const candidate = path.join(projRoot, cleanMesh);
+                  if (fs.existsSync(candidate)) resolvedDiskPath = candidate;
+                }
+
+                if (resolvedDiskPath === mesh.path) {
+                  const smartPath = findActualTexturePath(mesh.path, binPath);
+                  if (smartPath) resolvedDiskPath = smartPath;
+                }
+
+                if (resolvedSkeletonPath) {
+                  const cleanSkeleton = resolvedSkeletonPath.replace(/\\/g, '/');
+                  if (dataMatch) {
+                    const projRoot = normalizedBin.substring(0, dataMatch.index);
+                    const candidate = path.join(projRoot, cleanSkeleton);
+                    if (fs.existsSync(candidate)) resolvedSkeletonPath = candidate;
+                  }
+                  if (resolvedSkeletonPath === mesh.skeletonPath) {
+                    const smartPath = findActualTexturePath(mesh.skeletonPath, binPath);
+                    if (smartPath) resolvedSkeletonPath = smartPath;
+                  }
+                }
+
+                if (resolvedAnimationPath) {
+                  const cleanAnimation = resolvedAnimationPath.replace(/\\/g, '/');
+                  if (dataMatch) {
+                    const projRoot = normalizedBin.substring(0, dataMatch.index);
+                    const candidate = path.join(projRoot, cleanAnimation);
+                    if (fs.existsSync(candidate)) resolvedAnimationPath = candidate;
+                  }
+                  if (resolvedAnimationPath === mesh.animationPath) {
+                    const smartPath = findActualTexturePath(mesh.animationPath, binPath);
+                    if (smartPath) resolvedAnimationPath = smartPath;
+                  }
+                }
+              }
+              meshData.push({
+                ...mesh,
+                resolvedDiskPath,
+                resolvedSkeletonPath,
+                resolvedAnimationPath,
+                texturePath: textureData?.[0]?.resolvedDiskPath || textureData?.[0]?.path || '',
+                texturePreviewDataUrl: textureData?.[0]?.dataUrl || '',
+              });
+            } catch (err) {
+              console.error('Error processing mesh:', mesh.path, err);
+              meshData.push({
+                ...mesh,
+                resolvedDiskPath: mesh.path,
+                resolvedSkeletonPath: mesh.skeletonPath || '',
+                resolvedAnimationPath: mesh.animationPath || '',
+                texturePath: textureData?.[0]?.resolvedDiskPath || textureData?.[0]?.path || '',
+                texturePreviewDataUrl: textureData?.[0]?.dataUrl || '',
+              });
+            }
+          }
+
+          if (textureData.length > 0 || meshData.length > 0) {
+            showTexturePreview(
+              textureData[0]?.path || null,
+              textureData[0]?.dataUrl || null,
+              previewBtn,
+              fullEmitterData,
+              textureData,
+              meshData
+            );
           }
         } catch (error) {
           console.error('Error loading texture objects:', error);

@@ -887,6 +887,57 @@ export default function BinEditorV2() {
         return textures;
     }, []);
 
+    const extractAllMeshesFromEmitter = useCallback((emitter) => {
+        if (!emitter || !emitter.rawContent) return [];
+        const content = emitter.rawContent;
+        const meshes = [];
+        const meshSet = new Set();
+
+        const pushMesh = (meshPath, label = 'Mesh', extra = {}) => {
+            const clean = String(meshPath || '').trim();
+            if (!clean || meshSet.has(clean)) return;
+            meshSet.add(clean);
+            meshes.push({ path: clean, label, ...extra });
+        };
+
+        const meshBlockRegex = /mMesh:\s*embed\s*=\s*VfxMeshDefinitionData\s*\{([\s\S]*?)\}/gi;
+        let blockMatch;
+        while ((blockMatch = meshBlockRegex.exec(content)) !== null) {
+            const block = blockMatch[1] || '';
+            const meshNameMatch = block.match(/mMeshName:\s*string\s*=\s*"([^"]+\.(?:skn|scb|sco))"/i);
+            const skeletonMatch = block.match(/mMeshSkeletonName:\s*string\s*=\s*"([^"]+\.skl)"/i);
+            const animationMatch = block.match(/mAnimationName:\s*string\s*=\s*"([^"]+\.anm)"/i);
+            if (meshNameMatch) {
+                const meshPath = meshNameMatch[1];
+                const isSkinned = meshPath.toLowerCase().endsWith('.skn');
+                pushMesh(meshPath, isSkinned ? 'Skinned Mesh' : 'Primitive Mesh', {
+                    meshKind: isSkinned ? 'skinned' : 'static',
+                    skeletonPath: skeletonMatch?.[1] || '',
+                    animationPath: animationMatch?.[1] || '',
+                });
+            }
+        }
+
+        const simpleMeshRegex = /mSimpleMeshName:\s*string\s*=\s*"([^"]+\.(?:scb|sco))"/gi;
+        let match;
+        while ((match = simpleMeshRegex.exec(content)) !== null) {
+            pushMesh(match[1], 'Primitive Mesh', { meshKind: 'static', skeletonPath: '', animationPath: '' });
+        }
+
+        const genericMeshRegex = /:\s*string\s*=\s*"([^"]+\.(?:skn|scb|sco))"/gi;
+        while ((match = genericMeshRegex.exec(content)) !== null) {
+            const meshPath = match[1];
+            const isSkinned = meshPath.toLowerCase().endsWith('.skn');
+            pushMesh(meshPath, isSkinned ? 'Skinned Mesh' : 'Mesh', {
+                meshKind: isSkinned ? 'skinned' : 'static',
+                skeletonPath: '',
+                animationPath: '',
+            });
+        }
+
+        return meshes;
+    }, []);
+
     // Find single texture path (for hasTexture check)
     const findTexturePathInEmitter = useCallback((emitter) => {
         const textures = extractAllTexturesFromEmitter(emitter);
@@ -953,10 +1004,11 @@ export default function BinEditorV2() {
     // Ref for texture close timer
     const textureCloseTimerRef = useRef(null);
     // Shared texture preview modal helper (same style as port/paint)
-    const showTexturePreview = useCallback((textureData, buttonElement, colorData = []) => {
+    const showTexturePreview = useCallback((textureData, buttonElement, colorData = [], meshData = []) => {
         showTextureHoverPreview({
             previewId: "shared-texture-hover-preview",
             textureData,
+            meshData,
             buttonElement,
             colorData,
         });
@@ -974,7 +1026,8 @@ export default function BinEditorV2() {
     const handleTexturePreview = useCallback(async (e, emitter) => {
         cancelTextureHoverClose('shared-texture-hover-preview');
         const allTextures = extractAllTexturesFromEmitter(emitter);
-        if (allTextures.length === 0) return;
+        const allMeshes = extractAllMeshesFromEmitter(emitter);
+        if (allTextures.length === 0 && allMeshes.length === 0) return;
 
         const buttonElement = e.currentTarget;
         if (!buttonElement) return;
@@ -992,6 +1045,7 @@ export default function BinEditorV2() {
 
         const timer = setTimeout(async () => {
             const textureData = [];
+            const meshData = [];
 
             // Extract colors from emitter content
             const colorData = extractColorsFromEmitterContent(emitter.rawContent);
@@ -1048,15 +1102,87 @@ export default function BinEditorV2() {
                 }
             }
 
-            if (textureData.length === 0) {
-                showTextureError(allTextures[0]?.path || 'Unknown', buttonElement);
+            for (const { path: meshPath, label } of allMeshes) {
+                try {
+                    let resolvedDiskPath = meshPath;
+                    const sourceMesh = allMeshes.find((m) => m.path === meshPath && m.label === label) || {};
+                    let resolvedSkeletonPath = sourceMesh.skeletonPath || '';
+                    let resolvedAnimationPath = sourceMesh.animationPath || '';
+                    if (window.require) {
+                        const fs = window.require('fs');
+                        const path = window.require('path');
+                        const normalizedBin = binPath.replace(/\\/g, '/');
+                        const dataMatch = normalizedBin.match(/\/data\//i);
+
+                        if (dataMatch) {
+                            const projRoot = normalizedBin.substring(0, dataMatch.index);
+                            const cleanMesh = meshPath.replace(/\\/g, '/');
+                            const candidate = path.join(projRoot, cleanMesh);
+                            if (fs.existsSync(candidate)) resolvedDiskPath = candidate;
+                        }
+
+                        if (resolvedDiskPath === meshPath) {
+                            const smartPath = findActualTexturePath(meshPath, binPath);
+                            if (smartPath) resolvedDiskPath = smartPath;
+                        }
+
+                        if (resolvedSkeletonPath) {
+                            const cleanSkeleton = resolvedSkeletonPath.replace(/\\/g, '/');
+                            if (dataMatch) {
+                                const projRoot = normalizedBin.substring(0, dataMatch.index);
+                                const candidate = path.join(projRoot, cleanSkeleton);
+                                if (fs.existsSync(candidate)) resolvedSkeletonPath = candidate;
+                            }
+                            if (resolvedSkeletonPath === sourceMesh.skeletonPath) {
+                                const smartPath = findActualTexturePath(sourceMesh.skeletonPath, binPath);
+                                if (smartPath) resolvedSkeletonPath = smartPath;
+                            }
+                        }
+
+                        if (resolvedAnimationPath) {
+                            const cleanAnimation = resolvedAnimationPath.replace(/\\/g, '/');
+                            if (dataMatch) {
+                                const projRoot = normalizedBin.substring(0, dataMatch.index);
+                                const candidate = path.join(projRoot, cleanAnimation);
+                                if (fs.existsSync(candidate)) resolvedAnimationPath = candidate;
+                            }
+                            if (resolvedAnimationPath === sourceMesh.animationPath) {
+                                const smartPath = findActualTexturePath(sourceMesh.animationPath, binPath);
+                                if (smartPath) resolvedAnimationPath = smartPath;
+                            }
+                        }
+                    }
+                    meshData.push({
+                        ...sourceMesh,
+                        path: meshPath,
+                        label,
+                        resolvedDiskPath,
+                        resolvedSkeletonPath,
+                        resolvedAnimationPath,
+                        texturePath: textureData?.[0]?.resolvedDiskPath || textureData?.[0]?.path || '',
+                        texturePreviewDataUrl: textureData?.[0]?.dataUrl || '',
+                    });
+                } catch (error) {
+                    console.warn(`Failed to resolve mesh ${meshPath}:`, error);
+                    meshData.push({
+                        path: meshPath,
+                        label,
+                        resolvedDiskPath: meshPath,
+                        texturePath: textureData?.[0]?.resolvedDiskPath || textureData?.[0]?.path || '',
+                        texturePreviewDataUrl: textureData?.[0]?.dataUrl || '',
+                    });
+                }
+            }
+
+            if (textureData.length === 0 && meshData.length === 0) {
+                showTextureError(allTextures[0]?.path || allMeshes[0]?.path || 'Unknown', buttonElement);
             } else {
-                showTexturePreview(textureData, buttonElement, colorData);
+                showTexturePreview(textureData, buttonElement, colorData, meshData);
             }
         }, 200);
 
         conversionTimers.current.set('hover', timer);
-    }, [binPath, extractAllTexturesFromEmitter, extractColorsFromEmitterContent, showTexturePreview, showTextureError]);
+    }, [binPath, extractAllMeshesFromEmitter, extractAllTexturesFromEmitter, extractColorsFromEmitterContent, showTexturePreview, showTextureError]);
 
     // Handle texture click (open in asset preview)
     const handleTextureClick = useCallback(async (e, emitter) => {
@@ -1915,4 +2041,3 @@ function hexToRgb(hex) {
     }
     return '255, 255, 255';
 }
-

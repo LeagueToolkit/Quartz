@@ -97,6 +97,7 @@ export function parseVfxFile(content) {
                 bracketStart: bracketDepth,
                 texturePath: null,
                 textures: [],
+                meshes: [],
                 blendMode: 0,
                 colors: {
                     color: null,
@@ -146,6 +147,42 @@ export function parseVfxFile(content) {
                         currentEmitter.textures.push({ label, path });
                     }
                 }
+            }
+
+            // Primitive mesh path (SCB/SCO)
+            const simpleMeshMatch = trimmed.match(/mSimpleMeshName:\s*string\s*=\s*"([^"]+\.(?:scb|sco))"/i);
+            if (simpleMeshMatch) {
+                const meshPath = simpleMeshMatch[1];
+                if (!currentEmitter.meshes.some(m => m.path === meshPath)) {
+                    currentEmitter.meshes.push({ label: 'Primitive Mesh', path: meshPath, meshKind: 'static', skeletonPath: '', animationPath: '' });
+                }
+            }
+
+            // Full primitive/skinned mesh support
+            const meshNameMatch = trimmed.match(/mMeshName:\s*string\s*=\s*"([^"]+\.(?:skn|scb|sco))"/i);
+            if (meshNameMatch) {
+                const meshPath = meshNameMatch[1];
+                const lower = meshPath.toLowerCase();
+                const isSkinned = lower.endsWith('.skn');
+                if (!currentEmitter.meshes.some(m => m.path === meshPath)) {
+                    currentEmitter.meshes.push({
+                        label: isSkinned ? 'Skinned Mesh' : 'Primitive Mesh',
+                        path: meshPath,
+                        meshKind: isSkinned ? 'skinned' : 'static',
+                        skeletonPath: '',
+                        animationPath: ''
+                    });
+                }
+            }
+
+            const meshSkeletonMatch = trimmed.match(/mMeshSkeletonName:\s*string\s*=\s*"([^"]+\.skl)"/i);
+            if (meshSkeletonMatch && currentEmitter.meshes.length > 0) {
+                currentEmitter.meshes[currentEmitter.meshes.length - 1].skeletonPath = meshSkeletonMatch[1];
+            }
+
+            const meshAnimationMatch = trimmed.match(/mAnimationName:\s*string\s*=\s*"([^"]+\.anm)"/i);
+            if (meshAnimationMatch && currentEmitter.meshes.length > 0) {
+                currentEmitter.meshes[currentEmitter.meshes.length - 1].animationPath = meshAnimationMatch[1];
             }
 
             // Blend mode

@@ -17,4 +17,5 @@ export { BINWriter } from './binWriter.js';
 export { FNV1a, hashToHex, isHash } from './helper.js';
 export { SKL, SKLJoint } from './skl.js';
 export { SKN, SKNVertex, SKNSubmesh, SKNVertexType } from './skn.js';
-
+export { SCO } from './sco.js';
+export { SCB, SOFlag } from './scb.js';

@@ -139,3 +139,60 @@ export const extractTexturesFromEmitterContent = (content) => {
 
     return textures;
 };
+
+/**
+ * Extract primitive mesh paths (SCB/SCO) from emitter content.
+ */
+export const extractMeshesFromEmitterContent = (content) => {
+    if (!content) return [];
+    const meshes = [];
+    const meshSet = new Set();
+
+    const pushMesh = (meshPath, label = 'Mesh', extra = {}) => {
+        const clean = String(meshPath || '').trim();
+        if (!clean || meshSet.has(clean)) return;
+        meshSet.add(clean);
+        meshes.push({ path: clean, label, ...extra });
+    };
+
+    // Full VfxMeshDefinitionData blocks (mMeshName + optional skeleton/animation)
+    const meshBlockRegex = /mMesh:\s*embed\s*=\s*VfxMeshDefinitionData\s*\{([\s\S]*?)\}/gi;
+    let blockMatch;
+    while ((blockMatch = meshBlockRegex.exec(content)) !== null) {
+        const block = blockMatch[1] || '';
+        const meshNameMatch = block.match(/mMeshName:\s*string\s*=\s*"([^"]+\.(?:skn|scb|sco))"/i);
+        const skeletonMatch = block.match(/mMeshSkeletonName:\s*string\s*=\s*"([^"]+\.skl)"/i);
+        const animationMatch = block.match(/mAnimationName:\s*string\s*=\s*"([^"]+\.anm)"/i);
+
+        if (meshNameMatch) {
+            const meshPath = meshNameMatch[1];
+            const lower = meshPath.toLowerCase();
+            const isSkinned = lower.endsWith('.skn');
+            pushMesh(
+                meshPath,
+                isSkinned ? 'Skinned Mesh' : 'Primitive Mesh',
+                {
+                    skeletonPath: skeletonMatch?.[1] || '',
+                    animationPath: animationMatch?.[1] || '',
+                    meshKind: isSkinned ? 'skinned' : 'static',
+                }
+            );
+        }
+    }
+
+    const simpleMeshRegex = /mSimpleMeshName:\s*string\s*=\s*"([^"]+\.(?:scb|sco))"/gi;
+    let match;
+    while ((match = simpleMeshRegex.exec(content)) !== null) {
+        pushMesh(match[1], 'Primitive Mesh', { meshKind: 'static' });
+    }
+
+    const genericMeshRegex = /:\s*string\s*=\s*"([^"]+\.(?:skn|scb|sco))"/gi;
+    while ((match = genericMeshRegex.exec(content)) !== null) {
+        const lower = String(match[1]).toLowerCase();
+        pushMesh(match[1], lower.endsWith('.skn') ? 'Skinned Mesh' : 'Mesh', {
+            meshKind: lower.endsWith('.skn') ? 'skinned' : 'static',
+        });
+    }
+
+    return meshes;
+};

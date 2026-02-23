@@ -1,8 +1,355 @@
 import { openAssetPreview } from '../../utils/assets/assetPreviewEvent';
 import { processDataURL } from '../../utils/assets/rgbaDataURL';
+import { OPEN_SCB_INSPECT_EVENT } from '../model-inspect/ScbInspectModalHost';
+import { OPEN_INLINE_MODEL_INSPECT_EVENT } from '../model-inspect/InlineModelInspectHost';
 
 const closeTimers = new Map();
 const CONTEXT_MENU_ID = 'shared-texture-hover-context-menu';
+const SCB_RENDER_BOOT_ID = '__scb_renderer_boot';
+const MESH_TEXTURE_PREF_KEY = 'textureHoverMeshShowTexture';
+
+let threeModulePromise = null;
+let scbModulePromise = null;
+let sknModulePromise = null;
+
+function isMeshTexturePreviewEnabled() {
+  try {
+    return localStorage.getItem(MESH_TEXTURE_PREF_KEY) === '1';
+  } catch (_) {
+    return false;
+  }
+}
+
+function setMeshTexturePreviewEnabled(enabled) {
+  try {
+    localStorage.setItem(MESH_TEXTURE_PREF_KEY, enabled ? '1' : '0');
+  } catch (_) {
+    // Ignore storage failures.
+  }
+}
+
+const getThreeModule = async () => {
+  if (!threeModulePromise) {
+    threeModulePromise = import('three');
+  }
+  return threeModulePromise;
+};
+
+const getScbCtor = async () => {
+  if (!scbModulePromise) {
+    scbModulePromise = import('../../jsritofile/scb.js');
+  }
+  const mod = await scbModulePromise;
+  return mod?.SCB || null;
+};
+
+const getSknCtor = async () => {
+  if (!sknModulePromise) {
+    sknModulePromise = import('../../jsritofile/skn.js');
+  }
+  const mod = await sknModulePromise;
+  return mod?.SKN || null;
+};
+
+async function mountScbPreview(hostEl, meshItem) {
+  if (!hostEl || !meshItem) return () => { };
+
+  const resolvedPath = meshItem.resolvedDiskPath || meshItem.path;
+  if (!resolvedPath || !window.require) {
+    hostEl.innerHTML = '<div style="font-size:10px;color:rgba(255,255,255,0.45);font-family:JetBrains Mono,monospace;">MESH NOT FOUND</div>';
+    return () => { };
+  }
+
+  const fs = window.require('fs');
+  if (!fs?.existsSync(resolvedPath)) {
+    hostEl.innerHTML = '<div style="font-size:10px;color:rgba(255,255,255,0.45);font-family:JetBrains Mono,monospace;">MESH FILE MISSING</div>';
+    return () => { };
+  }
+
+  hostEl.innerHTML = `<div style="font-size:10px;color:rgba(255,255,255,0.55);font-family:'JetBrains Mono',monospace;">Loading mesh...</div>`;
+
+  const THREE = await getThreeModule();
+  const SCB = await getScbCtor();
+  if (!SCB) {
+    hostEl.innerHTML = '<div style="font-size:10px;color:rgba(255,255,255,0.45);font-family:JetBrains Mono,monospace;">SCB UNAVAILABLE</div>';
+    return () => { };
+  }
+
+  const width = Math.max(64, Math.floor(hostEl.clientWidth || 180));
+  const height = Math.max(64, Math.floor(hostEl.clientHeight || 140));
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
+  renderer.setSize(width, height);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setClearColor(0x000000, 0);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.domElement.style.width = '100%';
+  renderer.domElement.style.height = '100%';
+
+  hostEl.innerHTML = '';
+  hostEl.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(42, width / height, 0.01, 5000);
+
+  const amb = new THREE.AmbientLight(0xffffff, 0.9);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.95);
+  dir.position.set(2, 3, 4);
+  scene.add(amb, dir);
+
+  const scb = new SCB();
+  scb.read(resolvedPath);
+
+  const flatIndices = Array.isArray(scb.indices) ? scb.indices : [];
+  const positions = Array.isArray(scb.positions) ? scb.positions : [];
+  const uvs = Array.isArray(scb.uvs) ? scb.uvs : [];
+
+  if (flatIndices.length === 0 || positions.length === 0) {
+    hostEl.innerHTML = '<div style="font-size:10px;color:rgba(255,255,255,0.45);font-family:JetBrains Mono,monospace;">EMPTY MESH</div>';
+    renderer.dispose();
+    return () => { };
+  }
+
+  const vertexCount = flatIndices.length;
+  const posArr = new Float32Array(vertexCount * 3);
+  const uvArr = new Float32Array(vertexCount * 2);
+
+  for (let i = 0; i < flatIndices.length; i++) {
+    const sourceIndex = Number(flatIndices[i] || 0);
+    const p = positions[sourceIndex] || { x: 0, y: 0, z: 0 };
+    const uv = uvs[i] || { x: 0, y: 0 };
+
+    posArr[i * 3 + 0] = Number(p.x || 0);
+    posArr[i * 3 + 1] = Number(p.y || 0);
+    posArr[i * 3 + 2] = Number(p.z || 0);
+    uvArr[i * 2 + 0] = Number(uv.x || 0);
+    uvArr[i * 2 + 1] = Number(uv.y || 0);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2));
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.68,
+    metalness: 0.02,
+    side: THREE.DoubleSide,
+    transparent: false,
+    alphaTest: 0,
+    depthWrite: true,
+  });
+
+  let hasTextureMap = false;
+  if (isMeshTexturePreviewEnabled()) {
+    const previewTextureDataUrl = meshItem.texturePreviewDataUrl || meshItem.dataUrl || '';
+    if (previewTextureDataUrl) {
+      try {
+        const tex = new THREE.TextureLoader().load(processDataURL(previewTextureDataUrl));
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.flipY = false;
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.premultiplyAlpha = false;
+        material.map = tex;
+        material.needsUpdate = true;
+        hasTextureMap = true;
+      } catch (_) {
+        // Ignore texture load failure; keep shaded mesh.
+      }
+    }
+  }
+  material.alphaTest = hasTextureMap ? 0.08 : 0;
+
+  const mesh = new THREE.Mesh(geometry, material);
+  scene.add(mesh);
+
+  const bb = geometry.boundingBox;
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  bb.getCenter(center);
+  bb.getSize(size);
+  mesh.position.sub(center);
+
+  const radius = Math.max(size.length() * 0.5, 0.5);
+  camera.position.set(radius * 1.45, radius * 0.92, radius * 2.15);
+  camera.lookAt(0, 0, 0);
+
+  let rafId = 0;
+  let disposed = false;
+
+  const tick = () => {
+    if (disposed) return;
+    mesh.rotation.y += 0.006;
+    renderer.render(scene, camera);
+    rafId = requestAnimationFrame(tick);
+  };
+
+  tick();
+
+  return () => {
+    disposed = true;
+    if (rafId) cancelAnimationFrame(rafId);
+    geometry.dispose();
+    material.map?.dispose?.();
+    material.dispose();
+    renderer.dispose();
+    if (renderer.domElement?.parentNode === hostEl) {
+      hostEl.removeChild(renderer.domElement);
+    }
+  };
+}
+
+async function mountSknPreview(hostEl, meshItem) {
+  if (!hostEl || !meshItem) return () => { };
+
+  const resolvedPath = meshItem.resolvedDiskPath || meshItem.path;
+  if (!resolvedPath || !window.require) {
+    hostEl.innerHTML = '<div style="font-size:10px;color:rgba(255,255,255,0.45);font-family:JetBrains Mono,monospace;">MESH NOT FOUND</div>';
+    return () => { };
+  }
+
+  const fs = window.require('fs');
+  if (!fs?.existsSync(resolvedPath)) {
+    hostEl.innerHTML = '<div style="font-size:10px;color:rgba(255,255,255,0.45);font-family:JetBrains Mono,monospace;">MESH FILE MISSING</div>';
+    return () => { };
+  }
+
+  hostEl.innerHTML = `<div style="font-size:10px;color:rgba(255,255,255,0.55);font-family:'JetBrains Mono',monospace;">Loading skinned mesh...</div>`;
+
+  const THREE = await getThreeModule();
+  const SKN = await getSknCtor();
+  if (!SKN) {
+    hostEl.innerHTML = '<div style="font-size:10px;color:rgba(255,255,255,0.45);font-family:JetBrains Mono,monospace;">SKN UNAVAILABLE</div>';
+    return () => { };
+  }
+
+  const skn = new SKN();
+  skn.read(resolvedPath);
+
+  const vertices = Array.isArray(skn.vertices) ? skn.vertices : [];
+  const indices = Array.isArray(skn.indices) ? skn.indices : [];
+  if (vertices.length === 0 || indices.length === 0) {
+    hostEl.innerHTML = '<div style="font-size:10px;color:rgba(255,255,255,0.45);font-family:JetBrains Mono,monospace;">EMPTY MESH</div>';
+    return () => { };
+  }
+
+  const width = Math.max(64, Math.floor(hostEl.clientWidth || 180));
+  const height = Math.max(64, Math.floor(hostEl.clientHeight || 140));
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
+  renderer.setSize(width, height);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setClearColor(0x000000, 0);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.domElement.style.width = '100%';
+  renderer.domElement.style.height = '100%';
+
+  hostEl.innerHTML = '';
+  hostEl.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(42, width / height, 0.01, 5000);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.95);
+  dir.position.set(2, 3, 4);
+  scene.add(dir);
+
+  const posArr = new Float32Array(vertices.length * 3);
+  const uvArr = new Float32Array(vertices.length * 2);
+  const normalArr = new Float32Array(vertices.length * 3);
+
+  for (let i = 0; i < vertices.length; i++) {
+    const v = vertices[i] || {};
+    const p = v.position || { x: 0, y: 0, z: 0 };
+    const uv = v.uv || { x: 0, y: 0 };
+    const n = v.normal || { x: 0, y: 1, z: 0 };
+
+    posArr[i * 3 + 0] = Number(p.x || 0);
+    posArr[i * 3 + 1] = Number(p.y || 0);
+    posArr[i * 3 + 2] = Number(p.z || 0);
+    uvArr[i * 2 + 0] = Number(uv.x || 0);
+    uvArr[i * 2 + 1] = Number(uv.y || 0);
+    normalArr[i * 3 + 0] = Number(n.x || 0);
+    normalArr[i * 3 + 1] = Number(n.y || 1);
+    normalArr[i * 3 + 2] = Number(n.z || 0);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2));
+  geometry.setAttribute('normal', new THREE.BufferAttribute(normalArr, 3));
+  geometry.setIndex(Array.from(indices, (v) => Number(v || 0)));
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.68,
+    metalness: 0.02,
+    side: THREE.DoubleSide,
+    transparent: false,
+    alphaTest: 0,
+    depthWrite: true,
+  });
+
+  let hasTextureMap = false;
+  if (isMeshTexturePreviewEnabled()) {
+    if (meshItem.texturePreviewDataUrl) {
+      try {
+        const tex = new THREE.TextureLoader().load(processDataURL(meshItem.texturePreviewDataUrl));
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.flipY = false;
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.premultiplyAlpha = false;
+        material.map = tex;
+        material.needsUpdate = true;
+        hasTextureMap = true;
+      } catch (_) {
+        // Ignore texture decode failures.
+      }
+    }
+  }
+  material.alphaTest = hasTextureMap ? 0.08 : 0;
+
+  const mesh = new THREE.Mesh(geometry, material);
+  scene.add(mesh);
+
+  const bb = geometry.boundingBox;
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  bb.getCenter(center);
+  bb.getSize(size);
+  mesh.position.sub(center);
+
+  const radius = Math.max(size.length() * 0.5, 0.5);
+  camera.position.set(radius * 1.45, radius * 0.92, radius * 2.15);
+  camera.lookAt(0, 0, 0);
+
+  let rafId = 0;
+  let disposed = false;
+  const tick = () => {
+    if (disposed) return;
+    mesh.rotation.y += 0.006;
+    renderer.render(scene, camera);
+    rafId = requestAnimationFrame(tick);
+  };
+  tick();
+
+  return () => {
+    disposed = true;
+    if (rafId) cancelAnimationFrame(rafId);
+    geometry.dispose();
+    material.map?.dispose?.();
+    material.dispose();
+    renderer.dispose();
+    if (renderer.domElement?.parentNode === hostEl) hostEl.removeChild(renderer.domElement);
+  };
+}
 
 function removeTextureContextMenu() {
   const existing = document.getElementById(CONTEXT_MENU_ID);
@@ -37,7 +384,93 @@ function openTextureInImgRecolor(resolvedPath, onClosePreview) {
   }
 }
 
-function showTextureContextMenu({ x, y, data, onClosePreview, previewId = 'shared-texture-hover-preview' }) {
+function isModelFile(pathValue) {
+  const lower = String(pathValue || '').toLowerCase();
+  return lower.endsWith('.scb') || lower.endsWith('.sco') || lower.endsWith('.skn');
+}
+
+function isStaticMeshFile(pathValue) {
+  const lower = String(pathValue || '').toLowerCase();
+  return lower.endsWith('.scb') || lower.endsWith('.sco');
+}
+
+function isSkinnedMeshFile(pathValue) {
+  const lower = String(pathValue || '').toLowerCase();
+  return lower.endsWith('.skn');
+}
+
+function scoreTextureCandidate(tex) {
+  const path = String(tex?.resolvedDiskPath || tex?.path || '').toLowerCase();
+  const label = String(tex?.label || '').toLowerCase();
+  const text = `${label} ${path}`;
+  let score = 0;
+
+  if (label.includes('main texture')) score += 200;
+  if (text.includes('diffuse')) score += 120;
+  if (text.includes('_tx_cm')) score += 110;
+  if (text.includes('base') && text.includes('tx')) score += 70;
+  if (text.includes('albedo')) score += 90;
+  if (path.endsWith('.tex') || path.endsWith('.dds') || path.endsWith('.png')) score += 20;
+
+  if (text.includes('erosion')) score -= 180;
+  if (text.includes('mask')) score -= 140;
+  if (text.includes('noise')) score -= 120;
+  if (text.includes('gradient')) score -= 100;
+  if (text.includes('distort')) score -= 100;
+  if (text.includes('alpha')) score -= 70;
+
+  return score;
+}
+
+function pickBestTexture(textureData = []) {
+  if (!Array.isArray(textureData) || textureData.length === 0) return null;
+  let best = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (const tex of textureData) {
+    const s = scoreTextureCandidate(tex);
+    if (s > bestScore) {
+      best = tex;
+      bestScore = s;
+    }
+  }
+  return best || textureData[0] || null;
+}
+
+function openInScbInspect(pathValue, texturePath, onClosePreview) {
+  if (!pathValue) return;
+  try {
+    if (onClosePreview) onClosePreview();
+    window.dispatchEvent(new CustomEvent(OPEN_SCB_INSPECT_EVENT, {
+      detail: {
+        path: pathValue,
+        texturePath: texturePath || '',
+      },
+    }));
+  } catch (err) {
+    console.error('Error opening SCB inspect modal:', err);
+  }
+}
+
+function openInInlineModelInspect(data, onClosePreview) {
+  if (!data) return;
+  const modelPath = data.resolvedDiskPath || data.path;
+  if (!modelPath) return;
+  try {
+    if (onClosePreview) onClosePreview();
+    window.dispatchEvent(new CustomEvent(OPEN_INLINE_MODEL_INSPECT_EVENT, {
+      detail: {
+        modelPath,
+        skeletonPath: data.resolvedSkeletonPath || data.skeletonPath || '',
+        animationPath: data.resolvedAnimationPath || data.animationPath || '',
+        texturePath: data.texturePath || '',
+      },
+    }));
+  } catch (err) {
+    console.error('Error opening inline model inspect modal:', err);
+  }
+}
+
+function showTextureContextMenu({ x, y, data, onClosePreview, onRefreshPreview, previewId = 'shared-texture-hover-preview' }) {
   removeTextureContextMenu();
   if (!data) return;
 
@@ -91,19 +524,43 @@ function showTextureContextMenu({ x, y, data, onClosePreview, previewId = 'share
 
   const resolvedPath = data.resolvedDiskPath || data.path;
   const canUseExternal = Boolean(resolvedPath);
+  const canInspectModel = isModelFile(resolvedPath);
 
-  menu.appendChild(makeItem('Open in External App', () => {
-    openTextureInExternalApp(resolvedPath);
-  }, !canUseExternal));
+  if (!canInspectModel) {
+    menu.appendChild(makeItem('Open in External App', () => {
+      openTextureInExternalApp(resolvedPath);
+    }, !canUseExternal));
 
-  menu.appendChild(makeItem('Open in ImgRecolor', () => {
-    openTextureInImgRecolor(resolvedPath, onClosePreview);
-  }, !resolvedPath));
+    menu.appendChild(makeItem('Open in ImgRecolor', () => {
+      openTextureInImgRecolor(resolvedPath, onClosePreview);
+    }, !resolvedPath));
+  }
 
   menu.appendChild(makeItem('Open in Asset Preview', () => {
     if (onClosePreview) onClosePreview();
     openAssetPreview(resolvedPath, data.dataUrl);
   }, !resolvedPath));
+
+  if (canInspectModel) {
+    if (data?.type === 'mesh') {
+      menu.appendChild(makeItem(
+        `${isMeshTexturePreviewEnabled() ? '☑' : '☐'} Show Texture (Mesh Preview)`,
+        () => {
+          const next = !isMeshTexturePreviewEnabled();
+          setMeshTexturePreviewEnabled(next);
+          if (typeof onRefreshPreview === 'function') onRefreshPreview();
+        }
+      ));
+    }
+
+    menu.appendChild(makeItem('Inspect Model', () => {
+      if (isSkinnedMeshFile(resolvedPath)) {
+        openInInlineModelInspect(data, onClosePreview);
+      } else {
+        openInScbInspect(resolvedPath, data.texturePath || '', onClosePreview);
+      }
+    }, !resolvedPath));
+  }
 
   document.body.appendChild(menu);
 
@@ -165,29 +622,39 @@ export function removeTextureHoverPreview(previewId = 'shared-texture-hover-prev
   cancelTextureHoverClose(previewId);
   removeTextureContextMenu();
   const existing = document.getElementById(previewId);
-  if (existing) existing.remove();
+  if (existing) {
+    const cleanups = existing[SCB_RENDER_BOOT_ID];
+    if (Array.isArray(cleanups)) {
+      for (const dispose of cleanups) {
+        try { if (typeof dispose === 'function') dispose(); } catch (_) { }
+      }
+    }
+    existing.remove();
+  }
 }
 
 export function showTextureHoverPreview({
   previewId = 'shared-texture-hover-preview',
   textureData = [],
+  meshData = [],
   buttonElement,
   colorData = [],
 }) {
-  if (!buttonElement || !textureData.length) return;
+  if (!buttonElement || (!textureData.length && !meshData.length)) return;
 
   removeTextureHoverPreview(previewId);
 
   const rect = buttonElement.getBoundingClientRect();
   const textureCount = textureData.length;
+  const totalCount = textureCount + meshData.length;
 
   let cols = 1;
   let previewWidth = 260;
   let itemSize = '200px';
-  if (textureCount === 2) { cols = 2; previewWidth = 380; itemSize = '150px'; }
-  else if (textureCount <= 4) { cols = 2; previewWidth = 400; itemSize = '160px'; }
-  else if (textureCount <= 6) { cols = 3; previewWidth = 520; itemSize = '140px'; }
-  else if (textureCount > 6) { cols = 3; previewWidth = 560; itemSize = '130px'; }
+  if (totalCount === 2) { cols = 2; previewWidth = 380; itemSize = '150px'; }
+  else if (totalCount <= 4) { cols = 2; previewWidth = 400; itemSize = '160px'; }
+  else if (totalCount <= 6) { cols = 3; previewWidth = 520; itemSize = '140px'; }
+  else if (totalCount > 6) { cols = 3; previewWidth = 560; itemSize = '130px'; }
 
   const preview = document.createElement('div');
   preview.id = previewId;
@@ -213,23 +680,39 @@ export function showTextureHoverPreview({
     transition: opacity 0.2s ease;
   `;
 
-  const gridStyle = textureCount === 1
+  const gridStyle = totalCount === 1
     ? 'display: flex; justify-content: center;'
     : `display: grid; grid-template-columns: repeat(${cols}, 1fr); gap: 12px;`;
 
-  const itemsHtml = textureData.map((data, idx) => {
+  const bestTexture = pickBestTexture(textureData);
+  const fallbackTexturePath = bestTexture?.resolvedDiskPath || bestTexture?.path || '';
+  const fallbackTextureDataUrl = bestTexture?.dataUrl || '';
+  const previewItems = [
+    ...textureData.map((data) => ({ type: 'texture', ...data })),
+    ...meshData.map((data) => ({
+      type: 'mesh',
+      ...data,
+      texturePath: fallbackTexturePath || data.texturePath || '',
+      texturePreviewDataUrl: fallbackTextureDataUrl || data.texturePreviewDataUrl || '',
+    })),
+  ];
+
+  const itemsHtml = previewItems.map((data, idx) => {
     const fileName = (data.path || '').split(/[/\\]/).pop();
+    const imageOrMesh = data.type === 'mesh'
+      ? `<div class="mesh-preview-host" data-mesh-idx="${idx}" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.12), rgba(255,255,255,0.02) 40%, rgba(0,0,0,0.12) 100%);"></div>`
+      : (data.dataUrl
+        ? `<img src="${processDataURL(data.dataUrl)}" style="width: 100%; height: 100%; object-fit: contain;" />`
+        : `<div style="color: rgba(255,255,255,0.2); font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 500;">LOADING...</div>`);
+
     return `
       <div class="texture-item" data-idx="${idx}" title="Left-click: Asset Preview | Right-click: More actions" style="cursor: pointer; display: flex; flex-direction: column; gap: 8px; align-items: center; transition: all 0.2s ease; min-width: 0;">
         <div style="width: 100%; height: ${itemSize}; background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%), linear-gradient(-45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%), linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%); background-size: 12px 12px; background-position: 0 0, 0 6px, 6px -6px, -6px 0px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-          ${data.dataUrl
-            ? `<img src="${processDataURL(data.dataUrl)}" style="width: 100%; height: 100%; object-fit: contain;" />`
-            : `<div style="color: rgba(255,255,255,0.2); font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 500;">LOADING...</div>`
-          }
+          ${imageOrMesh}
         </div>
         <div style="width: 100%; text-align: center; font-family: 'JetBrains Mono', monospace; color: var(--accent); overflow: hidden;">
           <div style="font-size: 8px; opacity: 0.5; margin-bottom: 2px; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${fileName || ''}</div>
-          <div style="font-size: 10px; font-weight: 800; letter-spacing: 0.08em; opacity: 0.9;">${(data.label || '').toUpperCase()}</div>
+          <div style="font-size: 10px; font-weight: 800; letter-spacing: 0.08em; opacity: 0.9;">${(data.label || (data.type === 'mesh' ? 'Mesh' : '')).toUpperCase()}</div>
         </div>
       </div>
     `;
@@ -255,7 +738,7 @@ export function showTextureHoverPreview({
     <div style="display: flex; flex-direction: column; gap: 12px;">
       <div style="text-align: left; color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.12em; display: flex; align-items: center; gap: 10px; opacity: 0.9;">
         <span style="width: 8px; height: 8px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 8px var(--accent);"></span>
-        TEXTURE PREVIEW (${textureCount})
+        PREVIEW (${totalCount})
       </div>
       <div style="${gridStyle}">
         ${itemsHtml}
@@ -274,13 +757,44 @@ export function showTextureHoverPreview({
     scheduleTextureHoverClose(previewId, 300);
   };
 
+  preview[SCB_RENDER_BOOT_ID] = [];
+  const mountAllMeshHosts = async () => {
+    const previous = preview[SCB_RENDER_BOOT_ID];
+    if (Array.isArray(previous)) {
+      for (const dispose of previous) {
+        try { if (typeof dispose === 'function') dispose(); } catch (_) { }
+      }
+    }
+    preview[SCB_RENDER_BOOT_ID] = [];
+
+    const meshHosts = preview.querySelectorAll('.mesh-preview-host');
+    meshHosts.forEach(async (hostEl) => {
+      const idx = Number(hostEl.getAttribute('data-mesh-idx'));
+      const item = previewItems[idx];
+      if (!item || item.type !== 'mesh') return;
+      try {
+        const pathValue = item.path || item.resolvedDiskPath || '';
+        const dispose = isSkinnedMeshFile(pathValue)
+          ? await mountSknPreview(hostEl, item)
+          : await mountScbPreview(hostEl, item);
+        if (Array.isArray(preview[SCB_RENDER_BOOT_ID])) {
+          preview[SCB_RENDER_BOOT_ID].push(dispose);
+        }
+      } catch (_) {
+        hostEl.innerHTML = '<div style="font-size:10px;color:rgba(255,255,255,0.45);font-family:JetBrains Mono,monospace;">FAILED TO LOAD MESH</div>';
+      }
+    });
+  };
+
+  mountAllMeshHosts();
+
   preview.querySelectorAll('.texture-item').forEach((el) => {
     el.onclick = (event) => {
       event.stopPropagation();
       const idx = parseInt(el.getAttribute('data-idx'), 10);
-      const data = textureData[idx];
+      const data = previewItems[idx];
       if (data) {
-        preview.remove();
+        removeTextureHoverPreview(previewId);
         openAssetPreview(data.resolvedDiskPath || data.path, data.dataUrl);
       }
     };
@@ -290,13 +804,14 @@ export function showTextureHoverPreview({
       event.stopPropagation();
       cancelTextureHoverClose(previewId);
       const idx = parseInt(el.getAttribute('data-idx'), 10);
-      const data = textureData[idx];
+      const data = previewItems[idx];
       showTextureContextMenu({
         x: event.clientX + 2,
         y: event.clientY - 4,
         data,
         previewId,
-        onClosePreview: () => preview.remove(),
+        onClosePreview: () => removeTextureHoverPreview(previewId),
+        onRefreshPreview: mountAllMeshHosts,
       });
     };
 

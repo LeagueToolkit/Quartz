@@ -1139,10 +1139,11 @@ function Paint2() {
     const activeConversions = useRef(new Set());
 
     // Show texture preview with grid layout
-    const showTexturePreview = useCallback((textureData, buttonElement, colorData = []) => {
+    const showTexturePreview = useCallback((textureData, buttonElement, colorData = [], meshData = []) => {
         showTextureHoverPreview({
             previewId: "shared-texture-hover-preview",
             textureData,
+            meshData,
             buttonElement,
             colorData,
         });
@@ -1171,11 +1172,12 @@ function Paint2() {
         }
 
         const timer = setTimeout(async () => {
-            if (!emitter || !emitter.textures || emitter.textures.length === 0) return;
+            if (!emitter) return;
 
             const textureData = [];
+            const meshData = [];
 
-            for (const tex of emitter.textures) {
+            for (const tex of (emitter.textures || [])) {
                 if (activeConversions.current.has(tex.path)) continue;
                 activeConversions.current.add(tex.path);
                 try {
@@ -1219,10 +1221,49 @@ function Paint2() {
                 }
             }
 
-            if (textureData.length === 0 && emitter.textures.length > 0) {
+            const sourceMeshes = Array.isArray(emitter.meshes) ? emitter.meshes : [];
+            for (const mesh of sourceMeshes) {
+                try {
+                    let resolvedDiskPath = mesh.path;
+                    if (fs && filePath) {
+                        const normalizedBin = filePath.replace(/\\/g, '/');
+                        const dataMatch = normalizedBin.match(/\/data\//i);
+                        if (dataMatch) {
+                            const projRoot = normalizedBin.substring(0, dataMatch.index);
+                            const clean = mesh.path.replace(/\\/g, '/');
+                            const cand = path.join(projRoot, clean);
+                            if (fs.existsSync(cand)) resolvedDiskPath = cand;
+                        }
+                        if (resolvedDiskPath === mesh.path) {
+                            const smart = findActualTexturePath(mesh.path, filePath);
+                            if (smart) resolvedDiskPath = smart;
+                        }
+                    }
+                    meshData.push({
+                        ...mesh,
+                        resolvedDiskPath,
+                        resolvedSkeletonPath: mesh.skeletonPath || '',
+                        resolvedAnimationPath: mesh.animationPath || '',
+                        texturePath: textureData?.[0]?.resolvedDiskPath || textureData?.[0]?.path || '',
+                        texturePreviewDataUrl: textureData?.[0]?.dataUrl || '',
+                    });
+                } catch (e) {
+                    console.warn(e);
+                    meshData.push({
+                        ...mesh,
+                        resolvedDiskPath: mesh.path,
+                        resolvedSkeletonPath: mesh.skeletonPath || '',
+                        resolvedAnimationPath: mesh.animationPath || '',
+                        texturePath: textureData?.[0]?.resolvedDiskPath || textureData?.[0]?.path || '',
+                        texturePreviewDataUrl: textureData?.[0]?.dataUrl || '',
+                    });
+                }
+            }
+
+            if (textureData.length === 0 && meshData.length === 0 && (emitter.textures || []).length > 0) {
                 showTextureError(emitter.textures[0].path, buttonElement);
             } else {
-                showTexturePreview(textureData, buttonElement);
+                showTexturePreview(textureData, buttonElement, [], meshData);
             }
 
         }, 200);

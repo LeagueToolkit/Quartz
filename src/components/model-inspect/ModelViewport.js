@@ -225,6 +225,9 @@ function ModelMesh({ modelData, visibleSubmeshes, wireframe, flatLighting, showS
               color={hasTex ? '#ffffff' : colorFromName(item.name)}
               map={textureCache.get(item.id) || null}
               wireframe={wireframe}
+              transparent={false}
+              alphaTest={hasTex ? 0.08 : 0}
+              depthWrite
             />
           </mesh>
         );
@@ -286,6 +289,7 @@ export default function ModelViewport({
           texture.colorSpace = THREE.SRGBColorSpace;
           texture.wrapS = THREE.RepeatWrapping;
           texture.wrapT = THREE.RepeatWrapping;
+          texture.premultiplyAlpha = false;
           texture.needsUpdate = true;
           loaded.set(submeshId, texture);
         } catch {
