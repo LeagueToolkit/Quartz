@@ -1,5 +1,45 @@
 import { BumpathCore } from '../../../utils/bumpath/index.js';
 
+const ICONS2D_RELATIVE_PATTERN = /^assets\/characters\/[^/]+\/hud\/icons2d(\/|$)/i;
+
+const toPosixRel = (value) => String(value || '').replace(/\\/g, '/').replace(/^\/+/, '');
+
+const isPreservedIcons2DPath = (relativePath) => ICONS2D_RELATIVE_PATTERN.test(toPosixRel(relativePath));
+
+const copyPreservedHudIcons2D = async (sourceDir, targetDir) => {
+  if (!window.require) return 0;
+  const fs = window.require('fs');
+  const path = window.require('path');
+
+  if (!sourceDir || !targetDir || !fs.existsSync(sourceDir)) return 0;
+
+  let copied = 0;
+
+  const walk = async (absDir, relDir = '') => {
+    const entries = await fs.promises.readdir(absDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryRel = relDir ? path.join(relDir, entry.name) : entry.name;
+      const entryAbs = path.join(absDir, entry.name);
+
+      if (entry.isDirectory()) {
+        await walk(entryAbs, entryRel);
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+      if (!isPreservedIcons2DPath(entryRel)) continue;
+
+      const outAbs = path.join(targetDir, entryRel);
+      await fs.promises.mkdir(path.dirname(outAbs), { recursive: true });
+      await fs.promises.copyFile(entryAbs, outAbs);
+      copied++;
+    }
+  };
+
+  await walk(sourceDir);
+  return copied;
+};
+
 export const getChampionFileName = (championName) => {
   const specialCases = {
     wukong: 'monkeyking',
@@ -83,8 +123,11 @@ const runSingleBumpathPass = async ({
   ignoreMissing,
   combineLinked,
   progressCallback,
+  preserveHudIcons2D = true,
+  skipSfxRepath = true,
 }) => {
   const bumInstance = new BumpathCore();
+  bumInstance.skipSfxRepath = skipSfxRepath;
   await bumInstance.addSourceDirs([sourceDir]);
 
   const { binSelections } = buildBinSelections(bumInstance, skinIdsForPass);
@@ -98,6 +141,12 @@ const runSingleBumpathPass = async ({
   }
 
   await bumInstance.process(outputDir, ignoreMissing, combineLinked, progressCallback);
+  if (preserveHudIcons2D) {
+    const copied = await copyPreservedHudIcons2D(sourceDir, outputDir);
+    if (copied > 0) {
+      console.log(`[Bumpath] Preserved ${copied} icons2d file(s) from source`);
+    }
+  }
 };
 
 export const runBumpathRepath = async ({
@@ -107,6 +156,8 @@ export const runBumpathRepath = async ({
   hashPath,
   prefix = 'bum',
   processTogether = false,
+  preserveHudIcons2D = true,
+  skipSfxRepath = true,
 }) => {
   try {
     if (window.require) {
@@ -138,6 +189,8 @@ export const runBumpathRepath = async ({
         ignoreMissing,
         combineLinked,
         progressCallback,
+        preserveHudIcons2D,
+        skipSfxRepath,
       });
 
       return {
@@ -157,6 +210,8 @@ export const runBumpathRepath = async ({
         ignoreMissing,
         combineLinked,
         progressCallback,
+        preserveHudIcons2D,
+        skipSfxRepath,
       });
       results.push({ skinId, success: true });
     }

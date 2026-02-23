@@ -16,6 +16,7 @@ export const extractSkinWadBundle = async ({
   hashPath,
   extractVoiceover,
   cleanAfterExtract = false,
+  preserveHudIcons2D = true,
   onProgress,
 }) => {
   if (!window.electronAPI?.wad?.extractBundle) {
@@ -41,6 +42,7 @@ export const extractSkinWadBundle = async ({
       hashPath,
       extractVoiceover,
       cleanAfterExtract,
+      preserveHudIcons2D,
     });
 
     if (result.error) {

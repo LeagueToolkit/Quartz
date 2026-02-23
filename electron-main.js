@@ -27,6 +27,7 @@ const { registerUpdateChannels } = require('./src/main/ipc/channels/update');
 const { registerAudioChannels } = require('./src/main/ipc/channels/audio');
 const { registerUpscaleChannels } = require('./src/main/ipc/channels/upscale');
 const { registerWadBumpathChannels } = require('./src/main/ipc/channels/wadBumpath');
+const { registerModelInspectChannels } = require('./src/main/ipc/channels/modelInspect');
 const { registerFileRandomizerChannels } = require('./src/main/ipc/channels/fileRandomizer');
 const { registerBinToolsChannels } = require('./src/main/ipc/channels/binTools');
 
@@ -281,6 +282,18 @@ registerWadBumpathChannels({
   loadBumpathModule: async () => import('./src/utils/bumpath/bumpathCore.js'),
 });
 
+registerModelInspectChannels({
+  ipcMain,
+  fs,
+  app,
+  getHashPath,
+  loadWadModule: async () => import('./src/utils/wad/index.js'),
+  loadJsRitoModule: async () => import('./src/jsritofile/bin.js'),
+  loadBinModule: async () => import('./src/jsritofile/bin.js'),
+  loadBinHasherModule: async () => import('./src/jsritofile/binHasher.js'),
+  loadWadHasherModule: async () => import('./src/jsritofile/wadHasher.js'),
+});
+
 registerHashChannels({
   ipcMain,
   hashManager,
@@ -352,8 +365,6 @@ function getHashPath(userProvidedPath) {
   // Fall back to integrated location
   return hashManager.getHashDirectory();
 }
-
-
 
 
 

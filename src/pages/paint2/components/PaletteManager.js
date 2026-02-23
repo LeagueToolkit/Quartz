@@ -248,6 +248,43 @@ const blurInput = (e) => {
     e.currentTarget.style.boxShadow = 'none';
 };
 
+const PaletteCountSlider = React.memo(function PaletteCountSlider({
+    value,
+    onCommit
+}) {
+    const [draft, setDraft] = useState(value);
+
+    useEffect(() => {
+        setDraft(value);
+    }, [value]);
+
+    return (
+        <>
+            <Typography sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem', color: 'var(--accent)', minWidth: '94px', fontWeight: 600 }}>
+                Colors: {draft}
+            </Typography>
+            <Slider
+                value={draft}
+                onChange={(_, v) => {
+                    const next = Array.isArray(v) ? v[0] : v;
+                    setDraft(next);
+                    setDraft(next);
+                    onCommit(next);
+                }}
+                min={1}
+                max={20}
+                size="small"
+                sx={{
+                    flex: 1,
+                    '& .MuiSlider-track': { background: 'var(--accent)' },
+                    '& .MuiSlider-thumb': { background: 'var(--accent)', border: '2px solid var(--bg)' },
+                    '& .MuiSlider-rail': { background: 'var(--border)' }
+                }}
+            />
+        </>
+    );
+});
+
 /* ── component ───────────────────────────────────────────────────────── */
 const PaletteManager = ({
     mode,
@@ -403,7 +440,7 @@ const PaletteManager = ({
         }
     };
 
-    if (mode !== 'random' && mode !== 'linear' && mode !== 'materials') return null;
+    if (mode !== 'random' && mode !== 'random-keyframe' && mode !== 'linear' && mode !== 'materials') return null;
 
     return (
         <Box sx={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
@@ -435,21 +472,9 @@ const PaletteManager = ({
 
             <Box sx={{ padding: '4px 16px 8px 16px', display: 'flex', alignItems: 'center', gap: 3 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
-                    <Typography sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem', color: 'var(--accent)', minWidth: '94px', fontWeight: 600 }}>
-                        Colors: {colorCount}
-                    </Typography>
-                    <Slider
+                    <PaletteCountSlider
                         value={colorCount}
-                        onChange={(_, v) => handleColorCountChange(v)}
-                        min={1}
-                        max={20}
-                        size="small"
-                        sx={{
-                            flex: 1,
-                            '& .MuiSlider-track': { background: 'var(--accent)' },
-                            '& .MuiSlider-thumb': { background: 'var(--accent)', border: '2px solid var(--bg)' },
-                            '& .MuiSlider-rail': { background: 'var(--border)' }
-                        }}
+                        onCommit={handleColorCountChange}
                     />
                 </Box>
 

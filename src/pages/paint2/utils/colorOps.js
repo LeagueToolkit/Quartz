@@ -167,12 +167,14 @@ export function applyPaletteToEmitters(parsedFile, emitterKeys, colorType, palet
                     break;
 
                 case 'random':
+                case 'random-keyframe':
                 case 'materials':
                 case 'linear':
                 default:
                     // Sample from palette
                     newColors = generateColorsFromPalette(palette, colorData.values.length, {
-                        useRandom: mode === 'random' || mode === 'materials',
+                        useRandom: mode === 'random' || mode === 'random-keyframe' || mode === 'materials',
+                        randomPerKeyframe: mode === 'random-keyframe',
                         originalColors: colorData.values,
                         originalTimes: colorData.times,
                         ignoreBlackWhite,
@@ -194,14 +196,16 @@ export function applyPaletteToEmitters(parsedFile, emitterKeys, colorType, palet
  * Generate colors by sampling from a palette
  */
 function generateColorsFromPalette(palette, count, options = {}) {
-    const { useRandom = true, originalColors = [], originalTimes = [], ignoreBlackWhite = true, colorFilter = null } = options;
+    const { useRandom = true, randomPerKeyframe = false, originalColors = [], originalTimes = [], ignoreBlackWhite = true, colorFilter = null } = options;
 
     if (!palette || palette.length === 0) return originalColors;
 
     const result = [];
 
     // For random mode without gradient, we pick ONE random color for the entire property
-    const singleRandomColor = useRandom ? palette[Math.floor(Math.random() * palette.length)] : null;
+    const singleRandomColor = useRandom && !randomPerKeyframe
+        ? palette[Math.floor(Math.random() * palette.length)]
+        : null;
 
     for (let i = 0; i < count; i++) {
         // Skip black/white original colors
@@ -218,8 +222,12 @@ function generateColorsFromPalette(palette, count, options = {}) {
         }
 
         if (useRandom) {
-            // Use the single random color picked for this property
-            const color = singleRandomColor.vec4 || (Array.isArray(singleRandomColor) ? singleRandomColor : [singleRandomColor.r || 0, singleRandomColor.g || 0, singleRandomColor.b || 0, 1]);
+            // Normal mode: one random color per property.
+            // Random mode: one random color per keyframe.
+            const randomPick = randomPerKeyframe
+                ? palette[Math.floor(Math.random() * palette.length)]
+                : singleRandomColor;
+            const color = randomPick.vec4 || (Array.isArray(randomPick) ? randomPick : [randomPick.r || 0, randomPick.g || 0, randomPick.b || 0, 1]);
             result.push([...color]);
         } else {
             // Linear interpolation across palette - use normalized index for left-to-right gradient
@@ -392,6 +400,7 @@ export function applyPaletteToMaterials(parsedFile, materialKeys, palette, optio
                 break;
 
             case 'random':
+            case 'random-keyframe':
             case 'materials':
                 // Pick random color from palette
                 const randomPick = palette[Math.floor(Math.random() * palette.length)];

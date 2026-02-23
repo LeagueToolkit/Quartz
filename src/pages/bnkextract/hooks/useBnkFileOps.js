@@ -21,7 +21,7 @@ export function useBnkFileOps({
     const targetTree = activePane === 'left' ? treeData : rightTreeData;
     const targetSelection = activePane === 'left' ? selectedNodes : rightSelectedNodes;
     if (targetSelection.size === 0) {
-      setStatusMessage('No selection in active pane');
+      setStatusMessage('No selection in target pane');
       return;
     }
     if (!window.require) return;
@@ -216,10 +216,12 @@ export function useBnkFileOps({
     setStatusMessage(`Replaced ${selectedAudioNodes.length} file(s) successfully`);
   }, [activePane, treeData, rightTreeData, selectedNodes, rightSelectedNodes, setTreeData, setRightTreeData, pushToHistory, setStatusMessage]);
 
-  const handleMakeSilent = useCallback(async () => {
-    const targetTree = activePane === 'left' ? treeData : rightTreeData;
-    const targetSelection = activePane === 'left' ? selectedNodes : rightSelectedNodes;
-    const setTreeDataFn = activePane === 'left' ? setTreeData : setRightTreeData;
+  const handleMakeSilent = useCallback(async (options = {}) => {
+    const pane = options.pane || activePane;
+    const explicitIds = Array.isArray(options.nodeIds) && options.nodeIds.length > 0 ? options.nodeIds : null;
+    const targetTree = pane === 'left' ? treeData : rightTreeData;
+    const targetSelection = explicitIds ? new Set(explicitIds) : (pane === 'left' ? selectedNodes : rightSelectedNodes);
+    const setTreeDataFn = pane === 'left' ? setTreeData : setRightTreeData;
 
     if (targetSelection.size === 0) {
       setStatusMessage('No selection in active pane');

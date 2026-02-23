@@ -69,6 +69,18 @@ function fmtTime(sec) {
     return `${m}:${s.toFixed(3).padStart(6, '0')}`;
 }
 
+function getUniqueOutputPath(fs, path, basePath) {
+    if (!fs.existsSync(basePath)) return basePath;
+    const ext = path.extname(basePath);
+    const baseNoExt = basePath.slice(0, -ext.length);
+    let n = 2;
+    while (true) {
+        const candidate = `${baseNoExt}(${n})${ext}`;
+        if (!fs.existsSync(candidate)) return candidate;
+        n += 1;
+    }
+}
+
 // ─── Silence detector ─────────────────────────────────────────────────────────
 function detectSegments(audioBuffer, { thresholdDb = -40, minSilenceMs = 300, minSegmentMs = 80, padMs = 30 } = {}) {
     const sr = audioBuffer.sampleRate;
@@ -573,7 +585,7 @@ export default function AudioSplitter({ open, onClose, initialFile, onReplace, o
                 setExportProgress(`Exporting ${i + 1} / ${sorted.length}: ${reg.name}`);
                 const wavBuf = sliceAndEncodeWav(audioBufferRef.current, reg.start, reg.end);
                 if (wavBuf) {
-                    const outPath = path.join(outDir, `${reg.name}.wav`);
+                    const outPath = getUniqueOutputPath(fs, path, path.join(outDir, `${reg.name}.wav`));
                     fs.writeFileSync(outPath, wavBuf);
                 }
             }

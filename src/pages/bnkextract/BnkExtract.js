@@ -118,6 +118,7 @@ export default function BnkExtract() {
     const [showGainDialog, setShowGainDialog] = useState(false);
     const [gainDb, setGainDb] = useState('3');
     const [gainTargetNodeId, setGainTargetNodeId] = useState(null);
+    const [gainTargetNodeIds, setGainTargetNodeIds] = useState([]);
     const [gainTargetPane, setGainTargetPane] = useState('left');
 
     // Audio Splitter state
@@ -153,6 +154,7 @@ export default function BnkExtract() {
     const { handleApplyGain } = useBnkGainOps({
         gainDb,
         gainTargetNodeId,
+        gainTargetNodeIds,
         gainTargetPane,
         isWwiseInstalled,
         treeData,
@@ -358,6 +360,18 @@ export default function BnkExtract() {
         onRedo: handleRedo,
     });
 
+    const getContextTargetIds = () => {
+        const nodeId = contextMenu?.node?.id;
+        const pane = contextMenu?.pane || activePane;
+        if (!nodeId) return [];
+
+        const paneSelection = pane === 'left' ? selectedNodes : rightSelectedNodes;
+        if (paneSelection.has(nodeId) && paneSelection.size > 1) {
+            return Array.from(paneSelection);
+        }
+        return [nodeId];
+    };
+
 
     return (
         <Box className="bnk-extract-container" sx={containerStyle}>
@@ -495,10 +509,18 @@ export default function BnkExtract() {
                 }}
                 onExtract={handleExtract}
                 onReplace={handleReplace}
-                onMakeSilent={handleMakeSilent}
+                onMakeSilent={() => {
+                    const pane = contextMenu?.pane || activePane;
+                    const nodeIds = getContextTargetIds();
+                    handleMakeSilent({ pane, nodeIds });
+                    handleCloseContextMenu();
+                }}
                 onAdjustGain={() => {
-                    setGainTargetNodeId(contextMenu?.node?.id ?? null);
-                    setGainTargetPane(contextMenu?.pane ?? 'left');
+                    const pane = contextMenu?.pane || 'left';
+                    const nodeIds = getContextTargetIds();
+                    setGainTargetPane(pane);
+                    setGainTargetNodeIds(nodeIds);
+                    setGainTargetNodeId(nodeIds.length === 1 ? nodeIds[0] : null);
                     handleCloseContextMenu();
                     setShowGainDialog(true);
                 }}

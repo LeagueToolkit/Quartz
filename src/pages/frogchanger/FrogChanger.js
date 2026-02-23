@@ -15,6 +15,8 @@ import SettingsModal from './components/SettingsModal.js';
 import CustomPrefixModal from './components/CustomPrefixModal.js';
 import ExtractionModeModal from './components/ExtractionModeModal.js';
 import WarningModal from './components/WarningModal.js';
+import useModelInspect from '../../hooks/useModelInspect.js';
+import ModelInspectModal from '../../components/model-inspect/ModelInspectModal.js';
 import {
   api,
   fetchAllChromaData,
@@ -40,6 +42,7 @@ import {
 } from './services/setupService.js';
 
 const FrogChanger = () => {
+  const modelInspect = useModelInspect();
   const [champions, setChampions] = useState([]);
   const [selectedChampion, setSelectedChampion] = useState(null);
   const [championSkins, setChampionSkins] = useState([]);
@@ -122,7 +125,6 @@ const FrogChanger = () => {
   const [isRepathing, setIsRepathing] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [extractVoiceover, setExtractVoiceover] = useState(false);
   const [showPrefixModal, setShowPrefixModal] = useState(false);
   const [showExtractionModeModal, setShowExtractionModeModal] = useState(false);
   const [pendingExtractionSkins, setPendingExtractionSkins] = useState([]);
@@ -130,6 +132,11 @@ const FrogChanger = () => {
   const [pendingRepathData, setPendingRepathData] = useState(null);
   const [currentSkinIndex, setCurrentSkinIndex] = useState(0);
   const [skinPrefixes, setSkinPrefixes] = useState({});
+  const [skipSfxRepath, setSkipSfxRepath] = useState(true);
+  const [repathPreserveHudIcons2D, setRepathPreserveHudIcons2D] = useState(true);
+  const [warmHashCache, setWarmHashCache] = useState(false);
+  const [isHashPreloading, setIsHashPreloading] = useState(false);
+  const [hashPreloadStage, setHashPreloadStage] = useState('Preparing hash preload...');
   const [applyToAll, setApplyToAll] = useState(false);
   const [showLeaguePathTooltip, setShowLeaguePathTooltip] = useState(false);
   const [showExtractionPathTooltip, setShowExtractionPathTooltip] = useState(false);
@@ -175,10 +182,56 @@ const FrogChanger = () => {
   // Must go through IPC — calling clearHashtablesCache() here only affects the
   // renderer's empty copy, not the main-process copy that holds 200-400MB.
   useEffect(() => {
+    if (!settingsLoaded || !warmHashCache) return;
+    if (!hashPath || String(hashPath).trim() === '') return;
+    let cancelled = false;
+    const onWarmProgress = (_event, payload) => {
+      if (cancelled) return;
+      const stage = payload?.stage || 'Loading hashes...';
+      const index = Number(payload?.index || 0);
+      const total = Number(payload?.total || 0);
+      if (index > 0 && total > 0) {
+        setHashPreloadStage(`${stage} (${index}/${total})`);
+      } else {
+        setHashPreloadStage(stage);
+      }
+    };
+
+    setIsHashPreloading(true);
+    setHashPreloadStage('Initializing hash preload...');
+    window.electronAPI?.hashtable?.setKeepAlive?.(true).catch(() => {});
+    window.electronAPI?.hashtable?.onWarmProgress?.(onWarmProgress);
+
+    window.electronAPI?.hashtable?.warmCache?.(hashPath)
+      ?.catch((error) => {
+        console.warn('Failed to warm hashtable cache:', error?.message || error);
+      })
+      ?.finally(() => {
+        window.electronAPI?.hashtable?.offWarmProgress?.(onWarmProgress);
+        if (!cancelled) setIsHashPreloading(false);
+      });
+
     return () => {
+      cancelled = true;
+      window.electronAPI?.hashtable?.offWarmProgress?.(onWarmProgress);
+    };
+  }, [settingsLoaded, warmHashCache, hashPath]);
+
+  useEffect(() => {
+    return () => {
+      // Always clear on unmount. Hash tables may still be loaded by extraction/inspect
+      // even when warm preload is disabled.
+      window.electronAPI?.hashtable?.setKeepAlive?.(false).catch(() => {});
       window.electronAPI?.hashtable?.clearCache?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    if (!warmHashCache) {
+      window.electronAPI?.hashtable?.setKeepAlive?.(false).catch(() => {});
+    }
+  }, [settingsLoaded, warmHashCache]);
 
   // Check setup validity when setup inputs change.
   useEffect(() => {
@@ -230,11 +283,16 @@ const FrogChanger = () => {
       setHashPath(loaded.hashPath || '');
       setLeaguePath(loaded.leaguePath || '');
       setExtractionPath(loaded.extractionPath || '');
-      setExtractVoiceover(loaded.extractVoiceover);
+      setWarmHashCache(loaded.warmHashCache === true);
+      setIsHashPreloading(loaded.warmHashCache === true);
+      if (loaded.warmHashCache === true) {
+        setHashPreloadStage('Initializing hash preload...');
+      }
       if (loaded.hashStatus) setHashStatus(loaded.hashStatus);
       setSettingsLoaded(true);
     } catch (error) {
       console.error('Error loading settings:', error);
+      setIsHashPreloading(false);
       setSettingsLoaded(true);
     }
   };
@@ -464,10 +522,10 @@ const FrogChanger = () => {
     await electronPrefs.save();
   };
 
-  const handleToggleExtractVoiceover = async () => {
-    const newValue = !extractVoiceover;
-    setExtractVoiceover(newValue);
-    electronPrefs.obj.FrogChangerExtractVoiceover = newValue;
+  const handleWarmHashCacheChange = async (enabled) => {
+    const nextValue = enabled === true;
+    setWarmHashCache(nextValue);
+    electronPrefs.obj.FrogChangerWarmHashCache = nextValue;
     await electronPrefs.save();
   };
 
@@ -729,11 +787,50 @@ const FrogChanger = () => {
   };
 
   const handleChromaClick = (chroma, skin, championName) => {
-    const skinKey = `${championName}_${skin.id}`;
-    setSelectedChromas(prev => ({
-      ...prev,
-      [skinKey]: chroma
-    }));
+    const rawSkinId = Number(
+      skin?.skinNumber != null
+        ? skin.skinNumber
+        : (skin?.id != null ? skin.id : 0)
+    );
+    const normalizedSkinId = rawSkinId >= 1000 ? rawSkinId % 1000 : rawSkinId;
+    const skinKey = `${championName}_${normalizedSkinId}`;
+    const wasSelected = selectedChromas[skinKey]?.id === chroma?.id;
+    setSelectedChromas(prev => {
+      if (wasSelected) {
+        const next = { ...prev };
+        delete next[skinKey];
+        return next;
+      }
+      return {
+        ...prev,
+        [skinKey]: chroma,
+      };
+    });
+
+    if (wasSelected) {
+      // If chroma was toggled off, also allow fast deselect of that auto-selected card.
+      setSelectedSkins(prev => prev.filter(
+        (s) => !(typeof s !== 'string' && s?.champion?.name === championName && Number(s?.id) === normalizedSkinId)
+      ));
+      return;
+    }
+
+    // Ensure chroma selection also selects the parent skin so action bar appears.
+    const skinSelection = {
+      id: normalizedSkinId,
+      name: skin?.name || `Skin ${normalizedSkinId}`,
+      champion: { name: championName },
+    };
+    setSelectedSkins(prev => {
+      const exists = prev.some(
+        (s) =>
+          typeof s !== 'string' &&
+          s?.champion?.name === championName &&
+          Number(s?.id) === normalizedSkinId
+      );
+      if (exists) return prev;
+      return [...prev, skinSelection];
+    });
   };
 
   const ensureSetupReady = async (actionLabel) => {
@@ -786,6 +883,36 @@ const FrogChanger = () => {
       .filter(Boolean)
   );
 
+  const handleInspectModel = async () => {
+    const setupReady = await ensureSetupReady('inspecting models');
+    if (!setupReady) return;
+
+    const normalizedSelections = getNormalizedSelectedSkins();
+    if (normalizedSelections.length === 0) return;
+
+    const target = normalizedSelections[0];
+    const chromaKey = `${target.championName}_${target.skinId}`;
+    const chromaOptions = chromaData[chromaKey] || [];
+    const selectedChroma = selectedChromas[chromaKey] || null;
+    const inspectSkinId = target.skinId;
+    const inspectSkinName = selectedChroma?.name
+      ? `${target.skinName} (${selectedChroma.name})`
+      : target.skinName;
+    if (normalizedSelections.length > 1) {
+      addConsoleLog('Inspect Model currently uses the first selected skin.', 'warning');
+    }
+
+    await modelInspect.inspect({
+      championName: target.championName,
+      skinId: inspectSkinId,
+      chromaId: selectedChroma?.id ?? null,
+      chromaOptions,
+      skinName: inspectSkinName,
+      leaguePath,
+      hashPath,
+    });
+  };
+
   const handleExtractWad = async () => {
     const setupReady = await ensureSetupReady('extracting');
     if (!setupReady) return;
@@ -798,7 +925,12 @@ const FrogChanger = () => {
     setShowExtractionModeModal(true);
   };
 
-  const executeExtraction = async (decisions) => {
+  const executeExtraction = async (payload) => {
+    const decisions = payload?.decisions || [];
+    const extractOptions = payload?.options || {};
+    const useExtractVoiceover = extractOptions.extractVoiceover === true;
+    const usePreserveHudIcons2D = extractOptions.preserveHudIcons2D !== false;
+
     setShowExtractionModeModal(false);
     const normalizedSelections = pendingExtractionSkins;
 
@@ -817,7 +949,7 @@ const FrogChanger = () => {
         const cleanAfterExtract = decision?.clean ?? false;
         const progress = `${i + 1}/${normalizedSelections.length}`;
 
-        if (extractVoiceover) {
+        if (useExtractVoiceover) {
           addConsoleLog(`${progress} Extracting ${skinName} (${championName}) - Normal & Voiceover WADs...`, 'info');
         } else {
           addConsoleLog(`${progress} Extracting ${skinName} (${championName}) - Normal WAD only (Voiceover disabled)...`, 'info');
@@ -826,9 +958,15 @@ const FrogChanger = () => {
         const selectedChroma = selectedChromas[skinKey];
         if (selectedChroma) {
           addConsoleLog(`${progress} Extracting with chroma ${selectedChroma.id}...`, 'info');
-          await extractWadFile(championName, skinId, skinName, selectedChroma.id, cleanAfterExtract);
+          await extractWadFile(championName, skinId, skinName, selectedChroma.id, cleanAfterExtract, {
+            extractVoiceover: useExtractVoiceover,
+            preserveHudIcons2D: usePreserveHudIcons2D,
+          });
         } else {
-          await extractWadFile(championName, skinId, skinName, null, cleanAfterExtract);
+          await extractWadFile(championName, skinId, skinName, null, cleanAfterExtract, {
+            extractVoiceover: useExtractVoiceover,
+            preserveHudIcons2D: usePreserveHudIcons2D,
+          });
         }
 
         addConsoleLog(`${progress} Successfully extracted ${skinName} (${championName})`, 'success');
@@ -873,6 +1011,8 @@ const FrogChanger = () => {
       setCurrentSkinIndex(0);
       setSkinPrefixes({});
       setApplyToAll(false);
+      setSkipSfxRepath(true);
+      setRepathPreserveHudIcons2D(true);
       setShowPrefixModal(true);
     }
   };
@@ -909,13 +1049,12 @@ const FrogChanger = () => {
         const firstSkin = championSkins[0];
         const firstSkinId = firstSkin.skinId;
 
-        if (extractVoiceover) {
-          addConsoleLog(`${progress} Extracting ${firstSkin.skinName} (${championName}) - Normal & Voiceover WADs for repath...`, 'info');
-        } else {
-          addConsoleLog(`${progress} Extracting ${firstSkin.skinName} (${championName}) - Normal WAD only for repath (Voiceover disabled)...`, 'info');
-        }
+        addConsoleLog(`${progress} Extracting ${firstSkin.skinName} (${championName}) - Normal WAD for repath...`, 'info');
         // Extract WAD file (only once per champion)
-        await extractWadFile(championName, firstSkinId, firstSkin.skinName);
+        await extractWadFile(championName, firstSkinId, firstSkin.skinName, null, false, {
+          extractVoiceover: false,
+          preserveHudIcons2D: repathPreserveHudIcons2D,
+        });
 
         // Check for cancellation after extraction
         if (isCancelling) {
@@ -954,6 +1093,8 @@ const FrogChanger = () => {
           hashPath,
           prefix: uniquePrefixes[0],
           processTogether,
+          preserveHudIcons2D: repathPreserveHudIcons2D,
+          skipSfxRepath,
         });
 
         if (repathResult.success) {
@@ -1018,7 +1159,7 @@ const FrogChanger = () => {
       alert(`Failed to download splash art: ${error.message}`);
     }
   };
-  const extractWadFile = async (championName, skinId, skinName = null, chromaId = null, cleanAfterExtract = false) => {
+  const extractWadFile = async (championName, skinId, skinName = null, chromaId = null, cleanAfterExtract = false, options = {}) => {
     if (!leaguePath) {
       alert('Please set the League of Legends Games folder path in settings first!');
       return;
@@ -1027,6 +1168,9 @@ const FrogChanger = () => {
       alert('Please set the WAD extraction output path in settings first!');
       return;
     }
+
+    const extractVoiceover = options.extractVoiceover === true;
+    const preserveHudIcons2D = options.preserveHudIcons2D !== false;
 
     const skinKey = `${championName}_${skinId}`;
     setExtractingSkins(prev => ({ ...prev, [skinKey]: true }));
@@ -1043,6 +1187,7 @@ const FrogChanger = () => {
         hashPath,
         extractVoiceover,
         cleanAfterExtract,
+        preserveHudIcons2D,
         onProgress: (message) => {
           setExtractionProgress(prev => ({ ...prev, [skinKey]: message }));
         },
@@ -1063,6 +1208,36 @@ const FrogChanger = () => {
       setExtractingSkins(prev => ({ ...prev, [skinKey]: false }));
     }
   };
+
+  if (!settingsLoaded) {
+    return <LoadingStateView />;
+  }
+
+  if (warmHashCache && isHashPreloading) {
+    return (
+      <div className="frogchanger-wrapper h-screen bg-black text-white relative overflow-hidden">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+          <div
+            style={{
+              width: 34,
+              height: 34,
+              border: '3px solid rgba(255,255,255,0.2)',
+              borderTopColor: 'var(--accent2)',
+              borderRadius: '50%',
+              animation: 'spin 0.9s linear infinite',
+            }}
+          />
+          <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.9)' }}>
+            Preloading hash tables...
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.65)' }}>
+            {hashPreloadStage}
+          </div>
+        </div>
+        <style>{'@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }'}</style>
+      </div>
+    );
+  }
 
   if (loading && champions.length === 0) {
     return <LoadingStateView />;
@@ -1160,6 +1335,7 @@ const FrogChanger = () => {
         isSetupValid={isSetupValid}
         onExtract={handleExtractWad}
         onRepath={handleRepath}
+        onInspectModel={handleInspectModel}
         onClearAll={() => setSelectedSkins([])}
       />
 
@@ -1176,18 +1352,18 @@ const FrogChanger = () => {
         leaguePath={leaguePath}
         extractionPath={extractionPath}
         hashPath={hashPath}
-        extractVoiceover={extractVoiceover}
         onAutoDetectLeaguePath={handleAutoDetectLeaguePath}
         onBrowseLeaguePath={handleBrowseLeaguePath}
         onBrowseExtractionPath={handleBrowseExtractionPath}
         onLeaguePathChange={handleLeaguePathChange}
         onExtractionPathChange={handleExtractionPathChange}
-        onToggleExtractVoiceover={handleToggleExtractVoiceover}
+        warmHashCache={warmHashCache}
+        onWarmHashCacheChange={handleWarmHashCacheChange}
         showCelestiaGuide={showCelestiaGuide}
         onOpenGuide={() => setShowCelestiaGuide(true)}
       />
 
-            <CustomPrefixModal
+      <CustomPrefixModal
         open={showPrefixModal}
         pendingRepathData={pendingRepathData}
         currentSkinIndex={currentSkinIndex}
@@ -1195,12 +1371,16 @@ const FrogChanger = () => {
         setCustomPrefix={setCustomPrefix}
         applyToAll={applyToAll}
         setApplyToAll={setApplyToAll}
+        skipSfxRepath={skipSfxRepath}
+        setSkipSfxRepath={setSkipSfxRepath}
+        preserveHudIcons2D={repathPreserveHudIcons2D}
+        setPreserveHudIcons2D={setRepathPreserveHudIcons2D}
         onCancel={handleCancelPrefixModal}
         onPrevious={handlePreviousPrefix}
         onNextOrStart={handleNextOrStartPrefix}
       />
 
-            <ExtractionModeModal
+      <ExtractionModeModal
         open={showExtractionModeModal}
         skins={pendingExtractionSkins}
         onDecide={executeExtraction}
@@ -1210,7 +1390,7 @@ const FrogChanger = () => {
         }}
       />
 
-            <WarningModal
+      <WarningModal
         open={showWarningModal}
         leaguePath={leaguePath}
         extractionPath={extractionPath}
@@ -1219,6 +1399,16 @@ const FrogChanger = () => {
         setWarningDontShowAgain={setWarningDontShowAgain}
         onCancel={handleWarningCancel}
         onOpenSettings={handleWarningOpenSettings}
+      />
+
+      <ModelInspectModal
+        open={modelInspect.open}
+        loading={modelInspect.loading}
+        error={modelInspect.error}
+        progressMessage={modelInspect.progressMessage}
+        manifest={modelInspect.manifest}
+        onSelectChroma={modelInspect.selectChroma}
+        onClose={modelInspect.close}
       />
 
       {/* Celestia Guide */}

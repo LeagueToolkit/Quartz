@@ -1,0 +1,22 @@
+{
+    "$schema": "../gen/schemas/desktop-schema.json",
+    "identifier": "default",
+    "description": "Capability for the main window",
+    "windows": [
+        "main"
+    ],
+    "permissions": [
+        "core:default",
+        "core:window:allow-show",
+        "dialog:default",
+        "dialog:allow-open",
+        "dialog:allow-save",
+        "dialog:allow-message",
+        "dialog:allow-ask",
+        "dialog:allow-confirm",
+        "updater:default",
+        "updater:allow-check",
+        "process:default",
+        "process:allow-restart"
+    ]
+}

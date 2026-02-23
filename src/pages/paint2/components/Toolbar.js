@@ -167,7 +167,8 @@ function Toolbar({
                         }
                     }}
                 >
-                    <MenuItem value="random">Random</MenuItem>
+                    <MenuItem value="random">Normal</MenuItem>
+                    <MenuItem value="random-keyframe">Random Gradient</MenuItem>
                     <MenuItem value="linear">Linear Gradient</MenuItem>
                     <MenuItem value="shift">HSL Shift</MenuItem>
                     <MenuItem value="shift-hue">Shift Hue</MenuItem>

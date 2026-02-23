@@ -2,6 +2,143 @@ import { openAssetPreview } from '../../utils/assets/assetPreviewEvent';
 import { processDataURL } from '../../utils/assets/rgbaDataURL';
 
 const closeTimers = new Map();
+const CONTEXT_MENU_ID = 'shared-texture-hover-context-menu';
+
+function removeTextureContextMenu() {
+  const existing = document.getElementById(CONTEXT_MENU_ID);
+  if (existing) existing.remove();
+}
+
+function openTextureInExternalApp(resolvedPath) {
+  if (!resolvedPath || !window.require) return;
+  try {
+    const { shell } = window.require('electron');
+    if (shell) shell.openPath(resolvedPath);
+  } catch (err) {
+    console.error('Error opening external app:', err);
+  }
+}
+
+function openTextureInImgRecolor(resolvedPath, onClosePreview) {
+  if (!resolvedPath) return;
+  try {
+    if (onClosePreview) onClosePreview();
+    const pathNode = window.require?.('path');
+    const dirPath = pathNode ? pathNode.dirname(resolvedPath) : null;
+    if (!dirPath) return;
+
+    sessionStorage.setItem('imgRecolorAutoOpen', JSON.stringify({
+      autoLoadPath: dirPath,
+      autoSelectFile: resolvedPath,
+    }));
+    window.location.hash = '#/img-recolor';
+  } catch (err) {
+    console.error('Error opening in ImgRecolor:', err);
+  }
+}
+
+function showTextureContextMenu({ x, y, data, onClosePreview, previewId = 'shared-texture-hover-preview' }) {
+  removeTextureContextMenu();
+  if (!data) return;
+
+  const menu = document.createElement('div');
+  menu.id = CONTEXT_MENU_ID;
+  menu.style.cssText = `
+    position: fixed;
+    z-index: 11050;
+    min-width: 210px;
+    background: rgba(12, 12, 18, 0.98);
+    backdrop-filter: blur(10px) saturate(160%);
+    -webkit-backdrop-filter: blur(10px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+    padding: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    color: rgba(255, 255, 255, 0.92);
+  `;
+
+  const makeItem = (label, onClick, disabled = false) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.textContent = label;
+    item.disabled = disabled;
+    item.style.cssText = `
+      width: 100%;
+      display: block;
+      text-align: left;
+      background: transparent;
+      border: none;
+      border-radius: 7px;
+      color: ${disabled ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.9)'};
+      padding: 8px 10px;
+      font-size: 11px;
+      letter-spacing: 0.03em;
+      cursor: ${disabled ? 'not-allowed' : 'pointer'};
+    `;
+    if (!disabled) {
+      item.onmouseenter = () => { item.style.background = 'rgba(255,255,255,0.08)'; };
+      item.onmouseleave = () => { item.style.background = 'transparent'; };
+      item.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        removeTextureContextMenu();
+        onClick();
+      };
+    }
+    return item;
+  };
+
+  const resolvedPath = data.resolvedDiskPath || data.path;
+  const canUseExternal = Boolean(resolvedPath);
+
+  menu.appendChild(makeItem('Open in External App', () => {
+    openTextureInExternalApp(resolvedPath);
+  }, !canUseExternal));
+
+  menu.appendChild(makeItem('Open in ImgRecolor', () => {
+    openTextureInImgRecolor(resolvedPath, onClosePreview);
+  }, !resolvedPath));
+
+  menu.appendChild(makeItem('Open in Asset Preview', () => {
+    if (onClosePreview) onClosePreview();
+    openAssetPreview(resolvedPath, data.dataUrl);
+  }, !resolvedPath));
+
+  document.body.appendChild(menu);
+
+  const rect = menu.getBoundingClientRect();
+  let left = x;
+  let top = y;
+  if (left + rect.width > window.innerWidth - 10) left = window.innerWidth - rect.width - 10;
+  if (top + rect.height > window.innerHeight - 10) top = window.innerHeight - rect.height - 10;
+  if (left < 10) left = 10;
+  if (top < 10) top = 10;
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+
+  const closeMenu = () => {
+    removeTextureContextMenu();
+    const previewEl = document.getElementById(previewId);
+    if (previewEl && !previewEl.matches(':hover')) {
+      scheduleTextureHoverClose(previewId, 120);
+    }
+  };
+  const onMouseDown = (e) => {
+    if (!menu.contains(e.target)) closeMenu();
+  };
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') closeMenu();
+  };
+
+  setTimeout(() => {
+    document.addEventListener('mousedown', onMouseDown, { once: true });
+    document.addEventListener('contextmenu', onMouseDown, { once: true });
+    document.addEventListener('keydown', onKeyDown, { once: true });
+    window.addEventListener('scroll', closeMenu, { once: true });
+    window.addEventListener('resize', closeMenu, { once: true });
+  }, 0);
+}
 
 export function cancelTextureHoverClose(previewId = 'shared-texture-hover-preview') {
   const timer = closeTimers.get(previewId);
@@ -14,6 +151,10 @@ export function cancelTextureHoverClose(previewId = 'shared-texture-hover-previe
 export function scheduleTextureHoverClose(previewId = 'shared-texture-hover-preview', delay = 500) {
   cancelTextureHoverClose(previewId);
   const timer = setTimeout(() => {
+    if (document.getElementById(CONTEXT_MENU_ID)) {
+      closeTimers.delete(previewId);
+      return;
+    }
     removeTextureHoverPreview(previewId);
     closeTimers.delete(previewId);
   }, delay);
@@ -22,6 +163,7 @@ export function scheduleTextureHoverClose(previewId = 'shared-texture-hover-prev
 
 export function removeTextureHoverPreview(previewId = 'shared-texture-hover-preview') {
   cancelTextureHoverClose(previewId);
+  removeTextureContextMenu();
   const existing = document.getElementById(previewId);
   if (existing) existing.remove();
 }
@@ -78,7 +220,7 @@ export function showTextureHoverPreview({
   const itemsHtml = textureData.map((data, idx) => {
     const fileName = (data.path || '').split(/[/\\]/).pop();
     return `
-      <div class="texture-item" data-idx="${idx}" title="Left-click: Asset Preview | Right-click: Open in External App" style="cursor: pointer; display: flex; flex-direction: column; gap: 8px; align-items: center; transition: all 0.2s ease; min-width: 0;">
+      <div class="texture-item" data-idx="${idx}" title="Left-click: Asset Preview | Right-click: More actions" style="cursor: pointer; display: flex; flex-direction: column; gap: 8px; align-items: center; transition: all 0.2s ease; min-width: 0;">
         <div style="width: 100%; height: ${itemSize}; background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%), linear-gradient(-45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%), linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%); background-size: 12px 12px; background-position: 0 0, 0 6px, 6px -6px, -6px 0px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
           ${data.dataUrl
             ? `<img src="${processDataURL(data.dataUrl)}" style="width: 100%; height: 100%; object-fit: contain;" />`
@@ -128,6 +270,7 @@ export function showTextureHoverPreview({
     cancelTextureHoverClose(previewId);
   };
   preview.onmouseleave = () => {
+    if (document.getElementById(CONTEXT_MENU_ID)) return;
     scheduleTextureHoverClose(previewId, 300);
   };
 
@@ -145,16 +288,16 @@ export function showTextureHoverPreview({
     el.oncontextmenu = (event) => {
       event.preventDefault();
       event.stopPropagation();
+      cancelTextureHoverClose(previewId);
       const idx = parseInt(el.getAttribute('data-idx'), 10);
       const data = textureData[idx];
-      if (data && data.resolvedDiskPath && window.require) {
-        try {
-          const { shell } = window.require('electron');
-          if (shell) shell.openPath(data.resolvedDiskPath);
-        } catch (err) {
-          console.error('Error opening external app:', err);
-        }
-      }
+      showTextureContextMenu({
+        x: event.clientX + 2,
+        y: event.clientY - 4,
+        data,
+        previewId,
+        onClosePreview: () => preview.remove(),
+      });
     };
 
     el.onmouseenter = () => {

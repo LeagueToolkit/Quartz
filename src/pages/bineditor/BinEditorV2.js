@@ -184,6 +184,7 @@ export default function BinEditorV2() {
 
             try {
                 await electronPrefs.set('BinEditorLastBinPath', filePath);
+                await electronPrefs.set('SharedLastBinPath', filePath);
             } catch (e) { console.warn('Failed to save BinEditor path', e); }
 
             setIsLoading(true);
@@ -311,6 +312,46 @@ export default function BinEditorV2() {
         window.addEventListener('asset-preview-selected', handleAssetSelected);
         return () => window.removeEventListener('asset-preview-selected', handleAssetSelected);
     }, [processBinFile]);
+
+    // Auto-load last opened bin on startup when preference is enabled
+    useEffect(() => {
+        const autoLoadLastBin = async () => {
+            if (binPath) return;
+
+            try {
+                await electronPrefs.initPromise;
+                const autoLoadRaw = await electronPrefs.get('AutoLoadEnabled');
+                const autoLoadEnabled = autoLoadRaw === true || autoLoadRaw === 'true' || autoLoadRaw === 1;
+                if (!autoLoadEnabled) return;
+
+                let lastPath = await electronPrefs.get('BinEditorLastBinPath');
+                if (!lastPath) {
+                    lastPath = await electronPrefs.get('SharedLastBinPath');
+                }
+
+                if (!lastPath || !window.require) return;
+
+                const fs = window.require('fs');
+                if (fs?.existsSync(lastPath)) {
+                    await processBinFile(lastPath);
+                    return;
+                }
+
+                try {
+                    await electronPrefs.set('BinEditorLastBinPath', '');
+                    const sharedPath = await electronPrefs.get('SharedLastBinPath');
+                    if (sharedPath === lastPath) {
+                        await electronPrefs.set('SharedLastBinPath', '');
+                    }
+                } catch { }
+            } catch (error) {
+                console.error('Error auto-loading last bin in BinEditor:', error);
+            }
+        };
+
+        const timer = setTimeout(autoLoadLastBin, 100);
+        return () => clearTimeout(timer);
+    }, [binPath, processBinFile]);
 
     const saveFile = useCallback(async () => {
         if (!data || !currentPath || !binPath) {
@@ -1874,5 +1915,4 @@ function hexToRgb(hex) {
     }
     return '255, 255, 255';
 }
-
 

@@ -88,7 +88,7 @@ function joinPath(...parts) {
  * @param {string} wadFilePath
  * @param {string} outputDir
  * @param {Object|null} hashtables
- * @param {Function|null} filter  - (hash: string) => boolean
+ * @param {Function|null} filter  - (hash: string, chunk: object) => boolean
  * @param {Function|null} progressCallback - (count: number, message: string) => void
  * @returns {Promise<{ success: boolean, extractedCount: number, hashedFiles: Object, outputDir: string }>}
  */
@@ -146,7 +146,7 @@ export async function unpackWAD(wadFilePath, outputDir, hashtables = null, filte
         // -------------------------------------------------------------------------
         // 4. Apply optional filter
         // -------------------------------------------------------------------------
-        const chunksToProcess = filter ? wad.chunks.filter(c => filter(c.hash)) : wad.chunks;
+        const chunksToProcess = filter ? wad.chunks.filter(c => filter(c.hash, c)) : wad.chunks;
         console.log(`[WADTool] Chunks to process: ${chunksToProcess.length}`);
 
         // OneDrive / long-path warnings
@@ -251,6 +251,15 @@ export async function unpackWAD(wadFilePath, outputDir, hashtables = null, filte
         // Write helper with hash-fallback on path errors
         const writeChunk = async (filePath, chunk) => {
             try {
+                // For unresolved hash names, extension can be discovered only after readData().
+                // Ensure final write path carries guessed extension (e.g. PROP/PTCH -> .bin).
+                if (WADHasher.isHash(chunk.hash) && chunk.extension) {
+                    const ext = `.${String(chunk.extension).toLowerCase()}`;
+                    if (!filePath.toLowerCase().endsWith(ext)) {
+                        filePath = `${filePath}${ext}`;
+                        await fs.promises.mkdir(path.dirname(filePath), { recursive: true }).catch(() => {});
+                    }
+                }
                 if (isOneDrivePath && filePath.toLowerCase().endsWith('.bin')) {
                     await new Promise(r => setTimeout(r, 10));
                 }

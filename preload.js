@@ -35,10 +35,23 @@ window.electronAPI = {
 
   hashtable: {
     /**
+     * Eagerly load hash tables into main-process cache.
+     */
+    warmCache: (hashPath, options = {}) => ipcRenderer.invoke('hashtable:warmCache', { hashPath, ...options }),
+    onWarmProgress: (callback) => ipcRenderer.on('hashtable:warmProgress', callback),
+    offWarmProgress: (callback) => ipcRenderer.removeListener('hashtable:warmProgress', callback),
+    setKeepAlive: (enabled) => ipcRenderer.invoke('hashtable:setKeepAlive', enabled),
+    /**
      * Clear the main-process hashtables cache immediately.
      * Call this when the user navigates away from a page that triggered extractions.
      */
     clearCache: () => ipcRenderer.invoke('hashtable:clearCache'),
+  },
+
+  modelInspect: {
+    prepareSkinAssets: (params) => ipcRenderer.invoke('modelInspect:prepareSkinAssets', params),
+    onProgress: (callback) => ipcRenderer.on('modelInspect:progress', callback),
+    offProgress: (callback) => ipcRenderer.removeListener('modelInspect:progress', callback),
   },
 
 };

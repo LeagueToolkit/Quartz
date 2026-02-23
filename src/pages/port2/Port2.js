@@ -8,6 +8,7 @@ import DonorColumn from './components/DonorColumn';
 import PortStatusBar from './components/PortStatusBar';
 import PortBottomControls from './components/PortBottomControls';
 import VfxSystemNamePromptModal from './components/modals/VfxSystemNamePromptModal';
+import PortAllModeModal from './components/modals/PortAllModeModal';
 import VfxMatrixEditorAdapter from './components/VfxMatrixEditorAdapter';
 import usePort from './hooks/usePort';
 import { Box, IconButton, Tooltip, Button, Typography, Checkbox, FormControlLabel, Select, MenuItem, FormControl, InputLabel, Menu } from '@mui/material';
@@ -36,6 +37,8 @@ const ENABLE_VIRTUALIZATION = true;
 const VIRTUALIZATION_THRESHOLD = 20;
 
 const Port2 = () => {
+  const [showPortAllModeModal, setShowPortAllModeModal] = useState(false);
+
   // All state and handlers live in usePort hook
   const {
     actionsMenuAnchor,
@@ -475,6 +478,15 @@ const Port2 = () => {
     }
   };
 
+  const handleOpenPortAllModeModal = useCallback(() => {
+    setShowPortAllModeModal(true);
+  }, []);
+
+  const handleSelectPortAllMode = useCallback((mode) => {
+    setShowPortAllModeModal(false);
+    handlePortAllSystems(hasResourceResolver, mode);
+  }, [handlePortAllSystems, hasResourceResolver]);
+
   const targetColumnProps = {
     isProcessing,
     handleOpenTargetBin,
@@ -750,9 +762,16 @@ const Port2 = () => {
         hasSkinCharacterData={hasSkinCharacterData}
         placement="top"
         showPortAllButton={!!(targetPyContent && donorPyContent)}
-        onPortAll={handlePortAllSystems}
+        onPortAll={handleOpenPortAllModeModal}
         isPortAllLoading={isPortAllLoading}
         disablePortAll={!hasResourceResolver || Object.values(donorSystems).length === 0}
+      />
+
+      <PortAllModeModal
+        open={showPortAllModeModal}
+        onClose={() => setShowPortAllModeModal(false)}
+        onSelectMode={handleSelectPortAllMode}
+        donorCount={Object.values(donorSystems || {}).length}
       />
 
       {/* Backup Viewer Dialog */}

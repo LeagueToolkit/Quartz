@@ -313,6 +313,7 @@ const DEFAULT_TABLE_NAMES = [
 ];
 const WAD_HASHES = ['hashes.game.txt', 'hashes.lcu.txt'];
 const hashtablesCache = new Map();
+const hashtableTableCache = new Map();
 
 // ---------------------------------------------------------------------------
 // Idle TTL: cache stays warm across consecutive extractions in a session,
@@ -320,11 +321,14 @@ const hashtablesCache = new Map();
 // ---------------------------------------------------------------------------
 const HASHTABLE_IDLE_TTL_MS = 30_000;
 let _ttlTimer = null;
+let _hashtablesCachePinned = false;
 
 function _resetHashtableTTL() {
+    if (_hashtablesCachePinned) return;
     if (_ttlTimer !== null) clearTimeout(_ttlTimer);
     _ttlTimer = setTimeout(() => {
         hashtablesCache.clear();
+        hashtableTableCache.clear();
         _ttlTimer = null;
         console.log('[bin.js] Hashtables cache cleared after idle TTL');
         // Request V8 to return freed pages to the OS immediately.
@@ -357,16 +361,17 @@ export async function loadHashtables(hashtablesPath, options = {}) {
         return hashtablesCache.get(cacheKey);
     }
 
-    const hashtables = {};
-
     // Initialize fs/path if not already done
     if (!fs || !path) {
         await initNodeModules();
     }
     if (!path || !fs) throw new Error('path/fs modules not available. This code requires Node.js/Electron environment.');
 
-    // Process all files in parallel for better performance
-    const loadPromises = tableNames.map(async (tableName) => {
+    const getTableCacheKey = (tableName) => `${hashtablesPath}::${tableName}`;
+    const missingTables = tableNames.filter((tableName) => !hashtableTableCache.has(getTableCacheKey(tableName)));
+
+    // Process only missing files in parallel for better performance.
+    const loadPromises = missingTables.map(async (tableName) => {
         const tablePath = path.join(hashtablesPath, tableName);
         try {
             // Read file asynchronously
@@ -402,21 +407,26 @@ export async function loadHashtables(hashtablesPath, options = {}) {
                 pos = lineEnd + 1;
             }
 
-            return { tableName, table };
+            return { tableName, table, ok: true };
         } catch (error) {
             // File doesn't exist or can't be read, skip it
-            return { tableName, table: null };
+            return { tableName, table: null, ok: false };
         }
     });
 
-    // Wait for all files to load in parallel
-    const results = await Promise.all(loadPromises);
-
-    // Build hashtables object
-    for (const { tableName, table } of results) {
-        if (table) {
-            hashtables[tableName] = table;
+    if (loadPromises.length > 0) {
+        const results = await Promise.all(loadPromises);
+        for (const { tableName, table, ok } of results) {
+            if (ok && table) {
+                hashtableTableCache.set(getTableCacheKey(tableName), table);
+            }
         }
+    }
+
+    const hashtables = {};
+    for (const tableName of tableNames) {
+        const table = hashtableTableCache.get(getTableCacheKey(tableName));
+        if (table) hashtables[tableName] = table;
     }
 
     hashtablesCache.set(cacheKey, hashtables);
@@ -429,5 +439,24 @@ export async function loadHashtables(hashtablesPath, options = {}) {
  */
 export function clearHashtablesCache() {
     hashtablesCache.clear();
+    hashtableTableCache.clear();
     console.log('[bin.js] Hashtables cache cleared');
+}
+
+/**
+ * Pin/unpin hashtable cache in memory.
+ * When pinned, idle TTL auto-clear is disabled until unpinned.
+ */
+export function setHashtablesCachePinned(pinned) {
+    _hashtablesCachePinned = pinned === true;
+    if (_hashtablesCachePinned) {
+        if (_ttlTimer !== null) {
+            clearTimeout(_ttlTimer);
+            _ttlTimer = null;
+        }
+        console.log('[bin.js] Hashtables cache pinned (TTL disabled)');
+        return;
+    }
+    console.log('[bin.js] Hashtables cache unpinned (TTL enabled)');
+    _resetHashtableTTL();
 }

@@ -8,6 +8,10 @@ const CustomPrefixModal = ({
   setCustomPrefix,
   applyToAll,
   setApplyToAll,
+  skipSfxRepath,
+  setSkipSfxRepath,
+  preserveHudIcons2D,
+  setPreserveHudIcons2D,
   onCancel,
   onPrevious,
   onNextOrStart,
@@ -226,6 +230,49 @@ const CustomPrefixModal = ({
               </div>
             </div>
           )}
+
+          <div style={styles.section}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                id="skipSfxRepath"
+                checked={skipSfxRepath}
+                onChange={(e) => setSkipSfxRepath(e.target.checked)}
+                style={{
+                  width: 14,
+                  height: 14,
+                  accentColor: 'var(--accent2)',
+                  cursor: 'pointer',
+                }}
+              />
+              <label htmlFor="skipSfxRepath" style={{ fontSize: '0.84rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
+                Skip SFX Repath
+              </label>
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.62)', marginTop: 8 }}>
+              It is not recommended to repath sfx, unless you plan to edit those files.
+            </div>
+          </div>
+
+          <div style={styles.section}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                id="preserveHudIcons2D"
+                checked={preserveHudIcons2D}
+                onChange={(e) => setPreserveHudIcons2D(e.target.checked)}
+                style={{
+                  width: 14,
+                  height: 14,
+                  accentColor: 'var(--accent2)',
+                  cursor: 'pointer',
+                }}
+              />
+              <label htmlFor="preserveHudIcons2D" style={{ fontSize: '0.84rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
+                Preserve HUD Icons2D
+              </label>
+            </div>
+          </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 16, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
             <button

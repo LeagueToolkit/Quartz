@@ -119,7 +119,8 @@ function PalettePanel({
                         }
                     }}
                 >
-                    <MenuItem value="random">Random</MenuItem>
+                    <MenuItem value="random">Normal</MenuItem>
+                    <MenuItem value="random-keyframe">Random Gradient</MenuItem>
                     <MenuItem value="linear">Linear Gradient</MenuItem>
                     <MenuItem value="shift">HSL Shift</MenuItem>
                     <MenuItem value="shift-hue">Hue Target</MenuItem>
@@ -187,7 +188,7 @@ function PalettePanel({
             )}
 
             {/* Palette Colors */}
-            {(mode === 'random' || mode === 'linear') && (
+            {(mode === 'random' || mode === 'random-keyframe' || mode === 'linear') && (
                 <Box sx={sectionStyle}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                         <Typography sx={labelStyle}>Palette</Typography>

@@ -14,13 +14,13 @@ const SettingsModal = ({
   leaguePath,
   extractionPath,
   hashPath,
-  extractVoiceover,
   onAutoDetectLeaguePath,
   onBrowseLeaguePath,
   onBrowseExtractionPath,
   onLeaguePathChange,
   onExtractionPathChange,
-  onToggleExtractVoiceover,
+  warmHashCache,
+  onWarmHashCacheChange,
   showCelestiaGuide,
   onOpenGuide,
 }) => {
@@ -170,37 +170,31 @@ const SettingsModal = ({
       transition: 'all 0.2s ease',
       marginTop: 8,
     },
-    toggleOn: {
-      padding: '6px 14px',
-      borderRadius: 6,
-      border: '1px solid color-mix(in srgb, var(--accent-green), transparent 55%)',
-      background: 'color-mix(in srgb, var(--accent-green), transparent 85%)',
-      color: 'var(--accent-green)',
-      fontFamily: 'inherit',
-      fontSize: '0.75rem',
-      fontWeight: 600,
-      cursor: 'pointer',
-      transition: 'all 0.2s ease',
-      textTransform: 'none',
-    },
-    toggleOff: {
-      padding: '6px 14px',
-      borderRadius: 6,
-      border: '1px solid rgba(255,255,255,0.15)',
-      background: 'rgba(255,255,255,0.05)',
-      color: 'rgba(255,255,255,0.6)',
-      fontFamily: 'inherit',
-      fontSize: '0.75rem',
-      fontWeight: 600,
-      cursor: 'pointer',
-      transition: 'all 0.2s ease',
-      textTransform: 'none',
-    },
     hint: {
       fontSize: 11,
       color: 'var(--text)',
       opacity: 0.8,
       marginTop: 6,
+    },
+    checkboxRow: {
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: 10,
+      marginTop: 10,
+    },
+    checkbox: {
+      marginTop: 2,
+      accentColor: 'var(--accent2)',
+      width: 14,
+      height: 14,
+      cursor: 'pointer',
+    },
+    checkboxLabel: {
+      fontSize: '0.78rem',
+      color: 'var(--text)',
+      lineHeight: 1.4,
+      fontFamily: 'inherit',
+      cursor: 'pointer',
     },
   };
 
@@ -408,38 +402,17 @@ const SettingsModal = ({
             <p style={styles.hint}>
               Hash files are automatically downloaded from CommunityDragon.
             </p>
-          </div>
-
-          {/* Voiceover Extraction */}
-          <div style={styles.section} data-voiceover-extraction>
-            <h3 style={styles.sectionTitle}>Voiceover Extraction</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
-              <button
-                onClick={onToggleExtractVoiceover}
-                style={extractVoiceover ? styles.toggleOn : styles.toggleOff}
-                onMouseEnter={(e) => {
-                  if (extractVoiceover) {
-                    e.currentTarget.style.background = 'color-mix(in srgb, var(--accent-green), transparent 75%)';
-                    e.currentTarget.style.boxShadow = '0 0 14px color-mix(in srgb, var(--accent-green), transparent 65%)';
-                  } else {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.12)';
-                    e.currentTarget.style.boxShadow = '0 0 10px rgba(255,255,255,0.06)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (extractVoiceover) {
-                    e.currentTarget.style.background = 'color-mix(in srgb, var(--accent-green), transparent 85%)';
-                  } else {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-                  }
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-              >
-                {extractVoiceover ? 'Enabled' : 'Disabled'}
-              </button>
-              <span style={{ fontSize: 12, color: 'var(--text)', opacity: 0.8 }}>
-                {extractVoiceover ? 'Voiceover files will be extracted' : 'Only normal WAD files will be extracted'}
-              </span>
+            <div style={styles.checkboxRow}>
+              <input
+                id="frogchanger-warm-hash-cache"
+                type="checkbox"
+                style={styles.checkbox}
+                checked={warmHashCache === true}
+                onChange={(e) => onWarmHashCacheChange?.(e.target.checked)}
+              />
+              <label htmlFor="frogchanger-warm-hash-cache" style={styles.checkboxLabel}>
+                Warm hash cache on page enter and clear it on leave. Useful on stronger PCs.
+              </label>
             </div>
           </div>
 

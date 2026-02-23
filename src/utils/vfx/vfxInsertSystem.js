@@ -407,8 +407,9 @@ function insertVFXSystemIntoFile(originalPy, systemFullContent, desiredSystemNam
  * Simple function to preserve VFX system content exactly as-is (like anibin)
  * No modifications, no ResourceResolver logic, just pure preservation
  */
-function insertVFXSystemWithPreservedNames(originalPy, systemFullContent, desiredSystemName, donorPyContent = null) {
+function insertVFXSystemWithPreservedNames(originalPy, systemFullContent, desiredSystemName, donorPyContent = null, options = {}) {
   if (!originalPy || !systemFullContent) return originalPy;
+  const strictResolverCopy = !!options?.strictResolverCopy;
 
   console.log(`[vfxInsertSystem] Pure preservation mode - inserting content exactly as-is - VERSION 2.0`);
 
@@ -452,7 +453,11 @@ function insertVFXSystemWithPreservedNames(originalPy, systemFullContent, desire
   // Extract ResourceResolver entries from the donor file's ResourceResolver section
   // The ResourceResolver entries are in the main file, not in the individual VFX system
   if (donorPyContent) {
-    const resourceResolverEntries = extractResourceResolverEntriesFromDonor(donorPyContent, systemFullContent);
+    const resourceResolverEntries = extractResourceResolverEntriesFromDonor(
+      donorPyContent,
+      systemFullContent,
+      strictResolverCopy
+    );
 
     if (resourceResolverEntries.length > 0) {
       console.log(`[vfxInsertSystem] Found ${resourceResolverEntries.length} ResourceResolver entries to copy from donor`);
@@ -476,7 +481,7 @@ function insertVFXSystemWithPreservedNames(originalPy, systemFullContent, desire
 /**
  * Extract ResourceResolver entries from donor file that match the VFX system
  */
-function extractResourceResolverEntriesFromDonor(donorPyContent, systemFullContent) {
+function extractResourceResolverEntriesFromDonor(donorPyContent, systemFullContent, strictResolverCopy = false) {
   const entries = [];
 
   // Extract the system name from the VFX system content
@@ -497,8 +502,10 @@ function extractResourceResolverEntriesFromDonor(donorPyContent, systemFullConte
   while ((match = resourceResolverPattern.exec(donorPyContent)) !== null) {
     const resourceMapContent = match[1];
 
-    // Extract individual entries from the resourceMap that match our system
-    // Support both string keys and hash keys, and both quoted and unquoted values
+    // Extract individual entries from the resourceMap.
+    // In strict mode: exact key/value match only.
+    // In legacy mode: keep broader matching behavior used by normal flows.
+    // Supports both string keys and hash keys, and both quoted and unquoted values.
     const entryPattern = /(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*=\s*(?:"([^"]+)"|(0x[0-9a-fA-F]+))/g;
     let entryMatch;
 
@@ -506,8 +513,15 @@ function extractResourceResolverEntriesFromDonor(donorPyContent, systemFullConte
       const key = entryMatch[1] || entryMatch[2]; // String key or hash key
       const value = entryMatch[3] || entryMatch[4]; // Quoted value or hash value
 
-      // Check if this entry matches our system (either by key or value)
-      if (value === systemName || key.includes(systemName.split('/').pop()) || value.includes(systemName.split('/').pop())) {
+      const isMatch = strictResolverCopy
+        ? (value === systemName || key === systemName)
+        : (
+          value === systemName ||
+          key.includes(systemName.split('/').pop()) ||
+          value.includes(systemName.split('/').pop())
+        );
+
+      if (isMatch) {
         // Format the entry correctly - preserve original format
         const formattedEntry = key.startsWith('0x')
           ? (value.startsWith('0x') ? `${key} = ${value}` : `${key} = "${value}"`)

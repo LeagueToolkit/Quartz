@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Paint2 - VFX Color Editor (Rewrite)
  * 
  * Clean, performant version of Paint.js with original layout.
@@ -52,6 +52,163 @@ import {
 
 const fs = window.require ? window.require('fs') : null;
 const path = window.require ? window.require('path') : null;
+
+const ShiftHueControl = React.memo(function ShiftHueControl({
+    value,
+    controlLabelStyle,
+    onCommit,
+    onStatus
+}) {
+    const [draft, setDraft] = useState(value);
+
+    useEffect(() => {
+        setDraft(value);
+    }, [value]);
+
+    return (
+        <Box sx={{ padding: '8px 40px', background: 'var(--glass-bg, rgba(18, 18, 24, 0.55))', borderBottom: '1px solid var(--glass-border, rgba(255,255,255,0.1))', flexShrink: 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Typography sx={{ ...controlLabelStyle, width: 80 }}>Target: {draft}°</Typography>
+                <Slider
+                    value={draft}
+                    onChange={(_, v) => {
+                        const next = Array.isArray(v) ? v[0] : v;
+                        setDraft(next);
+                    }}
+                    onChangeCommitted={(_, v) => {
+                        const next = Array.isArray(v) ? v[0] : v;
+                        setDraft(next);
+                        onCommit(next);
+                        onStatus(`Hue Target Ready: ${next}° (Press Recolor to apply)`);
+                    }}
+                    min={0}
+                    max={360}
+                    size="small"
+                    sx={{
+                        '& .MuiSlider-track': { background: 'transparent', border: 'none' },
+                        '& .MuiSlider-rail': {
+                            height: '5px',
+                            opacity: 1,
+                            background: 'linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)'
+                        },
+                        '& .MuiSlider-thumb': {
+                            width: 14,
+                            height: 14,
+                            background: 'var(--accent)',
+                            border: '2px solid rgba(255,255,255,0.75)',
+                            boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
+                            transition: 'all 0.16s ease',
+                            '&:hover': { boxShadow: '0 0 0 6px color-mix(in srgb, var(--accent), transparent 84%)' },
+                            '&.Mui-active': {
+                                boxShadow: '0 0 0 8px color-mix(in srgb, var(--accent), transparent 80%)',
+                            }
+                        }
+                    }}
+                />
+            </Box>
+        </Box>
+    );
+});
+
+const HslShiftControls = React.memo(function HslShiftControls({
+    values,
+    controlLabelStyle,
+    onCommit,
+    onStatus
+}) {
+    const [draft, setDraft] = useState(values);
+
+    useEffect(() => {
+        setDraft(values);
+    }, [values.h, values.s, values.l]);
+
+    const commitPart = (part, value) => {
+        const nextValue = Array.isArray(value) ? value[0] : value;
+        const next = { ...draft, [part]: nextValue };
+        setDraft(next);
+        onCommit(next);
+        onStatus(`HSL Shift Ready: H:${next.h}° S:${next.s}% L:${next.l}%`);
+    };
+
+    return (
+        <Box sx={{ padding: '8px 40px', background: 'var(--glass-bg, rgba(18, 18, 24, 0.55))', borderBottom: '1px solid var(--glass-border, rgba(255,255,255,0.1))', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Typography sx={{ ...controlLabelStyle, width: 80 }}>Hue: {draft.h}°</Typography>
+                <Slider
+                    value={draft.h}
+                    onChange={(_, v) => {
+                        const next = Array.isArray(v) ? v[0] : v;
+                        setDraft(prev => ({ ...prev, h: next }));
+                    }}
+                    onChangeCommitted={(_, v) => commitPart('h', v)}
+                    min={-180}
+                    max={180}
+                    size="small"
+                />
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Typography sx={{ ...controlLabelStyle, width: 80 }}>Sat: {draft.s}%</Typography>
+                <Slider
+                    value={draft.s}
+                    onChange={(_, v) => {
+                        const next = Array.isArray(v) ? v[0] : v;
+                        setDraft(prev => ({ ...prev, s: next }));
+                    }}
+                    onChangeCommitted={(_, v) => commitPart('s', v)}
+                    min={-100}
+                    max={100}
+                    size="small"
+                />
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Typography sx={{ ...controlLabelStyle, width: 80 }}>Lig: {draft.l}%</Typography>
+                <Slider
+                    value={draft.l}
+                    onChange={(_, v) => {
+                        const next = Array.isArray(v) ? v[0] : v;
+                        setDraft(prev => ({ ...prev, l: next }));
+                    }}
+                    onChangeCommitted={(_, v) => commitPart('l', v)}
+                    min={-100}
+                    max={100}
+                    size="small"
+                />
+            </Box>
+        </Box>
+    );
+});
+
+const BlendModeChanceSlider = React.memo(function BlendModeChanceSlider({
+    value,
+    controlLabelStyle,
+    onCommit
+}) {
+    const [draft, setDraft] = useState(value);
+
+    useEffect(() => {
+        setDraft(value);
+    }, [value]);
+
+    return (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Slider
+                size="small"
+                value={draft}
+                onChange={(_, v) => {
+                    const next = Array.isArray(v) ? v[0] : v;
+                    setDraft(next);
+                }}
+                onChangeCommitted={(_, v) => {
+                    const next = Array.isArray(v) ? v[0] : v;
+                    setDraft(next);
+                    onCommit(next);
+                }}
+                sx={{ width: 80, color: 'var(--accent)' }}
+            />
+            <Typography sx={{ ...controlLabelStyle, opacity: 0.5, minWidth: '35px' }}>{draft}%</Typography>
+        </Box>
+    );
+});
 
 
 function Paint2() {
@@ -1174,85 +1331,23 @@ function Paint2() {
 
             {/* Hue Slider (If mode is Shift Hue) */}
             {mode === 'shift-hue' && (
-                <Box sx={{ padding: '8px 40px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Typography sx={{ ...controlLabelStyle, width: 80 }}>Target: {hueTarget}°</Typography>
-                        <Slider
-                            value={hueTarget}
-                            onChange={(_, v) => {
-                                setHueTarget(v);
-                                setStatusMessage(`Hue Target Ready: ${v}° (Press Recolor to apply)`);
-                            }}
-                            min={0}
-                            max={360}
-                            size="small"
-                            sx={{
-                                '& .MuiSlider-track': { background: 'transparent', border: 'none' },
-                                '& .MuiSlider-rail': {
-                                    height: '6px',
-                                    opacity: 1,
-                                    background: 'linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)'
-                                },
-                                '& .MuiSlider-thumb': {
-                                    width: 24, height: 24,
-                                    background: 'var(--accent)',
-                                    border: '3px solid var(--bg)',
-                                    '&:hover': { boxShadow: '0 0 0 8px color-mix(in srgb, var(--accent), transparent 84%)' }
-                                }
-                            }}
-                        />
-                    </Box>
-                </Box>
+                <ShiftHueControl
+                    value={hueTarget}
+                    controlLabelStyle={controlLabelStyle}
+                    onCommit={setHueTarget}
+                    onStatus={setStatusMessage}
+                />
             )}
 
             {/* HSL Shift Sliders (If mode is Shift) */}
             {mode === 'shift' && (
-                <Box sx={{ padding: '8px 40px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {/* Hue Shift */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Typography sx={{ ...controlLabelStyle, width: 80 }}>Hue: {hslValues.h}°</Typography>
-                        <Slider
-                            value={hslValues.h}
-                            onChange={(_, v) => {
-                                setHslValues(prev => ({ ...prev, h: v }));
-                                setStatusMessage(`HSL Shift Ready: H:${v}° S:${hslValues.s}% L:${hslValues.l}%`);
-                            }}
-                            min={-180}
-                            max={180}
-                            size="small"
-                        />
-                    </Box>
-                    {/* Saturation Shift */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Typography sx={{ ...controlLabelStyle, width: 80 }}>Sat: {hslValues.s}%</Typography>
-                        <Slider
-                            value={hslValues.s}
-                            onChange={(_, v) => {
-                                setHslValues(prev => ({ ...prev, s: v }));
-                                setStatusMessage(`HSL Shift Ready: H:${hslValues.h}° S:${v}% L:${hslValues.l}%`);
-                            }}
-                            min={-100}
-                            max={100}
-                            size="small"
-                        />
-                    </Box>
-                    {/* Lightness Shift */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Typography sx={{ ...controlLabelStyle, width: 80 }}>Lig: {hslValues.l}%</Typography>
-                        <Slider
-                            value={hslValues.l}
-                            onChange={(_, v) => {
-                                setHslValues(prev => ({ ...prev, l: v }));
-                                setStatusMessage(`HSL Shift Ready: H:${hslValues.h}° S:${hslValues.s}% L:${v}%`);
-                            }}
-                            min={-100}
-                            max={100}
-                            size="small"
-                        />
-                    </Box>
-                </Box>
+                <HslShiftControls
+                    values={hslValues}
+                    controlLabelStyle={controlLabelStyle}
+                    onCommit={setHslValues}
+                    onStatus={setStatusMessage}
+                />
             )}
-
             <PaletteManager
                 mode={mode}
                 palette={palette}
@@ -1362,15 +1457,11 @@ function Paint2() {
                             Select BM{blendModeSelect}
                         </Button>
 
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Slider
-                                size="small"
-                                value={blendModeChance}
-                                onChange={(_, v) => setBlendModeChance(v)}
-                                sx={{ width: 80, color: 'var(--accent)' }}
-                            />
-                            <Typography sx={{ ...controlLabelStyle, opacity: 0.5, minWidth: '35px' }}>{blendModeChance}%</Typography>
-                        </Box>
+                        <BlendModeChanceSlider
+                            value={blendModeChance}
+                            controlLabelStyle={controlLabelStyle}
+                            onCommit={setBlendModeChance}
+                        />
                     </Box>
 
                     {/* Right Side: Color Targets */}
@@ -1413,7 +1504,7 @@ function Paint2() {
                         color: 'var(--accent)',
                         fontWeight: 500
                     }}>
-                        Materials Only Mode — VFX systems hidden
+                        Materials Only Mode â€” VFX systems hidden
                     </Typography>
                 </Box>
             )}

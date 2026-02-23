@@ -62,6 +62,7 @@ export class BumpathCore {
         this.entryName = {}; // Map: entryHash -> name
         this.entryTypeName = {}; // Map: entryHash -> type name
         this.hashtables = null; // Loaded hashtables for hash lookup
+        this.skipSfxRepath = false; // Optional: bypass SFX path repathing
     }
 
     /**
@@ -75,6 +76,13 @@ export class BumpathCore {
         this.entryPrefix = {};
         this.entryName = {};
         this.entryTypeName = {};
+        this.skipSfxRepath = false;
+    }
+
+    _isBlockedSfxPath(value) {
+        if (!this.skipSfxRepath || typeof value !== 'string') return false;
+        const norm = value.replace(/\\/g, '/').toLowerCase();
+        return /(^|\/)sounds\/wwise2016\/sfx(\/|$)/i.test(norm);
     }
 
     /**
@@ -794,6 +802,9 @@ export class BumpathCore {
         if (!field) return;
         
         if (field.type === BINType.STRING && typeof field.data === 'string') {
+            if (this._isBlockedSfxPath(field.data)) {
+                return;
+            }
             const valueLower = field.data.toLowerCase();
             if (valueLower.includes('assets/') || valueLower.includes('data/')) {
                 const unify = unifyPath(valueLower);
@@ -852,6 +863,9 @@ export class BumpathCore {
      */
     _bumValue(value, valueType, prefix, currentEntryHash = null) {
         if (valueType === BINType.STRING && typeof value === 'string') {
+            if (this._isBlockedSfxPath(value)) {
+                return value;
+            }
             const valueLower = value.toLowerCase();
             if (valueLower.includes('assets/') || valueLower.includes('data/')) {
                 const unify = unifyPath(valueLower);
@@ -1270,4 +1284,3 @@ export class BumpathCore {
         };
     }
 }
-

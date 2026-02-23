@@ -36,38 +36,121 @@ const celestialButtonStyle = {
   }
 };
 
-// Thumbnail loading queue - processes sequentially with UI yielding
+// Thumbnail loading queue with scroll-aware scheduling + cache.
+// Keeps scrolling responsive in large folders.
 const thumbnailQueue = {
   queue: [],
-  isProcessing: false,
+  activeCount: 0,
+  maxConcurrent: Math.max(2, Math.min(4, Math.floor((((typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : 8) || 8)) / 3))),
+  pausedUntil: 0,
+  scrollListenerAttached: false,
+  inflight: new Map(), // imagePath -> Promise<string|null>
+  cache: new Map(), // imagePath -> objectUrl
+  maxCacheSize: 600,
 
-  add(task) {
-    return new Promise((resolve, reject) => {
-      this.queue.push({ task, resolve, reject });
-      this.process();
-    });
+  attachScrollTracking() {
+    if (this.scrollListenerAttached || typeof document === 'undefined') return;
+    this.scrollListenerAttached = true;
+
+    const markScrolling = () => {
+      const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      this.pausedUntil = now + 140;
+      // Process again after scroll settles
+      setTimeout(() => this.process(), 150);
+    };
+
+    document.addEventListener('scroll', markScrolling, true);
+    document.addEventListener('wheel', markScrolling, { passive: true });
+    document.addEventListener('touchmove', markScrolling, { passive: true });
   },
 
-  async process() {
-    if (this.isProcessing) return;
-    this.isProcessing = true;
+  getCached(key) {
+    if (!this.cache.has(key)) return null;
+    const cached = this.cache.get(key);
+    // touch for LRU
+    this.cache.delete(key);
+    this.cache.set(key, cached);
+    return cached;
+  },
 
-    while (this.queue.length > 0) {
-      const job = this.queue.shift();
-
-      try {
-        // Critical: Yield to event loop every frame to keep UI responsive
-        await new Promise(r => setTimeout(r, 16));
-
-        if (job.task) {
-          const result = await job.task();
-          job.resolve(result);
-        }
-      } catch (e) {
-        job.reject(e);
-      }
+  setCached(key, objectUrl) {
+    if (!objectUrl) return;
+    if (this.cache.has(key)) {
+      const prev = this.cache.get(key);
+      if (prev && prev !== objectUrl) URL.revokeObjectURL(prev);
+      this.cache.delete(key);
     }
-    this.isProcessing = false;
+    this.cache.set(key, objectUrl);
+
+    while (this.cache.size > this.maxCacheSize) {
+      const oldestKey = this.cache.keys().next().value;
+      const oldestUrl = this.cache.get(oldestKey);
+      if (oldestUrl) URL.revokeObjectURL(oldestUrl);
+      this.cache.delete(oldestKey);
+    }
+  },
+
+  clearCache() {
+    for (const objectUrl of this.cache.values()) {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    }
+    this.cache.clear();
+    this.inflight.clear();
+    this.queue = [];
+    this.activeCount = 0;
+  },
+
+  add(key, task) {
+    this.attachScrollTracking();
+    const cached = this.getCached(key);
+    if (cached) return Promise.resolve(cached);
+    if (this.inflight.has(key)) return this.inflight.get(key);
+
+    const managedPromise = new Promise((resolve, reject) => {
+      const promiseHandlers = { resolve, reject };
+      this.queue.push({ key, task, promiseHandlers });
+      this.process();
+    }).then((result) => {
+      if (result) this.setCached(key, result);
+      return result;
+    }).finally(() => {
+      this.inflight.delete(key);
+    }).then((result) => {
+      return result;
+    });
+
+    this.inflight.set(key, managedPromise);
+    return managedPromise;
+  },
+
+  process() {
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    if (now < this.pausedUntil) return;
+
+    while (this.activeCount < this.maxConcurrent && this.queue.length > 0) {
+      const job = this.queue.shift();
+      this.activeCount += 1;
+
+      Promise.resolve()
+        .then(() => (job.task ? job.task() : null))
+        .then((result) => {
+          if (job.promiseHandlers?.resolve) job.promiseHandlers.resolve(result);
+          return result;
+        })
+        .catch((e) => {
+          if (job.promiseHandlers?.reject) job.promiseHandlers.reject(e);
+        })
+        .finally(() => {
+          this.activeCount -= 1;
+          if (this.queue.length > 0) {
+            if (typeof requestAnimationFrame === 'function') {
+              requestAnimationFrame(() => this.process());
+            } else {
+              setTimeout(() => this.process(), 0);
+            }
+          }
+        });
+    }
   }
 };
 
@@ -86,7 +169,7 @@ const ImageThumbnail = memo(({ image, isSelected, onImageClick }) => {
           observer.unobserve(entry.target);
         }
       },
-      { rootMargin: '50px' }
+      { rootMargin: '180px 0px', threshold: 0.01 }
     );
 
     if (ref.current) {
@@ -102,7 +185,13 @@ const ImageThumbnail = memo(({ image, isSelected, onImageClick }) => {
 
     let cancelled = false;
 
-    thumbnailQueue.add(async () => {
+    const cached = thumbnailQueue.getCached(image.path);
+    if (cached) {
+      setThumbnail(cached);
+      return;
+    }
+
+    thumbnailQueue.add(image.path, async () => {
       // Check if still mounted before doing work
       if (cancelled) return null;
 
@@ -131,7 +220,9 @@ const ImageThumbnail = memo(({ image, isSelected, onImageClick }) => {
       const thumbCtx = thumbCanvas.getContext('2d');
       thumbCtx.drawImage(fullCanvas, 0, 0, newWidth, newHeight);
 
-      return thumbCanvas.toDataURL();
+      const blob = await new Promise((resolve) => thumbCanvas.toBlob(resolve, 'image/png'));
+      if (!blob) return null;
+      return URL.createObjectURL(blob);
     }).then(dataUrl => {
       if (dataUrl && !cancelled) {
         setThumbnail(dataUrl);
@@ -262,6 +353,73 @@ const ImageThumbnail = memo(({ image, isSelected, onImageClick }) => {
   );
 });
 
+const ProcessedImageCard = memo(({ imagePath, displayImage }) => {
+  const [src, setSrc] = useState('');
+
+  useEffect(() => {
+    if (!displayImage) {
+      setSrc('');
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl = '';
+
+    const canvas = document.createElement('canvas');
+    canvas.width = displayImage.width;
+    canvas.height = displayImage.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.putImageData(displayImage, 0, 0);
+
+    canvas.toBlob((blob) => {
+      if (cancelled || !blob) return;
+      objectUrl = URL.createObjectURL(blob);
+      setSrc(objectUrl);
+    }, 'image/png');
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [displayImage]);
+
+  return (
+    <Box
+      sx={{
+        borderRadius: '8px',
+        overflow: 'hidden',
+        position: 'relative'
+      }}
+    >
+      {src && (
+        <img
+          src={src}
+          alt={imagePath}
+          style={{
+            width: '100%',
+            height: 'auto',
+            display: 'block',
+            imageRendering: 'pixelated'
+          }}
+        />
+      )}
+      <Typography sx={{
+        p: 1,
+        color: 'var(--text-2)',
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: '0.7rem',
+        textAlign: 'center',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }}>
+        {imagePath.split(/[\\/]/).pop()}
+      </Typography>
+    </Box>
+  );
+}, (prev, next) => prev.imagePath === next.imagePath && prev.displayImage === next.displayImage);
+
 const ImgRecolor = () => {
   // State
   const [folderPath, setFolderPath] = useState('');
@@ -300,10 +458,29 @@ const ImgRecolor = () => {
 
   const location = useLocation();
 
+  useEffect(() => {
+    return () => {
+      thumbnailQueue.clearCache();
+    };
+  }, []);
+
   // Handle auto-load from navigation state
   useEffect(() => {
-    if (location.state) {
-      const { autoLoadPath, autoSelectFile } = location.state;
+    let autoState = location.state || null;
+    if (!autoState) {
+      try {
+        const raw = sessionStorage.getItem('imgRecolorAutoOpen');
+        if (raw) {
+          autoState = JSON.parse(raw);
+          sessionStorage.removeItem('imgRecolorAutoOpen');
+        }
+      } catch (e) {
+        console.error('Failed to read ImgRecolor auto-open state:', e);
+      }
+    }
+
+    if (autoState) {
+      const { autoLoadPath, autoSelectFile } = autoState;
 
       if (autoLoadPath) {
         const loadAuto = async () => {
@@ -558,6 +735,14 @@ const ImgRecolor = () => {
 
   // Filter out grayscale images from all loaded images
   const handleFilterGrayscale = async () => {
+    const isDistortionName = (name = '') => {
+      const n = String(name).toLowerCase();
+      return n.includes('distortion')
+        || n.includes('distort')
+        || n.includes('distord')
+        || /(^|[_\-\s.])dist([_\-\s.]|$)/i.test(n);
+    };
+
     setIsLoading(true);
 
     // Give React time to render the spinner
@@ -568,6 +753,11 @@ const ImgRecolor = () => {
       let filtered = 0;
 
       for (const image of allImages) {
+        if (isDistortionName(image.name)) {
+          filtered++;
+          continue;
+        }
+
         const imageData = await loadSingleImage(image.path);
         if (imageData && !isGrayscaleImage(imageData)) {
           newSelected.add(image.path);
@@ -1032,45 +1222,12 @@ const ImgRecolor = () => {
                 {Array.from(loadedImages.entries()).map(([imagePath, data]) => {
                   // Use adjustedPreview for display (small, fast)
                   const displayImage = data.adjustedPreview || data.preview || data.original;
-                  const canvas = document.createElement('canvas');
-                  canvas.width = displayImage.width;
-                  canvas.height = displayImage.height;
-                  const ctx = canvas.getContext('2d');
-                  ctx.putImageData(displayImage, 0, 0);
-                  const dataURL = canvas.toDataURL();
-
                   return (
-                    <Box
+                    <ProcessedImageCard
                       key={imagePath}
-                      sx={{
-                        borderRadius: '8px',
-                        overflow: 'hidden',
-                        position: 'relative'
-                      }}
-                    >
-                      <img
-                        src={dataURL}
-                        alt={imagePath}
-                        style={{
-                          width: '100%',
-                          height: 'auto',
-                          display: 'block',
-                          imageRendering: 'pixelated'
-                        }}
-                      />
-                      <Typography sx={{
-                        p: 1,
-                        color: 'var(--text-2)',
-                        fontFamily: 'JetBrains Mono, monospace',
-                        fontSize: '0.7rem',
-                        textAlign: 'center',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {imagePath.split(/[\\/]/).pop()}
-                      </Typography>
-                    </Box>
+                      imagePath={imagePath}
+                      displayImage={displayImage}
+                    />
                   );
                 })}
               </Box>

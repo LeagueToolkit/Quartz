@@ -48,6 +48,127 @@ export default function useVfxMutations(
     selectedTargetSystem,
     setShowNewSystemModal
 ) {
+    const escapeRegExp = useCallback((str = '') => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), []);
+
+    const stripVfxSystemsAndResolverEntries = useCallback((content) => {
+        if (!content) return { content: '', removedSystems: 0, removedResolverEntries: 0 };
+
+        const lines = content.split('\n');
+        const kept = [];
+        const removedSystemKeys = new Set();
+        let removedSystems = 0;
+
+        let inSystem = false;
+        let systemDepth = 0;
+
+        const systemStartRe = /^\s*(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*=\s*VfxSystemDefinitionData\s*\{/;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmed = line.trim();
+
+            if (!inSystem) {
+                const match = trimmed.match(systemStartRe);
+                if (match) {
+                    const key = match[1] || match[2];
+                    if (key) removedSystemKeys.add(key);
+                    inSystem = true;
+                    systemDepth = (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+                    removedSystems++;
+                    continue;
+                }
+                kept.push(line);
+                continue;
+            }
+
+            systemDepth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+            if (systemDepth <= 0) {
+                inSystem = false;
+                systemDepth = 0;
+            }
+        }
+
+        const lines2 = kept;
+        const cleaned = [];
+        let removedResolverEntries = 0;
+        let inResolver = false;
+        let resolverDepth = 0;
+        let inResourceMap = false;
+        let resourceMapDepth = 0;
+
+        const resolverStartRe = /=\s*ResourceResolver\s*\{/i;
+        const resourceMapStartRe = /resourceMap:\s*map\[hash,link\]\s*=\s*\{/i;
+        const entryRe = /^(\s*)(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*=\s*(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*,?\s*$/;
+
+        for (let i = 0; i < lines2.length; i++) {
+            const line = lines2[i];
+            const trimmed = line.trim();
+
+            if (!inResolver && resolverStartRe.test(trimmed)) {
+                inResolver = true;
+                resolverDepth = (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+                cleaned.push(line);
+                continue;
+            }
+
+            if (inResolver && !inResourceMap && resourceMapStartRe.test(trimmed)) {
+                inResourceMap = true;
+                resourceMapDepth = (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+                cleaned.push(line);
+                continue;
+            }
+
+            if (inResolver && inResourceMap) {
+                const match = trimmed.match(entryRe);
+                if (match) {
+                    const entryKey = match[2] || match[3] || '';
+                    const entryValue = match[4] || match[5] || '';
+                    const valueLooksLikeVfx = /[\\\/]Particles[\\\/]/i.test(entryValue);
+                    const keyRemoved = removedSystemKeys.has(entryKey);
+                    const valueRemoved = removedSystemKeys.has(entryValue);
+                    if (valueLooksLikeVfx || keyRemoved || valueRemoved) {
+                        removedResolverEntries++;
+                    } else {
+                        cleaned.push(line);
+                    }
+                } else {
+                    cleaned.push(line);
+                }
+
+                resourceMapDepth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+                if (resourceMapDepth <= 0) {
+                    inResourceMap = false;
+                    resourceMapDepth = 0;
+                }
+
+                resolverDepth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+                if (resolverDepth <= 0) {
+                    inResolver = false;
+                    resolverDepth = 0;
+                    inResourceMap = false;
+                }
+                continue;
+            }
+
+            cleaned.push(line);
+
+            if (inResolver) {
+                resolverDepth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+                if (resolverDepth <= 0) {
+                    inResolver = false;
+                    resolverDepth = 0;
+                    inResourceMap = false;
+                }
+            }
+        }
+
+        return {
+            content: cleaned.join('\n'),
+            removedSystems,
+            removedResolverEntries,
+        };
+    }, []);
+
     const cancelPendingBackgroundSave = useCallback(() => {
         if (backgroundSaveTimerRef?.current) {
             clearTimeout(backgroundSaveTimerRef.current);
@@ -105,7 +226,7 @@ export default function useVfxMutations(
     }, [targetPyContent, recentCreatedSystemKeys, saveStateToHistory, setTargetPyContent, setTargetSystems, setRecentCreatedSystemKeys, setFileSaved, setStatusMessage, cancelPendingBackgroundSave, setShowNewSystemModal]);
 
     // Port all VFX systems from donor to target
-    const handlePortAllSystems = useCallback(async (hasResourceResolver) => {
+    const handlePortAllSystems = useCallback(async (hasResourceResolver, mode = 'normal') => {
         cancelPendingBackgroundSave();
         if (!targetPyContent || !donorPyContent) {
             setStatusMessage('Both target and donor files must be loaded');
@@ -123,32 +244,31 @@ export default function useVfxMutations(
             return;
         }
 
-        // Show confirmation dialog
-        const confirmed = window.confirm(
-            `This will port ALL ${donorSystemsList.length} VFX systems from the donor file to the target file.\n\n` +
-            `This operation:\n` +
-            `• Creates a backup of your target file\n` +
-            `• Copies all VFX systems and their assets\n` +
-            `• May take several minutes to complete\n\n` +
-            `Are you sure you want to continue?`
-        );
-
-        if (!confirmed) {
-            return;
-        }
-
         try {
             setIsPortAllLoading(true);
             setIsProcessing(true);
-            setProcessingText(`Porting ${donorSystemsList.length} VFX systems...`);
+            setProcessingText(
+                mode === 'replace-target'
+                    ? `Replacing target with ${donorSystemsList.length} donor VFX systems...`
+                    : `Porting ${donorSystemsList.length} VFX systems...`
+            );
 
             // Save state before porting all systems
-            saveStateToHistory(`Port all ${donorSystemsList.length} VFX systems from donor`);
+            saveStateToHistory(
+                mode === 'replace-target'
+                    ? `Replace target VFX systems with all ${donorSystemsList.length} donor systems`
+                    : `Port all ${donorSystemsList.length} VFX systems from donor`
+            );
 
             // Create backup before making changes
             await createBackup(targetPath, 'port-all-systems');
 
             let updatedContent = targetPyContent;
+            if (mode === 'replace-target') {
+                const cleaned = stripVfxSystemsAndResolverEntries(updatedContent);
+                updatedContent = cleaned.content;
+                setProcessingText(`Cleared ${cleaned.removedSystems} target systems; importing donor systems...`);
+            }
             let successCount = 0;
             let errorCount = 0;
             const errors = [];
@@ -177,9 +297,8 @@ export default function useVfxMutations(
 
                     // Check if system name already exists in target
                     const originalName = system.particleName || system.name;
-                    const systemExists = Object.values(targetSystems).some(targetSystem =>
-                        (targetSystem.particleName || targetSystem.name) === originalName
-                    );
+                    const keyPattern = new RegExp(`^\\s*("${escapeRegExp(originalName)}"|${escapeRegExp(originalName)})\\s*=\\s*VfxSystemDefinitionData\\s*\\{`, 'm');
+                    const systemExists = keyPattern.test(updatedContent);
 
                     let finalSystemName = originalName;
                     if (systemExists) {
@@ -190,7 +309,13 @@ export default function useVfxMutations(
                     if (systemExists) {
                         updatedContent = insertVFXSystemIntoFile(updatedContent, fullContent, finalSystemName);
                     } else {
-                        updatedContent = insertVFXSystemWithPreservedNames(updatedContent, fullContent, finalSystemName, donorPyContent);
+                        updatedContent = insertVFXSystemWithPreservedNames(
+                            updatedContent,
+                            fullContent,
+                            finalSystemName,
+                            donorPyContent,
+                            { strictResolverCopy: true }
+                        );
                     }
                     successCount++;
 
@@ -227,7 +352,8 @@ export default function useVfxMutations(
             }
 
             if (successCount > 0) {
-                setStatusMessage(`Successfully ported ${successCount} VFX systems${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+                const verb = mode === 'replace-target' ? 'Replaced target with' : 'Successfully ported';
+                setStatusMessage(`${verb} ${successCount} VFX systems${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
 
                 if (errors.length > 0) {
                     console.warn('Port all errors:', errors);
@@ -250,7 +376,7 @@ export default function useVfxMutations(
             setIsProcessing(false);
             setProcessingText('');
         }
-    }, [targetPyContent, donorPyContent, donorSystems, targetSystems, targetPath, donorPath, saveStateToHistory, setTargetPyContent, setTargetSystems, setFileSaved, setIsPortAllLoading, setIsProcessing, setProcessingText, setStatusMessage, cancelPendingBackgroundSave]);
+    }, [targetPyContent, donorPyContent, donorSystems, targetPath, donorPath, saveStateToHistory, setTargetPyContent, setTargetSystems, setFileSaved, setIsPortAllLoading, setIsProcessing, setProcessingText, setStatusMessage, cancelPendingBackgroundSave, escapeRegExp, stripVfxSystemsAndResolverEntries]);
 
     const handleDeleteEmitter = useCallback((systemKey, emitterIndex, isTarget, emitterName = null) => {
         cancelPendingBackgroundSave();

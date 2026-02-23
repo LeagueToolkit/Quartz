@@ -48,14 +48,28 @@ const SkinlineResultsPanel = ({
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {skinlineSearchResults.flatMap(({ champion, skins }) =>
-          skins.map((skin) => (
+          skins.map((skin) => {
+            const isSelected = selectedSkins.some(s => s.name === skin.name && s.champion?.name === champion.name);
+            return (
             <div
               key={`${champion.name}-${skin.id}`}
               onClick={() => onSkinClick(champion, skin)}
-              className={`group relative bg-gray-800 rounded-lg overflow-visible border cursor-pointer transition-all duration-75 ${selectedSkins.some(s => s.name === skin.name && s.champion?.name === champion.name)
-                ? 'border-green-400 shadow-lg shadow-green-400/25'
-                : 'border-gray-700 hover:border-green-400 hover:shadow-lg hover:shadow-green-400/25'
+              className={`group relative rounded-lg overflow-visible border cursor-pointer transition-all duration-150 ${isSelected
+                ? ''
+                : 'border-gray-700 bg-gray-800 hover:border-white/25 hover:shadow-lg'
                 }`}
+              style={isSelected
+                ? {
+                  borderColor: 'color-mix(in srgb, var(--accent), transparent 42%)',
+                  background: 'linear-gradient(160deg, color-mix(in srgb, var(--accent2), transparent 94%), color-mix(in srgb, var(--accent), transparent 95%))',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px color-mix(in srgb, var(--accent), transparent 72%), 0 12px 28px rgba(0,0,0,0.35)',
+                  transform: 'scale(1.028)',
+                  zIndex: 3,
+                }
+                : {
+                  transform: 'scale(1)',
+                  zIndex: 1,
+                }}
             >
               <div className="aspect-[3/4] relative overflow-hidden">
                 {!offlineMode ? (
@@ -94,8 +108,16 @@ const SkinlineResultsPanel = ({
                   {champion.name}
                 </div>
 
-                {selectedSkins.some(s => s.name === skin.name && s.champion?.name === champion.name) && (
-                  <div className="absolute top-2 right-2 bg-green-500 text-white px-2 py-1 rounded text-xs font-bold">
+                {isSelected && (
+                  <div
+                    className="absolute top-2 right-2 px-2 py-1 rounded text-xs font-bold"
+                    style={{
+                      color: 'var(--accent)',
+                      border: '1px solid color-mix(in srgb, var(--accent), transparent 48%)',
+                      background: 'color-mix(in srgb, var(--accent), transparent 84%)',
+                      boxShadow: '0 0 10px color-mix(in srgb, var(--accent), transparent 70%)',
+                    }}
+                  >
                     SELECTED
                   </div>
                 )}
@@ -117,7 +139,10 @@ const SkinlineResultsPanel = ({
               </div>
 
               <div className="p-3">
-                <h3 className="font-medium text-white group-hover:text-green-400 transition-colors">
+                <h3
+                  className="font-medium transition-colors"
+                  style={{ color: isSelected ? 'var(--accent)' : 'var(--text)' }}
+                >
                   {skin.name}
                 </h3>
                 <p className="text-xs text-gray-400 mt-1">Skin ID: {skin.skinNumber}</p>
@@ -178,7 +203,8 @@ const SkinlineResultsPanel = ({
                 })()}
               </div>
             </div>
-          )),
+            );
+          }),
         )}
       </div>
     </div>

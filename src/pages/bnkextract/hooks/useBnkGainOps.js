@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 export function useBnkGainOps({
     gainDb,
     gainTargetNodeId,
+    gainTargetNodeIds,
     gainTargetPane,
     isWwiseInstalled,
     treeData,
@@ -30,6 +31,10 @@ export function useBnkGainOps({
         const pathMod = window.require('path');
 
         const sourceTree = gainTargetPane === 'left' ? treeData : rightTreeData;
+        const targetIds = Array.isArray(gainTargetNodeIds) && gainTargetNodeIds.length > 0
+            ? gainTargetNodeIds
+            : (gainTargetNodeId ? [gainTargetNodeId] : []);
+
         const collectLeaves = (nodes, targetId, inside = false) => {
             const found = [];
             for (const n of nodes) {
@@ -40,7 +45,14 @@ export function useBnkGainOps({
             return found;
         };
 
-        const audioNodes = collectLeaves(sourceTree, gainTargetNodeId);
+        const dedup = new Map();
+        for (const id of targetIds) {
+            const found = collectLeaves(sourceTree, id);
+            for (const node of found) {
+                if (!dedup.has(node.id)) dedup.set(node.id, node);
+            }
+        }
+        const audioNodes = Array.from(dedup.values());
         if (audioNodes.length === 0) { setStatusMessage('No audio nodes found under selection'); return; }
 
         setShowConvertOverlay(true);
@@ -84,6 +96,7 @@ export function useBnkGainOps({
     }, [
         gainDb,
         gainTargetNodeId,
+        gainTargetNodeIds,
         gainTargetPane,
         isWwiseInstalled,
         treeData,
@@ -99,4 +112,3 @@ export function useBnkGainOps({
 
     return { handleApplyGain };
 }
-

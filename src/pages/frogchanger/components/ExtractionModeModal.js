@@ -9,13 +9,15 @@ import React, { useState, useEffect } from 'react';
  * Props:
  *   open        {boolean}
  *   skins       {Array<{ championName, skinId, skinName }>}
- *   onDecide    {(decisions: Array<{ skinKey, clean }>) => void}
+ *   onDecide    {(payload: { decisions: Array<{ skinKey, clean }>, options: { extractVoiceover, preserveHudIcons2D } }) => void}
  *   onCancel    {() => void}
  */
 const ExtractionModeModal = ({ open, skins = [], onDecide, onCancel }) => {
   const [phase, setPhase] = useState('initial'); // 'initial' | 'per-skin'
   const [currentIndex, setCurrentIndex] = useState(0);
   const [decisions, setDecisions] = useState([]);
+  const [extractVoiceover, setExtractVoiceover] = useState(false);
+  const [preserveHudIcons2D, setPreserveHudIcons2D] = useState(true);
 
   // Reset state whenever modal opens
   useEffect(() => {
@@ -23,6 +25,8 @@ const ExtractionModeModal = ({ open, skins = [], onDecide, onCancel }) => {
       setPhase('initial');
       setCurrentIndex(0);
       setDecisions([]);
+      setExtractVoiceover(false);
+      setPreserveHudIcons2D(true);
     }
   }, [open]);
 
@@ -32,15 +36,22 @@ const ExtractionModeModal = ({ open, skins = [], onDecide, onCancel }) => {
   const multiSkin = total > 1;
   const current = skins[currentIndex];
   const skinKey = (s) => `${s.championName}_${s.skinId}`;
+  const resolvePayload = (nextDecisions) => ({
+    decisions: nextDecisions,
+    options: {
+      extractVoiceover,
+      preserveHudIcons2D,
+    },
+  });
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleNoAll = () => {
-    onDecide(skins.map(s => ({ skinKey: skinKey(s), clean: false })));
+    onDecide(resolvePayload(skins.map(s => ({ skinKey: skinKey(s), clean: false }))));
   };
 
   const handleYesAll = () => {
-    onDecide(skins.map(s => ({ skinKey: skinKey(s), clean: true })));
+    onDecide(resolvePayload(skins.map(s => ({ skinKey: skinKey(s), clean: true }))));
   };
 
   const handleYesPerSkin = () => {
@@ -52,7 +63,7 @@ const ExtractionModeModal = ({ open, skins = [], onDecide, onCancel }) => {
   const handlePerSkinDecision = (clean) => {
     const next = [...decisions, { skinKey: skinKey(current), clean }];
     if (currentIndex + 1 >= total) {
-      onDecide(next);
+      onDecide(resolvePayload(next));
     } else {
       setDecisions(next);
       setCurrentIndex(i => i + 1);
@@ -219,6 +230,30 @@ const ExtractionModeModal = ({ open, skins = [], onDecide, onCancel }) => {
               </p>
             </div>
 
+            <div style={styles.section}>
+              <h3 style={styles.sectionTitle}>Options</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={extractVoiceover}
+                    onChange={(e) => setExtractVoiceover(e.target.checked)}
+                    style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                  />
+                  Extract Voiceover (VO)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={preserveHudIcons2D}
+                    onChange={(e) => setPreserveHudIcons2D(e.target.checked)}
+                    style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                  />
+                  Preserve HUD Icons2D (clean-after-extract)
+                </label>
+              </div>
+            </div>
+
             <div style={{ ...styles.divider, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button style={btnGhost} onMouseEnter={hoverGhost} onMouseLeave={leaveGhost} onClick={handleNoAll}>
                 {multiSkin ? 'No — Whole WAD' : 'Whole WAD'}
@@ -261,6 +296,30 @@ const ExtractionModeModal = ({ open, skins = [], onDecide, onCancel }) => {
             <p style={{ margin: 0, fontSize: '0.8rem', color: 'rgba(255,255,255,0.65)', lineHeight: 1.5 }}>
               Extract skin files only (filtered + BINs merged) or the whole WAD for this skin?
             </p>
+          </div>
+
+          <div style={{ ...styles.section }}>
+            <h3 style={styles.sectionTitle}>Options</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={extractVoiceover}
+                  onChange={(e) => setExtractVoiceover(e.target.checked)}
+                  style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                />
+                Extract Voiceover (VO)
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={preserveHudIcons2D}
+                  onChange={(e) => setPreserveHudIcons2D(e.target.checked)}
+                  style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                />
+                Preserve HUD Icons2D (clean-after-extract)
+              </label>
+            </div>
           </div>
 
           <div style={{ ...styles.divider, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

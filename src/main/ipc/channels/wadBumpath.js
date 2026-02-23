@@ -8,6 +8,44 @@
  */
 
 const path = require('path');
+const ICONS2D_RELATIVE_PATTERN = /^assets\/characters\/[^/]+\/hud\/icons2d(\/|$)/i;
+
+function toPosixRel(value) {
+  return String(value || '').replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+function isPreservedIcons2DPath(relativePath) {
+  return ICONS2D_RELATIVE_PATTERN.test(toPosixRel(relativePath));
+}
+
+function copyPreservedHudIcons2D(fs, sourceDir, targetDir) {
+  if (!sourceDir || !targetDir || !fs.existsSync(sourceDir)) return 0;
+
+  let copied = 0;
+
+  const walk = (absDir, relDir = '') => {
+    const entries = fs.readdirSync(absDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryRel = relDir ? path.join(relDir, entry.name) : entry.name;
+      const entryAbs = path.join(absDir, entry.name);
+
+      if (entry.isDirectory()) {
+        walk(entryAbs, entryRel);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (!isPreservedIcons2DPath(entryRel)) continue;
+
+      const outAbs = path.join(targetDir, entryRel);
+      fs.mkdirSync(path.dirname(outAbs), { recursive: true });
+      fs.copyFileSync(entryAbs, outAbs);
+      copied++;
+    }
+  };
+
+  walk(sourceDir);
+  return copied;
+}
 
 // Mirrors operationsService.getChampionFileName in the renderer
 const CHAMPION_SPECIAL_CASES = {
@@ -30,6 +68,7 @@ function registerWadBumpathChannels({
   loadJsRitoModule,
   loadBumpathModule,
 }) {
+  let warmCacheInFlight = null;
   // ---------------------------------------------------------------------------
   // wad:extract — single WAD (legacy, kept working now that loadWadModule resolves)
   // ---------------------------------------------------------------------------
@@ -100,6 +139,7 @@ function registerWadBumpathChannels({
         hashPath: rawHashPath,
         extractVoiceover,
         cleanAfterExtract = false,
+        preserveHudIcons2D = true,
       } = data || {};
 
       if (!championName || !leaguePath || !extractionPath) {
@@ -240,6 +280,13 @@ function registerWadBumpathChannels({
 
           await bum.process(cleanDir, true, true, progressCallback, true);
 
+          if (preserveHudIcons2D) {
+            const copied = copyPreservedHudIcons2D(fs, outputDir, cleanDir);
+            if (copied > 0) {
+              console.log(`[wad:extractBundle] Preserved ${copied} icons2d file(s)`);
+            }
+          }
+
           // Swap: delete full extraction, rename clean dir to final outputDir
           sendProgress(0, 'Finalizing...');
           fs.rmSync(outputDir, { recursive: true, force: true });
@@ -288,6 +335,8 @@ function registerWadBumpathChannels({
       const combineLinked = data.combineLinked !== false;
       const customPrefix = data.customPrefix || 'bum';
       const processTogether = data.processTogether || false;
+      const preserveHudIcons2D = data.preserveHudIcons2D !== false;
+      const skipSfxRepath = data.skipSfxRepath !== false;
 
       const { BumpathCore } = await loadBumpathModule();
 
@@ -301,6 +350,7 @@ function registerWadBumpathChannels({
 
       const runPass = async (skinIdsForPass) => {
         const bum = new BumpathCore();
+        bum.skipSfxRepath = skipSfxRepath;
         await bum.addSourceDirs([data.sourceDir]);
 
         const binSelections = {};
@@ -332,6 +382,12 @@ function registerWadBumpathChannels({
         }
 
         await bum.process(data.outputDir, ignoreMissing, combineLinked, progressCallback);
+        if (preserveHudIcons2D) {
+          const copied = copyPreservedHudIcons2D(fs, data.sourceDir, data.outputDir);
+          if (copied > 0) {
+            console.log(`[bumpath:repath] Preserved ${copied} icons2d file(s)`);
+          }
+        }
       };
 
       if (processTogether) {
@@ -357,6 +413,74 @@ function registerWadBumpathChannels({
     } catch (error) {
       console.error('[bumpath:repath] Error:', error);
       return { error: error.message, stack: error.stack };
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // hashtable:warmCache — staged preload with progress events.
+  // Called from FrogChanger when user enables warm cache mode.
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('hashtable:warmCache', async (event, payload) => {
+    try {
+      const hashPathInput = typeof payload === 'string' ? payload : payload?.hashPath;
+      const hashPath = getHashPath(hashPathInput);
+      if (!hashPath || !fs.existsSync(hashPath)) {
+        return { success: false, error: 'Invalid hash path' };
+      }
+      const { loadHashtables } = await loadJsRitoModule();
+      const sendStage = (stage, index, total) => {
+        try {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('hashtable:warmProgress', { stage, index, total });
+          }
+        } catch (_) { /* ignore */ }
+      };
+
+      if (warmCacheInFlight) {
+        await warmCacheInFlight;
+        return { success: true, reused: true };
+      }
+
+      const steps = [
+        { label: 'Loading game hashes', tables: ['hashes.game.txt'] },
+        { label: 'Loading lcu hashes', tables: ['hashes.lcu.txt'] },
+        { label: 'Loading bin fields', tables: ['hashes.binfields.txt'] },
+        { label: 'Loading bin types', tables: ['hashes.bintypes.txt'] },
+        { label: 'Loading bin hashes', tables: ['hashes.binhashes.txt'] },
+        { label: 'Loading bin entries', tables: ['hashes.binentries.txt'] },
+      ];
+
+      warmCacheInFlight = (async () => {
+        const total = steps.length;
+        for (let i = 0; i < steps.length; i++) {
+          const step = steps[i];
+          sendStage(step.label, i + 1, total);
+          await loadHashtables(hashPath, { tables: step.tables });
+        }
+        sendStage('Hash preload complete', total, total);
+      })();
+
+      await warmCacheInFlight;
+      warmCacheInFlight = null;
+      return { success: true };
+    } catch (e) {
+      warmCacheInFlight = null;
+      console.warn('[hashtable:warmCache] Error:', e.message);
+      return { success: false, error: e.message };
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // hashtable:setKeepAlive — enable/disable cache pinning (disables 30s TTL when enabled).
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('hashtable:setKeepAlive', async (_event, enabled) => {
+    try {
+      const { setHashtablesCachePinned } = await loadJsRitoModule();
+      setHashtablesCachePinned(enabled === true);
+      return { success: true };
+    } catch (e) {
+      console.warn('[hashtable:setKeepAlive] Error:', e.message);
+      return { success: false, error: e.message };
     }
   });
 

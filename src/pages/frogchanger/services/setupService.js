@@ -182,6 +182,8 @@ export const loadFrogSettings = async (prefs) => {
   const extractVoiceover = prefs.obj.FrogChangerExtractVoiceover !== undefined
     ? prefs.obj.FrogChangerExtractVoiceover
     : false;
+  const preserveHudIcons2D = prefs.obj.FrogChangerPreserveHudIcons2D !== false;
+  const warmHashCache = prefs.obj.FrogChangerWarmHashCache === true;
 
   const hashStatus = await checkHashStatus();
 
@@ -190,6 +192,8 @@ export const loadFrogSettings = async (prefs) => {
     leaguePath,
     extractionPath,
     extractVoiceover,
+    preserveHudIcons2D,
+    warmHashCache,
     hashStatus,
   };
 };
