@@ -80,13 +80,22 @@ async function collectAllLinkedPaths(bin, projectRoot, hashedReverse, BIN, fs, p
     return result;
 }
 
-function registerBinToolsChannels({ ipcMain, fs, path }) {
+function registerBinToolsChannels({ ipcMain, fs, path, loadBinModule }) {
+    const loadBinCtor = async () => {
+        if (typeof loadBinModule === 'function') {
+            const mod = await loadBinModule();
+            if (mod?.BIN) return mod.BIN;
+        }
+        const mod = await import('../../../jsritofile/bin.js');
+        return mod.BIN;
+    };
+
     ipcMain.handle('bin:getLinkCount', async (_, { filePath } = {}) => {
         try {
             if (!filePath || !fs.existsSync(filePath)) {
                 return { success: false, linkCount: 0 };
             }
-            const { BIN } = await import('../../../jsritofile/bin.js');
+            const BIN = await loadBinCtor();
             const buf = fs.readFileSync(filePath);
             const bin = await new BIN().read(buf);
             const championBaseBinName = getChampionBaseBinName(filePath, path);
@@ -104,7 +113,7 @@ function registerBinToolsChannels({ ipcMain, fs, path }) {
                 return { success: false, merged: 0, error: 'File not found' };
             }
 
-            const { BIN } = await import('../../../jsritofile/bin.js');
+            const BIN = await loadBinCtor();
             const projectRoot = findProjectRoot(path.dirname(filePath), fs, path);
             const championBaseBinName = getChampionBaseBinName(filePath, path);
 

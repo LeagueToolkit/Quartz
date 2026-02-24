@@ -89,7 +89,9 @@ function registerUpdateChannels({
         logToFile('No update info from electron-updater, using fallback...', 'WARNING');
         const fallbackResult = await checkUpdatesViaGitHubAPI();
         if (fallbackResult.updateAvailable) {
-          await shell.openExternal(`https://github.com/RitoShark/Quartz/releases/tag/v${fallbackResult.version}`);
+          const fallbackUrl = fallbackResult.releaseUrl
+            || `https://github.com/${fallbackResult.owner || 'LeagueToolkit'}/${fallbackResult.repo || 'Quartz'}/releases/tag/v${fallbackResult.version}`;
+          await shell.openExternal(fallbackUrl);
           return {
             success: true,
             manualDownload: true,
@@ -111,7 +113,9 @@ function registerUpdateChannels({
         try {
           const fallbackResult = await checkUpdatesViaGitHubAPI();
           if (fallbackResult.updateAvailable) {
-            await shell.openExternal(`https://github.com/RitoShark/Quartz/releases/tag/v${fallbackResult.version}`);
+            const fallbackUrl = fallbackResult.releaseUrl
+              || `https://github.com/${fallbackResult.owner || 'LeagueToolkit'}/${fallbackResult.repo || 'Quartz'}/releases/tag/v${fallbackResult.version}`;
+            await shell.openExternal(fallbackUrl);
             return {
               success: true,
               manualDownload: true,

@@ -32,10 +32,14 @@ const GlobalUpdateNotification = () => {
     const fetchReleaseNotes = async (version) => {
         try {
             const v = version.startsWith('v') ? version : `v${version}`;
-            const response = await fetch(`https://api.github.com/repos/RitoShark/Quartz/releases/tags/${v}`);
-            if (response.ok) {
-                const data = await response.json();
-                setReleaseNotes(data.body || '');
+            const releaseRepos = ['LeagueToolkit/Quartz', 'RitoShark/Quartz'];
+            for (const repo of releaseRepos) {
+                const response = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${v}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    setReleaseNotes(data.body || '');
+                    return;
+                }
             }
         } catch (error) {
             console.error('Error fetching release notes:', error);

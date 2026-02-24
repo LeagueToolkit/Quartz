@@ -301,7 +301,12 @@ registerFileRandomizerChannels({
   processRef: process,
 });
 
-registerBinToolsChannels({ ipcMain, fs, path });
+registerBinToolsChannels({
+  ipcMain,
+  fs,
+  path,
+  loadBinModule: async () => importLocalModule('./src/jsritofile/bin.js'),
+});
 
 // Backend service removed - using JavaScript implementations instead
 // WAD + Bumpath handlers

@@ -1,6 +1,9 @@
 function createAutoUpdaterService({ autoUpdater, app, isDev, processRef, https, logToFile }) {
   let updateWindow = null;
   let cachedUpdateInfo = null;
+  const UPDATE_REPOS = [
+    { owner: 'LeagueToolkit', repo: 'Quartz' },
+  ];
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
@@ -30,88 +33,121 @@ function createAutoUpdaterService({ autoUpdater, app, isDev, processRef, https, 
   }
 
   async function checkUpdatesViaGitHubAPI() {
-    return new Promise((resolve, reject) => {
-      try {
-        logToFile('Checking updates via GitHub API (fallback)...', 'INFO');
-        const currentVersion = app.getVersion();
-
-        const options = {
-          hostname: 'api.github.com',
-          path: '/repos/RitoShark/Quartz/releases/latest',
-          method: 'GET',
-          headers: {
-            'User-Agent': 'Quartz-App',
-            Accept: 'application/vnd.github.v3+json',
-          },
-        };
-
-        const req = https.request(options, (res) => {
-          let data = '';
-
-          res.on('data', (chunk) => {
-            data += chunk;
-          });
-
-          res.on('end', () => {
-            try {
-              if (res.statusCode !== 200) {
-                throw new Error(`GitHub API returned ${res.statusCode}`);
-              }
-
-              const release = JSON.parse(data);
-              const latestVersion = release.tag_name.replace(/^v/, '');
-
-              logToFile(`GitHub API - Current: ${currentVersion}, Latest: ${latestVersion}`, 'INFO');
-
-              const compareVersions = (v1, v2) => {
-                const parts1 = v1.split('.').map(Number);
-                const parts2 = v2.split('.').map(Number);
-                for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-                  const a = parts1[i] || 0;
-                  const b = parts2[i] || 0;
-                  if (a < b) return -1;
-                  if (a > b) return 1;
-                }
-                return 0;
-              };
-
-              if (compareVersions(currentVersion, latestVersion) < 0) {
-                logToFile(`Update available via GitHub API: ${latestVersion}`, 'INFO');
-                if (updateWindow) {
-                  updateWindow.webContents.send('update:available', {
-                    version: latestVersion,
-                    releaseDate: release.published_at,
-                    releaseNotes: release.body || '',
-                  });
-                }
-                resolve({ updateAvailable: true, version: latestVersion });
-              } else {
-                logToFile('No update available via GitHub API', 'INFO');
-                if (updateWindow) {
-                  updateWindow.webContents.send('update:not-available', {
-                    version: latestVersion,
-                  });
-                }
-                resolve({ updateAvailable: false, version: latestVersion });
-              }
-            } catch (parseError) {
-              logToFile(`Failed to parse GitHub API response: ${parseError.message}`, 'ERROR');
-              reject(parseError);
-            }
-          });
-        });
-
-        req.on('error', (error) => {
-          logToFile(`GitHub API request failed: ${error.message}`, 'ERROR');
-          reject(error);
-        });
-
-        req.end();
-      } catch (error) {
-        logToFile(`GitHub API check failed: ${error.message}`, 'ERROR');
-        reject(error);
+    const compareVersions = (v1, v2) => {
+      const parts1 = v1.split('.').map(Number);
+      const parts2 = v2.split('.').map(Number);
+      for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+        const a = parts1[i] || 0;
+        const b = parts2[i] || 0;
+        if (a < b) return -1;
+        if (a > b) return 1;
       }
+      return 0;
+    };
+
+    const fetchLatestFromRepo = (owner, repo) => new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'api.github.com',
+        path: `/repos/${owner}/${repo}/releases/latest`,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Quartz-App',
+          Accept: 'application/vnd.github.v3+json',
+        },
+      };
+
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            reject(new Error(`${owner}/${repo} returned ${res.statusCode}`));
+            return;
+          }
+          try {
+            const release = JSON.parse(data);
+            resolve({
+              owner,
+              repo,
+              release,
+              version: String(release.tag_name || '').replace(/^v/, ''),
+            });
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+
+      req.on('error', (error) => reject(error));
+      req.end();
     });
+
+    try {
+      logToFile('Checking updates via GitHub API (fallback)...', 'INFO');
+      const currentVersion = app.getVersion();
+      let bestRelease = null;
+
+      for (const candidate of UPDATE_REPOS) {
+        try {
+          const repoRelease = await fetchLatestFromRepo(candidate.owner, candidate.repo);
+          logToFile(
+            `GitHub API candidate: ${candidate.owner}/${candidate.repo} -> ${repoRelease.version}`,
+            'INFO'
+          );
+          if (!bestRelease || compareVersions(bestRelease.version, repoRelease.version) < 0) {
+            bestRelease = repoRelease;
+          }
+        } catch (error) {
+          logToFile(`GitHub API candidate failed (${candidate.owner}/${candidate.repo}): ${error.message}`, 'WARNING');
+        }
+      }
+
+      if (!bestRelease || !bestRelease.version) {
+        throw new Error('No valid GitHub releases found in configured repositories');
+      }
+
+      logToFile(
+        `GitHub API - Current: ${currentVersion}, Latest: ${bestRelease.version} from ${bestRelease.owner}/${bestRelease.repo}`,
+        'INFO'
+      );
+
+      if (compareVersions(currentVersion, bestRelease.version) < 0) {
+        logToFile(`Update available via GitHub API: ${bestRelease.version}`, 'INFO');
+        if (updateWindow) {
+          updateWindow.webContents.send('update:available', {
+            version: bestRelease.version,
+            releaseDate: bestRelease.release.published_at,
+            releaseNotes: bestRelease.release.body || '',
+          });
+        }
+        return {
+          updateAvailable: true,
+          version: bestRelease.version,
+          owner: bestRelease.owner,
+          repo: bestRelease.repo,
+          releaseUrl: bestRelease.release.html_url,
+        };
+      }
+
+      logToFile('No update available via GitHub API', 'INFO');
+      if (updateWindow) {
+        updateWindow.webContents.send('update:not-available', {
+          version: bestRelease.version,
+        });
+      }
+      return {
+        updateAvailable: false,
+        version: bestRelease.version,
+        owner: bestRelease.owner,
+        repo: bestRelease.repo,
+        releaseUrl: bestRelease.release.html_url,
+      };
+    } catch (error) {
+      logToFile(`GitHub API check failed: ${error.message}`, 'ERROR');
+      throw error;
+    }
   }
 
   function setupAutoUpdater() {
@@ -206,7 +242,7 @@ function createAutoUpdaterService({ autoUpdater, app, isDev, processRef, https, 
         if (enableInDev) {
           autoUpdater.setFeedURL({
             provider: 'github',
-            owner: 'RitoShark',
+            owner: 'LeagueToolkit',
             repo: 'Quartz',
           });
           autoUpdater.forceDevUpdateConfig = true;
@@ -242,4 +278,3 @@ function createAutoUpdaterService({ autoUpdater, app, isDev, processRef, https, 
 }
 
 module.exports = { createAutoUpdaterService };
-
