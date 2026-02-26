@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { parseAudioFile, parseBinFile, groupAudioFiles, getEventMappings } from '../utils/bnkParser';
+import { loadBanks } from '../utils/bnkLoader';
 
 export function useBnkFileParsing({
     bnkPath,
@@ -67,78 +67,19 @@ export function useBnkFileParsing({
         pushToHistory();
 
         try {
-            if (!window.require) {
-                throw new Error('File system access not available');
+            const result = await loadBanks({ bnkPath, wpkPath, binPath });
+            if (!result) {
+                setStatusMessage('No audio data found in these files');
+                return;
             }
 
-            const fs = window.require('fs');
-
-            let stringHashes = [];
-            if (binPath && bnkPath && fs.existsSync(binPath) && fs.existsSync(bnkPath)) {
-                try {
-                    const binData = fs.readFileSync(binPath);
-                    const bnkData = fs.readFileSync(bnkPath);
-                    const binStrings = parseBinFile(binData);
-                    stringHashes = getEventMappings(binStrings, bnkData);
-                    console.log(`[BnkExtract] Mapped ${stringHashes.length} events using BIN and Events BNK`);
-                } catch (error) {
-                    console.warn('[BnkExtract] Failed to map events via BNK:', error);
-                    setStatusMessage('Warning: Enhanced mapping failed, falling back to direct mapping');
-                }
-            }
-
-            if (stringHashes.length === 0 && binPath && fs.existsSync(binPath)) {
-                try {
-                    const binData = fs.readFileSync(binPath);
-                    stringHashes = parseBinFile(binData);
-                    console.log('[BnkExtract] Using direct mapping from BIN file');
-                } catch (error) {
-                    console.warn('[BnkExtract] Failed to parse BIN:', error);
-                }
-            }
-
-            let wpkResult = null;
-            if (wpkPath && fs.existsSync(wpkPath)) {
-                const wpkData = fs.readFileSync(wpkPath);
-                wpkResult = parseAudioFile(wpkData, wpkPath);
-            }
-
-            let bnkResult = null;
-            if (!wpkResult && bnkPath && fs.existsSync(bnkPath)) {
-                const bnkData = fs.readFileSync(bnkPath);
-                bnkResult = parseAudioFile(bnkData, bnkPath);
-            }
-
-            let finalAudioFiles = [];
-            let fileCount = 0;
-            let finalType = '';
-
-            if (wpkResult) {
-                finalAudioFiles = wpkResult.audioFiles;
-                fileCount = wpkResult.fileCount;
-                finalType = 'wpk';
-            } else if (bnkResult) {
-                finalAudioFiles = bnkResult.audioFiles;
-                fileCount = bnkResult.fileCount;
-                finalType = 'bnk';
-            }
-
-            if (wpkResult && bnkPath) {
-                finalType = 'bnk+wpk';
-            }
-
+            const { tree, audioFiles, fileCount, type: finalType } = result;
             const path = window.require('path');
-            const sourceName = wpkPath ? path.basename(wpkPath) : (bnkPath ? path.basename(bnkPath) : 'root');
-            const originalPath = wpkPath || bnkPath;
-
-            const tree = groupAudioFiles(finalAudioFiles, stringHashes, sourceName);
-            tree.isRoot = true;
-            tree.originalPath = originalPath;
-            tree.originalAudioFiles = finalAudioFiles;
+            const label = wpkPath ? path.basename(wpkPath) : (bnkPath ? path.basename(bnkPath) : 'Unnamed Bank');
 
             if (activePane === 'left') {
                 pushToHistory();
-                setParsedData({ audioFiles: finalAudioFiles, fileCount, type: finalType });
+                setParsedData({ audioFiles, fileCount, type: finalType });
                 setTreeData((prev) => [...prev, tree]);
             } else {
                 pushToHistory();
@@ -148,7 +89,6 @@ export function useBnkFileParsing({
             localStorage.setItem('bnk-extract-last-paths', JSON.stringify({ bin: binPath, wpk: wpkPath, bnk: bnkPath }));
 
             const pathSet = { bin: binPath, wpk: wpkPath, bnk: bnkPath };
-            const label = wpkPath ? path.basename(wpkPath) : (bnkPath ? path.basename(bnkPath) : 'Unnamed Bank');
 
             setHistory((prev) => {
                 const filtered = prev.filter((entry) => (

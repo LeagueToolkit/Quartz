@@ -77,7 +77,8 @@ function xxh64(input) {
 export class WADHasher {
     static HASHTABLE_NAMES = [
         'hashes.game.txt',
-        'hashes.lcu.txt'
+        'hashes.lcu.txt',
+        'hashes.extracted.txt',
     ];
 
     /**

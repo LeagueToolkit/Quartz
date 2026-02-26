@@ -2,120 +2,24 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import electronPrefs from '../utils/core/electronPrefs.js';
 import { loadFileWithBackup, createBackup } from '../utils/io/backupManager.js';
 import { openAssetPreview } from '../utils/assets/assetPreviewEvent';
+import { ToPy, ToBin } from '../utils/io/fileOperations.js';
 import GlowingSpinner from '../components/GlowingSpinner.js';
+import { parseVfxFile } from './paint2/utils/parser.js';
 import './ParticleRandomizer.css';
 
 const nodeFs = window.require ? window.require('fs') : null;
 const nodePath = window.require ? window.require('path') : null;
 
 // ════════════════════════════════════════════════════════════════
-//  CORE LOGIC  (ported from Particle-Randomizer-main/renderer.js)
+//  CORE LOGIC
 // ════════════════════════════════════════════════════════════════
 
-function escapeRegex(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 
-function findVfxEntries(content) {
-    const regex = /"([^"]+)"\s*=\s*VfxSystemDefinitionData\s*\{/g;
-    const entries = [];
-    let match;
-    while ((match = regex.exec(content)) !== null) {
-        entries.push(match[1]);
-    }
-    return entries;
-}
-
-
-function analyzeExistingVariants(content, entries) {
-    const info = {};
-    const subVariants = new Set();
-
-
-    for (const entry of entries) {
-        const startPattern = `"${entry}" = VfxSystemDefinitionData {`;
-        const startIndex = content.indexOf(startPattern);
-        if (startIndex === -1) continue;
-
-        let braceCount = 0, inBlock = false, endIndex = startIndex;
-        for (let i = startIndex; i < content.length; i++) {
-            if (content[i] === '{') { braceCount++; inBlock = true; }
-            else if (content[i] === '}') {
-                braceCount--;
-                if (inBlock && braceCount === 0) { endIndex = i + 1; break; }
-            }
-        }
-        const block = content.substring(startIndex, endIndex);
-
-        // Find existing children in RandomizerByDisco
-        const children = [];
-        if (block.includes('RandomizerByDisco')) {
-            const childRegex = /effectKey:\s*hash\s*=\s*"([^"]+)"/g;
-            let m;
-            while ((m = childRegex.exec(block)) !== null) {
-                children.push(m[1]);
-                subVariants.add(m[1]);
-            }
-        }
-
-        info[entry] = {
-            hasRandomizer: children.length > 0,
-            existingChildren: children,
-            variantCount: children.length,
-            variantNames: [],
-            isSubVariant: false // will be set in second pass
-        };
-    }
-
-    // Second pass: mark sub-variants and find loose variants
-    for (const entry of entries) {
-        if (!info[entry]) info[entry] = {};
-
-        if (subVariants.has(entry)) {
-            info[entry].isSubVariant = true;
-        }
-
-        // Loose variant check (path looks like entry_suffix but not explicitly in a randomizer)
-        const escaped = escapeRegex(entry);
-        const variantRegex = new RegExp(`"${escaped}_([^"]+)"\\s*=\\s*VfxSystemDefinitionData\\s*\\{`, 'g');
-        const variants = [];
-        let m;
-        while ((m = variantRegex.exec(content)) !== null) {
-            variants.push(m[1]);
-        }
-        info[entry].hasVariants = (variants.length > 0 || info[entry].hasRandomizer);
-
-        // Use the better count and names
-        const finalVariants = variants.length > 0 ? variants : (info[entry].existingChildren || []).map(c => c.split('_').pop() || '_');
-        info[entry].variantCount = Math.max(info[entry].variantCount || 0, variants.length);
-        info[entry].variantNames = finalVariants.slice(0, 5);
-    }
-
-    return { info, subVariants };
-}
-
-/**
- * Extract all asset paths (ASSETS/...) from a given VFX block.
- */
-function extractAssetPaths(blockContent) {
-    const assetRegex = /[":]?\s*(ASSETS\/[^"\s]+\.(?:dds|tex|scb|skn|skl|bnk|wpk|troybin|bin))/gi;
-    const paths = new Set();
-    let m;
-    while ((m = assetRegex.exec(blockContent)) !== null) {
-        paths.add(m[1]);
-    }
-    return Array.from(paths);
-}
-
-/**
- * Find the block content for a VfxSystemDefinitionData entry.
- */
 function findVfxBlock(content, entryPath) {
     const startPattern = `"${entryPath}" = VfxSystemDefinitionData {`;
     const startIndex = content.indexOf(startPattern);
     if (startIndex === -1) return null;
-
     let braceCount = 0, inBlock = false, endIndex = startIndex;
     for (let i = startIndex; i < content.length; i++) {
         if (content[i] === '{') { braceCount++; inBlock = true; }
@@ -127,53 +31,266 @@ function findVfxBlock(content, entryPath) {
     return { start: startIndex, end: endIndex, block: content.substring(startIndex, endIndex) };
 }
 
+/**
+ * Find a named VfxEmitterDefinitionData block within a system block string.
+ * Returns { start, end, indent } — indices into blockContent.
+ */
+function findEmitterInBlock(blockContent, emitterName) {
+    const emitterRegex = /VfxEmitterDefinitionData\s*\{/g;
+    let match;
+    while ((match = emitterRegex.exec(blockContent)) !== null) {
+        const tokenStart = match.index;
+        let braceCount = 0, inBlock = false, blockEnd = tokenStart;
+        for (let i = tokenStart; i < blockContent.length; i++) {
+            if (blockContent[i] === '{') { braceCount++; inBlock = true; }
+            else if (blockContent[i] === '}') {
+                braceCount--;
+                if (inBlock && braceCount === 0) { blockEnd = i + 1; break; }
+            }
+        }
+        const emBlock = blockContent.substring(tokenStart, blockEnd);
+        const nameMatch = emBlock.match(/emitterName:\s*string\s*=\s*"([^"]+)"/);
+        if (nameMatch && nameMatch[1] === emitterName) {
+            // Walk back to start of line to capture leading whitespace (indent)
+            let lineStart = tokenStart;
+            while (lineStart > 0 && blockContent[lineStart - 1] !== '\n') lineStart--;
+            const leadingWs = blockContent.substring(lineStart, tokenStart);
+            const indent = /^\s*$/.test(leadingWs) ? leadingWs : '            ';
+            return { start: lineStart, end: blockEnd, indent };
+        }
+    }
+    return null;
+}
 
-/** Duplicate a VFX block N times with suffixed paths */
-function generateDuplicates(content, originalPath, numCopies, customPrefixes = null) {
+/**
+ * Build the randomizer emitter block that references N variant system paths.
+ */
+function buildRandomizerEmitter(emitterName, variantPaths, indent) {
+    const l1 = indent + '    ';
+    const l2 = indent + '        ';
+    const l3 = indent + '            ';
+    const l4 = indent + '                ';
+    const l5 = indent + '                    ';
+    const l6 = indent + '                        ';
+
+    const childrenIds = variantPaths.map(path =>
+        `${l3}VfxChildIdentifier {\n${l4}effectKey: hash = "${path}"\n${l3}}`
+    ).join('\n');
+
+    const n = variantPaths.length;
+
+    return `${indent}VfxEmitterDefinitionData {
+${l1}rate: embed = ValueFloat {
+${l2}constantValue: f32 = 1
+${l1}}
+${l1}isSingleParticle: flag = true
+${l1}childParticleSetDefinition: pointer = VfxChildParticleSetDefinitionData {
+${l2}childrenIdentifiers: list[embed] = {
+${childrenIds}
+${l2}}
+${l2}childrenProbability: embed = ValueFloat {
+${l3}constantValue: f32 = 1
+${l3}dynamics: pointer = VfxAnimatedFloatVariableData {
+${l4}probabilityTables: list[pointer] = {
+${l5}VfxProbabilityTableData {
+${l6}keyTimes: list[f32] = {
+${l6}    0
+${l6}    1
+${l6}}
+${l6}keyValues: list[f32] = {
+${l6}    0
+${l6}    ${n}
+${l6}}
+${l5}}
+${l4}}
+${l4}times: list[f32] = {
+${l5}0
+${l4}}
+${l4}values: list[f32] = {
+${l5}1
+${l4}}
+${l3}}
+${l2}}
+${l1}}
+${l1}emitterName: string = "${emitterName}_randomized"
+${l1}shape: embed = VfxShape {
+${l2}emitOffset: embed = ValueVector3 {
+${l3}constantValue: vec3 = { 0, 0, 0 }
+${l2}}
+${l1}}
+${l1}bindWeight: embed = ValueFloat {
+${l2}constantValue: f32 = 1
+${l1}}
+${l1}birthScale0: embed = ValueVector3 {
+${l2}constantValue: vec3 = { 0, 0, 0 }
+${l1}}
+${indent}}`;
+}
+
+/**
+ * Resolve a unique base name for an emitter's variants.
+ * Checks particleName strings (not hashed by ritobin) to detect existing collisions,
+ * and also tracks names already assigned in this generation run.
+ */
+function resolveUniqueName(content, usedNames, baseName, variantPrefixes) {
+    let candidate = baseName;
+    let counter = 2;
+    while (
+        usedNames.has(candidate) ||
+        content.includes(`particleName: string = "${candidate}_${variantPrefixes[0]}"`)
+    ) {
+        candidate = `${baseName}_${counter}`;
+        counter++;
+    }
+    usedNames.add(candidate);
+    return candidate;
+}
+
+/**
+ * Main generation: for each selected emitter, create N variant systems and
+ * replace the emitter in the original with a randomizer that references them.
+ */
+function generateEmitterRandomizers(content, parsedFile, selectedEmitterKeys, variantPrefixes) {
+    let result = content;
+    const usedBaseNames = new Set();
+
+    // Group selected emitters by system
+    const bySystem = new Map();
+    for (const eKey of selectedEmitterKeys) {
+        const emitter = parsedFile.emitters.get(eKey);
+        if (!emitter || !emitter.name || emitter.name === 'Unnamed') continue;
+        if (!bySystem.has(emitter.systemKey)) bySystem.set(emitter.systemKey, []);
+        bySystem.get(emitter.systemKey).push(emitter);
+    }
+
+    for (const [systemKey, emitters] of bySystem) {
+        const sys = findVfxBlock(result, systemKey);
+        if (!sys) continue;
+
+        const originalBlock = sys.block;
+        let modifiedBlock = sys.block;
+        let duplicatesText = '';
+        const resolvedNames = new Map(); // emitter.key -> baseName
+
+        for (const emitter of emitters) {
+            const emName = emitter.name;
+            const baseName = resolveUniqueName(result, usedBaseNames, emName, variantPrefixes);
+            resolvedNames.set(emitter.key, baseName);
+            const variantPaths = variantPrefixes.map(p => `${baseName}_${p}`);
+
+            // Create variant system blocks — each contains ONLY this emitter
+            const emForVariant = findEmitterInBlock(originalBlock, emName);
+            if (emForVariant) {
+                const emitterText = originalBlock.substring(emForVariant.start, emForVariant.end);
+
+                const complexIdx = originalBlock.indexOf('complexEmitterDefinitionData: list[pointer] = {');
+                let complexLineStart = complexIdx;
+                while (complexLineStart > 0 && originalBlock[complexLineStart - 1] !== '\n') complexLineStart--;
+                const complexIndent = complexIdx !== -1 ? originalBlock.substring(complexLineStart, complexIdx) : '        ';
+
+                const lastBraceIdx = originalBlock.lastIndexOf('}');
+                let closeBraceLineStart = lastBraceIdx;
+                while (closeBraceLineStart > 0 && originalBlock[closeBraceLineStart - 1] !== '\n') closeBraceLineStart--;
+                const closeBraceIndent = originalBlock.substring(closeBraceLineStart, lastBraceIdx);
+
+                for (const variantPath of variantPaths) {
+                    const variantBlock =
+                        `"${variantPath}" = VfxSystemDefinitionData {\n` +
+                        `${complexIndent}complexEmitterDefinitionData: list[pointer] = {\n` +
+                        `${emitterText}\n` +
+                        `${complexIndent}}\n` +
+                        `${complexIndent}particleName: string = "${variantPath}"\n` +
+                        `${complexIndent}particlePath: string = "${variantPath}"\n` +
+                        `${closeBraceIndent}}`;
+                    duplicatesText += '\n' + variantBlock + '\n';
+                }
+            }
+
+            // Replace this emitter in modifiedBlock with the randomizer
+            const emFound = findEmitterInBlock(modifiedBlock, emName);
+            if (emFound) {
+                const randomizerBlock = buildRandomizerEmitter(emName, variantPaths, emFound.indent);
+                modifiedBlock =
+                    modifiedBlock.substring(0, emFound.start) +
+                    randomizerBlock +
+                    modifiedBlock.substring(emFound.end);
+            }
+        }
+
+        result =
+            result.substring(0, sys.start) +
+            modifiedBlock +
+            duplicatesText +
+            result.substring(sys.end);
+
+        for (const emitter of emitters) {
+            const baseName = resolvedNames.get(emitter.key);
+            result = addToResourceResolver(result, baseName, variantPrefixes.map(p => `_${p}`));
+        }
+    }
+
+    return { content: result, resolvedBaseNames: Array.from(usedBaseNames) };
+}
+
+/**
+ * System-level generation: duplicate the whole VfxSystem N times,
+ * add a randomizer emitter to the original that picks between the copies.
+ */
+function generateSystemRandomizers(content, parsedFile, selectedSystemKeys, variantPrefixes) {
     let result = content;
 
-    const found = findVfxBlock(result, originalPath);
-    if (!found) {
-        throw new Error(`Could not find VfxSystemDefinitionData for path: ${originalPath}`);
+    for (const systemKey of selectedSystemKeys) {
+        const sys = findVfxBlock(result, systemKey);
+        if (!sys) continue;
+
+        const originalBlock = sys.block;
+        const variantPaths = variantPrefixes.map(p => `${systemKey}_${p}`);
+
+        // Create N full copies of the system with new paths
+        let duplicatesText = '';
+        for (const variantPath of variantPaths) {
+            const variantBlock = originalBlock.replace(
+                `"${systemKey}" = VfxSystemDefinitionData {`,
+                `"${variantPath}" = VfxSystemDefinitionData {`
+            );
+            duplicatesText += '\n' + variantBlock + '\n';
+        }
+
+        // Detect emitter indent from original block
+        const emIndentMatch = originalBlock.match(/\n(\s*)VfxEmitterDefinitionData\s*\{/);
+        const emitterIndent = emIndentMatch ? emIndentMatch[1] : '            ';
+
+        // Find complexEmitterDefinitionData list and insert randomizer before its closing brace
+        const complexListPattern = 'complexEmitterDefinitionData: list[pointer] = {';
+        const complexListIdx = originalBlock.indexOf(complexListPattern);
+
+        let modifiedBlock = originalBlock;
+        if (complexListIdx !== -1) {
+            // Find the opening { of the list
+            const listOpenIdx = complexListIdx + complexListPattern.length - 1;
+            // Find the closing } of the list
+            let braceCount = 0, inList = false, listEnd = complexListIdx;
+            for (let i = complexListIdx; i < originalBlock.length; i++) {
+                if (originalBlock[i] === '{') { braceCount++; inList = true; }
+                else if (originalBlock[i] === '}') {
+                    braceCount--;
+                    if (inList && braceCount === 0) { listEnd = i; break; }
+                }
+            }
+            const sysDisplayName = (parsedFile.systems.get(systemKey)?.name || systemKey).split('/').pop();
+            const randomizerEmitterText = buildRandomizerEmitter(sysDisplayName, variantPaths, emitterIndent);
+            // Replace entire list contents with just the randomizer emitter
+            modifiedBlock =
+                originalBlock.substring(0, listOpenIdx + 1) +
+                '\n' + randomizerEmitterText + '\n' +
+                originalBlock.substring(listEnd);
+        }
+
+        result = result.substring(0, sys.start) + modifiedBlock + duplicatesText + result.substring(sys.end);
+        result = addToResourceResolver(result, systemKey, variantPrefixes.map(p => `_${p}`));
     }
-    const { block: originalBlock } = found;
 
-    const particleNameMatch = originalBlock.match(/particleName:\s*string\s*=\s*"([^"]+)"/);
-    const particlePathMatch = originalBlock.match(/particlePath:\s*string\s*=\s*"([^"]+)"/);
-
-    if (!particleNameMatch || !particlePathMatch) {
-        throw new Error('Could not find particleName or particlePath in VfxSystemDefinitionData');
-    }
-
-    const originalParticleName = particleNameMatch[1];
-    const originalParticlePath = particlePathMatch[1];
-
-    let duplicates = '';
-    const suffixes = [];
-
-    for (let i = 1; i <= numCopies; i++) {
-        const suffix = customPrefixes ? `_${customPrefixes[i - 1]}` : `_${i}`;
-        suffixes.push(suffix);
-
-        const newPath = `${originalPath}${suffix}`;
-        const newParticleName = `${originalParticleName}${suffix}`;
-        const newParticlePath = `${originalParticlePath}${suffix}`;
-
-        let duplicateBlock = originalBlock
-            .replace(`"${originalPath}"`, `"${newPath}"`)
-            .replace(/particleName:\s*string\s*=\s*"[^"]+"/, `particleName: string = "${newParticleName}"`)
-            .replace(/particlePath:\s*string\s*=\s*"[^"]+"/, `particlePath: string = "${newParticlePath}"`);
-
-        duplicates += '\n    ' + duplicateBlock + '\n';
-    }
-
-    const insertPos = result.indexOf(originalBlock) + originalBlock.length;
-    result = result.slice(0, insertPos) + duplicates + result.slice(insertPos);
-
-    result = addToResourceResolver(result, originalPath, suffixes);
-    result = addRandomizerEmitter(result, originalPath, suffixes);
-
-    return { content: result, suffixes };
+    return result;
 }
 
 /** Append new entries to the ResourceResolver map */
@@ -181,193 +298,35 @@ function addToResourceResolver(content, originalPath, suffixes) {
     const resourceMapStart = content.indexOf('resourceMap: map[hash,link] = {');
     if (resourceMapStart === -1) return content;
 
-    const escapedPath = escapeRegex(originalPath);
-    const resourceEntryRegex = new RegExp(`(\\s*)"([^"]+)"\\s*=\\s*"${escapedPath}"`, 'g');
-    let lastMatch = null, match;
-    while ((match = resourceEntryRegex.exec(content)) !== null) lastMatch = match;
-
-    if (!lastMatch) {
-        const simpleSearch = `"${originalPath}"`;
-        const searchIndex = content.indexOf(simpleSearch, resourceMapStart);
-        if (searchIndex === -1) {
-            // Original not found - find ANY entry to get indentation
-            const anyEntryRegex = /^(\s*)\"[^\"]+\"\s*=\s*\"[^\"]+\"/m;
-            const anyMatch = content.substring(resourceMapStart).match(anyEntryRegex);
-
-            const indent = anyMatch ? anyMatch[1] : '            ';
-
-            // Find end of resourceMap
-            let braceCount = 0, inMap = false, mapEnd = resourceMapStart;
-            for (let i = resourceMapStart; i < content.length; i++) {
-                if (content[i] === '{') { braceCount++; inMap = true; }
-                else if (content[i] === '}') {
-                    braceCount--;
-                    if (inMap && braceCount === 0) { mapEnd = i; break; }
-                }
-            }
-
-            let newEntries = '';
-            for (const suffix of suffixes) {
-                newEntries += `${indent}"${originalPath}${suffix}" = "${originalPath}${suffix}"\n`;
-            }
-            return content.slice(0, mapEnd) + newEntries + content.slice(mapEnd);
+    // Find the closing brace of the resourceMap block
+    let braceCount = 0, inMap = false, mapEnd = resourceMapStart;
+    for (let i = resourceMapStart; i < content.length; i++) {
+        if (content[i] === '{') { braceCount++; inMap = true; }
+        else if (content[i] === '}') {
+            braceCount--;
+            if (inMap && braceCount === 0) { mapEnd = i; break; }
         }
-
-        let lineStart = searchIndex;
-        while (lineStart > 0 && content[lineStart] !== '\n') lineStart--;
-        lineStart++;
-        let lineEnd = searchIndex;
-        while (lineEnd < content.length && content[lineEnd] !== '\n') lineEnd++;
-
-        const fullLine = content.substring(lineStart, lineEnd);
-        const lineMatch = fullLine.match(/"([^"]+)"\s*=\s*"[^"]+"/);
-        if (!lineMatch) return content;
-
-        const insertPos = lineEnd + (content[lineEnd] === '\n' ? 1 : 0);
-        const indentMatch = fullLine.match(/^(\s*)/);
-        const indent = indentMatch ? indentMatch[1] : '            ';
-
-        let newEntries = '';
-        for (const suffix of suffixes) {
-            newEntries += `${indent}"${originalPath}${suffix}" = "${originalPath}${suffix}"\n`;
-        }
-        return content.slice(0, insertPos) + newEntries + content.slice(insertPos);
     }
 
-    let insertPos = lastMatch.index + lastMatch[0].length;
-    if (content[insertPos] === '\n') {
-        insertPos++;
-    } else {
-        while (insertPos < content.length && content[insertPos] !== '\n') insertPos++;
-        if (content[insertPos] === '\n') insertPos++;
-    }
+    // Detect indent from any existing entry inside the map
+    const anyEntry = content.substring(resourceMapStart, mapEnd).match(/\n(\s*)"[^"]+"\s*=\s*"[^"]+"/);
+    const indent = anyEntry ? anyEntry[1] : '            ';
 
-    const indent = lastMatch[1];
     let newEntries = '';
     for (const suffix of suffixes) {
         newEntries += `${indent}"${originalPath}${suffix}" = "${originalPath}${suffix}"\n`;
     }
-    return content.slice(0, insertPos) + newEntries + content.slice(insertPos);
-}
-
-/** Add randomizer emitter pointing to duplicates. Appends if one already exists. */
-function addRandomizerEmitter(content, originalPath, suffixes) {
-    const startPattern = `"${escapeRegex(originalPath)}" = VfxSystemDefinitionData {`;
-    const startIndex = content.indexOf(startPattern);
-    if (startIndex === -1) return content;
-
-    const complexEmitterStart = content.indexOf('complexEmitterDefinitionData: list[pointer] = {', startIndex);
-    if (complexEmitterStart === -1) return content;
-
-    const openBracePos = content.indexOf('{', complexEmitterStart + 'complexEmitterDefinitionData: list[pointer] = '.length);
-    if (openBracePos === -1) return content;
-
-    let braceCount = 1, closePos = openBracePos + 1;
-    while (closePos < content.length && braceCount > 0) {
-        if (content[closePos] === '{') braceCount++;
-        else if (content[closePos] === '}') braceCount--;
-        closePos++;
-    }
-    if (braceCount !== 0) return content;
-    const closeBracePos = closePos - 1;
-
-    const existingBlock = content.substring(openBracePos + 1, closeBracePos);
-    let allChildren = [];
-
-    // Check if we are appending to an existing randomizer
-    if (existingBlock.includes('RandomizerByDisco')) {
-        const childRegex = /effectKey:\s*hash\s*=\s*"([^"]+)"/g;
-        let m;
-        while ((m = childRegex.exec(existingBlock)) !== null) {
-            allChildren.push(m[1]);
-        }
-    }
-
-    // Add new ones
-    for (const suffix of suffixes) {
-        const newChild = `${originalPath}${suffix}`;
-        if (!allChildren.includes(newChild)) {
-            allChildren.push(newChild);
-        }
-    }
-
-    const childrenIdentifiers = allChildren.map(child => `                        VfxChildIdentifier {
-                            effectKey: hash = "${child}"
-                        }`).join('\n');
-
-    const totalVariants = allChildren.length;
-
-    const randomizerEmitter = `
-            VfxEmitterDefinitionData {
-                rate: embed = ValueFloat {
-                    constantValue: f32 = 1
-                }
-                isSingleParticle: flag = true
-                childParticleSetDefinition: pointer = VfxChildParticleSetDefinitionData {
-                    childrenIdentifiers: list[embed] = {
-${childrenIdentifiers}
-                    }
-                    childrenProbability: embed = ValueFloat {
-                        constantValue: f32 = 1
-                        dynamics: pointer = VfxAnimatedFloatVariableData {
-                            probabilityTables: list[pointer] = {
-                                VfxProbabilityTableData {
-                                    keyTimes: list[f32] = {
-                                        0
-                                        1
-                                    }
-                                    keyValues: list[f32] = {
-                                        0
-                                        ${totalVariants}
-                                    }
-                                }
-                            }
-                            times: list[f32] = {
-                                0
-                            }
-                            values: list[f32] = {
-                                1
-                            }
-                        }
-                    }
-                }
-                emitterName: string = "RandomizerByDisco"
-                shape: embed = VfxShape {
-                    emitOffset: embed = ValueVector3 {
-                        constantValue: vec3 = { 0, 0, 0 }
-                    }
-                }
-                bindWeight: embed = ValueFloat {
-                    constantValue: f32 = 1
-                }
-                birthScale0: embed = ValueVector3 {
-                    constantValue: vec3 = { 0, 0, 0 }
-                }
-            }
-        `;
-
-    return content.slice(0, openBracePos + 1) + randomizerEmitter + content.slice(closeBracePos);
+    return content.slice(0, mapEnd) + newEntries + content.slice(mapEnd);
 }
 
 function separateAssetsPerCopy(content, originalPaths, numCopies, customPrefixes, assetFolderNames) {
     let modifiedContent = content;
     const assetsByFolder = {};
 
-    // Prepare per-folder maps
-    for (const fn of assetFolderNames) { assetsByFolder[fn] = new Map(); } // Map<filename, originalFullPath>
+    for (const fn of assetFolderNames) { assetsByFolder[fn] = new Map(); }
     assetsByFolder['_backup'] = new Map();
 
     for (const originalPath of originalPaths) {
-        // Collect original assets for backup
-        const origBlock = findVfxBlock(modifiedContent, originalPath);
-        if (origBlock) {
-            const origAssets = extractAssetPaths(origBlock.block);
-            origAssets.forEach(a => {
-                const fn = a.split('/').pop();
-                assetsByFolder['_backup'].set(fn, a);
-            });
-        }
-
         for (let i = 0; i < numCopies; i++) {
             const suffix = customPrefixes ? `_${customPrefixes[i]}` : `_${i + 1}`;
             const duplicatePath = `${originalPath}${suffix}`;
@@ -377,8 +336,6 @@ function separateAssetsPerCopy(content, originalPaths, numCopies, customPrefixes
             if (!found) continue;
 
             const { start: startIndex, end: endIndex, block: vfxBlock } = found;
-
-            // Find all ASSETS/ paths in string values within this block
             const assetRegex = /(ASSETS\/[^"\s]+)/gi;
             let m;
             const replacements = [];
@@ -386,23 +343,17 @@ function separateAssetsPerCopy(content, originalPaths, numCopies, customPrefixes
                 const assetPath = m[1];
                 const fileName = assetPath.split('/').pop();
                 const newPath = `ASSETS/${folderName}/${fileName}`;
-
-                // Track: this file needs to be copied from original location to variant folder
                 assetsByFolder[folderName].set(fileName, assetPath);
-
-                if (assetPath !== newPath) {
-                    replacements.push({ old: assetPath, new: newPath });
+                if (!assetsByFolder['_backup'].has(fileName)) {
+                    assetsByFolder['_backup'].set(fileName, assetPath);
                 }
+                if (assetPath !== newPath) replacements.push({ old: assetPath, new: newPath });
             }
 
-            // Apply replacements (deduplicate & sort longest first to avoid partial matches)
             const uniqueReplacements = [];
             const seen = new Set();
             for (const r of replacements) {
-                if (!seen.has(r.old)) {
-                    seen.add(r.old);
-                    uniqueReplacements.push(r);
-                }
+                if (!seen.has(r.old)) { seen.add(r.old); uniqueReplacements.push(r); }
             }
             uniqueReplacements.sort((a, b) => b.old.length - a.old.length);
 
@@ -414,47 +365,31 @@ function separateAssetsPerCopy(content, originalPaths, numCopies, customPrefixes
         }
     }
 
-    // Convert Maps to arrays of { original, filename } for the UI and copy logic
     const result = {};
     for (const folder in assetsByFolder) {
-        result[folder] = Array.from(assetsByFolder[folder].entries()).map(([filename, original]) => ({
-            original,
-            filename
-        }));
+        result[folder] = Array.from(assetsByFolder[folder].entries()).map(([filename, original]) => ({ original, filename }));
     }
     return { content: modifiedContent, assetsByFolder: result };
 }
 
-/**
- * Copy detected assets to their per-variant folders on disk.
- * Creates ASSETS/<folderName>/ in the PROJECT ROOT (parent of data/ folder).
- * Source: original deep path resolved from project root.
- */
 function copyAssetsToFolders(assetsByFolder, sourceFilePath) {
     if (!nodeFs || !nodePath) return { success: false, error: 'No Node.js' };
 
     const binDir = nodePath.dirname(sourceFilePath);
-
-    // Walk UP from binDir to find project root (the folder that CONTAINS data/)
     let projectRoot = binDir;
     let current = binDir;
     while (current && current !== nodePath.dirname(current)) {
-        const parent = nodePath.dirname(current);
-        const baseName = nodePath.basename(current).toLowerCase();
-
-        // If current folder is 'data', the parent is the project root
-        if (baseName === 'data') {
-            projectRoot = parent;
+        if (nodePath.basename(current).toLowerCase() === 'data') {
+            projectRoot = nodePath.dirname(current);
             break;
         }
-        current = parent;
+        current = nodePath.dirname(current);
     }
 
     let totalCopied = 0, totalFailed = 0, totalSkipped = 0, foldersCreated = 0;
     const failures = [];
 
     for (const [folderName, assets] of Object.entries(assetsByFolder)) {
-        // Create ASSETS/<folderName>/ in project root
         const destDir = nodePath.join(projectRoot, 'ASSETS', folderName);
         if (!nodeFs.existsSync(destDir)) {
             nodeFs.mkdirSync(destDir, { recursive: true });
@@ -466,10 +401,8 @@ function copyAssetsToFolders(assetsByFolder, sourceFilePath) {
                 const destPath = nodePath.join(destDir, asset.filename);
                 if (nodeFs.existsSync(destPath)) { totalSkipped++; continue; }
 
-                // Resolve source from original path
                 const originalRel = asset.original.replace(/\//g, nodePath.sep);
                 const relNoAssets = originalRel.replace(/^ASSETS[\\\/]/i, '');
-
                 const candidates = [
                     nodePath.join(projectRoot, originalRel),
                     nodePath.join(projectRoot, 'ASSETS', relNoAssets),
@@ -511,18 +444,19 @@ export default function ParticleRandomizer() {
     const [binPath, setBinPath] = useState(null);
     const [pyPath, setPyPath] = useState(null);
     const [generatedContent, setGeneratedContent] = useState('');
+    const [parsedFile, setParsedFile] = useState(null);
 
-    // VFX list
-    const [vfxEntries, setVfxEntries] = useState([]);
-    const [entryInfo, setEntryInfo] = useState({}); // analysis: variants/randomizer per entry
-    const [selected, setSelected] = useState(new Set());
+    // Tree state
+    const [expandedSystems, setExpandedSystems] = useState(new Set());
+    const [selected, setSelected] = useState(new Set()); // Set<emitterKey>
+    const [selectedSystems, setSelectedSystems] = useState(new Set()); // Set<systemKey> — system-level mode
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Config — separate assets ON by default
+    // Config
     const [numCopies, setNumCopies] = useState(2);
     const [useCustomPrefix, setUseCustomPrefix] = useState(false);
     const [customPrefixes, setCustomPrefixes] = useState([]);
-    const [separateAssets, setSeparateAssets] = useState(true);   // ← on by default
+    const [separateAssets, setSeparateAssets] = useState(true);
     const [assetFolderNames, setAssetFolderNames] = useState([]);
     const [detectedAssets, setDetectedAssets] = useState({});
 
@@ -533,15 +467,6 @@ export default function ParticleRandomizer() {
     const [statusType, setStatusType] = useState('');
     const [canSave, setCanSave] = useState(false);
     const [canCopyAssets, setCanCopyAssets] = useState(false);
-
-    // ── Derived ──
-    const filteredEntries = useMemo(() => {
-        if (!searchQuery.trim()) return vfxEntries;
-        const q = searchQuery.toLowerCase();
-        return vfxEntries.filter(e => e.toLowerCase().includes(q));
-    }, [vfxEntries, searchQuery]);
-
-    const visibleSet = useMemo(() => new Set(filteredEntries), [filteredEntries]);
 
     // Keep prefix/asset-folder arrays in sync with numCopies
     useEffect(() => {
@@ -557,11 +482,46 @@ export default function ParticleRandomizer() {
         });
     }, [numCopies]);
 
-    // ── Status helper ──
     const setStatus = useCallback((msg, type = '') => {
         setStatusMessage(msg);
         setStatusType(type);
     }, []);
+
+    // ── Derived: filtered system order + per-system visible emitters ──
+    const filteredSystemOrder = useMemo(() => {
+        if (!parsedFile) return [];
+        if (!searchQuery.trim()) return parsedFile.systemOrder || [];
+        const q = searchQuery.toLowerCase();
+        return (parsedFile.systemOrder || []).filter(sKey => {
+            const sys = parsedFile.systems.get(sKey);
+            if (!sys) return false;
+            if ((sys.name || '').toLowerCase().includes(q) || sKey.toLowerCase().includes(q)) return true;
+            return (sys.emitterKeys || []).some(eKey => {
+                const em = parsedFile.emitters.get(eKey);
+                return em && (em.name || '').toLowerCase().includes(q);
+            });
+        });
+    }, [parsedFile, searchQuery]);
+
+    const getVisibleEmitters = useCallback((systemKey) => {
+        if (!parsedFile) return [];
+        const sys = parsedFile.systems.get(systemKey);
+        if (!sys) return [];
+        const all = (sys.emitterKeys || []).map(k => parsedFile.emitters.get(k)).filter(Boolean);
+        if (!searchQuery.trim()) return all;
+        const q = searchQuery.toLowerCase();
+        const sysMatches = (sys.name || '').toLowerCase().includes(q) || systemKey.toLowerCase().includes(q);
+        if (sysMatches) return all;
+        return all.filter(e => (e.name || '').toLowerCase().includes(q));
+    }, [parsedFile, searchQuery]);
+
+    const totalEmitterCount = useMemo(() => {
+        if (!parsedFile) return 0;
+        return (parsedFile.systemOrder || []).reduce((sum, sKey) => {
+            const sys = parsedFile.systems.get(sKey);
+            return sum + (sys ? (sys.emitterKeys || []).length : 0);
+        }, 0);
+    }, [parsedFile]);
 
     // ── File Operations ──
     const processFile = useCallback(async (filePath) => {
@@ -569,12 +529,7 @@ export default function ParticleRandomizer() {
             setIsLoading(true);
             setLoadingText('Processing .bin file...');
 
-            const path = window.require('path');
-            const fs = window.require('fs');
-            const { execSync } = window.require('child_process');
-
-            const ritobinPath = await electronPrefs.get('RitoBinPath');
-            if (!ritobinPath) throw new Error('Configure ritobin path in Settings first');
+            setBinPath(filePath);
 
             const binDir = path.dirname(filePath);
             const binName = path.basename(filePath, '.bin');
@@ -582,20 +537,17 @@ export default function ParticleRandomizer() {
 
             setBinPath(filePath);
 
-            // Convert .bin → .py if not already present
             if (!fs.existsSync(convertedPyPath)) {
                 setLoadingText('Converting .bin to .py...');
                 try {
-                    execSync(`"${ritobinPath}" "${filePath}"`, { cwd: binDir, timeout: 30000 });
+                    await ToPy(filePath);
                 } catch (err) {
-                    throw new Error(`Ritobin failed: ${err.message}`);
+                    throw new Error(`RitoBin failed: ${err.message}`);
                 }
                 if (!fs.existsSync(convertedPyPath)) throw new Error('Failed to create .py file');
             }
 
-            setLoadingText('Reading file...');
-
-            // Create backup on load (same as Paint2 / Port)
+            setLoadingText('Reading & parsing file...');
             const content = loadFileWithBackup(convertedPyPath, 'ParticleRandomizer');
 
             setPyPath(convertedPyPath);
@@ -604,30 +556,22 @@ export default function ParticleRandomizer() {
             setCanSave(false);
             setCanCopyAssets(false);
             setDetectedAssets({});
-
-            const allEntries = findVfxEntries(content);
-
-            // Analyze for existing variants / randomizer
-            const { info, subVariants } = analyzeExistingVariants(content, allEntries);
-
-            // Filter out sub-variants from the main list so they aren't processed again
-            const mainEntries = allEntries.filter(e => !subVariants.has(e));
-
-            setVfxEntries(mainEntries);
-            setEntryInfo(info);
-
             setSelected(new Set());
+            setSelectedSystems(new Set());
             setSearchQuery('');
 
-            if (mainEntries.length > 0) {
-                const withVariants = Object.values(info).filter(a => a.hasVariants).length;
-                const withRandomizer = Object.values(info).filter(a => a.hasRandomizer).length;
-                let msg = `Loaded: ${mainEntries.length} VFX entries`;
-                if (withVariants > 0) msg += ` (${withVariants} with existing variants)`;
-                if (withRandomizer > 0) msg += ` (${withRandomizer} with randomizer)`;
-                setStatus(msg, 'success');
+            const parsed = parseVfxFile(content);
+            setParsedFile(parsed);
+
+            // Expand all systems by default
+            setExpandedSystems(new Set(parsed.systemOrder || []));
+
+            const systemCount = parsed.stats?.systemCount || 0;
+            const emitterCount = parsed.stats?.emitterCount || 0;
+            if (systemCount > 0) {
+                setStatus(`Loaded: ${systemCount} VFX system${systemCount !== 1 ? 's' : ''}, ${emitterCount} emitters`, 'success');
             } else {
-                setStatus(allEntries.length > 0 ? 'Loaded: All entries are variants of existing randomizers' : 'File loaded but no VFX entries found', 'error');
+                setStatus('File loaded but no VFX systems found', 'error');
             }
         } catch (error) {
             console.error('Load error:', error);
@@ -639,112 +583,170 @@ export default function ParticleRandomizer() {
     }, [setStatus]);
 
     const loadBinFile = useCallback(async () => {
-        if (!window.require) {
-            setStatus('Electron environment required', 'error');
-            return;
-        }
-
-        // Check if user prefers native file browser
+        if (!window.require) { setStatus('Electron environment required', 'error'); return; }
         const useNativeFileBrowser = await electronPrefs.get('UseNativeFileBrowser');
         const { ipcRenderer } = window.require('electron');
-
-        let filePath;
 
         if (useNativeFileBrowser) {
             const result = await ipcRenderer.invoke('dialog:openFile', {
                 title: 'Select a .bin file',
                 defaultPath: binPath ? nodePath?.dirname(binPath) : undefined,
-                filters: [
-                    { name: 'Bin Files', extensions: ['bin'] },
-                    { name: 'All Files', extensions: ['*'] }
-                ],
+                filters: [{ name: 'Bin Files', extensions: ['bin'] }, { name: 'All Files', extensions: ['*'] }],
                 properties: ['openFile']
             });
             if (result.canceled || !result.filePaths?.length) return;
-            filePath = result.filePaths[0];
-            await processFile(filePath);
+            await processFile(result.filePaths[0]);
         } else {
-            // Use custom explorer
             openAssetPreview(binPath || undefined, null, 'particle-randomizer-bin');
         }
     }, [binPath, processFile, setStatus]);
 
-    // Listen for file selection from custom explorer
     useEffect(() => {
         const handleAssetSelected = (e) => {
             const { path: filePath, mode } = e.detail || {};
-            if (filePath && mode === 'particle-randomizer-bin') {
-                processFile(filePath);
-            }
+            if (filePath && mode === 'particle-randomizer-bin') processFile(filePath);
         };
         window.addEventListener('asset-preview-selected', handleAssetSelected);
         return () => window.removeEventListener('asset-preview-selected', handleAssetSelected);
     }, [processFile]);
 
     // ── Selection ──
-    const toggleEntry = useCallback((entry) => {
+    const toggleEmitter = useCallback((emitterKey, systemKey) => {
+        // If this system was in system mode, exit it when toggling individual emitters
+        if (systemKey) {
+            setSelectedSystems(prev => {
+                if (!prev.has(systemKey)) return prev;
+                const next = new Set(prev);
+                next.delete(systemKey);
+                return next;
+            });
+        }
         setSelected(prev => {
             const next = new Set(prev);
-            if (next.has(entry)) next.delete(entry);
-            else next.add(entry);
+            if (next.has(emitterKey)) next.delete(emitterKey);
+            else next.add(emitterKey);
             return next;
         });
     }, []);
 
-    const selectAll = () => setSelected(new Set(vfxEntries));
-    const deselectAll = () => setSelected(new Set());
-    const selectVisible = () => {
-        setSelected(prev => {
+    const toggleSystemMode = useCallback((systemKey) => {
+        if (selectedSystems.has(systemKey)) {
+            setSelectedSystems(prev => {
+                const next = new Set(prev);
+                next.delete(systemKey);
+                return next;
+            });
+        } else {
+            setSelectedSystems(prev => {
+                const next = new Set(prev);
+                next.add(systemKey);
+                return next;
+            });
+            // Clear individual emitter selections for this system separately
+            if (parsedFile) {
+                const sys = parsedFile.systems.get(systemKey);
+                if (sys) {
+                    setSelected(prev => {
+                        const next = new Set(prev);
+                        for (const eKey of sys.emitterKeys || []) next.delete(eKey);
+                        return next;
+                    });
+                }
+            }
+        }
+    }, [selectedSystems, parsedFile]);
+
+    const toggleSystemExpand = useCallback((systemKey) => {
+        setExpandedSystems(prev => {
             const next = new Set(prev);
-            filteredEntries.forEach(e => next.add(e));
+            if (next.has(systemKey)) next.delete(systemKey);
+            else next.add(systemKey);
             return next;
         });
-    };
+    }, []);
+
+    const selectAll = useCallback(() => {
+        if (!parsedFile) return;
+        setSelectedSystems(new Set());
+        const all = new Set();
+        for (const sKey of parsedFile.systemOrder || []) {
+            const sys = parsedFile.systems.get(sKey);
+            if (!sys) continue;
+            for (const eKey of sys.emitterKeys || []) {
+                const em = parsedFile.emitters.get(eKey);
+                if (em && em.name && em.name !== 'Unnamed') all.add(eKey);
+            }
+        }
+        setSelected(all);
+    }, [parsedFile]);
+
+    const deselectAll = useCallback(() => {
+        setSelected(new Set());
+        setSelectedSystems(new Set());
+    }, []);
+
+    const selectVisible = useCallback(() => {
+        setSelected(prev => {
+            const next = new Set(prev);
+            for (const sKey of filteredSystemOrder) {
+                const emitters = getVisibleEmitters(sKey);
+                for (const em of emitters) {
+                    if (em.name && em.name !== 'Unnamed') next.add(em.key);
+                }
+            }
+            return next;
+        });
+    }, [filteredSystemOrder, getVisibleEmitters]);
+
+    const expandAll = useCallback(() => {
+        if (!parsedFile) return;
+        setExpandedSystems(new Set(parsedFile.systemOrder || []));
+    }, [parsedFile]);
+
+    const collapseAll = useCallback(() => setExpandedSystems(new Set()), []);
 
     // ── Generate ──
     const handleGenerate = useCallback(() => {
-        if (!pyContent) { setStatus('Load a file first', 'error'); return; }
-        if (selected.size === 0) { setStatus('Select at least one VFX entry', 'error'); return; }
+        if (!pyContent || !parsedFile) { setStatus('Load a file first', 'error'); return; }
+        if (selected.size === 0 && selectedSystems.size === 0) { setStatus('Select at least one emitter or system', 'error'); return; }
         if (numCopies < 1 || numCopies > 10) { setStatus('Copies must be between 1 and 10', 'error'); return; }
 
-        // Validate custom prefixes
-        let prefixes = null;
+        let variantPrefixes;
         if (useCustomPrefix) {
-            prefixes = customPrefixes.map(p => p.trim());
-            if (prefixes.some(p => !p)) {
-                setStatus('Fill in all custom prefix fields', 'error');
-                return;
-            }
+            variantPrefixes = customPrefixes.map(p => p.trim());
+            if (variantPrefixes.some(p => !p)) { setStatus('Fill in all custom prefix fields', 'error'); return; }
+        } else {
+            variantPrefixes = Array.from({ length: numCopies }, (_, i) => `variant${i + 1}`);
         }
 
-        // Validate asset folder names when separating
         if (separateAssets) {
             const folders = assetFolderNames.map(f => f.trim());
-            if (folders.some(f => !f)) {
-                setStatus('Fill in all asset folder names', 'error');
-                return;
-            }
+            if (folders.some(f => !f)) { setStatus('Fill in all asset folder names', 'error'); return; }
         }
 
         try {
             let result = pyContent;
-            let successCount = 0;
-            const failedEntries = [];
 
-            for (const entryPath of selected) {
-                try {
-                    const gen = generateDuplicates(result, entryPath, numCopies, prefixes);
-                    result = gen.content;
-                    successCount++;
-                } catch (error) {
-                    failedEntries.push({ path: entryPath, error: error.message });
-                }
+            // System-level mode: duplicate whole system, add randomizer emitter to original
+            if (selectedSystems.size > 0) {
+                result = generateSystemRandomizers(result, parsedFile, Array.from(selectedSystems), variantPrefixes);
             }
 
-            // Handle asset separation (on by default)
+            // Per-emitter mode: create mini variant systems, replace emitter with randomizer
+            let emitterResolvedNames = [];
+            if (selected.size > 0) {
+                const emitterResult = generateEmitterRandomizers(result, parsedFile, Array.from(selected), variantPrefixes);
+                result = emitterResult.content;
+                emitterResolvedNames = emitterResult.resolvedBaseNames;
+            }
+
             if (separateAssets) {
                 const folders = assetFolderNames.map(f => f.trim());
-                const assetsResult = separateAssetsPerCopy(result, Array.from(selected), numCopies, prefixes, folders);
+                const basePaths = [...emitterResolvedNames];
+                for (const sKey of selectedSystems) {
+                    basePaths.push(sKey);
+                }
+                const assetsResult = separateAssetsPerCopy(result, basePaths, numCopies, variantPrefixes, folders);
                 result = assetsResult.content;
                 setDetectedAssets(assetsResult.assetsByFolder);
                 setCanCopyAssets(true);
@@ -755,65 +757,40 @@ export default function ParticleRandomizer() {
 
             setGeneratedContent(result);
             setCanSave(true);
+            // Update tree immediately to reflect new state
+            setPyContent(result);
+            setParsedFile(parseVfxFile(result));
+            setSelected(new Set());
+            setSelectedSystems(new Set());
 
-            // Update entry information (badges) immediately
-            const { info: newInfo, subVariants: newSubVariants } = analyzeExistingVariants(result, findVfxEntries(result));
-            setEntryInfo(newInfo);
-
-            // Update the visible vfxEntries to hide any new sub-variants
-            setVfxEntries(prev => prev.filter(e => !newSubVariants.has(e)));
-
-            if (failedEntries.length === 0) {
-                let msg = `✅ Processed ${successCount} VFX entr${successCount === 1 ? 'y' : 'ies'} × ${numCopies} copies`;
-                if (separateAssets) {
-                    const totalAssets = Object.entries(assetsResult.assetsByFolder)
-                        .filter(([k]) => k !== '_backup')
-                        .reduce((s, [, a]) => s + a.length, 0);
-                    if (totalAssets > 0) msg += ` — ${totalAssets} assets will be separated`;
-                }
-                setStatus(msg, 'success');
-            } else {
-                setStatus(`Processed ${successCount}. Failed: ${failedEntries.length}`, 'error');
-            }
+            const parts = [];
+            if (selected.size > 0) parts.push(`${selected.size} emitter${selected.size !== 1 ? 's' : ''}`);
+            if (selectedSystems.size > 0) parts.push(`${selectedSystems.size} system${selectedSystems.size !== 1 ? 's' : ''}`);
+            setStatus(`Processed ${parts.join(' + ')} × ${numCopies} copies`, 'success');
         } catch (error) {
             setStatus(`Error: ${error.message}`, 'error');
         }
-    }, [pyContent, selected, numCopies, useCustomPrefix, customPrefixes, separateAssets, assetFolderNames, detectedAssets, setStatus]);
+    }, [pyContent, parsedFile, selected, selectedSystems, numCopies, useCustomPrefix, customPrefixes, separateAssets, assetFolderNames, setStatus]);
 
     // ── Save ──
     const handleSave = useCallback(async () => {
-        if (!generatedContent || !pyPath || !binPath) {
-            setStatus('Nothing to save', 'error');
-            return;
-        }
-
+        if (!generatedContent || !pyPath || !binPath) { setStatus('Nothing to save', 'error'); return; }
         try {
             setIsLoading(true);
             setLoadingText('Creating backup...');
-
             const fs = window.require('fs');
             const path = window.require('path');
-            const { execSync } = window.require('child_process');
 
-            // Create backup BEFORE save (same as Paint2)
             if (fs.existsSync(pyPath)) {
-                const existingContent = fs.readFileSync(pyPath, 'utf8');
-                createBackup(pyPath, existingContent, 'ParticleRandomizer');
+                createBackup(pyPath, fs.readFileSync(pyPath, 'utf8'), 'ParticleRandomizer');
             }
-
             setLoadingText('Saving modified .py...');
             fs.writeFileSync(pyPath, generatedContent, 'utf8');
 
             setLoadingText('Converting .py back to .bin...');
-            const ritobinPath = await electronPrefs.get('RitoBinPath');
-            execSync(`"${ritobinPath}" "${pyPath}"`, {
-                cwd: path.dirname(pyPath),
-                timeout: 30000
-            });
+            await ToBin(pyPath, binPath);
 
             setStatus('Saved successfully! Backup created in zbackups/', 'success');
-
-            // Sync state so the UI reflects the saved changes as the new "base"
             setPyContent(generatedContent);
             setGeneratedContent('');
             setCanSave(false);
@@ -827,25 +804,18 @@ export default function ParticleRandomizer() {
 
     // ── Copy Assets ──
     const handleCopyAssets = useCallback(() => {
-        if (!Object.keys(detectedAssets).length || !binPath) {
-            setStatus('No assets to copy', 'error');
-            return;
-        }
-
+        if (!Object.keys(detectedAssets).length || !binPath) { setStatus('No assets to copy', 'error'); return; }
         setIsLoading(true);
         setLoadingText('Copying assets...');
-
         try {
             const result = copyAssetsToFolders(detectedAssets, binPath);
             if (result.success) {
-                let msg = `📂 Copied ${result.totalCopied} assets to ${result.foldersCreated} folders`;
+                let msg = `Copied ${result.totalCopied} assets to ${result.foldersCreated} folders`;
                 if (result.totalSkipped > 0) msg += ` (${result.totalSkipped} already existed)`;
                 setStatus(msg, 'success');
             } else {
                 let msg = `Copied ${result.totalCopied}. Failed: ${result.totalFailed}`;
-                if (result.failures.length > 0) {
-                    msg += ` — ${result.failures[0].asset}: ${result.failures[0].reason}`;
-                }
+                if (result.failures.length > 0) msg += ` — ${result.failures[0].asset}: ${result.failures[0].reason}`;
                 setStatus(msg, 'error');
             }
         } catch (error) {
@@ -856,26 +826,12 @@ export default function ParticleRandomizer() {
         }
     }, [detectedAssets, binPath, setStatus]);
 
-    // ── Update prefix at index ──
-    const updatePrefix = (idx, val) => {
-        setCustomPrefixes(prev => {
-            const arr = [...prev];
-            arr[idx] = val;
-            return arr;
-        });
-    };
+    const updatePrefix = (idx, val) => setCustomPrefixes(prev => { const a = [...prev]; a[idx] = val; return a; });
+    const updateAssetFolder = (idx, val) => setAssetFolderNames(prev => { const a = [...prev]; a[idx] = val; return a; });
 
-    const updateAssetFolder = (idx, val) => {
-        setAssetFolderNames(prev => {
-            const arr = [...prev];
-            arr[idx] = val;
-            return arr;
-        });
-    };
-
-    // ════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════
     //  RENDER
-    // ════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════
 
     return (
         <div className="particle-randomizer">
@@ -900,22 +856,22 @@ export default function ParticleRandomizer() {
             {/* ── Main Content ── */}
             <div className="pr-main">
 
-                {/* ── Left Panel: VFX List ── */}
+                {/* ── Left Panel: VFX Tree ── */}
                 <div className="pr-left-panel">
-                    {vfxEntries.length > 0 ? (
+                    {parsedFile && parsedFile.systemOrder?.length > 0 ? (
                         <>
                             {/* Search */}
                             <div className="pr-search-bar">
                                 <input
                                     className="pr-search-input"
                                     type="text"
-                                    placeholder="🔍 Search VFX entries..."
+                                    placeholder="🔍 Search systems or emitters..."
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
                                 />
                                 {searchQuery && (
                                     <span className="pr-search-count">
-                                        {filteredEntries.length} / {vfxEntries.length}
+                                        {filteredSystemOrder.length} / {parsedFile.systemOrder.length}
                                     </span>
                                 )}
                             </div>
@@ -925,56 +881,115 @@ export default function ParticleRandomizer() {
                                 <button className="pr-btn pr-btn-small pr-btn-accent" onClick={selectAll}>All</button>
                                 <button className="pr-btn pr-btn-small pr-btn-accent" onClick={deselectAll}>None</button>
                                 <button className="pr-btn pr-btn-small pr-btn-accent" onClick={selectVisible}>Visible</button>
+                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={expandAll}>Expand</button>
+                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={collapseAll}>Collapse</button>
                                 <span className="pr-selection-count">
-                                    {selected.size} / {vfxEntries.length} selected
+                                    {selected.size > 0 && selectedSystems.size > 0
+                                        ? `${selected.size} emitters + ${selectedSystems.size} systems`
+                                        : selectedSystems.size > 0
+                                            ? `${selectedSystems.size} system${selectedSystems.size !== 1 ? 's' : ''} (whole)`
+                                            : `${selected.size} / ${totalEmitterCount} emitters`
+                                    }
                                 </span>
                             </div>
 
-                            {/* VFX list */}
+                            {/* VFX Tree */}
                             <div className="pr-vfx-list">
-                                {vfxEntries.map((entry, i) => {
-                                    const info = entryInfo[entry];
-                                    const isSelected = selected.has(entry);
-                                    const isVisible = visibleSet.has(entry);
+                                {filteredSystemOrder.map(systemKey => {
+                                    const sys = parsedFile.systems.get(systemKey);
+                                    if (!sys) return null;
+                                    const isExpanded = expandedSystems.has(systemKey);
+                                    const visibleEmitters = getVisibleEmitters(systemKey);
+                                    const allEmitters = (sys.emitterKeys || [])
+                                        .map(k => parsedFile.emitters.get(k)).filter(Boolean);
+                                    const namedEmitters = allEmitters.filter(e => e.name && e.name !== 'Unnamed');
+                                    const isSystemMode = selectedSystems.has(systemKey);
+                                    const selectedInSystem = namedEmitters.filter(e => selected.has(e.key)).length;
+                                    const isSystemRandomized = namedEmitters.length > 0 && namedEmitters.every(e => e.name?.endsWith('_randomized'));
+                                    const hasAnyRandomized = !isSystemRandomized && namedEmitters.some(e => e.name?.endsWith('_randomized'));
+                                    const selectableEmitters = namedEmitters.filter(e => !e.name?.endsWith('_randomized'));
+                                    const allSelected = !isSystemMode && selectedInSystem === selectableEmitters.length && selectableEmitters.length > 0;
+                                    const someSelected = !isSystemMode && selectedInSystem > 0 && !allSelected;
+                                    const displayName = (sys.name || systemKey).split('/').pop();
 
                                     return (
-                                        <div
-                                            key={i}
-                                            className={`pr-vfx-item${isSelected ? ' selected' : ''}${!isVisible ? ' hidden' : ''}`}
-                                            onClick={() => toggleEntry(entry)}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                className="pr-vfx-checkbox"
-                                                checked={isSelected}
-                                                onChange={() => toggleEntry(entry)}
-                                                onClick={e => e.stopPropagation()}
-                                            />
-                                            <span className="pr-vfx-label" title={entry}>
-                                                {(() => {
-                                                    // Only trim the path prefix, keep the actual VFX name intact
-                                                    const parts = entry.split('/');
-                                                    return parts[parts.length - 1];
-                                                })()}
-                                            </span>
+                                        <div key={systemKey} className="pr-system-group">
+                                            {/* System header row */}
+                                            <div
+                                                className={`pr-system-header${isSystemRandomized ? ' is-randomized' : isSystemMode ? ' system-mode' : hasAnyRandomized ? ' has-randomized' : someSelected || allSelected ? ' has-selection' : ''}`}
+                                                onClick={() => toggleSystemExpand(systemKey)}
+                                            >
+                                                <span className="pr-expand-icon">
+                                                    {isExpanded ? '▼' : '▶'}
+                                                </span>
+                                                <input
+                                                    type="checkbox"
+                                                    className="pr-vfx-checkbox"
+                                                    checked={isSystemMode || allSelected}
+                                                    ref={el => { if (el) el.indeterminate = someSelected; }}
+                                                    onChange={() => toggleSystemMode(systemKey)}
+                                                    onClick={e => e.stopPropagation()}
+                                                    disabled={isSystemRandomized}
+                                                />
+                                                <span className="pr-vfx-label pr-system-name" title={systemKey}>
+                                                    {displayName}
+                                                </span>
+                                                {isSystemRandomized && (
+                                                    <span className="pr-badge pr-badge-done" title="System already randomized">
+                                                        randomized
+                                                    </span>
+                                                )}
+                                                {hasAnyRandomized && (
+                                                    <span className="pr-badge pr-badge-done" title="Some emitters already randomized">
+                                                        partial
+                                                    </span>
+                                                )}
+                                                {isSystemMode && !isSystemRandomized && (
+                                                    <span className="pr-badge pr-badge-system-mode" title="Whole-system randomizer mode">
+                                                        system
+                                                    </span>
+                                                )}
+                                                <span className="pr-badge pr-badge-variant">
+                                                    {allEmitters.length}
+                                                </span>
+                                            </div>
 
-                                            {/* Badges: existing variants / randomizer */}
-                                            {info && info.hasVariants && (
-                                                <span
-                                                    className="pr-badge pr-badge-variant"
-                                                    title={`Has ${info.variantCount} variant${info.variantCount > 1 ? 's' : ''}: ${info.variantNames.join(', ')}${info.variantCount > 5 ? '...' : ''}`}
-                                                >
-                                                    {info.variantCount} var
-                                                </span>
-                                            )}
-                                            {info && info.hasRandomizer && (
-                                                <span
-                                                    className="pr-badge pr-badge-randomizer"
-                                                    title="Already has a RandomizerByDisco emitter"
-                                                >
-                                                    🎲
-                                                </span>
-                                            )}
+                                            {/* Emitter rows */}
+                                            {isExpanded && visibleEmitters.map(emitter => {
+                                                const isSelected = selected.has(emitter.key);
+                                                const isUnnamed = !emitter.name || emitter.name === 'Unnamed';
+                                                const isRandomized = emitter.name?.endsWith('_randomized');
+                                                const isDisabled = isUnnamed || isRandomized;
+                                                return (
+                                                    <div
+                                                        key={emitter.key}
+                                                        className={`pr-emitter-row${isSelected ? ' selected' : ''}${isUnnamed ? ' unnamed' : ''}${isRandomized ? ' randomized' : ''}`}
+                                                        onClick={() => !isDisabled && toggleEmitter(emitter.key, systemKey)}
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            className="pr-vfx-checkbox"
+                                                            checked={isSelected}
+                                                            disabled={isDisabled}
+                                                            onChange={() => !isDisabled && toggleEmitter(emitter.key, systemKey)}
+                                                            onClick={e => e.stopPropagation()}
+                                                        />
+                                                        <span className="pr-vfx-label" title={emitter.name}>
+                                                            {emitter.name || 'Unnamed'}
+                                                        </span>
+                                                        {isRandomized && (
+                                                            <span className="pr-badge pr-badge-done">
+                                                                done
+                                                            </span>
+                                                        )}
+                                                        {isUnnamed && !isRandomized && (
+                                                            <span className="pr-badge" style={{ color: '#555', borderColor: '#333' }}>
+                                                                no name
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     );
                                 })}
@@ -983,7 +998,7 @@ export default function ParticleRandomizer() {
                     ) : (
                         <div className="pr-empty-state">
                             <div className="icon">🎲</div>
-                            <div>Load a .bin file to see VFX entries</div>
+                            <div>Load a .bin file to see VFX systems</div>
                         </div>
                     )}
                 </div>
@@ -999,7 +1014,7 @@ export default function ParticleRandomizer() {
                                 <span className="badge">Step 1</span>
                             </div>
                             <div className="pr-number-row">
-                                <label>Number of copies (1–10):</label>
+                                <label>Number of variants (1–10):</label>
                                 <input
                                     className="pr-number-input"
                                     type="number"
@@ -1017,7 +1032,7 @@ export default function ParticleRandomizer() {
                         {/* Custom Prefix */}
                         <div className="pr-section">
                             <div className="pr-section-title">
-                                Custom Prefix
+                                Variant Names
                                 <span className="badge">Optional</span>
                             </div>
                             <div className="pr-option">
@@ -1028,20 +1043,20 @@ export default function ParticleRandomizer() {
                                     onChange={e => setUseCustomPrefix(e.target.checked)}
                                 />
                                 <label htmlFor="pr-custom-prefix">
-                                    Use custom suffixes instead of _1, _2, _3…
+                                    Custom names instead of variant1, variant2…
                                 </label>
-                                <span className="pr-info-tip" title="Custom names for duplicates, e.g. _fire, _ice, _dark">?</span>
+                                <span className="pr-info-tip" title="Custom names used in system paths, e.g. _EmitterName_fire instead of _EmitterName_variant1">?</span>
                             </div>
 
                             {useCustomPrefix && (
                                 <div className="pr-prefix-grid">
                                     {customPrefixes.map((val, i) => (
                                         <React.Fragment key={i}>
-                                            <label>Copy {i + 1}:</label>
+                                            <label>Variant {i + 1}:</label>
                                             <input
                                                 className="pr-prefix-input"
                                                 type="text"
-                                                placeholder="e.g. fire, ice, dark..."
+                                                placeholder={`e.g. fire, ice, dark…`}
                                                 value={val}
                                                 onChange={e => updatePrefix(i, e.target.value)}
                                             />
@@ -1051,11 +1066,15 @@ export default function ParticleRandomizer() {
                             )}
                         </div>
 
-                        {/* Separate Assets (ON by default) */}
+                        {/* Separate Assets */}
                         <div className="pr-section">
                             <div className="pr-section-title">
                                 Separate Assets
-                                <span className="badge" style={{ background: separateAssets ? 'rgba(34,197,94,0.15)' : undefined, borderColor: separateAssets ? '#22c55e' : undefined, color: separateAssets ? '#22c55e' : undefined }}>
+                                <span className="badge" style={{
+                                    background: separateAssets ? 'rgba(34,197,94,0.15)' : undefined,
+                                    borderColor: separateAssets ? '#22c55e' : undefined,
+                                    color: separateAssets ? '#22c55e' : undefined
+                                }}>
                                     {separateAssets ? 'Active' : 'Off'}
                                 </span>
                             </div>
@@ -1067,20 +1086,20 @@ export default function ParticleRandomizer() {
                                     onChange={e => setSeparateAssets(e.target.checked)}
                                 />
                                 <label htmlFor="pr-separate-assets">
-                                    Give each copy its own particle folder
+                                    Give each variant its own particle folder
                                 </label>
-                                <span className="pr-info-tip" title="Each variant will have its own copy of textures/particles so you can modify them independently (e.g. recolor). A _backup folder is also created with the originals.">?</span>
+                                <span className="pr-info-tip" title="Each variant gets its own copy of textures/meshes so you can modify them independently.">?</span>
                             </div>
 
                             {separateAssets && (
                                 <>
                                     <div className="pr-asset-hint">
-                                        Each copy gets a subfolder for its particles. A <code>_backup</code> folder with the originals is included automatically.
+                                        Each variant gets a subfolder. A <code>_backup</code> folder with originals is included.
                                     </div>
                                     <div className="pr-asset-grid">
                                         {assetFolderNames.map((val, i) => (
                                             <React.Fragment key={i}>
-                                                <label>Copy {i + 1}:</label>
+                                                <label>Variant {i + 1}:</label>
                                                 <input
                                                     className="pr-prefix-input"
                                                     type="text"
@@ -1095,7 +1114,6 @@ export default function ParticleRandomizer() {
                                 </>
                             )}
 
-                            {/* Detected assets output */}
                             {Object.keys(detectedAssets).length > 0 && (
                                 <div className="pr-assets-output">
                                     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', marginBottom: 8 }}>
@@ -1127,7 +1145,7 @@ export default function ParticleRandomizer() {
                         <button
                             className="pr-btn pr-btn-green"
                             onClick={handleGenerate}
-                            disabled={!pyContent || selected.size === 0}
+                            disabled={!pyContent || (selected.size === 0 && selectedSystems.size === 0)}
                         >
                             🎲 Randomize!
                         </button>
@@ -1139,10 +1157,7 @@ export default function ParticleRandomizer() {
                             💾 Save
                         </button>
                         {canCopyAssets && (
-                            <button
-                                className="pr-btn pr-btn-blue"
-                                onClick={handleCopyAssets}
-                            >
+                            <button className="pr-btn pr-btn-blue" onClick={handleCopyAssets}>
                                 📂 Copy Assets to Folders
                             </button>
                         )}

@@ -65,25 +65,31 @@ class GitHubAPI {
     });
 
     if (!response.ok) {
+      const makeError = (msg, status) => {
+        const err = new Error(msg);
+        err.status = status;
+        return err;
+      };
       if (response.status === 404) {
-        // Allow 404 errors to be handled by calling code
-        const error = new Error('Not found');
-        error.status = 404;
-        throw error;
+        throw makeError('Not found', 404);
       } else if (response.status === 403) {
-        if (credentials.isPublicOnly) {
-          throw new Error('Access forbidden. This repository may be private. Public access requires the repository to be public.');
-        } else {
-          throw new Error('Access forbidden. Check your GitHub token permissions.');
-        }
+        throw makeError(
+          credentials.isPublicOnly
+            ? 'Access forbidden. This repository may be private. Public access requires the repository to be public.'
+            : 'Access forbidden: your GitHub token does not have write access to this repository. Ask Frog on Discord to be added as a collaborator, then update your token in Settings → External Tools.',
+          403
+        );
       } else if (response.status === 401) {
-        if (credentials.isPublicOnly) {
-          throw new Error('Authentication required. Please configure your GitHub credentials in Settings for full access.');
-        } else {
-          throw new Error('Authentication failed. Check your GitHub token.');
-        }
+        throw makeError(
+          credentials.isPublicOnly
+            ? 'Authentication required. Please configure your GitHub credentials in Settings for full access.'
+            : 'Authentication failed. Check your GitHub token in Settings → External Tools.',
+          401
+        );
+      } else if (response.status === 409) {
+        throw makeError(`Conflict (409): ${response.statusText}`, 409);
       } else {
-        throw new Error(`GitHub API Error: ${response.status} ${response.statusText}`);
+        throw makeError(`GitHub API Error: ${response.status} ${response.statusText}`, response.status);
       }
     }
 
@@ -1091,7 +1097,22 @@ class GitHubAPI {
           throw new Error(`Too many missing brackets (${missingBrackets}). System may be corrupted.`);
         }
       } else {
-        throw new Error(`Incomplete VFX system content: bracket mismatch (${openBrackets} open, ${closeBrackets} close)`);
+        // More closing brackets than opening — trim extras from the end
+        const extraBrackets = closeBrackets - openBrackets;
+        if (extraBrackets <= 10) {
+          console.warn(`Attempting to fix ${extraBrackets} extra closing bracket(s)`);
+          let content = actualSystemContent;
+          for (let i = 0; i < extraBrackets; i++) {
+            const lastClose = content.lastIndexOf('}');
+            if (lastClose !== -1) {
+              content = content.substring(0, lastClose) + content.substring(lastClose + 1);
+            }
+          }
+          actualSystemContent = content.trimEnd();
+          console.log(`Fixed extra brackets. New counts: ${openBrackets} open, ${openBrackets} close`);
+        } else {
+          throw new Error(`Incomplete VFX system content: bracket mismatch (${openBrackets} open, ${closeBrackets} close)`);
+        }
       }
     }
     
@@ -1425,7 +1446,7 @@ class GitHubAPI {
       await this.request(`/repos/${owner}/${repo}/contents/${directoryPath}`);
       console.log(`Directory exists: ${directoryPath}`);
     } catch (error) {
-      if (error.message.includes('404')) {
+      if (error.status === 404) {
         console.log(`Creating directory: ${directoryPath}`);
         // Create the directory by uploading a placeholder file
         const placeholderContent = `# Directory placeholder for ${directoryPath}

@@ -26,7 +26,7 @@ const ModernSettings = () => {
     selectedFont: 'Segoe UI',
     themeVariant: 'amethyst', // Changed from 'theme' to 'themeVariant' to match Settings4
     interfaceStyle: 'quartz', // New Interface Style state
-    ritobinPath: '',
+
     autoLoadEnabled: false, // Disabled by default, only enabled when user changes it
     expandSystemsOnLoad: false, // Keep systems collapsed by default when loading bins
     showGithubToken: false,
@@ -46,6 +46,7 @@ const ModernSettings = () => {
     bumpathEnabled: false,
     aniportEnabled: false, // Default to false on first install
     frogchangerEnabled: false,
+    wadExplorerEnabled: true,
     fakeGearEnabled: false, // Default to false (experimental feature)
     particleRandomizerEnabled: false,
     glassBlur: 6,
@@ -115,8 +116,7 @@ const ModernSettings = () => {
   } = useUpdateSettings();
   const [highlightUpdateSection, setHighlightUpdateSection] = useState(false);
   const updateSectionRef = useRef(null);
-  const [highlightRitobin, setHighlightRitobin] = useState(false);
-  const ritobinRef = useRef(null);
+
 
   // DEV: Set to true to simulate update highlight for testing
   const DEV_SIMULATE_UPDATE_HIGHLIGHT = false;
@@ -183,9 +183,7 @@ const ModernSettings = () => {
           // Apply immediately when changed via updateSetting (if not handled elsewhere)
           // But usually we have a specific handler. Let's rely on the specific handler.
           break;
-        case 'ritobinPath':
-          await electronPrefs.set('RitoBinPath', value);
-          break;
+
         case 'autoLoadEnabled':
           await electronPrefs.set('AutoLoadEnabled', value);
           break;
@@ -251,6 +249,9 @@ const ModernSettings = () => {
         case 'particleRandomizerEnabled':
           await electronPrefs.set('ParticleRandomizerEnabled', value);
           break;
+        case 'wadExplorerEnabled':
+          await electronPrefs.set('WadExplorerEnabled', value);
+          break;
         case 'useNativeFileBrowser':
           await electronPrefs.set('UseNativeFileBrowser', value);
           break;
@@ -260,7 +261,7 @@ const ModernSettings = () => {
       }
 
       // Dispatch settings changed event for navigation updates (matching Settings4.js)
-      if (['themeVariant', 'interfaceStyle', 'paintEnabled', 'portEnabled', 'vfxHubEnabled', 'rgbaEnabled', 'imgRecolorEnabled', 'binEditorEnabled', 'toolsEnabled', 'fileRandomizerEnabled', 'bumpathEnabled', 'aniportEnabled', 'frogchangerEnabled', 'fakeGearEnabled', 'UpscaleEnabled', 'particleRandomizerEnabled'].includes(key)) {
+      if (['themeVariant', 'interfaceStyle', 'paintEnabled', 'portEnabled', 'vfxHubEnabled', 'rgbaEnabled', 'imgRecolorEnabled', 'binEditorEnabled', 'toolsEnabled', 'fileRandomizerEnabled', 'bumpathEnabled', 'aniportEnabled', 'frogchangerEnabled', 'fakeGearEnabled', 'UpscaleEnabled', 'particleRandomizerEnabled', 'wadExplorerEnabled'].includes(key)) {
         window.dispatchEvent(new CustomEvent('settingsChanged'));
       }
     } catch (error) {
@@ -268,22 +269,7 @@ const ModernSettings = () => {
     }
   };
 
-  const handleBrowseRitobin = async () => {
-    try {
-      if (!window.require) {
-        console.error('window.require not available');
-        return;
-      }
 
-      const newPath = await electronPrefs.RitoBinPath();
-      if (newPath) {
-        updateSetting('ritobinPath', newPath);
-      }
-    } catch (error) {
-      console.error('Error setting RitoBinPath:', error);
-      // Don't let errors cause navigation issues - just log and continue
-    }
-  };
 
   // Fonts will be loaded from fontManager
 
@@ -385,24 +371,7 @@ const ModernSettings = () => {
 
       console.log('💾 Loading Settings - DOM font:', domFont, 'Saved font:', savedFont, 'Current font:', currentFont, 'LocalStorage font:', localStorageFont, 'Using:', fontToUse);
 
-      // Load ritobin path
-      let ritobinPath = electronPrefs.obj.RitoBinPath || '';
 
-      // If no saved path, check for default location in FrogTools
-      if (!ritobinPath && window.require) {
-        try {
-          const { ipcRenderer } = window.require('electron');
-          const defaultRitobin = await ipcRenderer.invoke('ritobin:get-default-path');
-          if (defaultRitobin && defaultRitobin.exists) {
-            ritobinPath = defaultRitobin.path;
-            // Save the default path automatically
-            await electronPrefs.set('RitoBinPath', ritobinPath);
-            console.log('💾 Auto-detected and saved default ritobin path:', ritobinPath);
-          }
-        } catch (error) {
-          console.error('Error getting default ritobin path:', error);
-        }
-      }
 
       // Load hash settings
       const loadHashSettings = async () => {
@@ -435,7 +404,7 @@ const ModernSettings = () => {
       setSettings(prev => ({
         ...prev,
         selectedFont: fontToUse,
-        ritobinPath: ritobinPath,
+
         autoLoadEnabled: electronPrefs.obj.AutoLoadEnabled === true, // Default to false, only enabled when user sets it
         expandSystemsOnLoad: electronPrefs.obj.ExpandSystemsOnLoad === true, // Default to false (collapsed)
         githubUsername: electronPrefs.obj.GitHubUsername || '',
@@ -451,9 +420,10 @@ const ModernSettings = () => {
         rgbaEnabled: electronPrefs.obj.RGBAEnabled !== false,
         toolsEnabled: electronPrefs.obj.ToolsEnabled !== false,
         fileRandomizerEnabled: electronPrefs.obj.FileRandomizerEnabled !== false,
-        bumpathEnabled: electronPrefs.obj.BumpathEnabled !== false,
+        bumpathEnabled: electronPrefs.obj.BumpathEnabled === true,
         aniportEnabled: electronPrefs.obj.AniPortEnabled === true, // Default to false on first install
         frogchangerEnabled: electronPrefs.obj.FrogChangerEnabled !== false,
+        wadExplorerEnabled: electronPrefs.obj.WadExplorerEnabled !== false,
         fakeGearEnabled: electronPrefs.obj.FakeGearEnabled === true, // Default to false (experimental)
         particleRandomizerEnabled: electronPrefs.obj.ParticleRandomizerEnabled === true,
         glassBlur: electronPrefs.obj.GlassBlur !== undefined ? electronPrefs.obj.GlassBlur : 6,
@@ -508,40 +478,7 @@ const ModernSettings = () => {
     const checkHighlightFlag = () => {
       try {
         const shouldHighlight = localStorage.getItem('settings:highlight-update') === 'true' || DEV_SIMULATE_UPDATE_HIGHLIGHT;
-        const shouldHighlightRitobin = localStorage.getItem('settings:highlight-ritobin') === 'true';
-        const sectionToOpen = localStorage.getItem('settings:open-section');
 
-        if (sectionToOpen === 'tools') {
-          // Open the External Tools section first
-          setSelectedSection('tools');
-          localStorage.removeItem('settings:open-section');
-        }
-
-        // Handle ritobin highlight
-        if (shouldHighlightRitobin) {
-          localStorage.removeItem('settings:highlight-ritobin');
-
-          // Ensure tools section is selected
-          if (selectedSection !== 'tools') {
-            setSelectedSection('tools');
-          }
-
-          setTimeout(() => {
-            setHighlightRitobin(true);
-
-            if (ritobinRef.current) {
-              ritobinRef.current.scrollIntoView({
-                behavior: 'smooth',
-                block: 'center'
-              });
-            }
-
-            // Remove highlight after 5 seconds
-            setTimeout(() => {
-              setHighlightRitobin(false);
-            }, 5000);
-          }, 200);
-        }
 
         if (shouldHighlight) {
           // Clear the flag
@@ -1094,11 +1031,8 @@ const ModernSettings = () => {
       case 'tools':
         return (
           <ToolsSection
-            highlightRitobin={highlightRitobin}
-            ritobinRef={ritobinRef}
             settings={settings}
             updateSetting={updateSetting}
-            handleBrowseRitobin={handleBrowseRitobin}
             hashStatus={hashStatus}
             downloadingHashes={downloadingHashes}
             handleDownloadHashes={handleDownloadHashes}

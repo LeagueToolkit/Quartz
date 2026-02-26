@@ -1,0 +1,864 @@
+/*
+ * Modern UI - Theme-adaptive glass morphism overlay
+ * Applied when [data-ui-mode="modern"] is set on <html>.
+ *
+ * All colors are derived from the active CSS theme variables using
+ * color-mix() so every theme gets properly themed glass effects.
+ * Accent color = var(--status-bar-bg) / var(--jade-accent) — both
+ * are set per-theme by themeApplicator.ts.
+ */
+
+/* ── Root-level variables: all derived from current theme ── */
+[data-ui-mode="modern"] {
+  --modern-blur: saturate(180%) blur(14px);
+  --modern-border-radius: 8px;
+
+  /* Static structural values */
+  --modern-glass-border:  rgba(255, 255, 255, 0.09);
+  --modern-glass-shadow:  0 8px 32px rgba(0, 0, 0, 0.45);
+
+  /* Glass backgrounds — semitransparent tints of theme colors */
+  --modern-glass-bg:        color-mix(in srgb, var(--window-bg)      45%, transparent);
+  --modern-surface-bg:      color-mix(in srgb, var(--window-bg)      55%, transparent);
+  --modern-tab-bg:          color-mix(in srgb, var(--tab-bg)         50%, transparent);
+  --modern-active-tab-bg:   color-mix(in srgb, var(--selected-tab-bg) 75%, transparent);
+  --modern-status-bg:       color-mix(in srgb, var(--title-bar-bg)   60%, transparent);
+  --modern-title-bg:        color-mix(in srgb, var(--title-bar-bg)   55%, transparent);
+  --modern-dialog-bg:       color-mix(in srgb, var(--window-bg)      92%, transparent);
+  --modern-menu-bg:         color-mix(in srgb, var(--title-bar-bg)   92%, transparent);
+
+  /* Accent tiers — derived from the theme's status bar / accent color */
+  --modern-accent:          var(--jade-accent);
+  --modern-accent-05:       color-mix(in srgb, var(--jade-accent)  5%, transparent);
+  --modern-accent-07:       color-mix(in srgb, var(--jade-accent)  7%, transparent);
+  --modern-accent-10:       color-mix(in srgb, var(--jade-accent) 10%, transparent);
+  --modern-accent-12:       color-mix(in srgb, var(--jade-accent) 12%, transparent);
+  --modern-accent-15:       color-mix(in srgb, var(--jade-accent) 15%, transparent);
+  --modern-accent-20:       color-mix(in srgb, var(--jade-accent) 20%, transparent);
+  --modern-accent-22:       color-mix(in srgb, var(--jade-accent) 22%, transparent);
+  --modern-accent-25:       color-mix(in srgb, var(--jade-accent) 25%, transparent);
+  --modern-accent-30:       color-mix(in srgb, var(--jade-accent) 30%, transparent);
+  --modern-accent-35:       color-mix(in srgb, var(--jade-accent) 35%, transparent);
+  --modern-accent-40:       color-mix(in srgb, var(--jade-accent) 40%, transparent);
+  --modern-accent-45:       color-mix(in srgb, var(--jade-accent) 45%, transparent);
+  --modern-accent-50:       color-mix(in srgb, var(--jade-accent) 50%, transparent);
+  --modern-accent-75:       color-mix(in srgb, var(--jade-accent) 75%, transparent);
+
+  --modern-glow-primary:
+    0 0 16px var(--modern-accent-35),
+    0 0 32px var(--modern-accent-15);
+}
+
+/* ── App container: subtle vertical gradient (top = editor-bg, same as sticky scroll) ── */
+[data-ui-mode="modern"] .app-container {
+  background: linear-gradient(
+    to bottom,
+    var(--editor-bg) 0%,
+    color-mix(in srgb, var(--editor-bg) 72%, black) 100%
+  );
+  position: relative;
+}
+
+/* ── Title Bar: frosted glass ── */
+[data-ui-mode="modern"] .title-bar {
+  background: var(--modern-title-bg) !important;
+  backdrop-filter: var(--modern-blur);
+  -webkit-backdrop-filter: var(--modern-blur);
+  border-bottom: 1px solid var(--modern-glass-border) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Title text ── */
+[data-ui-mode="modern"] .title-text {
+  color: var(--text-color);
+  opacity: 0.85;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+}
+
+/* ── Toolbar buttons ── */
+[data-ui-mode="modern"] .toolbar-btn {
+  border-radius: 6px !important;
+  border-color: transparent !important;
+  transition: all 0.2s ease !important;
+}
+
+[data-ui-mode="modern"] .toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 0 8px var(--modern-accent-20);
+}
+
+[data-ui-mode="modern"] .toolbar-btn.active {
+  background: var(--modern-accent-25) !important;
+  border-color: var(--modern-accent-50) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 12px var(--modern-accent-30);
+}
+
+/* Separator */
+[data-ui-mode="modern"] .toolbar-separator {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── Window controls: no rounded corners, close gets red glow ── */
+[data-ui-mode="modern"] .control-btn {
+  border-radius: 0 !important;
+  transition: all 0.2s ease !important;
+}
+
+[data-ui-mode="modern"] .close-btn:hover {
+  background: rgba(232, 17, 35, 0.25) !important;
+  box-shadow: 0 0 12px rgba(232, 17, 35, 0.3);
+}
+
+/* ── Menu Bar: glass treatment ── */
+[data-ui-mode="modern"] .menu-bar {
+  background: var(--modern-title-bg) !important;
+  backdrop-filter: var(--modern-blur);
+  -webkit-backdrop-filter: var(--modern-blur);
+  border-bottom: 1px solid var(--modern-glass-border) !important;
+  box-shadow: none;
+}
+
+[data-ui-mode="modern"] .menu-bar-item {
+  border-radius: 5px !important;
+}
+
+[data-ui-mode="modern"] .menu-bar-item:hover,
+[data-ui-mode="modern"] .menu-bar-item.active {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-mode="modern"] .menu-dropdown {
+  background: var(--modern-menu-bg) !important;
+  backdrop-filter: var(--modern-blur);
+  -webkit-backdrop-filter: var(--modern-blur);
+  border: 1px solid var(--modern-glass-border) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--modern-glass-shadow) !important;
+}
+
+[data-ui-mode="modern"] .menu-item {
+  border-radius: 5px !important;
+  margin: 2px 4px !important;
+}
+
+[data-ui-mode="modern"] .menu-item:hover {
+  background: var(--modern-accent-20) !important;
+}
+
+/* ── Tab Bar: glass tab strip ── */
+[data-ui-mode="modern"] .tab-bar {
+  background: var(--modern-tab-bg) !important;
+  backdrop-filter: var(--modern-blur);
+  -webkit-backdrop-filter: var(--modern-blur);
+  border-bottom: 1px solid var(--modern-glass-border) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+[data-ui-mode="modern"] .tabs-actions {
+  background: var(--modern-tab-bg) !important;
+  backdrop-filter: var(--modern-blur);
+  -webkit-backdrop-filter: var(--modern-blur);
+}
+
+/* Individual tab */
+[data-ui-mode="modern"] .tab {
+  background: transparent !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.04) !important;
+  border-radius: 0;
+  transition: background 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+[data-ui-mode="modern"] .tab:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.05) !important;
+  opacity: 1 !important;
+}
+
+/* Active tab: glass with accent top glow line */
+[data-ui-mode="modern"] .tab.active {
+  background: var(--modern-active-tab-bg) !important;
+  box-shadow:
+    0 -2px 12px var(--modern-accent-15),
+    inset 0 1px 0 var(--modern-accent-40);
+}
+
+[data-ui-mode="modern"] .tab.active::before {
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--jade-accent) 20%,
+    color-mix(in srgb, var(--jade-accent) 75%, white) 50%,
+    var(--jade-accent) 80%,
+    transparent 100%) !important;
+  height: 2px !important;
+  opacity: 0.9;
+  box-shadow: 0 0 8px var(--jade-accent);
+}
+
+/* Tab label */
+[data-ui-mode="modern"] .tab-label {
+  font-weight: 450;
+}
+
+[data-ui-mode="modern"] .tab.active .tab-label {
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+/* Close button */
+[data-ui-mode="modern"] .tab-close-btn {
+  border-radius: 4px !important;
+  transition: all 0.15s ease !important;
+}
+
+[data-ui-mode="modern"] .tab-close-btn:hover {
+  background: rgba(232, 17, 35, 0.25) !important;
+  box-shadow: 0 0 8px rgba(232, 17, 35, 0.2);
+}
+
+/* Drag-over indicator */
+[data-ui-mode="modern"] .tab.drag-over {
+  border-left: 2px solid var(--jade-accent) !important;
+  box-shadow: inset 4px 0 8px var(--modern-accent-20);
+}
+
+/* ── Status Bar: deep glass strip ── */
+[data-ui-mode="modern"] .status-bar {
+  background: var(--modern-status-bg) !important;
+  backdrop-filter: var(--modern-blur);
+  -webkit-backdrop-filter: var(--modern-blur);
+  border-top: 1px solid var(--modern-glass-border) !important;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+}
+
+[data-ui-mode="modern"] .status-separator {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* ── Editor container ── */
+[data-ui-mode="modern"] .editor-container {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/*
+ * Monaco editor transparent background.
+ * The editor-container is transparent so the app-container's gradient
+ * shows through. Monaco background elements are forced transparent here
+ * and via JS updateMonacoBackground(). Minimap is intentionally excluded
+ * — it keeps its solid themed background so minimap pixel colors are correct.
+ */
+[data-ui-mode="modern"] .monaco-editor,
+[data-ui-mode="modern"] .monaco-editor .overflow-guard,
+[data-ui-mode="modern"] .monaco-editor .monaco-editor-background,
+[data-ui-mode="modern"] .monaco-editor .lines-content,
+[data-ui-mode="modern"] .monaco-editor .margin {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/*
+ * Sticky scroll widget: must stay solid — it inherits editor.background
+ * which is now the real editorBg color, but we belt-and-suspenders it here.
+ */
+[data-ui-mode="modern"] .monaco-editor .sticky-widget,
+[data-ui-mode="modern"] .monaco-editor .stickyScrollWidget {
+  background: var(--editor-bg) !important;
+  background-color: var(--editor-bg) !important;
+}
+
+/*
+ * Editor container: fully transparent so the app-container gradient
+ * shows through the editor.
+ */
+[data-ui-mode="modern"] .editor-container {
+  background: transparent !important;
+}
+
+/* ── Welcome Screen: glass card style ── */
+[data-ui-mode="modern"] .welcome-screen {
+  background: transparent !important;
+}
+
+[data-ui-mode="modern"] .welcome-card,
+[data-ui-mode="modern"] .welcome-content {
+  background: var(--modern-glass-bg) !important;
+  backdrop-filter: var(--modern-blur);
+  -webkit-backdrop-filter: var(--modern-blur);
+  border: 1px solid var(--modern-glass-border) !important;
+  border-radius: var(--modern-border-radius) !important;
+  box-shadow: var(--modern-glass-shadow) !important;
+}
+
+/* ── All dialog overlays: blurred backdrop ── */
+[data-ui-mode="modern"] .themes-dialog-overlay,
+[data-ui-mode="modern"] .about-overlay,
+[data-ui-mode="modern"] .settings-overlay,
+[data-ui-mode="modern"] .preferences-overlay,
+[data-ui-mode="modern"] .ped-overlay {
+  backdrop-filter: blur(8px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(130%) !important;
+  background: rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Dialog windows: rich glass morphism — theme-adaptive background */
+[data-ui-mode="modern"] .themes-dialog,
+[data-ui-mode="modern"] .about-dialog,
+[data-ui-mode="modern"] .settings-modal,
+[data-ui-mode="modern"] .preferences-modal {
+  background: var(--modern-dialog-bg) !important;
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  border-radius: 12px !important;
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.60),
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09) !important;
+}
+
+/* Particle editor dialog: same glass shell but with an accent-tinted gradient */
+[data-ui-mode="modern"] .ped-dialog {
+  background:
+    linear-gradient(
+      150deg,
+      color-mix(in srgb, var(--jade-accent) 10%, transparent) 0%,
+      transparent 45%
+    ),
+    var(--modern-dialog-bg) !important;
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  border-radius: 12px !important;
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.60),
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09) !important;
+}
+
+/* Dialog headers */
+[data-ui-mode="modern"] .themes-dialog-header,
+[data-ui-mode="modern"] .about-title-bar,
+[data-ui-mode="modern"] .settings-header,
+[data-ui-mode="modern"] .preferences-header,
+[data-ui-mode="modern"] .ped-header {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Dialog footers */
+[data-ui-mode="modern"] .themes-dialog-footer,
+[data-ui-mode="modern"] .settings-footer,
+[data-ui-mode="modern"] .preferences-footer {
+  background: rgba(255, 255, 255, 0.025) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.07) !important;
+}
+
+/* Sidebars */
+[data-ui-mode="modern"] .settings-sidebar,
+[data-ui-mode="modern"] .themes-sidebar {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Sidebar nav items */
+[data-ui-mode="modern"] .settings-nav-item,
+[data-ui-mode="modern"] .themes-nav-item {
+  border-radius: 6px !important;
+}
+
+[data-ui-mode="modern"] .settings-nav-item.active,
+[data-ui-mode="modern"] .themes-nav-item.active {
+  background: var(--modern-accent-22) !important;
+  border-color: var(--modern-accent-45) !important;
+  box-shadow: 0 0 12px var(--modern-accent-12);
+}
+
+[data-ui-mode="modern"] .settings-nav-item:hover:not(.active),
+[data-ui-mode="modern"] .themes-nav-item:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Settings rows and inner containers */
+[data-ui-mode="modern"] .settings-row,
+[data-ui-mode="modern"] .preference-group,
+[data-ui-mode="modern"] .about-app-info,
+[data-ui-mode="modern"] .about-info-card,
+[data-ui-mode="modern"] .about-section-card {
+  border-radius: 8px !important;
+}
+
+[data-ui-mode="modern"] .settings-row {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-color: rgba(255, 255, 255, 0.07) !important;
+  transition: border-color 0.15s ease;
+}
+
+[data-ui-mode="modern"] .settings-row:hover {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Toggle track */
+[data-ui-mode="modern"] .settings-toggle-track {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-ui-mode="modern"] .settings-toggle input:checked + .settings-toggle-track {
+  background: var(--modern-accent-75) !important;
+}
+
+/* Sections within theme dialog */
+[data-ui-mode="modern"] .themes-options,
+[data-ui-mode="modern"] .theme-list,
+[data-ui-mode="modern"] .color-palette,
+[data-ui-mode="modern"] .custom-theme-editor,
+[data-ui-mode="modern"] .syntax-preview,
+[data-ui-mode="modern"] .close-button,
+[data-ui-mode="modern"] .about-close-btn,
+[data-ui-mode="modern"] .settings-close-btn,
+[data-ui-mode="modern"] .btn-apply,
+[data-ui-mode="modern"] .btn-close,
+[data-ui-mode="modern"] .action-button {
+  border-radius: 8px !important;
+}
+
+[data-ui-mode="modern"] .themes-options,
+[data-ui-mode="modern"] .theme-list,
+[data-ui-mode="modern"] .color-palette,
+[data-ui-mode="modern"] .custom-theme-editor,
+[data-ui-mode="modern"] .syntax-preview {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+}
+
+/* Theme list items */
+[data-ui-mode="modern"] .theme-item {
+  background: transparent !important;
+  border-radius: 7px !important;
+  border: 1px solid transparent !important;
+  transition: all 0.15s ease !important;
+}
+
+[data-ui-mode="modern"] .theme-item:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.09) !important;
+}
+
+[data-ui-mode="modern"] .theme-item.selected {
+  background: var(--modern-accent-22) !important;
+  border-color: var(--modern-accent-50) !important;
+  box-shadow: 0 0 14px var(--modern-accent-15) !important;
+}
+
+/* ── Particle Editor Dialog ── */
+
+/* Toolbar */
+[data-ui-mode="modern"] .ped-toolbar {
+  background: rgba(0, 0, 0, 0.25) !important;
+  backdrop-filter: var(--modern-blur);
+  -webkit-backdrop-filter: var(--modern-blur);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Content split line */
+[data-ui-mode="modern"] .ped-content {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Panels */
+[data-ui-mode="modern"] .ped-panel {
+  background: transparent !important;
+}
+
+/* Left panel: darker so items pop against it */
+[data-ui-mode="modern"] .ped-panel-left {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Section headers */
+[data-ui-mode="modern"] .ped-panel-header {
+  background: rgba(0, 0, 0, 0.15) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Footer */
+[data-ui-mode="modern"] .ped-footer {
+  background: rgba(0, 0, 0, 0.15) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 0 0 12px 12px !important;
+}
+
+/*
+ * Inputs: dark inset look so the text fields are clearly defined
+ * containers rather than invisible floating text.
+ */
+[data-ui-mode="modern"] .ped-input {
+  background: rgba(0, 0, 0, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 6px !important;
+  color: var(--text-color) !important;
+}
+
+[data-ui-mode="modern"] .ped-input:hover {
+  border-color: rgba(255, 255, 255, 0.25) !important;
+}
+
+[data-ui-mode="modern"] .ped-input:focus {
+  border-color: var(--jade-accent) !important;
+  box-shadow: 0 0 0 1px var(--modern-accent-35) !important;
+  outline: none !important;
+}
+
+[data-ui-mode="modern"] .ped-input::placeholder {
+  color: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Buttons: visible glass with strong borders */
+[data-ui-mode="modern"] .ped-btn {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 6px !important;
+  color: var(--text-color) !important;
+  transition: all 0.15s ease !important;
+}
+
+[data-ui-mode="modern"] .ped-btn:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+}
+
+/* Primary buttons: accent fill, clearly different from regular */
+[data-ui-mode="modern"] .ped-btn.ped-btn-primary {
+  background: var(--modern-accent-40) !important;
+  border-color: var(--jade-accent) !important;
+  color: #fff !important;
+}
+
+[data-ui-mode="modern"] .ped-btn.ped-btn-primary:hover {
+  background: var(--modern-accent-50) !important;
+}
+
+/* Close button: solid accent */
+[data-ui-mode="modern"] .ped-btn.ped-btn-close {
+  background: var(--jade-accent) !important;
+  border-color: var(--jade-accent) !important;
+  color: #fff !important;
+}
+
+[data-ui-mode="modern"] .ped-btn.ped-btn-close:hover {
+  background: color-mix(in srgb, var(--jade-accent) 80%, white) !important;
+  border-color: color-mix(in srgb, var(--jade-accent) 80%, white) !important;
+}
+
+/* Small buttons (0/1 toggles) */
+[data-ui-mode="modern"] .ped-btn.ped-btn-sm {
+  border-radius: 6px !important;
+}
+
+/* System headers */
+[data-ui-mode="modern"] .ped-system-header {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  border-radius: 6px !important;
+}
+
+[data-ui-mode="modern"] .ped-system-header:hover {
+  background: rgba(255, 255, 255, 0.10) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+[data-ui-mode="modern"] .ped-system-header.has-selection {
+  background: var(--modern-accent-22) !important;
+  border-color: var(--modern-accent-45) !important;
+  border-left: 3px solid var(--jade-accent) !important;
+}
+
+[data-ui-mode="modern"] .ped-system-expand {
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-mode="modern"] .ped-system-expand:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* System count pill */
+[data-ui-mode="modern"] .ped-system-count {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: none !important;
+}
+
+/* Emitter rows */
+[data-ui-mode="modern"] .ped-emitter {
+  border-radius: 5px !important;
+  transition: all 0.12s ease !important;
+}
+
+[data-ui-mode="modern"] .ped-emitter:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Selected emitter: bold accent fill so it's unmistakable */
+[data-ui-mode="modern"] .ped-emitter.selected {
+  background: var(--modern-accent-45) !important;
+  border-color: transparent !important;
+}
+
+[data-ui-mode="modern"] .ped-emitter.selected .ped-emitter-name {
+  color: #fff !important;
+  font-weight: 600 !important;
+}
+
+[data-ui-mode="modern"] .ped-emitter.selected .ped-prop-tag {
+  background: rgba(255, 255, 255, 0.22) !important;
+  color: #fff !important;
+}
+
+/* "EDITING" label */
+[data-ui-mode="modern"] .ped-props-label {
+  color: var(--text-muted) !important;
+}
+
+/* Property section cards: visible containers, not invisible */
+[data-ui-mode="modern"] .ped-prop-section {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  border-radius: 8px !important;
+}
+
+[data-ui-mode="modern"] .ped-prop-section:hover {
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+/* About sections */
+[data-ui-mode="modern"] .about-app-info,
+[data-ui-mode="modern"] .about-info-card,
+[data-ui-mode="modern"] .about-section-card {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Preferences groups */
+[data-ui-mode="modern"] .preference-group {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-ui-mode="modern"] .preference-group:hover {
+  border-color: rgba(255, 255, 255, 0.13) !important;
+}
+
+/* Close buttons */
+[data-ui-mode="modern"] .ped-close-btn {
+  border-radius: 6px !important;
+  transition: all 0.15s ease !important;
+}
+
+[data-ui-mode="modern"] .close-button:hover,
+[data-ui-mode="modern"] .about-close-btn:hover,
+[data-ui-mode="modern"] .settings-close-btn:hover,
+[data-ui-mode="modern"] .ped-close-btn:hover {
+  background: rgba(232, 17, 35, 0.2) !important;
+  box-shadow: 0 0 10px rgba(232, 17, 35, 0.2);
+}
+
+/* Update info box */
+[data-ui-mode="modern"] .update-info-box {
+  background: var(--modern-accent-10) !important;
+  border-color: var(--modern-accent-25) !important;
+}
+
+/* ── Dialog apply/close buttons ── */
+[data-ui-mode="modern"] .btn-apply {
+  background: linear-gradient(135deg,
+    var(--jade-accent),
+    color-mix(in srgb, var(--jade-accent) 75%, white)) !important;
+  border: none !important;
+  border-radius: 8px !important;
+  box-shadow:
+    0 4px 16px var(--modern-accent-30),
+    0 0 0 1px var(--modern-accent-30) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em;
+  transition: all 0.2s ease !important;
+}
+
+[data-ui-mode="modern"] .btn-apply:hover {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--jade-accent) 75%, white),
+    color-mix(in srgb, var(--jade-accent) 60%, white)) !important;
+  box-shadow:
+    0 6px 20px var(--modern-accent-40),
+    0 0 0 1px var(--modern-accent-40) !important;
+  transform: translateY(-1px);
+}
+
+[data-ui-mode="modern"] .btn-close {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px !important;
+  color: rgba(255, 255, 255, 0.75) !important;
+  transition: all 0.2s ease !important;
+}
+
+[data-ui-mode="modern"] .btn-close:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+}
+
+/* ── General Edit Panel: glass card ── */
+/*
+ * The wrapper covers the full editor area; DO NOT apply backdrop-filter here
+ * or it will blur the entire editor behind the panel.
+ * Glass blur is only applied to the panel itself, which is small and targeted.
+ */
+[data-ui-mode="modern"] .general-edit-panel {
+  background: var(--modern-dialog-bg) !important;
+  backdrop-filter: saturate(170%) blur(18px);
+  -webkit-backdrop-filter: saturate(170%) blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  /* Top edge flush with tab bar — only bottom corners get radius */
+  border-radius: 0 0 8px 8px !important;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.45),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+/* ── Particle Editor Panel (inline side panel): glass ── */
+[data-ui-mode="modern"] .particle-editor-panel {
+  background: var(--modern-dialog-bg) !important;
+  backdrop-filter: saturate(160%) blur(16px);
+  -webkit-backdrop-filter: saturate(160%) blur(16px);
+  border-left: 1px solid rgba(255, 255, 255, 0.09) !important;
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* ── Update Toast: glass card ── */
+[data-ui-mode="modern"] .update-toast {
+  background: var(--modern-dialog-bg) !important;
+  backdrop-filter: var(--modern-blur);
+  -webkit-backdrop-filter: var(--modern-blur);
+  border: 1px solid var(--modern-accent-30) !important;
+  border-radius: 10px !important;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.45),
+    0 0 0 1px var(--modern-accent-15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+/* ── Scrollbars: thin and sleek ── */
+[data-ui-mode="modern"] ::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+}
+
+[data-ui-mode="modern"] ::-webkit-scrollbar-track {
+  background: transparent !important;
+  border-radius: 3px !important;
+}
+
+[data-ui-mode="modern"] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-radius: 3px !important;
+  border: none !important;
+}
+
+[data-ui-mode="modern"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25) !important;
+}
+
+[data-ui-mode="modern"] ::-webkit-scrollbar-corner {
+  background: transparent !important;
+}
+
+/* Firefox scrollbars */
+[data-ui-mode="modern"] * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+/* ── Checkbox: accent tinted ── */
+[data-ui-mode="modern"] .checkbox-label input[type="checkbox"] {
+  accent-color: var(--jade-accent);
+}
+
+/* ── Color inputs in dialogs ── */
+[data-ui-mode="modern"] .color-input-group input[type="text"] {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  border-radius: 6px !important;
+  color: var(--text-color) !important;
+  transition: all 0.2s ease;
+}
+
+[data-ui-mode="modern"] .color-input-group input[type="text"]:focus {
+  border-color: var(--modern-accent-60, var(--modern-accent-50)) !important;
+  box-shadow: 0 0 0 2px var(--modern-accent-15);
+  outline: none !important;
+}
+
+[data-ui-mode="modern"] .color-input-group input[type="color"] {
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  border-radius: 6px !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* ── Material Override Dialog: glass ── */
+[data-ui-mode="modern"] .material-override-dialog-overlay {
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  background: rgba(0, 0, 0, 0.55) !important;
+}
+
+[data-ui-mode="modern"] .material-override-dialog {
+  background: var(--modern-dialog-bg) !important;
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+/* ── Monaco Find/Replace accent bar: themed glow ── */
+[data-ui-mode="modern"] .monaco-editor .find-widget::before {
+  background: linear-gradient(180deg,
+    var(--jade-accent) 0%,
+    color-mix(in srgb, var(--jade-accent) 75%, white) 100%) !important;
+  box-shadow: 2px 0 8px var(--modern-accent-30);
+}
+
+/* ── About Dialog specifics ── */
+[data-ui-mode="modern"] .about-content,
+[data-ui-mode="modern"] .about-info {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 8px !important;
+}
+
+/* ── Settings/Preferences section blocks ── */
+[data-ui-mode="modern"] .settings-section,
+[data-ui-mode="modern"] .preferences-section {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 8px !important;
+}
+
+[data-ui-mode="modern"] .settings-row:hover,
+[data-ui-mode="modern"] .preferences-row:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-radius: 6px !important;
+}
+
+/* ── Drag & Drop drop zone overlay ── */
+[data-ui-mode="modern"] .app-container.dragging::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: var(--modern-accent-10);
+  border: 2px dashed var(--modern-accent-40);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 99999;
+  box-shadow: inset 0 0 40px var(--modern-accent-10);
+}

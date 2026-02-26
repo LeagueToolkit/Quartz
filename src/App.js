@@ -23,6 +23,7 @@ import Bumpath from './pages/bumpath';
 import AniPort from './pages/aniport/AniPortSimple';
 import FrogChanger from './pages/frogchanger/FrogChanger';
 import BnkExtract from './pages/bnkextract/BnkExtract';
+import WadExplorer from './pages/wadexplorer/WadExplorer';
 import FakeGearSkin from './pages/fakegearskin/FakeGearSkin';
 import ParticleRandomizer from './pages/ParticleRandomizer';
 import HashReminderModal from './components/modals/HashReminderModal';
@@ -528,6 +529,7 @@ function App() {
                 <Route path="/aniport" element={<AniPort />} />
                 <Route path="/frogchanger" element={<FrogChanger />} />
                 <Route path="/bnk-extract" element={<BnkExtract />} />
+                <Route path="/wad-explorer" element={<WadExplorer />} />
                 <Route path="/fakegear" element={<FakeGearSkin />} />
                 <Route path="/particle-randomizer" element={<ParticleRandomizer />} />
 

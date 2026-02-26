@@ -134,9 +134,6 @@ const FrogChanger = () => {
   const [skinPrefixes, setSkinPrefixes] = useState({});
   const [skipSfxRepath, setSkipSfxRepath] = useState(true);
   const [repathPreserveHudIcons2D, setRepathPreserveHudIcons2D] = useState(true);
-  const [warmHashCache, setWarmHashCache] = useState(false);
-  const [isHashPreloading, setIsHashPreloading] = useState(false);
-  const [hashPreloadStage, setHashPreloadStage] = useState('Preparing hash preload...');
   const [applyToAll, setApplyToAll] = useState(false);
   const [showLeaguePathTooltip, setShowLeaguePathTooltip] = useState(false);
   const [showExtractionPathTooltip, setShowExtractionPathTooltip] = useState(false);
@@ -179,59 +176,14 @@ const FrogChanger = () => {
   }, []);
 
   // Clear main-process hashtable cache when leaving FrogChanger.
-  // Must go through IPC — calling clearHashtablesCache() here only affects the
-  // renderer's empty copy, not the main-process copy that holds 200-400MB.
-  useEffect(() => {
-    if (!settingsLoaded || !warmHashCache) return;
-    if (!hashPath || String(hashPath).trim() === '') return;
-    let cancelled = false;
-    const onWarmProgress = (_event, payload) => {
-      if (cancelled) return;
-      const stage = payload?.stage || 'Loading hashes...';
-      const index = Number(payload?.index || 0);
-      const total = Number(payload?.total || 0);
-      if (index > 0 && total > 0) {
-        setHashPreloadStage(`${stage} (${index}/${total})`);
-      } else {
-        setHashPreloadStage(stage);
-      }
-    };
-
-    setIsHashPreloading(true);
-    setHashPreloadStage('Initializing hash preload...');
-    window.electronAPI?.hashtable?.setKeepAlive?.(true).catch(() => {});
-    window.electronAPI?.hashtable?.onWarmProgress?.(onWarmProgress);
-
-    window.electronAPI?.hashtable?.warmCache?.(hashPath)
-      ?.catch((error) => {
-        console.warn('Failed to warm hashtable cache:', error?.message || error);
-      })
-      ?.finally(() => {
-        window.electronAPI?.hashtable?.offWarmProgress?.(onWarmProgress);
-        if (!cancelled) setIsHashPreloading(false);
-      });
-
-    return () => {
-      cancelled = true;
-      window.electronAPI?.hashtable?.offWarmProgress?.(onWarmProgress);
-    };
-  }, [settingsLoaded, warmHashCache, hashPath]);
-
   useEffect(() => {
     return () => {
       // Always clear on unmount. Hash tables may still be loaded by extraction/inspect
       // even when warm preload is disabled.
-      window.electronAPI?.hashtable?.setKeepAlive?.(false).catch(() => {});
+      window.electronAPI?.hashtable?.setKeepAlive?.(false).catch(() => { });
       window.electronAPI?.hashtable?.clearCache?.();
     };
   }, []);
-
-  useEffect(() => {
-    if (!settingsLoaded) return;
-    if (!warmHashCache) {
-      window.electronAPI?.hashtable?.setKeepAlive?.(false).catch(() => {});
-    }
-  }, [settingsLoaded, warmHashCache]);
 
   // Check setup validity when setup inputs change.
   useEffect(() => {
@@ -283,11 +235,6 @@ const FrogChanger = () => {
       setHashPath(loaded.hashPath || '');
       setLeaguePath(loaded.leaguePath || '');
       setExtractionPath(loaded.extractionPath || '');
-      setWarmHashCache(loaded.warmHashCache === true);
-      setIsHashPreloading(loaded.warmHashCache === true);
-      if (loaded.warmHashCache === true) {
-        setHashPreloadStage('Initializing hash preload...');
-      }
       if (loaded.hashStatus) setHashStatus(loaded.hashStatus);
       setSettingsLoaded(true);
     } catch (error) {
@@ -519,13 +466,6 @@ const FrogChanger = () => {
   const handleExtractionPathChange = async (newPath) => {
     setExtractionPath(newPath);
     electronPrefs.obj.FrogChangerExtractionPath = newPath;
-    await electronPrefs.save();
-  };
-
-  const handleWarmHashCacheChange = async (enabled) => {
-    const nextValue = enabled === true;
-    setWarmHashCache(nextValue);
-    electronPrefs.obj.FrogChangerWarmHashCache = nextValue;
     await electronPrefs.save();
   };
 
@@ -1213,32 +1153,6 @@ const FrogChanger = () => {
     return <LoadingStateView />;
   }
 
-  if (warmHashCache && isHashPreloading) {
-    return (
-      <div className="frogchanger-wrapper h-screen bg-black text-white relative overflow-hidden">
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-          <div
-            style={{
-              width: 34,
-              height: 34,
-              border: '3px solid rgba(255,255,255,0.2)',
-              borderTopColor: 'var(--accent2)',
-              borderRadius: '50%',
-              animation: 'spin 0.9s linear infinite',
-            }}
-          />
-          <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.9)' }}>
-            Preloading hash tables...
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.65)' }}>
-            {hashPreloadStage}
-          </div>
-        </div>
-        <style>{'@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }'}</style>
-      </div>
-    );
-  }
-
   if (loading && champions.length === 0) {
     return <LoadingStateView />;
   }
@@ -1255,7 +1169,7 @@ const FrogChanger = () => {
 
       <div className="frog-changer-container flex h-screen">
         {/* Sidebar */}
-                <ChampionSidebar
+        <ChampionSidebar
           searchTerm={searchTerm}
           onSearchTermChange={setSearchTerm}
           skinlineSearchTerm={skinlineSearchTerm}
@@ -1290,7 +1204,7 @@ const FrogChanger = () => {
             onOpenSettings={() => setShowSettings(true)}
           />
 
-                    {showSkinlineSearch ? (
+          {showSkinlineSearch ? (
             <SkinlineResultsPanel
               skinlineSearchTerm={skinlineSearchTerm}
               skinlineSearchResults={skinlineSearchResults}
@@ -1328,7 +1242,7 @@ const FrogChanger = () => {
         </main>
       </div>
 
-            <SelectionSummaryBar
+      <SelectionSummaryBar
         selectedSkins={selectedSkins}
         isExtracting={isExtracting}
         isRepathing={isRepathing}
@@ -1339,7 +1253,7 @@ const FrogChanger = () => {
         onClearAll={() => setSelectedSkins([])}
       />
 
-            <SettingsModal
+      <SettingsModal
         open={showSettings}
         onClose={handleCloseSettings}
         onCloseAndHideGuide={handleCloseSettingsAndGuide}
@@ -1357,8 +1271,6 @@ const FrogChanger = () => {
         onBrowseExtractionPath={handleBrowseExtractionPath}
         onLeaguePathChange={handleLeaguePathChange}
         onExtractionPathChange={handleExtractionPathChange}
-        warmHashCache={warmHashCache}
-        onWarmHashCacheChange={handleWarmHashCacheChange}
         showCelestiaGuide={showCelestiaGuide}
         onOpenGuide={() => setShowCelestiaGuide(true)}
       />

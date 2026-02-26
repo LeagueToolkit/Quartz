@@ -1,6 +1,7 @@
-﻿import { extractExistingPersistentConditions, insertMultiplePersistentEffects } from '../../../utils/vfx/mutations/persistentEffectsManager.js';
+import { extractExistingPersistentConditions, insertMultiplePersistentEffects } from '../../../utils/vfx/mutations/persistentEffectsManager.js';
 import { hasChangesToSave } from './save/pyContentMerge';
 import { generateModifiedPythonFromSystems, loadEmitterData } from '../../../utils/vfx/vfxEmitterParser.js';
+import { ToBin, ToPy } from '../../../utils/io/fileOperations.js';
 
 export default function useVfxHubSave({
   deletedEmitters,
@@ -88,78 +89,33 @@ export default function useVfxHubSave({
       await fs.promises.writeFile(outputPyPath, finalContent, 'utf8');
 
       const { ipcRenderer } = window.require('electron');
-      const { spawn } = window.require('child_process');
-
-      let ritoBinPath = null;
-      try {
-        ritoBinPath = await electronPrefs.get('RitoBinPath');
-        if (!ritoBinPath) {
-          const settings = ipcRenderer.sendSync('get-ssx');
-          ritoBinPath = settings[0]?.RitoBinPath;
-        }
-      } catch {
-        try {
-          const settings = ipcRenderer.sendSync('get-ssx');
-          ritoBinPath = settings[0]?.RitoBinPath;
-        } catch {}
-      }
-
-      if (!ritoBinPath) {
-        setStatusMessage('Error: RitoBin path not configured. Please configure it in Settings.');
-        setIsProcessing(false);
-        setProcessingText('');
-        return;
-      }
 
       const outputBinPath = targetPath;
-      const convertProcess = spawn(ritoBinPath, [outputPyPath, outputBinPath]);
+      try {
+        await ToBin(outputPyPath, outputBinPath);
 
-      let hasStderrError = false;
-      let stderrContent = '';
+        setStatusMessage(`Successfully saved: ${outputBinPath}`);
+        setTimeout(() => setStatusMessage(''), 3000);
+        setFileSaved(true);
+        setIsProcessing(false);
+        setProcessingText('');
 
-      convertProcess.stdout.on('data', () => {});
-      convertProcess.stderr.on('data', (data) => {
-        const text = data.toString();
-        stderrContent += text;
-        if (text.includes('Error:') || text.includes('error')) hasStderrError = true;
-      });
-
-      convertProcess.on('close', (code) => {
-        const hasError = code !== 0 || hasStderrError;
-
-        if (!hasError) {
-          setStatusMessage(`Successfully saved: ${outputBinPath}`);
-          setTimeout(() => setStatusMessage(''), 3000);
-          setFileSaved(true);
-          setIsProcessing(false);
-          setProcessingText('');
-
-          try {
-            const binToPyProcess = spawn(ritoBinPath, [outputBinPath, outputPyPath]);
-            binToPyProcess.stdout.on('data', () => {});
-            binToPyProcess.stderr.on('data', () => {});
-            binToPyProcess.on('close', () => {});
-          } catch (error) {
-            console.warn('Indentation fix failed (non-critical):', error?.message || error);
-          }
-        } else {
-          console.error('RitoBin conversion failed:', stderrContent);
-          const errorReason = hasStderrError ? 'RitoBin reported errors in stderr' : `exit code: ${code}`;
-          setStatusMessage(`Error converting to .bin format (${errorReason})`);
-          setFileSaved(false);
-          setIsProcessing(false);
-          setProcessingText('');
-          setShowRitoBinErrorDialog(true);
+        try {
+          ToPy(outputBinPath).catch(err => {
+            console.warn('Indentation fix failed (non-critical):', err?.message || err);
+          });
+        } catch (error) {
+          console.warn('Indentation fix failed (non-critical):', error?.message || error);
         }
-      });
-
-      convertProcess.on('error', (error) => {
-        console.error('Error running RitoBin:', error);
-        setStatusMessage(`Error running RitoBin: ${error.message}`);
+      } catch (err) {
+        console.error('RitoBin conversion failed:', err);
+        setStatusMessage(`Error converting to .bin format`);
         setFileSaved(false);
         setIsProcessing(false);
         setProcessingText('');
-      });
+        setShowRitoBinErrorDialog(true);
+      }
+
     } catch (error) {
       console.error('Error saving file:', error);
       setStatusMessage(`Error saving file: ${error.message}`);

@@ -1,0 +1,11 @@
+{
+  "name": "wad-indexer-native",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "npm exec --yes --package @napi-rs/cli -- napi build --platform --release"
+  },
+  "napi": {
+    "name": "wad_indexer"
+  }
+}

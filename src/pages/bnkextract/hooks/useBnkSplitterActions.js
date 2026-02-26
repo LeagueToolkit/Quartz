@@ -72,7 +72,16 @@ export function useBnkSplitterActions({
     setTreeFn((prev) => {
       const updateInTree = (nodes) => nodes.map((n) => {
         if (n.id === nodeId) {
-          return { ...n, audioData: { ...n.audioData, data: newData, length: newData.length } };
+          return {
+            ...n,
+            isModified: true,
+            audioData: {
+              ...n.audioData,
+              data: newData,
+              length: newData.length,
+              isModified: true
+            }
+          };
         }
         if (n.children) return { ...n, children: updateInTree(n.children) };
         return n;
@@ -100,19 +109,33 @@ export function useBnkSplitterActions({
       const timestamp = Date.now();
       const audioNodes = [];
 
+      // Write all segment WAVs to temp first
+      const tmpWavPaths = segments.map((seg, i) => {
+        const tmpWav = path.join(tmpDir, `seg_${timestamp}_${i}.wav`);
+        fs.writeFileSync(tmpWav, Buffer.from(seg.data));
+        return tmpWav;
+      });
+
+      // Batch convert all segments in one WwiseConsole invocation
+      setConvertStatus(`Converting ${segments.length} segment(s) with Wwise...`);
+      const batchResult = await ipcRenderer.invoke('audio:convert-to-wem-batch', {
+        inputs: tmpWavPaths.map((p) => ({ inputPath: p })),
+      });
+
+      // Cleanup temp WAVs
+      for (const p of tmpWavPaths) try { fs.unlinkSync(p); } catch (_) { }
+
+      if (!batchResult.success) {
+        setStatusMessage(`Batch conversion failed: ${batchResult.error}`);
+        return;
+      }
+
       for (let i = 0; i < segments.length; i++) {
         const seg = segments[i];
-        setConvertStatus(`Converting segment ${i + 1} / ${segments.length}: ${seg.name}`);
+        const res = batchResult.results[i];
 
-        const uid = `${timestamp}_${i}`;
-        const tmpWav = path.join(tmpDir, `seg_${uid}.wav`);
-        fs.writeFileSync(tmpWav, Buffer.from(seg.data));
-
-        const res = await ipcRenderer.invoke('audio:convert-to-wem', { inputPath: tmpWav });
-        try { fs.unlinkSync(tmpWav); } catch (_) { }
-
-        if (!res.success) {
-          console.warn(`[Splitter] Failed to convert ${seg.name}:`, res.error);
+        if (!res?.success) {
+          console.warn(`[Splitter] Failed to convert ${seg.name}:`, res?.error);
           continue;
         }
 
@@ -123,11 +146,13 @@ export function useBnkSplitterActions({
         audioNodes.push({
           id: `split-segment-${timestamp}-${i}`,
           name: `${baseName}.wem`,
+          isModified: true,
           audioData: {
             id: timestamp + i,
             data: wemData,
             offset: 0,
             length: wemData.length,
+            isModified: true,
           },
           children: [],
         });

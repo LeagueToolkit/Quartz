@@ -1,0 +1,101 @@
+name: Release
+
+# Runs when you push a tag like "v0.2.0"
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write   # needed to create GitHub releases
+
+    steps:
+      # 1. Check out the code
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. Set up Node.js
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # 3. Set up Rust
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # 4. Cache Rust build artifacts (speeds up future runs a lot)
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # 5. Install npm dependencies
+      - name: Install dependencies
+        run: npm ci
+
+      # 6. Build the Tauri app + sign the update bundle
+      #    The signing env vars come from GitHub Secrets (set them once, see README)
+      - name: Build & sign
+        run: npm run tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # 7. Read the version from tauri.conf.json so we can name files correctly
+      - name: Get version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+
+      # 8. Read the .sig file content (needed for latest.json)
+      - name: Read signature
+        id: sig
+        shell: pwsh
+        run: |
+          $sig = Get-Content "src-tauri/target/release/bundle/nsis/Jade_${{ steps.version.outputs.VERSION }}_x64-setup.exe.sig" -Raw
+          $sig = $sig.Trim()
+          echo "SIG=$sig" >> $env:GITHUB_OUTPUT
+
+      # 9. Build the latest.json that the auto-updater checks
+      - name: Create latest.json
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          $sig = "${{ steps.sig.outputs.SIG }}"
+          $tag = "${{ github.ref_name }}"
+          $repo = "${{ github.repository }}"
+          $date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+          $url = "https://github.com/$repo/releases/download/$tag/Jade_${version}_x64-setup.exe"
+
+          $json = @{
+            version = $version
+            notes   = "See the release page for details."
+            pub_date = $date
+            platforms = @{
+              "windows-x86_64" = @{
+                signature = $sig
+                url       = $url
+              }
+            }
+          } | ConvertTo-Json -Depth 5
+
+          $json | Out-File -FilePath latest.json -Encoding utf8
+          Write-Host "Generated latest.json:"
+          Get-Content latest.json
+
+      # 10. Publish the GitHub Release with all assets attached
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            src-tauri/target/release/bundle/nsis/Jade_${{ steps.version.outputs.VERSION }}_x64-setup.exe
+            src-tauri/target/release/bundle/nsis/Jade_${{ steps.version.outputs.VERSION }}_x64-setup.exe.sig
+            latest.json
+          generate_release_notes: true

@@ -462,23 +462,6 @@ function Paint2() {
         }
 
         try {
-            // 2. Check if Ritobin is configured (Critical for conversion)
-            let ritobinPath = null;
-            if (electronPrefs) {
-                await electronPrefs.initPromise;
-                ritobinPath = await electronPrefs.get('RitoBinPath');
-            }
-            // Fallback check
-            if (!ritobinPath && window.require) {
-                // Try to get from legacy prefs if needed, or just warn
-            }
-
-            if (!ritobinPath) {
-                setStatusMessage("Error: Ritobin path not configured");
-                setShowRitobinWarning(true);
-                return;
-            }
-
             // 3. Check User Preference for Native vs Custom Browser
             let useNativeFileBrowser = false;
             let lastBinPath = '';
@@ -524,24 +507,33 @@ function Paint2() {
 
 
     const handleSave = useCallback(async () => {
-        if (!filePath || !linesRef.current) return;
+        if (!filePath || !linesRef.current) {
+            console.warn('[Paint2] Save cancelled: filePath or linesRef missing', { filePath, hasLines: !!linesRef.current });
+            return;
+        }
 
         setIsLoading(true);
         setStatusMessage('Saving...');
+        console.log('[Paint2] Starting save process for:', filePath);
 
         try {
             const pyPath = filePath.replace('.bin', '.py');
             const content = linesRef.current.join('\n');
+
+            console.log('[Paint2] Writing .py file to:', pyPath);
             fs.writeFileSync(pyPath, content, 'utf8');
-            createBackup(pyPath, content, 'Paint2');
-            await ToBin(pyPath, filePath);
+
+            console.log('[Paint2] Calling ToBin conversion...', { pyPath, binPath: filePath });
+            const result = await ToBin(pyPath, filePath);
+            console.log('[Paint2] ToBin conversion complete', result);
+
             setFileSaved(true);
             setStatusMessage('Saved successfully');
         } catch (error) {
-            console.error('Error saving:', error);
-            setStatusMessage(`Save error: ${error.message}`);
-            const errorText = String(error?.message || '').toLowerCase();
-            if (errorText.includes('bin conversion failed') || errorText.includes('ritobin')) {
+            console.error('[Paint2] Error during save/conversion:', error);
+            const displayError = error.message || 'Unknown error';
+            setStatusMessage(`Save error: ${displayError}`);
+            if (displayError.toLowerCase().includes('bin conversion failed') || displayError.toLowerCase().includes('ritobin')) {
                 setShowRitoBinErrorDialog(true);
             }
         } finally {
@@ -1684,8 +1676,8 @@ function Paint2() {
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     <Checkbox
                         size="small"
-                        indeterminate={selection.size > 0 && parsedFile && selection.size < parsedFile.emitters.size}
-                        checked={parsedFile && selection.size === parsedFile.emitters.size && selection.size > 0}
+                        indeterminate={!!(parsedFile && selection.size > 0 && selection.size < parsedFile.emitters.size)}
+                        checked={!!(parsedFile && selection.size > 0 && selection.size === parsedFile.emitters.size)}
                         onChange={(e) => {
                             // If currently all selected or indeterminate, deselect all
                             // Otherwise, select all visible

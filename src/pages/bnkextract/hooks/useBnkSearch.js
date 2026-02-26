@@ -20,7 +20,7 @@ export function useBnkSearch({
     }, [leftSearchQuery]);
 
     useEffect(() => {
-        const timer = setTimeout(() => setRightSearchDebounced(rightSearchQuery), 350);
+        const timer = setTimeout(() => setRightSearchDebounced(rightSearchQuery), 300);
         return () => clearTimeout(timer);
     }, [rightSearchQuery]);
 
@@ -159,4 +159,3 @@ export function useBnkSearch({
         rightSearchDebounced,
     };
 }
-

@@ -37,6 +37,15 @@ export function useBnkPersistence() {
         localStorage.setItem('bnk-extract-history', JSON.stringify(history));
     }, [history]);
 
+    const [autoSaveSession, setAutoSaveSession] = useState(() => {
+        const saved = localStorage.getItem('bnk-extract-auto-save-session');
+        return saved === null ? true : saved === 'true';
+    });
+
+    useEffect(() => {
+        localStorage.setItem('bnk-extract-auto-save-session', autoSaveSession);
+    }, [autoSaveSession]);
+
     return {
         bnkPath,
         setBnkPath,
@@ -50,5 +59,7 @@ export function useBnkPersistence() {
         setMp3Bitrate,
         history,
         setHistory,
+        autoSaveSession,
+        setAutoSaveSession,
     };
 }

@@ -51,12 +51,14 @@ function sliceAndEncodeWav(audioBuffer, startSec, endSec) {
     v.setUint16(34, 16, true);           // bits per sample
     wr(36, 'data'); v.setUint32(40, dataSize, true);
 
-    let off = 44;
+    const out = new Int16Array(buf, 44);
+    const channels = [];
+    for (let c = 0; c < ch; c++) channels.push(audioBuffer.getChannelData(c));
+    let off = 0;
     for (let i = 0; i < len; i++) {
         for (let c = 0; c < ch; c++) {
-            const samp = Math.max(-1, Math.min(1, audioBuffer.getChannelData(c)[s0 + i]));
-            v.setInt16(off, samp < 0 ? samp * 32768 : samp * 32767, true);
-            off += 2;
+            const samp = Math.max(-1, Math.min(1, channels[c][s0 + i]));
+            out[off++] = (samp < 0 ? samp * 32768 : samp * 32767) | 0;
         }
     }
     return Buffer.from(buf);
@@ -406,18 +408,25 @@ export default function AudioSplitter({ open, onClose, initialFile, onReplace, o
             // Revoke any previous blob URL
             if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
 
-            // Read file into Buffer/Blob and use createObjectURL to bypass security blocks
+            // Read file and decode once — reuse decoded buffer for both WaveSurfer and audioBufferRef
             const data = fs.readFileSync(filePath);
-            const blob = new Blob([data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)]);
-            blobUrlRef.current = URL.createObjectURL(blob);
-            wsRef.current.load(blobUrlRef.current);
+            const slicedBuf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
 
-            // Decode audio independently for WAV export
-            const arrBuf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
             const AudioCtx = window.AudioContext || window.webkitAudioContext;
             const ctx = new AudioCtx();
-            audioBufferRef.current = await ctx.decodeAudioData(arrBuf);
+            audioBufferRef.current = await ctx.decodeAudioData(slicedBuf);
             ctx.close();
+
+            // Extract channel data and pass to WaveSurfer — skips a second decode
+            const channelData = [];
+            for (let c = 0; c < audioBufferRef.current.numberOfChannels; c++) {
+                channelData.push(audioBufferRef.current.getChannelData(c));
+            }
+
+            // Still need a blob URL so WaveSurfer can play the audio
+            const blob = new Blob([data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)]);
+            blobUrlRef.current = URL.createObjectURL(blob);
+            wsRef.current.load(blobUrlRef.current, channelData, audioBufferRef.current.duration);
 
             setLoadedName(fileName || path.basename(filePath));
         } catch (err) {
@@ -677,12 +686,17 @@ export default function AudioSplitter({ open, onClose, initialFile, onReplace, o
 
         setActiveRegionId(null);
 
-        // Re-load into WaveSurfer
-        const wavBuf = sliceAndEncodeWav(newBuf, 0, newBuf.length / sr);
+        // Re-load into WaveSurfer — pass channelData so it renders immediately
+        // without needing to re-decode the audio (only the blob URL is needed for playback)
+        const newDuration = newBuf.length / sr;
+        const channelData = [];
+        for (let c = 0; c < ch; c++) channelData.push(newBuf.getChannelData(c));
+
+        const wavBuf = sliceAndEncodeWav(newBuf, 0, newDuration);
         const blob = new Blob([wavBuf], { type: 'audio/wav' });
         if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = URL.createObjectURL(blob);
-        wsRef.current.load(blobUrlRef.current);
+        wsRef.current.load(blobUrlRef.current, channelData, newDuration);
     }, [activeRegionId, regions, removeRegion]);
 
     const handleReplace = useCallback(async () => {

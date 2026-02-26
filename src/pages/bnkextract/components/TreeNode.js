@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Box, Typography, IconButton } from '@mui/material';
+import React from 'react';
+import { Box, Typography } from '@mui/material';
 import {
     ExpandMore,
     ChevronRight,
@@ -18,21 +18,22 @@ const TreeNode = React.memo(({
     node,
     level = 0,
     selectedNodes,
+    isSelected: isSelectedProp,
     onSelect,
     onPlay,
     onContextMenu,
     expandedNodes,
+    isExpanded: isExpandedProp,
     onToggleExpand,
     pane = 'left',
     onDropReplace,
     onExternalFileDrop,
+    renderChildren = true,
 }) => {
-    const isExpanded = expandedNodes.has(node.id);
-    const isSelected = selectedNodes.has(node.id);
+    const isExpanded = typeof isExpandedProp === 'boolean' ? isExpandedProp : expandedNodes?.has(node.id);
+    const isSelected = typeof isSelectedProp === 'boolean' ? isSelectedProp : selectedNodes?.has(node.id);
     const hasChildren = node.children && node.children.length > 0;
     const isAudioFile = node.audioData !== null;
-
-    const [isDragOver, setIsDragOver] = useState(false);
 
     const handleClick = (e) => {
         e.stopPropagation();
@@ -69,19 +70,19 @@ const TreeNode = React.memo(({
 
         e.preventDefault();
         e.stopPropagation();
-        setIsDragOver(true);
+        e.currentTarget.classList.add('bnk-drop-over');
     };
 
     const handleDragLeave = (e) => {
         e.stopPropagation();
-        setIsDragOver(false);
+        e.currentTarget.classList.remove('bnk-drop-over');
     };
 
     const handleDrop = (e) => {
         if (!isAudioFile && !hasChildren) return;
         e.preventDefault();
         e.stopPropagation();
-        setIsDragOver(false);
+        e.currentTarget.classList.remove('bnk-drop-over');
 
         if (e.dataTransfer?.files?.length > 0) {
             const VALID_EXTS = ['wem', 'wav', 'mp3', 'ogg'];
@@ -126,11 +127,15 @@ const TreeNode = React.memo(({
                     paddingLeft: `${level * 18 + 6}px`,
                     cursor: 'pointer',
                     borderRadius: '5px',
-                    border: isDragOver ? '2px dashed var(--accent)' : (isSelected ? '1px solid var(--accent)' : '1px solid transparent'),
+                    border: isSelected ? '1px solid var(--accent)' : '1px solid transparent',
                     background: isSelected ? 'rgba(var(--accent-rgb), 0.15)' : 'transparent',
                     marginBottom: '2px',
-                    transition: 'all 0.1s ease',
+                    transition: 'background-color 80ms ease, border-color 80ms ease',
                     position: 'relative',
+                    '&.bnk-drop-over': {
+                        border: '2px dashed var(--accent)',
+                        background: 'rgba(var(--accent-rgb), 0.08)',
+                    },
                     '&:hover': {
                         background: isSelected ? 'rgba(var(--accent-rgb), 0.25)' : 'rgba(255, 255, 255, 0.05)',
                         borderColor: isSelected ? 'var(--accent)' : 'rgba(255, 255, 255, 0.15)',
@@ -138,17 +143,23 @@ const TreeNode = React.memo(({
                 }}
             >
                 {hasChildren ? (
-                    <IconButton
-                        size="small"
+                    <Box
+                        role="button"
                         onClick={handleToggle}
                         sx={{
+                            width: 20,
+                            height: 20,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
                             padding: '2px',
                             color: isExpanded ? 'var(--accent)' : 'rgba(255, 255, 255, 0.4)',
                             '&:hover': { color: 'var(--accent)' },
+                            borderRadius: '4px',
                         }}
                     >
                         {isExpanded ? <ExpandMore sx={{ fontSize: 16 }} /> : <ChevronRight sx={{ fontSize: 16 }} />}
-                    </IconButton>
+                    </Box>
                 ) : (
                     <Box sx={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {isAudioFile && <VolumeUp sx={{ fontSize: 12, color: 'var(--accent)', opacity: isSelected ? 1 : 0.6 }} />}
@@ -163,7 +174,6 @@ const TreeNode = React.memo(({
                         marginLeft: '8px',
                         userSelect: 'none',
                         fontWeight: (isSelected || !isAudioFile) ? 600 : 400,
-                        textShadow: isSelected ? '0 0 10px rgba(var(--accent-rgb), 0.5)' : 'none',
                         overflow: 'hidden',
                         whiteSpace: 'nowrap',
                         textOverflow: 'ellipsis',
@@ -192,7 +202,7 @@ const TreeNode = React.memo(({
                     <ArrowForward sx={{ fontSize: 10, ml: 'auto', opacity: 0.5, color: 'var(--accent)' }} titleAccess="Drag to Main Bank" />
                 )}
             </Box>
-            {hasChildren && isExpanded && (
+            {renderChildren && hasChildren && isExpanded && (
                 <Box>
                     {node.children.map((child, index) => (
                         <TreeNode
@@ -214,7 +224,14 @@ const TreeNode = React.memo(({
             )}
         </Box>
     );
-});
+}, (prev, next) => (
+    prev.node === next.node
+    && prev.level === next.level
+    && prev.isSelected === next.isSelected
+    && prev.isExpanded === next.isExpanded
+    && prev.pane === next.pane
+    && prev.renderChildren === next.renderChildren
+    && prev.selectedNodes === next.selectedNodes
+));
 
 export default TreeNode;
-

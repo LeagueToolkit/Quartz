@@ -38,7 +38,9 @@ const PageVisibilitySection = ({ settings, updateSetting }) => {
           <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.06)', margin: '8px 0' }} />
           <ToggleSwitch label="AniPort" checked={settings.aniportEnabled} onChange={(checked) => updateSetting('aniportEnabled', checked)} compact />
           <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.06)', margin: '8px 0' }} />
-          <ToggleSwitch label="Frog Changer" checked={settings.frogchangerEnabled} onChange={(checked) => updateSetting('frogchangerEnabled', checked)} compact />
+          <ToggleSwitch label="Asset Extractor" checked={settings.frogchangerEnabled} onChange={(checked) => updateSetting('frogchangerEnabled', checked)} compact />
+          <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.06)', margin: '8px 0' }} />
+          <ToggleSwitch label="WAD Explorer" checked={settings.wadExplorerEnabled} onChange={(checked) => updateSetting('wadExplorerEnabled', checked)} compact />
           <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.06)', margin: '8px 0' }} />
           <ToggleSwitch label="FakeGear" checked={settings.fakeGearEnabled} onChange={(checked) => updateSetting('fakeGearEnabled', checked)} compact />
           <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.06)', margin: '8px 0' }} />

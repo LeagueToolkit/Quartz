@@ -19,6 +19,7 @@ import {
   ArrowLeftRight as PortIcon,
   Github as VFXHubIcon,
   Pipette as RGBAIcon,
+  Shuffle as AniPortIcon,
   Image as FrogImgIcon,
   Code as BinEditorIcon,
   Wrench as ToolsIcon,
@@ -26,11 +27,11 @@ import {
   Maximize as UpscaleIcon,
   FileDigit as FileHandlerIcon,
   Waypoints as BumpathIcon,
-  Shuffle as AniPortIcon,
   FolderInput as AssetExtractorIcon,
   Music as BnkExtractIcon,
   Sparkles as FakeGearIcon,
   Dices as ParticleRandIcon,
+  FolderSearch as WadExplorerIcon,
   Rocket as LaunchIcon,
 } from 'lucide-react';
 import CelestialWelcome from '../components/celestia/CelestiaWelcome';
@@ -123,7 +124,7 @@ const MainPage = () => {
     { title: 'Paint', description: 'Customize your particles with ease. Choose from Random Colors, apply a Hue Shift, or generate a range of Shades.', icon: <PaintIcon size={18} />, path: '/paint' },
     { title: 'Port', description: 'Bring particles from different champions or skins into your own custom skin!', icon: <PortIcon size={18} />, path: '/port' },
     { title: 'VFX Hub', description: 'Community-powered VFX sharing exclusively for Divine members.', icon: <VFXHubIcon size={18} />, path: '/vfx-hub' },
-    { title: 'RGBA', description: 'League-supported tool to select a color and seamlessly integrate it into your code.', icon: <RGBAIcon size={18} />, path: '/rgba' },
+    { title: 'WAD Explorer', description: 'Advanced explorer for WAD files with live 3D model and texture preview.', icon: <WadExplorerIcon size={18} />, path: '/wad-explorer', isNew: true },
     // Row 2 — file & image tools
     { title: 'Img Recolor', description: 'Automatically batch recolor DDS or TEX files by simply selecting a folder and clicking "Batch Apply".', icon: <FrogImgIcon size={18} />, path: '/img-recolor' },
     { title: 'Bin Editor', description: 'Primarily designed for editing parameters like birthscale directly within Quartz.', icon: <BinEditorIcon size={18} />, path: '/bineditor' },
@@ -133,7 +134,7 @@ const MainPage = () => {
     { title: 'Upscale', description: 'AI-powered image upscaling for DDS and PNG texture files.', icon: <UpscaleIcon size={18} />, path: '/upscale' },
     { title: 'FakeGear', description: 'Enables a Ctrl+5 in-game toggle to swap between VFX variants on your custom skin.', icon: <FakeGearIcon size={18} />, path: '/fakegear' },
     { title: 'Randomizer', description: 'Randomize VFX particle parameters across your entire skin at once.', icon: <ParticleRandIcon size={18} />, path: '/particle-randomizer' },
-    { title: 'AniPort', description: 'Port animations between different champions or skins.', icon: <AniPortIcon size={18} />, path: '/aniport', wip: true },
+    { title: 'RGBA', description: 'Adjust RGBA color channels on DDS and TEX texture files.', icon: <RGBAIcon size={18} />, path: '/rgba' },
     // Row 4 — extraction, utility & system
     { title: 'Bumpath', description: 'Repath League of Legends file references across your skin files.', icon: <BumpathIcon size={18} />, path: '/bumpath' },
     { title: 'File Handler', description: 'Universal file processing and randomization utility for bulk operations.', icon: <FileHandlerIcon size={18} />, path: '/file-randomizer' },
@@ -382,6 +383,11 @@ const MainPage = () => {
                       <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: 'rgb(239,68,68)', lineHeight: 1.4, letterSpacing: '0.04em' }}>BUGGY</Typography>
                     </Box>
                   )}
+                  {tool.isNew && (
+                    <Box sx={{ background: 'rgba(59,130,246,0.18)', border: '1px solid rgba(59,130,246,0.45)', borderRadius: '4px', px: 0.6, py: 0.1 }}>
+                      <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: 'rgb(96,165,250)', lineHeight: 1.4, letterSpacing: '0.04em' }}>NEW</Typography>
+                    </Box>
+                  )}
                 </Box>
                 <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.5, color: 'var(--text-2)', opacity: 0.85 }}>
                   {tool.description}
@@ -420,7 +426,7 @@ const MainPage = () => {
               onMouseLeave={(e) => debugCardLeave(e, tool.title)}
               sx={{
                 background: 'rgba(255,255,255,0.026)',
-                border: tool.wip ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(255,255,255,0.055)',
+                border: tool.wip ? '1px solid rgba(239,68,68,0.2)' : tool.isNew ? '1px solid rgba(59,130,246,0.35)' : '1px solid rgba(255,255,255,0.055)',
                 borderRadius: '12px',
                 cursor: 'pointer',
                 p: { xs: 1.25, sm: 1.5, md: 2 },
@@ -430,6 +436,7 @@ const MainPage = () => {
                 position: 'relative',
                 overflow: 'hidden',
                 opacity: tool.wip ? 0.55 : 1,
+                boxShadow: tool.isNew ? '0 0 18px rgba(59,130,246,0.18)' : 'none',
                 transition: 'border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, background-color 0.2s ease, opacity 0.2s ease',
                 '&::before': {
                   content: '""',
@@ -437,16 +444,20 @@ const MainPage = () => {
                   top: 0, left: '20%', right: '20%', height: '1px',
                   background: tool.wip
                     ? 'linear-gradient(90deg, transparent, rgba(239,68,68,0.15), transparent)'
+                    : tool.isNew
+                    ? 'linear-gradient(90deg, transparent, rgba(59,130,246,0.25), transparent)'
                     : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
                   pointerEvents: 'none',
                 },
                 '&:hover': {
                   background: 'rgba(255,255,255,0.055)',
-                  borderColor: tool.wip ? 'rgba(239,68,68,0.45)' : 'color-mix(in srgb, var(--accent) 55%, transparent)',
+                  borderColor: tool.wip ? 'rgba(239,68,68,0.45)' : tool.isNew ? 'rgba(59,130,246,0.65)' : 'color-mix(in srgb, var(--accent) 55%, transparent)',
                   transform: 'translateY(-3px)',
                   opacity: tool.wip ? 0.75 : 1,
                   boxShadow: tool.wip
                     ? '0 8px 28px rgba(0,0,0,0.4), 0 0 0 1px rgba(239,68,68,0.15)'
+                    : tool.isNew
+                    ? '0 8px 28px rgba(0,0,0,0.4), 0 0 18px rgba(59,130,246,0.3)'
                     : '0 8px 28px rgba(0,0,0,0.4), 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent)',
                 },
               }}
@@ -459,6 +470,18 @@ const MainPage = () => {
                   background: 'rgb(239,68,68)',
                   boxShadow: '0 0 6px rgba(239,68,68,0.7)',
                 }} />
+              )}
+              {/* NEW badge */}
+              {tool.isNew && (
+                <Box sx={{
+                  position: 'absolute', top: 8, right: 8,
+                  background: 'rgba(59,130,246,0.18)',
+                  border: '1px solid rgba(59,130,246,0.5)',
+                  borderRadius: '5px',
+                  px: 0.65, py: 0.15,
+                }}>
+                  <Typography sx={{ fontSize: '0.58rem', fontWeight: 800, color: 'rgb(96,165,250)', lineHeight: 1.4, letterSpacing: '0.06em' }}>NEW</Typography>
+                </Box>
               )}
 
               {/* Icon */}

@@ -1,0 +1,26 @@
+[package]
+name = "wad_indexer"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", default-features = false, features = ["async", "napi4"] }
+napi-derive = "2"
+rayon = "1.10"
+ltk_wad = { path = "../../league-toolkit-main/crates/ltk_wad" }
+ltk_meta = { path = "../../league-toolkit-main/crates/ltk_meta" }
+ltk_ritobin = { path = "../../league-toolkit-main/crates/ltk_ritobin" }
+xxhash-rust = { version = "0.8.15", features = ["xxh64"] }
+heed = "0.20"
+serde_json = "1.0.149"
+serde = { version = "1.0.228", features = ["derive"] }
+memmap2 = "0.9.10"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+strip = "symbols"

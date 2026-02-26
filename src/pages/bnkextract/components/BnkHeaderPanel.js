@@ -7,8 +7,7 @@ import {
     FolderOpen,
     Refresh,
     Delete,
-    CompareArrows,
-    History,
+    Bookmark,
     AutoFixHigh,
 } from '@mui/icons-material';
 
@@ -34,6 +33,7 @@ export default function BnkHeaderPanel({
     handleParseFiles,
     isLoading,
     handleClearPane,
+    onSessionClick,
     setHistoryAnchor,
     setAutoExtractOpen,
 }) {
@@ -224,29 +224,10 @@ export default function BnkHeaderPanel({
                             </IconButton>
                         </Tooltip>
 
-                        {viewMode === 'split' && (
-                            <Tooltip title="Clear all trees">
-                                <IconButton
-                                    size="small"
-                                    onClick={() => { handleClearPane('left'); handleClearPane('right'); }}
-                                    sx={{
-                                        color: 'rgba(255,255,255,0.5)',
-                                        background: 'rgba(0, 0, 0, 0.3)',
-                                        border: '1px solid rgba(255, 255, 255, 0.08)',
-                                        borderRadius: '4px',
-                                        padding: '4px',
-                                        '&:hover': { background: 'rgba(255, 80, 80, 0.2)', color: '#ff6666' },
-                                    }}
-                                >
-                                    <CompareArrows sx={{ fontSize: 14 }} />
-                                </IconButton>
-                            </Tooltip>
-                        )}
-
-                        <Tooltip title="Recent files">
+                        <Tooltip title="Session Manager">
                             <IconButton
                                 size="small"
-                                onClick={(e) => setHistoryAnchor(e.currentTarget)}
+                                onClick={onSessionClick}
                                 sx={{
                                     color: 'rgba(255,255,255,0.5)',
                                     background: 'rgba(0, 0, 0, 0.3)',
@@ -256,7 +237,7 @@ export default function BnkHeaderPanel({
                                     '&:hover': { background: 'rgba(var(--accent-rgb), 0.2)', color: 'var(--accent)' },
                                 }}
                             >
-                                <History sx={{ fontSize: 14 }} />
+                                <Bookmark style={{ fontSize: 14 }} />
                             </IconButton>
                         </Tooltip>
                         <Tooltip title="Mod Auto-Extract">

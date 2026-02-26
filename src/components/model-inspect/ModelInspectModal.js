@@ -234,6 +234,7 @@ export default function ModelInspectModal({
   manifest,
   onSelectChroma,
   onClose,
+  inline = false,
 }) {
   const shortName = (p) => {
     const parts = String(p || '').split(/[\\/]/);
@@ -259,7 +260,7 @@ export default function ModelInspectModal({
   const [closeHover, setCloseHover] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!inline && !open) return;
     setSelectedCharacterFolder(manifest?.defaultCharacterFolder || manifest?.characterFolders?.[0] || '');
     setSelectedSkn('');
     setModelData(null);
@@ -297,7 +298,7 @@ export default function ModelInspectModal({
   }, [manifest?.anmFiles, selectedCharacterPrefix]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!inline && !open) return;
     const candidates = filteredSknFiles;
     const keepCurrent = candidates.includes(selectedSkn);
     setSelectedSkn(keepCurrent ? selectedSkn : (candidates[0] || ''));
@@ -431,10 +432,10 @@ export default function ModelInspectModal({
   }, [modelData?.skeleton, anmClip, currentTime]);
 
   const submeshCount = modelData?.submeshes?.length || 0;
-  const compact = viewportWidth < 1180;
-  const viewportHeight = compact ? 'clamp(240px, 42vh, 420px)' : '100%';
-  const viewportMinHeight = compact ? 320 : 560;
-  const gridHeight = compact ? 'auto' : 'calc(100vh - 32px - 128px)';
+  const compact = inline ? false : viewportWidth < 1180;
+  const viewportHeight = inline ? '100%' : compact ? 'clamp(240px, 42vh, 420px)' : '100%';
+  const viewportMinHeight = inline ? 200 : compact ? 320 : 560;
+  const gridHeight = inline ? '100%' : compact ? 'auto' : 'calc(100vh - 32px - 128px)';
   const viewportReady = Boolean(manifest && modelData && !loading && !modelLoading);
   const allVisible = useMemo(() => {
     if (!modelData?.submeshes?.length) return false;
@@ -450,7 +451,310 @@ export default function ModelInspectModal({
     });
   };
 
-  if (!open) return null;
+  if (!open && !inline) return null;
+
+  const gridContent = (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: compact ? '1fr' : 'minmax(0, 1fr) 340px',
+        gap: 14,
+        alignItems: 'stretch',
+        height: gridHeight,
+        overflow: compact ? 'auto' : 'hidden',
+        flex: inline ? 1 : undefined,
+        minHeight: 0,
+      }}
+    >
+      <div style={{ position: 'relative' }}>
+        {viewportReady ? (
+          <ModelViewport
+            modelData={modelData}
+            visibleSubmeshes={visibleSubmeshes}
+            wireframe={wireframe}
+            flatLighting={flatLighting}
+            showSkeleton={showSkeleton}
+            skeletonSegments={animatedSegments}
+            skinningMatrices={skinningMatrices}
+            height={viewportHeight}
+            minHeight={viewportMinHeight}
+          />
+        ) : (
+          <div
+            style={{
+              width: '100%',
+              height: viewportHeight,
+              minHeight: viewportMinHeight,
+              borderRadius: 12,
+              overflow: 'hidden',
+              border: '1px solid rgba(255,255,255,0.16)',
+              background: 'rgba(12,10,18,0.55)',
+            }}
+          />
+        )}
+        {!viewportReady && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: 12,
+              background: 'rgba(8,8,14,0.62)',
+              backdropFilter: 'blur(2px)',
+              WebkitBackdropFilter: 'blur(2px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 8,
+                color: 'rgba(255,255,255,0.92)',
+                fontSize: '0.8rem',
+                textShadow: '0 1px 10px rgba(0,0,0,0.55)',
+              }}
+            >
+              <div style={{ width: 24, height: 24, border: '3px solid rgba(255,255,255,0.28)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+              <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.9)' }}>
+                {progressMessage || (modelLoading ? 'Loading model...' : 'Preparing assets...')}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── sidebar ── */}
+      <div style={{
+        borderRadius: 12,
+        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'rgba(255,255,255,0.02)',
+        overflowY: compact ? 'visible' : 'auto',
+        minHeight: 0, padding: 14,
+      }}>
+        {/* info section */}
+        <Section>
+          <SectionTitle>Info</SectionTitle>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.55)' }}>
+              Champion
+              <div style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.76rem', marginTop: 2 }}>{manifest?.championName || '—'}</div>
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.55)' }}>
+              Skin
+              <div style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.76rem', marginTop: 2 }}>{manifest?.skinKey || '—'}</div>
+            </div>
+          </div>
+          {(manifest?.characterFolders || []).length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <SectionTitle>Character</SectionTitle>
+              <CustomDropdown
+                value={selectedCharacterFolder}
+                onChange={setSelectedCharacterFolder}
+                options={(manifest?.characterFolders || []).map((folder) => ({ value: folder, label: folder }))}
+              />
+            </div>
+          )}
+          {Array.isArray(manifest?.chromaOptions) && manifest.chromaOptions.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <SectionTitle>Chroma</SectionTitle>
+              <CustomDropdown
+                value={manifest?.selectedChromaId != null ? String(manifest.selectedChromaId) : ''}
+                onChange={(value) => {
+                  const parsed = value === '' ? null : Number(value);
+                  onSelectChroma?.(parsed);
+                }}
+                options={[
+                  { value: '', label: '(Base)' },
+                  ...manifest.chromaOptions.map((c) => ({
+                    value: String(c.id),
+                    label: c.name || `Chroma ${c.id}`,
+                  })),
+                ]}
+              />
+            </div>
+          )}
+        </Section>
+
+        {/* model section */}
+        <Section>
+          <SectionTitle>Model</SectionTitle>
+
+          {filteredSknFiles.length > 1 && (
+            <div style={{ marginBottom: 8 }}>
+              <CustomDropdown
+                value={selectedSkn}
+                onChange={setSelectedSkn}
+                options={filteredSknFiles.map((f) => ({ value: f, label: shortName(f) }))}
+              />
+            </div>
+          )}
+
+          {modelLoading && (
+            <div style={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.6)', padding: '4px 0' }}>
+              Loading model...
+            </div>
+          )}
+
+          {modelError && (
+            <div style={{ fontSize: '0.74rem', color: '#f87171', padding: '4px 0' }}>
+              {modelError}
+            </div>
+          )}
+
+          {modelData && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+              {[
+                ['Vertices', modelData.vertexCount?.toLocaleString()],
+                ['Triangles', modelData.triangleCount?.toLocaleString()],
+                ['Submeshes', submeshCount],
+                ['Joints', modelData.skeleton ? modelData.skeleton.jointCount : '—'],
+              ].map(([label, val]) => (
+                <div key={label} style={{
+                  borderRadius: 6, padding: '6px 8px',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                }}>
+                  <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text)', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{val}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+
+        {/* render options */}
+        <Section>
+          <SectionTitle>Render</SectionTitle>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Toggle checked={flatLighting} onChange={setFlatLighting} label="Flat Lighting" />
+            <Toggle checked={wireframe} onChange={setWireframe} label="Wireframe" />
+            <Toggle checked={showSkeleton} onChange={setShowSkeleton} label="Show Skeleton" />
+          </div>
+        </Section>
+
+        {/* materials */}
+        <Section>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <SectionTitle>Materials ({submeshCount})</SectionTitle>
+            <GhostButton
+              accent={2}
+              onClick={() => {
+                if (!modelData?.submeshes?.length) return;
+                if (allVisible) setVisibleSubmeshes(new Set());
+                else setVisibleSubmeshes(new Set(modelData.submeshes.map((s) => s.id)));
+              }}
+              style={{ padding: '3px 10px', fontSize: '0.68rem' }}
+            >
+              {allVisible ? 'Hide All' : 'Show All'}
+            </GhostButton>
+          </div>
+          <div style={{ maxHeight: 150, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {(modelData?.submeshes || []).map((sm) => (
+              <Checkbox
+                key={sm.id}
+                checked={visibleSubmeshes.has(sm.id)}
+                onChange={() => toggleSubmesh(sm.id)}
+                label={sm.name}
+              />
+            ))}
+          </div>
+        </Section>
+
+        {/* animation */}
+        <Section>
+          <SectionTitle>Animation</SectionTitle>
+          <CustomDropdown
+            value={selectedAnm}
+            onChange={setSelectedAnm}
+            style={{ marginBottom: 8 }}
+            options={[
+              { value: '', label: '(None)' },
+              ...((filteredAnmFiles || []).map((f) => ({ value: f, label: shortName(f) }))),
+            ]}
+          />
+
+          {anmError && (
+            <div style={{ fontSize: '0.72rem', color: '#f87171', marginBottom: 6 }}>
+              {anmError}
+            </div>
+          )}
+
+          {anmClip && (
+            <>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                <GhostButton accent={1} onClick={() => setIsPlaying((v) => !v)}>
+                  {isPlaying ? 'Pause' : 'Play'}
+                </GhostButton>
+                <GhostButton onClick={() => { setIsPlaying(false); setCurrentTime(0); }}>
+                  Reset
+                </GhostButton>
+                <StyledSelect
+                  value={String(playRate)}
+                  onChange={(e) => setPlayRate(Number(e.target.value))}
+                  style={{ width: 72, flex: 'none' }}
+                >
+                  <option value="0.25">0.25x</option>
+                  <option value="0.5">0.5x</option>
+                  <option value="1">1x</option>
+                  <option value="1.5">1.5x</option>
+                  <option value="2">2x</option>
+                </StyledSelect>
+              </div>
+
+              <input
+                type="range"
+                min={0}
+                max={anmClip.durationSeconds || 1}
+                step={Math.max(0.001, 1 / Math.max(1, anmClip.fps || 30))}
+                value={Math.min(currentTime, anmClip.durationSeconds || 1)}
+                onChange={(e) => { setIsPlaying(false); setCurrentTime(Number(e.target.value)); }}
+                style={{ width: '100%', accentColor: 'var(--accent2)' }}
+              />
+              <div style={{ fontSize: '0.66rem', color: 'rgba(255,255,255,0.5)', marginTop: 4, fontFamily: "'JetBrains Mono', monospace" }}>
+                {currentTime.toFixed(2)}s / {(anmClip.durationSeconds || 0).toFixed(2)}s
+                {' \u00B7 '}
+                {Math.round((anmClip.fps || 0) * 100) / 100} fps
+                {' \u00B7 '}
+                {anmClip.tracks?.length || 0} tracks
+              </div>
+            </>
+          )}
+        </Section>
+
+        {/* debug */}
+        <Section style={{ marginBottom: 0, opacity: 0.7 }}>
+          <SectionTitle>Texture Debug ({textureDebugRows.length})</SectionTitle>
+          <div style={{ maxHeight: 140, overflow: 'auto', fontSize: '0.65rem', color: 'rgba(255,255,255,0.6)', fontFamily: "'JetBrains Mono', monospace" }}>
+            {textureDebugRows.map((row) => (
+              <div key={row.submeshId} style={{ marginBottom: 6, paddingBottom: 5, borderBottom: '1px dashed rgba(255,255,255,0.06)' }}>
+                <div style={{ color: 'var(--accent2)', fontWeight: 600, fontFamily: 'inherit' }}>{row.submeshName}</div>
+                <div>key: {row.normalizedSubmeshKey}</div>
+                <div>hint: {row.hintPath || '(none)'}</div>
+                <div>resolved: {row.resolvedTexturePath || '(none)'}</div>
+                <div>reason: {row.reason}</div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      </div>
+    </div>
+  );
+
+  if (inline) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', minHeight: 0 }}>
+        {error ? (
+          <div style={{ color: '#f87171', fontSize: '0.82rem', padding: '8px 12px' }}>{error}</div>
+        ) : (
+          gridContent
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: 'fixed', top: 32, left: 60, right: 0, bottom: 0, zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -512,284 +816,7 @@ export default function ModelInspectModal({
             </div>
           )}
 
-          {!error && (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: compact ? '1fr' : 'minmax(0, 1fr) 340px',
-                gap: 14,
-                alignItems: 'stretch',
-                height: gridHeight,
-                overflow: compact ? 'auto' : 'hidden',
-              }}
-            >
-              <div style={{ position: 'relative' }}>
-                {viewportReady ? (
-                  <ModelViewport
-                    modelData={modelData}
-                    visibleSubmeshes={visibleSubmeshes}
-                    wireframe={wireframe}
-                    flatLighting={flatLighting}
-                    showSkeleton={showSkeleton}
-                    skeletonSegments={animatedSegments}
-                    skinningMatrices={skinningMatrices}
-                    height={viewportHeight}
-                    minHeight={viewportMinHeight}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: '100%',
-                      height: viewportHeight,
-                      minHeight: viewportMinHeight,
-                      borderRadius: 12,
-                      overflow: 'hidden',
-                      border: '1px solid rgba(255,255,255,0.16)',
-                      background: 'rgba(12,10,18,0.55)',
-                    }}
-                  />
-                )}
-                {!viewportReady && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      borderRadius: 12,
-                      background: 'rgba(8,8,14,0.62)',
-                      backdropFilter: 'blur(2px)',
-                      WebkitBackdropFilter: 'blur(2px)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      pointerEvents: 'none',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: 8,
-                        color: 'rgba(255,255,255,0.92)',
-                        fontSize: '0.8rem',
-                        textShadow: '0 1px 10px rgba(0,0,0,0.55)',
-                      }}
-                    >
-                      <div style={{ width: 24, height: 24, border: '3px solid rgba(255,255,255,0.28)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-                      <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.9)' }}>
-                        {progressMessage || (modelLoading ? 'Loading model...' : 'Preparing assets...')}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* ── sidebar ── */}
-              <div style={{
-                borderRadius: 12,
-                border: '1px solid rgba(255,255,255,0.08)',
-                background: 'rgba(255,255,255,0.02)',
-                overflowY: compact ? 'visible' : 'auto',
-                minHeight: 0, padding: 14,
-              }}>
-                {/* info section */}
-                <Section>
-                  <SectionTitle>Info</SectionTitle>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                    <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.55)' }}>
-                      Champion
-                      <div style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.76rem', marginTop: 2 }}>{manifest?.championName || '—'}</div>
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.55)' }}>
-                      Skin
-                      <div style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.76rem', marginTop: 2 }}>{manifest?.skinKey || '—'}</div>
-                    </div>
-                  </div>
-                  {(manifest?.characterFolders || []).length > 0 && (
-                    <div style={{ marginTop: 8 }}>
-                      <SectionTitle>Character</SectionTitle>
-                      <CustomDropdown
-                        value={selectedCharacterFolder}
-                        onChange={setSelectedCharacterFolder}
-                        options={(manifest?.characterFolders || []).map((folder) => ({ value: folder, label: folder }))}
-                      />
-                    </div>
-                  )}
-                  {Array.isArray(manifest?.chromaOptions) && manifest.chromaOptions.length > 0 && (
-                    <div style={{ marginTop: 8 }}>
-                      <SectionTitle>Chroma</SectionTitle>
-                      <CustomDropdown
-                        value={manifest?.selectedChromaId != null ? String(manifest.selectedChromaId) : ''}
-                        onChange={(value) => {
-                          const parsed = value === '' ? null : Number(value);
-                          onSelectChroma?.(parsed);
-                        }}
-                        options={[
-                          { value: '', label: '(Base)' },
-                          ...manifest.chromaOptions.map((c) => ({
-                            value: String(c.id),
-                            label: c.name || `Chroma ${c.id}`,
-                          })),
-                        ]}
-                      />
-                    </div>
-                  )}
-                </Section>
-
-                {/* model section */}
-                <Section>
-                  <SectionTitle>Model</SectionTitle>
-
-                  {modelLoading && (
-                    <div style={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.6)', padding: '4px 0' }}>
-                      Loading model...
-                    </div>
-                  )}
-
-                  {modelError && (
-                    <div style={{ fontSize: '0.74rem', color: '#f87171', padding: '4px 0' }}>
-                      {modelError}
-                    </div>
-                  )}
-
-                  {modelData && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                      {[
-                        ['Vertices', modelData.vertexCount?.toLocaleString()],
-                        ['Triangles', modelData.triangleCount?.toLocaleString()],
-                        ['Submeshes', submeshCount],
-                        ['Joints', modelData.skeleton ? modelData.skeleton.jointCount : '—'],
-                      ].map(([label, val]) => (
-                        <div key={label} style={{
-                          borderRadius: 6, padding: '6px 8px',
-                          background: 'rgba(255,255,255,0.03)',
-                          border: '1px solid rgba(255,255,255,0.06)',
-                        }}>
-                          <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
-                          <div style={{ fontSize: '0.8rem', color: 'var(--text)', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{val}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Section>
-
-                {/* render options */}
-                <Section>
-                  <SectionTitle>Render</SectionTitle>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <Toggle checked={flatLighting} onChange={setFlatLighting} label="Flat Lighting" />
-                    <Toggle checked={wireframe} onChange={setWireframe} label="Wireframe" />
-                    <Toggle checked={showSkeleton} onChange={setShowSkeleton} label="Show Skeleton" />
-                  </div>
-                </Section>
-
-                {/* materials */}
-                <Section>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <SectionTitle>Materials ({submeshCount})</SectionTitle>
-                    <GhostButton
-                      accent={2}
-                      onClick={() => {
-                        if (!modelData?.submeshes?.length) return;
-                        if (allVisible) setVisibleSubmeshes(new Set());
-                        else setVisibleSubmeshes(new Set(modelData.submeshes.map((s) => s.id)));
-                      }}
-                      style={{ padding: '3px 10px', fontSize: '0.68rem' }}
-                    >
-                      {allVisible ? 'Hide All' : 'Show All'}
-                    </GhostButton>
-                  </div>
-                  <div style={{ maxHeight: 150, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {(modelData?.submeshes || []).map((sm) => (
-                      <Checkbox
-                        key={sm.id}
-                        checked={visibleSubmeshes.has(sm.id)}
-                        onChange={() => toggleSubmesh(sm.id)}
-                        label={sm.name}
-                      />
-                    ))}
-                  </div>
-                </Section>
-
-                {/* animation */}
-                <Section>
-                  <SectionTitle>Animation</SectionTitle>
-                  <CustomDropdown
-                    value={selectedAnm}
-                    onChange={setSelectedAnm}
-                    style={{ marginBottom: 8 }}
-                    options={[
-                      { value: '', label: '(None)' },
-                      ...((filteredAnmFiles || []).map((f) => ({ value: f, label: shortName(f) }))),
-                    ]}
-                  />
-
-                  {anmError && (
-                    <div style={{ fontSize: '0.72rem', color: '#f87171', marginBottom: 6 }}>
-                      {anmError}
-                    </div>
-                  )}
-
-                  {anmClip && (
-                    <>
-                      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                        <GhostButton accent={1} onClick={() => setIsPlaying((v) => !v)}>
-                          {isPlaying ? 'Pause' : 'Play'}
-                        </GhostButton>
-                        <GhostButton onClick={() => { setIsPlaying(false); setCurrentTime(0); }}>
-                          Reset
-                        </GhostButton>
-                        <StyledSelect
-                          value={String(playRate)}
-                          onChange={(e) => setPlayRate(Number(e.target.value))}
-                          style={{ width: 72, flex: 'none' }}
-                        >
-                          <option value="0.25">0.25x</option>
-                          <option value="0.5">0.5x</option>
-                          <option value="1">1x</option>
-                          <option value="1.5">1.5x</option>
-                          <option value="2">2x</option>
-                        </StyledSelect>
-                      </div>
-
-                      <input
-                        type="range"
-                        min={0}
-                        max={anmClip.durationSeconds || 1}
-                        step={Math.max(0.001, 1 / Math.max(1, anmClip.fps || 30))}
-                        value={Math.min(currentTime, anmClip.durationSeconds || 1)}
-                        onChange={(e) => { setIsPlaying(false); setCurrentTime(Number(e.target.value)); }}
-                        style={{ width: '100%', accentColor: 'var(--accent2)' }}
-                      />
-                      <div style={{ fontSize: '0.66rem', color: 'rgba(255,255,255,0.5)', marginTop: 4, fontFamily: "'JetBrains Mono', monospace" }}>
-                        {currentTime.toFixed(2)}s / {(anmClip.durationSeconds || 0).toFixed(2)}s
-                        {' \u00B7 '}
-                        {Math.round((anmClip.fps || 0) * 100) / 100} fps
-                        {' \u00B7 '}
-                        {anmClip.tracks?.length || 0} tracks
-                      </div>
-                    </>
-                  )}
-                </Section>
-
-                {/* debug */}
-                <Section style={{ marginBottom: 0, opacity: 0.7 }}>
-                  <SectionTitle>Texture Debug ({textureDebugRows.length})</SectionTitle>
-                  <div style={{ maxHeight: 140, overflow: 'auto', fontSize: '0.65rem', color: 'rgba(255,255,255,0.6)', fontFamily: "'JetBrains Mono', monospace" }}>
-                    {textureDebugRows.map((row) => (
-                      <div key={row.submeshId} style={{ marginBottom: 6, paddingBottom: 5, borderBottom: '1px dashed rgba(255,255,255,0.06)' }}>
-                        <div style={{ color: 'var(--accent2)', fontWeight: 600, fontFamily: 'inherit' }}>{row.submeshName}</div>
-                        <div>key: {row.normalizedSubmeshKey}</div>
-                        <div>hint: {row.hintPath || '(none)'}</div>
-                        <div>resolved: {row.resolvedTexturePath || '(none)'}</div>
-                        <div>reason: {row.reason}</div>
-                      </div>
-                    ))}
-                  </div>
-                </Section>
-              </div>
-            </div>
-          )}
+          {!error && gridContent}
         </div>
       </div>
     </div>

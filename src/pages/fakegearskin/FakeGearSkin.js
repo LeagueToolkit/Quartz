@@ -49,6 +49,7 @@ import {
     VARIANT1_FOLDER,
     VARIANT2_FOLDER
 } from './utils/fakeGearSkinUtils.js';
+import { ToPy, ToBin } from '../../utils/io/fileOperations.js';
 
 import './FakeGearSkin.css';
 
@@ -146,8 +147,8 @@ const SystemRowComponent = React.memo((props) => {
                     onChange={() => !isVariant2 && toggleEmitterSelection && toggleEmitterSelection(systemKey, emitter.name)}
                     sx={{ padding: '2px' }}
                 />
-                <Typography sx={{ 
-                    fontSize: '12px', 
+                <Typography sx={{
+                    fontSize: '12px',
                     color: isVariant2 ? 'var(--text-3)' : 'var(--text-2)',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
@@ -224,9 +225,9 @@ const SystemRowComponent = React.memo((props) => {
                 sx={{ padding: '2px', color: 'var(--text-2)' }}
             >
                 {isExpanded ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" /></svg>
                 ) : (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" /></svg>
                 )}
             </IconButton>
 
@@ -240,9 +241,9 @@ const SystemRowComponent = React.memo((props) => {
                 sx={{ padding: '4px' }}
             />
             <Box sx={{ flex: 1, overflow: 'hidden' }} onClick={() => toggleExpand(system.key)}>
-                <Typography sx={{ 
-                    fontSize: '13px', 
-                    fontWeight: 500, 
+                <Typography sx={{
+                    fontSize: '13px',
+                    fontWeight: 500,
                     color: 'var(--text)',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
@@ -372,7 +373,7 @@ export default function FakeGearSkin() {
     // Get details about selected emitters (including which have groundLayer)
     const getSelectedEmitterDetails = useCallback(() => {
         const details = { total: 0, groundLayerCount: 0, groundLayerEmitters: [] };
-        
+
         for (const key of selectedEmitters) {
             const [systemKey, emitterName] = key.split('::');
             const system = systems.find(s => s.key === systemKey);
@@ -404,10 +405,10 @@ export default function FakeGearSkin() {
             // Group selected emitters by system, optionally skipping ground layer emitters
             const emittersBySystem = new Map();
             let skippedCount = 0;
-            
+
             for (const key of selectedEmitters) {
                 const [systemKey, emitterName] = key.split('::');
-                
+
                 // Check if we should skip this emitter
                 if (skipGroundLayer) {
                     const system = systems.find(s => s.key === systemKey);
@@ -419,7 +420,7 @@ export default function FakeGearSkin() {
                         }
                     }
                 }
-                
+
                 if (!emittersBySystem.has(systemKey)) {
                     emittersBySystem.set(systemKey, []);
                 }
@@ -448,7 +449,7 @@ export default function FakeGearSkin() {
             setPyContent(newContent);
             setHasUnsavedChanges(true);
             setSelectedEmitters(new Set());
-            
+
             const message = skippedCount > 0
                 ? `Duplicated ${totalToProcess} emitter(s), skipped ${skippedCount} ground layer emitter(s)`
                 : `Duplicated ${totalToProcess} emitter(s) as inline variants`;
@@ -519,7 +520,7 @@ export default function FakeGearSkin() {
 
                 // Skip child variant2 systems themselves
                 if (system.key.includes('_child_variant2')) continue;
-                
+
                 // Check inline variants from system content
                 const hasInlineVariant2 = /emitterName:\s*string\s*=\s*"[^"]*_Variant2"/i.test(system.rawContent);
                 if (hasInlineVariant2) {
@@ -528,7 +529,7 @@ export default function FakeGearSkin() {
                 }
                 // Check spawner for variant2 child particle
                 const isSpawner = /emitterName:\s*string\s*=\s*"variant1"/i.test(system.rawContent) &&
-                                  /emitterName:\s*string\s*=\s*"variant2"/i.test(system.rawContent);
+                    /emitterName:\s*string\s*=\s*"variant2"/i.test(system.rawContent);
                 if (isSpawner) {
                     systemsWithVariant2.add(system.key);
                     continue;
@@ -583,19 +584,12 @@ export default function FakeGearSkin() {
         }
 
         try {
-            let ritobinPath = await electronPrefs.get('RitoBinPath');
-            if (!ritobinPath) {
-                setStatusMessage('Error: Configure ritobin path in Settings first');
-                return;
-            }
-
             setBinPath(filePath);
             setIsLoading(true);
             setLoadingText('Processing .bin file...');
 
             const path = window.require('path');
             const fs = window.require('fs');
-            const { execSync } = window.require('child_process');
 
             const binDir = path.dirname(filePath);
             const binName = path.basename(filePath, '.bin');
@@ -605,12 +599,9 @@ export default function FakeGearSkin() {
             if (!fs.existsSync(pyPath)) {
                 setLoadingText('Converting .bin to .py...');
                 try {
-                    execSync(`"${ritobinPath}" "${filePath}"`, {
-                        cwd: binDir,
-                        timeout: 30000
-                    });
+                    await ToPy(filePath);
                 } catch (err) {
-                    throw new Error(`Ritobin failed: ${err.message}`);
+                    throw new Error(`RitoBin failed: ${err.message}`);
                 }
 
                 if (!fs.existsSync(pyPath)) {
@@ -709,7 +700,6 @@ export default function FakeGearSkin() {
             setLoadingText('Creating backup...');
 
             const fs = window.require('fs');
-            const { execSync } = window.require('child_process');
             const path = window.require('path');
 
             // Create timestamped backup of the original bin before saving
@@ -727,11 +717,7 @@ export default function FakeGearSkin() {
             setLoadingText('Converting to .bin...');
 
             // Convert back to .bin
-            const ritobinPath = await electronPrefs.get('RitoBinPath');
-            execSync(`"${ritobinPath}" "${pyPath}"`, {
-                cwd: path.dirname(pyPath),
-                timeout: 30000
-            });
+            await ToBin(pyPath, binPath);
 
             // Reload the .py file from disk to ensure we have the latest content
             // This is important when doing multiple conversions without reloading
@@ -812,16 +798,7 @@ export default function FakeGearSkin() {
 
         try {
             const fs = window.require('fs');
-            const { execSync } = window.require('child_process');
             const path = window.require('path');
-
-            // Get ritobin path first - needed for merging
-            const ritobinPath = await electronPrefs.get('RitoBinPath');
-            if (!ritobinPath) {
-                setStatusMessage('Error: Configure ritobin path in Settings first');
-                setIsLoading(false);
-                return;
-            }
 
             // Use separate bins approach with CUSTOM STENCIL ID
             const result = convertToSeparateBins(pyContent, [...selectedSystems], binPath, stencilId);
@@ -834,7 +811,7 @@ export default function FakeGearSkin() {
 
                 // Merge with existing variant bins and generate content
                 setLoadingText('Merging with existing variant bins...');
-                const mergeResult = writeVariantBinsWithMerge(result, ritobinPath);
+                const mergeResult = await writeVariantBinsWithMerge(result);
 
                 // Write variant1.py
                 setLoadingText(`Writing variant1.py (${mergeResult.variant1SystemCount} systems)...`);
@@ -849,20 +826,14 @@ export default function FakeGearSkin() {
                 // Convert variant .py files to .bin
                 setLoadingText('Converting variant1.py to .bin...');
                 try {
-                    execSync(`"${ritobinPath}" "${mergeResult.variant1Path}"`, {
-                        cwd: path.dirname(mergeResult.variant1Path),
-                        timeout: 30000
-                    });
+                    await ToBin(mergeResult.variant1Path, mergeResult.variant1Path.replace(/\.py$/i, '.bin'));
                 } catch (e) {
                     console.warn('[FakeGearSkin] variant1 conversion warning:', e.message);
                 }
 
                 setLoadingText('Converting variant2.py to .bin...');
                 try {
-                    execSync(`"${ritobinPath}" "${mergeResult.variant2Path}"`, {
-                        cwd: path.dirname(mergeResult.variant2Path),
-                        timeout: 30000
-                    });
+                    await ToBin(mergeResult.variant2Path, mergeResult.variant2Path.replace(/\.py$/i, '.bin'));
                 } catch (e) {
                     console.warn('[FakeGearSkin] variant2 conversion warning:', e.message);
                 }
@@ -969,7 +940,7 @@ export default function FakeGearSkin() {
     // Confirm child particles conversion after warning
     const handleConfirmChildParticles = useCallback(() => {
         setShowChildParticlesWarning(false);
-        
+
         // Try to auto-detect stencil ID from existing togglescreen system
         const existingId = extractStencilIdFromToggleScreen(pyContent);
         if (existingId) {
@@ -1297,9 +1268,9 @@ export default function FakeGearSkin() {
                         </div>
 
                         <div className="fakegear-modal-actions">
-                            <button 
-                                className="fakegear-modal-btn confirm" 
-                                onClick={() => setShowWarning(false)} 
+                            <button
+                                className="fakegear-modal-btn confirm"
+                                onClick={() => setShowWarning(false)}
                                 style={{ background: '#fbbf24', color: '#000', width: '100%' }}
                             >
                                 I Understand, Continue
@@ -1634,10 +1605,10 @@ export default function FakeGearSkin() {
             {showGroundLayerWarning && (() => {
                 // Determine if this is for emitters or systems
                 const isEmitterMode = selectedEmitters.size > 0;
-                const groundCount = isEmitterMode 
-                    ? getSelectedEmitterDetails().groundLayerCount 
+                const groundCount = isEmitterMode
+                    ? getSelectedEmitterDetails().groundLayerCount
                     : getSelectedSystemsGroundLayerCount();
-                
+
                 return (
                     <div className="fakegear-modal-overlay" onClick={() => setShowGroundLayerWarning(false)}>
                         <div className="fakegear-modal" onClick={e => e.stopPropagation()} style={{ borderColor: 'rgba(239, 68, 68, 0.5)', maxWidth: '550px' }}>
@@ -1663,8 +1634,8 @@ export default function FakeGearSkin() {
                             <div className="fakegear-modal-actions" style={{ flexDirection: 'column', gap: '8px' }}>
                                 {isEmitterMode ? (
                                     <>
-                                        <button 
-                                            className="fakegear-modal-btn confirm" 
+                                        <button
+                                            className="fakegear-modal-btn confirm"
                                             onClick={() => {
                                                 setShowGroundLayerWarning(false);
                                                 // Try auto-detect stencil ID
@@ -1680,8 +1651,8 @@ export default function FakeGearSkin() {
                                         >
                                             Skip Ground Layer Emitters (Recommended)
                                         </button>
-                                        <button 
-                                            className="fakegear-modal-btn" 
+                                        <button
+                                            className="fakegear-modal-btn"
                                             onClick={() => {
                                                 setShowGroundLayerWarning(false);
                                                 // Try auto-detect stencil ID
@@ -1700,8 +1671,8 @@ export default function FakeGearSkin() {
                                     </>
                                 ) : (
                                     <>
-                                        <button 
-                                            className="fakegear-modal-btn confirm" 
+                                        <button
+                                            className="fakegear-modal-btn confirm"
                                             onClick={() => {
                                                 setShowGroundLayerWarning(false);
                                                 // Skip ground layer - set flag and continue
@@ -1718,8 +1689,8 @@ export default function FakeGearSkin() {
                                         >
                                             Skip Ground Layer Emitters (Recommended)
                                         </button>
-                                        <button 
-                                            className="fakegear-modal-btn" 
+                                        <button
+                                            className="fakegear-modal-btn"
                                             onClick={() => {
                                                 setShowGroundLayerWarning(false);
                                                 // Continue with inline variants conversion including ground layer
@@ -1738,8 +1709,8 @@ export default function FakeGearSkin() {
                                         </button>
                                     </>
                                 )}
-                                <button 
-                                    className="fakegear-modal-btn cancel" 
+                                <button
+                                    className="fakegear-modal-btn cancel"
                                     onClick={() => setShowGroundLayerWarning(false)}
                                     style={{ width: '100%' }}
                                 >
@@ -1824,11 +1795,11 @@ const StencilModal = React.memo(({ open, stencilId, onChange, onConfirm, onClose
     );
 }, (prevProps, nextProps) => {
     // Custom comparison: only re-render if open state changes or initial stencilId changes
-    return prevProps.open === nextProps.open && 
-           prevProps.stencilId === nextProps.stencilId &&
-           prevProps.onChange === nextProps.onChange &&
-           prevProps.onConfirm === nextProps.onConfirm &&
-           prevProps.onClose === nextProps.onClose;
+    return prevProps.open === nextProps.open &&
+        prevProps.stencilId === nextProps.stencilId &&
+        prevProps.onChange === nextProps.onChange &&
+        prevProps.onConfirm === nextProps.onConfirm &&
+        prevProps.onClose === nextProps.onClose;
 });
 
 // Child Particles Warning Modal Component
@@ -1903,8 +1874,8 @@ const DeleteConfirmModal = React.memo(({ open, systemKey, onConfirm, onCancel })
                     <button className="fakegear-modal-btn cancel" onClick={onCancel}>
                         Cancel
                     </button>
-                    <button 
-                        className="fakegear-modal-btn" 
+                    <button
+                        className="fakegear-modal-btn"
                         onClick={onConfirm}
                         style={{
                             backgroundColor: '#ef4444',

@@ -54,6 +54,8 @@ function registerAppInfoChannels({
       return { success: false, error: error.message };
     }
   });
+
+
 }
 
 module.exports = {

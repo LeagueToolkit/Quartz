@@ -92,7 +92,7 @@ function joinPath(...parts) {
  * @param {Function|null} progressCallback - (count: number, message: string) => void
  * @returns {Promise<{ success: boolean, extractedCount: number, hashedFiles: Object, outputDir: string }>}
  */
-export async function unpackWAD(wadFilePath, outputDir, hashtables = null, filter = null, progressCallback = null) {
+export async function unpackWAD(wadFilePath, outputDir, hashtables = null, filter = null, progressCallback = null, options = {}) {
     const totalStart = Date.now();
     console.log('[WADTool] unpackWAD starting...');
 
@@ -248,6 +248,8 @@ export async function unpackWAD(wadFilePath, outputDir, hashtables = null, filte
         let extractedCount = 0;
         let lastProgressTime = Date.now();
 
+        const replaceExisting = options?.replaceExisting !== false;
+
         // Write helper with hash-fallback on path errors
         const writeChunk = async (filePath, chunk) => {
             try {
@@ -263,6 +265,13 @@ export async function unpackWAD(wadFilePath, outputDir, hashtables = null, filte
                 if (isOneDrivePath && filePath.toLowerCase().endsWith('.bin')) {
                     await new Promise(r => setTimeout(r, 10));
                 }
+                if (!replaceExisting) {
+                    try {
+                        await fs.promises.access(filePath, fs.constants.F_OK);
+                        chunk.freeData();
+                        return false;
+                    } catch (_) {}
+                }
                 await fs.promises.writeFile(filePath, chunk.data);
                 chunk.freeData();
                 return true;
@@ -274,6 +283,13 @@ export async function unpackWAD(wadFilePath, outputDir, hashtables = null, filte
                         const hashBasename = chunk.extension ? `${hexName}.${chunk.extension}` : hexName;
                         const shortPath = joinPath(outputDir, hashBasename);
                         await fs.promises.mkdir(path.dirname(shortPath), { recursive: true }).catch(() => {});
+                        if (!replaceExisting) {
+                            try {
+                                await fs.promises.access(shortPath, fs.constants.F_OK);
+                                chunk.freeData();
+                                return false;
+                            } catch (_) {}
+                        }
                         await fs.promises.writeFile(shortPath, chunk.data);
                         hashedFiles[hashBasename] = chunk.hash;
                         chunk.freeData();
@@ -291,6 +307,7 @@ export async function unpackWAD(wadFilePath, outputDir, hashtables = null, filte
 
         const processStart = Date.now();
         const validChunks = Array.from(filePaths.keys());
+        let skippedCount = 0;
 
         await mapWithConcurrency(validChunks, DECOMPRESS_CONCURRENCY, async (chunk) => {
             // Decompress (CPU + libuv thread pool for fd.read)
@@ -322,6 +339,8 @@ export async function unpackWAD(wadFilePath, outputDir, hashtables = null, filte
                             lastProgressTime = now;
                             progressCallback?.(extractedCount, `Extracted ${extractedCount}/${chunksToProcess.length} files...`);
                         }
+                    } else {
+                        skippedCount++;
                     }
                 })
                 .finally(() => writeSem.release());
@@ -361,7 +380,7 @@ export async function unpackWAD(wadFilePath, outputDir, hashtables = null, filte
 
         progressCallback?.(extractedCount, `Extracted ${extractedCount} files from WAD`);
 
-        return { success: true, extractedCount, hashedFiles, outputDir };
+        return { success: true, extractedCount, skippedCount, hashedFiles, outputDir };
 
     } finally {
         // Always release the file descriptor

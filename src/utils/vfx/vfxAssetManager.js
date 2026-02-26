@@ -241,9 +241,9 @@ export const resolveAssetPath = (assetPath, projectPath) => {
   console.log(`Normalized asset path: "${normalizedAssetPath}"`);
   const assetBasename = path.basename(assetPath);
   
-  // Find project root by looking for common League project indicators
-  // Start from the file's directory and work upward
-  let projectRoot = path.dirname(projectPath);
+  // projectPath is already the project root (found by findProjectRoot).
+  // Do NOT call path.dirname() again — that goes one level too high.
+  let projectRoot = projectPath;
   const maxDepth = 5;
   let depth = 0;
   let foundRoots = [];

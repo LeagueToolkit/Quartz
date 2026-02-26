@@ -12,6 +12,7 @@ import { parsePyFile } from '../../bineditor/utils/binEditor/parser.js';
 import { SKL } from '../../../jsritofile/skl.js';
 import { SKN } from '../../../jsritofile/skn.js';
 import { insertOrUpdatePersistentEffect } from '../../../utils/vfx/mutations/persistentEffectsManager.js';
+import { ToPy } from '../../../utils/io/fileOperations.js';
 
 // Stencil configuration
 const STENCIL_REFERENCE_ID = '0xe6deedc4';
@@ -324,13 +325,12 @@ entries: map[hash,embed] = {
 /**
  * Load existing variant bin and extract its VFX systems
  * @param {string} variantBinPath - Path to variant1.bin or variant2.bin
- * @param {string} ritobinPath - Path to ritobin executable
+
  * @returns {Array} Array of existing VFX system contents, or empty array if doesn't exist
  */
-function loadExistingVariantSystems(variantBinPath, ritobinPath) {
+async function loadExistingVariantSystems(variantBinPath) {
     const fs = window.require('fs');
     const path = window.require('path');
-    const { execSync } = window.require('child_process');
 
     // Check if bin exists
     if (!fs.existsSync(variantBinPath)) {
@@ -343,10 +343,7 @@ function loadExistingVariantSystems(variantBinPath, ritobinPath) {
     // Convert to .py if needed
     if (!fs.existsSync(pyPath) || fs.statSync(variantBinPath).mtime > fs.statSync(pyPath).mtime) {
         try {
-            execSync(`"${ritobinPath}" "${variantBinPath}"`, {
-                cwd: path.dirname(variantBinPath),
-                timeout: 30000
-            });
+            await ToPy(variantBinPath);
         } catch (e) {
             console.warn(`[fakeGearSkinUtils] Could not convert existing variant bin: ${e.message}`);
             return [];
@@ -404,11 +401,11 @@ export function createBackup(filePath) {
  * Merge new variant systems with existing ones
  * @param {Array} newSystems - New VFX system contents to add
  * @param {string} variantBinPath - Path to existing variant bin
- * @param {string} ritobinPath - Path to ritobin
+
  * @returns {Array} Merged array of all systems
  */
-function mergeVariantSystems(newSystems, variantBinPath, ritobinPath) {
-    const existingSystems = loadExistingVariantSystems(variantBinPath, ritobinPath);
+async function mergeVariantSystems(newSystems, variantBinPath) {
+    const existingSystems = await loadExistingVariantSystems(variantBinPath);
 
     // Get keys of existing systems to avoid duplicates
     const existingKeys = new Set();
@@ -1231,21 +1228,19 @@ export function convertToSeparateBins(pyContent, selectedSystemKeys, mainBinPath
 /**
  * Write variant bins with merging support
  * @param {Object} conversionResult - Result from convertToSeparateBins
- * @param {string} ritobinPath - Path to ritobin executable
+
  * @returns {Object} Result with generated py content
  */
-export function writeVariantBinsWithMerge(conversionResult, ritobinPath) {
+export async function writeVariantBinsWithMerge(conversionResult) {
     // Merge new systems with existing ones
-    const mergedVariant1 = mergeVariantSystems(
+    const mergedVariant1 = await mergeVariantSystems(
         conversionResult.variant1Systems,
-        conversionResult.variant1BinPath,
-        ritobinPath
+        conversionResult.variant1BinPath
     );
 
-    const mergedVariant2 = mergeVariantSystems(
+    const mergedVariant2 = await mergeVariantSystems(
         conversionResult.variant2Systems,
-        conversionResult.variant2BinPath,
-        ritobinPath
+        conversionResult.variant2BinPath
     );
 
     // Generate merged .py content

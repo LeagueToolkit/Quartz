@@ -1,0 +1,221 @@
+/* ─────────────────────────────────────────────
+   Preferences Dialog — themed
+   Base uses CSS theme variables so it reacts to
+   theme changes and the rounded-corners setting.
+   [data-ui-mode="modern"] in App.modernui.css
+   adds glass effects on top.
+   ───────────────────────────────────────────── */
+
+.preferences-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+
+.preferences-modal {
+    background: var(--window-bg);
+    border: 1px solid #3E3E42;
+    border-radius: var(--border-radius);
+    width: 520px;
+    max-width: 90vw;
+    max-height: 80vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    color: var(--text-color);
+}
+
+/* ── Header ── */
+.preferences-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #3E3E42;
+    background: var(--title-bar-bg);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.preferences-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.preferences-header p {
+    margin: 3px 0 0 0;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* ── Content ── */
+.preferences-content {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* ── Preference group ── */
+.preference-group {
+    background: var(--tab-bg);
+    border: 1px solid #3E3E42;
+    border-radius: var(--border-radius);
+    padding: 16px;
+    margin-bottom: 12px;
+    transition: border-color 0.15s ease;
+}
+
+.preference-group:last-child {
+    margin-bottom: 0;
+}
+
+.preference-group:hover {
+    border-color: #5a5a5a;
+}
+
+/* ── Checkbox row ── */
+.preference-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 4px 0;
+}
+
+.preference-checkbox.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.preference-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #0e639c;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.preference-checkbox input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+}
+
+.checkbox-label {
+    font-size: 14px;
+    color: var(--text-color);
+    font-weight: 500;
+    user-select: none;
+}
+
+/* ── Descriptions ── */
+.preference-description {
+    margin: 5px 0 0 26px;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.preference-checkbox.sub-option {
+    margin-left: 26px;
+    margin-top: 12px;
+}
+
+.preference-checkbox.sub-option .checkbox-label {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.preference-description.sub-description {
+    margin-left: 52px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* ── Footer ── */
+.preferences-footer {
+    padding: 14px 20px;
+    border-top: 1px solid #3E3E42;
+    background: var(--title-bar-bg);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.preferences-footer .action-button {
+    padding: 8px 20px;
+    border: none;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.preferences-footer .action-button.gray {
+    background: var(--tab-bg);
+    color: var(--text-color);
+    border: 1px solid #3E3E42;
+}
+
+.preferences-footer .action-button.gray:hover {
+    background: var(--selected-tab-bg);
+    color: var(--text-color);
+}
+
+/* ── Generic row (label without checkbox) ── */
+.preference-row {
+    padding: 4px 0 2px;
+}
+
+/* ── Select dropdown ── */
+.preference-select {
+    width: 100%;
+    padding: 7px 10px;
+    background: var(--window-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    color: var(--text-color);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23808080' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 30px;
+    transition: border-color 0.15s;
+}
+
+.preference-select:focus,
+.preference-select:hover {
+    border-color: var(--jade-accent, #0e639c);
+}
+
+.preference-select option:disabled {
+    color: var(--text-muted);
+    opacity: 0.5;
+}
+
+/* ── Scrollbar ── */
+.preferences-content::-webkit-scrollbar {
+    width: 5px;
+}
+
+.preferences-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.preferences-content::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 3px;
+}
+
+.preferences-content::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+}

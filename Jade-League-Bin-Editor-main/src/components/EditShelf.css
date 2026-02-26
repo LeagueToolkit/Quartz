@@ -1,0 +1,51 @@
+.edit-shelf {
+    height: 32px;
+    background: #1e1e1e;
+    border-bottom: 1px solid #2d2d2d;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    /* Align to right */
+    padding: 0 16px;
+    gap: 8px;
+    user-select: none;
+    z-index: 102;
+    /* Higher than editor */
+    position: relative;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.edit-shelf-btn {
+    width: 28px;
+    height: 24px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: #cccccc;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.edit-shelf-btn:hover {
+    background: #2a2d2e;
+    color: white;
+    border-color: #3e3e42;
+}
+
+.edit-shelf-btn.active {
+    background: #094771;
+    color: white;
+    border-color: #007acc;
+}
+
+/* Optional separator if we add more groups */
+.edit-shelf-separator {
+    width: 1px;
+    height: 16px;
+    background: #3e3e42;
+    margin: 0 4px;
+}

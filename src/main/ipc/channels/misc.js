@@ -6,28 +6,7 @@ function registerMiscChannels({
   shell,
   getUpdateVersionInfo,
 }) {
-  ipcMain.handle('ritobin:get-default-path', async () => {
-    try {
-      const appDataPath = processRef.env.APPDATA ||
-        (processRef.platform === 'darwin'
-          ? path.join(processRef.env.HOME, 'Library', 'Application Support')
-          : processRef.platform === 'linux'
-            ? path.join(processRef.env.HOME, '.local', 'share')
-            : path.join(processRef.env.HOME, 'AppData', 'Roaming'));
 
-      const ritobinPath = path.join(appDataPath, 'FrogTools', 'ritobin_cli.exe');
-      const exists = fs.existsSync(ritobinPath);
-
-      return {
-        path: ritobinPath,
-        exists,
-        isDefault: true,
-      };
-    } catch (error) {
-      console.error('❌ Get default ritobin path error:', error);
-      return { path: '', exists: false, error: error.message };
-    }
-  });
 
   ipcMain.handle('file:open-folder', async (_event, folderPath) => {
     try {

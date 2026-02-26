@@ -478,8 +478,7 @@ const Bumpath = () => {
 
       setIsScanning(true);
       const scanResult = await apiCall('scan', {
-        hashesPath,
-        ritobinPath: electronPrefs.obj.RitoBinPath || ''
+        hashesPath
       });
       setIsScanning(false);
 

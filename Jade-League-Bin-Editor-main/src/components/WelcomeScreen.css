@@ -1,0 +1,90 @@
+.welcome-screen {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--editor-bg, #1e1e1e);
+    user-select: none;
+    overflow: hidden;
+}
+
+.welcome-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 40px;
+    max-width: 400px;
+    text-align: center;
+}
+
+.welcome-title {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 500;
+    color: var(--text-primary, #cccccc);
+}
+
+.welcome-subtitle {
+    margin: 0;
+    font-size: 16px;
+    color: var(--text-muted, #808080);
+}
+
+.welcome-open-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 24px;
+    margin-top: 16px;
+    background: var(--button-bg, #0e639c);
+    border: none;
+    border-radius: var(--border-radius, 4px);
+    color: #ffffff;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.welcome-open-btn:hover {
+    background: var(--button-hover-bg, #1177bb);
+}
+
+.welcome-open-btn .shortcut {
+    opacity: 0.7;
+    font-size: 12px;
+    margin-left: 8px;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: var(--border-radius, 3px);
+}
+
+.welcome-hints {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 24px;
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-color, #3c3c3c);
+}
+
+.hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.hint-key {
+    padding: 3px 8px;
+    background: var(--hint-key-bg, #3c3c3c);
+    border-radius: var(--border-radius, 3px);
+    color: var(--text-primary, #cccccc);
+    font-family: monospace;
+    font-size: 11px;
+}
+
+.hint-desc {
+    color: var(--text-muted, #808080);
+}

@@ -110,6 +110,10 @@ assets/vfxhub/
 # Ignore repath tool test files
 repath tool test/
 
+# Rust native addon build artifacts
+native/wad_indexer/target/
+native/wad_indexer/*.node
+
 # Third-party tools and external projects
 League Mod Repather/
 bnk-extract-GUI-master/
@@ -125,3 +129,9 @@ bumpath_backend.spec
 # Keep Python files in main folder (not ignored)
 # All .py files in root directory are kept
 # requirements.txt is kept (needed for dependencies)
+# Local project clones/backups
+ritobin-2025-10-05-e686d9e/
+Obsidian-5.1.8/
+ltk-manager-main/
+league-toolkit-main/
+Flint-main/

@@ -3,11 +3,8 @@ import { Folder, Download, AlertTriangle, Check, RefreshCw, Upload } from 'lucid
 import { FormGroup, InputWithButton, StatusBadge, Button } from '../SettingsPrimitives';
 
 const ToolsSection = ({
-  highlightRitobin,
-  ritobinRef,
   settings,
   updateSetting,
-  handleBrowseRitobin,
   hashStatus,
   downloadingHashes,
   handleDownloadHashes,
@@ -24,29 +21,6 @@ const ToolsSection = ({
 }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div
-        ref={ritobinRef}
-        style={{
-          background: highlightRitobin ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
-          border: highlightRitobin ? '2px solid rgba(239, 68, 68, 0.6)' : '2px solid transparent',
-          borderRadius: '8px',
-          padding: highlightRitobin ? '12px' : '0',
-          margin: highlightRitobin ? '-12px' : '0',
-          transition: 'all 0.3s ease',
-          boxShadow: highlightRitobin ? '0 0 20px rgba(239, 68, 68, 0.3)' : 'none'
-        }}
-      >
-        <FormGroup label="Ritobin CLI Path" description="Path to ritobin_cli.exe for .bin file conversion">
-          <InputWithButton
-            value={settings.ritobinPath}
-            onChange={(e) => updateSetting('ritobinPath', e.target.value)}
-            placeholder="C:\\FrogTools\\ritobin_cli.exe"
-            buttonIcon={<Folder size={16} />}
-            buttonText="Browse"
-            onButtonClick={handleBrowseRitobin}
-          />
-        </FormGroup>
-      </div>
 
       <FormGroup label="File Browser" description="Choose between custom or native Windows file browser">
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>

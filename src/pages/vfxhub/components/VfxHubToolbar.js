@@ -64,7 +64,7 @@ export default function VfxHubToolbar({
 
       <Button
         onClick={onUpload}
-        disabled={isProcessing || !githubAuthenticated}
+        disabled={isProcessing}
         sx={{
           flex: 1,
           padding: '0 16px',
@@ -72,24 +72,16 @@ export default function VfxHubToolbar({
           fontSize: '13px',
           fontWeight: 700,
           height: '36px',
-          background: githubAuthenticated
-            ? 'color-mix(in srgb, #22c55e, var(--bg) 85%)'
-            : 'color-mix(in srgb, #9ca3af, var(--bg) 85%)',
-          border: githubAuthenticated
-            ? '1px solid rgba(34, 197, 94, 0.3)'
-            : '1px solid rgba(156, 163, 175, 0.3)',
-          color: githubAuthenticated ? '#22c55e' : '#9ca3af',
+          background: 'color-mix(in srgb, #22c55e, var(--bg) 85%)',
+          border: '1px solid rgba(34, 197, 94, 0.3)',
+          color: '#22c55e',
           borderRadius: '4px',
           letterSpacing: '0.05em',
           textTransform: 'uppercase',
         }}
-        title={
-          !githubAuthenticated
-            ? 'Authentication required - Configure GitHub credentials in Settings'
-            : 'Upload VFX system to VFX Hub'
-        }
+        title="Upload VFX system to VFX Hub"
       >
-        {!githubAuthenticated ? 'Upload (Auth Required)' : 'Upload to VFX Hub'}
+        Upload to VFX Hub
       </Button>
     </div>
   );

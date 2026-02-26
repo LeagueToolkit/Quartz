@@ -40,6 +40,7 @@ import {
     markSystemModified,
     updateRate as updateRateSerializer
 } from './utils/binEditor/serializer.js';
+import { ToPy, ToBin } from '../../utils/io/fileOperations.js';
 import GlowingSpinner from '../../components/GlowingSpinner.js';
 import RitobinWarningModal, { detectHashedContent } from '../../components/modals/RitobinWarningModal';
 import CombineLinkedBinsModal from '../../components/modals/CombineLinkedBinsModal';
@@ -170,14 +171,7 @@ export default function BinEditorV2() {
         }
 
         try {
-            // Check ritobin path
-            let ritobinPath = await electronPrefs.get('RitoBinPath');
-            if (!ritobinPath) {
-                setStatusMessage('Error: Configure ritobin path in Settings first');
-                setRitobinWarningContent(null);
-                setShowRitobinWarning(true);
-                return;
-            }
+            setBinPath(filePath);
 
 
             setBinPath(filePath);
@@ -192,7 +186,6 @@ export default function BinEditorV2() {
 
             const path = window.require('path');
             const fs = window.require('fs');
-            const { execSync } = window.require('child_process');
 
             const binDir = path.dirname(filePath);
             const binName = path.basename(filePath, '.bin');
@@ -204,12 +197,9 @@ export default function BinEditorV2() {
                 await checkAndPromptCombine(filePath);
 
                 try {
-                    execSync(`"${ritobinPath}" "${filePath}"`, {
-                        cwd: binDir,
-                        timeout: 30000
-                    });
+                    await ToPy(filePath);
                 } catch (err) {
-                    throw new Error(`Ritobin failed: ${err.message}`);
+                    throw new Error(`RitoBin failed: ${err.message}`);
                 }
 
                 if (!fs.existsSync(pyPath)) {
@@ -364,7 +354,6 @@ export default function BinEditorV2() {
             setLoadingText('Saving...');
 
             const fs = window.require('fs');
-            const { execSync } = window.require('child_process');
             const path = window.require('path');
 
             // Serialize data back to file format
@@ -376,11 +365,7 @@ export default function BinEditorV2() {
             setLoadingText('Converting to .bin...');
 
             // Convert back to .bin
-            const ritobinPath = await electronPrefs.get('RitoBinPath');
-            execSync(`"${ritobinPath}" "${currentPath}"`, {
-                cwd: path.dirname(currentPath),
-                timeout: 30000
-            });
+            await ToBin(currentPath, binPath);
 
             setOriginalContent(content);
             setUndoHistory([]);  // Clear undo history after saving (saved state is new baseline)
@@ -426,18 +411,13 @@ export default function BinEditorV2() {
 
             // Write original back to file
             const fs = window.require('fs');
-            const { execSync } = window.require('child_process');
             const path = window.require('path');
             fs.writeFileSync(currentPath, contentToRestore, 'utf8');
 
             setLoadingText('Converting to .bin...');
 
             // Convert back to .bin (same as save)
-            const ritobinPath = await electronPrefs.get('RitoBinPath');
-            execSync(`"${ritobinPath}" "${currentPath}"`, {
-                cwd: path.dirname(currentPath),
-                timeout: 30000
-            });
+            await ToBin(currentPath, binPath);
 
             setData(parsed);
             setOriginalContent(contentToRestore);

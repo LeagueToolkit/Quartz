@@ -9,6 +9,8 @@ import { convertTextureToPNG, findActualTexturePath } from '../../../utils/asset
 import { openAssetPreview } from '../../../utils/assets/assetPreviewEvent.js';
 import debounce from 'lodash/debounce';
 import useUnsavedNavigationGuard from '../../../hooks/navigation/useUnsavedNavigationGuard.js';
+import { ToPy, ToBin } from '../../../utils/io/fileOperations.js';
+
 import {
   cancelTextureHoverClose,
   removeTextureHoverPreview,
@@ -312,60 +314,41 @@ export default function usePort() {
       const fsPromise = window.require('fs').promises;
       await fsPromise.writeFile(outputPyPath, finalContent, 'utf8');
 
-      const ritoBinPath = await electronPrefs.get('RitoBinPath');
-      if (!ritoBinPath) {
-        setStatusMessage('RitoBin path not configured');
-        setIsProcessing(false);
-        return;
+      setStatusMessage('Saving .bin...');
+      try {
+        await ToBin(outputPyPath, file.targetPath);
+
+        setStatusMessage('✅ Successfully saved');
+        file.setTargetPyContent(finalContent);
+        const reparsedSystems = parseVfxEmitters(finalContent) || {};
+        const mergedSystems = Object.fromEntries(
+          Object.entries(reparsedSystems).map(([key, sys]) => {
+            const priorByKey = preSaveSystems[key];
+            const priorByName = Object.values(preSaveSystems).find((prev) =>
+              (prev?.particleName || prev?.name || prev?.key) ===
+              (sys?.particleName || sys?.name || sys?.key)
+            );
+            const prior = priorByKey || priorByName;
+            if (!prior) return [key, sys];
+            return [key, { ...sys }];
+          })
+        );
+        file.setTargetSystems(mergedSystems);
+        setDeletedEmitters(new Map());
+        setFileSaved(true);
+
+        // Non-blocking: regenerate .py from saved .bin to normalize indentation/format.
+        ToPy(file.targetPath).catch(err => {
+          console.warn('[Port2] Non-critical indentation fix failed:', err);
+        });
+      } catch (err) {
+        setStatusMessage('❌ Error saving file');
+        setFileSaved(false);
+        file.setShowRitoBinErrorDialog(true);
       }
+      setIsProcessing(false);
+      setProcessingText('');
 
-      const { spawn } = window.require('child_process');
-      const proc = spawn(ritoBinPath, [outputPyPath, file.targetPath], {
-        windowsHide: true,
-        stdio: 'ignore'
-      });
-
-      proc.on('close', (code) => {
-        if (code === 0) {
-          setStatusMessage('✅ Successfully saved');
-          file.setTargetPyContent(finalContent);
-          const reparsedSystems = parseVfxEmitters(finalContent) || {};
-          const mergedSystems = Object.fromEntries(
-            Object.entries(reparsedSystems).map(([key, sys]) => {
-              const priorByKey = preSaveSystems[key];
-              const priorByName = Object.values(preSaveSystems).find((prev) =>
-                (prev?.particleName || prev?.name || prev?.key) ===
-                (sys?.particleName || sys?.name || sys?.key)
-              );
-              const prior = priorByKey || priorByName;
-              if (!prior) return [key, sys];
-              return [key, { ...sys }];
-            })
-          );
-          file.setTargetSystems(mergedSystems);
-          setDeletedEmitters(new Map());
-          setFileSaved(true);
-
-          // Non-blocking: regenerate .py from saved .bin to normalize indentation/format.
-          try {
-            const binToPyProc = spawn(ritoBinPath, [file.targetPath, outputPyPath], {
-              windowsHide: true,
-              stdio: 'ignore'
-            });
-            binToPyProc.on('error', (err) => {
-              console.warn('[Port2] Non-critical indentation fix failed to start:', err);
-            });
-          } catch (err) {
-            console.warn('[Port2] Non-critical indentation fix failed:', err);
-          }
-        } else {
-          setStatusMessage('❌ Error saving file');
-          setFileSaved(false);
-          file.setShowRitoBinErrorDialog(true);
-        }
-        setIsProcessing(false);
-        setProcessingText('');
-      });
     } catch (e) {
       console.error(e);
       setStatusMessage(`Error: ${e.message}`);

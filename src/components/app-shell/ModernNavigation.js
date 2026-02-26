@@ -17,7 +17,8 @@ import {
   CircleHelp,
   Music,
   Sparkles,
-  Dices
+  Dices,
+  FolderSearch,
 } from 'lucide-react';
 import electronPrefs from '../../utils/core/electronPrefs.js';
 import NavButton from './NavButton';
@@ -40,6 +41,7 @@ const ModernNavigation = () => {
         { text: 'Bin Editor', icon: Code, path: '/bineditor', key: 'binEditor' },
         { text: 'Img Recolor', icon: Image, path: '/img-recolor', key: 'imgRecolor' },
         { text: 'Asset Extractor', icon: FolderInput, path: '/frogchanger', key: 'frogchanger' },
+        { text: 'WAD Explorer', icon: FolderSearch, path: '/wad-explorer', key: 'wadExplorer' },
         { text: 'Sound Banks', icon: Music, path: '/bnk-extract', key: 'bnkExtract' },
         { text: 'Bumpath', icon: Waypoints, path: '/bumpath', key: 'bumpath' },
         { text: 'AniPort', icon: Shuffle, path: '/aniport', key: 'aniport' },
@@ -69,7 +71,7 @@ const ModernNavigation = () => {
           default: settingKey = `${item.key.charAt(0).toUpperCase() + item.key.slice(1)}Enabled`;
         }
         // FakeGear and Particle Randomizer default to hidden
-        if (item.key === 'fakeGear' || item.key === 'particleRandomizer') {
+        if (item.key === 'fakeGear' || item.key === 'particleRandomizer' || item.key === 'aniport' || item.key === 'bumpath') {
           return electronPrefs.obj[settingKey] === true;
         }
         return electronPrefs.obj[settingKey] !== false;

@@ -7,7 +7,7 @@ import InfoIcon from '@mui/icons-material/Info';
 import { parseIndividualVFXSystems } from '../../utils/vfx/vfxSystemParser.js';
 import { insertVFXSystemIntoFile } from '../../utils/vfx/vfxInsertSystem.js';
 import { createBackup } from '../../utils/io/backupManager.js';
-import { ToPyWithPath } from '../../utils/io/fileOperations.js';
+import { ToPyWithPath, ToBin, ToPy } from '../../utils/io/fileOperations.js';
 import RitobinWarningModal, { detectHashedContent } from '../../components/modals/RitobinWarningModal';
 import electronPrefs from '../../utils/core/electronPrefs.js';
 import { findAssetFiles, copyAssetFiles, showAssetCopyResults } from '../../utils/assets/assetCopier.js';
@@ -348,19 +348,7 @@ const AniPortSimple = () => {
     try {
       // Check ritobin path first if it's a bin file
       const isBinFile = filePath.toLowerCase().endsWith('.bin');
-      if (isBinFile) {
-        let ritobinPath = null;
-        if (electronPrefs) {
-          await electronPrefs.initPromise;
-          ritobinPath = await electronPrefs.get('RitoBinPath');
-        }
-        if (!ritobinPath) {
-          setStatusMessage("Error: Ritobin path not configured");
-          setRitobinWarningContent(null);
-          setShowRitobinWarning(true);
-          return;
-        }
-      }
+
 
       setIsLoading(true);
       setLoadingMessage('Processing animation file...');
@@ -449,19 +437,7 @@ const AniPortSimple = () => {
     try {
       // Check ritobin path first if it's a bin file
       const isBinFile = filePath.toLowerCase().endsWith('.bin');
-      if (isBinFile) {
-        let ritobinPath = null;
-        if (electronPrefs) {
-          await electronPrefs.initPromise;
-          ritobinPath = await electronPrefs.get('RitoBinPath');
-        }
-        if (!ritobinPath) {
-          setStatusMessage("Error: Ritobin path not configured");
-          setRitobinWarningContent(null);
-          setShowRitobinWarning(true);
-          return;
-        }
-      }
+
 
       setIsLoading(true);
       setLoadingMessage('Processing skins file...');
@@ -1420,39 +1396,6 @@ const AniPortSimple = () => {
         currentFileContent: modifiedContent
       }));
 
-      // Convert the modified .py back to .bin using the same method as Port.js
-      const { ipcRenderer } = window.require('electron');
-      const { spawn } = window.require('child_process');
-
-      // Get the RitoBin path from settings (same as Port.js)
-      let ritoBinPath = null;
-      try {
-        // Use electronPrefs utility for proper preference access
-        ritoBinPath = await electronPrefs.get('RitoBinPath');
-
-        // Fallback to old method if electronPrefs fails
-        if (!ritoBinPath) {
-          const settings = ipcRenderer.sendSync("get-ssx");
-          ritoBinPath = settings[0]?.RitoBinPath;
-        }
-      } catch (error) {
-        console.error('Error getting RitoBin path:', error);
-        // Fallback to old method
-        try {
-          const settings = ipcRenderer.sendSync("get-ssx");
-          ritoBinPath = settings[0]?.RitoBinPath;
-        } catch (fallbackError) {
-          console.error('Fallback error getting RitoBin path:', fallbackError);
-        }
-      }
-
-      if (!ritoBinPath) {
-        setStatusMessage('Error: RitoBin path not configured. Please configure it in Settings.');
-        setIsProcessing(false);
-        setProcessingText('');
-        return;
-      }
-
       // Convert .py to .bin using RitoBin (overwrite original .bin)
       // Determine the correct .bin output path
       let outputBinPath;
@@ -1464,78 +1407,28 @@ const AniPortSimple = () => {
       }
 
       console.log('🔧 SAVE: Converting .py to .bin...');
-      console.log('🔧 SAVE: Input .py file:', outputPyPath);
-      console.log('🔧 SAVE: Output .bin file:', outputBinPath);
-      console.log('🔧 SAVE: RitoBin path:', ritoBinPath);
+      try {
+        await ToBin(outputPyPath, outputBinPath);
 
-      const convertProcess = spawn(ritoBinPath, [outputPyPath, outputBinPath]);
-      let hasStderrError = false;
-      let stderrContent = '';
+        console.log('🔧 SAVE: Conversion successful!');
+        setStatusMessage(`✅ Successfully saved: ${outputBinPath}`);
+        setTimeout(() => setStatusMessage(''), 3000);
+        setFileSaved(true);
+        setIsProcessing(false);
+        setProcessingText('');
 
-      convertProcess.stdout.on('data', () => { /* suppress verbose stdout to avoid UI jank */ });
+        setDeletedEvents(new Set());
 
-      convertProcess.stderr.on('data', (data) => {
-        // Capture but do not spam console to keep UI responsive
-        stderrContent += data.toString();
-        // Check if stderr contains error indicators
-        if (data.toString().includes('Error:') || data.toString().includes('error')) {
-          hasStderrError = true;
-        }
-      });
-
-      convertProcess.on('close', async (code) => {
-        const hasError = code !== 0 || hasStderrError;
-
-        console.log('🔧 SAVE: RitoBin process completed');
-        console.log('🔧 SAVE: Exit code:', code);
-        console.log('🔧 SAVE: Has stderr error:', hasStderrError);
-        console.log('🔧 SAVE: Stderr content:', stderrContent);
-
-        if (!hasError) {
-          console.log('🔧 SAVE: Conversion successful!');
-          setStatusMessage(`✅ Successfully saved: ${outputBinPath}`);
-          setTimeout(() => setStatusMessage(''), 3000);
-          setFileSaved(true);
-          setIsProcessing(false);
-          setProcessingText('');
-
-          // Clear deleted events after successful save
-          setDeletedEvents(new Set());
-
-          // Convert .bin back to .py to fix indentation (non-blocking)
-          try {
-            const binToPyProcess = spawn(ritoBinPath, [outputBinPath, outputPyPath]);
-
-            binToPyProcess.stderr.on('data', (data) => {
-              console.error(`RitoBin stderr: ${data}`);
-            });
-
-            binToPyProcess.on('close', (binToPyCode) => {
-              if (binToPyCode === 0) {
-                // Indentation fix completed successfully
-              } else {
-                // Indentation fix failed - this is non-critical
-              }
-            });
-          } catch (error) {
-            console.error('Error during indentation fix (non-critical):', error);
-          }
-        } else {
-          const errorReason = hasStderrError ? 'RitoBin reported errors in stderr' : `exit code: ${code}`;
-          setStatusMessage(`❌ Error converting to .bin format (${errorReason})\n⚠️ Skipping .py indentation fix due to RitoBin error`);
-          setFileSaved(false);
-          setIsProcessing(false);
-          setProcessingText('');
-        }
-      });
-
-      convertProcess.on('error', (error) => {
-        console.error('RitoBin process error:', error);
-        setStatusMessage(`❌ Error running RitoBin: ${error.message}`);
+        ToPy(outputBinPath).catch(err => {
+          console.error('Error during indentation fix (non-critical):', err);
+        });
+      } catch (err) {
+        console.error('RitoBin process error:', err);
+        setStatusMessage(`❌ Error running RitoBin: ${err.message || err}`);
         setFileSaved(false);
         setIsProcessing(false);
         setProcessingText('');
-      });
+      }
 
     } catch (error) {
       console.error('Error saving files:', error);

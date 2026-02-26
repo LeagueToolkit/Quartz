@@ -201,7 +201,16 @@ export function useBnkFileOps({
             const fileIndex = selectedAudioNodes.indexOf(match) % replacementPaths.length;
             const srcPath = replacementPaths[fileIndex];
             const newData = fs.readFileSync(srcPath);
-            return { ...n, audioData: { ...n.audioData, data: new Uint8Array(newData), length: newData.length } };
+            return {
+              ...n,
+              isModified: true,
+              audioData: {
+                ...n.audioData,
+                data: new Uint8Array(newData),
+                length: newData.length,
+                isModified: true
+              }
+            };
           } catch (e) {
             console.error(`[BnkExtract] Failed to replace ${n.name}:`, e);
             return n;
@@ -286,7 +295,18 @@ export function useBnkFileOps({
         setTreeDataFn((prev) => {
           const updateInTree = (nodes) => nodes.map((n) => {
             const match = selectedAudioNodes.find((an) => an.id === n.id);
-            if (match) return { ...n, audioData: { ...n.audioData, data, length: data.length } };
+            if (match) {
+              return {
+                ...n,
+                isModified: true,
+                audioData: {
+                  ...n.audioData,
+                  data,
+                  length: data.length,
+                  isModified: true
+                }
+              };
+            }
             if (n.children) return { ...n, children: updateInTree(n.children) };
             return n;
           });

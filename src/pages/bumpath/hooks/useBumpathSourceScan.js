@@ -45,8 +45,7 @@ export default function useBumpathSourceScan({
 
     try {
       const result = await apiCall('scan', {
-        hashesPath,
-        ritobinPath: electronPrefs.obj.RitoBinPath || ''
+        hashesPath
       });
 
       if (result.success) {

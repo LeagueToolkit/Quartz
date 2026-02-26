@@ -15,6 +15,8 @@ import { removeEmitterBlockFromSystem } from '../utils/pyContentUtils.js';
 
 import { findAssetFiles, copyAssetFiles, showAssetCopyResults } from '../../../utils/assets/assetCopier.js';
 import { createBackup } from '../../../utils/io/backupManager.js';
+import { ToBin } from '../../../utils/io/fileOperations.js';
+
 
 /**
  * useVfxMutations — logic for structural changes to VFX systems and emitters.
@@ -446,18 +448,7 @@ export default function useVfxMutations(
 
                                     await fsp.writeFile(outputPyPath, newFileText, 'utf8');
 
-                                    let ritoBinPath = await electronPrefs.get('RitoBinPath');
-                                    if (!ritoBinPath) {
-                                        const settings = ipcRenderer.sendSync('get-ssx');
-                                        ritoBinPath = settings[0]?.RitoBinPath;
-                                    }
-
-                                    if (ritoBinPath) {
-                                        const outputBinPath = targetPath;
-                                        const p = spawn(ritoBinPath, [outputPyPath, outputBinPath]);
-                                        p.stdout?.on('data', () => { });
-                                        p.stderr?.on('data', () => { });
-                                    }
+                                    await ToBin(outputPyPath, targetPath);
                                 } catch (bgErr) {
                                     console.warn('Background save failed:', bgErr?.message || bgErr);
                                 } finally {

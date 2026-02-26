@@ -11,6 +11,7 @@ class AudioData {
         this.id = id;
         this.length = length;
         this.data = data; // Uint8Array
+        this.isModified = false;
     }
 }
 
@@ -18,11 +19,12 @@ class AudioData {
  * Tree node for organizing audio files
  */
 class AudioNode {
-    constructor(name, audioData = null) {
-        this.id = `node-${Math.random().toString(36).substr(2, 9)}`;
+    constructor(name, audioData = null, id = null) {
+        this.id = id || (audioData ? `audio-${audioData.id}` : `dir-${name}`);
         this.name = name;
         this.audioData = audioData; // AudioData or null for parent nodes
         this.children = [];
+        this.isModified = false;
     }
 
     addChild(child) {
@@ -171,38 +173,37 @@ export function parseBnkFile(buffer) {
     // Skip rest of BKHD section
     reader.skip(bkhdLength - 4);
 
-    let audioFiles = [];
     let entries = [];
+    let audioFiles = [];
 
-    // Loop through remaining sections
+    const sections = new Map();
     while (reader.remaining() >= 8) {
         const header = reader.readString(4);
         const sectionLength = reader.readUint32LE();
-        const sectionStart = reader.tell();
+        sections.set(header, { offset: reader.tell(), length: sectionLength });
+        reader.skip(sectionLength);
+    }
 
-        if (header === 'DIDX') {
-            const entryCount = sectionLength / 12;
-            for (let i = 0; i < entryCount; i++) {
-                entries.push({
-                    fileId: reader.readUint32LE(),
-                    offset: reader.readUint32LE(),
-                    length: reader.readUint32LE()
-                });
-            }
-            console.log(`[BNK Parser] Found ${entryCount} audio entries in DIDX`);
-        } else if (header === 'DATA') {
-            const dataOffset = reader.tell();
-            // Read audio data for each entry found so far (assumes DIDX comes before DATA)
-            for (const entry of entries) {
-                reader.seek(dataOffset + entry.offset);
-                const data = reader.readBytes(entry.length);
-                audioFiles.push(new AudioData(entry.fileId, entry.length, data));
-            }
-        } else {
-            // Skip other sections for now
+    if (sections.has('DIDX')) {
+        const didx = sections.get('DIDX');
+        reader.seek(didx.offset);
+        const entryCount = didx.length / 12;
+        for (let i = 0; i < entryCount; i++) {
+            entries.push({
+                fileId: reader.readUint32LE(),
+                offset: reader.readUint32LE(),
+                length: reader.readUint32LE()
+            });
         }
+    }
 
-        reader.seek(sectionStart + sectionLength);
+    if (sections.has('DATA') && entries.length > 0) {
+        const dataSection = sections.get('DATA');
+        for (const entry of entries) {
+            reader.seek(dataSection.offset + entry.offset);
+            const audioData = reader.readBytes(entry.length);
+            audioFiles.push(new AudioData(entry.fileId, entry.length, audioData));
+        }
     }
 
     // Sort by ID

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Box, Typography, TextField, IconButton, Tooltip, Button, Divider, Slider } from '@mui/material';
 import {
     Search,
@@ -14,8 +14,120 @@ import {
     Stop,
     VolumeUp,
     Settings,
+    AutoFixHigh,
 } from '@mui/icons-material';
 import TreeNode from './TreeNode';
+
+const ROW_HEIGHT = 30;
+const OVERSCAN = 6;
+
+function flattenVisibleTree(nodes, expandedNodes, level = 0, out = []) {
+    for (const node of nodes) {
+        out.push({ node, level });
+        if (node.children?.length && expandedNodes.has(node.id)) {
+            flattenVisibleTree(node.children, expandedNodes, level + 1, out);
+        }
+    }
+    return out;
+}
+
+function VirtualTreeList({
+    rows,
+    expandedNodes,
+    selectedNodes,
+    setSelectedNodes,
+    setLastSelectedId,
+    handleNodeSelect,
+    playAudio,
+    handleContextMenu,
+    handleToggleExpand,
+    onDropReplace,
+    onExternalFileDrop,
+    pane,
+    emptyText,
+}) {
+    const [scrollTop, setScrollTop] = useState(0);
+    const [viewportHeight, setViewportHeight] = useState(500);
+    const containerRef = useRef(null);
+    const rafRef = useRef(null);
+
+    const onScroll = useCallback((e) => {
+        const nextTop = e.currentTarget.scrollTop;
+        if (rafRef.current) return;
+        rafRef.current = requestAnimationFrame(() => {
+            setScrollTop(nextTop);
+            rafRef.current = null;
+        });
+    }, []);
+
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') return undefined;
+        const observer = new ResizeObserver(() => {
+            setViewportHeight(el.clientHeight || 500);
+        });
+        observer.observe(el);
+        setViewportHeight(el.clientHeight || 500);
+        return () => observer.disconnect();
+    }, []);
+
+    useEffect(() => () => {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    }, []);
+
+    const totalHeight = rows.length * ROW_HEIGHT;
+    const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+    const endIndex = Math.min(rows.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN);
+    const visibleRows = useMemo(() => rows.slice(startIndex, endIndex), [rows, startIndex, endIndex]);
+
+    return (
+        <Box
+            ref={containerRef}
+            sx={{ flex: 1, overflowY: 'auto', p: 1 }}
+            onScroll={onScroll}
+            onClick={() => {
+                setSelectedNodes(new Set());
+                setLastSelectedId({ id: null, pane });
+            }}
+        >
+            {rows.length === 0 ? (
+                <Typography sx={{
+                    textAlign: 'center',
+                    marginTop: '3rem',
+                    fontSize: '0.8rem',
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    fontWeight: 500,
+                    whiteSpace: 'pre-line',
+                }}>
+                    {emptyText}
+                </Typography>
+            ) : (
+                <Box sx={{ position: 'relative', height: `${totalHeight}px` }}>
+                    <Box sx={{ position: 'absolute', top: `${startIndex * ROW_HEIGHT}px`, left: 0, right: 0 }}>
+                        {visibleRows.map(({ node, level }, idx) => (
+                            <TreeNode
+                                key={`${node.id || idx}-${pane}`}
+                                node={node}
+                                level={level}
+                                selectedNodes={selectedNodes}
+                                isSelected={selectedNodes.has(node.id)}
+                                isExpanded={expandedNodes.has(node.id)}
+                                onSelect={handleNodeSelect}
+                                onPlay={playAudio}
+                                onContextMenu={handleContextMenu}
+                                onToggleExpand={handleToggleExpand}
+                                pane={pane}
+                                onDropReplace={onDropReplace}
+                                onExternalFileDrop={onExternalFileDrop}
+                                renderChildren={false}
+                            />
+                        ))}
+                    </Box>
+                </Box>
+            )}
+        </Box>
+    );
+}
 
 export default function BnkMainContent(props) {
     const {
@@ -38,6 +150,7 @@ export default function BnkMainContent(props) {
         expandedNodes,
         handleToggleExpand,
         handleDropReplace,
+        handleAutoMatchByEventName,
         handleExternalFileDrop,
         rightPaneDragOver,
         handleRightPaneDragOver,
@@ -65,17 +178,61 @@ export default function BnkMainContent(props) {
         stopAudio,
         volume,
         setVolume,
+        treeData,
+        rightTreeData,
         setShowSettingsModal,
+        onLeftPaneFolderDrop,
     } = props;
+
+    const [leftDragOver, setLeftDragOver] = useState(false);
+
+    const handleLeftDragOver = useCallback((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer?.types?.includes('Files')) setLeftDragOver(true);
+    }, []);
+
+    const handleLeftDragLeave = useCallback((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setLeftDragOver(false);
+    }, []);
+
+    const handleLeftDrop = useCallback((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setLeftDragOver(false);
+        if (!window.require) return;
+        const fs = window.require('fs');
+        const item = e.dataTransfer?.files?.[0];
+        if (!item?.path) return;
+        try {
+            if (fs.statSync(item.path).isDirectory()) {
+                onLeftPaneFolderDrop?.(item.path);
+            }
+        } catch (_) {}
+    }, [onLeftPaneFolderDrop]);
+
+    const leftRows = useMemo(() => flattenVisibleTree(filteredLeftTree, expandedNodes), [filteredLeftTree, expandedNodes]);
+    const rightRows = useMemo(() => flattenVisibleTree(filteredRightTree, rightExpandedNodes), [filteredRightTree, rightExpandedNodes]);
 
     return (
         <Box sx={mainContentStyle}>
-            <Box className="bnk-extract-tree" sx={{
+            <Box
+                className="bnk-extract-tree"
+                onDragOver={handleLeftDragOver}
+                onDragLeave={handleLeftDragLeave}
+                onDrop={handleLeftDrop}
+                sx={{
                 ...treeViewStyle,
-                border: viewMode === 'split' && activePane === 'left' ? '1px solid var(--accent)' : treeViewStyle.border,
+                border: leftDragOver
+                    ? '2px dashed var(--accent)'
+                    : (viewMode === 'split' && activePane === 'left' ? '1px solid var(--accent)' : treeViewStyle.border),
+                background: leftDragOver ? 'rgba(var(--accent-rgb), 0.06)' : treeViewStyle.background,
                 position: 'relative',
                 display: 'flex',
                 flexDirection: 'column',
+                transition: 'border-color 0.15s, background 0.15s',
             }}>
                 <Box sx={{ p: 1, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 1 }}>
                     <TextField
@@ -107,36 +264,21 @@ export default function BnkMainContent(props) {
                     )}
                 </Box>
 
-                <Box sx={{ flex: 1, overflowY: 'auto', p: 1 }} onClick={() => { setSelectedNodes(new Set()); setLastSelectedId({ id: null, pane: 'left' }); }}>
-                    {filteredLeftTree.length === 0 ? (
-                        <Typography sx={{
-                            textAlign: 'center',
-                            marginTop: '3rem',
-                            fontSize: '0.8rem',
-                            color: 'rgba(255, 255, 255, 0.6)',
-                            fontWeight: 500,
-                        }}>
-                            {leftSearchQuery ? 'No matches' : 'Select a .bnk or .wpk file and click "Parse"'}
-                        </Typography>
-                    ) : (
-                        filteredLeftTree.map((node, index) => (
-                            <TreeNode
-                                key={node.id || index}
-                                node={node}
-                                level={0}
-                                selectedNodes={selectedNodes}
-                                onSelect={handleNodeSelect}
-                                onPlay={playAudio}
-                                onContextMenu={handleContextMenu}
-                                expandedNodes={expandedNodes}
-                                onToggleExpand={handleToggleExpand}
-                                pane="left"
-                                onDropReplace={handleDropReplace}
-                                onExternalFileDrop={handleExternalFileDrop}
-                            />
-                        ))
-                    )}
-                </Box>
+                <VirtualTreeList
+                    rows={leftRows}
+                    expandedNodes={expandedNodes}
+                    selectedNodes={selectedNodes}
+                    setSelectedNodes={setSelectedNodes}
+                    setLastSelectedId={setLastSelectedId}
+                    handleNodeSelect={handleNodeSelect}
+                    playAudio={playAudio}
+                    handleContextMenu={handleContextMenu}
+                    handleToggleExpand={handleToggleExpand}
+                    onDropReplace={handleDropReplace}
+                    onExternalFileDrop={handleExternalFileDrop}
+                    pane="left"
+                    emptyText={leftSearchQuery ? 'No matches' : 'Select a .bnk or .wpk file and click "Parse"\nor drag & drop a mod folder here'}
+                />
 
                 {viewMode === 'split' && (
                     <Box sx={{ position: 'absolute', top: 4, right: 8, zIndex: 5, pointerEvents: 'none' }}>
@@ -209,44 +351,21 @@ export default function BnkMainContent(props) {
                         )}
                     </Box>
 
-                    <Box sx={{ flex: 1, overflowY: 'auto', p: 1 }} onClick={() => { setRightSelectedNodes(new Set()); setLastSelectedId({ id: null, pane: 'right' }); }}>
-                        {filteredRightTree.length === 0 ? (
-                            <Typography component="div" sx={{
-                                textAlign: 'center',
-                                marginTop: '3rem',
-                                fontSize: '0.8rem',
-                                color: 'rgba(255, 255, 255, 0.6)',
-                                fontWeight: 500,
-                            }}>
-                                {rightSearchQuery ? 'No matches' : (
-                                    <>
-                                        <Box sx={{ mb: 1, opacity: 0.6 }}>📁</Box>
-                                        Drop .wem .wav .mp3 files here, autoconvert
-                                        <Box sx={{ fontSize: '0.65rem', mt: 0.5, opacity: 0.5 }}>
-                                            or load banks to drag replacement audio
-                                        </Box>
-                                    </>
-                                )}
-                            </Typography>
-                        ) : (
-                            filteredRightTree.map((node, index) => (
-                                <TreeNode
-                                    key={node.id || index}
-                                    node={node}
-                                    level={0}
-                                    selectedNodes={rightSelectedNodes}
-                                    onSelect={handleNodeSelect}
-                                    onPlay={playAudio}
-                                    onContextMenu={handleContextMenu}
-                                    expandedNodes={rightExpandedNodes}
-                                    onToggleExpand={handleToggleExpand}
-                                    pane="right"
-                                    onDropReplace={handleDropReplace}
-                                    onExternalFileDrop={handleExternalFileDrop}
-                                />
-                            ))
-                        )}
-                    </Box>
+                    <VirtualTreeList
+                        rows={rightRows}
+                        expandedNodes={rightExpandedNodes}
+                        selectedNodes={rightSelectedNodes}
+                        setSelectedNodes={setRightSelectedNodes}
+                        setLastSelectedId={setLastSelectedId}
+                        handleNodeSelect={handleNodeSelect}
+                        playAudio={playAudio}
+                        handleContextMenu={handleContextMenu}
+                        handleToggleExpand={handleToggleExpand}
+                        onDropReplace={handleDropReplace}
+                        onExternalFileDrop={handleExternalFileDrop}
+                        pane="right"
+                        emptyText={rightSearchQuery ? 'No matches' : 'Drop .wem .wav .mp3 files here, autoconvert or load banks to drag replacement audio'}
+                    />
 
                     <Box sx={{ position: 'absolute', top: 4, right: 8, zIndex: 5, pointerEvents: 'none' }}>
                         <Typography sx={{ fontSize: '0.6rem', color: 'var(--accent)', fontWeight: 800, opacity: 0.6 }}>REFERENCE BANKS</Typography>
@@ -285,6 +404,19 @@ export default function BnkMainContent(props) {
                 </Button>
                 <Button variant="contained" onClick={handleReplace} disabled={!hasAudioSelection()} startIcon={<Upload sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.9)' }}>
                     Replace
+                </Button>
+                <Button
+                    variant="contained"
+                    onClick={handleAutoMatchByEventName}
+                    disabled={!treeData.length || !rightTreeData.length}
+                    startIcon={<AutoFixHigh sx={{ fontSize: 12 }} />}
+                    sx={{
+                        ...buttonStyle,
+                        color: 'rgba(255, 255, 255, 0.9)',
+                        opacity: (!treeData.length || !rightTreeData.length) ? 0.35 : 1
+                    }}
+                >
+                    Auto Match Names
                 </Button>
                 <Button variant="contained" onClick={handleMakeSilent} disabled={!hasAudioSelection()} startIcon={<VolumeOff sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.9)' }}>
                     Make Silent
@@ -343,4 +475,3 @@ export default function BnkMainContent(props) {
         </Box>
     );
 }
-

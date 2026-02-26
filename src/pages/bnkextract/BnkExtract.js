@@ -3,7 +3,7 @@
  * React page for extracting, playing, replacing, and saving audio from BNK/WPK files
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
     Box,
     Typography,
@@ -19,8 +19,14 @@ import BnkConvertOverlay from './components/BnkConvertOverlay';
 import BnkGainModal from './components/BnkGainModal';
 import BnkContextMenu from './components/BnkContextMenu';
 import BnkHeaderPanel from './components/BnkHeaderPanel';
-import BnkHistoryMenu from './components/BnkHistoryMenu';
 import BnkLoadingOverlay from './components/BnkLoadingOverlay';
+import BnkAutoMatchConfirmModal from './components/BnkAutoMatchConfirmModal';
+import BnkSessionManager from './components/BnkSessionManager';
+import BnkModDropModal from './components/BnkModDropModal';
+import BnkGroupNameModal from './components/BnkGroupNameModal';
+import BnkAddToGroupModal from './components/BnkAddToGroupModal';
+import { saveSession } from './utils/sessionManager';
+import { loadBanks } from './utils/bnkLoader';
 import { useBnkHistory } from './hooks/useBnkHistory';
 import { useBnkSearch } from './hooks/useBnkSearch';
 import { useBnkHotkeys } from './hooks/useBnkHotkeys';
@@ -66,6 +72,8 @@ export default function BnkExtract() {
         setMp3Bitrate,
         history,
         setHistory,
+        autoSaveSession,
+        setAutoSaveSession,
     } = useBnkPersistence();
 
     // Parsed data
@@ -113,6 +121,8 @@ export default function BnkExtract() {
 
     // Pending conversion: { filePath, targetNodeId } — used when install completes mid-drop
     const pendingConversion = useRef(null);
+    // IDs to group — captured at context menu click time before menu closes
+    const pendingGroupIds = useRef([]);
 
     // Gain / volume state
     const [showGainDialog, setShowGainDialog] = useState(false);
@@ -129,8 +139,13 @@ export default function BnkExtract() {
     const [autoPlay, setAutoPlay] = useState(true);
     const [multiSelect, setMultiSelect] = useState(true);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
-    const [historyAnchor, setHistoryAnchor] = useState(null);
     const [autoExtractOpen, setAutoExtractOpen] = useState(false);
+    const [showAutoMatchModal, setShowAutoMatchModal] = useState(false);
+    const [showSessionManager, setShowSessionManager] = useState(false);
+    const [modDropModalOpen, setModDropModalOpen] = useState(false);
+    const [pendingModFolder, setPendingModFolder] = useState(null);
+    const [groupNameModalOpen, setGroupNameModalOpen] = useState(false);
+    const [addToGroupModalOpen, setAddToGroupModalOpen] = useState(false);
 
     const {
         leftSearchQuery,
@@ -301,6 +316,7 @@ export default function BnkExtract() {
     });
 
     const {
+        handleAutoMatchByEventName,
         handleDropReplace,
         handleRightPaneFileDrop,
         handleRightPaneDragOver,
@@ -340,6 +356,250 @@ export default function BnkExtract() {
         setViewMode,
         setRightExpandedNodes,
     });
+
+    const sessionStateRef = useRef();
+    sessionStateRef.current = {
+        treeData,
+        rightTreeData,
+        bnkPath,
+        wpkPath,
+        binPath,
+        viewMode,
+        activePane
+    };
+
+    useEffect(() => {
+        return () => {
+            if (autoSaveSession && (sessionStateRef.current.treeData.length > 0 || sessionStateRef.current.rightTreeData.length > 0)) {
+                try {
+                    saveSession(sessionStateRef.current, 'AutoSave_Exit');
+                } catch (e) {
+                    console.error('Failed to auto-save session on exit:', e);
+                }
+            }
+        };
+    }, [autoSaveSession]);
+
+    const handleLoadSession = async (session) => {
+        setIsLoading(true);
+        setStatusMessage(`Loading session: ${session.name}...`);
+
+        try {
+            // Restore basic UI state
+            setBnkPath(session.paths?.bnk || '');
+            setWpkPath(session.paths?.wpk || '');
+            setBinPath(session.paths?.bin || '');
+            setViewMode(session.viewMode || 'split');
+            setActivePane(session.activePane || 'left');
+
+            const mergeOverrides = (cleanNodes, sessionNodes) => {
+                if (!cleanNodes || !sessionNodes) return cleanNodes;
+                return cleanNodes.map(cleanNode => {
+                    const isAudio = !!cleanNode.audioData;
+                    // Find node in session with stable matching
+                    const sessionNode = sessionNodes.find(sn => {
+                        if (sn.id === cleanNode.id) return true;
+                        if (sn.name !== cleanNode.name) return false;
+
+                        // If both are audio, match by audio ID
+                        if (isAudio && sn.audioData) {
+                            return sn.audioData.id === cleanNode.audioData.id;
+                        }
+                        // If both are folders, match by name (we assume folders at same level/parent have same name)
+                        if (!isAudio && !sn.audioData) {
+                            return true;
+                        }
+                        return false;
+                    });
+
+                    if (sessionNode) {
+                        const newNode = { ...cleanNode, isModified: sessionNode.isModified };
+                        if (isAudio && sessionNode.audioData) {
+                            const hasOverrideData = sessionNode.audioData.data && sessionNode.audioData.data.length > 0;
+                            newNode.audioData = {
+                                ...cleanNode.audioData,
+                                isModified: sessionNode.audioData.isModified,
+                                data: hasOverrideData ? sessionNode.audioData.data : cleanNode.audioData.data,
+                                length: hasOverrideData ? sessionNode.audioData.length : cleanNode.audioData.length
+                            };
+                        }
+                        if (cleanNode.children && sessionNode.children) {
+                            newNode.children = mergeOverrides(cleanNode.children, sessionNode.children);
+                        }
+                        return newNode;
+                    }
+                    return cleanNode;
+                });
+            };
+
+            const rehydrateTreeList = async (sessionTreeList) => {
+                const newTrees = [];
+                for (const sessionRoot of sessionTreeList) {
+                    if (session.isDelta && sessionRoot.isRoot && (sessionRoot.bnkPath || sessionRoot.wpkPath)) {
+                        try {
+                            const result = await loadBanks({
+                                bnkPath: sessionRoot.bnkPath || '',
+                                wpkPath: sessionRoot.wpkPath || '',
+                                binPath: sessionRoot.binPath || ''
+                            });
+
+                            if (result) {
+                                const rehydrated = mergeOverrides([result.tree], [sessionRoot]);
+                                newTrees.push(rehydrated[0]);
+                                continue;
+                            }
+                        } catch (e) {
+                            console.warn('[BnkExtract] Rehydration failed for a root:', e);
+                        }
+                    }
+                    newTrees.push(sessionRoot);
+                }
+                return newTrees;
+            };
+
+            const newLeftTrees = await rehydrateTreeList(session.treeData || []);
+            const newRightTrees = await rehydrateTreeList(session.rightTreeData || []);
+
+            setTreeData(newLeftTrees);
+            setRightTreeData(newRightTrees);
+
+            setStatusMessage(`Loaded session: ${session.name}`);
+        } catch (e) {
+            console.error('[BnkExtract] Session load error:', e);
+            setStatusMessage(`Error loading session: ${e.message}`);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const isNodeInGroup = (nodeId, nodes) => {
+        for (const node of nodes) {
+            if (node.id === nodeId) return false; // at root level
+            if (node.children) {
+                const inChild = (id, children) => children.some(c => c.id === id || (c.children && inChild(id, c.children)));
+                if (inChild(nodeId, node.children)) return true;
+            }
+        }
+        return false;
+    };
+
+    const collectRightGroups = (nodes, result = []) => {
+        for (const node of nodes) {
+            if (!node.audioData && node.children) {
+                result.push(node);
+                collectRightGroups(node.children, result);
+            }
+        }
+        return result;
+    };
+
+    const handleAddToGroup = (groupId) => {
+        setAddToGroupModalOpen(false);
+        pushToHistory();
+        const selectedIds = new Set(pendingGroupIds.current);
+        const collectedNodes = [];
+
+        const removeAndCollect = (nodes) => {
+            const remaining = [];
+            for (const node of nodes) {
+                if (selectedIds.has(node.id)) {
+                    collectedNodes.push(node);
+                } else {
+                    remaining.push(node.children ? { ...node, children: removeAndCollect(node.children) } : node);
+                }
+            }
+            return remaining;
+        };
+
+        const insertIntoGroup = (nodes) => nodes.map((node) => {
+            if (node.id === groupId) return { ...node, children: [...(node.children || []), ...collectedNodes] };
+            if (node.children) return { ...node, children: insertIntoGroup(node.children) };
+            return node;
+        });
+
+        setRightTreeData(insertIntoGroup(removeAndCollect(rightTreeData)));
+        setRightSelectedNodes(new Set());
+        setStatusMessage(`Added ${collectedNodes.length} file${collectedNodes.length !== 1 ? 's' : ''} to group`);
+    };
+
+    const handleCreateGroup = (groupName) => {
+        setGroupNameModalOpen(false);
+        pushToHistory();
+        const selectedIds = new Set(pendingGroupIds.current);
+        const collectedNodes = [];
+
+        const removeAndCollect = (nodes) => {
+            const remaining = [];
+            for (const node of nodes) {
+                if (selectedIds.has(node.id)) {
+                    collectedNodes.push(node);
+                } else {
+                    const newNode = node.children
+                        ? { ...node, children: removeAndCollect(node.children) }
+                        : node;
+                    remaining.push(newNode);
+                }
+            }
+            return remaining;
+        };
+
+        const newRightTree = removeAndCollect(rightTreeData);
+        const groupNode = {
+            id: `group_${Date.now()}`,
+            name: groupName,
+            children: collectedNodes,
+        };
+        setRightTreeData([...newRightTree, groupNode]);
+        setRightSelectedNodes(new Set());
+        setStatusMessage(`Grouped ${collectedNodes.length} file${collectedNodes.length !== 1 ? 's' : ''} into "${groupName}"`);
+    };
+
+    const handleRemoveFromGroup = () => {
+        pushToHistory();
+        const selectedIds = new Set(pendingGroupIds.current);
+        const removed = [];
+
+        const stripFromTree = (nodes) => nodes
+            .map((node) => {
+                if (selectedIds.has(node.id)) { removed.push(node); return null; }
+                if (node.children) return { ...node, children: stripFromTree(node.children).filter(Boolean) };
+                return node;
+            })
+            .filter(Boolean);
+
+        setRightTreeData([...stripFromTree(rightTreeData), ...removed]);
+        setRightSelectedNodes(new Set());
+        setStatusMessage(`Removed ${removed.length} file${removed.length !== 1 ? 's' : ''} from group`);
+    };
+
+    const handleLeftPaneFolderDrop = (folderPath) => {
+        setPendingModFolder(folderPath);
+        setModDropModalOpen(true);
+    };
+
+    const handleModDropConfirm = async (skinId) => {
+        setModDropModalOpen(false);
+        if (!pendingModFolder) return;
+        const path = window.require('path');
+        const folderPath = pendingModFolder;
+        setPendingModFolder(null);
+        setStatusMessage('Scanning mod folder...');
+        try {
+            const sets = await getModFiles(folderPath, skinId || null);
+            if (!sets || sets.length === 0) {
+                setStatusMessage('No audio files found in mod folder');
+                return;
+            }
+            const folderName = path.basename(folderPath);
+            const batchFiles = sets.map((s) => ({
+                ...s,
+                modFolderName: s.type ? `${folderName}_${s.type}` : folderName,
+            }));
+            await handleAutoExtractProcess({ batchFiles, outputPath: null, loadToTree: true });
+        } catch (e) {
+            setStatusMessage(`Mod folder error: ${e.message}`);
+        }
+    };
 
     useBnkCodebookLoader({ codebookDataRef, setStatusMessage });
 
@@ -423,7 +683,7 @@ export default function BnkExtract() {
                 handleParseFiles={handleParseFiles}
                 isLoading={isLoading}
                 handleClearPane={handleClearPane}
-                setHistoryAnchor={setHistoryAnchor}
+                onSessionClick={() => setShowSessionManager(true)}
                 setAutoExtractOpen={setAutoExtractOpen}
             />
 
@@ -433,16 +693,6 @@ export default function BnkExtract() {
                 onProcess={handleAutoExtractProcess}
             />
 
-            <BnkHistoryMenu
-                historyAnchor={historyAnchor}
-                setHistoryAnchor={setHistoryAnchor}
-                history={history}
-                setHistory={setHistory}
-                setBinPath={setBinPath}
-                setWpkPath={setWpkPath}
-                setBnkPath={setBnkPath}
-            />
-
             <BnkLoadingOverlay
                 isLoading={isLoading}
                 autoExtractOpen={autoExtractOpen}
@@ -450,7 +700,7 @@ export default function BnkExtract() {
             />
 
 
-                        {/* Main Content */}
+            {/* Main Content */}
             <BnkMainContent
                 mainContentStyle={mainContentStyle}
                 treeViewStyle={treeViewStyle}
@@ -471,6 +721,7 @@ export default function BnkExtract() {
                 expandedNodes={expandedNodes}
                 handleToggleExpand={handleToggleExpand}
                 handleDropReplace={handleDropReplace}
+                handleAutoMatchByEventName={() => setShowAutoMatchModal(true)}
                 handleExternalFileDrop={handleExternalFileDrop}
                 rightPaneDragOver={rightPaneDragOver}
                 handleRightPaneDragOver={handleRightPaneDragOver}
@@ -498,7 +749,10 @@ export default function BnkExtract() {
                 stopAudio={stopAudio}
                 volume={volume}
                 setVolume={setVolume}
+                treeData={treeData}
+                rightTreeData={rightTreeData}
                 setShowSettingsModal={setShowSettingsModal}
+                onLeftPaneFolderDrop={handleLeftPaneFolderDrop}
             />
             <BnkContextMenu
                 contextMenu={contextMenu}
@@ -527,10 +781,16 @@ export default function BnkExtract() {
                 onOpenInSplitter={handleOpenInSplitter}
                 onDeleteNode={handleDeleteNode}
                 onCopyName={handleCopyName}
+                onCreateGroup={() => { pendingGroupIds.current = getContextTargetIds(); handleCloseContextMenu(); setGroupNameModalOpen(true); }}
+                showCreateGroup={contextMenu?.pane === 'right' && !!contextMenu?.node?.id}
+                onAddToGroup={() => { pendingGroupIds.current = getContextTargetIds(); handleCloseContextMenu(); setAddToGroupModalOpen(true); }}
+                showAddToGroup={contextMenu?.pane === 'right' && !!contextMenu?.node?.id && collectRightGroups(rightTreeData).length > 0}
+                onRemoveFromGroup={() => { pendingGroupIds.current = getContextTargetIds(); handleCloseContextMenu(); handleRemoveFromGroup(); }}
+                showRemoveFromGroup={contextMenu?.pane === 'right' && !!contextMenu?.node?.id && isNodeInGroup(contextMenu.node.id, rightTreeData)}
                 isWwiseInstalled={isWwiseInstalled}
             />
 
-                        <BnkSettingsModal
+            <BnkSettingsModal
                 showSettingsModal={showSettingsModal}
                 setShowSettingsModal={setShowSettingsModal}
                 extractFormats={extractFormats}
@@ -549,6 +809,43 @@ export default function BnkExtract() {
                 initialFile={splitterInitialFile}
                 onReplace={handleSplitterReplace}
                 onExportSegments={handleSplitterExportSegments}
+            />
+
+            <BnkAutoMatchConfirmModal
+                open={showAutoMatchModal}
+                onClose={() => setShowAutoMatchModal(false)}
+                onConfirm={handleAutoMatchByEventName}
+            />
+
+            <BnkModDropModal
+                open={modDropModalOpen}
+                folderName={pendingModFolder ? window.require('path').basename(pendingModFolder) : ''}
+                onConfirm={handleModDropConfirm}
+                onCancel={() => { setModDropModalOpen(false); setPendingModFolder(null); }}
+            />
+
+            <BnkGroupNameModal
+                open={groupNameModalOpen}
+                count={pendingGroupIds.current.length}
+                onConfirm={handleCreateGroup}
+                onCancel={() => setGroupNameModalOpen(false)}
+            />
+
+            <BnkAddToGroupModal
+                open={addToGroupModalOpen}
+                count={pendingGroupIds.current.length}
+                groups={collectRightGroups(rightTreeData)}
+                onConfirm={handleAddToGroup}
+                onCancel={() => setAddToGroupModalOpen(false)}
+            />
+
+            <BnkSessionManager
+                open={showSessionManager}
+                onClose={() => setShowSessionManager(false)}
+                currentState={sessionStateRef.current}
+                onLoadSession={handleLoadSession}
+                autoSaveEnabled={autoSaveSession}
+                setAutoSaveEnabled={setAutoSaveSession}
             />
         </Box>
     );

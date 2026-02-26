@@ -53,6 +53,16 @@ function buildManifestFromPayload(payload) {
   const skeletonPath = String(payload?.skeletonPath || '');
   const animationPath = String(payload?.animationPath || '');
   const texturePath = String(payload?.texturePath || '');
+  const payloadSknFiles = Array.isArray(payload?.sknFiles) ? payload.sknFiles : [];
+  const payloadAnmFiles = Array.isArray(payload?.anmFiles) ? payload.anmFiles : [];
+  const payloadTextureFiles = Array.isArray(payload?.textureFiles) ? payload.textureFiles : [];
+  const payloadSkeletonFiles = Array.isArray(payload?.skeletonFiles) ? payload.skeletonFiles : [];
+  const payloadMaterialHints = payload?.materialTextureHints && typeof payload.materialTextureHints === 'object'
+    ? payload.materialTextureHints
+    : null;
+  const payloadDefaultBySkn = payload?.defaultTextureBySkn && typeof payload.defaultTextureBySkn === 'object'
+    ? payload.defaultTextureBySkn
+    : null;
   if (!modelPath) {
     throw new Error('Missing model path');
   }
@@ -64,8 +74,31 @@ function buildManifestFromPayload(payload) {
   const characterFolder = toCharacterFolder(relModel);
   const skinKey = toSkinKey(relModel);
 
-  const materialHints = relTexture ? { __default__: relTexture } : {};
-  const defaultTextureBySkn = relTexture ? { [normalizeSlashes(relModel).toLowerCase()]: relTexture } : {};
+  const relSknFiles = payloadSknFiles
+    .map((v) => toRelativePath(filesRoot, String(v || '')))
+    .filter(Boolean);
+  if (!relSknFiles.includes(relModel)) relSknFiles.unshift(relModel);
+
+  const relAnmFiles = payloadAnmFiles
+    .map((v) => toRelativePath(filesRoot, String(v || '')))
+    .filter(Boolean);
+  if (relAnim && !relAnmFiles.includes(relAnim)) relAnmFiles.unshift(relAnim);
+
+  const relTextureFiles = payloadTextureFiles
+    .map((v) => toRelativePath(filesRoot, String(v || '')))
+    .filter(Boolean);
+  if (relTexture && !relTextureFiles.includes(relTexture)) relTextureFiles.unshift(relTexture);
+
+  const relSkeletonFiles = payloadSkeletonFiles
+    .map((v) => toRelativePath(filesRoot, String(v || '')))
+    .filter(Boolean);
+  if (skeletonPath) {
+    const relSkl = toRelativePath(filesRoot, skeletonPath);
+    if (relSkl && !relSkeletonFiles.includes(relSkl)) relSkeletonFiles.unshift(relSkl);
+  }
+
+  const materialHints = payloadMaterialHints || (relTexture ? { __default__: relTexture } : {});
+  const defaultTextureBySkn = payloadDefaultBySkn || (relTexture ? { [normalizeSlashes(relModel).toLowerCase()]: relTexture } : {});
   const materialTextureHintsByCharacterFolder = characterFolder ? { [characterFolder]: materialHints } : {};
   const defaultTextureBySknByCharacterFolder = characterFolder ? { [characterFolder]: defaultTextureBySkn } : {};
 
@@ -74,9 +107,9 @@ function buildManifestFromPayload(payload) {
     skinKey,
     filesDir: filesRoot,
     cacheDir: filesRoot,
-    sknFiles: [relModel],
-    anmFiles: relAnim ? [relAnim] : [],
-    textureFiles: relTexture ? [relTexture] : [],
+    sknFiles: relSknFiles,
+    anmFiles: relAnmFiles,
+    textureFiles: relTextureFiles,
     materialTextureHints: materialHints,
     defaultTextureBySkn,
     materialTextureHintsByCharacterFolder,
@@ -85,7 +118,7 @@ function buildManifestFromPayload(payload) {
     defaultCharacterFolder: characterFolder || '',
     chromaOptions: [],
     selectedChromaId: null,
-    skeletonFiles: skeletonPath ? [toRelativePath(filesRoot, skeletonPath)] : [],
+    skeletonFiles: relSkeletonFiles,
   };
 }
 

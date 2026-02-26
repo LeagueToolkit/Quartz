@@ -31,6 +31,7 @@ import useVfxHubThemeEffects from './hooks/useVfxHubThemeEffects';
 import { extractTexturesFromEmitterContent } from '../port2/utils/vfxUtils.js';
 import useUnsavedNavigationGuard from '../../hooks/navigation/useUnsavedNavigationGuard.js';
 import CombineLinkedBinsModal from '../../components/modals/CombineLinkedBinsModal';
+import VfxAccessModal from './components/VfxAccessModal';
 import { sectionStyle, celestialButtonStyle, primaryButtonStyle } from './styles';
 
 const VFXHub = () => {
@@ -56,6 +57,7 @@ const VFXHub = () => {
   const [renamingSystem, setRenamingSystem] = useState(null);
   const [showRitobinWarning, setShowRitobinWarning] = useState(false);
   const [ritobinWarningContent, setRitobinWarningContent] = useState(null);
+  const [showVfxAccessModal, setShowVfxAccessModal] = useState(false);
 
   const toggleTargetSystemCollapse = (systemKey) => {
     setCollapsedTargetSystems(prev => {
@@ -591,7 +593,13 @@ const VFXHub = () => {
         githubAuthenticated={collections.githubAuthenticated}
         onOpenTargetBin={handleOpenTargetBin}
         onOpenHub={collections.handleOpenVFXHub}
-        onUpload={upload.handleUploadToVFXHub}
+        onUpload={() => {
+          if (!collections.githubAuthenticated) {
+            setShowVfxAccessModal(true);
+          } else {
+            upload.handleUploadToVFXHub();
+          }
+        }}
       />
 
       <VfxHubSystemPanels
@@ -683,6 +691,11 @@ const VFXHub = () => {
         targetSystemEntries={targetSystemEntries}
         setStatusMessage={setStatusMessage}
       />
+      <VfxAccessModal
+        open={showVfxAccessModal}
+        onClose={() => setShowVfxAccessModal(false)}
+      />
+
       {/* Combine Linked BINs Modal */}
       <CombineLinkedBinsModal
         open={combineModalState.open}

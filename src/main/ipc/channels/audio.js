@@ -307,6 +307,81 @@ function registerAudioChannels({
     }
   });
 
+  // audio:convert-to-wem-batch - convert multiple wav/mp3/ogg files to .wem in one WwiseConsole call
+  ipcMain.handle('audio:convert-to-wem-batch', async (_event, { inputs }) => {
+    try {
+      if (!fs.existsSync(WWISE_CONSOLE_EXE)) {
+        return { success: false, error: 'Wwise tools not installed' };
+      }
+      fs.mkdirSync(WWISE_TEMP_DIR, { recursive: true });
+
+      const uid = Date.now();
+
+      // Step 1: Decode any MP3/OGG -> WAV in parallel (vgmstream is cheap per file)
+      const prepared = await Promise.all(inputs.map(async (inp, i) => {
+        const ext = path.extname(inp.inputPath).toLowerCase();
+        const baseName = path.basename(inp.inputPath, ext);
+        const dest = `${baseName}_${uid}_${i}`;
+        let wavPath = inp.inputPath;
+        if (ext === '.mp3' || ext === '.ogg') {
+          if (!fs.existsSync(VGMSTREAM_EXE)) throw new Error('vgmstream decoder not installed');
+          wavPath = path.join(WWISE_TEMP_DIR, `${dest}.wav`);
+          await new Promise((resolve, reject) => {
+            const proc = spawn(VGMSTREAM_EXE, ['-o', wavPath, inp.inputPath], {
+              windowsHide: true, cwd: path.dirname(VGMSTREAM_EXE),
+            });
+            proc.on('close', (c) => c === 0 ? resolve() : reject(new Error(`vgmstream exit ${c}`)));
+            proc.on('error', reject);
+          });
+        }
+        return { wavPath, dest, originalPath: inp.inputPath };
+      }));
+
+      // Step 2: Build a single .wsources file with all inputs
+      const wsourcesPath = path.join(WWISE_TEMP_DIR, `batch_${uid}.wsources`);
+      const sourceLines = prepared.map((p) =>
+        `  <Source Path="${p.wavPath}" Conversion="Vorbis Quality High" Destination="${p.dest}"/>`
+      ).join('\n');
+      fs.writeFileSync(wsourcesPath,
+        `<?xml version="1.0" encoding="UTF-8"?>\n<ExternalSourcesList SchemaVersion="1" Root="${WWISE_TEMP_DIR}">\n${sourceLines}\n</ExternalSourcesList>`,
+        'utf8');
+
+      // Step 3: Single WwiseConsole invocation for ALL files
+      await new Promise((resolve, reject) => {
+        const proc = spawn(WWISE_CONSOLE_EXE, [
+          'convert-external-source', WWISE_WPROJ,
+          '--source-file', wsourcesPath,
+          '--output', WWISE_TEMP_DIR,
+          '--platform', 'Windows',
+        ], { windowsHide: true, cwd: path.dirname(WWISE_CONSOLE_EXE) });
+        let stderr = '';
+        proc.stderr?.on('data', (d) => { stderr += String(d); });
+        proc.on('close', (c) => c === 0 ? resolve() : reject(new Error(`WwiseConsole exit ${c}: ${stderr.trim()}`)));
+        proc.on('error', reject);
+      });
+
+      // Step 4: Collect per-file results
+      const results = prepared.map((p) => {
+        const wemPath = [
+          path.join(WWISE_TEMP_DIR, 'Windows', `${p.dest}.wem`),
+          path.join(WWISE_TEMP_DIR, `${p.dest}.wem`),
+        ].find((c) => fs.existsSync(c));
+        return wemPath ? { success: true, wemPath } : { success: false, error: 'Output WEM not found' };
+      });
+
+      // Cleanup intermediates
+      try { fs.unlinkSync(wsourcesPath); } catch (_) { }
+      for (const p of prepared) {
+        if (p.wavPath !== p.originalPath) try { fs.unlinkSync(p.wavPath); } catch (_) { }
+      }
+
+      return { success: true, results };
+    } catch (err) {
+      logToFile(`[audio:convert-to-wem-batch] Error: ${err.message}`, 'ERROR');
+      return { success: false, error: err.message };
+    }
+  });
+
   // audio:decode-to-wav - convert WEM/MP3/OGG -> WAV using vgmstream (for AudioSplitter)
   ipcMain.handle('audio:decode-to-wav', async (_event, { inputPath }) => {
     try {

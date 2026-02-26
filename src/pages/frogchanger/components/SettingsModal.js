@@ -19,8 +19,6 @@ const SettingsModal = ({
   onBrowseExtractionPath,
   onLeaguePathChange,
   onExtractionPathChange,
-  warmHashCache,
-  onWarmHashCacheChange,
   showCelestiaGuide,
   onOpenGuide,
 }) => {
@@ -402,18 +400,6 @@ const SettingsModal = ({
             <p style={styles.hint}>
               Hash files are automatically downloaded from CommunityDragon.
             </p>
-            <div style={styles.checkboxRow}>
-              <input
-                id="frogchanger-warm-hash-cache"
-                type="checkbox"
-                style={styles.checkbox}
-                checked={warmHashCache === true}
-                onChange={(e) => onWarmHashCacheChange?.(e.target.checked)}
-              />
-              <label htmlFor="frogchanger-warm-hash-cache" style={styles.checkboxLabel}>
-                Warm hash cache on page enter and clear it on leave. Useful on stronger PCs.
-              </label>
-            </div>
           </div>
 
         </div>

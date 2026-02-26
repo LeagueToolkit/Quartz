@@ -317,6 +317,10 @@ registerWadBumpathChannels({
   loadWadModule: async () => importLocalModule('./src/utils/wad/index.js'),
   loadJsRitoModule: async () => importLocalModule('./src/jsritofile/bin.js'),
   loadBumpathModule: async () => importLocalModule('./src/utils/bumpath/bumpathCore.js'),
+  loadWadClassModule: async () => importLocalModule('./src/jsritofile/wad.js'),
+  loadBinModule: async () => importLocalModule('./src/jsritofile/bin.js'),
+  loadBinHasherModule: async () => importLocalModule('./src/jsritofile/binHasher.js'),
+  loadWadHasherModule: async () => importLocalModule('./src/jsritofile/wadHasher.js'),
 });
 
 registerModelInspectChannels({

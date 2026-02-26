@@ -1,0 +1,284 @@
+/* General Edit Panel - Matches Monaco's Find Widget exactly */
+
+.general-edit-panel-wrapper {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  bottom: 0;
+  overflow: hidden;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* Find widget base styling */
+.general-edit-panel {
+  position: absolute;
+  top: 0;
+  z-index: 35;
+  height: auto;
+  overflow: hidden;
+  line-height: 19px;
+  transition: transform 200ms linear;
+  padding: 0 4px;
+  box-sizing: border-box;
+  transform: translateY(calc(-100% - 10px));
+  box-shadow: 0 0 8px 2px var(--vscode-widget-shadow);
+  color: var(--vscode-editorWidget-foreground);
+  border-left: 1px solid var(--vscode-widget-border);
+  border-right: 1px solid var(--vscode-widget-border);
+  border-bottom: 1px solid var(--vscode-widget-border);
+  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
+  background-color: var(--vscode-editorWidget-background);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, Ubuntu, "Droid Sans", sans-serif;
+  font-size: 13px;
+  pointer-events: auto;
+  min-width: 340px;
+  max-width: 460px;
+}
+
+.general-edit-panel,
+.general-edit-panel * {
+  color: var(--vscode-editorWidget-foreground);
+}
+
+/* Left accent bar (matches find widget) */
+.gep-left-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background-color: var(--jade-accent, var(--vscode-focusBorder));
+}
+
+.monaco-reduce-motion .general-edit-panel {
+  transition: transform 0ms linear;
+}
+
+/* Visible state - slide down into view */
+.general-edit-panel.visible {
+  transform: translateY(0);
+}
+
+/* Header - Monaco style widget header */
+.gep-header {
+  display: flex;
+  align-items: center;
+  height: 25px;
+  margin: 3px 25px 0 17px;
+}
+
+.gep-title {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--vscode-editorWidget-foreground);
+}
+
+/* Section separators */
+.gep-divider {
+  height: 1px;
+  margin: 4px 4px 0 4px;
+  background-color: var(--vscode-widget-border);
+  opacity: 0.7;
+}
+
+/* Close button - matches Monaco's widget close button exactly */
+/* Close button position mirrors Monaco widget close */
+.gep-close-btn {
+  position: absolute;
+  top: 5px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  padding: 3px;
+  border-radius: 5px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: content-box;
+}
+
+.gep-close-btn::before {
+  content: '✕';
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--vscode-editorWidget-foreground);
+}
+
+.gep-close-btn:hover {
+  background-color: rgba(90, 93, 94, 0.31);
+}
+
+/* Section styling - collapsible sections */
+.gep-section {
+  margin: 0 25px 6px 17px;
+}
+
+.gep-section + .gep-section {
+  padding-top: 6px;
+  border-top: 1px solid var(--vscode-widget-border);
+}
+
+.gep-section-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 20px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.gep-collapse-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--vscode-editorWidget-foreground);
+  opacity: 0.7;
+  transition: transform 0.15s ease;
+}
+
+.gep-collapse-icon.collapsed {
+  transform: rotate(-90deg);
+}
+
+.gep-collapse-icon::before {
+  content: '▼';
+}
+
+.gep-section-title {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--vscode-editorWidget-foreground);
+}
+
+.gep-section-content {
+  padding: 4px 0 0;
+  background-color: transparent;
+}
+
+/* Row layout */
+.gep-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.gep-row-buttons {
+  gap: 4px;
+}
+
+/* Input styling - matches Monaco's find input exactly */
+.gep-input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.gep-input {
+  height: 25px;
+  padding: 2px 6px;
+  background-color: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 2px;
+  color: var(--vscode-input-foreground);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+
+.gep-input:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.gep-input::placeholder {
+  color: var(--vscode-editorWidget-foreground);
+  opacity: 0.5;
+}
+
+.gep-input::selection {
+  background-color: #264f78;
+}
+
+.gep-input-value {
+  width: 60px;
+}
+
+.gep-percent-group {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.gep-input-percent {
+  width: 44px;
+}
+
+.gep-percent-sign {
+  font-size: 11px;
+  color: var(--text-color, #858585);
+  opacity: 0.7;
+  margin-left: 1px;
+}
+
+/* Button styling - matches number box size and roundness */
+.gep-btn {
+  width: 22px;
+  height: 25px;
+  padding: 4px;
+  border-radius: 2px;
+  border: 1px solid var(--vscode-widget-border);
+  background-color: var(--vscode-input-background);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-editorWidget-foreground);
+}
+
+.gep-btn:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+/* Icon-only buttons (apply/add) */
+.gep-btn-apply,
+.gep-btn-add {
+  width: 22px;
+  height: 25px;
+  padding: 4px;
+}
+
+/* Full width button */
+.gep-btn-full,
+.gep-btn-half {
+  width: auto;
+  padding: 2px 10px;
+  height: 25px;
+  font-size: 12px;
+  line-height: 21px;
+  border-radius: 2px;
+}
+
+/* Status text */
+.gep-status {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--vscode-editorWidget-foreground);
+  opacity: 0.7;
+}
+
+/* Icon characters */
+.gep-icon-check::before { content: '✓'; }
+.gep-icon-add::before { content: '+'; }
+.gep-icon-texture::before { content: '🖼'; font-size: 11px; }
+.gep-icon-material::before { content: '●'; }

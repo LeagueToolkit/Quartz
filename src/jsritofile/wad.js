@@ -151,6 +151,7 @@ export class WAD {
         if (!hashtables) return;
         
         for (const chunk of this.chunks) {
+            if (!chunk.path_hash_hex) chunk.path_hash_hex = chunk.hash;
             chunk.hash = WADHasher.hexToRaw(hashtables, chunk.hash);
             
             // If hash contains a dot and extension is not set, try to get extension from path
@@ -168,6 +169,37 @@ export class WAD {
     }
 
     /**
+     * Async/chunked version of unHash to avoid blocking Electron main thread.
+     * @param {Object} hashtables
+     * @param {Object} options
+     * @param {number} options.batchSize
+     */
+    async unHashAsync(hashtables, options = {}) {
+        if (!hashtables) return;
+        const batchSize = Math.max(256, Number(options.batchSize || 1200));
+
+        for (let i = 0; i < this.chunks.length; i++) {
+            const chunk = this.chunks[i];
+            if (!chunk.path_hash_hex) chunk.path_hash_hex = chunk.hash;
+            chunk.hash = WADHasher.hexToRaw(hashtables, chunk.hash);
+
+            if (chunk.hash.includes('.') && chunk.extension === null) {
+                chunk.extension = WADExtensioner.getExtension(chunk.hash);
+            }
+
+            if ((i + 1) % batchSize === 0) {
+                await new Promise((resolve) => setImmediate(resolve));
+            }
+        }
+
+        this.chunks.sort((a, b) => {
+            if (a.hash < b.hash) return -1;
+            if (a.hash > b.hash) return 1;
+            return 0;
+        });
+    }
+
+    /**
      * Get chunks matching a filter function
      * @param {Function} compareFunc - Filter function
      * @returns {Array<WADChunk>}
@@ -176,8 +208,6 @@ export class WAD {
         return this.chunks.filter(compareFunc);
     }
 }
-
-
 
 
 

@@ -1,0 +1,162 @@
+.tex-hover-popup {
+  position: fixed;
+  z-index: 9999;
+  width: 260px;
+  background: var(--window-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  pointer-events: all;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-color);
+  animation: tex-popup-in 0.12s ease-out;
+}
+
+@keyframes tex-popup-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.tex-hover-popup__header {
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--title-bar-bg);
+}
+
+.tex-hover-popup__filename {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--syntax-string-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 238px;
+  letter-spacing: 0.02em;
+}
+
+.tex-hover-popup__preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  max-height: 200px;
+  background: repeating-conic-gradient(
+    color-mix(in srgb, var(--selected-tab-bg) 80%, transparent) 0% 25%,
+    var(--window-bg) 0% 50%
+  ) 0 0 / 16px 16px;
+  overflow: hidden;
+}
+
+.tex-hover-popup__canvas {
+  max-width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  display: block;
+}
+
+.tex-hover-popup__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.tex-hover-popup__spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--jade-accent);
+  border-radius: 50%;
+  animation: tex-spin 0.7s linear infinite;
+}
+
+@keyframes tex-spin {
+  to { transform: rotate(360deg); }
+}
+
+.tex-hover-popup__error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.tex-hover-popup__error-icon {
+  font-size: 20px;
+  color: #e09040;
+}
+
+.tex-hover-popup__meta {
+  padding: 4px 10px;
+  font-size: 10px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-color);
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+.tex-hover-popup__actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border-color);
+  background: var(--title-bar-bg);
+}
+
+.tex-hover-popup__btn {
+  flex: 1;
+  padding: 5px 8px;
+  border-radius: var(--border-radius);
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.1s, opacity 0.1s;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.tex-hover-popup__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tex-hover-popup__btn--primary {
+  background: var(--button-bg);
+  color: #ffffff;
+  border-color: var(--button-bg);
+}
+
+.tex-hover-popup__btn--primary:not(:disabled):hover {
+  background: var(--button-hover-bg);
+  border-color: var(--button-hover-bg);
+}
+
+.tex-hover-popup__btn--secondary {
+  background: var(--tab-bg);
+  color: var(--text-color);
+  border-color: var(--border-color);
+}
+
+.tex-hover-popup__btn--secondary:not(:disabled):hover {
+  background: var(--selected-tab-bg);
+  border-color: var(--jade-accent);
+  color: #ffffff;
+}

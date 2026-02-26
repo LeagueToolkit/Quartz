@@ -1,0 +1,128 @@
+:root {
+  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+
+  color: #0f0f0f;
+  background-color: #1e1e1e;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+
+  /* Theme CSS Variables - Default Theme (Dark Emptiness) */
+  /* These are set dynamically by themeApplicator.ts */
+  --window-bg: #1E1E1E;
+  --editor-bg: #1E1E1E;
+  --title-bar-bg: #252526;
+  --status-bar-bg: #505050;
+  --text-color: #D4D4D4;
+  --tab-bg: #252526;
+  --selected-tab-bg: #3E3E42;
+
+  /* Border radius - default to 0 (square), can be changed via themes */
+  --border-radius: 0px;
+  
+  /* Scrollbar */
+  --scrollbar-thumb: #5a5a5a;
+  --scrollbar-thumb-hover: #7a7a7a;
+  
+  /* General UI */
+  --text-primary: #cccccc;
+  --text-muted: #808080;
+  --border-color: #3c3c3c;
+  --button-bg: #0e639c;
+  --button-hover-bg: #1177bb;
+  --hint-key-bg: #3c3c3c;
+
+  /* Monaco widget tokens (used for General Edit Panel styling) */
+  --vscode-widget-shadow: rgba(0, 0, 0, 0.36);
+  --vscode-editorWidget-foreground: var(--text-color);
+  --vscode-editorWidget-background: var(--editor-bg);
+  --vscode-widget-border: var(--border-color);
+  --vscode-focusBorder: #007acc;
+  --vscode-toolbar-hoverBackground: var(--selected-tab-bg);
+  --vscode-disabledForeground: #808080;
+  --vscode-errorForeground: #f48771;
+  --vscode-input-background: var(--tab-bg);
+  --vscode-input-foreground: var(--text-color);
+  --vscode-input-border: var(--border-color);
+  --jade-accent: var(--button-bg);
+  --jade-accent-text: var(--button-bg); /* brightened version set per-theme by themeApplicator */
+
+  /* Syntax highlight color for string literals / file paths — updated by
+     themeApplicator when a syntax theme is applied */
+  --syntax-string-color: #CE9178;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+.app-container {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--window-bg);
+}
+
+.editor-container {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  /* Allow Monaco tooltips/hover to render above the editor area (into the tab bar) */
+  overflow: visible;
+  position: relative;
+  z-index: 2;
+  background: var(--editor-bg);
+}
+
+/* Monaco fixed overflow widgets */
+.monaco-editor .overflowingContentWidgets,
+.monaco-editor-hover,
+.monaco-hover,
+.monaco-editor-hover-content,
+.parameter-hints-widget,
+.suggest-widget {
+  z-index: 5000 !important;
+}
+
+/* Monaco "context view" layer is what many hover tooltips (including find/replace button hovers) use */
+.context-view {
+  z-index: 6000 !important;
+}
+
+/* General Edit Panel should match Monaco find widget z-index */
+.general-edit-panel-wrapper {
+  z-index: 10;
+}
+
+/* Accent bar for Monaco find/replace widget - same as our General Edit Panel */
+.monaco-editor .find-widget::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background-color: var(--jade-accent, var(--button-bg));
+  z-index: 100;
+}
+

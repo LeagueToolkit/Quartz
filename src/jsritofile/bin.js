@@ -12,6 +12,7 @@ import { fixBINType } from './binTypes.js';
 // Lazy initialization to avoid webpack trying to resolve 'module'
 let fs = null;
 let path = null;
+let v8Module = null;
 let initPromise = null;
 
 async function initNodeModules() {
@@ -23,6 +24,7 @@ async function initNodeModules() {
             // Electron environment
             fs = window.require('fs');
             path = window.require('path');
+            try { v8Module = window.require('v8'); } catch (_) { }
         } else if (typeof process !== 'undefined' && process.versions && process.versions.node && typeof __webpack_require__ === 'undefined') {
             // Node.js environment (not webpack) - use createRequire from module
             // Skip in webpack environment to avoid static analysis
@@ -32,6 +34,7 @@ async function initNodeModules() {
                 const nodeRequire = createRequire(import.meta.url);
                 fs = nodeRequire('fs');
                 path = nodeRequire('path');
+                try { v8Module = nodeRequire('v8'); } catch (_) { }
             } catch (e) {
                 // Will be initialized later when needed
                 fs = null;
@@ -311,7 +314,7 @@ const DEFAULT_TABLE_NAMES = [
     'hashes.game.txt',
     'hashes.lcu.txt'
 ];
-const WAD_HASHES = ['hashes.game.txt', 'hashes.lcu.txt'];
+const WAD_HASHES = ['hashes.game.txt', 'hashes.lcu.txt', 'hashes.extracted.txt'];
 const hashtablesCache = new Map();
 const hashtableTableCache = new Map();
 
@@ -357,8 +360,14 @@ export async function loadHashtables(hashtablesPath, options = {}) {
     // Reset idle timer on every call — keeps cache alive during active use
     _resetHashtableTTL();
 
+    console.log(`[loadHashtables] cacheKey="${cacheKey}" topHit=${hashtablesCache.has(cacheKey)}`);
     if (hashtablesCache.has(cacheKey)) {
-        return hashtablesCache.get(cacheKey);
+        const cached = hashtablesCache.get(cacheKey);
+        for (const t of tableNames) {
+            const v = cached[t];
+            console.log(`[loadHashtables] TOP CACHE HIT table="${t}" entries=${v ? Object.keys(v).length : 0}`);
+        }
+        return cached;
     }
 
     // Initialize fs/path if not already done
@@ -370,10 +379,35 @@ export async function loadHashtables(hashtablesPath, options = {}) {
     const getTableCacheKey = (tableName) => `${hashtablesPath}::${tableName}`;
     const missingTables = tableNames.filter((tableName) => !hashtableTableCache.has(getTableCacheKey(tableName)));
 
+    for (const t of tableNames) {
+        const hit = hashtableTableCache.has(getTableCacheKey(t));
+        const entries = hit ? Object.keys(hashtableTableCache.get(getTableCacheKey(t))).length : -1;
+        console.log(`[loadHashtables] per-table "${t}" cacheHit=${hit} entries=${entries}`);
+    }
+
     // Process only missing files in parallel for better performance.
     const loadPromises = missingTables.map(async (tableName) => {
         const tablePath = path.join(hashtablesPath, tableName);
         try {
+            // ── Binary cache: skip text parsing if a fresh .v8cache exists ──────
+            if (v8Module) {
+                try {
+                    const cachePath = tablePath + '.v8cache';
+                    const [srcStat, cacheStat] = await Promise.all([
+                        fs.promises.stat(tablePath),
+                        fs.promises.stat(cachePath).catch(() => null),
+                    ]);
+                    if (cacheStat && cacheStat.mtimeMs >= srcStat.mtimeMs) {
+                        const buf = await fs.promises.readFile(cachePath);
+                        const table = v8Module.deserialize(buf);
+                        console.log(`[loadHashtables] "${tableName}" loaded from v8cache.`);
+                        return { tableName, table, ok: true };
+                    }
+                    console.log(`[loadHashtables] "${tableName}" v8cache stale or missing — reading text file`);
+
+                } catch (_) { /* cache miss — fall through to text parse */ }
+            }
+
             // Read file asynchronously
             const content = await fs.promises.readFile(tablePath, 'utf-8');
             const table = {};
@@ -384,6 +418,9 @@ export async function loadHashtables(hashtablesPath, options = {}) {
 
             let pos = 0;
             const len = content.length;
+            let lineCount = 0;
+            const YIELD_EVERY = 50000;
+            const canYield = typeof setImmediate === 'function';
 
             while (pos < len) {
                 // Find line end
@@ -405,11 +442,26 @@ export async function loadHashtables(hashtablesPath, options = {}) {
                 }
 
                 pos = lineEnd + 1;
+
+                // Yield to the event loop periodically so IPC stays responsive.
+                if (canYield && ++lineCount % YIELD_EVERY === 0) {
+                    await new Promise(r => setImmediate(r));
+                }
             }
 
+            // Write binary cache so the next startup skips text parsing entirely.
+            if (v8Module) {
+                try {
+                    const cachePath = tablePath + '.v8cache';
+                    await fs.promises.writeFile(cachePath, v8Module.serialize(table));
+                } catch (_) { /* non-fatal — cache write failure just means slower next boot */ }
+            }
+
+            console.log(`[loadHashtables] "${tableName}" loaded from text, sep=${sep}, entries=${Object.keys(table).length}`);
             return { tableName, table, ok: true };
         } catch (error) {
             // File doesn't exist or can't be read, skip it
+            console.log(`[loadHashtables] "${tableName}" failed to load: ${error.message}`);
             return { tableName, table: null, ok: false };
         }
     });
@@ -441,6 +493,21 @@ export function clearHashtablesCache() {
     hashtablesCache.clear();
     hashtableTableCache.clear();
     console.log('[bin.js] Hashtables cache cleared');
+}
+
+/**
+ * Invalidate cache entries for a single table only.
+ * Leaves other tables (e.g. hashes.game.txt) intact.
+ */
+export function invalidateHashtableTable(hashtablesPath, tableName) {
+    const perTableKey = `${hashtablesPath}::${tableName}`;
+    hashtableTableCache.delete(perTableKey);
+    for (const key of hashtablesCache.keys()) {
+        if (key.startsWith(hashtablesPath + '::') && key.includes(tableName)) {
+            hashtablesCache.delete(key);
+        }
+    }
+    console.log(`[bin.js] Invalidated "${tableName}" cache entries`);
 }
 
 /**

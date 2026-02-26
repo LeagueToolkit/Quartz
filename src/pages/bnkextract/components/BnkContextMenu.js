@@ -1,6 +1,6 @@
 import React from 'react';
 import { Menu, MenuItem, Divider, Typography } from '@mui/material';
-import { PlayArrow, Download, Upload, VolumeOff, VolumeUp, ContentCut, Delete, ContentCopy } from '@mui/icons-material';
+import { PlayArrow, Download, Upload, VolumeOff, VolumeUp, ContentCut, Delete, ContentCopy, CreateNewFolder } from '@mui/icons-material';
 
 export default function BnkContextMenu({
     contextMenu,
@@ -13,6 +13,12 @@ export default function BnkContextMenu({
     onOpenInSplitter,
     onDeleteNode,
     onCopyName,
+    onCreateGroup,
+    showCreateGroup,
+    onAddToGroup,
+    showAddToGroup,
+    onRemoveFromGroup,
+    showRemoveFromGroup,
     isWwiseInstalled,
 }) {
     return (
@@ -63,6 +69,24 @@ export default function BnkContextMenu({
             <MenuItem onClick={onCopyName}>
                 <ContentCopy sx={{ fontSize: 14, marginRight: 1 }} /> Copy name
             </MenuItem>
+            {(showCreateGroup || showAddToGroup || showRemoveFromGroup) && (
+                <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.1)' }} />
+            )}
+            {showRemoveFromGroup && (
+                <MenuItem onClick={onRemoveFromGroup}>
+                    <CreateNewFolder sx={{ fontSize: 14, marginRight: 1, opacity: 0.5 }} /> Remove from Group
+                </MenuItem>
+            )}
+            {showAddToGroup && (
+                <MenuItem onClick={onAddToGroup}>
+                    <CreateNewFolder sx={{ fontSize: 14, marginRight: 1, opacity: 0.7 }} /> Add to Group…
+                </MenuItem>
+            )}
+            {showCreateGroup && (
+                <MenuItem onClick={onCreateGroup}>
+                    <CreateNewFolder sx={{ fontSize: 14, marginRight: 1 }} /> Create Group
+                </MenuItem>
+            )}
         </Menu>
     );
 }
