@@ -34,6 +34,8 @@ const PageVisibilitySection = ({ settings, updateSetting }) => {
           <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.06)', margin: '8px 0' }} />
           <ToggleSwitch label="File Randomizer" checked={settings.fileRandomizerEnabled} onChange={(checked) => updateSetting('fileRandomizerEnabled', checked)} compact />
           <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.06)', margin: '8px 0' }} />
+          <ToggleSwitch label="Sound Banks" checked={settings.bnkExtractEnabled} onChange={(checked) => updateSetting('bnkExtractEnabled', checked)} compact />
+          <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.06)', margin: '8px 0' }} />
           <ToggleSwitch label="Bumpath" checked={settings.bumpathEnabled} onChange={(checked) => updateSetting('bumpathEnabled', checked)} compact />
           <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.06)', margin: '8px 0' }} />
           <ToggleSwitch label="AniPort" checked={settings.aniportEnabled} onChange={(checked) => updateSetting('aniportEnabled', checked)} compact />

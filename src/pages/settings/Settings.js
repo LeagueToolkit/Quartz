@@ -43,6 +43,7 @@ const ModernSettings = () => {
     rgbaEnabled: false,
     toolsEnabled: false,
     fileRandomizerEnabled: false,
+    bnkExtractEnabled: true,
     bumpathEnabled: false,
     aniportEnabled: false, // Default to false on first install
     frogchangerEnabled: false,
@@ -234,6 +235,9 @@ const ModernSettings = () => {
         case 'fileRandomizerEnabled':
           await electronPrefs.set('FileRandomizerEnabled', value);
           break;
+        case 'bnkExtractEnabled':
+          await electronPrefs.set('BnkExtractEnabled', value);
+          break;
         case 'bumpathEnabled':
           await electronPrefs.set('BumpathEnabled', value);
           break;
@@ -261,7 +265,7 @@ const ModernSettings = () => {
       }
 
       // Dispatch settings changed event for navigation updates (matching Settings4.js)
-      if (['themeVariant', 'interfaceStyle', 'paintEnabled', 'portEnabled', 'vfxHubEnabled', 'rgbaEnabled', 'imgRecolorEnabled', 'binEditorEnabled', 'toolsEnabled', 'fileRandomizerEnabled', 'bumpathEnabled', 'aniportEnabled', 'frogchangerEnabled', 'fakeGearEnabled', 'UpscaleEnabled', 'particleRandomizerEnabled', 'wadExplorerEnabled'].includes(key)) {
+      if (['themeVariant', 'interfaceStyle', 'paintEnabled', 'portEnabled', 'vfxHubEnabled', 'rgbaEnabled', 'imgRecolorEnabled', 'binEditorEnabled', 'toolsEnabled', 'fileRandomizerEnabled', 'bnkExtractEnabled', 'bumpathEnabled', 'aniportEnabled', 'frogchangerEnabled', 'fakeGearEnabled', 'UpscaleEnabled', 'particleRandomizerEnabled', 'wadExplorerEnabled'].includes(key)) {
         window.dispatchEvent(new CustomEvent('settingsChanged'));
       }
     } catch (error) {
@@ -420,6 +424,7 @@ const ModernSettings = () => {
         rgbaEnabled: electronPrefs.obj.RGBAEnabled !== false,
         toolsEnabled: electronPrefs.obj.ToolsEnabled !== false,
         fileRandomizerEnabled: electronPrefs.obj.FileRandomizerEnabled !== false,
+        bnkExtractEnabled: electronPrefs.obj.BnkExtractEnabled !== false,
         bumpathEnabled: electronPrefs.obj.BumpathEnabled === true,
         aniportEnabled: electronPrefs.obj.AniPortEnabled === true, // Default to false on first install
         frogchangerEnabled: electronPrefs.obj.FrogChangerEnabled !== false,
@@ -1190,7 +1195,6 @@ const ModernSettings = () => {
 };
 
 export default ModernSettings;
-
 
 
 

@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import CelestialWelcome from '../components/celestia/CelestiaWelcome';
 import CelestiaGuide from '../components/celestia/CelestiaGuide';
+import electronPrefs from '../utils/core/electronPrefs.js';
 
 const MainPage = () => {
   const navigate = useNavigate();
@@ -43,10 +44,7 @@ const MainPage = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const [particles, setParticles] = useState([]);
-  const [showWelcome, setShowWelcome] = useState(() => {
-    const hasShown = localStorage.getItem('celestialShown');
-    return !hasShown;
-  });
+  const [showWelcome, setShowWelcome] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [renderKey, setRenderKey] = useState(0);
 
@@ -96,18 +94,34 @@ const MainPage = () => {
   };
 
   useEffect(() => {
-    if (!showWelcome) {
+    let cancelled = false;
+    (async () => {
       try {
-        const hasSeen = localStorage.getItem('celestiaGuideSeen:main-tour') === '1';
-        if (!hasSeen) setShowGuide(true);
+        await electronPrefs.initPromise;
+        const welcomeSeenPref = electronPrefs.obj.CelestialWelcomeSeen === true;
+        const welcomeSeenLocal = localStorage.getItem('celestialShown') === '1';
+        const hasShownWelcome = welcomeSeenPref || welcomeSeenLocal;
+        if (!cancelled) setShowWelcome(!hasShownWelcome);
+
+        const guideSeenPref = electronPrefs.obj.CelestiaGuideSeenMainTour === true;
+        const guideSeenLocal = localStorage.getItem('celestiaGuideSeen:main-tour') === '1';
+        const hasSeenGuide = guideSeenPref || guideSeenLocal;
+        if (!cancelled && hasShownWelcome && !hasSeenGuide) setShowGuide(true);
       } catch {
-        setShowGuide(true);
+        const hasShown = localStorage.getItem('celestialShown') === '1';
+        if (!cancelled) setShowWelcome(!hasShown);
       }
-    }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!showWelcome) return;
+    try { localStorage.setItem('celestialShown', '1'); } catch { }
+    electronPrefs.set('CelestialWelcomeSeen', true).catch(() => { });
   }, [showWelcome]);
 
   useEffect(() => {
-    if (showWelcome) localStorage.setItem('celestialShown', '1');
     const count = isMobile ? 10 : 20;
     setParticles(Array.from({ length: count }, (_, i) => ({
       id: i,
@@ -166,6 +180,7 @@ const MainPage = () => {
 
   const handleOpenGuide = () => {
     try { localStorage.removeItem('celestiaGuideSeen:main-tour'); } catch { }
+    electronPrefs.set('CelestiaGuideSeenMainTour', false).catch(() => { });
     try { (document.scrollingElement || document.documentElement).scrollTo({ left: 0, top: 0, behavior: 'auto' }); } catch { }
     setShowGuide(true);
   };
@@ -199,12 +214,24 @@ const MainPage = () => {
         display: 'flex', flexDirection: 'column',
       }}
     >
-      {showWelcome && <CelestialWelcome onClose={() => setShowWelcome(false)} />}
+      {showWelcome && (
+        <CelestialWelcome
+          onClose={() => {
+            setShowWelcome(false);
+            setShowGuide(true);
+          }}
+        />
+      )}
       {showGuide && (
         <CelestiaGuide
           id="main-tour"
           steps={guideSteps}
-          onClose={() => { setShowGuide(false); setTimeout(() => setRenderKey((k) => k + 1), 0); }}
+          onClose={() => {
+            try { localStorage.setItem('celestiaGuideSeen:main-tour', '1'); } catch { }
+            electronPrefs.set('CelestiaGuideSeenMainTour', true).catch(() => { });
+            setShowGuide(false);
+            setTimeout(() => setRenderKey((k) => k + 1), 0);
+          }}
           onRestore={undefined}
           onSkipToTop={() => {
             try {
