@@ -21,6 +21,7 @@ function registerDialogChannels({
         title: options?.title || 'Open File',
         properties: options?.properties || ['openFile'],
         filters: options?.filters || [{ name: 'All Files', extensions: ['*'] }],
+        ...(options?.defaultPath ? { defaultPath: options.defaultPath } : {}),
       });
       return result;
     } catch (error) {

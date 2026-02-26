@@ -27,7 +27,7 @@ const { registerHashChannels } = require('./src/main/ipc/channels/hashes');
 const { registerUpdateChannels } = require('./src/main/ipc/channels/update');
 const { registerAudioChannels } = require('./src/main/ipc/channels/audio');
 const { registerUpscaleChannels } = require('./src/main/ipc/channels/upscale');
-const { registerWadBumpathChannels } = require('./src/main/ipc/channels/wadBumpath');
+const { registerWadBumpathChannels, tryLoadNativeWadIndexer } = require('./src/main/ipc/channels/wadBumpath');
 const { registerModelInspectChannels } = require('./src/main/ipc/channels/modelInspect');
 const { registerFileRandomizerChannels } = require('./src/main/ipc/channels/fileRandomizer');
 const { registerBinToolsChannels } = require('./src/main/ipc/channels/binTools');
@@ -328,6 +328,7 @@ registerModelInspectChannels({
   fs,
   app,
   getHashPath,
+  getNativeAddon: tryLoadNativeWadIndexer,
   loadWadModule: async () => importLocalModule('./src/utils/wad/index.js'),
   loadJsRitoModule: async () => importLocalModule('./src/jsritofile/bin.js'),
   loadBinModule: async () => importLocalModule('./src/jsritofile/bin.js'),

@@ -175,13 +175,13 @@ const FrogChanger = () => {
     };
   }, []);
 
-  // Clear main-process hashtable cache when leaving FrogChanger.
+  // Clear main-process caches when leaving FrogChanger.
   useEffect(() => {
     return () => {
-      // Always clear on unmount. Hash tables may still be loaded by extraction/inspect
-      // even when warm preload is disabled.
       window.electronAPI?.hashtable?.setKeepAlive?.(false).catch(() => { });
       window.electronAPI?.hashtable?.clearCache?.();
+      // Delete model inspect temp files (userData/cache/model-inspect/).
+      window.electronAPI?.modelInspect?.cleanup?.();
     };
   }, []);
 

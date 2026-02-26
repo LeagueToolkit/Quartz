@@ -1417,4 +1417,4 @@ function registerWadBumpathChannels({
   });
 }
 
-module.exports = { registerWadBumpathChannels };
+module.exports = { registerWadBumpathChannels, tryLoadNativeWadIndexer };

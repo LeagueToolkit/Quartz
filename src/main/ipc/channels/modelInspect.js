@@ -63,7 +63,24 @@ async function walkFiles(fs, rootDir) {
   return out;
 }
 
-async function loadHashtablesSafe(loadJsRitoModule, hashPath) {
+// Loads only BIN-specific hash tables (FNV-1a field/type/entry names).
+// Much smaller than the full game hashtable load (~800MB). WAD chunk hashes
+// (xxh64) are resolved via the native LMDB addon instead.
+async function loadBinHashtablesSafe(loadJsRitoModule, hashPath) {
+  if (!hashPath) return null;
+  const { loadHashtables } = await loadJsRitoModule();
+  return loadHashtables(hashPath, {
+    tables: [
+      'hashes.binentries.txt',
+      'hashes.binhashes.txt',
+      'hashes.bintypes.txt',
+      'hashes.binfields.txt',
+    ],
+  });
+}
+
+// Fallback: full load when native addon is unavailable (old behaviour).
+async function loadFullHashtablesSafe(loadJsRitoModule, hashPath) {
   if (!hashPath) return null;
   const { loadHashtables } = await loadJsRitoModule();
   return loadHashtables(hashPath, {
@@ -462,12 +479,27 @@ function registerModelInspectChannels({
   fs,
   app,
   getHashPath,
+  getNativeAddon,
   loadWadModule,
   loadJsRitoModule,
   loadBinModule,
   loadBinHasherModule,
   loadWadHasherModule,
 }) {
+  // Clean up entire model-inspect cache directory.
+  ipcMain.handle('modelInspect:cleanup', async () => {
+    try {
+      const userDataPath = app?.getPath?.('userData') || path.join(os.homedir(), 'AppData', 'Roaming', 'Quartz');
+      const cacheRoot = path.join(userDataPath, 'cache', 'model-inspect');
+      if (fs.existsSync(cacheRoot)) {
+        fs.rmSync(cacheRoot, { recursive: true, force: true });
+      }
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
   ipcMain.handle('modelInspect:prepareSkinAssets', async (event, data = {}) => {
     try {
       const {
@@ -496,11 +528,29 @@ function registerModelInspectChannels({
       }
 
       const hashPath = getHashPath(rawHashPath);
-      const hashtables = hashPath && fs.existsSync(hashPath)
-        ? await loadHashtablesSafe(loadJsRitoModule, hashPath)
-        : null;
-      if (!hashtables) {
-        return { error: 'Hash tables are required for Model Inspect path resolution. Download hashes first.' };
+
+      // Use native LMDB addon for WAD hash resolution when available.
+      // Falls back to loading full JS hashtables (old behaviour) when not.
+      const nativeAddon = getNativeAddon?.();
+      let hashtables = null;   // used only in fallback path + BIN parsing
+      let hashResolver = null; // native LMDB path
+
+      if (nativeAddon?.resolveHashes && hashPath) {
+        hashResolver = (hexHashes) => nativeAddon.resolveHashes(hexHashes, hashPath);
+        // BIN parsing still needs FNV-1a tables — load only the small bin files.
+        hashtables = hashPath && fs.existsSync(hashPath)
+          ? await loadBinHashtablesSafe(loadJsRitoModule, hashPath)
+          : null;
+        console.log('[modelInspect] Using native LMDB for WAD hashes + bin-only JS tables for BIN parsing');
+      } else {
+        // Native addon unavailable — load full hashtables as before.
+        hashtables = hashPath && fs.existsSync(hashPath)
+          ? await loadFullHashtablesSafe(loadJsRitoModule, hashPath)
+          : null;
+        if (!hashtables) {
+          return { error: 'Hash tables are required for Model Inspect path resolution. Download hashes first.' };
+        }
+        console.log('[modelInspect] Native addon unavailable — using full JS hashtables');
       }
 
       const userDataPath = app?.getPath?.('userData') || path.join(os.homedir(), 'AppData', 'Roaming', 'Quartz');
@@ -551,10 +601,13 @@ function registerModelInspectChannels({
 
       sendProgress('Preparing model inspection assets...');
       const { unpackWAD } = await loadWadModule();
+      // Pass hashResolver (native LMDB) when available; null hashtables since chunks are
+      // resolved via hashResolver inside unpackWAD. Falls back to JS hashtables when native
+      // addon is not present (hashtables is populated in that path above).
       await unpackWAD(
         wadFilePath,
         filesDir,
-        hashtables,
+        hashResolver ? null : hashtables,
         (hash, chunk) => {
           const rel = toPosix(hash).toLowerCase();
           // Unresolved hashes can still contain required BINs; include them and rely on
@@ -602,7 +655,8 @@ function registerModelInspectChannels({
         },
         (_count, message) => {
           if (message) sendProgress(message);
-        }
+        },
+        hashResolver ? { hashResolver } : {}
       );
 
       sendProgress('Scanning extracted model subset...');

@@ -77,6 +77,7 @@ window.electronAPI = {
     prepareSkinAssets: (params) => ipcRenderer.invoke('modelInspect:prepareSkinAssets', params),
     onProgress: (callback) => ipcRenderer.on('modelInspect:progress', callback),
     offProgress: (callback) => ipcRenderer.removeListener('modelInspect:progress', callback),
+    cleanup: () => ipcRenderer.invoke('modelInspect:cleanup'),
   },
 
 

@@ -134,8 +134,23 @@ export async function unpackWAD(wadFilePath, outputDir, hashtables = null, filte
 
         // -------------------------------------------------------------------------
         // 3. Unhash
+        // options.hashResolver(hexHashes) => string[] — native LMDB path (skips JS hashtable load)
+        // hashtables                                  — legacy JS in-memory path
         // -------------------------------------------------------------------------
-        if (hashtables) {
+        const { hashResolver } = options || {};
+        if (typeof hashResolver === 'function') {
+            const t = Date.now();
+            const hexHashes = wad.chunks.map(c => String(c.hash));
+            const resolved = hashResolver(hexHashes);
+            let resolvedCount = 0;
+            for (let i = 0; i < wad.chunks.length; i++) {
+                if (resolved?.[i]) {
+                    wad.chunks[i].hash = resolved[i];
+                    resolvedCount++;
+                }
+            }
+            console.log(`[WADTool] hashResolver: ${resolvedCount}/${wad.chunks.length} resolved in ${Date.now() - t}ms`);
+        } else if (hashtables) {
             const t = Date.now();
             wad.unHash(hashtables);
             console.log(`[WADTool] Unhash ${Date.now() - t}ms`);

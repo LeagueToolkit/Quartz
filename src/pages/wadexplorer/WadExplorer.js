@@ -45,10 +45,11 @@ async function openDirectoryDialog() {
   return result.filePaths[0];
 }
 
-async function openWadFileDialog() {
+async function openWadFileDialog(defaultPath) {
   const result = await ipcRenderer.invoke('dialog:openFile', {
     title: 'Open WAD File',
     filters: [{ name: 'WAD Client', extensions: ['wad.client'] }, { name: 'All Files', extensions: ['*'] }],
+    ...(defaultPath ? { defaultPath } : {}),
   });
   if (result?.canceled || !result?.filePaths?.length) return null;
   return result.filePaths[0];
@@ -140,6 +141,7 @@ function flattenFiles(nodes, out = []) {
 }
 
 const MODEL_TEXTURE_EXTS = new Set(['dds', 'tex', 'png', 'jpg', 'jpeg', 'tga', 'bmp', 'webp']);
+const TEXTURE_PREVIEW_LIMIT_BYTES = 20 * 1024 * 1024;
 
 function isTextureFilePath(filePath) {
   return MODEL_TEXTURE_EXTS.has(extOfPath(filePath));
@@ -271,12 +273,19 @@ function FolderTextureGallery({ selectedNode, hashPath }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [largePreviewPrompt, setLargePreviewPrompt] = useState(null);
+  const [allowLargePreview, setAllowLargePreview] = useState(false);
+
+  useEffect(() => {
+    setAllowLargePreview(false);
+  }, [selectedNode?.wadPath, selectedNode?.node?.path]);
 
   useEffect(() => {
     let cancelled = false;
     setItems([]);
     setError('');
     setLoading(false);
+    setLargePreviewPrompt(null);
 
     if (!selectedNode || selectedNode.type !== 'dir') return () => { cancelled = true; };
 
@@ -319,6 +328,18 @@ function FolderTextureGallery({ selectedNode, hashPath }) {
         return;
       }
 
+      const totalPreviewBytes = candidates.reduce((sum, file) => sum + (Number(file.decompressedSize) || 0), 0);
+      if (!allowLargePreview && totalPreviewBytes > TEXTURE_PREVIEW_LIMIT_BYTES) {
+        if (!cancelled) {
+          setLargePreviewPrompt({
+            count: candidates.length,
+            totalSize: totalPreviewBytes,
+          });
+          setLoading(false);
+        }
+        return;
+      }
+
       setLoading(true);
       const CONCURRENCY = 4;
       let idx = 0;
@@ -349,7 +370,7 @@ function FolderTextureGallery({ selectedNode, hashPath }) {
 
     run();
     return () => { cancelled = true; };
-  }, [selectedNode, hashPath]);
+  }, [selectedNode, hashPath, allowLargePreview]);
 
   if (!selectedNode || selectedNode.type !== 'dir') return null;
 
@@ -361,7 +382,31 @@ function FolderTextureGallery({ selectedNode, hashPath }) {
 
       {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
       {loading && <div style={{ fontSize: 12, color: 'var(--text-2)', opacity: 0.7 }}>Loading textures…</div>}
-      {!loading && items.length === 0 && !error && (
+      {largePreviewPrompt && !loading && !error && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 10px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, background: 'rgba(255,255,255,0.03)' }}>
+          <div style={{ fontSize: 12, color: 'var(--text-2)', opacity: 0.9 }}>
+            This folder will preview {largePreviewPrompt.count} textures ({fmtBytes(largePreviewPrompt.totalSize)}). Load them?
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={() => setAllowLargePreview(true)}
+              style={{
+                background: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.18)',
+                color: 'var(--text)',
+                borderRadius: 6,
+                fontSize: 12,
+                padding: '6px 10px',
+                cursor: 'pointer',
+              }}
+            >
+              Load textures
+            </button>
+          </div>
+        </div>
+      )}
+      {!loading && items.length === 0 && !error && !largePreviewPrompt && (
         <div style={{ fontSize: 12, color: 'var(--text-2)', opacity: 0.6 }}>No .dds/.tex files found in this folder.</div>
       )}
 
@@ -385,6 +430,8 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewError, setPreviewError] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewLarge, setPreviewLarge] = useState(null);
+  const [previewForceKey, setPreviewForceKey] = useState('');
   const [manifest, setManifest] = useState(null);
   const [manifestLoading, setManifestLoading] = useState(false);
   const [manifestError, setManifestError] = useState('');
@@ -404,12 +451,16 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
     tempDirRef.current = null;
     try {
       const fs = window.require?.('fs');
-      if (fs) fs.rm(dir, { recursive: true, force: true }, () => {});
-    } catch (_) {}
+      if (fs) fs.rm(dir, { recursive: true, force: true }, () => { });
+    } catch (_) { }
   }, []);
 
   // Clean up temp dir on unmount
   useEffect(() => () => cleanupTempDir(), [cleanupTempDir]);
+
+  useEffect(() => {
+    setPreviewForceKey('');
+  }, [selectedNode?.wadPath, selectedNode?.node?.chunkId]);
 
   // Texture preview for dds/tex files
   useEffect(() => {
@@ -417,6 +468,7 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
     setPreviewUrl('');
     setPreviewError('');
     setPreviewLoading(false);
+    setPreviewLarge(null);
 
     if (!selectedNode || selectedNode.type !== 'file') return () => { cancelled = true; };
 
@@ -428,6 +480,13 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
     const chunkId = Number(node.chunkId);
     if (!Number.isInteger(chunkId) || chunkId < 0) {
       setPreviewError('Preview unavailable: open this WAD and select the file from loaded tree.');
+      return () => { cancelled = true; };
+    }
+
+    const previewKey = `${wadPath}:${chunkId}`;
+    const decompressedSize = Number(node.decompressedSize) || 0;
+    if (decompressedSize > TEXTURE_PREVIEW_LIMIT_BYTES && previewForceKey !== previewKey) {
+      setPreviewLarge({ size: decompressedSize, previewKey });
       return () => { cancelled = true; };
     }
 
@@ -454,7 +513,7 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
       });
 
     return () => { cancelled = true; };
-  }, [selectedNode]);
+  }, [selectedNode, previewForceKey]);
 
   // Bin preview for .bin files
   useEffect(() => {
@@ -681,11 +740,34 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
 
   return (
     <div style={{ ...S.rightPanel, flexDirection: 'column', padding: '22px 24px', gap: 4, overflowY: 'auto' }}>
-      {(previewLoading || previewUrl || previewError) && (
+      {(previewLoading || previewUrl || previewError || previewLarge) && (
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 11, color: 'var(--text-2)', opacity: 0.75, marginBottom: 6 }}>Preview</div>
           {previewLoading ? (
             <div style={{ fontSize: 12, color: 'var(--text-2)', opacity: 0.75 }}>Rendering texture…</div>
+          ) : previewLarge ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-2)', opacity: 0.88 }}>
+                This texture is {fmtBytes(previewLarge.size)}. Load it?
+              </div>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setPreviewForceKey(previewLarge.previewKey)}
+                  style={{
+                    background: 'rgba(255,255,255,0.08)',
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    color: 'var(--text)',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    padding: '6px 10px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Load anyway
+                </button>
+              </div>
+            </div>
           ) : previewError ? (
             <div style={{ fontSize: 12, color: '#ef4444', opacity: 0.9 }}>{previewError}</div>
           ) : (
@@ -945,7 +1027,11 @@ export default function WadExplorer() {
   }, [warmHashCache]);
 
   const handleOpenSingleWad = useCallback(async () => {
-    const filePath = await openWadFileDialog();
+    const nodePath = window.require?.('path');
+    const defaultDir = gamePath && nodePath
+      ? nodePath.join(gamePath, 'DATA', 'FINAL')
+      : (gamePath || undefined);
+    const filePath = await openWadFileDialog(defaultDir);
     if (!filePath) return;
     if (hashPath) {
       setIsPrimeLoading(true);
@@ -953,7 +1039,7 @@ export default function WadExplorer() {
       setIsPrimeLoading(false);
     }
     loadSingleWad(filePath);
-  }, [loadSingleWad, hashPath]);
+  }, [loadSingleWad, hashPath, gamePath]);
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
