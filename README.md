@@ -11,6 +11,7 @@ A comprehensive toolkit for League of Legends modding and visual effects editing
 - **[JADE](https://github.com/LeagueToolkit/Jade-League-Bin-Editor)** - Bin Editor by Bud, fully integrated into Quartz
 - **[LtMAO](https://github.com/tarngaina/LtMAO)** - One of the most impressive tools for League modding, without this Quartz wouldnt be possible
 - **[Bnk-Gui](https://github.com/Morilli/bnk-extract-GUI)** - A Bnk Gui which made it even possible for me to fully integrate .bnk and .wpk support
+- **[League Toolkit Rust](https://github.com/LeagueToolkit/league-toolkit)** - An impressive library in rust for league modding
 
 <img width="1187" height="784" alt="image" src="https://github.com/user-attachments/assets/7ad56d42-d7dd-49f0-b599-0fb861dc747b" />
 
