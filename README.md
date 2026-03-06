@@ -1,20 +1,16 @@
 # Quartz - League of Legends Modding Suite
 
-A comprehensive toolkit for League of Legends modding and visual effects editing, built with Electron and React.
+A comprehensive toolkit for League of Legends modding and visual effects editing, built with Electron and React. Javascript and Rust
 
-## ⚠️ IMPORTANT SETUP REQUIRED ⚠️
 
-**Before using any features, you MUST configure the following in Settings:**
-
-1. **Hash Files**: Hash files are automatically downloaded and managed. If missing, a reminder will appear on first launch to download them automatically.
-2. **Ritobin CLI**: The ritobin executable is automatically bundled and configured. You can set a custom path in Settings if needed.
-
-**These settings are required for most Quartz features to function properly!**
 
 ## 🔗 Key Dependencies & Credits
 
 - **[Upscayl](https://github.com/upscayl)** - Free and open source AI Image Upscaler for Linux, MacOS and Windows
 - **[Upscayl NCNN](https://github.com/upscayl/upscayl-ncnn)** - The Upscayl backend powered by the NCNN framework and Real-ESRGAN architecture
+- **[JADE](https://github.com/LeagueToolkit/Jade-League-Bin-Editor)** - Bin Editor by Bud, fully integrated into Quartz
+- **[LtMAO](https://github.com/tarngaina/LtMAO)** - One of the most impressive tools for League modding, without this Quartz wouldnt be possible
+- **[Bnk-Gui](https://github.com/Morilli/bnk-extract-GUI)** - A Bnk Gui which made it even possible for me to fully integrate .bnk and .wpk support
 
 <img width="1187" height="784" alt="image" src="https://github.com/user-attachments/assets/7ad56d42-d7dd-49f0-b599-0fb861dc747b" />
 
