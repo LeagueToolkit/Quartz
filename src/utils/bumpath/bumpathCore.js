@@ -65,6 +65,7 @@ export class BumpathCore {
         this.hashtablesPath = null; // Path to hashtables directory
         this.nativeAddon = null; // Native addon for hash resolution
         this.skipSfxRepath = false; // Optional: bypass SFX path repathing
+        this.linkedBins = {}; // Map: unifyPath -> [linked unify paths]
     }
 
     /**
@@ -87,6 +88,7 @@ export class BumpathCore {
         this.entryName = {};
         this.entryTypeName = {};
         this.skipSfxRepath = false;
+        this.linkedBins = {};
     }
 
     _isBlockedSfxPath(value) {
@@ -113,6 +115,7 @@ export class BumpathCore {
             // Normalize the source directory path
             const normalizedSourceDir = path.resolve(sourceDir);
             await this._discoverFiles(normalizedSourceDir, normalizedSourceDir);
+            await this._applyHashedFilesMap(normalizedSourceDir);
         }
 
         // Convert to frontend format (like Python backend does)
@@ -131,6 +134,48 @@ export class BumpathCore {
             source_files: this.sourceFiles,
             source_bins: sourceBinsFormatted
         };
+    }
+
+    /**
+     * Load hashed_files.json and map original paths to hashed files.
+     * This allows linked BINs and asset lookups to resolve even when
+     * extraction fell back to hashed filenames.
+     * @private
+     */
+    async _applyHashedFilesMap(sourceDir) {
+        if (!fs || !path) {
+            await initNodeModules();
+        }
+        if (!fs || !fs.existsSync(sourceDir)) return;
+
+        const jsonPath = path.join(sourceDir, 'hashed_files.json');
+        if (!fs.existsSync(jsonPath)) return;
+
+        try {
+            const raw = fs.readFileSync(jsonPath, 'utf8');
+            const map = JSON.parse(raw);
+            if (!map || typeof map !== 'object') return;
+
+            for (const [hashedName, originalPath] of Object.entries(map)) {
+                if (!hashedName || typeof originalPath !== 'string') continue;
+                const fullPath = path.join(sourceDir, hashedName);
+                if (!fs.existsSync(fullPath)) continue;
+
+                const normalizedRel = normalizePath(originalPath);
+                const unify = unifyPath(normalizedRel);
+                if (!this.sourceFiles[unify]) {
+                    this.sourceFiles[unify] = {
+                        fullPath,
+                        relPath: normalizedRel
+                    };
+                }
+                if (normalizedRel.toLowerCase().endsWith('.bin') && !(unify in this.sourceBins)) {
+                    this.sourceBins[unify] = false;
+                }
+            }
+        } catch (error) {
+            console.warn(`[BumpathCore] Failed to read hashed_files.json at ${jsonPath}:`, error.message);
+        }
     }
 
     /**
@@ -199,6 +244,7 @@ export class BumpathCore {
         this.entryPrefix = {};
         this.entryName = {};
         this.entryTypeName = {};
+        this.linkedBins = {};
 
         // Load hashtables if path provided
         if (hashtablesPath && fs && fs.existsSync(hashtablesPath)) {
@@ -249,8 +295,11 @@ export class BumpathCore {
             if (!fileInfo) continue;
 
             try {
+                if (!this.linkedBins[unifyPathKey]) {
+                    this.linkedBins[unifyPathKey] = [];
+                }
                 // Scan this BIN
-                await this._scanBin(fileInfo.fullPath);
+                await this._scanBin(fileInfo.fullPath, unifyPathKey);
                 scannedBins.add(unifyPathKey);
 
                 // Read the BIN to get its links
@@ -269,6 +318,13 @@ export class BumpathCore {
                         if (this.sourceFiles[linkUnify] && !scannedBins.has(linkUnify)) {
                             console.log(`[BumpathCore] Found linked BIN: ${link} -> ${linkUnify}`);
                             binsToScan.push(linkUnify);
+                            this.scannedTree['All_BINs'][linkUnify] = {
+                                exists: true,
+                                path: link
+                            };
+                            if (!this.linkedBins[unifyPathKey].includes(linkUnify)) {
+                                this.linkedBins[unifyPathKey].push(linkUnify);
+                            }
                         } else {
                             // Try alternative matching - sometimes links might be in different format
                             // Check if any source file matches the link path
@@ -278,8 +334,22 @@ export class BumpathCore {
                                         console.log(`[BumpathCore] Found linked BIN (alternative match): ${link} -> ${unify}`);
                                         binsToScan.push(unify);
                                     }
+                                    this.scannedTree['All_BINs'][unify] = {
+                                        exists: true,
+                                        path: link
+                                    };
+                                    if (!this.linkedBins[unifyPathKey].includes(unify)) {
+                                        this.linkedBins[unifyPathKey].push(unify);
+                                    }
                                     break;
                                 }
+                            }
+
+                            if (!this.sourceFiles[linkUnify]) {
+                                this.scannedTree['All_BINs'][linkUnify] = {
+                                    exists: false,
+                                    path: link
+                                };
                             }
                         }
                     }
@@ -300,7 +370,7 @@ export class BumpathCore {
      * Scan a single BIN file
      * @private
      */
-    async _scanBin(binPath) {
+    async _scanBin(binPath, _unifyPathKey = null) {
         // Initialize fs/path if not already done
         if (!fs || !path) {
             await initNodeModules();
@@ -1059,19 +1129,32 @@ export class BumpathCore {
                 }
                 const mainBin = await new BIN().read(fs.readFileSync(outputPath), this.hashtables);
                 console.log(`[BumpathCore] Main BIN has ${mainBin.links.length} links`);
-                const linkedBins = await this._getAllLinkedBins(mainBin, outputDir, processedFiles);
-                console.log(`[BumpathCore] Found ${linkedBins.length} linked BINs to combine`);
 
-                if (linkedBins.length > 0) {
+                const linkedUnifyFiles = this._flatListLinkedBins(unify);
+                console.log(`[BumpathCore] Found ${linkedUnifyFiles.length} linked BINs to combine`);
+
+                if (linkedUnifyFiles.length > 0) {
                     console.log(`[BumpathCore] Starting combine: main has ${mainBin.entries.length} entries, ${mainBin.links.length} links`);
 
-                    // Combine entries
                     const existingHashes = new Set(
                         mainBin.entries.map(e => e.hash.toLowerCase())
                     );
                     let totalAdded = 0;
+                    const mergedUnifySet = new Set();
 
-                    for (const linkedBinPath of linkedBins) {
+                    for (const linkedUnify of linkedUnifyFiles) {
+                        let linkedBinPath = processedFiles.get(linkedUnify);
+                        if (!linkedBinPath) {
+                            const sourceInfo = this.sourceFiles[linkedUnify];
+                            if (sourceInfo && fs.existsSync(sourceInfo.fullPath)) {
+                                linkedBinPath = sourceInfo.fullPath;
+                            }
+                        }
+                        if (!linkedBinPath || !fs.existsSync(linkedBinPath)) {
+                            console.log(`[BumpathCore] Linked BIN not found for unify: ${linkedUnify}`);
+                            continue;
+                        }
+
                         const linkedBin = await new BIN().read(fs.readFileSync(linkedBinPath), this.hashtables);
 
                         if (!linkedBin || !Array.isArray(linkedBin.entries)) {
@@ -1090,51 +1173,20 @@ export class BumpathCore {
                             }
                         }
 
-                        // Remove linked bin file
-                        if (fs.existsSync(linkedBinPath)) {
+                        mergedUnifySet.add(linkedUnify);
+
+                        if (fs.existsSync(linkedBinPath) && linkedBinPath.startsWith(outputDir)) {
                             fs.unlinkSync(linkedBinPath);
                         }
                     }
 
                     console.log(`[BumpathCore] Added ${totalAdded} new entries. Main now has ${mainBin.entries.length} entries`);
 
-                    // Remove linked bins from links array
-                    // We need to match the link paths from mainBin.links to the linked bins we found
-                    // Create a map of linked bin paths to their original link strings
-                    const linkedBinPathToLink = new Map();
-                    for (const link of mainBin.links) {
-                        const linkUnify = unifyPath(normalizePath(link));
-                        // Try to find which linked bin path corresponds to this link
-                        for (const linkedBinPath of linkedBins) {
-                            const linkedBinRelPath = path.relative(outputDir, linkedBinPath);
-                            const linkedBinUnify = unifyPath(normalizePath(linkedBinRelPath));
-
-                            // Also try matching by source file
-                            const sourceInfo = this.sourceFiles[linkUnify];
-                            if (sourceInfo) {
-                                const sourceRelPath = normalizePath(sourceInfo.relPath);
-                                if (normalizePath(linkedBinRelPath) === sourceRelPath) {
-                                    linkedBinPathToLink.set(linkedBinPath, link);
-                                    break;
-                                }
-                            }
-
-                            // Try direct unify match
-                            if (linkUnify === linkedBinUnify) {
-                                linkedBinPathToLink.set(linkedBinPath, link);
-                                break;
-                            }
-                        }
-                    }
-
-                    // Create set of links to remove
-                    const linksToRemove = new Set(Array.from(linkedBinPathToLink.values()));
-
                     const originalLinkCount = mainBin.links.length;
                     mainBin.links = mainBin.links.filter(link => {
-                        const normalizedLink = normalizePath(link);
-                        const shouldRemove = linksToRemove.has(link) ||
-                            linksToRemove.has(normalizedLink);
+                        if (isCharacterBin(link)) return true;
+                        const linkUnify = unifyPath(normalizePath(link));
+                        const shouldRemove = mergedUnifySet.has(linkUnify);
                         if (shouldRemove) {
                             console.log(`[BumpathCore] Removing link: ${link}`);
                         }
@@ -1143,12 +1195,11 @@ export class BumpathCore {
 
                     console.log(`[BumpathCore] Removed ${originalLinkCount - mainBin.links.length} links. Main now has ${mainBin.links.length} links`);
 
-                    // Write combined BIN
                     await mainBin.write(outputPath);
                     console.log(`[BumpathCore] Wrote combined BIN to ${outputPath}`);
 
                     if (progressCallback) {
-                        progressCallback(0, `Combined ${linkedBins.length} linked BINs into ${path.basename(outputPath)}`);
+                        progressCallback(0, `Combined ${linkedUnifyFiles.length} linked BINs into ${path.basename(outputPath)}`);
                     }
                 } else {
                     console.log(`[BumpathCore] No linked BINs found to combine`);
@@ -1157,6 +1208,25 @@ export class BumpathCore {
                 console.error(`Error combining linked BINs for ${unify}:`, error);
             }
         }
+    }
+
+    /**
+     * Flatten linked BINs recursively (LTMAO behavior).
+     * @private
+     */
+    _flatListLinkedBins(sourceUnify) {
+        const result = [];
+        const visit = (unifyKey) => {
+            const links = this.linkedBins[unifyKey] || [];
+            for (const linked of links) {
+                if (linked === sourceUnify) continue;
+                if (result.includes(linked)) continue;
+                result.push(linked);
+                visit(linked);
+            }
+        };
+        visit(sourceUnify);
+        return result;
     }
 
     /**
