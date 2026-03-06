@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { detectHashedContent } from '../../../components/modals/RitobinWarningModal';
 import { ToPyWithPath } from '../../../utils/io/fileOperations.js';
-import { loadFileWithBackup, createBackup } from '../../../utils/io/backupManager.js';
+import { createBackup } from '../../../utils/io/backupManager.js';
 import { parseVfxEmitters } from '../../../utils/vfx/vfxEmitterParser.js';
 import { openAssetPreview } from '../../../utils/assets/assetPreviewEvent.js';
+import { emitJadeMissingModal, isJadeMissingResult } from '../../../utils/interop/jadeInterop.js';
 import { useCombineLinkedBinsCheck } from '../../../hooks/useCombineLinkedBinsCheck.js';
 
 const fs = window.require ? window.require('fs') : null;
@@ -32,6 +33,7 @@ export default function useVfxFile(
         donorMode = 'port-donor',
         enableDonor = true,
         autoReloadDonor = true,
+        onExternalOverwriteRef = null,
     } = options;
     const [targetPath, setTargetPath] = useState('This will show target bin');
     const [donorPath, setDonorPath] = useState('This will show donor bin');
@@ -41,6 +43,12 @@ export default function useVfxFile(
     const [donorSystems, setDonorSystems] = useState({});
     const [showRitoBinErrorDialog, setShowRitoBinErrorDialog] = useState(false);
     const [showBackupViewer, setShowBackupViewer] = useState(false);
+    const [externalChangeModal, setExternalChangeModal] = useState({
+        open: false,
+        handoff: null,
+        localContent: '',
+        diskContent: '',
+    });
     const { checkAndPromptCombine, combineModalState, handleCombineYes, handleCombineNo } = useCombineLinkedBinsCheck();
     const hasResourceResolver = useMemo(
         () => /\bResourceResolver\s*\{/m.test(targetPyContent || ''),
@@ -51,8 +59,11 @@ export default function useVfxFile(
         [targetPyContent]
     );
 
-    const processTargetBin = useCallback(async (filePath) => {
+    const processTargetBin = useCallback(async (filePath, options = {}) => {
         if (!filePath) return;
+        const { skipBackup = false } = options;
+        const preserveUndo = options?.preserveUndo === true;
+        const forceRefreshFromBin = options?.forceRefreshFromBin === true;
         try {
             console.log(`[useVfxFile] processTargetBin: Starting for ${filePath}`);
             setIsProcessing(true);
@@ -68,25 +79,29 @@ export default function useVfxFile(
             console.log(`[useVfxFile] Opening ${isPy ? '.py' : '.bin'} file. Associated .py: ${pyFilePath}`);
 
             let pyContent;
-            if (fs?.existsSync(pyFilePath)) {
+            if (forceRefreshFromBin && !isPy) {
+                console.log(`[useVfxFile] forceRefreshFromBin enabled. Regenerating .py from .bin.`);
+                setProcessingText('Refreshing from .bin...');
+                pyContent = await ToPyWithPath(filePath);
+            } else if (fs?.existsSync(pyFilePath)) {
                 console.log(`[useVfxFile] .py exists. Loading from disk.`);
                 setProcessingText('Loading existing .py file...');
-                pyContent = loadFileWithBackup(pyFilePath, 'port');
+                pyContent = fs.readFileSync(pyFilePath, 'utf8');
                 await new Promise(resolve => setTimeout(resolve, 500));
             } else if (!isPy) {
                 console.log(`[useVfxFile] .py NOT found. Converting .bin via ToPyWithPath.`);
                 await checkAndPromptCombine(filePath);
                 setProcessingText('Converting .bin to .py...');
                 pyContent = await ToPyWithPath(filePath);
-                if (fs?.existsSync(pyFilePath)) {
-                    console.log(`[useVfxFile] Conversion successful, created backup for: ${pyFilePath}`);
-                    createBackup(pyFilePath, pyContent, 'port');
-                }
             } else {
                 throw new Error('Target .py file does not exist');
             }
 
             console.log(`[useVfxFile] pyContent loaded. Length: ${pyContent?.length || 0} characters.`);
+            if (!skipBackup && fs?.existsSync(pyFilePath)) {
+                console.log(`[useVfxFile] Creating target backup at parse time: ${pyFilePath}`);
+                createBackup(pyFilePath, pyContent, 'port');
+            }
             setTargetPyContent(pyContent);
             setFileSaved(true);
 
@@ -112,7 +127,9 @@ export default function useVfxFile(
 
             setStatusMessage(`Target bin loaded: ${Object.keys(systems).length} systems found`);
             setDeletedEmitters(new Map());
-            setUndoHistory([]);
+            if (!preserveUndo) {
+                setUndoHistory([]);
+            }
             setSelectedTargetSystem(null);
 
             try {
@@ -127,6 +144,61 @@ export default function useVfxFile(
             setProcessingText('');
         }
     }, [setIsProcessing, setStatusMessage, setProcessingText, setFileSaved, setRitobinWarningContent, setShowRitobinWarning, setDeletedEmitters, setUndoHistory, setSelectedTargetSystem, setCollapsedTargetSystems, electronPrefs]);
+
+    const getDiskContentForBin = useCallback(async (binFilePath) => {
+        try {
+            if (!binFilePath || !fs) return '';
+            if (binFilePath.toLowerCase().endsWith('.bin')) {
+                await ToPyWithPath(binFilePath);
+            }
+            const pyPath = binFilePath.replace(/\.bin$/i, '.py');
+            if (fs.existsSync(pyPath)) {
+                return fs.readFileSync(pyPath, 'utf8');
+            }
+            return '';
+        } catch {
+            return '';
+        }
+    }, []);
+
+    useEffect(() => {
+        const openFromHandoff = async (handoff) => {
+            if (!handoff || !handoff.bin_path) return;
+            const mode = String(handoff.mode || 'paint').toLowerCase();
+            const action = String(handoff.action || 'open-bin').toLowerCase();
+            if (mode !== 'port') return;
+            if (!handoff.bin_path.toLowerCase().endsWith('.bin')) return;
+
+            const isReload = action === 'reload-bin';
+            const isSameFile = targetPath && String(targetPath).toLowerCase() === String(handoff.bin_path).toLowerCase();
+            const hasUnsaved = Boolean(window.__DL_unsavedBin);
+            if (isReload && isSameFile && hasUnsaved) {
+                setExternalChangeModal({
+                    open: true,
+                    handoff,
+                    localContent: targetPyContent || '',
+                    diskContent: await getDiskContentForBin(handoff.bin_path),
+                });
+                return;
+            }
+
+            await processTargetBin(handoff.bin_path, {
+                preserveUndo: action === 'reload-bin',
+                forceRefreshFromBin: isReload,
+            });
+            if (window.__QUARTZ_PENDING_HANDOFF === handoff) {
+                window.__QUARTZ_PENDING_HANDOFF = null;
+            }
+        };
+
+        const handleInterop = (event) => {
+            openFromHandoff(event?.detail || {});
+        };
+
+        window.addEventListener('quartz-interop-handoff', handleInterop);
+        openFromHandoff(window.__QUARTZ_PENDING_HANDOFF);
+        return () => window.removeEventListener('quartz-interop-handoff', handleInterop);
+    }, [getDiskContentForBin, processTargetBin, targetPath, targetPyContent]);
 
     const processDonorBin = useCallback(async (filePath) => {
         if (!filePath) return;
@@ -148,17 +220,13 @@ export default function useVfxFile(
             if (fs?.existsSync(pyFilePath)) {
                 console.log(`[useVfxFile] .py exists. Loading from disk.`);
                 setProcessingText('Loading existing .py file...');
-                pyContent = loadFileWithBackup(pyFilePath, 'port');
+                pyContent = fs.readFileSync(pyFilePath, 'utf8');
                 await new Promise(resolve => setTimeout(resolve, 500));
             } else if (!isPy) {
                 console.log(`[useVfxFile] .py NOT found. Converting .bin via ToPyWithPath.`);
                 await checkAndPromptCombine(filePath);
                 setProcessingText('Converting .bin to .py...');
                 pyContent = await ToPyWithPath(filePath);
-                if (fs?.existsSync(pyFilePath)) {
-                    console.log(`[useVfxFile] Conversion successful, created backup for: ${pyFilePath}`);
-                    createBackup(pyFilePath, pyContent, 'port');
-                }
             } else {
                 throw new Error('Donor .py file does not exist');
             }
@@ -310,21 +378,101 @@ export default function useVfxFile(
         return () => clearTimeout(timer);
     }, []); // eslint-disable-line
 
-    const performBackupRestore = useCallback(() => {
+    const performBackupRestore = useCallback(async (restoreMeta = null) => {
         try {
-            setStatusMessage('Backup restored - reloading file...');
-            const pyFilePath = targetPath.replace('.bin', '.py');
-            if (fs?.existsSync(pyFilePath)) {
-                const restoredContent = fs.readFileSync(pyFilePath, 'utf8');
-                setSelectedTargetSystem(null);
-                setDeletedEmitters(new Map());
-                setUndoHistory([]);
-                setTargetPyContent(restoredContent);
-                setTargetSystems(parseVfxEmitters(restoredContent) || {});
-                setFileSaved(true);
+            console.log('[useVfxFile] performBackupRestore called, targetPath:', targetPath, 'restoreMeta:', !!restoreMeta);
+            setStatusMessage('Backup restored - reopening target file...');
+            if (!targetPath || targetPath === 'This will show target bin') {
+                console.warn('[useVfxFile] performBackupRestore: no valid targetPath, aborting');
+                return;
             }
-        } catch (e) { }
-    }, [targetPath, setSelectedTargetSystem, setDeletedEmitters, setUndoHistory, setFileSaved, setStatusMessage]);
+
+            const pyFilePath = /\.py$/i.test(targetPath)
+                ? targetPath
+                : targetPath.replace(/\.bin$/i, '.py');
+            if (!pyFilePath) return;
+
+            const restoredContent = (restoreMeta && typeof restoreMeta.content === 'string')
+                ? restoreMeta.content
+                : (fs?.existsSync(pyFilePath) ? fs.readFileSync(pyFilePath, 'utf8') : null);
+
+            if (!restoredContent) {
+                setStatusMessage('Error restoring backup: restored content is empty');
+                return;
+            }
+
+            if (fs) {
+                fs.writeFileSync(pyFilePath, restoredContent, 'utf8');
+            }
+            console.log('[useVfxFile] performBackupRestore: .py written, calling processTargetBin...');
+            // Reuse the exact same load/parse pipeline as reopening target bin,
+            // while skipping backup creation to avoid backup-on-restore loops.
+            await processTargetBin(targetPath, { skipBackup: true });
+            // Restoring changes the .py on disk; keep Save enabled so user can write back to .bin.
+            setFileSaved(false);
+            setStatusMessage('Backup restored and target reloaded - click Save to apply to .bin');
+        } catch (error) {
+            console.error('[useVfxFile] Error restoring backup:', error);
+            setStatusMessage(`Error restoring backup: ${error.message}`);
+        }
+    }, [targetPath, setStatusMessage, processTargetBin, setFileSaved]);
+
+    const handleOpenInJade = useCallback(async () => {
+        if (targetPath === 'This will show target bin') {
+            setStatusMessage('No target bin is currently loaded');
+            return;
+        }
+
+        if (!window.require) {
+            setStatusMessage('Open in Jade is only available in the desktop app');
+            return;
+        }
+
+        try {
+            const { ipcRenderer } = window.require('electron');
+            const result = await ipcRenderer.invoke('interop:sendToJade', {
+                binPath: targetPath,
+                sourceMode: 'port',
+            });
+            if (isJadeMissingResult(result)) {
+                emitJadeMissingModal(result?.warning || result?.error || '');
+            }
+
+            if (result?.success) {
+                setStatusMessage(result?.warning || 'Sent target bin to Jade');
+            } else {
+                setStatusMessage(result?.error || 'Failed to open Jade');
+            }
+        } catch (error) {
+            setStatusMessage(`Failed to open Jade: ${error.message || error}`);
+        }
+    }, [targetPath, setStatusMessage]);
+
+    const handleExternalConflictKeepLocal = useCallback(() => {
+        setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' });
+        setStatusMessage('Kept local unsaved changes');
+    }, [setStatusMessage]);
+
+    const handleExternalConflictReload = useCallback(async () => {
+        const handoff = externalChangeModal.handoff;
+        setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' });
+        if (handoff?.bin_path) {
+            await processTargetBin(handoff.bin_path, { preserveUndo: true, forceRefreshFromBin: true });
+        }
+    }, [externalChangeModal.handoff, processTargetBin]);
+
+    const handleExternalConflictOverwrite = useCallback(async () => {
+        setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' });
+        try {
+            if (onExternalOverwriteRef?.current && typeof onExternalOverwriteRef.current === 'function') {
+                await onExternalOverwriteRef.current();
+                return;
+            }
+            setStatusMessage('Overwrite is unavailable right now');
+        } catch (error) {
+            setStatusMessage(`Overwrite failed: ${error?.message || error}`);
+        }
+    }, [onExternalOverwriteRef, setStatusMessage]);
 
     return {
         targetPath, setTargetPath,
@@ -341,6 +489,11 @@ export default function useVfxFile(
         processDonorBin,
         handleOpenTargetBin,
         handleOpenDonorBin,
+        handleOpenInJade,
+        externalChangeModal,
+        handleExternalConflictKeepLocal,
+        handleExternalConflictReload,
+        handleExternalConflictOverwrite,
         performBackupRestore,
         combineModalState,
         handleCombineYes,

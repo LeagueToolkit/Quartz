@@ -4,6 +4,19 @@
 const fs = window.require ? window.require('fs') : null;
 const path = window.require ? window.require('path') : null;
 
+const getLatestBackupForFile = (backupDir, fileName) => {
+  if (!fs || !path || !fs.existsSync(backupDir)) return null;
+  const backupFiles = fs.readdirSync(backupDir)
+    .filter(file => file.startsWith(`${fileName}_backup_`) && file.endsWith('.py'))
+    .map(file => ({
+      name: file,
+      path: path.join(backupDir, file),
+      stats: fs.statSync(path.join(backupDir, file))
+    }))
+    .sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime());
+  return backupFiles[0] || null;
+};
+
 /**
  * Creates a backup of a .py file when it's loaded
  * @param {string} originalFilePath - The path to the original .py file
@@ -25,6 +38,19 @@ const createBackup = (originalFilePath, content, component = 'Unknown') => {
 
     // Generate backup filename with timestamp and component info for identification
     const fileName = path.basename(originalFilePath, '.py');
+    const latestBackup = getLatestBackupForFile(backupDir, fileName);
+    if (latestBackup) {
+      try {
+        const latestContent = fs.readFileSync(latestBackup.path, 'utf8');
+        if (latestContent === content) {
+          console.log(`Skipping duplicate backup for ${originalFilePath} - latest backup has identical content`);
+          return;
+        }
+      } catch (error) {
+        console.warn(`Failed to compare latest backup for ${originalFilePath}:`, error);
+      }
+    }
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupFileName = `${fileName}_backup_${timestamp}_${component}.py`;
     const backupPath = path.join(backupDir, backupFileName);
@@ -81,27 +107,27 @@ const cleanupOldBackups = (backupDir, fileName) => {
  * Restores a backup file
  * @param {string} backupPath - The path to the backup file
  * @param {string} originalPath - The path to restore to
- * @returns {boolean} - Success status
+ * @returns {string|null} - Restored content on success, otherwise null
  */
 const restoreBackup = (backupPath, originalPath) => {
   try {
     if (!fs || !path) {
       console.error('Backup system not available');
-      return false;
+      return null;
     }
 
     if (!fs.existsSync(backupPath)) {
       console.error('Backup file not found:', backupPath);
-      return false;
+      return null;
     }
 
     const backupContent = fs.readFileSync(backupPath, 'utf8');
     fs.writeFileSync(originalPath, backupContent, 'utf8');
     console.log(`Backup restored: ${backupPath} -> ${originalPath}`);
-    return true;
+    return backupContent;
   } catch (error) {
     console.error('Error restoring backup:', error);
-    return false;
+    return null;
   }
 };
 

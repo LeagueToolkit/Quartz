@@ -21,13 +21,14 @@ import TreeNode from './TreeNode';
 const ROW_HEIGHT = 30;
 const OVERSCAN = 6;
 
-function flattenVisibleTree(nodes, expandedNodes, level = 0, out = []) {
-    for (const node of nodes) {
-        out.push({ node, level });
+function flattenVisibleTree(nodes, expandedNodes, level = 0, out = [], trail = 'root') {
+    nodes.forEach((node, index) => {
+        const rowKey = `${trail}/${node.id || node.name || 'node'}#${index}`;
+        out.push({ node, level, rowKey });
         if (node.children?.length && expandedNodes.has(node.id)) {
-            flattenVisibleTree(node.children, expandedNodes, level + 1, out);
+            flattenVisibleTree(node.children, expandedNodes, level + 1, out, rowKey);
         }
-    }
+    });
     return out;
 }
 
@@ -104,9 +105,9 @@ function VirtualTreeList({
             ) : (
                 <Box sx={{ position: 'relative', height: `${totalHeight}px` }}>
                     <Box sx={{ position: 'absolute', top: `${startIndex * ROW_HEIGHT}px`, left: 0, right: 0 }}>
-                        {visibleRows.map(({ node, level }, idx) => (
+                        {visibleRows.map(({ node, level, rowKey }, idx) => (
                             <TreeNode
-                                key={`${node.id || idx}-${pane}`}
+                                key={`${rowKey}-${pane}`}
                                 node={node}
                                 level={level}
                                 selectedNodes={selectedNodes}
@@ -198,20 +199,51 @@ export default function BnkMainContent(props) {
         setLeftDragOver(false);
     }, []);
 
+    const getDroppedDirectoryPath = useCallback((e) => {
+        if (!window.require) return null;
+        const fs = window.require('fs');
+        const item = e.dataTransfer?.files?.[0];
+        if (!item?.path) return null;
+
+        try {
+            return fs.statSync(item.path).isDirectory() ? item.path : null;
+        } catch (_) {
+            return null;
+        }
+    }, []);
+
+    const hasDataFolder = useCallback((folderPath) => {
+        if (!window.require || !folderPath) return false;
+        const fs = window.require('fs');
+        const path = window.require('path');
+        return (
+            fs.existsSync(path.join(folderPath, 'data')) ||
+            fs.existsSync(path.join(folderPath, 'DATA'))
+        );
+    }, []);
+
     const handleLeftDrop = useCallback((e) => {
         e.preventDefault();
         e.stopPropagation();
         setLeftDragOver(false);
-        if (!window.require) return;
-        const fs = window.require('fs');
-        const item = e.dataTransfer?.files?.[0];
-        if (!item?.path) return;
-        try {
-            if (fs.statSync(item.path).isDirectory()) {
-                onLeftPaneFolderDrop?.(item.path);
-            }
-        } catch (_) {}
-    }, [onLeftPaneFolderDrop]);
+        const folderPath = getDroppedDirectoryPath(e);
+        if (folderPath) {
+            onLeftPaneFolderDrop?.(folderPath);
+        }
+    }, [getDroppedDirectoryPath, onLeftPaneFolderDrop]);
+
+    const handleRightDrop = useCallback((e) => {
+        const folderPath = getDroppedDirectoryPath(e);
+        if (folderPath && hasDataFolder(folderPath)) {
+            e.preventDefault();
+            e.stopPropagation();
+            handleRightPaneDragLeave?.(e);
+            onLeftPaneFolderDrop?.(folderPath);
+            return;
+        }
+
+        handleRightPaneFileDrop?.(e);
+    }, [getDroppedDirectoryPath, hasDataFolder, handleRightPaneDragLeave, handleRightPaneFileDrop, onLeftPaneFolderDrop]);
 
     const leftRows = useMemo(() => flattenVisibleTree(filteredLeftTree, expandedNodes), [filteredLeftTree, expandedNodes]);
     const rightRows = useMemo(() => flattenVisibleTree(filteredRightTree, rightExpandedNodes), [filteredRightTree, rightExpandedNodes]);
@@ -292,7 +324,7 @@ export default function BnkMainContent(props) {
                     className="bnk-extract-tree-right"
                     onDragOver={handleRightPaneDragOver}
                     onDragLeave={handleRightPaneDragLeave}
-                    onDrop={handleRightPaneFileDrop}
+                    onDrop={handleRightDrop}
                     sx={{
                         ...treeViewStyle,
                         marginLeft: 0,

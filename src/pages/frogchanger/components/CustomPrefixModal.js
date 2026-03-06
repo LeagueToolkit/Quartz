@@ -10,6 +10,8 @@ const CustomPrefixModal = ({
   setApplyToAll,
   skipSfxRepath,
   setSkipSfxRepath,
+  extractVoiceover,
+  setExtractVoiceover,
   preserveHudIcons2D,
   setPreserveHudIcons2D,
   onCancel,
@@ -230,6 +232,29 @@ const CustomPrefixModal = ({
               </div>
             </div>
           )}
+
+          <div style={styles.section}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                id="extractVoiceover"
+                checked={extractVoiceover}
+                onChange={(e) => setExtractVoiceover(e.target.checked)}
+                style={{
+                  width: 14,
+                  height: 14,
+                  accentColor: 'var(--accent2)',
+                  cursor: 'pointer',
+                }}
+              />
+              <label htmlFor="extractVoiceover" style={{ fontSize: '0.84rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
+                Extract Voiceover (VO)
+              </label>
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.62)', marginTop: 8 }}>
+              Enable this only if your repath workflow also needs VO/Wwise assets.
+            </div>
+          </div>
 
           <div style={styles.section}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

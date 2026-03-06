@@ -2,7 +2,60 @@ import React from 'react';
 import * as THREE from 'three';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Grid } from '@react-three/drei';
-import { loadImageAsDataURL } from '../../filetypes/index.js';
+
+const isModelInspectPerfDebug = () => {
+  try {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage?.getItem('modelInspectPerfDebug') === '1'
+      || window.localStorage?.getItem('modelInspectDebug') === '1';
+  } catch {
+    return false;
+  }
+};
+
+const MAX_MODEL_TEXTURE_DIM = 4096;
+const MAX_ENV_TEXTURE_DIM = 2048;
+
+const clampTextureSize = (texture, maxDim) => {
+  try {
+    const img = texture?.image;
+    const w = Number(img?.width || 0);
+    const h = Number(img?.height || 0);
+    if (!w || !h) return;
+    if (w <= maxDim && h <= maxDim) return;
+
+    const scale = Math.min(maxDim / w, maxDim / h);
+    const nw = Math.max(1, Math.floor(w * scale));
+    const nh = Math.max(1, Math.floor(h * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = nw;
+    canvas.height = nh;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0, nw, nh);
+    texture.image = canvas;
+    texture.needsUpdate = true;
+  } catch {
+    // Ignore size clamp failures.
+  }
+};
+
+const configureTextureForGpu = (texture, {
+  maxDim = MAX_MODEL_TEXTURE_DIM,
+  wrapS = THREE.ClampToEdgeWrapping,
+  wrapT = THREE.ClampToEdgeWrapping,
+} = {}) => {
+  clampTextureSize(texture, maxDim);
+  texture.generateMipmaps = false;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.wrapS = wrapS;
+  texture.wrapT = wrapT;
+  texture.anisotropy = 1;
+  texture.premultiplyAlpha = false;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+};
 
 const colorFromName = (name) => {
   let hash = 0;
@@ -85,17 +138,67 @@ const toAbsolutePathFromLocalProtocol = (value) => {
   return decodeURIComponent(text.slice('local-file://'.length));
 };
 
-const readGameTextureAsPngDataUrl = async (absolutePath) => {
-  if (typeof window === 'undefined' || !window.require) return null;
+const resolveBundledAssetAbsolutePath = (fileName) => {
+  if (!(typeof window !== 'undefined' && window.require)) return '';
   const fs = window.require('fs');
-  const nodeBuffer = fs.readFileSync(absolutePath);
-  const arrayBuffer = nodeBuffer.buffer.slice(
-    nodeBuffer.byteOffset,
-    nodeBuffer.byteOffset + nodeBuffer.byteLength
-  );
-  const lower = absolutePath.toLowerCase();
-  const fileType = lower.endsWith('.dds') ? 'dds' : 'tex';
-  return loadImageAsDataURL(arrayBuffer, fileType);
+  const nodePath = window.require('path');
+  const candidates = [];
+  const resourcesPath = (typeof process !== 'undefined' && process.resourcesPath) ? process.resourcesPath : '';
+  const cwd = (typeof process !== 'undefined' && process.cwd) ? process.cwd() : '';
+
+  if (resourcesPath) {
+    candidates.push(nodePath.join(resourcesPath, 'build', fileName));
+  }
+  if (cwd) {
+    candidates.push(nodePath.join(cwd, 'build', fileName));
+    candidates.push(nodePath.join(cwd, 'public', fileName));
+  }
+
+  for (const filePath of candidates) {
+    if (filePath && fs.existsSync(filePath)) return filePath;
+  }
+  return '';
+};
+
+const readGameTextureAsPngDataUrl = async (absolutePath) => {
+  const perf = isModelInspectPerfDebug();
+  const totalStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+
+  if (typeof window === 'undefined' || !window.require) return null;
+  const electron = window.require('electron');
+  const ipcRenderer = electron?.ipcRenderer;
+  if (!ipcRenderer) return null;
+  try {
+    const nativeStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const native = await ipcRenderer.invoke('texture:decodeToDataUrl', { filePath: absolutePath });
+    if (native?.success && native?.dataUrl) {
+      if (perf) {
+        const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        console.log('[modelInspect:perf] native decode', {
+          file: absolutePath,
+          totalMs: +(now - totalStart).toFixed(2),
+          nativeCallMs: +(now - nativeStart).toFixed(2),
+          nativeDecodeMs: native.decodeMs,
+          nativeEncodeMs: native.encodeMs,
+          nativeTotalMs: native.nativeTotalMs,
+        });
+      }
+      return native.dataUrl;
+    }
+    if (perf || native?.error) {
+      console.warn('[modelInspect:perf] native decode returned no data', {
+        file: absolutePath,
+        success: native?.success,
+        error: native?.error || '',
+      });
+    }
+  } catch {
+    if (perf) {
+      console.warn('[modelInspect:perf] native decode threw', { file: absolutePath });
+    }
+    return null;
+  }
+  return null;
 };
 
 const resolveTextureSource = async (textureUrl) => {
@@ -109,6 +212,97 @@ const resolveTextureSource = async (textureUrl) => {
   }
   return source;
 };
+
+const readBundledFloorAsPngDataUrl = async () => {
+  try {
+    if (typeof window !== 'undefined' && window.require) {
+      const fs = window.require('fs');
+      const filePath = resolveBundledAssetAbsolutePath('floor.dds');
+      if (filePath && fs.existsSync(filePath)) {
+        return readGameTextureAsPngDataUrl(filePath);
+      }
+    }
+
+    // No JS decode fallback for model inspect textures.
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const readBundledSkyboxAsPngDataUrl = async () => {
+  try {
+    if (typeof window !== 'undefined' && window.require) {
+      const fs = window.require('fs');
+      const filePath = resolveBundledAssetAbsolutePath('riots_sru_skybox_cubemap.dds');
+      if (filePath && fs.existsSync(filePath)) {
+        return readGameTextureAsPngDataUrl(filePath);
+      }
+    }
+
+    // No JS decode fallback for model inspect textures.
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+function SceneBackground({ texture, enabled }) {
+  const { scene } = useThree();
+  const fallbackColor = React.useMemo(() => new THREE.Color('#0c0a12'), []);
+
+  React.useEffect(() => {
+    if (enabled && texture) {
+      scene.background = texture;
+    } else {
+      scene.background = fallbackColor;
+    }
+    return () => {
+      scene.background = fallbackColor;
+    };
+  }, [scene, texture, enabled, fallbackColor]);
+
+  return null;
+}
+
+class WebGLErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, message: '' };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, message: String(error?.message || error || 'WebGL initialization failed') };
+  }
+
+  componentDidCatch() {
+    // keep silent: UI fallback is enough for this modal
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          width: '100%',
+          height: '100%',
+          minHeight: 320,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 16,
+          color: 'rgba(255,255,255,0.9)',
+          background: 'rgba(8,8,14,0.65)',
+        }}>
+          <div style={{ maxWidth: 520, textAlign: 'center', fontSize: '0.82rem', lineHeight: 1.5 }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>WebGL context could not be created.</div>
+            <div style={{ opacity: 0.85 }}>{this.state.message}</div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function ModelMesh({ modelData, visibleSubmeshes, wireframe, flatLighting, showSkeleton, skeletonSegments, skinningMatrices, textureCache }) {
 
@@ -245,6 +439,8 @@ export default function ModelViewport({
   wireframe = false,
   flatLighting = false,
   showSkeleton = false,
+  showGroundTexture = true,
+  showSkybox = true,
   skeletonSegments = null,
   skinningMatrices = null,
   height = '100%',
@@ -254,9 +450,13 @@ export default function ModelViewport({
   const textureLoader = React.useMemo(() => new THREE.TextureLoader(), []);
   const [textureCache, setTextureCache] = React.useState(new Map());
   const [texturesReady, setTexturesReady] = React.useState(false);
+  const [groundTexture, setGroundTexture] = React.useState(null);
+  const [skyboxTexture, setSkyboxTexture] = React.useState(null);
 
   React.useEffect(() => {
     let cancelled = false;
+    const perf = isModelInspectPerfDebug();
+    const batchStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 
     const preloadTextures = async () => {
       if (!modelData) {
@@ -282,16 +482,28 @@ export default function ModelViewport({
       for (const [submeshId, textureUrl] of entries) {
         if (cancelled) break;
         try {
+          const itemStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
           const source = await resolveTextureSource(textureUrl);
+          const resolvedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
           if (!source) continue;
           const texture = await textureLoader.loadAsync(source);
+          const loadedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
           texture.flipY = false;
-          texture.colorSpace = THREE.SRGBColorSpace;
-          texture.wrapS = THREE.RepeatWrapping;
-          texture.wrapT = THREE.RepeatWrapping;
-          texture.premultiplyAlpha = false;
-          texture.needsUpdate = true;
+          configureTextureForGpu(texture, {
+            maxDim: MAX_MODEL_TEXTURE_DIM,
+            wrapS: THREE.ClampToEdgeWrapping,
+            wrapT: THREE.ClampToEdgeWrapping,
+          });
           loaded.set(submeshId, texture);
+          if (perf) {
+            console.log('[modelInspect:perf] submesh texture loaded', {
+              submeshId,
+              resolveMs: +(resolvedAt - itemStart).toFixed(2),
+              loaderMs: +(loadedAt - resolvedAt).toFixed(2),
+              totalMs: +(loadedAt - itemStart).toFixed(2),
+              sourceType: String(textureUrl || '').toLowerCase().endsWith('.png') ? 'png' : 'game-texture',
+            });
+          }
         } catch {
           // Falls back to material color.
         }
@@ -307,6 +519,14 @@ export default function ModelViewport({
         return loaded;
       });
       setTexturesReady(true);
+      if (perf) {
+        const done = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        console.log('[modelInspect:perf] preload complete', {
+          entryCount: entries.length,
+          loadedCount: loaded.size,
+          totalMs: +(done - batchStart).toFixed(2),
+        });
+      }
     };
 
     preloadTextures();
@@ -319,6 +539,100 @@ export default function ModelViewport({
       return new Map();
     });
   }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const perf = isModelInspectPerfDebug();
+    const loadGroundTexture = async () => {
+      if (!showGroundTexture) return;
+      if (groundTexture) return;
+      try {
+        const start = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        const dataUrl = await readBundledFloorAsPngDataUrl();
+        const decodedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        if (!dataUrl || cancelled) return;
+        const tex = await textureLoader.loadAsync(dataUrl);
+        const loadedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        if (cancelled) {
+          tex.dispose();
+          return;
+        }
+        configureTextureForGpu(tex, {
+          maxDim: MAX_ENV_TEXTURE_DIM,
+          wrapS: THREE.ClampToEdgeWrapping,
+          wrapT: THREE.ClampToEdgeWrapping,
+        });
+        tex.repeat.set(1, 1);
+        setGroundTexture(tex);
+        if (perf) {
+          console.log('[modelInspect:perf] ground texture loaded', {
+            decodeMs: +(decodedAt - start).toFixed(2),
+            loaderMs: +(loadedAt - decodedAt).toFixed(2),
+            totalMs: +(loadedAt - start).toFixed(2),
+          });
+        }
+      } catch {
+        // Optional visual layer; fail silently.
+      }
+    };
+    loadGroundTexture();
+    return () => { cancelled = true; };
+  }, [showGroundTexture, groundTexture, textureLoader]);
+
+  React.useEffect(() => () => {
+    if (groundTexture) groundTexture.dispose();
+  }, [groundTexture]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const perf = isModelInspectPerfDebug();
+    const loadSkybox = async () => {
+      if (!showSkybox) return;
+      if (skyboxTexture) return;
+      try {
+        const start = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        const source = await readBundledSkyboxAsPngDataUrl();
+        const decodedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        if (!source) return;
+        const tex = await textureLoader.loadAsync(source);
+        const loadedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        if (!tex || !tex.image || cancelled) {
+          tex?.dispose?.();
+          return;
+        }
+        configureTextureForGpu(tex, {
+          maxDim: MAX_ENV_TEXTURE_DIM,
+          wrapS: THREE.ClampToEdgeWrapping,
+          wrapT: THREE.ClampToEdgeWrapping,
+        });
+        tex.mapping = THREE.EquirectangularReflectionMapping;
+        setSkyboxTexture(tex);
+        if (perf) {
+          console.log('[modelInspect:perf] skybox loaded', {
+            decodeMs: +(decodedAt - start).toFixed(2),
+            loaderMs: +(loadedAt - decodedAt).toFixed(2),
+            totalMs: +(loadedAt - start).toFixed(2),
+          });
+        }
+      } catch {
+        // Optional visual layer; fail silently.
+      }
+    };
+    loadSkybox();
+    return () => { cancelled = true; };
+  }, [showSkybox, skyboxTexture, textureLoader]);
+
+  React.useEffect(() => {
+    if (showSkybox) return;
+    setSkyboxTexture((prev) => {
+      if (prev) prev.dispose();
+      return null;
+    });
+  }, [showSkybox]);
+
+  React.useEffect(() => () => {
+    if (skyboxTexture) skyboxTexture.dispose();
+  }, [skyboxTexture]);
 
   return (
     <div style={{ width: '100%', height, minHeight, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(12,10,18,0.55)' }}>
@@ -333,30 +647,50 @@ export default function ModelViewport({
           `}</style>
         </div>
       ) : (
-        <Canvas gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }} onCreated={({ gl }) => {
-          const canvas = gl.domElement;
-          canvas.addEventListener('webglcontextlost', (e) => e.preventDefault());
-        }}>
-          <color attach="background" args={['#0c0a12']} />
-          <PerspectiveCamera makeDefault position={[3.2, 2.2, 3.2]} fov={45} />
-          <CameraAutoFit modelData={modelData} controlsRef={controlsRef} />
-          <ambientLight intensity={0.6} />
-          <directionalLight position={[3, 5, 2]} intensity={1.2} />
-          <directionalLight position={[-3, 2, -2]} intensity={0.35} />
-          <Grid args={[14, 14]} cellSize={1} cellThickness={0.7} sectionSize={7} sectionThickness={1} />
-          <axesHelper args={[2]} />
-          <ModelMesh
-            modelData={modelData}
-            visibleSubmeshes={visibleSubmeshes}
-            wireframe={wireframe}
-            flatLighting={flatLighting}
-            showSkeleton={showSkeleton}
-            skeletonSegments={skeletonSegments}
-            skinningMatrices={skinningMatrices}
-            textureCache={textureCache}
-          />
-          <OrbitControls ref={controlsRef} enableDamping dampingFactor={0.08} />
-        </Canvas>
+        <WebGLErrorBoundary>
+          <Canvas
+            dpr={[1, 1.25]}
+            gl={{
+              antialias: false,
+              alpha: false,
+              powerPreference: 'low-power',
+              preserveDrawingBuffer: false,
+              depth: true,
+              stencil: false,
+              failIfMajorPerformanceCaveat: false,
+            }}
+            onCreated={({ gl }) => {
+              const canvas = gl.domElement;
+              canvas.addEventListener('webglcontextlost', (e) => e.preventDefault());
+            }}
+          >
+            <SceneBackground texture={skyboxTexture} enabled={showSkybox} />
+            <PerspectiveCamera makeDefault position={[3.2, 2.2, 3.2]} fov={45} />
+            <CameraAutoFit modelData={modelData} controlsRef={controlsRef} />
+            <ambientLight intensity={0.6} />
+            <directionalLight position={[3, 5, 2]} intensity={1.2} />
+            <directionalLight position={[-3, 2, -2]} intensity={0.35} />
+            <Grid args={[14, 14]} cellSize={1} cellThickness={0.7} sectionSize={7} sectionThickness={1} />
+            {showGroundTexture && groundTexture && (
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+                <planeGeometry args={[520, 520]} />
+                <meshStandardMaterial map={groundTexture} />
+              </mesh>
+            )}
+            <axesHelper args={[2]} />
+            <ModelMesh
+              modelData={modelData}
+              visibleSubmeshes={visibleSubmeshes}
+              wireframe={wireframe}
+              flatLighting={flatLighting}
+              showSkeleton={showSkeleton}
+              skeletonSegments={skeletonSegments}
+              skinningMatrices={skinningMatrices}
+              textureCache={textureCache}
+            />
+            <OrbitControls ref={controlsRef} enableDamping dampingFactor={0.08} />
+          </Canvas>
+        </WebGLErrorBoundary>
       )}
     </div>
   );

@@ -127,7 +127,7 @@ function WadRow({ row, style, toggleWad, onWadContextMenu, getExtractSelectionSt
     <div
       style={{ ...style, ...S.unifiedWadRow, color: row.entry?.isVoiceover ? 'var(--text-2)' : 'var(--text)', fontStyle: row.entry?.isVoiceover ? 'italic' : 'normal' }}
       onClick={(e) => toggleWad(row.entry, { recursive: e.shiftKey })}
-      onContextMenu={(e) => { e.preventDefault(); onWadContextMenu?.(e, row.entry); }}
+      onContextMenu={(e) => { e.preventDefault(); onWadContextMenu?.(e, row); }}
       title={row.entry?.path}
       onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
@@ -164,13 +164,14 @@ function WadStatusRow({ row, style, fontSize }) {
   );
 }
 
-function DirRow({ row, style, toggleDir, isSelected, onSelect, getExtractSelectionState, toggleExtractSelection, fontSize, symbolSize, selectionMode }) {
+function DirRow({ row, style, toggleDir, isSelected, onSelect, getExtractSelectionState, toggleExtractSelection, fontSize, symbolSize, selectionMode, onWadContextMenu }) {
   const indent = 10 + row.depth * 14;
   const state = getExtractSelectionState(row);
   return (
     <div
       style={{ ...style, ...S.treeRow, paddingLeft: indent, background: isSelected ? 'rgba(120,80,255,0.15)' : 'transparent', color: isSelected ? 'var(--accent)' : 'var(--text)' }}
       onClick={(e) => { toggleDir(row.wadPath, row.node.path, row.node, { recursive: e.shiftKey }); onSelect(row); }}
+      onContextMenu={(e) => { e.preventDefault(); onSelect(row); onWadContextMenu?.(e, row); }}
       title={row.node.path}
       onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
       onMouseLeave={e => { e.currentTarget.style.background = isSelected ? 'rgba(120,80,255,0.15)' : 'transparent'; }}
@@ -210,7 +211,7 @@ function DirRow({ row, style, toggleDir, isSelected, onSelect, getExtractSelecti
   );
 }
 
-function FileRow({ row, style, isSelected, onSelect, getExtractSelectionState, toggleExtractSelection, fontSize, symbolSize, selectionMode }) {
+function FileRow({ row, style, isSelected, onSelect, getExtractSelectionState, toggleExtractSelection, fontSize, symbolSize, selectionMode, onWadContextMenu }) {
   const indent = 10 + row.depth * 14;
   const ext = row.node.extension || row.node.name.split('.').pop() || '';
   const state = getExtractSelectionState(row);
@@ -218,6 +219,7 @@ function FileRow({ row, style, isSelected, onSelect, getExtractSelectionState, t
     <div
       style={{ ...style, ...S.treeRow, paddingLeft: indent, background: isSelected ? 'rgba(120,80,255,0.15)' : 'transparent', color: isSelected ? 'var(--accent)' : 'var(--text)' }}
       onClick={() => onSelect(row)}
+      onContextMenu={(e) => { e.preventDefault(); onSelect(row); onWadContextMenu?.(e, row); }}
       title={row.node.path}
       onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
       onMouseLeave={e => { e.currentTarget.style.background = isSelected ? 'rgba(120,80,255,0.15)' : 'transparent'; }}
@@ -248,7 +250,7 @@ function FileRow({ row, style, isSelected, onSelect, getExtractSelectionState, t
 
 function fmtSize(bytes) {
   if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + 'MB';
-  if (bytes >= 1024)    return Math.round(bytes / 1024) + 'KB';
+  if (bytes >= 1024) return Math.round(bytes / 1024) + 'KB';
   return bytes + 'B';
 }
 
@@ -268,9 +270,9 @@ const Row = React.memo(({ index, style, flatRows, toggleGroup, toggleWad, toggle
     case 'wad-status':
       return <WadStatusRow row={row} style={style} fontSize={fontSize} />;
     case 'dir':
-      return <DirRow row={row} style={style} toggleDir={toggleDir} isSelected={isSelected} onSelect={setSelectedNode} getExtractSelectionState={getExtractSelectionState} toggleExtractSelection={toggleExtractSelection} fontSize={fontSize} symbolSize={symbolSize} selectionMode={selectionMode} />;
+      return <DirRow row={row} style={style} toggleDir={toggleDir} isSelected={isSelected} onSelect={setSelectedNode} getExtractSelectionState={getExtractSelectionState} toggleExtractSelection={toggleExtractSelection} fontSize={fontSize} symbolSize={symbolSize} selectionMode={selectionMode} onWadContextMenu={onWadContextMenu} />;
     case 'file':
-      return <FileRow row={row} style={style} isSelected={isSelected} onSelect={setSelectedNode} getExtractSelectionState={getExtractSelectionState} toggleExtractSelection={toggleExtractSelection} fontSize={fontSize} symbolSize={symbolSize} selectionMode={selectionMode} />;
+      return <FileRow row={row} style={style} isSelected={isSelected} onSelect={setSelectedNode} getExtractSelectionState={getExtractSelectionState} toggleExtractSelection={toggleExtractSelection} fontSize={fontSize} symbolSize={symbolSize} selectionMode={selectionMode} onWadContextMenu={onWadContextMenu} />;
     default:
       return null;
   }
@@ -296,6 +298,7 @@ export default function WadExplorerTree({
   selectionMode = false,
   onToggleSelectionMode = null,
 }) {
+  const listRef = useRef();
   const rowProps = { flatRows, toggleGroup, toggleWad, toggleDir, selectedNode, setSelectedNode, getExtractSelectionState, toggleExtractSelection, fontSize, symbolSize, selectionMode, onWadContextMenu };
 
   return (
@@ -308,6 +311,41 @@ export default function WadExplorerTree({
           placeholder="Filter files…"
           value={search}
           onChange={e => setSearch(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              e.preventDefault();
+              const isDown = e.key === 'ArrowDown';
+              const selKey = selectedNode ? (selectedNode.wadPath + '||' + (selectedNode.node?.path || '')) : null;
+              const curIdx = flatRows.findIndex(r => {
+                if (r.type === 'file' || r.type === 'dir') return (r.wadPath + '||' + r.node.path) === selKey;
+                return false;
+              });
+              const step = isDown ? 1 : -1;
+              for (let i = 1; i <= flatRows.length; i++) {
+                const target = (curIdx + i * step + flatRows.length) % flatRows.length;
+                const row = flatRows[target];
+                if (row && (row.type === 'file' || row.type === 'dir')) {
+                  setSelectedNode(row);
+                  listRef.current?.scrollToItem(target, 'auto');
+                  break;
+                }
+              }
+            }
+            if (e.key === 'Enter') {
+              if (selectedNode) {
+                if (selectedNode.type === 'dir') {
+                  toggleDir(selectedNode.wadPath, selectedNode.node.path, selectedNode.node);
+                }
+              } else if (flatRows.length > 0) {
+                // If nothing selected, pick first entry
+                const first = flatRows.find(r => r.type === 'file' || r.type === 'dir' || r.type === 'wad');
+                if (first) {
+                  if (first.type === 'wad') toggleWad(first.entry);
+                  else setSelectedNode(first);
+                }
+              }
+            }
+          }}
           spellCheck={false}
         />
         <button
@@ -351,6 +389,7 @@ export default function WadExplorerTree({
           <AutoSizer>
             {({ width, height }) => (
               <List
+                ref={listRef}
                 width={width}
                 height={height}
                 rowCount={flatRows.length}

@@ -14,7 +14,9 @@ const resolveInRoot = (root, relative) => {
   if (!path) {
     throw new Error('Node path module unavailable in renderer');
   }
-  return path.join(root, String(relative || ''));
+  const value = String(relative || '');
+  if (path.isAbsolute(value)) return value;
+  return path.join(root, value);
 };
 
 const toArray3 = (v, fallback = [0, 0, 0]) => [v?.x ?? fallback[0], v?.y ?? fallback[1], v?.z ?? fallback[2]];
@@ -22,6 +24,7 @@ const toArray2 = (v, fallback = [0, 0]) => [v?.x ?? fallback[0], v?.y ?? fallbac
 
 const toQuat = (v, fallback = [0, 0, 0, 1]) => [v?.x ?? fallback[0], v?.y ?? fallback[1], v?.z ?? fallback[2], v?.w ?? fallback[3]];
 const normalizeMaterialName = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const cleanMaterialName = (name) => String(name || '').split('.')[0];
 
 const elfHash = (name) => {
   let hash = 0;
@@ -270,37 +273,117 @@ export const evaluateSkinningMatrices = ({ skeleton, animation, timeSeconds }) =
 
 const toLocalFileUrl = (absolutePath) => `local-file://${String(absolutePath || '').replace(/\\/g, '/')}`;
 
-const resolveTextureByHint = ({ filesDir, textureFiles = [], hintPath }) => {
-  if (!hintPath) return null;
+const isModelInspectDebug = () => {
+  try {
+    return typeof window !== 'undefined' && window.localStorage?.getItem('modelInspectDebug') === '1';
+  } catch (_) {
+    return false;
+  }
+};
+
+const buildTextureResolver = ({ filesDir, textureFiles = [], sknRelativePath = '' }) => {
   const path = getNodePath();
   const fs = (typeof window !== 'undefined' && window.require) ? window.require('fs') : null;
-  if (!path || !fs) return null;
+  if (!path || !fs) return () => null;
 
-  const normalizedHint = String(hintPath).replace(/\\/g, '/').toLowerCase();
-  const hintBase = path.basename(normalizedHint);
-
-  // 1) Exact relative match from extracted file list
-  const exactRel = textureFiles.find((rel) => String(rel).replace(/\\/g, '/').toLowerCase() === normalizedHint);
-  if (exactRel) {
-    const abs = resolveInRoot(filesDir, exactRel);
-    if (fs.existsSync(abs)) return abs;
+  const normalizedRels = [];
+  const relToAbs = new Map();
+  const baseToAbs = new Map();
+  for (const rel of textureFiles || []) {
+    const n = String(rel || '').replace(/\\/g, '/').toLowerCase();
+    if (!n) continue;
+    normalizedRels.push(n);
+    relToAbs.set(n, resolveInRoot(filesDir, rel));
+    const base = path.basename(n);
+    if (base && !baseToAbs.has(base)) {
+      baseToAbs.set(base, resolveInRoot(filesDir, rel));
+    }
   }
 
-  // 2) Ends-with path match
-  const endsWithRel = textureFiles.find((rel) => normalizedHint.endsWith(String(rel).replace(/\\/g, '/').toLowerCase()));
-  if (endsWithRel) {
-    const abs = resolveInRoot(filesDir, endsWithRel);
-    if (fs.existsSync(abs)) return abs;
-  }
+  const resolutionCache = new Map();
+  const sknAbs = sknRelativePath ? resolveInRoot(filesDir, sknRelativePath) : '';
+  const sknDir = sknAbs ? path.dirname(sknAbs) : filesDir;
 
-  // 3) Basename match fallback
-  const baseMatchRel = textureFiles.find((rel) => path.basename(String(rel).toLowerCase()) === hintBase);
-  if (baseMatchRel) {
-    const abs = resolveInRoot(filesDir, baseMatchRel);
-    if (fs.existsSync(abs)) return abs;
-  }
+  const tryResolve = (candidate) => {
+    if (candidate && fs.existsSync(candidate)) return candidate;
+    return null;
+  };
 
-  return null;
+  return (hintPath) => {
+    if (!hintPath) return null;
+    const normalizedHint = String(hintPath).replace(/\\/g, '/').toLowerCase();
+    if (resolutionCache.has(normalizedHint)) {
+      return resolutionCache.get(normalizedHint) || null;
+    }
+
+    const hintBase = path.basename(normalizedHint);
+
+    // 0) Same dir as SKN (Blender plugin behavior)
+    const sameDir = tryResolve(path.join(sknDir, hintBase));
+    if (sameDir) {
+      resolutionCache.set(normalizedHint, sameDir);
+      return sameDir;
+    }
+
+    // 1) Exact relative match from extracted file list (O(1))
+    const exactAbs = relToAbs.get(normalizedHint);
+    if (exactAbs && fs.existsSync(exactAbs)) {
+      resolutionCache.set(normalizedHint, exactAbs);
+      return exactAbs;
+    }
+
+    // 2) Ends-with path match (fallback; still cheap due low unique hints + cache)
+    const endsWithRel = normalizedRels.find((rel) => normalizedHint.endsWith(rel));
+    if (endsWithRel) {
+      const abs = relToAbs.get(endsWithRel);
+      if (abs && fs.existsSync(abs)) {
+        resolutionCache.set(normalizedHint, abs);
+        return abs;
+      }
+    }
+
+    // 3) Basename match fallback (O(1))
+    const baseAbs = baseToAbs.get(hintBase);
+    if (baseAbs && fs.existsSync(baseAbs)) {
+      resolutionCache.set(normalizedHint, baseAbs);
+      return baseAbs;
+    }
+
+    // 4) Parent levels scan (up to 3 levels)
+    let curr = sknDir;
+    for (let i = 0; i < 3; i++) {
+      curr = path.dirname(curr);
+      const p = tryResolve(path.join(curr, hintBase));
+      if (p) {
+        resolutionCache.set(normalizedHint, p);
+        return p;
+      }
+    }
+
+    // 5) Reconstruct full path from assets/data segment in hint.
+    const hintParts = String(hintPath).replace(/\\/g, '/').split('/');
+    const hintAnchorIdx = hintParts.findIndex((seg) => {
+      const low = String(seg || '').toLowerCase();
+      return low === 'assets' || low === 'data';
+    });
+    if (hintAnchorIdx !== -1) {
+      const rel = hintParts.slice(hintAnchorIdx).join('/');
+      const rebuilt = tryResolve(resolveInRoot(filesDir, rel));
+      if (rebuilt) {
+        resolutionCache.set(normalizedHint, rebuilt);
+        return rebuilt;
+      }
+      const relLower = [hintParts[hintAnchorIdx].toLowerCase(), ...hintParts.slice(hintAnchorIdx + 1)].join('/');
+      const rebuiltLower = tryResolve(resolveInRoot(filesDir, relLower));
+      if (rebuiltLower) {
+        resolutionCache.set(normalizedHint, rebuiltLower);
+        return rebuiltLower;
+      }
+    }
+
+    resolutionCache.set(normalizedHint, '');
+    return null;
+  };
 };
 
 export const buildSubmeshTextureMap = ({
@@ -314,6 +397,7 @@ export const buildSubmeshTextureMap = ({
   const textureMap = {};
   const debugRows = [];
   const normalizedHints = {};
+  const loweredHints = {};
   const selectedSknKey = String(selectedSkn || '').replace(/\\/g, '/').toLowerCase();
   const defaultHintFromSkn = defaultTextureBySkn?.[selectedSknKey] || '';
   const defaultHint =
@@ -324,16 +408,37 @@ export const buildSubmeshTextureMap = ({
 
   for (const [k, v] of Object.entries(materialTextureHints || {})) {
     normalizedHints[normalizeMaterialName(k)] = v;
+    loweredHints[String(k || '').toLowerCase()] = v;
   }
 
+  const resolveTexture = buildTextureResolver({
+    filesDir,
+    textureFiles,
+    sknRelativePath: selectedSkn,
+  });
+
   for (const submesh of submeshes) {
-    const key = normalizeMaterialName(submesh.name);
-    const hint = normalizedHints[key] || defaultHint;
-    const abs = resolveTextureByHint({
-      filesDir,
-      textureFiles,
-      hintPath: hint,
-    });
+    const materialName = String(submesh.name || '');
+    const cleanedMaterialName = cleanMaterialName(materialName);
+    const normalizedName = normalizeMaterialName(materialName);
+    const normalizedCleaned = normalizeMaterialName(cleanedMaterialName);
+
+    // Blender plugin order:
+    // 1) exact material name
+    // 2) cleaned material name (before .001 suffixes, etc.)
+    // 3) BASE
+    // then existing defaults.
+    const hint =
+      materialTextureHints?.[materialName] ||
+      loweredHints[materialName.toLowerCase()] ||
+      materialTextureHints?.[cleanedMaterialName] ||
+      loweredHints[cleanedMaterialName.toLowerCase()] ||
+      normalizedHints[normalizedName] ||
+      normalizedHints[normalizedCleaned] ||
+      materialTextureHints?.BASE ||
+      loweredHints.base ||
+      defaultHint;
+    const abs = resolveTexture(hint);
     let reason = 'NO_HINT_FOR_MATERIAL';
     if (hint && !abs) reason = 'HINT_FOUND_BUT_TEXTURE_NOT_RESOLVED';
     if (hint && abs) reason = 'TEXTURE_RESOLVED';
@@ -342,17 +447,23 @@ export const buildSubmeshTextureMap = ({
     }
     debugRows.push({
       submeshId: submesh.id,
-      submeshName: submesh.name,
-      normalizedSubmeshKey: key,
+      submeshName: materialName,
+      normalizedSubmeshKey: normalizedName,
       hintPath: hint || '',
       resolvedTexturePath: abs || '',
       reason,
     });
   }
 
-  console.groupCollapsed('[ModelInspect] Material/Texture mapping debug');
-  console.table(debugRows);
-  console.groupEnd();
+  if (isModelInspectDebug()) {
+    console.groupCollapsed('[ModelInspect] Material/Texture mapping debug');
+    console.table(debugRows);
+    console.groupEnd();
+  }
+  const noHintRows = debugRows.filter((r) => r.reason === 'NO_HINT_FOR_MATERIAL');
+  if (noHintRows.length > 0 && isModelInspectDebug()) {
+    console.warn('[ModelInspect] no hint for materials', noHintRows.map((r) => r.submeshName));
+  }
 
   return { textureMap, debugRows };
 };

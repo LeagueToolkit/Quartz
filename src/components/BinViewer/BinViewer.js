@@ -1,27 +1,27 @@
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
-import { List } from 'react-window';
+import { List, useListRef } from 'react-window';
 
 // ─── Tokenizer ────────────────────────────────────────────────────────────────
 
 const TYPE_KW = new Set([
-  'type','embed','pointer','link','option','list','map','hash','flag','struct',
-  'u8','u16','u32','u64','i8','i16','i32','i64','f32','f64','bool',
-  'string','vec2','vec3','vec4','mtx44','rgba','path',
+  'type', 'embed', 'pointer', 'link', 'option', 'list', 'map', 'hash', 'flag', 'struct',
+  'u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'f32', 'f64', 'bool',
+  'string', 'vec2', 'vec3', 'vec4', 'mtx44', 'rgba', 'path',
 ]);
 const BOOL_KW = new Set(['true', 'false']);
 
 const RULES = [
   { re: /^(#.*|\/\/.*)/, color: '#6a9955', italic: true },
-  { re: /^"(?:[^"\\]|\\.)*"/,              color: '#ce9178' },
-  { re: /^0x[0-9a-fA-F]+/,                 color: '#bd93f9' },
-  { re: /^-?\d+\.?\d*f/,                   color: '#b5cea8' },
-  { re: /^-?\d+\.\d*/,                     color: '#b5cea8' },
-  { re: /^-?\d+/,                          color: '#b5cea8' },
-  { re: /^[{}]/,                            color: '#ffd700' },
-  { re: /^[\[\]]/,                          color: '#da70d6' },
-  { re: /^[()]/,                            color: '#179fff' },
-  { re: /^[=:,]/,                           color: '#d4d4d4' },
-  { re: /^\s+/,                             color: null      },
+  { re: /^"(?:[^"\\]|\\.)*"/, color: '#ce9178' },
+  { re: /^0x[0-9a-fA-F]+/, color: '#bd93f9' },
+  { re: /^-?\d+\.?\d*f/, color: '#b5cea8' },
+  { re: /^-?\d+\.\d*/, color: '#b5cea8' },
+  { re: /^-?\d+/, color: '#b5cea8' },
+  { re: /^[{}]/, color: '#ffd700' },
+  { re: /^[\[\]]/, color: '#da70d6' },
+  { re: /^[()]/, color: '#179fff' },
+  { re: /^[=:,]/, color: '#d4d4d4' },
+  { re: /^\s+/, color: null },
   {
     re: /^[A-Za-z_][A-Za-z0-9_]*/,
     color: null,
@@ -33,7 +33,7 @@ const RULES = [
       return '#c0c0c0';
     },
   },
-  { re: /^./,                               color: '#c0c0c0' },
+  { re: /^./, color: '#c0c0c0' },
 ];
 
 function tokenizeLine(line) {
@@ -162,7 +162,7 @@ const ROW_S = {
 // ─── Search bar ───────────────────────────────────────────────────────────────
 
 function SearchBar({ query, onChange, isRegex, onRegex, matchCase, onMatchCase,
-                     count, currentIdx, onPrev, onNext, onClose, hasError }) {
+  count, currentIdx, onPrev, onNext, onClose, hasError }) {
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -174,7 +174,9 @@ function SearchBar({ query, onChange, isRegex, onRegex, matchCase, onMatchCase,
           value={query}
           onChange={e => onChange(e.target.value)}
           onKeyDown={e => {
-            if (e.key === 'Enter') { e.shiftKey ? onPrev() : onNext(); }
+            if (e.key === 'Enter') { e.preventDefault(); e.shiftKey ? onPrev() : onNext(); }
+            if (e.key === 'ArrowDown') { e.preventDefault(); onNext(); }
+            if (e.key === 'ArrowUp') { e.preventDefault(); onPrev(); }
             if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
           }}
           placeholder="Find…"
@@ -195,8 +197,8 @@ function SearchBar({ query, onChange, isRegex, onRegex, matchCase, onMatchCase,
       <span style={SRCH_S.count}>
         {hasError ? 'bad regex' : query ? (count > 0 ? `${currentIdx + 1} / ${count}` : 'no results') : ''}
       </span>
-      <button onClick={onPrev}  style={SRCH_S.navBtn} title="Previous (Shift+Enter)">↑</button>
-      <button onClick={onNext}  style={SRCH_S.navBtn} title="Next (Enter)">↓</button>
+      <button onClick={onPrev} style={SRCH_S.navBtn} title="Previous (Shift+Enter)">↑</button>
+      <button onClick={onNext} style={SRCH_S.navBtn} title="Next (Enter)">↓</button>
       <button onClick={onClose} style={{ ...SRCH_S.navBtn, marginLeft: 2 }} title="Close">✕</button>
     </div>
   );
@@ -264,12 +266,12 @@ const SRCH_S = {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function BinViewer({ content, loading, error, fileName }) {
-  const [searchOpen, setSearchOpen]   = useState(false);
-  const [query, setQuery]             = useState('');
-  const [isRegex, setIsRegex]         = useState(false);
-  const [matchCase, setMatchCase]     = useState(false);
-  const [currentMatchIdx, setIdx]     = useState(0);
-  const listRef      = useRef(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [isRegex, setIsRegex] = useState(false);
+  const [matchCase, setMatchCase] = useState(false);
+  const [currentMatchIdx, setIdx] = useState(0);
+  const listRef = useListRef();
   const containerRef = useRef(null);
   const [height, setHeight] = useState(400);
 
@@ -310,11 +312,24 @@ export default function BinViewer({ content, loading, error, fileName }) {
 
   // Scroll to match
   useEffect(() => {
-    if (currentMatch) listRef.current?.scrollToRow(currentMatch.lineIndex);
-  }, [currentMatch]);
+    if (!currentMatch) return;
+    listRef.current?.scrollToRow({
+      index: currentMatch.lineIndex,
+      align: 'center',
+      behavior: 'auto',
+    });
+  }, [currentMatch, listRef]);
 
   // Reset index when query/options change
   useEffect(() => setIdx(0), [query, isRegex, matchCase]);
+
+  useEffect(() => {
+    if (matches.length === 0) {
+      setIdx(0);
+      return;
+    }
+    setIdx(i => Math.min(i, matches.length - 1));
+  }, [matches.length]);
 
   // Ctrl+F
   useEffect(() => {
@@ -328,8 +343,14 @@ export default function BinViewer({ content, loading, error, fileName }) {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  const prev = useCallback(() => setIdx(i => (i - 1 + matches.length) % matches.length), [matches.length]);
-  const next = useCallback(() => setIdx(i => (i + 1) % matches.length), [matches.length]);
+  const prev = useCallback(() => {
+    if (matches.length === 0) return;
+    setIdx(i => (i - 1 + matches.length) % matches.length);
+  }, [matches.length]);
+  const next = useCallback(() => {
+    if (matches.length === 0) return;
+    setIdx(i => (i + 1) % matches.length);
+  }, [matches.length]);
   const closeSearch = useCallback(() => { setSearchOpen(false); setQuery(''); }, []);
 
   const rowProps = useMemo(
@@ -367,8 +388,8 @@ export default function BinViewer({ content, loading, error, fileName }) {
 
       {searchOpen && (
         <SearchBar
-          query={query}       onChange={setQuery}
-          isRegex={isRegex}   onRegex={() => setIsRegex(v => !v)}
+          query={query} onChange={setQuery}
+          isRegex={isRegex} onRegex={() => setIsRegex(v => !v)}
           matchCase={matchCase} onMatchCase={() => setMatchCase(v => !v)}
           count={matches.length} currentIdx={currentMatchIdx}
           onPrev={prev} onNext={next} onClose={closeSearch}
@@ -378,7 +399,7 @@ export default function BinViewer({ content, loading, error, fileName }) {
 
       <div ref={containerRef} style={S.listWrap}>
         <List
-          ref={listRef}
+          listRef={listRef}
           width="100%"
           height={height}
           rowCount={lines.length}

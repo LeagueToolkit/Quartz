@@ -1,5 +1,33 @@
 import { parseAudioFile, parseBinFile, groupAudioFiles, getEventMappings } from './bnkParser';
 
+const sanitizeNodeScope = (value) => String(value || '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'root';
+
+export const scopeTreeNodeIds = (node, scopeKey, parentTrail = []) => {
+    if (!node) return node;
+
+    const nodeToken = sanitizeNodeScope(node.name || node.id || 'node');
+    const scopedTrail = [...parentTrail, nodeToken];
+    const scopedId = `${scopeKey}::${scopedTrail.join('::')}`;
+    const scopedNode = {
+        ...node,
+        id: scopedId,
+    };
+
+    if (Array.isArray(node.children) && node.children.length > 0) {
+        const siblingNameCounts = new Map();
+        scopedNode.children = node.children.map((child) => {
+            const childToken = sanitizeNodeScope(child.name || child.id || 'node');
+            const nextCount = (siblingNameCounts.get(childToken) || 0) + 1;
+            siblingNameCounts.set(childToken, nextCount);
+            return scopeTreeNodeIds(child, scopeKey, [...scopedTrail, `${childToken}~${nextCount}`]);
+        });
+    }
+
+    return scopedNode;
+};
+
 export const loadBanks = async ({ bnkPath, wpkPath, binPath }) => {
     if (!window.require) throw new Error('File system access not available');
     const fs = window.require('fs');
@@ -63,7 +91,8 @@ export const loadBanks = async ({ bnkPath, wpkPath, binPath }) => {
     const sourceName = wpkPath ? path.basename(wpkPath) : (bnkPath ? path.basename(bnkPath) : 'root');
     const originalPath = wpkPath || bnkPath;
 
-    const tree = groupAudioFiles(finalAudioFiles, stringHashes, sourceName);
+    const scopeKey = sanitizeNodeScope(originalPath || sourceName);
+    const tree = scopeTreeNodeIds(groupAudioFiles(finalAudioFiles, stringHashes, sourceName), scopeKey);
     tree.isRoot = true;
     tree.originalPath = originalPath;
     tree.bnkPath = bnkPath;

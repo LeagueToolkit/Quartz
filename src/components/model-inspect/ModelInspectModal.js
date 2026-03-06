@@ -249,9 +249,26 @@ export default function ModelInspectModal({
   const [wireframe, setWireframe] = useState(false);
   const [flatLighting, setFlatLighting] = useState(true);
   const [showSkeleton, setShowSkeleton] = useState(false);
+  const [showGroundTexture, setShowGroundTexture] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem('modelInspect:showGroundTexture');
+      return saved == null ? true : saved === '1';
+    } catch (_) {
+      return true;
+    }
+  });
+  const [showSkybox, setShowSkybox] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem('modelInspect:showSkybox');
+      return saved == null ? true : saved === '1';
+    } catch (_) {
+      return true;
+    }
+  });
   const [visibleSubmeshes, setVisibleSubmeshes] = useState(new Set());
   const [textureDebugRows, setTextureDebugRows] = useState([]);
   const [selectedAnm, setSelectedAnm] = useState('');
+  const [externalAnmFiles, setExternalAnmFiles] = useState([]);
   const [anmClip, setAnmClip] = useState(null);
   const [anmError, setAnmError] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
@@ -272,12 +289,29 @@ export default function ModelInspectModal({
     setVisibleSubmeshes(new Set());
     setTextureDebugRows([]);
     setSelectedAnm('');
+    setExternalAnmFiles([]);
     setAnmClip(null);
     setAnmError('');
     setIsPlaying(false);
     setCurrentTime(0);
     setPlayRate(1);
   }, [open, manifest]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('modelInspect:showGroundTexture', showGroundTexture ? '1' : '0');
+    } catch (_) {
+      // ignore storage issues
+    }
+  }, [showGroundTexture]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('modelInspect:showSkybox', showSkybox ? '1' : '0');
+    } catch (_) {
+      // ignore storage issues
+    }
+  }, [showSkybox]);
 
   const selectedCharacterPrefix = useMemo(() => {
     const folder = String(selectedCharacterFolder || '').toLowerCase().trim();
@@ -296,6 +330,14 @@ export default function ModelInspectModal({
     if (!selectedCharacterPrefix) return all;
     return all.filter((f) => String(f).toLowerCase().includes(selectedCharacterPrefix));
   }, [manifest?.anmFiles, selectedCharacterPrefix]);
+
+  const anmOptions = useMemo(() => {
+    const unique = new Set([...(filteredAnmFiles || []), ...(externalAnmFiles || [])]);
+    return [
+      { value: '', label: '(None)' },
+      ...Array.from(unique).map((f) => ({ value: f, label: shortName(f) })),
+    ];
+  }, [filteredAnmFiles, externalAnmFiles]);
 
   useEffect(() => {
     if (!inline && !open) return;
@@ -451,6 +493,42 @@ export default function ModelInspectModal({
     });
   };
 
+  const addExternalAnimation = async () => {
+    try {
+      if (!(window && window.require)) return;
+      const ipcRenderer = window.require('electron')?.ipcRenderer;
+      const nodePath = window.require('path');
+      if (!ipcRenderer || !nodePath) return;
+
+      const selectedSknAbs = selectedSkn
+        ? nodePath.join(String(manifest?.filesDir || ''), String(selectedSkn || ''))
+        : '';
+      const defaultPath = selectedSknAbs
+        ? nodePath.dirname(selectedSknAbs)
+        : String(manifest?.filesDir || '');
+
+      const result = await ipcRenderer.invoke('dialog:openFile', {
+        title: 'Select Animation File',
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: 'Animation Files', extensions: ['anm'] }],
+        defaultPath,
+      });
+
+      const picked = Array.isArray(result?.filePaths) ? result.filePaths.map((p) => String(p || '')).filter(Boolean) : [];
+      if (result?.canceled || picked.length === 0) return;
+      setExternalAnmFiles((prev) => {
+        const next = new Set(prev);
+        for (const p of picked) next.add(p);
+        return Array.from(next);
+      });
+      setSelectedAnm(picked[0]);
+      setIsPlaying(false);
+      setCurrentTime(0);
+    } catch (_) {
+      // ignore picker errors
+    }
+  };
+
   if (!open && !inline) return null;
 
   const gridContent = (
@@ -474,6 +552,8 @@ export default function ModelInspectModal({
             wireframe={wireframe}
             flatLighting={flatLighting}
             showSkeleton={showSkeleton}
+            showGroundTexture={showGroundTexture}
+            showSkybox={showSkybox}
             skeletonSegments={animatedSegments}
             skinningMatrices={skinningMatrices}
             height={viewportHeight}
@@ -633,6 +713,8 @@ export default function ModelInspectModal({
             <Toggle checked={flatLighting} onChange={setFlatLighting} label="Flat Lighting" />
             <Toggle checked={wireframe} onChange={setWireframe} label="Wireframe" />
             <Toggle checked={showSkeleton} onChange={setShowSkeleton} label="Show Skeleton" />
+            <Toggle checked={showGroundTexture} onChange={setShowGroundTexture} label="Ground Texture" />
+            <Toggle checked={showSkybox} onChange={setShowSkybox} label="Skybox" />
           </div>
         </Section>
 
@@ -667,15 +749,20 @@ export default function ModelInspectModal({
         {/* animation */}
         <Section>
           <SectionTitle>Animation</SectionTitle>
-          <CustomDropdown
-            value={selectedAnm}
-            onChange={setSelectedAnm}
-            style={{ marginBottom: 8 }}
-            options={[
-              { value: '', label: '(None)' },
-              ...((filteredAnmFiles || []).map((f) => ({ value: f, label: shortName(f) }))),
-            ]}
-          />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, marginBottom: 8 }}>
+            <CustomDropdown
+              value={selectedAnm}
+              onChange={setSelectedAnm}
+              options={anmOptions}
+            />
+            <GhostButton
+              onClick={addExternalAnimation}
+              style={{ width: 34, minWidth: 34, height: 34, padding: 0, fontSize: '0.95rem', lineHeight: 1 }}
+              title="Pick animation file"
+            >
+              {'\uD83D\uDCC1'}
+            </GhostButton>
+          </div>
 
           {anmError && (
             <div style={{ fontSize: '0.72rem', color: '#f87171', marginBottom: 6 }}>

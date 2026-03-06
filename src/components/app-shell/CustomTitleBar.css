@@ -111,6 +111,27 @@
   height: 18px;
 }
 
+.figma-window-control-image {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  opacity: 0.85;
+}
+
+.figma-window-control.jade-launch:hover .figma-window-control-image {
+  opacity: 1;
+}
+
+.figma-window-control:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.figma-window-control:disabled:hover {
+  background-color: transparent;
+  color: var(--text-2, #c084fc);
+}
+
 .app-title {
   font-family: 'Inter', sans-serif;
   font-size: 14px;

@@ -107,6 +107,7 @@ export default function usePort() {
   const donorPyContentRef = useRef('');
   const targetPyContentRef = useRef('');
   const backgroundSaveTimerRef = useRef(null);
+  const externalOverwriteRef = useRef(null);
   const targetListRef = useRef(null);
   const donorListRef = useRef(null);
   const dragEnterCounter = useRef(0);
@@ -127,7 +128,10 @@ export default function usePort() {
     setSelectedTargetSystem,
     setCollapsedTargetSystems,
     setCollapsedDonorSystems,
-    electronPrefs
+    electronPrefs,
+    {
+      onExternalOverwriteRef: externalOverwriteRef,
+    }
   );
 
   const hasResourceResolver = file.hasResourceResolver;
@@ -267,6 +271,10 @@ export default function usePort() {
 
   const handleSave = async () => {
     try {
+      console.log('[Interop][Port] Save started', {
+        targetPath: file.targetPath,
+        systems: Object.keys(file.targetSystems || {}).length,
+      });
       setIsProcessing(true);
       setProcessingText('Saving .bin...');
       setStatusMessage('Saving modified target file...');
@@ -310,7 +318,9 @@ export default function usePort() {
         if (needsReinsert) finalContent = insertMultiplePersistentEffects(modifiedContent, existingPersistent);
       } catch (e) { }
 
-      const outputPyPath = file.targetPath.replace('.bin', '.py');
+      const outputPyPath = /\.bin$/i.test(file.targetPath)
+        ? file.targetPath.replace(/\.bin$/i, '.py')
+        : file.targetPath;
       const fsPromise = window.require('fs').promises;
       await fsPromise.writeFile(outputPyPath, finalContent, 'utf8');
 
@@ -319,6 +329,7 @@ export default function usePort() {
         await ToBin(outputPyPath, file.targetPath);
 
         setStatusMessage('✅ Successfully saved');
+        console.log('[Interop][Port] ToBin success', { outputPyPath, binPath: file.targetPath });
         file.setTargetPyContent(finalContent);
         const reparsedSystems = parseVfxEmitters(finalContent) || {};
         const mergedSystems = Object.fromEntries(
@@ -337,11 +348,27 @@ export default function usePort() {
         setDeletedEmitters(new Map());
         setFileSaved(true);
 
+        try {
+          if (window.require) {
+            const { ipcRenderer } = window.require('electron');
+            const notifyResult = await ipcRenderer.invoke('interop:notifyJadeBinUpdated', {
+              binPath: file.targetPath,
+              sourceMode: 'port',
+            });
+            console.log('[Interop][Port] notifyJadeBinUpdated result', notifyResult);
+          } else {
+            console.log('[Interop][Port] notifyJadeBinUpdated skipped (no window.require)');
+          }
+        } catch (notifyErr) {
+          console.warn('[Interop][Port] notifyJadeBinUpdated failed', notifyErr);
+        }
+
         // Non-blocking: regenerate .py from saved .bin to normalize indentation/format.
         ToPy(file.targetPath).catch(err => {
           console.warn('[Port2] Non-critical indentation fix failed:', err);
         });
       } catch (err) {
+        console.error('[Interop][Port] ToBin failed', err);
         setStatusMessage('❌ Error saving file');
         setFileSaved(false);
         file.setShowRitoBinErrorDialog(true);
@@ -350,12 +377,15 @@ export default function usePort() {
       setProcessingText('');
 
     } catch (e) {
-      console.error(e);
+      console.error('[Interop][Port] Save outer error', e);
       setStatusMessage(`Error: ${e.message}`);
       setFileSaved(false);
       setIsProcessing(false);
     }
   };
+  useEffect(() => {
+    externalOverwriteRef.current = handleSave;
+  }, [handleSave]);
 
   const unsavedGuard = useUnsavedNavigationGuard({
     fileSaved,
@@ -751,6 +781,7 @@ export default function usePort() {
     hasChangesToSave: () => !fileSaved,
     handleOpenTargetBin: file.handleOpenTargetBin,
     handleOpenDonorBin: file.handleOpenDonorBin,
+    handleOpenInJade: file.handleOpenInJade,
     handleOpenBackupViewer,
     handleOpenNewSystemModal,
     handleClearSelection,

@@ -1,0 +1,9 @@
+C:\Users\Frog\Desktop\Projects coding\Quartz-main\native\quartz_cli\target_verify2\debug\deps\num_enum_derive-b7f1ac043cd7960d.d: C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\lib.rs C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\enum_attributes.rs C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\parsing.rs C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\utils.rs C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\variant_attributes.rs
+
+C:\Users\Frog\Desktop\Projects coding\Quartz-main\native\quartz_cli\target_verify2\debug\deps\num_enum_derive-b7f1ac043cd7960d.dll: C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\lib.rs C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\enum_attributes.rs C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\parsing.rs C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\utils.rs C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\variant_attributes.rs
+
+C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\lib.rs:
+C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\enum_attributes.rs:
+C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\parsing.rs:
+C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\utils.rs:
+C:\Users\Frog\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num_enum_derive-0.7.5\src\variant_attributes.rs:

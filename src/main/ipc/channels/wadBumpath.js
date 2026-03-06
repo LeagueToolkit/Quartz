@@ -79,6 +79,12 @@ function isPreservedIcons2DPath(relativePath) {
   return ICONS2D_RELATIVE_PATTERN.test(toPosixRel(relativePath));
 }
 
+function normalizeSkinSelectionId(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return num >= 1000 ? num % 1000 : num;
+}
+
 function copyPreservedHudIcons2D(fs, sourceDir, targetDir) {
   if (!sourceDir || !targetDir || !fs.existsSync(sourceDir)) return 0;
 
@@ -445,6 +451,7 @@ function registerWadBumpathChannels({
       const wadFilePath = path.join(leaguePath, wadFileName);
 
       const skinNameSafe = skinName ? skinName.replace(/[^a-zA-Z0-9]/g, '_') : String(skinId);
+      const effectiveSkinId = normalizeSkinSelectionId(chromaId != null ? chromaId : skinId);
       const outputDir = chromaId
         ? path.join(extractionPath, `${championFileName}_extracted_${skinNameSafe}_chroma_${chromaId}`)
         : path.join(extractionPath, `${championFileName}_extracted_${skinNameSafe}`);
@@ -590,7 +597,7 @@ function registerWadBumpathChannels({
             const fileInfo = bum.sourceFiles[key];
             if (fileInfo?.relPath?.toLowerCase().endsWith('.bin')) {
               const skinMatch = fileInfo.relPath.toLowerCase().match(/\/skins\/skin(\d+)\.bin/);
-              if (skinMatch && parseInt(skinMatch[1], 10) === skinId) {
+              if (skinMatch && parseInt(skinMatch[1], 10) === effectiveSkinId) {
                 binSelections[key] = true;
                 console.log(`[wad:extractBundle] Clean: selected ${fileInfo.relPath}`);
               }
@@ -673,6 +680,9 @@ function registerWadBumpathChannels({
         const bum = new BumpathCore();
         bum.skipSfxRepath = skipSfxRepath;
         await bum.addSourceDirs([data.sourceDir]);
+        const normalizedSkinIds = skinIdsForPass
+          .map(normalizeSkinSelectionId)
+          .filter((value) => value != null);
 
         const binSelections = {};
         for (const key in bum.sourceBins) binSelections[key] = false;
@@ -682,7 +692,7 @@ function registerWadBumpathChannels({
           const fileInfo = bum.sourceFiles[key];
           if (fileInfo?.relPath?.toLowerCase().endsWith('.bin')) {
             const skinMatch = fileInfo.relPath.toLowerCase().match(/\/skins\/skin(\d+)\.bin/);
-            if (skinMatch && skinIdsForPass.includes(parseInt(skinMatch[1], 10))) {
+            if (skinMatch && normalizedSkinIds.includes(parseInt(skinMatch[1], 10))) {
               binSelections[key] = true;
               selectedCount++;
               console.log(`  Selected: ${fileInfo.relPath}`);
@@ -691,7 +701,7 @@ function registerWadBumpathChannels({
         }
 
         bum.updateBinSelection(binSelections);
-        console.log(`[bumpath:repath] Marked ${selectedCount} BIN files for skins [${skinIdsForPass.join(', ')}]`);
+        console.log(`[bumpath:repath] Marked ${selectedCount} BIN files for skins [${skinIdsForPass.join(', ')}] -> normalized [${normalizedSkinIds.join(', ')}]`);
 
         await bum.scan(hashPath);
         console.log(`Found ${Object.keys(bum.scannedTree).length} entries`);
@@ -895,12 +905,14 @@ function registerWadBumpathChannels({
       const items = Array.isArray(data?.items) ? data.items : [];
       const outputDir = data?.outputDir;
       const replaceExistingInput = data?.replaceExisting;
+      const preservePathsInput = data?.preservePaths;
       if (!outputDir) return { error: 'Missing outputDir' };
       if (items.length === 0) return { success: true, extractedCount: 0, skippedCount: 0 };
 
       const replaceExisting = typeof replaceExistingInput === 'boolean'
         ? replaceExistingInput
         : await askReplaceExistingForOutput(event?.sender, outputDir, 'selected extraction');
+      const preservePaths = typeof preservePathsInput === 'boolean' ? preservePathsInput : true;
       const nativeAddon = tryLoadNativeWadIndexer();
       if (!nativeAddon || typeof nativeAddon.extractSelected !== 'function') {
         return { error: 'Native extractSelected is unavailable. Rebuild native addon.' };
@@ -918,7 +930,7 @@ function registerWadBumpathChannels({
         return { success: true, extractedCount: 0, skippedCount: items.length };
       }
 
-      const result = await nativeAddon.extractSelectedAsync(nativeItems, outputDir, replaceExisting);
+      const result = await nativeAddon.extractSelectedAsync(nativeItems, outputDir, replaceExisting, preservePaths);
       if (result?.error) {
         return { error: result.error };
       }
@@ -1319,6 +1331,57 @@ function registerWadBumpathChannels({
   });
 
   // ---------------------------------------------------------------------------
+  // texture:decodeToDataUrl — decode TEX/DDS via native addon (ltk_texture)
+  // and return PNG data URL for renderer usage.
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('texture:decodeToDataUrl', async (_event, data) => {
+    try {
+      const filePath = String(data?.filePath || '');
+      if (!filePath) return { success: false, error: 'Missing filePath' };
+      if (!fs.existsSync(filePath)) return { success: false, error: `File not found: ${filePath}` };
+
+      const nativeAddon = tryLoadNativeWadIndexer();
+      if (!nativeAddon || typeof nativeAddon.decodeTextureToPng !== 'function') {
+        const exportsList = nativeAddon ? Object.keys(nativeAddon).sort() : [];
+        console.warn('[texture:decodeToDataUrl] Native decoder missing decodeTextureToPng export', {
+          filePath,
+          hasAddon: Boolean(nativeAddon),
+          exports: exportsList,
+        });
+        return {
+          success: false,
+          error: `Native texture decoder unavailable (decodeTextureToPng missing). Exports: ${exportsList.join(', ')}`,
+        };
+      }
+
+      const decoded = nativeAddon.decodeTextureToPng(filePath);
+      if (!decoded || !decoded.png) {
+        console.warn('[texture:decodeToDataUrl] Native decoder returned empty payload', { filePath });
+        return { success: false, error: 'Native decoder returned empty payload' };
+      }
+
+      const pngBuffer = Buffer.from(decoded.png);
+      return {
+        success: true,
+        method: 'native',
+        width: Number(decoded.width || 0),
+        height: Number(decoded.height || 0),
+        decodeMs: Number(decoded.decodeMs || 0),
+        encodeMs: Number(decoded.encodeMs || 0),
+        nativeTotalMs: Number(decoded.totalMs || 0),
+        dataUrl: `data:image/png;base64,${pngBuffer.toString('base64')}`,
+      };
+    } catch (e) {
+      console.error('[texture:decodeToDataUrl] Native decode failed', {
+        filePath: String(data?.filePath || ''),
+        error: String(e?.message || e),
+        stack: e?.stack || '',
+      });
+      return { success: false, error: String(e?.message || e) };
+    }
+  });
+
+  // ---------------------------------------------------------------------------
   // ritobin:toPy — convert .bin to .py using native Rust addon or fallback exe
   // ---------------------------------------------------------------------------
   ipcMain.handle('ritobin:toPy', async (_event, { filePath }) => {
@@ -1375,7 +1438,7 @@ function registerWadBumpathChannels({
   // ---------------------------------------------------------------------------
   ipcMain.handle('wad:parseSknBins', async (_event, data) => {
     try {
-      const { filesDir, skinKey = 'base', characterFolder = '', hashPath: rawHashPath } = data || {};
+      const { filesDir, skinKey = 'base', characterFolder = '', exactBinName = '', hashPath: rawHashPath } = data || {};
       if (!filesDir || !fs.existsSync(filesDir)) return { materialTextureHints: {}, defaultTextureBySkn: {} };
       if (!loadBinModule || !loadBinHasherModule || !loadWadHasherModule) {
         return { materialTextureHints: {}, defaultTextureBySkn: {} };
@@ -1383,17 +1446,16 @@ function registerWadBumpathChannels({
 
       const { discoverMaterialTextureHints } = require('./modelInspect');
       const hashPath = getHashPath(rawHashPath);
+      const skinId = skinKey === 'base' ? 0 : (parseInt(skinKey.replace(/^skin0*/i, ''), 10) || 0);
       let hashtables = null;
       if (hashPath && fs.existsSync(hashPath)) {
         try {
           const { loadHashtables } = await loadJsRitoModule();
           hashtables = await loadHashtables(hashPath, {
-            tables: ['hashes.game.txt', 'hashes.lcu.txt', 'hashes.binentries.txt', 'hashes.binhashes.txt', 'hashes.bintypes.txt', 'hashes.binfields.txt'],
+            tables: ['hashes.binentries.txt', 'hashes.binhashes.txt', 'hashes.bintypes.txt', 'hashes.binfields.txt'],
           });
         } catch (_) { }
       }
-
-      const skinId = skinKey === 'base' ? 0 : (parseInt(skinKey.replace(/^skin0*/i, ''), 10) || 0);
       const result = await discoverMaterialTextureHints({
         fs,
         filesDir,
@@ -1401,6 +1463,7 @@ function registerWadBumpathChannels({
         skinId,
         skinKey,
         characterFolder,
+        exactBinName,
         loadBinModule,
         loadBinHasherModule,
         loadWadHasherModule,

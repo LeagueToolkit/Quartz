@@ -102,6 +102,7 @@ async function discoverMaterialTextureHints({
   skinId,
   skinKey,
   characterFolder = '',
+  exactBinName = '',
   allFiles: providedFiles = null,
   loadBinModule,
   loadBinHasherModule,
@@ -146,31 +147,23 @@ async function discoverMaterialTextureHints({
   const selectedSkinId = Number(skinId) >= 1000 ? Number(skinId) % 1000 : Number(skinId);
   const selectedCharacterFolder = String(characterFolder || '').toLowerCase();
   const selectedSkinKey = String(skinKey || '').toLowerCase();
-  const selectedSkinFolders = new Set([selectedSkinKey]);
-  if (selectedSkinKey === 'base') {
-    selectedSkinFolders.add('skin0');
-    selectedSkinFolders.add('skin00');
-  } else {
-    const skinNum = selectedSkinId;
-    selectedSkinFolders.add(`skin${skinNum}`);
-    selectedSkinFolders.add(`skin${String(skinNum).padStart(2, '0')}`);
-  }
   const textureMatchesSelectedCharacter = (texturePath) => {
     if (!selectedCharacterFolder) return true;
     const low = normalizeKey(texturePath);
     // Allow global/shared textures, but block textures from other champion folders.
     if (low.includes('/shared/') || low.includes('/global/') || low.includes('/common/')) return true;
-    if (!low.includes(`/characters/${selectedCharacterFolder}/`)) return false;
-    const skinMatch = low.match(/\/skins\/([^/]+)\//);
-    if (!skinMatch) return true;
-    return selectedSkinFolders.has(String(skinMatch[1] || '').toLowerCase());
+    return low.includes(`/characters/${selectedCharacterFolder}/`);
   };
   const selectedSkinTokenA = `skin${selectedSkinId}.bin`;
   const selectedSkinTokenB = `skin${String(selectedSkinId).padStart(2, '0')}.bin`;
   const selectedSkinTokenC = `${String(skinKey || '').toLowerCase()}.bin`;
+  const exactBinNameLower = String(exactBinName || '').trim().toLowerCase();
   const filteredBinFiles = binFiles.filter((absPath) => {
     const rel = toPosix(path.relative(filesDir, absPath)).toLowerCase();
     if (!rel.endsWith('.bin')) return false;
+    if (exactBinNameLower) {
+      return path.basename(rel) === exactBinNameLower;
+    }
     if (characterFolder) {
       const folderMatch = rel.match(/^(?:assets|data)\/characters\/([^/]+)\//);
       const folder = folderMatch ? String(folderMatch[1] || '').toLowerCase() : '';
@@ -411,6 +404,7 @@ async function discoverMaterialTextureHints({
           const nameField = getFieldByName(entry.data, 'name');
           const nameValue = readStringLike(nameField);
           if (nameValue) materialRefName = nameValue;
+          const entryHashRaw = String(entry.hash || '').toLowerCase();
 
           const samplerValuesField = getFieldByName(entry.data, 'samplervalues');
           if (samplerValuesField && (samplerValuesField.type === 128 || samplerValuesField.type === 129)) {
@@ -426,6 +420,11 @@ async function discoverMaterialTextureHints({
               if (!textureMatchesSelectedCharacter(texturePath)) continue;
               discoveredTextureRefs.add(texturePath.toLowerCase());
               addMaterialAlias(materialToTexture, materialRefName, texturePath);
+              // Also index by static material entry hash so Material: link = 0x... overrides resolve.
+              if (entryHashRaw) {
+                addMaterialAlias(materialToTexture, entryHashRaw, texturePath);
+                addMaterialAlias(materialToTexture, `0x${entryHashRaw.replace(/^0x/, '')}`, texturePath);
+              }
             }
           }
         }

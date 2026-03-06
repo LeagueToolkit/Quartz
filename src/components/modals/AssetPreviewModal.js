@@ -60,6 +60,29 @@ const formatSize = (bytes) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
+const normalizeSearchText = (value) =>
+    String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+
+const itemMatchesSearch = (item, query) => {
+    const lowerQuery = String(query || '').toLowerCase();
+    const compactQuery = normalizeSearchText(query);
+    if (!lowerQuery) return true;
+
+    const fields = [
+        item?.name,
+        item?.path,
+        item?.originalPath,
+    ].filter(Boolean);
+
+    return fields.some((value) => {
+        const text = String(value).toLowerCase();
+        if (text.includes(lowerQuery)) return true;
+        return compactQuery && normalizeSearchText(text).includes(compactQuery);
+    });
+};
+
 import { processDataURL } from '../../utils/assets/rgbaDataURL';
 
 // Texture Conversion Queue (prevents UI freeze during scroll)
@@ -517,8 +540,7 @@ const CustomExplorer = () => {
             return;
         }
 
-        const lowerQuery = searchQuery.toLowerCase();
-        const filtered = originalItems.filter(item => item.name.toLowerCase().includes(lowerQuery));
+        const filtered = originalItems.filter(item => itemMatchesSearch(item, searchQuery));
         setItems(filtered);
     }, [searchQuery, originalItems]); // Note: excluding 'items' to avoid loop, we drive from originalItems
 

@@ -1,7 +1,7 @@
 {
   "name": "quartz",
   "productName": "Quartz",
-  "version": "3.0.2",
+  "version": "3.1.0",
   "description": "Quartz - League of Legends Modding Suite",
   "homepage": "./",
   "main": "electron-main.js",
@@ -50,8 +50,7 @@
       "deleteAppDataOnUninstall": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "include": "installer.nsh"
+      "createStartMenuShortcut": true
     },
     "extraResources": [
       {
@@ -59,11 +58,8 @@
         "to": "ritobin_cli.exe"
       },
       {
-        "from": "context_menu",
-        "to": "context_menu",
-        "filter": [
-          "**/*"
-        ]
+        "from": "native/quartz_cli/target/release/quartz_cli.exe",
+        "to": "quartz_cli.exe"
       },
       {
         "from": "public/your-logo.gif",

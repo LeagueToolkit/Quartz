@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './CustomTitleBar.css';
+import { emitJadeMissingModal } from '../../utils/interop/jadeInterop.js';
+import electronPrefs from '../../utils/core/electronPrefs.js';
 
 const TITLE_BAR_HEIGHT = 48;
 
@@ -8,6 +10,7 @@ const CustomTitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [iconSrc, setIconSrc] = useState(process.env.PUBLIC_URL + '/divinelab.ico');
   const [gifSrc, setGifSrc] = useState('');
+  const [jadeInteropEnabled, setJadeInteropEnabled] = useState(true);
   const navigate = useNavigate();
 
   // Function to get the navbar gif source (same logic as ModernNavigation)
@@ -121,6 +124,24 @@ const CustomTitleBar = () => {
   }, [gifSrc]);
 
   useEffect(() => {
+    const loadJadeInteropEnabled = async () => {
+      try {
+        await electronPrefs.initPromise;
+        setJadeInteropEnabled(electronPrefs.obj.CommunicateWithJade !== false);
+      } catch {
+        setJadeInteropEnabled(true);
+      }
+    };
+
+    loadJadeInteropEnabled();
+    const onSettingsChanged = () => {
+      loadJadeInteropEnabled();
+    };
+    window.addEventListener('settingsChanged', onSettingsChanged);
+    return () => window.removeEventListener('settingsChanged', onSettingsChanged);
+  }, []);
+
+  useEffect(() => {
     if (window.require) {
       const { ipcRenderer } = window.require('electron');
 
@@ -159,6 +180,29 @@ const CustomTitleBar = () => {
     if (window.require) {
       const { ipcRenderer } = window.require('electron');
       ipcRenderer.invoke('window:close');
+    }
+  };
+
+  const handleOpenInJade = async () => {
+    try {
+      if (!jadeInteropEnabled) {
+        return;
+      }
+      if (!window.require) {
+        emitJadeMissingModal('desktop-required');
+        return;
+      }
+
+      const { ipcRenderer } = window.require('electron');
+      const status = await ipcRenderer.invoke('interop:getJadeInstallStatus');
+      if (!status?.success || !status?.installed) {
+        emitJadeMissingModal(status?.error || 'jade-not-installed');
+        return;
+      }
+
+      window.dispatchEvent(new CustomEvent('interop:open-in-jade'));
+    } catch (error) {
+      emitJadeMissingModal(error?.message || 'check-failed');
     }
   };
 
@@ -210,6 +254,16 @@ const CustomTitleBar = () => {
 
       <div className="figma-window-controls-container">
         <div className="figma-window-controls">
+          <button
+            type="button"
+            className="figma-window-control jade-launch"
+            onClick={handleOpenInJade}
+            title={jadeInteropEnabled ? 'Open in Jade' : 'Open in Jade (disabled in Settings > External Tools)'}
+            disabled={!jadeInteropEnabled}
+          >
+            <img src="/jade.webp" alt="Jade" className="figma-window-control-image" />
+          </button>
+
           <button
             type="button"
             className="figma-window-control"

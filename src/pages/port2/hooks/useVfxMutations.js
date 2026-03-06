@@ -262,8 +262,13 @@ export default function useVfxMutations(
                     : `Port all ${donorSystemsList.length} VFX systems from donor`
             );
 
-            // Create backup before making changes
-            await createBackup(targetPath, 'port-all-systems');
+            // Create a valid snapshot backup before bulk changes.
+            const targetPyPath = /\.py$/i.test(targetPath || '')
+                ? targetPath
+                : (targetPath || '').replace(/\.bin$/i, '.py');
+            if (targetPyPath && targetPyContent) {
+                await createBackup(targetPyPath, targetPyContent, 'port-all-systems');
+            }
 
             let updatedContent = targetPyContent;
             if (mode === 'replace-target') {

@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { parseAudioFile, parseBinFile, groupAudioFiles, getEventMappings } from '../utils/bnkParser';
 import { wemToOgg, wemToWav, wemToMp3 } from '../utils/wemConverter';
+import { scopeTreeNodeIds } from '../utils/bnkLoader';
 
 export function useBnkAutoExtract({
     activePane,
@@ -55,7 +56,10 @@ export function useBnkAutoExtract({
                 const audioData = fs.readFileSync(audio);
                 const audioResult = parseAudioFile(audioData, audio);
 
-                const tree = groupAudioFiles(audioResult.audioFiles, stringHashes, modFolderName);
+                const bankFileName = path.basename(audio);
+                const rootLabel = modFolderName ? `${modFolderName} [${bankFileName}]` : bankFileName;
+                const tree = scopeTreeNodeIds(groupAudioFiles(audioResult.audioFiles, stringHashes, rootLabel), audio);
+                tree.name = rootLabel;
                 tree.isRoot = true;
                 tree.originalPath = audio;
                 tree.originalAudioFiles = audioResult.audioFiles;

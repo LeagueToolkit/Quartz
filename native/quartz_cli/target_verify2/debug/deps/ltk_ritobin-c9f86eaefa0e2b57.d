@@ -1,0 +1,10 @@
+C:\Users\Frog\Desktop\Projects coding\Quartz-main\native\quartz_cli\target_verify2\debug\deps\ltk_ritobin-c9f86eaefa0e2b57.d: C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\lib.rs C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\error.rs C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\hashes.rs C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\parser.rs C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\types.rs C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\writer.rs
+
+C:\Users\Frog\Desktop\Projects coding\Quartz-main\native\quartz_cli\target_verify2\debug\deps\libltk_ritobin-c9f86eaefa0e2b57.rmeta: C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\lib.rs C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\error.rs C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\hashes.rs C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\parser.rs C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\types.rs C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\writer.rs
+
+C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\lib.rs:
+C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\error.rs:
+C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\hashes.rs:
+C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\parser.rs:
+C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\types.rs:
+C:\Users\Frog\Desktop\Projects\ coding\Quartz-main\league-toolkit-main\crates\ltk_ritobin\src\writer.rs:

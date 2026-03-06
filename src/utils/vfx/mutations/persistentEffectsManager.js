@@ -64,6 +64,31 @@ export function extractExistingPersistentConditions(pyContent) {
   return conditions;
 }
 
+function extractNamedPointerBlock(conditionLines, fieldNames) {
+  const patterns = fieldNames.map(name => new RegExp(`^${name}:`, 'i'));
+
+  for (let i = 0; i < conditionLines.length; i++) {
+    const rawLine = conditionLines[i] || '';
+    const trimmed = rawLine.trim();
+    if (!patterns.some(re => re.test(trimmed))) continue;
+
+    const blockLines = [rawLine];
+    let depth = (rawLine.match(/\{/g) || []).length - (rawLine.match(/\}/g) || []).length;
+    let j = i + 1;
+
+    while (depth > 0 && j < conditionLines.length) {
+      const nextLine = conditionLines[j] || '';
+      blockLines.push(nextLine);
+      depth += (nextLine.match(/\{/g) || []).length - (nextLine.match(/\}/g) || []).length;
+      j += 1;
+    }
+
+    return blockLines.join('\n');
+  }
+
+  return null;
+}
+
 /**
  * Parse a single PersistentEffectConditionData block
  */
@@ -77,9 +102,24 @@ function parsePersistentConditionBlock(conditionLines, index) {
     submeshesHide: []
   };
 
+  const rawOwnerCondition = extractNamedPointerBlock(conditionLines, ['OwnerCondition', 'mConditions']);
+  if (rawOwnerCondition) {
+    const shouldPreserveRawOwner =
+      /AllTrueMaterialDriver\s*\{/i.test(rawOwnerCondition) ||
+      /NotMaterialDriver\s*\{/i.test(rawOwnerCondition) ||
+      /IsEnemyDynamicMaterialBoolDriver\s*\{/i.test(rawOwnerCondition) ||
+      /mDrivers:\s*list\[pointer\]\s*=\s*\{/i.test(rawOwnerCondition);
+
+    if (shouldPreserveRawOwner) {
+      condition.preset.rawOwnerCondition = rawOwnerCondition;
+      condition.preset.preserveRawOwnerCondition = true;
+    }
+  }
+
   let currentSection = null;
   let vfxDepth = 0, inVfx = false;
   let currentVfxItem = null;
+  let currentVfxLines = [];
 
   for (const line of conditionLines) {
     const trimmed = line.trim();
@@ -157,9 +197,10 @@ function parsePersistentConditionBlock(conditionLines, index) {
       if (valueMatch) condition.preset.value = parseFloat(valueMatch[1]);
     } else if (/Spell:/i.test(trimmed) && /hash\s*=/i.test(trimmed)) {
       // Parse BuffCounterDynamicMaterialFloatDriver OR HasBuffDynamicMaterialBoolDriver spell hash
-      const spellMatch = trimmed.match(/hash = "([^"]+)"/);
-      if (spellMatch) {
-        const spellHash = spellMatch[1];
+      const stringSpellMatch = trimmed.match(/hash = "([^"]+)"/);
+      const hashSpellMatch = trimmed.match(/hash = (0x[0-9a-fA-F]+)/);
+      const spellHash = stringSpellMatch?.[1] || hashSpellMatch?.[1];
+      if (spellHash) {
         if (condition.preset.type === 'HasBuffScript') {
           condition.preset.spellHash = spellHash;
         } else {
@@ -184,8 +225,10 @@ function parsePersistentConditionBlock(conditionLines, index) {
       vfxDepth += opens - closes;
 
       if (/^PersistentVfxData\s*\{/i.test(trimmed)) {
-        currentVfxItem = { boneName: 'C_Buffbone_Glb_Layout_Loc' };
+        currentVfxItem = {};
+        currentVfxLines = [line];
       } else if (currentVfxItem) {
+        currentVfxLines.push(line);
         if (/effectKey:/i.test(trimmed) || /mEffectKey:/i.test(trimmed)) {
           // Handle both string and hash formats for effect keys
           const stringMatch = trimmed.match(/hash = "([^"]+)"/);
@@ -197,7 +240,13 @@ function parsePersistentConditionBlock(conditionLines, index) {
           }
         } else if (/boneName:/i.test(trimmed)) {
           const boneMatch = trimmed.match(/boneName:\s*string\s*=\s*"([^"]+)"/i);
-          if (boneMatch) currentVfxItem.boneName = boneMatch[1];
+          if (boneMatch) {
+            currentVfxItem.boneName = boneMatch[1];
+            currentVfxItem.hasBoneName = true;
+          }
+        } else if (/scale:\s*f32\s*=/i.test(trimmed)) {
+          const scaleMatch = trimmed.match(/scale:\s*f32\s*=\s*([^\s}]+)/i);
+          if (scaleMatch) currentVfxItem.scale = scaleMatch[1];
         } else if (/OwnerOnly:\s*bool\s*=\s*true/i.test(trimmed)) {
           currentVfxItem.ownerOnly = true;
         } else if (/AttachToCamera:\s*bool\s*=\s*true/i.test(trimmed)) {
@@ -208,8 +257,17 @@ function parsePersistentConditionBlock(conditionLines, index) {
       }
 
       if (vfxDepth === 2 && currentVfxItem && trimmed === '}') {
+        currentVfxItem.rawText = currentVfxLines.join('\n');
+        currentVfxItem.originalKey = currentVfxItem.key;
+        currentVfxItem.originalBoneName = currentVfxItem.boneName;
+        currentVfxItem.originalHasBoneName = !!currentVfxItem.hasBoneName;
+        currentVfxItem.originalOwnerOnly = !!currentVfxItem.ownerOnly;
+        currentVfxItem.originalAttachToCamera = !!currentVfxItem.attachToCamera;
+        currentVfxItem.originalForceRenderVfx = !!currentVfxItem.forceRenderVfx;
+        currentVfxItem.originalScale = currentVfxItem.scale;
         condition.vfx.push(currentVfxItem);
         currentVfxItem = null;
+        currentVfxLines = [];
       }
 
       if (vfxDepth <= 0) inVfx = false;
@@ -255,6 +313,7 @@ function parsePersistentConditionBlock(conditionLines, index) {
   let label = `Condition ${index + 1}: ${condition.preset.type}`;
   if (condition.preset.animationName) label += ` (${condition.preset.animationName})`;
   else if (condition.preset.scriptName) label += ` (${condition.preset.scriptName})`;
+  else if (condition.preset.spellHash) label += ` (${condition.preset.spellHash})`;
   condition.label = label;
 
   // Debug log
@@ -374,6 +433,10 @@ export function extractSubmeshes(pyContent) {
  * preset.delay: { on: number, off: number } optional
  */
 export function buildOwnerCondition(preset) {
+  if (preset?.preserveRawOwnerCondition && preset?.rawOwnerCondition) {
+    return preset.rawOwnerCondition;
+  }
+
   const indent = '                ';
   const block = (inner) => `${indent}OwnerCondition: pointer = ${inner}`;
 
@@ -436,6 +499,56 @@ export function buildOwnerCondition(preset) {
   return block(inner);
 }
 
+function formatHashListEntry(value) {
+  return /^0x[0-9a-fA-F]+$/.test(String(value || ''))
+    ? String(value)
+    : `"${value}"`;
+}
+
+function buildPersistentVfxDataBlock(v, indent1) {
+  const unchanged =
+    !!v.rawText &&
+    v.key === v.originalKey &&
+    (v.boneName || '') === (v.originalBoneName || '') &&
+    !!v.hasBoneName === !!v.originalHasBoneName &&
+    !!v.ownerOnly === !!v.originalOwnerOnly &&
+    !!v.attachToCamera === !!v.originalAttachToCamera &&
+    !!v.forceRenderVfx === !!v.originalForceRenderVfx &&
+    (v.scale || '') === (v.originalScale || '');
+
+  if (unchanged) {
+    return v.rawText;
+  }
+
+  const effectKeyLine = /^0x[0-9a-fA-F]+$/.test(v.key)
+    ? `effectKey: hash = ${v.key}`
+    : `effectKey: hash = "${v.key}"`;
+
+  const lines = [
+    `${indent1}PersistentVfxData {`,
+    `${indent1}    ${effectKeyLine}`
+  ];
+
+  if (v.hasBoneName || v.boneName) {
+    lines.push(`${indent1}    boneName: string = "${v.boneName || 'C_Buffbone_Glb_Layout_Loc'}"`);
+  }
+  if (v.scale !== undefined && v.scale !== null && v.scale !== '') {
+    lines.push(`${indent1}    scale: f32 = ${v.scale}`);
+  }
+  if (v.ownerOnly) {
+    lines.push(`${indent1}    ShowToOwnerOnly: bool = true`);
+  }
+  if (v.attachToCamera) {
+    lines.push(`${indent1}    AttachToCamera: bool = true`);
+  }
+  if (v.forceRenderVfx) {
+    lines.push(`${indent1}    ForceRenderVfx: bool = true`);
+  }
+
+  lines.push(`${indent1}}`);
+  return lines.join('\n');
+}
+
 /**
  * Insert or update a PersistentEffectConditionData entry in SkinCharacterDataProperties
  * payload: { ownerPreset, submeshesShow: string[], submeshesHide: string[], vfxList: [{key, type, boneName, ownerOnly?, attachToCamera?, forceRenderVfx?}] }
@@ -480,23 +593,15 @@ export function insertOrUpdatePersistentEffect(pyContent, payload) {
   const owner = buildOwnerCondition(payload.ownerPreset || {});
   let subShow = '';
   if (payload.submeshesShow && payload.submeshesShow.length > 0) {
-    subShow = `\n${indent1}SubmeshesToShow: list2[hash] = {\n${payload.submeshesShow.map(s => `${indent1}    "${s}"`).join('\n')}\n${indent1}}`;
+    subShow = `\n${indent1}SubmeshesToShow: list2[hash] = {\n${payload.submeshesShow.map(s => `${indent1}    ${formatHashListEntry(s)}`).join('\n')}\n${indent1}}`;
   }
   let subHide = '';
   if (payload.submeshesHide && payload.submeshesHide.length > 0) {
-    subHide = `\n${indent1}SubmeshesToHide: list2[hash] = {\n${payload.submeshesHide.map(s => `${indent1}    "${s}"`).join('\n')}\n${indent1}}`;
+    subHide = `\n${indent1}SubmeshesToHide: list2[hash] = {\n${payload.submeshesHide.map(s => `${indent1}    ${formatHashListEntry(s)}`).join('\n')}\n${indent1}}`;
   }
   let vfx = '';
   if (payload.vfxList && payload.vfxList.length > 0) {
-    const items = payload.vfxList.map(v => {
-      const effectKeyLine = /^0x[0-9a-fA-F]+$/.test(v.key)
-        ? `effectKey: hash = ${v.key}`
-        : `effectKey: hash = "${v.key}"`;
-      const ownerOnly = v.ownerOnly ? `\n${indent1}    ShowToOwnerOnly: bool = true` : '';
-      const attach = v.attachToCamera ? `\n${indent1}    AttachToCamera: bool = true` : '';
-      const force = v.forceRenderVfx ? `\n${indent1}    ForceRenderVfx: bool = true` : '';
-      return `${indent1}PersistentVfxData {\n${indent1}    ${effectKeyLine}\n${indent1}    boneName: string = "${v.boneName || 'C_Buffbone_Glb_Layout_Loc'}"${ownerOnly}${attach}${force}\n${indent1}}`;
-    }).join('\n');
+    const items = payload.vfxList.map(v => buildPersistentVfxDataBlock(v, indent1)).join('\n');
     vfx = `\n${indent1}PersistentVfxs: list2[embed] = {\n${items}\n${indent1}}`;
   }
 
@@ -589,23 +694,15 @@ export function insertMultiplePersistentEffects(pyContent, conditions) {
     const owner = buildOwnerCondition(condition.preset || {});
     let subShow = '';
     if (condition.submeshesShow && condition.submeshesShow.length > 0) {
-      subShow = `\n${indent1}SubmeshesToShow: list2[hash] = {\n${condition.submeshesShow.map(s => `${indent1}    "${s}"`).join('\n')}\n${indent1}}`;
+      subShow = `\n${indent1}SubmeshesToShow: list2[hash] = {\n${condition.submeshesShow.map(s => `${indent1}    ${formatHashListEntry(s)}`).join('\n')}\n${indent1}}`;
     }
     let subHide = '';
     if (condition.submeshesHide && condition.submeshesHide.length > 0) {
-      subHide = `\n${indent1}SubmeshesToHide: list2[hash] = {\n${condition.submeshesHide.map(s => `${indent1}    "${s}"`).join('\n')}\n${indent1}}`;
+      subHide = `\n${indent1}SubmeshesToHide: list2[hash] = {\n${condition.submeshesHide.map(s => `${indent1}    ${formatHashListEntry(s)}`).join('\n')}\n${indent1}}`;
     }
     let vfx = '';
     if (condition.vfx && condition.vfx.length > 0) {
-      const items = condition.vfx.map(v => {
-        const effectKeyLine = /^0x[0-9a-fA-F]+$/.test(v.key)
-          ? `effectKey: hash = ${v.key}`
-          : `effectKey: hash = "${v.key}"`;
-        const ownerOnly = v.ownerOnly ? `\n${indent1}    ShowToOwnerOnly: bool = true` : '';
-        const attach = v.attachToCamera ? `\n${indent1}    AttachToCamera: bool = true` : '';
-        const force = v.forceRenderVfx ? `\n${indent1}    ForceRenderVfx: bool = true` : '';
-        return `${indent1}PersistentVfxData {\n${indent1}    ${effectKeyLine}\n${indent1}    boneName: string = "${v.boneName || 'C_Buffbone_Glb_Layout_Loc'}"${ownerOnly}${attach}${force}\n${indent1}}`;
-      }).join('\n');
+      const items = condition.vfx.map(v => buildPersistentVfxDataBlock(v, indent1)).join('\n');
       vfx = `\n${indent1}PersistentVfxs: list2[embed] = {\n${items}\n${indent1}}`;
     }
     return `${indent0}PersistentEffectConditionData {\n${owner}${subShow}${subHide}${vfx}\n${indent0}}`;
@@ -755,5 +852,3 @@ export function resolveEffectKey(pyContent, selected) {
   // Not found: propose last segment as key and value
   return { key: last, value: last };
 }
-
-

@@ -160,6 +160,38 @@ function collectExtractItemsFromRow(row) {
   return out;
 }
 
+function describeExtractTarget(row) {
+  const basename = (value) => {
+    const normalized = String(value || '').replace(/\\/g, '/');
+    const parts = normalized.split('/').filter(Boolean);
+    return parts[parts.length - 1] || normalized || '';
+  };
+
+  if (!row) return null;
+  if (row.type === 'wad') {
+    return {
+      type: 'wad',
+      name: basename(row.entry?.path) || row.displayName || row.entry?.name || 'WAD',
+      title: row.entry?.path || row.displayName || row.entry?.name || 'WAD',
+    };
+  }
+  if (row.type === 'dir') {
+    return {
+      type: 'dir',
+      name: basename(row.node?.path) || row.node?.name || 'Folder',
+      title: row.node?.path || row.node?.name || 'Folder',
+    };
+  }
+  if (row.type === 'file') {
+    return {
+      type: 'file',
+      name: basename(row.node?.path) || row.node?.name || 'File',
+      title: row.node?.path || row.node?.name || 'File',
+    };
+  }
+  return null;
+}
+
 export function useWadExplorer({ hashPath, indexReady = true }) {
   const [groups, setGroups] = useState(null);
   const [scanLoading, setScanLoading] = useState(false);
@@ -805,6 +837,10 @@ export function useWadExplorer({ hashPath, indexReady = true }) {
     });
   }, [groups, openWads, toggleWad, wadData]);
 
+  const getExtractItemsForRow = useCallback((row) => collectExtractItemsFromRow(row), []);
+
+  const getContextTargetInfo = useCallback((row) => describeExtractTarget(row), []);
+
   return {
     groups,
     scanLoading,
@@ -830,5 +866,7 @@ export function useWadExplorer({ hashPath, indexReady = true }) {
     clearExtractSelection,
     getExtractSelectionState,
     toggleExtractSelection,
+    getExtractItemsForRow,
+    getContextTargetInfo,
   };
 }

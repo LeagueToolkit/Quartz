@@ -33,6 +33,8 @@ import useUnsavedNavigationGuard from '../../hooks/navigation/useUnsavedNavigati
 import CombineLinkedBinsModal from '../../components/modals/CombineLinkedBinsModal';
 import VfxAccessModal from './components/VfxAccessModal';
 import { sectionStyle, celestialButtonStyle, primaryButtonStyle } from './styles';
+import { emitJadeMissingModal, isJadeMissingResult } from '../../utils/interop/jadeInterop.js';
+import ExternalFileChangeModal from '../../components/modals/ExternalFileChangeModal';
 
 const VFXHub = () => {
   useVfxHubThemeEffects({ electronPrefs, themeManager });
@@ -58,6 +60,13 @@ const VFXHub = () => {
   const [showRitobinWarning, setShowRitobinWarning] = useState(false);
   const [ritobinWarningContent, setRitobinWarningContent] = useState(null);
   const [showVfxAccessModal, setShowVfxAccessModal] = useState(false);
+  const [externalChangeModal, setExternalChangeModal] = useState({
+    open: false,
+    handoff: null,
+    localContent: '',
+    diskContent: '',
+  });
+  const handleSaveRef = useRef(null);
 
   const toggleTargetSystemCollapse = (systemKey) => {
     setCollapsedTargetSystems(prev => {
@@ -174,6 +183,97 @@ const VFXHub = () => {
     handleCombineYes,
     handleCombineNo,
   } = file;
+
+  const handleOpenInJade = useCallback(async () => {
+    if (targetPath === 'This will show target bin') {
+      setStatusMessage('No target bin is currently loaded');
+      return;
+    }
+
+    if (!window.require) {
+      setStatusMessage('Open in Jade is only available in the desktop app');
+      return;
+    }
+
+    try {
+      const { ipcRenderer } = window.require('electron');
+      const result = await ipcRenderer.invoke('interop:sendToJade', {
+        binPath: targetPath,
+        sourceMode: 'vfxhub',
+      });
+      if (isJadeMissingResult(result)) {
+        emitJadeMissingModal(result?.warning || result?.error || '');
+      }
+
+      if (result?.success) {
+        setStatusMessage(result?.warning || 'Sent target bin to Jade');
+      } else {
+        setStatusMessage(result?.error || 'Failed to open Jade');
+      }
+    } catch (error) {
+      setStatusMessage(`Failed to open Jade: ${error.message || error}`);
+    }
+  }, [targetPath, setStatusMessage]);
+
+  useEffect(() => {
+    const onNavbarOpenInJade = () => {
+      handleOpenInJade();
+    };
+
+    window.addEventListener('interop:open-in-jade', onNavbarOpenInJade);
+    return () => window.removeEventListener('interop:open-in-jade', onNavbarOpenInJade);
+  }, [handleOpenInJade]);
+
+  const getDiskContentForBin = useCallback((binPath) => {
+    try {
+      if (!binPath || !fs) return '';
+      const pyPath = binPath.replace(/\.bin$/i, '.py');
+      if (fs.existsSync(pyPath)) {
+        return fs.readFileSync(pyPath, 'utf8');
+      }
+      return '';
+    } catch {
+      return '';
+    }
+  }, []);
+
+  useEffect(() => {
+    const openFromHandoff = async (handoff) => {
+      if (!handoff || !handoff.bin_path) return;
+      const mode = String(handoff.mode || 'paint').toLowerCase();
+      const action = String(handoff.action || 'open-bin').toLowerCase();
+      if (mode !== 'vfxhub') return;
+      if (!handoff.bin_path.toLowerCase().endsWith('.bin')) return;
+
+      const isReload = action === 'reload-bin';
+      const isSameFile = targetPath && String(targetPath).toLowerCase() === String(handoff.bin_path).toLowerCase();
+      if (isReload && isSameFile && !fileSaved) {
+        setExternalChangeModal({
+          open: true,
+          handoff,
+          localContent: targetPyContent || '',
+          diskContent: getDiskContentForBin(handoff.bin_path),
+        });
+        return;
+      }
+
+      await processTargetBin(handoff.bin_path, {
+        preserveUndo: action === 'reload-bin',
+        forceRefreshFromBin: action === 'reload-bin',
+      });
+      if (window.__QUARTZ_PENDING_HANDOFF === handoff) {
+        window.__QUARTZ_PENDING_HANDOFF = null;
+      }
+    };
+
+    const handleInterop = (event) => {
+      openFromHandoff(event?.detail || {});
+    };
+
+    window.addEventListener('quartz-interop-handoff', handleInterop);
+    openFromHandoff(window.__QUARTZ_PENDING_HANDOFF);
+    return () => window.removeEventListener('quartz-interop-handoff', handleInterop);
+  }, [fileSaved, getDiskContentForBin, processTargetBin, targetPath, targetPyContent]);
 
   useEffect(() => {
     targetPyContentRef.current = targetPyContent || '';
@@ -508,6 +608,9 @@ const VFXHub = () => {
     setShowRitoBinErrorDialog,
     electronPrefs,
   });
+  useEffect(() => {
+    handleSaveRef.current = handleSave;
+  }, [handleSave]);
   const { portVFXSystemToTarget } = useVfxHubPortSystem({
     donorSystems,
     setDonorSystems,
@@ -746,6 +849,32 @@ const VFXHub = () => {
         showRitoBinErrorDialog={showRitoBinErrorDialog}
         setShowRitoBinErrorDialog={setShowRitoBinErrorDialog}
         celestialButtonStyle={celestialButtonStyle}
+      />
+
+      <ExternalFileChangeModal
+        open={externalChangeModal.open}
+        filePath={externalChangeModal?.handoff?.bin_path || targetPath || ''}
+        sourceLabel="Jade"
+        localContent={externalChangeModal.localContent}
+        diskContent={externalChangeModal.diskContent}
+        onClose={() => setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' })}
+        onKeepLocal={() => {
+          setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' });
+          setStatusMessage('Kept local unsaved changes');
+        }}
+        onReload={async () => {
+          const handoff = externalChangeModal.handoff;
+          setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' });
+          if (handoff?.bin_path) {
+            await processTargetBin(handoff.bin_path, { preserveUndo: true, forceRefreshFromBin: true });
+          }
+        }}
+        onOverwrite={async () => {
+          setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' });
+          if (handleSaveRef.current) {
+            await handleSaveRef.current();
+          }
+        }}
       />
     </div>
   );

@@ -130,6 +130,61 @@ function extOfPath(value) {
   return idx >= 0 ? base.slice(idx + 1) : '';
 }
 
+function truncateMenuLabel(value, max = 72) {
+  const text = String(value || '');
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 3))}...`;
+}
+
+function buildFlatExtractNames(items) {
+  const usedNames = new Set();
+  const outputNames = [];
+
+  for (const item of items) {
+    const relPath = toPosixPath(item?.relPath);
+    const pathHash = String(item?.pathHash || '').trim().replace(/^0x/i, '').toLowerCase();
+    const baseName = pathBasenamePosix(relPath) || (pathHash ? `${pathHash}` : 'unknown');
+    const ext = extOfPath(baseName);
+    const stem = pathStemPosix(baseName) || (pathHash ? `${pathHash}` : 'unknown');
+    let candidate = baseName;
+
+    if (candidate.length > 255) {
+      candidate = `${pathHash || stem}${ext ? `.${ext}` : ''}`;
+    }
+
+    const candidateKey = candidate.toLowerCase();
+    if (usedNames.has(candidateKey)) {
+      candidate = `${stem}_${pathHash || 'dup'}${ext ? `.${ext}` : ''}`;
+    }
+
+    usedNames.add(candidate.toLowerCase());
+    outputNames.push(candidate);
+  }
+
+  return outputNames;
+}
+
+function hasExtractConflicts(outputDir, items, preservePaths) {
+  const fs = window.require?.('fs');
+  const path = window.require?.('path');
+  if (!fs || !path || !outputDir || !Array.isArray(items) || items.length === 0) return false;
+
+  try {
+    if (preservePaths) {
+      return items.some((item) => {
+        const relPath = toPosixPath(item?.relPath);
+        if (!relPath) return false;
+        return fs.existsSync(path.join(outputDir, ...relPath.split('/').filter(Boolean)));
+      });
+    }
+
+    const outputNames = buildFlatExtractNames(items);
+    return outputNames.some((name) => name && fs.existsSync(path.join(outputDir, name)));
+  } catch (_) {
+    return false;
+  }
+}
+
 function flattenFiles(nodes, out = []) {
   if (!Array.isArray(nodes)) return out;
   for (const node of nodes) {
@@ -892,7 +947,7 @@ export default function WadExplorer() {
   const [treePanelWidth, setTreePanelWidth] = useState(320);
   const [treeSymbolSize, setTreeSymbolSize] = useState(12);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [wadContextMenu, setWadContextMenu] = useState({ open: false, x: 0, y: 0, entry: null });
+  const [wadContextMenu, setWadContextMenu] = useState({ open: false, x: 0, y: 0, row: null, target: null });
   const pendingExtractRef = useRef(null);
   const skipDevCleanupOnceRef = useRef(process.env.NODE_ENV === 'development');
   const isHashPreloading = isPrimeLoading || isWarmLoading;
@@ -910,6 +965,8 @@ export default function WadExplorer() {
     clearExtractSelection,
     getExtractSelectionState,
     toggleExtractSelection,
+    getExtractItemsForRow,
+    getContextTargetInfo,
   } = useWadExplorer({ hashPath, indexReady: indexHashReady });
   const [extractBusy, setExtractBusy] = useState(false);
 
@@ -1087,16 +1144,22 @@ export default function WadExplorer() {
     if (e.key === 'Enter' && gamePath) scan(gamePath);
   }, [gamePath, scan]);
 
-  const handleWadContextMenu = useCallback((e, entry) => {
-    setWadContextMenu({ open: true, x: e.clientX, y: e.clientY, entry });
-  }, []);
+  const handleWadContextMenu = useCallback((e, row) => {
+    setWadContextMenu({
+      open: true,
+      x: e.clientX,
+      y: e.clientY,
+      row,
+      target: getContextTargetInfo(row),
+    });
+  }, [getContextTargetInfo]);
 
   const closeWadContextMenu = useCallback(() => {
-    setWadContextMenu({ open: false, x: 0, y: 0, entry: null });
+    setWadContextMenu({ open: false, x: 0, y: 0, row: null, target: null });
   }, []);
 
   const handleExtractHashes = useCallback(async () => {
-    const entry = wadContextMenu.entry;
+    const entry = wadContextMenu.row?.entry;
     closeWadContextMenu();
     if (!entry || !hashPath) return;
 
@@ -1122,15 +1185,15 @@ export default function WadExplorer() {
         detail: '',
       });
     }
-  }, [wadContextMenu, hashPath, reloadWad, toggleWad]);
+  }, [wadContextMenu, closeWadContextMenu, hashPath, reloadWad, toggleWad]);
 
   const handleReloadWad = useCallback(() => {
-    const entry = wadContextMenu.entry;
+    const entry = wadContextMenu.row?.entry;
     closeWadContextMenu();
     if (!entry) return;
     reloadWad(entry.path);
     toggleWad(entry, { forceLoad: true, forceMount: true });
-  }, [wadContextMenu, reloadWad, toggleWad]);
+  }, [wadContextMenu, closeWadContextMenu, reloadWad, toggleWad]);
 
   const handleTreeRowHeightChange = useCallback((v) => {
     setTreeRowHeight(v);
@@ -1156,80 +1219,27 @@ export default function WadExplorer() {
     electronPrefs.save();
   }, []);
 
-  const handleExtractSelected = useCallback(async () => {
-    if (extractBusy || extractSelectedCount === 0) return;
-    const outputDir = await openDirectoryDialog();
-    if (!outputDir) return;
-    const fs = window.require?.('fs');
-    let hasExisting = false;
-    try {
-      const entries = fs?.readdirSync(outputDir);
-      hasExisting = Array.isArray(entries) && entries.length > 0;
-    } catch (_) { }
-
-    if (hasExisting) {
-      pendingExtractRef.current = { outputDir };
-      setReplaceConfirmOpen(true);
-      return;
-    }
-
-    const runExtract = async (replaceExisting) => {
-      setExtractBusy(true);
-      try {
-        const result = await window.electronAPI?.wad?.extractSelected?.({
-          items: extractSelectedItems,
-          outputDir,
-          replaceExisting,
-        });
-        if (result?.error) {
-          setNoticeDialog({
-            open: true,
-            title: 'Extract Selected Failed',
-            message: result.error,
-            detail: '',
-          });
-          return;
-        }
-        const extracted = Number(result?.extractedCount || 0);
-        const skipped = Number(result?.skippedCount || 0);
-        clearExtractSelection();
-        setNoticeDialog({
-          open: true,
-          title: 'Extract Selected Complete',
-          message: `Extracted ${extracted} file(s).`,
-          detail: skipped > 0 ? `Skipped ${skipped} file(s).` : '',
-        });
-      } catch (e) {
-        setNoticeDialog({
-          open: true,
-          title: 'Extract Selected Failed',
-          message: e?.message || 'Unknown error',
-          detail: '',
-        });
-      } finally {
-        setExtractBusy(false);
-      }
-    };
-
-    await runExtract(true);
-  }, [clearExtractSelection, extractBusy, extractSelectedCount, extractSelectedItems]);
-
-  const runPendingExtract = useCallback(async (replaceExisting) => {
-    const pending = pendingExtractRef.current;
-    pendingExtractRef.current = null;
-    setReplaceConfirmOpen(false);
-    if (!pending) return;
+  const runExtractRequest = useCallback(async ({
+    items,
+    outputDir,
+    replaceExisting,
+    preservePaths,
+    onSuccess = null,
+    successTitle = 'Extract Selected Complete',
+    failureTitle = 'Extract Selected Failed',
+  }) => {
     setExtractBusy(true);
     try {
       const result = await window.electronAPI?.wad?.extractSelected?.({
-        items: extractSelectedItems,
-        outputDir: pending.outputDir,
+        items,
+        outputDir,
         replaceExisting,
+        preservePaths,
       });
       if (result?.error) {
         setNoticeDialog({
           open: true,
-          title: 'Extract Selected Failed',
+          title: failureTitle,
           message: result.error,
           detail: '',
         });
@@ -1237,24 +1247,86 @@ export default function WadExplorer() {
       }
       const extracted = Number(result?.extractedCount || 0);
       const skipped = Number(result?.skippedCount || 0);
-      clearExtractSelection();
+      onSuccess?.();
       setNoticeDialog({
         open: true,
-        title: 'Extract Selected Complete',
+        title: successTitle,
         message: `Extracted ${extracted} file(s).`,
         detail: skipped > 0 ? `Skipped ${skipped} file(s).` : '',
       });
     } catch (e) {
       setNoticeDialog({
         open: true,
-        title: 'Extract Selected Failed',
+        title: failureTitle,
         message: e?.message || 'Unknown error',
         detail: '',
       });
     } finally {
       setExtractBusy(false);
     }
-  }, [clearExtractSelection, extractSelectedItems]);
+  }, []);
+
+  const queueExtract = useCallback(async ({
+    items,
+    preservePaths,
+    onSuccess = null,
+    successTitle = 'Extract Selected Complete',
+    failureTitle = 'Extract Selected Failed',
+  }) => {
+    if (extractBusy || !Array.isArray(items) || items.length === 0) return;
+    const outputDir = await openDirectoryDialog();
+    if (!outputDir) return;
+    const hasExisting = hasExtractConflicts(outputDir, items, preservePaths);
+
+    if (hasExisting) {
+      pendingExtractRef.current = { outputDir, items, preservePaths, onSuccess, successTitle, failureTitle };
+      setReplaceConfirmOpen(true);
+      return;
+    }
+
+    await runExtractRequest({ items, outputDir, replaceExisting: true, preservePaths, onSuccess, successTitle, failureTitle });
+  }, [extractBusy, runExtractRequest]);
+
+  const handleExtractSelected = useCallback(async () => {
+    if (extractSelectedCount === 0) return;
+    await queueExtract({
+      items: extractSelectedItems,
+      preservePaths: true,
+      onSuccess: clearExtractSelection,
+      successTitle: 'Extract Selected Complete',
+      failureTitle: 'Extract Selected Failed',
+    });
+  }, [clearExtractSelection, extractSelectedCount, extractSelectedItems, queueExtract]);
+
+  const runPendingExtract = useCallback(async (replaceExisting) => {
+    const pending = pendingExtractRef.current;
+    pendingExtractRef.current = null;
+    setReplaceConfirmOpen(false);
+    if (!pending) return;
+    await runExtractRequest({
+      items: pending.items,
+      outputDir: pending.outputDir,
+      replaceExisting,
+      preservePaths: pending.preservePaths,
+      onSuccess: pending.onSuccess,
+      successTitle: pending.successTitle,
+      failureTitle: pending.failureTitle,
+    });
+  }, [runExtractRequest]);
+
+  const handleContextExtract = useCallback(async (preservePaths) => {
+    const row = wadContextMenu.row;
+    closeWadContextMenu();
+    if (!row || (row.type !== 'file' && row.type !== 'dir')) return;
+    const items = getExtractItemsForRow(row);
+    if (items.length === 0) return;
+    await queueExtract({
+      items,
+      preservePaths,
+      successTitle: 'Extract Complete',
+      failureTitle: 'Extract Failed',
+    });
+  }, [wadContextMenu, closeWadContextMenu, getExtractItemsForRow, queueExtract]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -1488,35 +1560,53 @@ export default function WadExplorer() {
           }}>
             <div
               style={{ padding: '8px 12px', fontSize: 10, color: 'var(--text-3)', borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: 4, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}
-              title={wadContextMenu.entry?.name}
+              title={wadContextMenu.target?.title}
             >
-              {wadContextMenu.entry?.name}
+              {truncateMenuLabel(wadContextMenu.target?.name)}
             </div>
-            <button
-              style={{ ...S.contextMenuItem, color: 'var(--accent)' }}
-              onClick={handleExtractHashes}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-            >
-              <Zap size={14} />
-              <span>Extract Hashes</span>
-            </button>
-            <button
-              style={S.contextMenuItem}
-              onClick={handleReloadWad}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--text)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; }}
-            >
-              <RefreshCw size={14} />
-              <span>Reload WAD</span>
-            </button>
-            <div style={{ margin: '4px 0', borderTop: '1px solid rgba(255,255,255,0.05)' }} />
-            <div
-              style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 10, cursor: 'default', opacity: 0.5 }}
-            >
-              <File size={14} />
-              <span>Copy Path</span>
-            </div>
+            {wadContextMenu.target?.type === 'wad' ? (
+              <>
+                <button
+                  style={{ ...S.contextMenuItem, color: 'var(--accent)' }}
+                  onClick={handleExtractHashes}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <Zap size={14} />
+                  <span>Extract Hashes</span>
+                </button>
+                <button
+                  style={S.contextMenuItem}
+                  onClick={handleReloadWad}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--text)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; }}
+                >
+                  <RefreshCw size={14} />
+                  <span>Reload WAD</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  style={{ ...S.contextMenuItem, color: 'var(--accent)' }}
+                  onClick={() => handleContextExtract(false)}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <Download size={14} />
+                  <span>Extract Selected</span>
+                </button>
+                <button
+                  style={S.contextMenuItem}
+                  onClick={() => handleContextExtract(true)}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--text)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)'; }}
+                >
+                  <File size={14} />
+                  <span>{wadContextMenu.target?.type === 'dir' ? 'Extract Folder Structure' : 'Extract With Path'}</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

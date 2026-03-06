@@ -27,6 +27,7 @@ import GlowingSpinner from '../../components/GlowingSpinner';
 import { parseSystemMatrix } from '../../utils/vfx/mutations/matrixUtils.js';
 import { openAssetPreview } from '../../utils/assets/assetPreviewEvent.js';
 import UnsavedChangesModal from '../../components/modals/UnsavedChangesModal';
+import ExternalFileChangeModal from '../../components/modals/ExternalFileChangeModal';
 import { reparseBinWithFreshPy } from '../../utils/io/reparseHelpers.js';
 
 
@@ -105,6 +106,7 @@ const Port2 = () => {
     handleMoveEmitter,
     handleOpenBackupViewer,
     handleOpenDonorBin,
+    handleOpenInJade,
     handleOpenNewSystemModal,
     handleOpenPersistent,
     handleOpenTargetBin,
@@ -242,6 +244,10 @@ const Port2 = () => {
     showRitobinWarning,
     showTextureError,
     showUnsavedDialog,
+    externalChangeModal,
+    handleExternalConflictKeepLocal,
+    handleExternalConflictReload,
+    handleExternalConflictOverwrite,
     statusMessage,
     targetFilter,
     targetFilterInput,
@@ -264,6 +270,15 @@ const Port2 = () => {
     handleCombineYes,
     handleCombineNo,
   } = usePort();
+
+  useEffect(() => {
+    const onNavbarOpenInJade = () => {
+      handleOpenInJade();
+    };
+
+    window.addEventListener('interop:open-in-jade', onNavbarOpenInJade);
+    return () => window.removeEventListener('interop:open-in-jade', onNavbarOpenInJade);
+  }, [handleOpenInJade]);
 
 
   console.log('[Port2] Handlers loaded:', {
@@ -579,20 +594,18 @@ const Port2 = () => {
     handleEmitterContextMenu,
   };
 
-  const handleBackupViewerClose = (restored) => {
+  const handleBackupViewerClose = async (restored, restoreMeta = null) => {
     setShowBackupViewer(false);
     if (!restored) return;
 
-    if (!fileSaved) {
-      if (window.confirm('You have unsaved changes. Restoring a backup will overwrite them. Continue?')) {
-        performBackupRestore();
-      } else {
+    if (hasChangesToSave()) {
+      if (!window.confirm('You have unsaved changes. Restoring a backup will overwrite them. Continue?')) {
         setStatusMessage('Backup restore cancelled - unsaved changes preserved');
+        return;
       }
-      return;
     }
 
-    performBackupRestore();
+    await performBackupRestore(restoreMeta);
   };
 
   return (
@@ -778,7 +791,11 @@ const Port2 = () => {
       <BackupViewer
         open={showBackupViewer}
         onClose={handleBackupViewerClose}
-        filePath={targetPath !== 'This will show target bin' ? targetPath.replace('.bin', '.py') : null}
+        filePath={
+          targetPath !== 'This will show target bin'
+            ? (/\.bin$/i.test(targetPath) ? targetPath.replace(/\.bin$/i, '.py') : targetPath)
+            : null
+        }
         component="port"
       />
 
@@ -787,6 +804,18 @@ const Port2 = () => {
         onCancel={handleUnsavedCancel}
         onSave={handleUnsavedSave}
         onDiscard={handleUnsavedDiscard}
+      />
+
+      <ExternalFileChangeModal
+        open={externalChangeModal?.open}
+        filePath={externalChangeModal?.handoff?.bin_path || targetPath || ''}
+        sourceLabel="Jade"
+        localContent={externalChangeModal?.localContent || ''}
+        diskContent={externalChangeModal?.diskContent || ''}
+        onClose={handleExternalConflictKeepLocal}
+        onKeepLocal={handleExternalConflictKeepLocal}
+        onReload={handleExternalConflictReload}
+        onOverwrite={handleExternalConflictOverwrite}
       />
 
       {/* Ritobin Warning Modal */}

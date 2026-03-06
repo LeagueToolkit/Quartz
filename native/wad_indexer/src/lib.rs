@@ -1,14 +1,15 @@
 use napi_derive::napi;
 use rayon::prelude::*;
 use std::fs;
-use std::io::{Write, Cursor, Read, Seek};
+use std::io::{Write, Cursor, Read};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 use ltk_wad::Wad;
+use ltk_file::LeagueFileKind;
 use xxhash_rust::xxh64::xxh64;
-use napi::{Env, Task, bindgen_prelude::AsyncTask};
+use napi::{Env, Task, bindgen_prelude::{AsyncTask, Buffer}};
 use heed::{Database, EnvOpenOptions};
 use heed::types::{Bytes, Str};
 use memmap2::Mmap;
@@ -17,9 +18,14 @@ use memmap2::Mmap;
 // Opened once per hash dir, reused for all reads.
 // OS memory-maps the file — only physically pages in what's actually touched.
 static LMDB_CACHE: OnceLock<Mutex<Option<(String, Arc<heed::Env>)>>> = OnceLock::new();
+static EXTRACTED_HASH_CACHE: OnceLock<Mutex<Option<(String, u128, Arc<HashMap<u64, String>>)>>> = OnceLock::new();
 
 fn lmdb_mutex() -> &'static Mutex<Option<(String, Arc<heed::Env>)>> {
   LMDB_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn extracted_hash_mutex() -> &'static Mutex<Option<(String, u128, Arc<HashMap<u64, String>>)>> {
+  EXTRACTED_HASH_CACHE.get_or_init(|| Mutex::new(None))
 }
 
 fn get_or_open_env(hash_dir: &str) -> Option<Arc<heed::Env>> {
@@ -49,6 +55,68 @@ fn get_or_open_env(hash_dir: &str) -> Option<Arc<heed::Env>> {
 fn drop_lmdb_cache() {
   let mut g = lmdb_mutex().lock().unwrap_or_else(|e| e.into_inner());
   *g = None;
+}
+
+fn get_file_mtime_ms(path: &Path) -> u128 {
+  fs::metadata(path)
+    .and_then(|m| m.modified())
+    .ok()
+    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+    .map(|d| d.as_millis())
+    .unwrap_or(0)
+}
+
+fn parse_hash_text_file(path: &Path, hash_len: usize) -> HashMap<u64, String> {
+  let mut out = HashMap::new();
+  let Ok(content) = fs::read_to_string(path) else {
+    return out;
+  };
+  for line in content.lines() {
+    let l = line.trim();
+    if l.is_empty() || l.starts_with('#') || l.len() <= hash_len + 1 {
+      continue;
+    }
+    let h = &l[..hash_len];
+    let p = l[hash_len + 1..].trim();
+    if let Ok(v) = u64::from_str_radix(h, 16) {
+      out.entry(v).or_insert_with(|| p.to_string());
+    }
+  }
+  out
+}
+
+fn get_or_load_extracted_hashes(hash_dir: &str) -> Arc<HashMap<u64, String>> {
+  let extracted_path = Path::new(hash_dir).join("hashes.extracted.txt");
+  let mtime_ms = get_file_mtime_ms(&extracted_path);
+  let key = extracted_path.to_string_lossy().into_owned();
+
+  let mut g = extracted_hash_mutex().lock().unwrap_or_else(|e| e.into_inner());
+  if let Some((ref cached_key, cached_mtime, ref cached_map)) = *g {
+    if *cached_key == key && cached_mtime == mtime_ms {
+      return Arc::clone(cached_map);
+    }
+  }
+
+  let map = Arc::new(parse_hash_text_file(&extracted_path, 16));
+  *g = Some((key, mtime_ms, Arc::clone(&map)));
+  map
+}
+
+fn resolve_hashes_with_overlay(
+  hashes: &[u64],
+  env_opt: Option<&heed::Env>,
+  extracted: &HashMap<u64, String>,
+) -> Vec<String> {
+  let mut base = match env_opt {
+    Some(env) => resolve_hashes_lmdb(hashes, env),
+    None => hashes.iter().map(|h| format!("{:016x}", h)).collect(),
+  };
+  for (idx, h) in hashes.iter().enumerate() {
+    if let Some(v) = extracted.get(h) {
+      base[idx] = v.clone();
+    }
+  }
+  base
 }
 
 // ── napi structs ────────────────────────────────────────────────────────────
@@ -102,6 +170,44 @@ fn normalize_rel_path(v: &str) -> String {
   v.replace('\\', "/").trim_start_matches('/').to_string()
 }
 
+fn flat_output_name(
+  rel_path: &str,
+  path_hash: u64,
+  used_names: &mut HashSet<String>,
+  hashed_files: &mut HashMap<String, String>,
+) -> String {
+  let base_name = Path::new(rel_path)
+    .file_name()
+    .map(|n| n.to_string_lossy().into_owned())
+    .filter(|n| !n.is_empty())
+    .unwrap_or_else(|| format!("{:016x}", path_hash));
+
+  let ext = Path::new(&base_name)
+    .extension()
+    .map(|e| format!(".{}", e.to_string_lossy()))
+    .unwrap_or_default();
+  let stem = Path::new(&base_name)
+    .file_stem()
+    .map(|s| s.to_string_lossy().into_owned())
+    .filter(|s| !s.is_empty())
+    .unwrap_or_else(|| format!("{:016x}", path_hash));
+
+  let mut candidate = base_name;
+  if candidate.len() > 255 {
+    candidate = format!("{:016x}{}", path_hash, ext);
+    hashed_files.insert(candidate.clone(), rel_path.to_string());
+  }
+
+  let candidate_key = candidate.to_ascii_lowercase();
+  if used_names.contains(&candidate_key) {
+    candidate = format!("{}_{:016x}{}", stem, path_hash, ext);
+    hashed_files.insert(candidate.clone(), rel_path.to_string());
+  }
+
+  used_names.insert(candidate.to_ascii_lowercase());
+  candidate
+}
+
 fn parse_hash_hex(s: &str) -> Option<u64> {
   let raw = s.trim().trim_start_matches("0x").trim_start_matches("0X");
   if raw.len() != 16 || !raw.bytes().all(|b| b.is_ascii_hexdigit()) { return None; }
@@ -139,6 +245,46 @@ fn parse_wad_toc(wad_path: &str) -> Result<(Vec<u64>, u32), String> {
   Ok((hashes, chunk_count))
 }
 
+fn fingerprint_file_path(hash_dir: &Path) -> std::path::PathBuf {
+  hash_dir.join("hashes.lmdb").join("sources.fingerprint")
+}
+
+fn compute_file_xxh64(path: &Path) -> Option<(u64, u64)> {
+  let mut file = fs::File::open(path).ok()?;
+  let mut buf = Vec::new();
+  if file.read_to_end(&mut buf).is_err() {
+    return None;
+  }
+  let size = buf.len() as u64;
+  let digest = xxh64(&buf, 0);
+  Some((size, digest))
+}
+
+fn build_sources_fingerprint(dir: &Path, sources: &[(&str, usize)]) -> String {
+  let mut out = String::new();
+  for (name, _sep) in sources {
+    let p = dir.join(name);
+    match compute_file_xxh64(&p) {
+      Some((size, digest)) => {
+        out.push_str(&format!("{}|{}|{:016x}\n", name, size, digest));
+      }
+      None => {
+        out.push_str(&format!("{}|missing\n", name));
+      }
+    }
+  }
+  out
+}
+
+fn read_sources_fingerprint(dir: &Path) -> Option<String> {
+  fs::read_to_string(fingerprint_file_path(dir)).ok()
+}
+
+fn write_sources_fingerprint(dir: &Path, content: &str) {
+  let p = fingerprint_file_path(dir);
+  let _ = fs::write(p, content.as_bytes());
+}
+
 // ── buildHashDb ──────────────────────────────────────────────────────────────
 
 /// Build (or update) hashes.lmdb from the text hash files.
@@ -152,23 +298,14 @@ pub fn build_hash_db(hash_dir: String) -> bool {
   let sources: &[(&str, usize)] = &[
     ("hashes.game.txt", 16),
     ("hashes.lcu.txt",  16),
-    ("hashes.extracted.txt", 16),
   ];
 
-  // data.mdb is written on every successful commit — use its mtime as freshness marker
-  let db_mtime: Option<SystemTime> = fs::metadata(lmdb_dir.join("data.mdb"))
-    .and_then(|m| m.modified()).ok();
-
-  let needs_rebuild = !lmdb_dir.exists() || sources.iter().any(|(name, _)| {
-    let file_mtime = fs::metadata(dir.join(name)).and_then(|m| m.modified()).ok();
-    match (db_mtime, file_mtime) {
-      (Some(db_t), Some(f_t)) => f_t > db_t,
-      (None, Some(_)) => true,
-      _ => false,
-    }
-  });
-
-  if !needs_rebuild { return true; }
+  let current_fp = build_sources_fingerprint(dir, sources);
+  let stored_fp = read_sources_fingerprint(dir);
+  let data_exists = lmdb_dir.join("data.mdb").exists();
+  if lmdb_dir.exists() && data_exists && stored_fp.as_deref() == Some(current_fp.as_str()) {
+    return true;
+  }
 
   // Close cached env before deleting the directory (Windows won't delete open files)
   drop_lmdb_cache();
@@ -219,7 +356,11 @@ pub fn build_hash_db(hash_dir: String) -> bool {
     }
   }
 
-  wtxn.commit().is_ok()
+  let committed = wtxn.commit().is_ok();
+  if committed {
+    write_sources_fingerprint(dir, &current_fp);
+  }
+  committed
 }
 
 #[napi(js_name = "primeHashTables")]
@@ -266,6 +407,10 @@ pub fn load_all_indexes(
   // Phase 2: LMDB lookups — single open env, per-WAD read txns (cheap)
   // RAM stays near zero — OS only pages in what's touched (~5-20MB for typical use)
   let env_opt = hash_path.as_deref().and_then(get_or_open_env);
+  let extracted_map = hash_path
+    .as_deref()
+    .map(get_or_load_extracted_hashes)
+    .unwrap_or_else(|| Arc::new(HashMap::new()));
 
   toc_results.into_iter().map(|(path, result)| {
     match result {
@@ -276,10 +421,7 @@ pub fn load_all_indexes(
         chunk_count: 0,
       },
       Ok((hashes, chunk_count)) => {
-        let paths = match env_opt.as_deref() {
-          Some(env) => resolve_hashes_lmdb(&hashes, env),
-          None => hashes.iter().map(|h| format!("{:016x}", h)).collect(),
-        };
+        let paths = resolve_hashes_with_overlay(&hashes, env_opt.as_deref(), &extracted_map);
         WadIndexBatch {
           path: path.to_string(),
           error: None,
@@ -297,19 +439,29 @@ pub fn load_all_indexes(
 /// ~1-5ms for a typical WAD (~4000 hashes) vs 80-155ms with the old SQLite approach.
 #[napi(js_name = "resolveHashes")]
 pub fn resolve_hashes(hex_hashes: Vec<String>, hash_dir: String) -> Vec<String> {
-  let Some(env) = get_or_open_env(&hash_dir) else {
-    return hex_hashes;
-  };
-  let Ok(rtxn) = env.read_txn() else { return hex_hashes; };
-  let Ok(Some(db)) = env.open_database::<Bytes, Str>(&rtxn, None) else { return hex_hashes; };
+  let env_opt = get_or_open_env(&hash_dir);
+  let extracted_map = get_or_load_extracted_hashes(&hash_dir);
+  let db_ctx = env_opt.as_deref().and_then(|env| {
+    let rtxn = env.read_txn().ok()?;
+    let db = env.open_database::<Bytes, Str>(&rtxn, None).ok()??;
+    Some((rtxn, db))
+  });
 
   hex_hashes.iter().map(|h| {
     let Ok(hash_u64) = u64::from_str_radix(h.trim(), 16) else { return h.clone(); };
-    let key = hash_u64.to_be_bytes();
-    db.get(&rtxn, &key[..])
-      .ok().flatten()
-      .map(|s| s.to_string())
-      .unwrap_or_else(|| h.clone())
+    if let Some(v) = extracted_map.get(&hash_u64) {
+      return v.clone();
+    }
+    match db_ctx.as_ref() {
+      Some((rtxn, db)) => {
+        let key = hash_u64.to_be_bytes();
+        db.get(rtxn, &key[..])
+          .ok().flatten()
+          .map(|s| s.to_string())
+          .unwrap_or_else(|| h.clone())
+      }
+      None => h.clone(),
+    }
   }).collect()
 }
 
@@ -381,10 +533,11 @@ pub fn extract_wad(
 
   let chunks: Vec<_> = wad.chunks().iter().map(|c| *c).collect();
   let hash_u64s: Vec<u64> = chunks.iter().map(|c| c.path_hash()).collect();
-  let resolved_paths: Vec<String> = match env_opt.as_deref() {
-    Some(env) => resolve_hashes_lmdb(&hash_u64s, env),
-    None => hash_u64s.iter().map(|h| format!("{:016x}", h)).collect(),
-  };
+  let extracted_map = hash_path
+    .as_deref()
+    .map(get_or_load_extracted_hashes)
+    .unwrap_or_else(|| Arc::new(HashMap::new()));
+  let resolved_paths: Vec<String> = resolve_hashes_with_overlay(&hash_u64s, env_opt.as_deref(), &extracted_map);
 
   let mut extracted_count: u32 = 0;
   let mut skipped_count: u32 = 0;
@@ -445,8 +598,14 @@ pub fn extract_wad(
           Ok(d) => d,
           Err(_) => { s += 1; continue; }
         };
+        let mut final_path = out_path.clone();
+        if final_path.extension().is_none() {
+          if let Some(ext) = LeagueFileKind::identify_from_bytes_with_offset(&data, 64).extension() {
+            final_path.set_extension(ext);
+          }
+        }
         // Simple write_all - binary writing is fast, directory is already there.
-        if fs::write(out_path, &data).is_ok() {
+        if fs::write(final_path, &data).is_ok() {
           e += 1;
         } else {
           s += 1;
@@ -529,6 +688,7 @@ pub struct ExtractSelectedTask {
   items: Vec<WadExtractItem>,
   output_dir: String,
   replace_existing: Option<bool>,
+  preserve_paths: Option<bool>,
 }
 
 #[napi]
@@ -541,6 +701,7 @@ impl Task for ExtractSelectedTask {
       self.items.clone(),
       self.output_dir.clone(),
       self.replace_existing,
+      self.preserve_paths,
     ))
   }
 
@@ -554,11 +715,13 @@ pub fn extract_selected_async(
   items: Vec<WadExtractItem>,
   output_dir: String,
   replace_existing: Option<bool>,
+  preserve_paths: Option<bool>,
 ) -> AsyncTask<ExtractSelectedTask> {
   AsyncTask::new(ExtractSelectedTask {
     items,
     output_dir,
     replace_existing,
+    preserve_paths,
   })
 }
 
@@ -567,6 +730,7 @@ pub fn extract_selected(
   items: Vec<WadExtractItem>,
   output_dir: String,
   replace_existing: Option<bool>,
+  preserve_paths: Option<bool>,
 ) -> WadExtractResult {
   if output_dir.is_empty() {
     return WadExtractResult {
@@ -589,10 +753,12 @@ pub fn extract_selected(
   }
 
   let replace = replace_existing.unwrap_or(true);
+  let preserve = preserve_paths.unwrap_or(true);
   let output_root = Path::new(&output_dir);
   let mut extracted_count: u32 = 0;
   let mut skipped_count: u32 = 0;
   let mut hashed_files: HashMap<String, String> = HashMap::new();
+  let mut used_flat_names: HashSet<String> = HashSet::new();
 
   let mut grouped: HashMap<String, Vec<(u64, String)>> = HashMap::new();
   for item in items {
@@ -623,7 +789,11 @@ pub fn extract_selected(
 
     for (path_hash, rel_path) in entries {
       let Some(chunk) = wad.chunks().get(path_hash).copied() else { skipped_count += 1; continue; };
-      let mut rel = rel_path.clone();
+      let mut rel = if preserve {
+        rel_path.clone()
+      } else {
+        flat_output_name(&rel_path, chunk.path_hash() as u64, &mut used_flat_names, &mut hashed_files)
+      };
       let mut out_path = output_root.join(&rel);
 
       let file_name = out_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -636,6 +806,9 @@ pub fn extract_selected(
         hashed_files.insert(basename.clone(), rel_path.clone());
         rel = basename;
         out_path = output_root.join(&rel);
+        if !preserve {
+          used_flat_names.insert(rel.to_ascii_lowercase());
+        }
       }
 
       if out_path.exists() && !replace { skipped_count += 1; continue; }
@@ -663,7 +836,13 @@ pub fn extract_selected(
             Ok(d) => d,
             Err(_) => { s += 1; continue; }
           };
-          if fs::write(out_path, &data).is_ok() { e += 1; } else { s += 1; }
+          let mut final_path = out_path.clone();
+          if final_path.extension().is_none() {
+            if let Some(ext) = LeagueFileKind::identify_from_bytes_with_offset(&data, 64).extension() {
+              final_path.set_extension(ext);
+            }
+          }
+          if fs::write(final_path, &data).is_ok() { e += 1; } else { s += 1; }
         }
         (e, s)
       })
@@ -794,7 +973,7 @@ fn parse_hash_value(s: &str) -> Option<u64> {
 }
 
 /// Extract hashes from all BIN/SKN chunks inside a WAD file.
-/// Writes discovered hashes to `hash_dir/hashes.extracted.txt` and updates LMDB directly.
+/// Writes discovered hashes to `hash_dir/hashes.extracted.txt` only.
 #[napi(js_name = "extractHashesFromWad")]
 pub fn extract_hashes_from_wad(wad_path: String, hash_dir: Option<String>) -> ExtractHashesResult {
   if wad_path.is_empty() || !Path::new(&wad_path).exists() {
@@ -884,23 +1063,14 @@ pub fn extract_hashes_from_wad(wad_path: String, hash_dir: Option<String>) -> Ex
       let _ = fs::write(&bin_path, bin_out.as_bytes());
     }
 
-    // --- Update LMDB directly with the new game hashes ---
-    // If LMDB exists: open a write txn and insert. Existing readers see old data until txn commits (MVCC).
-    // If LMDB doesn't exist: skip — buildHashDb will pick up the txt file on next primeWad call.
-    let lmdb_dir = dir_path.join("hashes.lmdb");
-    if lmdb_dir.exists() {
-      // Use cached env or open fresh for write
-      let env_opt = get_or_open_env(dir);
-      if let Some(env) = env_opt {
-        if let Ok(mut wtxn) = env.write_txn() {
-          // create_database is idempotent — returns existing DB if already created
-          if let Ok(db) = env.create_database::<Bytes, Str>(&mut wtxn, None) {
-            for (hash_u64, path) in &game_hashes {
-              let key = hash_u64.to_be_bytes();
-              let _ = db.put(&mut wtxn, key.as_slice(), path.as_str());
-            }
-            let _ = wtxn.commit();
-          }
+    // Invalidate extracted-hash overlay cache so subsequent resolve calls pick up the new file.
+    {
+      let extracted_path = dir_path.join("hashes.extracted.txt");
+      let key = extracted_path.to_string_lossy().into_owned();
+      let mut g = extracted_hash_mutex().lock().unwrap_or_else(|e| e.into_inner());
+      if let Some((ref cached_key, _, _)) = *g {
+        if *cached_key == key {
+          *g = None;
         }
       }
     }
@@ -914,6 +1084,24 @@ pub fn extract_hashes_from_wad(wad_path: String, hash_dir: Option<String>) -> Ex
 use ltk_meta::Bin;
 use ltk_ritobin::{parse, write_with_hashes, HashMapProvider};
 use std::io::{BufReader, BufWriter};
+use ltk_texture::Texture;
+
+fn decode_dds_layer0_mip0_rgba(path: &str) -> Result<image::RgbaImage, String> {
+  let mut file = fs::File::open(path)
+    .map_err(|e| format!("Failed to open DDS {}: {}", path, e))?;
+  let dds = ddsfile::Dds::read(&mut file)
+    .map_err(|e| format!("Failed to parse DDS {}: {}", path, e))?;
+  let surface = image_dds::Surface::from_dds(&dds)
+    .map_err(|e| format!("Failed to create DDS surface {}: {}", path, e))?;
+  // Cubemap/array DDS can have multiple layers. Use the first layer to avoid
+  // flattening all layers into one distorted 2D output.
+  let decoded = surface
+    .decode_layers_mipmaps_rgba8(0..1, 0..1)
+    .map_err(|e| format!("Failed to decode DDS layer0 mip0 {}: {}", path, e))?;
+  decoded
+    .into_image()
+    .map_err(|e| format!("Failed to convert DDS image {}: {}", path, e))
+}
 
 #[napi(js_name = "binToPy")]
 pub fn bin_to_py(bin_path: String, py_path: String, hash_dir: Option<String>) -> bool {
@@ -991,4 +1179,59 @@ pub fn py_to_bin(py_path: String, bin_path: String) -> bool {
   }
 
   true
+}
+
+#[napi(object)]
+pub struct DecodedTexturePng {
+  pub width: u32,
+  pub height: u32,
+  pub png: Buffer,
+  #[napi(js_name = "decodeMs")]
+  pub decode_ms: f64,
+  #[napi(js_name = "encodeMs")]
+  pub encode_ms: f64,
+  #[napi(js_name = "totalMs")]
+  pub total_ms: f64,
+}
+
+/// Decode TEX/DDS via ltk_texture and return PNG bytes for fast renderer upload.
+#[napi(js_name = "decodeTextureToPng")]
+pub fn decode_texture_to_png(file_path: String) -> napi::Result<DecodedTexturePng> {
+  let started = std::time::Instant::now();
+  let decode_started = std::time::Instant::now();
+  let rgba = if file_path.to_ascii_lowercase().ends_with(".dds") {
+    decode_dds_layer0_mip0_rgba(&file_path)
+      .map_err(napi::Error::from_reason)?
+  } else {
+    let file = fs::File::open(&file_path)
+      .map_err(|e| napi::Error::from_reason(format!("Failed to open texture {}: {}", file_path, e)))?;
+    let mut reader = BufReader::new(file);
+    let texture = Texture::from_reader(&mut reader)
+      .map_err(|e| napi::Error::from_reason(format!("Failed to parse texture {}: {}", file_path, e)))?;
+    let surface = texture
+      .decode_mipmap(0)
+      .map_err(|e| napi::Error::from_reason(format!("Failed to decode mip0 {}: {}", file_path, e)))?;
+    surface
+      .into_rgba_image()
+      .map_err(|e| napi::Error::from_reason(format!("Failed to convert texture {}: {}", file_path, e)))?
+  };
+  let decode_ms = decode_started.elapsed().as_secs_f64() * 1000.0;
+
+  let (width, height) = rgba.dimensions();
+  let encode_started = std::time::Instant::now();
+  let mut out = Cursor::new(Vec::new());
+  image::DynamicImage::ImageRgba8(rgba)
+    .write_to(&mut out, image::ImageFormat::Png)
+    .map_err(|e| napi::Error::from_reason(format!("Failed to encode PNG {}: {}", file_path, e)))?;
+  let encode_ms = encode_started.elapsed().as_secs_f64() * 1000.0;
+  let total_ms = started.elapsed().as_secs_f64() * 1000.0;
+
+  Ok(DecodedTexturePng {
+    width,
+    height,
+    png: out.into_inner().into(),
+    decode_ms,
+    encode_ms,
+    total_ms,
+  })
 }

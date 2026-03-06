@@ -130,6 +130,15 @@ function registerBinToolsChannels({ ipcMain, fs, path, loadBinModule }) {
             }
 
             const hashedReverse = loadHashedFilesReverse(projectRoot, fs, path);
+            // Resolve direct links before any delete, so cleanup can be accurate.
+            const directLinkResolved = new Map();
+            for (const link of (mainBin.links || [])) {
+                if (typeof link !== 'string') continue;
+                const resolved = resolveLink(link, projectRoot, hashedReverse, fs, path);
+                if (resolved) {
+                    directLinkResolved.set(link, path.resolve(resolved));
+                }
+            }
             const linkedPaths = await collectAllLinkedPaths(mainBin, projectRoot, hashedReverse, BIN, fs, path, championBaseBinName);
 
             if (linkedPaths.length === 0) {
@@ -138,25 +147,38 @@ function registerBinToolsChannels({ ipcMain, fs, path, loadBinModule }) {
 
             const existingHashes = new Set(mainBin.entries.map(e => e.hash.toLowerCase()));
             let merged = 0;
+            const mergedPathSet = new Set();
 
             for (const linkedPath of linkedPaths) {
                 try {
                     const linkedBin = await new BIN().read(fs.readFileSync(linkedPath));
+                    let addedAny = false;
                     for (const entry of linkedBin.entries) {
                         const hash = entry.hash.toLowerCase();
                         if (!existingHashes.has(hash)) {
                             mainBin.entries.push(entry);
                             existingHashes.add(hash);
+                            addedAny = true;
                         }
                     }
-                    fs.unlinkSync(linkedPath);
-                    merged++;
+                    // Only delete a linked file when we actually merged at least one entry from it.
+                    if (addedAny) {
+                        fs.unlinkSync(linkedPath);
+                        mergedPathSet.add(path.resolve(linkedPath));
+                        merged++;
+                    }
                 } catch (e) {
                     console.error('[bin:combineLinkedBins] Failed to merge', linkedPath, e.message);
                 }
             }
 
-            mainBin.links = [];
+            // Keep links that weren't successfully merged. Always keep champion base link.
+            mainBin.links = (mainBin.links || []).filter((link) => {
+                if (isBlockedChampionBaseLink(link, championBaseBinName, path)) return true;
+                const resolved = directLinkResolved.get(link);
+                if (!resolved) return true; // unresolved at start => keep
+                return !mergedPathSet.has(resolved);
+            });
             await mainBin.write(filePath);
 
             return { success: true, merged };

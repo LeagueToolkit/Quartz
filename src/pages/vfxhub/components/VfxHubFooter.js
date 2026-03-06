@@ -59,6 +59,19 @@ export default function VfxHubFooter({
             borderRadius: '4px',
             letterSpacing: '0.05em',
             textTransform: 'uppercase',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            position: 'relative',
+            '&:hover': {
+              background: 'color-mix(in srgb, #9ca3af, var(--bg) 75%)',
+              borderColor: '#9ca3af',
+              textShadow: '0 0 8px color-mix(in srgb, #9ca3af, transparent 50%)',
+            },
+            '&:disabled': {
+              opacity: 0.5,
+              cursor: 'not-allowed',
+              borderColor: 'rgba(156,163,175,0.32)',
+              color: 'rgba(156,163,175,0.32)',
+            },
           }}
           title={undoHistory.length > 0 ? `Undo: ${undoHistory[undoHistory.length - 1]?.action}` : 'Nothing to undo'}
         >
@@ -80,6 +93,19 @@ export default function VfxHubFooter({
             borderRadius: '4px',
             letterSpacing: '0.05em',
             textTransform: 'uppercase',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            position: 'relative',
+            '&:hover': {
+              background: 'color-mix(in srgb, #22c55e, var(--bg) 75%)',
+              borderColor: '#22c55e',
+              textShadow: '0 0 8px color-mix(in srgb, #22c55e, transparent 50%)',
+            },
+            '&:disabled': {
+              opacity: 0.5,
+              cursor: 'not-allowed',
+              borderColor: 'rgba(34, 197, 94, 0.3)',
+              color: 'rgba(34, 197, 94, 0.3)',
+            },
           }}
           title={hasChangesToSave() ? 'Save changes to file' : 'No changes to save'}
         >

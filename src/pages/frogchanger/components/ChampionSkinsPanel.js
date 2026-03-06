@@ -182,7 +182,7 @@ const ChampionSkinsPanel = ({
                               </div>
                               <div className="chroma-preview-ids">
                                 <div className="text-xs text-gray-300">
-                                  Skin ID: {chroma.id.toString().slice(-2)}
+                                  Chroma ID: {String(chroma.id).slice(-2)}
                                 </div>
                               </div>
                             </div>

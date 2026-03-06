@@ -35,11 +35,13 @@ import CombineLinkedBinsModal from '../../components/modals/CombineLinkedBinsMod
 import { useCombineLinkedBinsCheck } from '../../hooks/useCombineLinkedBinsCheck.js';
 import RitoBinErrorDialog from '../../components/modals/RitoBinErrorDialog';
 import UnsavedChangesModal from '../../components/modals/UnsavedChangesModal';
+import ExternalFileChangeModal from '../../components/modals/ExternalFileChangeModal';
 import electronPrefs from '../../utils/core/electronPrefs.js';
 import HistoryIcon from '@mui/icons-material/History';
 import { Popover } from '@mui/material'; // Kept if needed elsewhere, but unmounting for texture
 import { convertTextureToPNG, findActualTexturePath } from '../../utils/assets/textureConverter.js';
 import { openAssetPreview } from '../../utils/assets/assetPreviewEvent.js';
+import { emitJadeMissingModal, isJadeMissingResult } from '../../utils/interop/jadeInterop.js';
 import useUnsavedNavigationGuard from '../../hooks/navigation/useUnsavedNavigationGuard.js';
 import VfxFloatingActions from '../../components/floating/VfxFloatingActions';
 import {
@@ -234,6 +236,12 @@ function Paint2() {
     const [showRitobinWarning, setShowRitobinWarning] = useState(false);
     const [ritobinWarningContent, setRitobinWarningContent] = useState(null);
     const [showRitoBinErrorDialog, setShowRitoBinErrorDialog] = useState(false);
+    const [externalChangeModal, setExternalChangeModal] = useState({
+        open: false,
+        handoff: null,
+        localContent: '',
+        diskContent: '',
+    });
 
     // === SELECTION ===
     const [selection, setSelection] = useState(new Set());
@@ -358,13 +366,16 @@ function Paint2() {
     // === BLEND MODE SELECT ===
     const [blendModeSelect, setBlendModeSelect] = useState(0);
     const [blendModeChance, setBlendModeChance] = useState(100);
+    const handleSaveRef = useRef(null);
 
     // ============================================================
     // FILE OPERATIONS
     // ============================================================
 
     // === FILE OPERATIONS ===
-    const loadBinFile = useCallback(async (binPath) => {
+    const loadBinFile = useCallback(async (binPath, options = {}) => {
+        const preserveUndo = options?.preserveUndo === true;
+        const forceRefreshFromBin = options?.forceRefreshFromBin === true;
         if (!binPath || !fs) return;
 
         setIsLoading(true);
@@ -375,7 +386,10 @@ function Paint2() {
             const binName = path.basename(binPath, '.bin');
             const pyPath = path.join(binDir, `${binName}.py`);
 
-            if (!fs.existsSync(pyPath)) {
+            if (forceRefreshFromBin && binPath.toLowerCase().endsWith('.bin')) {
+                setStatusMessage('Refreshing from bin...');
+                await ToPyWithPath(binPath);
+            } else if (!fs.existsSync(pyPath)) {
                 setStatusMessage('Converting bin to py...');
                 await checkAndPromptCombine(binPath);
                 await ToPyWithPath(binPath);
@@ -398,7 +412,9 @@ function Paint2() {
             setFileName(binName);
             setFileSaved(true);
             setSelection(new Set());
-            setUndoStack([]); // Clear undo on new file
+            if (!preserveUndo) {
+                setUndoStack([]);
+            }
 
             // Check if content is hashed - modal will auto-detect
             const isHashed = detectHashedContent(content);
@@ -454,6 +470,69 @@ function Paint2() {
         return () => window.removeEventListener('asset-preview-selected', handleAssetSelected);
     }, [loadBinFile]);
 
+    const getCurrentLocalContent = useCallback(() => {
+        try {
+            return Array.isArray(linesRef.current) ? linesRef.current.join('\n') : '';
+        } catch {
+            return '';
+        }
+    }, []);
+
+    const getDiskContentForBin = useCallback(async (binPath) => {
+        try {
+            if (!binPath || !fs) return '';
+            if (binPath.toLowerCase().endsWith('.bin')) {
+                await ToPyWithPath(binPath);
+            }
+            const pyPath = binPath.replace(/\.bin$/i, '.py');
+            if (fs.existsSync(pyPath)) {
+                return fs.readFileSync(pyPath, 'utf8');
+            }
+            return '';
+        } catch {
+            return '';
+        }
+    }, []);
+
+    useEffect(() => {
+        const openFromHandoff = async (handoff) => {
+            if (!handoff || !handoff.bin_path) return;
+            const mode = String(handoff.mode || 'paint').toLowerCase();
+            const action = String(handoff.action || 'open-bin').toLowerCase();
+            if (mode !== 'paint') return;
+            if (!handoff.bin_path.toLowerCase().endsWith('.bin')) return;
+
+            const isReload = action === 'reload-bin';
+            const isSameFile = filePath && String(filePath).toLowerCase() === String(handoff.bin_path).toLowerCase();
+            if (isReload && isSameFile && !fileSaved) {
+                setExternalChangeModal({
+                    open: true,
+                    handoff,
+                    localContent: getCurrentLocalContent(),
+                    diskContent: await getDiskContentForBin(handoff.bin_path),
+                });
+                return;
+            }
+
+            await loadBinFile(handoff.bin_path, {
+                preserveUndo: action === 'reload-bin',
+                forceRefreshFromBin: isReload,
+            });
+
+            if (window.__QUARTZ_PENDING_HANDOFF === handoff) {
+                window.__QUARTZ_PENDING_HANDOFF = null;
+            }
+        };
+
+        const handleInterop = (event) => {
+            openFromHandoff(event?.detail || {});
+        };
+
+        window.addEventListener('quartz-interop-handoff', handleInterop);
+        openFromHandoff(window.__QUARTZ_PENDING_HANDOFF);
+        return () => window.removeEventListener('quartz-interop-handoff', handleInterop);
+    }, [filePath, fileSaved, getCurrentLocalContent, getDiskContentForBin, loadBinFile]);
+
     const handleFileOpen = useCallback(async () => {
         // 1. Check if we have unsaved changes (optional, but good practice)
         if (!fileSaved) {
@@ -504,6 +583,59 @@ function Paint2() {
         }
     }, [fileSaved, loadBinFile]);
 
+    const handleOpenInJade = useCallback(async () => {
+        console.log('[Interop][Paint] Open In Jade clicked', {
+            filePath,
+            hasWindowRequire: !!window.require,
+        });
+        if (!filePath) {
+            console.warn('[Interop][Paint] Aborted: no filePath loaded');
+            setStatusMessage('No bin is currently loaded');
+            return;
+        }
+
+        if (!window.require) {
+            console.warn('[Interop][Paint] Aborted: window.require unavailable');
+            setStatusMessage('Open in Jade is only available in the desktop app');
+            return;
+        }
+
+        try {
+            const { ipcRenderer } = window.require('electron');
+            console.log('[Interop][Paint] Invoking interop:sendToJade', {
+                binPath: filePath,
+                sourceMode: 'paint',
+            });
+            const result = await ipcRenderer.invoke('interop:sendToJade', {
+                binPath: filePath,
+                sourceMode: 'paint',
+            });
+            console.log('[Interop][Paint] interop:sendToJade result', result);
+            if (isJadeMissingResult(result)) {
+                emitJadeMissingModal(result?.warning || result?.error || '');
+            }
+
+            if (result?.success) {
+                setStatusMessage(result?.warning || 'Sent to Jade');
+            } else {
+                console.error('[Interop][Paint] sendToJade failed', result);
+                setStatusMessage(result?.error || 'Failed to open Jade');
+            }
+        } catch (error) {
+            console.error('[Interop][Paint] invoke error', error);
+            setStatusMessage(`Failed to open Jade: ${error.message || error}`);
+        }
+    }, [filePath]);
+
+    useEffect(() => {
+        const onNavbarOpenInJade = () => {
+            handleOpenInJade();
+        };
+
+        window.addEventListener('interop:open-in-jade', onNavbarOpenInJade);
+        return () => window.removeEventListener('interop:open-in-jade', onNavbarOpenInJade);
+    }, [handleOpenInJade]);
+
 
 
     const handleSave = useCallback(async () => {
@@ -526,6 +658,18 @@ function Paint2() {
             console.log('[Paint2] Calling ToBin conversion...', { pyPath, binPath: filePath });
             const result = await ToBin(pyPath, filePath);
             console.log('[Paint2] ToBin conversion complete', result);
+            try {
+                if (window.require) {
+                    const { ipcRenderer } = window.require('electron');
+                    const notifyResult = await ipcRenderer.invoke('interop:notifyJadeBinUpdated', {
+                        binPath: filePath,
+                        sourceMode: 'paint',
+                    });
+                    console.log('[Interop][Paint] notifyJadeBinUpdated result', notifyResult);
+                }
+            } catch (notifyErr) {
+                console.warn('[Interop][Paint] notifyJadeBinUpdated failed', notifyErr);
+            }
 
             setFileSaved(true);
             setStatusMessage('Saved successfully');
@@ -540,6 +684,9 @@ function Paint2() {
             setIsLoading(false);
         }
     }, [filePath]);
+    useEffect(() => {
+        handleSaveRef.current = handleSave;
+    }, [handleSave]);
 
     const unsavedGuard = useUnsavedNavigationGuard({
         fileSaved,
@@ -2055,6 +2202,32 @@ function Paint2() {
                 onSave={unsavedGuard.handleUnsavedSave}
                 onDiscard={unsavedGuard.handleUnsavedDiscard}
                 fileName={fileName}
+            />
+
+            <ExternalFileChangeModal
+                open={externalChangeModal.open}
+                filePath={externalChangeModal?.handoff?.bin_path || filePath}
+                sourceLabel="Jade"
+                localContent={externalChangeModal.localContent}
+                diskContent={externalChangeModal.diskContent}
+                onClose={() => setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' })}
+                onKeepLocal={() => {
+                    setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' });
+                    setStatusMessage('Kept local unsaved changes');
+                }}
+                onReload={async () => {
+                    const handoff = externalChangeModal.handoff;
+                    setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' });
+                    if (handoff?.bin_path) {
+                        await loadBinFile(handoff.bin_path, { preserveUndo: true, forceRefreshFromBin: true });
+                    }
+                }}
+                onOverwrite={async () => {
+                    setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' });
+                    if (handleSaveRef.current) {
+                        await handleSaveRef.current();
+                    }
+                }}
             />
 
             {/* Floating Tools Drawer */}

@@ -75,6 +75,11 @@ function extractParticlePath(systemFullContent) {
   return m ? m[1] : null;
 }
 
+function extractSystemHeaderName(systemFullContent) {
+  const m = systemFullContent.match(/(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*=\s*VfxSystemDefinitionData/);
+  return m ? (m[1] || m[2]) : null;
+}
+
 // Fallback resolver key: read the current skin's configured resolver link
 function findResolverKeyFromSkin(originalPy) {
   const m = originalPy.match(/mResourceResolver:\s*link\s*=\s*"([^"]+)"/i);
@@ -410,6 +415,7 @@ function insertVFXSystemIntoFile(originalPy, systemFullContent, desiredSystemNam
 function insertVFXSystemWithPreservedNames(originalPy, systemFullContent, desiredSystemName, donorPyContent = null, options = {}) {
   if (!originalPy || !systemFullContent) return originalPy;
   const strictResolverCopy = !!options?.strictResolverCopy;
+  const fallbackSystemName = (desiredSystemName || extractSystemHeaderName(systemFullContent) || 'NewVFXSystem').trim();
 
   console.log(`[vfxInsertSystem] Pure preservation mode - inserting content exactly as-is - VERSION 2.0`);
 
@@ -468,10 +474,12 @@ function insertVFXSystemWithPreservedNames(originalPy, systemFullContent, desire
         updated = addResourceResolverEntryDirectly(updated, entry);
       }
     } else {
-      console.log(`[vfxInsertSystem] No ResourceResolver entries found in donor file for this system`);
+      console.log(`[vfxInsertSystem] No ResourceResolver entries found in donor file for this system; using fallback entry for ${fallbackSystemName}`);
+      updated = addResourceResolverEntryDirectly(updated, `"${fallbackSystemName}" = "${fallbackSystemName}"`);
     }
   } else {
-    console.log(`[vfxInsertSystem] No donor file content provided, skipping ResourceResolver extraction`);
+    console.log(`[vfxInsertSystem] No donor file content provided; using fallback entry for ${fallbackSystemName}`);
+    updated = addResourceResolverEntryDirectly(updated, `"${fallbackSystemName}" = "${fallbackSystemName}"`);
   }
 
   console.log(`[vfxInsertSystem] Successfully inserted VFX system with pure preservation and ResourceResolver entry`);
@@ -485,8 +493,7 @@ function extractResourceResolverEntriesFromDonor(donorPyContent, systemFullConte
   const entries = [];
 
   // Extract the system name from the VFX system content
-  const headerMatch = systemFullContent.match(/(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*=\s*VfxSystemDefinitionData/);
-  const systemName = headerMatch ? (headerMatch[1] || headerMatch[2]) : null;
+  const systemName = extractSystemHeaderName(systemFullContent);
 
   if (!systemName) {
     console.log(`[vfxInsertSystem] Could not extract system name from VFX content`);
@@ -540,6 +547,11 @@ function extractResourceResolverEntriesFromDonor(donorPyContent, systemFullConte
  */
 function addResourceResolverEntryDirectly(content, entry) {
   console.log(`[vfxInsertSystem] Adding ResourceResolver entry: ${entry}`);
+
+  if (content.includes(entry)) {
+    console.log('[vfxInsertSystem] ResourceResolver entry already exists, skipping');
+    return content;
+  }
 
   // Find the main ResourceResolver section (the one with resourceMap)
   const lines = content.split('\n');

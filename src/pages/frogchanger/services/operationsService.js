@@ -3,6 +3,11 @@ import { BumpathCore } from '../../../utils/bumpath/index.js';
 const ICONS2D_RELATIVE_PATTERN = /^assets\/characters\/[^/]+\/hud\/icons2d(\/|$)/i;
 
 const toPosixRel = (value) => String(value || '').replace(/\\/g, '/').replace(/^\/+/, '');
+const normalizeSkinSelectionId = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return num >= 1000 ? num % 1000 : num;
+};
 
 const isPreservedIcons2DPath = (relativePath) => ICONS2D_RELATIVE_PATTERN.test(toPosixRel(relativePath));
 
@@ -83,6 +88,11 @@ export const findChampionWadFiles = async (championName, leaguePath) => {
 
 const buildBinSelections = (bumInstance, selectedSkinIds) => {
   const binSelections = {};
+  const normalizedTargetIds = new Set(
+    (Array.isArray(selectedSkinIds) ? selectedSkinIds : [])
+      .map(normalizeSkinSelectionId)
+      .filter((value) => value != null)
+  );
   for (const unifyFile in bumInstance.sourceBins) {
     binSelections[unifyFile] = false;
   }
@@ -105,7 +115,7 @@ const buildBinSelections = (bumInstance, selectedSkinIds) => {
     }
 
     const skinId = parseInt(skinMatch[1], 10);
-    if (selectedSkinIds.includes(skinId)) {
+    if (normalizedTargetIds.has(skinId)) {
       binSelections[unifyFile] = true;
       selectedCount++;
     }

@@ -336,10 +336,14 @@ const PersistentEffectsModal = ({
 
               {persistentPreset.type === 'HasBuffScript' && (
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Script Name:</span>
+                  <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>Spell / Script:</span>
                   <MemoizedInput
-                    value={persistentPreset.scriptName || ''}
-                    onChange={e => setPersistentPreset(p => ({ ...p, scriptName: e.target.value }))}
+                    value={persistentPreset.spellHash || persistentPreset.scriptName || ''}
+                    onChange={e => setPersistentPreset(p => (
+                      p.spellHash
+                        ? { ...p, spellHash: e.target.value }
+                        : { ...p, scriptName: e.target.value }
+                    ))}
                     style={{
                       padding: '8px 12px',
                       background: 'rgba(255,255,255,0.05)',

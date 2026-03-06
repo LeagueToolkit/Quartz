@@ -1,6 +1,6 @@
 import React from 'react';
-import { Folder, Download, AlertTriangle, Check, RefreshCw, Upload } from 'lucide-react';
-import { FormGroup, InputWithButton, StatusBadge, Button } from '../SettingsPrimitives';
+import { Download, AlertTriangle, Check, RefreshCw, Upload } from 'lucide-react';
+import { FormGroup, StatusBadge, Button, ToggleSwitch } from '../SettingsPrimitives';
 
 const ToolsSection = ({
   settings,
@@ -21,6 +21,13 @@ const ToolsSection = ({
 }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <FormGroup label="Jade Interop" description="Control whether Quartz communicates with Jade (open/reload handoffs)">
+        <ToggleSwitch
+          label="Communicate with Jade"
+          checked={settings.communicateWithJade !== false}
+          onChange={(checked) => updateSetting('communicateWithJade', checked)}
+        />
+      </FormGroup>
 
       <FormGroup label="File Browser" description="Choose between custom or native Windows file browser">
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>

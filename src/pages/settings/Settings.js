@@ -19,6 +19,15 @@ import useHashSettings from './hooks/useHashSettings';
 import useUpdateSettings from './hooks/useUpdateSettings';
 import useWindowsIntegrationSettings from './hooks/useWindowsIntegrationSettings';
 
+const SETTINGS_SECTION_IDS = [
+  'appearance',
+  'tools',
+  'windowsIntegration',
+  'pages',
+  'themeCreator',
+  'github',
+];
+
 const ModernSettings = () => {
   const [selectedSection, setSelectedSection] = useState('appearance');
 
@@ -51,7 +60,8 @@ const ModernSettings = () => {
     fakeGearEnabled: false, // Default to false (experimental feature)
     particleRandomizerEnabled: false,
     glassBlur: 6,
-    useNativeFileBrowser: false // Default to custom explorer
+    useNativeFileBrowser: false, // Default to custom explorer
+    communicateWithJade: true
   });
 
   // Theme-related state
@@ -117,6 +127,8 @@ const ModernSettings = () => {
   } = useUpdateSettings();
   const [highlightUpdateSection, setHighlightUpdateSection] = useState(false);
   const updateSectionRef = useRef(null);
+  const [highlightWindowsIntegrationSection, setHighlightWindowsIntegrationSection] = useState(false);
+  const windowsIntegrationSectionRef = useRef(null);
 
 
   // DEV: Set to true to simulate update highlight for testing
@@ -259,13 +271,16 @@ const ModernSettings = () => {
         case 'useNativeFileBrowser':
           await electronPrefs.set('UseNativeFileBrowser', value);
           break;
+        case 'communicateWithJade':
+          await electronPrefs.set('CommunicateWithJade', value);
+          break;
         default:
           // For other settings, try to save with the key name
           await electronPrefs.set(key, value);
       }
 
       // Dispatch settings changed event for navigation updates (matching Settings4.js)
-      if (['themeVariant', 'interfaceStyle', 'paintEnabled', 'portEnabled', 'vfxHubEnabled', 'rgbaEnabled', 'imgRecolorEnabled', 'binEditorEnabled', 'toolsEnabled', 'fileRandomizerEnabled', 'bnkExtractEnabled', 'bumpathEnabled', 'aniportEnabled', 'frogchangerEnabled', 'fakeGearEnabled', 'UpscaleEnabled', 'particleRandomizerEnabled', 'wadExplorerEnabled'].includes(key)) {
+      if (['themeVariant', 'interfaceStyle', 'paintEnabled', 'portEnabled', 'vfxHubEnabled', 'rgbaEnabled', 'imgRecolorEnabled', 'binEditorEnabled', 'toolsEnabled', 'fileRandomizerEnabled', 'bnkExtractEnabled', 'bumpathEnabled', 'aniportEnabled', 'frogchangerEnabled', 'fakeGearEnabled', 'UpscaleEnabled', 'particleRandomizerEnabled', 'wadExplorerEnabled', 'communicateWithJade'].includes(key)) {
         window.dispatchEvent(new CustomEvent('settingsChanged'));
       }
     } catch (error) {
@@ -432,7 +447,8 @@ const ModernSettings = () => {
         fakeGearEnabled: electronPrefs.obj.FakeGearEnabled === true, // Default to false (experimental)
         particleRandomizerEnabled: electronPrefs.obj.ParticleRandomizerEnabled === true,
         glassBlur: electronPrefs.obj.GlassBlur !== undefined ? electronPrefs.obj.GlassBlur : 6,
-        useNativeFileBrowser: electronPrefs.obj.UseNativeFileBrowser === true // Default to false
+        useNativeFileBrowser: electronPrefs.obj.UseNativeFileBrowser === true, // Default to false
+        communicateWithJade: electronPrefs.obj.CommunicateWithJade !== false
       }));
 
       // Load wallpaper settings
@@ -476,6 +492,15 @@ const ModernSettings = () => {
       }
     };
     loadSettings();
+  }, []);
+
+  // Honor external request to open a specific settings section.
+  useEffect(() => {
+    const requestedSection = localStorage.getItem('settings:open-section');
+    if (requestedSection && SETTINGS_SECTION_IDS.includes(requestedSection)) {
+      setSelectedSection(requestedSection);
+      localStorage.removeItem('settings:open-section');
+    }
   }, []);
 
   // Check for update/ritobin highlight flag (when user navigates from notifications)
@@ -534,6 +559,37 @@ const ModernSettings = () => {
     const timer = setTimeout(checkHighlightFlag, 100);
     return () => clearTimeout(timer);
   }, [DEV_SIMULATE_UPDATE_HIGHLIGHT, selectedSection, updateStatus]);
+
+  // Check for windows integration highlight flag (when user navigates from modal).
+  useEffect(() => {
+    const shouldHighlight = localStorage.getItem('settings:highlight-windows-integration') === 'true';
+    if (!shouldHighlight) return;
+
+    localStorage.removeItem('settings:highlight-windows-integration');
+
+    if (selectedSection !== 'windowsIntegration') {
+      setSelectedSection('windowsIntegration');
+    }
+
+    const activateTimer = setTimeout(() => {
+      setHighlightWindowsIntegrationSection(true);
+      if (windowsIntegrationSectionRef.current) {
+        windowsIntegrationSectionRef.current.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+      }
+    }, 220);
+
+    const clearTimer = setTimeout(() => {
+      setHighlightWindowsIntegrationSection(false);
+    }, 5000);
+
+    return () => {
+      clearTimeout(activateTimer);
+      clearTimeout(clearTimer);
+    };
+  }, [selectedSection]);
 
   // Apply font when selectedFont changes (skip initial mount render with stale 'system' default)
   useEffect(() => {
@@ -1059,6 +1115,8 @@ const ModernSettings = () => {
             contextMenuEnabled={contextMenuEnabled}
             handleToggleContextMenu={handleToggleContextMenu}
             contextMenuLoading={contextMenuLoading}
+            windowsIntegrationSectionRef={windowsIntegrationSectionRef}
+            highlightWindowsIntegrationSection={highlightWindowsIntegrationSection}
           />
         );
       case 'pages':
@@ -1195,10 +1253,6 @@ const ModernSettings = () => {
 };
 
 export default ModernSettings;
-
-
-
-
 
 
 

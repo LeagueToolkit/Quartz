@@ -12,9 +12,8 @@ export default function PortStatusBar({
     <div
       style={{
         padding: '6px 20px',
-        background: 'rgba(255,255,255,0.06)',
-        borderTop: '1px solid rgba(255,255,255,0.12)',
-        borderBottom: '1px solid rgba(255,255,255,0.12)',
+        background: 'transparent',
+        borderTop: '1px solid rgba(255, 255, 255, 0.06)',
         color: 'var(--accent)',
         fontFamily: 'JetBrains Mono, monospace',
         fontSize: '12px',

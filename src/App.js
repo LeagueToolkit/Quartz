@@ -27,13 +27,16 @@ import WadExplorer from './pages/wadexplorer/WadExplorer';
 import FakeGearSkin from './pages/fakegearskin/FakeGearSkin';
 import ParticleRandomizer from './pages/ParticleRandomizer';
 import HashReminderModal from './components/modals/HashReminderModal';
+import WindowsIntegrationReminderModal from './components/modals/WindowsIntegrationReminderModal';
 import AssetPreviewModal from './components/modals/AssetPreviewModal';
+import JadeInstallModal from './components/modals/JadeInstallModal';
 import ScbInspectModalHost from './components/model-inspect/ScbInspectModalHost';
-import InlineModelInspectHost from './components/model-inspect/InlineModelInspectHost';
+import InlineModelInspectHost, { OPEN_INLINE_MODEL_INSPECT_EVENT } from './components/model-inspect/InlineModelInspectHost';
 import GlobalClickEffect from './components/ClickEffects/GlobalClickEffect';
 import GlobalBackgroundEffect from './components/BackgroundEffects/GlobalBackgroundEffect';
 import GlobalCursorEffect from './components/CursorEffects/GlobalCursorEffect';
 import GlobalUpdateNotification from './components/app-shell/GlobalUpdateNotification';
+import GlobalHashSyncNotification from './components/app-shell/GlobalHashSyncNotification';
 import AppModalWheel from './components/debug/AppModalWheel';
 
 import fontManager from './utils/theme/fontManager.js';
@@ -74,6 +77,125 @@ const CelestiaNavigationBridge = () => {
     window.addEventListener('celestia:navigate', handler);
     return () => window.removeEventListener('celestia:navigate', handler);
   }, [navigate]);
+  return null;
+};
+
+const QuartzInteropBridge = () => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!window.require) return;
+    const { ipcRenderer } = window.require('electron');
+    const fs = window.require('fs');
+    let active = true;
+
+    const emitHandoff = (handoff) => {
+      window.__QUARTZ_PENDING_HANDOFF = handoff;
+      window.dispatchEvent(new CustomEvent('quartz-interop-handoff', { detail: handoff }));
+    };
+
+    const processHandoff = (handoff) => {
+      if (!handoff || handoff.error) return;
+      if ((handoff.target_app || '').toLowerCase() !== 'quartz') return;
+      if (!handoff.bin_path) return;
+
+      const mode = String(handoff.mode || 'paint').toLowerCase();
+      const route =
+        mode === 'port' ? '/port' :
+        mode === 'bineditor' ? '/bineditor' :
+        mode === 'vfxhub' ? '/vfx-hub' :
+        '/paint';
+      const currentHash = window.location.hash || '#/';
+
+      if (currentHash !== `#${route}`) {
+        navigate(route);
+        setTimeout(() => emitHandoff(handoff), 220);
+      } else {
+        emitHandoff(handoff);
+      }
+    };
+
+    const consume = async () => {
+      if (!active) return;
+      try {
+        const result = await ipcRenderer.invoke('interop:consumeHandoff');
+        if (!result) return;
+        const rawMessages = Array.isArray(result) ? result : [result];
+        const messages = rawMessages
+          .filter((m) => m && !m.error && (m.target_app || '').toLowerCase() === 'quartz' && m.bin_path)
+          .sort((a, b) => Number(a?.created_at_unix || 0) - Number(b?.created_at_unix || 0));
+
+        // Keep only the latest handoff per bin so stale older actions don't override route/mode.
+        const byBin = new Map();
+        for (const handoff of messages) {
+          const key = String(handoff.bin_path).toLowerCase();
+          const prev = byBin.get(key);
+          if (!prev) {
+            byBin.set(key, handoff);
+            continue;
+          }
+          const prevTs = Number(prev?.created_at_unix || 0);
+          const curTs = Number(handoff?.created_at_unix || 0);
+          if (curTs > prevTs) {
+            byBin.set(key, handoff);
+            continue;
+          }
+          if (curTs === prevTs) {
+            const prevAction = String(prev?.action || '').toLowerCase();
+            const curAction = String(handoff?.action || '').toLowerCase();
+            // Prefer reload over open on equal timestamp.
+            if (curAction === 'reload-bin' && prevAction !== 'reload-bin') {
+              byBin.set(key, handoff);
+            }
+          }
+        }
+
+        const latestMessages = Array.from(byBin.values()).sort(
+          (a, b) => Number(a?.created_at_unix || 0) - Number(b?.created_at_unix || 0)
+        );
+        for (const handoff of latestMessages) processHandoff(handoff);
+      } catch {}
+    };
+
+    let watcher = null;
+    let watchDebounce = null;
+    ipcRenderer.invoke('interop:getWatchDir')
+      .then((watchDir) => {
+        if (!active || !watchDir) return;
+        try {
+          if (!fs.existsSync(watchDir)) {
+            fs.mkdirSync(watchDir, { recursive: true });
+          }
+          watcher = fs.watch(watchDir, { persistent: false }, (_eventType, filename) => {
+            if (!filename || !filename.startsWith('handoff-')) return;
+            clearTimeout(watchDebounce);
+            watchDebounce = setTimeout(consume, 80);
+          });
+          watcher.on('error', () => {});
+        } catch {}
+      })
+      .catch(() => {
+        // Main process may not have interop channel registered yet.
+        // Fallback poll still runs via consume() + setInterval.
+      });
+
+    const onCheckNow = () => consume();
+    ipcRenderer.on('interop:check-now', onCheckNow);
+
+    consume();
+    const timer = setInterval(consume, 5000);
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+      clearTimeout(watchDebounce);
+      ipcRenderer.removeListener('interop:check-now', onCheckNow);
+      try {
+        watcher?.close();
+      } catch {}
+    };
+  }, [navigate]);
+
   return null;
 };
 
@@ -368,7 +490,48 @@ function App() {
     if (window.require) {
       const { ipcRenderer } = window.require('electron');
       ipcRenderer.on('app:closing', handleAppClosing);
+      ipcRenderer.on('app:open-model-inspect', (_event, payload) => {
+        console.log('[ModelInspectLaunch][Renderer] IPC received app:open-model-inspect', payload);
+        try {
+          window.dispatchEvent(new CustomEvent(OPEN_INLINE_MODEL_INSPECT_EVENT, {
+            detail: payload || {},
+          }));
+        } catch (_) {}
+      });
     }
+
+    // Robust startup fallback for file-association launches:
+    // parse process argv in renderer too, so modal opens even if main IPC arrives too early.
+    try {
+      const argv = (window.process && Array.isArray(window.process.argv)) ? window.process.argv : [];
+      let inspectPath = '';
+      const flagIdx = argv.indexOf('--inspect-model');
+      if (flagIdx !== -1 && typeof argv[flagIdx + 1] === 'string') {
+        // In dev, Chromium flags can appear right after our custom flag.
+        const tail = argv.slice(flagIdx + 1);
+        inspectPath = tail.find((a) => typeof a === 'string' && a.toLowerCase().endsWith('.skn')) || '';
+        if (!inspectPath && typeof argv[flagIdx + 1] === 'string' && !argv[flagIdx + 1].startsWith('--')) {
+          inspectPath = argv[flagIdx + 1];
+        }
+      } else {
+        const sknArg = argv.find((a) => typeof a === 'string' && a.toLowerCase().endsWith('.skn'));
+        if (sknArg) inspectPath = sknArg;
+      }
+
+      if (inspectPath) {
+        console.log('[ModelInspectLaunch][Renderer] argv inspect target detected:', inspectPath, 'argv=', argv);
+        setTimeout(() => {
+          try {
+            console.log('[ModelInspectLaunch][Renderer] dispatching OPEN_INLINE_MODEL_INSPECT_EVENT from argv');
+            window.dispatchEvent(new CustomEvent(OPEN_INLINE_MODEL_INSPECT_EVENT, {
+              detail: { path: inspectPath },
+            }));
+          } catch (_) {}
+        }, 350);
+      } else {
+        console.log('[ModelInspectLaunch][Renderer] no inspect target in argv', argv);
+      }
+    } catch (_) {}
 
     // Initialize fonts on app startup AFTER listeners are attached
     fontManager.init().then(async () => {
@@ -400,6 +563,7 @@ function App() {
       if (window.require) {
         const { ipcRenderer } = window.require('electron');
         ipcRenderer.removeListener('app:closing', handleAppClosing);
+        ipcRenderer.removeAllListeners('app:open-model-inspect');
       }
     };
   }, []);
@@ -444,12 +608,16 @@ function App() {
         <CssBaseline />
         <Router>
           <HashReminderModal />
+          <WindowsIntegrationReminderModal />
           <AssetPreviewModal />
+          <JadeInstallModal />
           <ScbInspectModalHost />
           <InlineModelInspectHost />
           <FontPersistenceHandler />
           <CelestiaNavigationBridge />
+          <QuartzInteropBridge />
           <GlobalUpdateNotification />
+          <GlobalHashSyncNotification />
           {false && <AppModalWheel />}
           <GlobalClickEffect enabled={clickEffectEnabled} type={clickEffectType} />
           <GlobalBackgroundEffect enabled={backgroundEffectEnabled} type={backgroundEffectType} />

@@ -66,8 +66,10 @@ const BackupViewer = ({ open, onClose, filePath, component }) => {
   const handleRestore = async (backupPath) => {
     try {
       setRestoring(backupPath);
-      const ok = restoreBackup(backupPath, filePath);
-      if (ok) { onClose(true); }
+      const restoredContent = restoreBackup(backupPath, filePath);
+      if (typeof restoredContent === 'string') {
+        onClose(true, { backupPath, filePath, content: restoredContent });
+      }
       else { setError('Failed to restore backup'); }
     } catch (err) {
       setError(`Error restoring backup: ${err.message}`);

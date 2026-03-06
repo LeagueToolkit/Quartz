@@ -133,6 +133,7 @@ const FrogChanger = () => {
   const [currentSkinIndex, setCurrentSkinIndex] = useState(0);
   const [skinPrefixes, setSkinPrefixes] = useState({});
   const [skipSfxRepath, setSkipSfxRepath] = useState(true);
+  const [repathExtractVoiceover, setRepathExtractVoiceover] = useState(false);
   const [repathPreserveHudIcons2D, setRepathPreserveHudIcons2D] = useState(true);
   const [applyToAll, setApplyToAll] = useState(false);
   const [showLeaguePathTooltip, setShowLeaguePathTooltip] = useState(false);
@@ -235,6 +236,8 @@ const FrogChanger = () => {
       setHashPath(loaded.hashPath || '');
       setLeaguePath(loaded.leaguePath || '');
       setExtractionPath(loaded.extractionPath || '');
+      setRepathExtractVoiceover(loaded.extractVoiceover === true);
+      setRepathPreserveHudIcons2D(loaded.preserveHudIcons2D !== false);
       if (loaded.hashStatus) setHashStatus(loaded.hashStatus);
       setSettingsLoaded(true);
     } catch (error) {
@@ -275,24 +278,21 @@ const FrogChanger = () => {
         let isMatch = false;
 
         // Check for skinline name match
-        if (skinData.name && skinData.name.toLowerCase().includes(searchTermLower)) {
-          // More precise matching to avoid false positives like "Covenant" matching "Coven"
+        if (skinData.name) {
           const skinNameLower = skinData.name.toLowerCase();
+          const normalizedSkinName = skinNameLower.replace(/[^a-z0-9]/g, '');
+          const normalizedSearch = searchTermLower.replace(/[^a-z0-9]/g, '');
 
-          // Check if the search term appears as a complete word or at the start of the skin name
-          const isExactMatch =
-            skinNameLower.startsWith(searchTermLower + ' ') || // "Coven Ahri"
-            skinNameLower.includes(' ' + searchTermLower + ' ') || // "Prestige Coven Akali"
-            skinNameLower.endsWith(' ' + searchTermLower) || // "Some Coven"
-            skinNameLower === searchTermLower; // Exact match
+          const hasDirectMatch = skinNameLower.includes(searchTermLower);
+          const hasNormalizedMatch = normalizedSearch && normalizedSkinName.includes(normalizedSearch);
 
-          // Additional filtering to avoid false positives
+          // Additional filtering to avoid known false positives
           const isFalsePositive =
             (searchTermLower === 'coven' && skinNameLower.includes('covenant')) ||
             (searchTermLower === 'star' && skinNameLower.includes('starguardian') && !skinNameLower.includes('star guardian')) ||
             (searchTermLower === 'project' && skinNameLower.includes('projection'));
 
-          if (!isFalsePositive && isExactMatch) {
+          if (!isFalsePositive && (hasDirectMatch || hasNormalizedMatch)) {
             isMatch = true;
           }
         }
@@ -337,18 +337,15 @@ const FrogChanger = () => {
       const results = [];
       const championMap = new Map();
 
-      // Create a map of champion names to champion objects
+      // Create a map of champion ids to champion objects
       champions.forEach(champion => {
-        championMap.set(champion.name.toLowerCase(), champion);
+        championMap.set(String(champion.id), champion);
       });
 
       // Group matching skins by champion
       for (const skin of matchingSkins) {
-        // Extract champion name from skin name (e.g., "Coven Ahri" -> "Ahri")
-        const skinNameParts = skin.name.split(' ');
-        const championName = skinNameParts[skinNameParts.length - 1]; // Last part is usually champion name
-
-        const champion = championMap.get(championName.toLowerCase());
+        const championId = String(skin.id).slice(0, -3);
+        const champion = championMap.get(championId);
         if (champion) {
           // Find existing champion group or create new one
           let championGroup = results.find(r => r.champion.id === champion.id);
@@ -794,10 +791,13 @@ const FrogChanger = () => {
       if (!skin?.champion?.name || skin.id == null || !skin.name) {
         return null;
       }
+      const chromaKey = `${skin.champion.name}_${skin.id}`;
+      const selectedChroma = selectedChromas[chromaKey] || null;
       return {
         championName: skin.champion.name,
         skinId: skin.id,
         skinName: skin.name,
+        chromaId: selectedChroma?.id ?? null,
       };
     }
 
@@ -814,6 +814,7 @@ const FrogChanger = () => {
       championName: selectedChampion.name,
       skinId: foundSkin.id,
       skinName: skin,
+      chromaId: selectedChromas[`${selectedChampion.name}_${foundSkin.id}`]?.id ?? null,
     };
   };
 
@@ -936,14 +937,14 @@ const FrogChanger = () => {
       const skinsByChampion = {};
       const allSkins = [];
 
-      for (const { championName, skinId, skinName } of normalizedSelections) {
+      for (const { championName, skinId, skinName, chromaId } of normalizedSelections) {
         if (!skinsByChampion[championName]) {
           skinsByChampion[championName] = [];
         }
-        skinsByChampion[championName].push({ skinId, skinName });
+        skinsByChampion[championName].push({ skinId, skinName, chromaId });
 
         // Add to flattened list for individual prefix selection
-        allSkins.push({ championName, skinId, skinName });
+        allSkins.push({ championName, skinId, skinName, chromaId });
       }
 
       // Store the repath data and show prefix modal
@@ -952,7 +953,6 @@ const FrogChanger = () => {
       setSkinPrefixes({});
       setApplyToAll(false);
       setSkipSfxRepath(true);
-      setRepathPreserveHudIcons2D(true);
       setShowPrefixModal(true);
     }
   };
@@ -988,11 +988,12 @@ const FrogChanger = () => {
         // Use first skin for extraction (all skins of same champion share the same WAD)
         const firstSkin = championSkins[0];
         const firstSkinId = firstSkin.skinId;
+        const firstChromaId = firstSkin.chromaId ?? null;
 
         addConsoleLog(`${progress} Extracting ${firstSkin.skinName} (${championName}) - Normal WAD for repath...`, 'info');
         // Extract WAD file (only once per champion)
-        await extractWadFile(championName, firstSkinId, firstSkin.skinName, null, false, {
-          extractVoiceover: false,
+        await extractWadFile(championName, firstSkinId, firstSkin.skinName, firstChromaId, false, {
+          extractVoiceover: repathExtractVoiceover,
           preserveHudIcons2D: repathPreserveHudIcons2D,
         });
 
@@ -1005,12 +1006,16 @@ const FrogChanger = () => {
         // Now run repath using the extracted folder as source
         const skinNameSafe = firstSkin.skinName.replace(/[^a-zA-Z0-9]/g, '_');
         const championFileName = getChampionFileName(championName);
-        const sourceDir = `${extractionPath}\\${championFileName}_extracted_${skinNameSafe}`;
-        const outputDir = `${extractionPath}\\${championFileName}_repathed_${skinNameSafe}`;
+        const sourceDir = firstChromaId != null
+          ? `${extractionPath}\\${championFileName}_extracted_${skinNameSafe}_chroma_${firstChromaId}`
+          : `${extractionPath}\\${championFileName}_extracted_${skinNameSafe}`;
+        const outputDir = firstChromaId != null
+          ? `${extractionPath}\\${championFileName}_repathed_${skinNameSafe}_chroma_${firstChromaId}`
+          : `${extractionPath}\\${championFileName}_repathed_${skinNameSafe}`;
 
-        // Get ALL skin IDs for this champion (not just first skin)
-        const championSkinIds = championSkins.map(s => s.skinId);
-        const prefixes = championSkinIds.map(skinId => prefixesToUse[skinId] || 'bum');
+        // Use chroma ids when selected; otherwise fall back to base skin ids.
+        const championSkinIds = championSkins.map(s => s.chromaId ?? s.skinId);
+        const prefixes = championSkins.map(s => prefixesToUse[s.skinId] || 'bum');
         const uniquePrefixes = [...new Set(prefixes)];
 
         console.log(`🔍 Champion ${championName} ALL skin IDs:`, championSkinIds);
@@ -1285,6 +1290,8 @@ const FrogChanger = () => {
         setApplyToAll={setApplyToAll}
         skipSfxRepath={skipSfxRepath}
         setSkipSfxRepath={setSkipSfxRepath}
+        extractVoiceover={repathExtractVoiceover}
+        setExtractVoiceover={setRepathExtractVoiceover}
         preserveHudIcons2D={repathPreserveHudIcons2D}
         setPreserveHudIcons2D={setRepathPreserveHudIcons2D}
         onCancel={handleCancelPrefixModal}

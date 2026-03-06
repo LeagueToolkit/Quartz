@@ -94,6 +94,15 @@ export default function useVfxHubSave({
       try {
         await ToBin(outputPyPath, outputBinPath);
 
+        try {
+          await ipcRenderer.invoke('interop:notifyJadeBinUpdated', {
+            binPath: outputBinPath,
+            sourceMode: 'vfxhub',
+          });
+        } catch (notifyErr) {
+          console.warn('[Interop][VfxHub] notifyJadeBinUpdated failed', notifyErr);
+        }
+
         setStatusMessage(`Successfully saved: ${outputBinPath}`);
         setTimeout(() => setStatusMessage(''), 3000);
         setFileSaved(true);

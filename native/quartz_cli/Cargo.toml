@@ -1,0 +1,28 @@
+[package]
+name = "quartz_cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "quartz_cli"
+path = "src/main.rs"
+
+[dependencies]
+ltk_meta = { path = "../../league-toolkit-main/crates/ltk_meta" }
+ltk_ritobin = { path = "../../league-toolkit-main/crates/ltk_ritobin" }
+ltk_texture = { path = "../../league-toolkit-main/crates/ltk_texture" }
+ltk_wad = { path = "../../league-toolkit-main/crates/ltk_wad" }
+ltk_file = { path = "../../league-toolkit-main/crates/ltk_file" }
+xxhash-rust = { version = "0.8", features = ["xxh64"] }
+serde_json = "1"
+indexmap = "2"
+rayon = "1.10"
+byteorder = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+heed = "0.20"
+
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

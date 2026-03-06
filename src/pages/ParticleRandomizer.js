@@ -526,25 +526,26 @@ export default function ParticleRandomizer() {
     // ── File Operations ──
     const processFile = useCallback(async (filePath) => {
         try {
+            if (!nodeFs || !nodePath) throw new Error('Node filesystem/path modules are unavailable');
             setIsLoading(true);
             setLoadingText('Processing .bin file...');
 
             setBinPath(filePath);
 
-            const binDir = path.dirname(filePath);
-            const binName = path.basename(filePath, '.bin');
-            const convertedPyPath = path.join(binDir, `${binName}.py`);
+            const binDir = nodePath.dirname(filePath);
+            const binName = nodePath.basename(filePath, '.bin');
+            const convertedPyPath = nodePath.join(binDir, `${binName}.py`);
 
             setBinPath(filePath);
 
-            if (!fs.existsSync(convertedPyPath)) {
+            if (!nodeFs.existsSync(convertedPyPath)) {
                 setLoadingText('Converting .bin to .py...');
                 try {
                     await ToPy(filePath);
                 } catch (err) {
                     throw new Error(`RitoBin failed: ${err.message}`);
                 }
-                if (!fs.existsSync(convertedPyPath)) throw new Error('Failed to create .py file');
+                if (!nodeFs.existsSync(convertedPyPath)) throw new Error('Failed to create .py file');
             }
 
             setLoadingText('Reading & parsing file...');
@@ -776,16 +777,15 @@ export default function ParticleRandomizer() {
     const handleSave = useCallback(async () => {
         if (!generatedContent || !pyPath || !binPath) { setStatus('Nothing to save', 'error'); return; }
         try {
+            if (!nodeFs) throw new Error('Node filesystem module is unavailable');
             setIsLoading(true);
             setLoadingText('Creating backup...');
-            const fs = window.require('fs');
-            const path = window.require('path');
 
-            if (fs.existsSync(pyPath)) {
-                createBackup(pyPath, fs.readFileSync(pyPath, 'utf8'), 'ParticleRandomizer');
+            if (nodeFs.existsSync(pyPath)) {
+                createBackup(pyPath, nodeFs.readFileSync(pyPath, 'utf8'), 'ParticleRandomizer');
             }
             setLoadingText('Saving modified .py...');
-            fs.writeFileSync(pyPath, generatedContent, 'utf8');
+            nodeFs.writeFileSync(pyPath, generatedContent, 'utf8');
 
             setLoadingText('Converting .py back to .bin...');
             await ToBin(pyPath, binPath);

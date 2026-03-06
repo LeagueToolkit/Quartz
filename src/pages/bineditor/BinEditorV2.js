@@ -48,8 +48,10 @@ import { useCombineLinkedBinsCheck } from '../../hooks/useCombineLinkedBinsCheck
 import electronPrefs from '../../utils/core/electronPrefs.js';
 import { openAssetPreview } from '../../utils/assets/assetPreviewEvent';
 import { convertTextureToPNG, findActualTexturePath } from '../../utils/assets/textureConverter';
+import { emitJadeMissingModal, isJadeMissingResult } from '../../utils/interop/jadeInterop.js';
 import CropOriginalIcon from '@mui/icons-material/CropOriginal';
 import UnsavedChangesModal from '../../components/modals/UnsavedChangesModal';
+import ExternalFileChangeModal from '../../components/modals/ExternalFileChangeModal';
 import useUnsavedNavigationGuard from '../../hooks/navigation/useUnsavedNavigationGuard.js';
 import {
     cancelTextureHoverClose,
@@ -101,6 +103,12 @@ export default function BinEditorV2() {
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [showRitobinWarning, setShowRitobinWarning] = useState(false);
     const [ritobinWarningContent, setRitobinWarningContent] = useState(null);
+    const [externalChangeModal, setExternalChangeModal] = useState({
+        open: false,
+        handoff: null,
+        localContent: '',
+        diskContent: '',
+    });
 
     // Scale multiplier
     const [scaleMultiplier, setScaleMultiplier] = useState(2);
@@ -164,7 +172,7 @@ export default function BinEditorV2() {
 
     // ============ FILE OPERATIONS ============
 
-    const processBinFile = useCallback(async (filePath) => {
+    const processBinFile = useCallback(async (filePath, options = {}) => {
         if (!window.require) {
             setStatusMessage('Error: Electron environment required');
             return;
@@ -186,13 +194,16 @@ export default function BinEditorV2() {
 
             const path = window.require('path');
             const fs = window.require('fs');
+            const forceRefreshFromBin = options?.forceRefreshFromBin === true;
 
             const binDir = path.dirname(filePath);
             const binName = path.basename(filePath, '.bin');
             const pyPath = path.join(binDir, `${binName}.py`);
-
             // Check if .py already exists
-            if (!fs.existsSync(pyPath)) {
+            if (forceRefreshFromBin && filePath.toLowerCase().endsWith('.bin')) {
+                setLoadingText('Refreshing from .bin...');
+                await ToPy(filePath);
+            } else if (!fs.existsSync(pyPath)) {
                 setLoadingText('Converting .bin to .py...');
                 await checkAndPromptCombine(filePath);
 
@@ -365,7 +376,22 @@ export default function BinEditorV2() {
             setLoadingText('Converting to .bin...');
 
             // Convert back to .bin
+            console.log('[Interop][BinEditor] ToBin start', { pyPath: currentPath, binPath });
             await ToBin(currentPath, binPath);
+            console.log('[Interop][BinEditor] ToBin success', { binPath });
+
+            try {
+                if (window.require) {
+                    const { ipcRenderer } = window.require('electron');
+                    const notifyResult = await ipcRenderer.invoke('interop:notifyJadeBinUpdated', {
+                        binPath,
+                        sourceMode: 'bineditor',
+                    });
+                    console.log('[Interop][BinEditor] notifyJadeBinUpdated result', notifyResult);
+                }
+            } catch (notifyErr) {
+                console.warn('[Interop][BinEditor] notifyJadeBinUpdated failed', notifyErr);
+            }
 
             setOriginalContent(content);
             setUndoHistory([]);  // Clear undo history after saving (saved state is new baseline)
@@ -380,6 +406,111 @@ export default function BinEditorV2() {
             setLoadingText('');
         }
     }, [data, currentPath, binPath]);
+
+    const handleOpenInJade = useCallback(async () => {
+        if (!binPath) {
+            setStatusMessage('No .bin file is currently loaded');
+            return;
+        }
+
+        if (!window.require) {
+            setStatusMessage('Open in Jade is only available in the desktop app');
+            return;
+        }
+
+        try {
+            const { ipcRenderer } = window.require('electron');
+            const result = await ipcRenderer.invoke('interop:sendToJade', {
+                binPath,
+                sourceMode: 'bineditor',
+            });
+            if (isJadeMissingResult(result)) {
+                emitJadeMissingModal(result?.warning || result?.error || '');
+            }
+
+            if (result?.success) {
+                setStatusMessage(result?.warning || 'Sent bin to Jade');
+            } else {
+                setStatusMessage(result?.error || 'Failed to open Jade');
+            }
+        } catch (error) {
+            setStatusMessage(`Failed to open Jade: ${error.message || error}`);
+        }
+    }, [binPath]);
+
+    useEffect(() => {
+        const onNavbarOpenInJade = () => {
+            handleOpenInJade();
+        };
+
+        window.addEventListener('interop:open-in-jade', onNavbarOpenInJade);
+        return () => window.removeEventListener('interop:open-in-jade', onNavbarOpenInJade);
+    }, [handleOpenInJade]);
+
+    const getCurrentLocalContent = useCallback(() => {
+        try {
+            return data ? serializeToFile(data) : '';
+        } catch {
+            return '';
+        }
+    }, [data]);
+
+    const getDiskContentForBin = useCallback(async (binFilePath) => {
+        try {
+            if (!binFilePath || !window.require) return '';
+            const fs = window.require('fs');
+            const path = window.require('path');
+            if (binFilePath.toLowerCase().endsWith('.bin')) {
+                await ToPy(binFilePath);
+            }
+            const binDir = path.dirname(binFilePath);
+            const binName = path.basename(binFilePath, '.bin');
+            const pyPath = path.join(binDir, `${binName}.py`);
+            if (fs.existsSync(pyPath)) {
+                return fs.readFileSync(pyPath, 'utf8');
+            }
+            return '';
+        } catch {
+            return '';
+        }
+    }, []);
+
+    useEffect(() => {
+        const openFromHandoff = async (handoff) => {
+            if (!handoff || !handoff.bin_path) return;
+            const mode = String(handoff.mode || 'paint').toLowerCase();
+            const action = String(handoff.action || 'open-bin').toLowerCase();
+            if (mode !== 'bineditor') return;
+            if (!handoff.bin_path.toLowerCase().endsWith('.bin')) return;
+
+            const isReload = action === 'reload-bin';
+            const isSameFile = binPath && String(binPath).toLowerCase() === String(handoff.bin_path).toLowerCase();
+            if (isReload && isSameFile && hasUnsavedChanges) {
+                setExternalChangeModal({
+                    open: true,
+                    handoff,
+                    localContent: getCurrentLocalContent(),
+                    diskContent: await getDiskContentForBin(handoff.bin_path),
+                });
+                return;
+            }
+
+            await processBinFile(handoff.bin_path, {
+                forceRefreshFromBin: isReload,
+            });
+            if (window.__QUARTZ_PENDING_HANDOFF === handoff) {
+                window.__QUARTZ_PENDING_HANDOFF = null;
+            }
+        };
+
+        const handleInterop = (event) => {
+            openFromHandoff(event?.detail || {});
+        };
+
+        window.addEventListener('quartz-interop-handoff', handleInterop);
+        openFromHandoff(window.__QUARTZ_PENDING_HANDOFF);
+        return () => window.removeEventListener('quartz-interop-handoff', handleInterop);
+    }, [binPath, getCurrentLocalContent, getDiskContentForBin, hasUnsavedChanges, processBinFile]);
 
     const fileSaved = !hasUnsavedChanges;
     const setFileSaved = useCallback((saved) => {
@@ -1979,6 +2110,30 @@ export default function BinEditorV2() {
                 onSave={unsavedGuard.handleUnsavedSave}
                 onDiscard={unsavedGuard.handleUnsavedDiscard}
                 fileName={binPath || ''}
+            />
+
+            <ExternalFileChangeModal
+                open={externalChangeModal.open}
+                filePath={externalChangeModal?.handoff?.bin_path || binPath || ''}
+                sourceLabel="Jade"
+                localContent={externalChangeModal.localContent}
+                diskContent={externalChangeModal.diskContent}
+                onClose={() => setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' })}
+                onKeepLocal={() => {
+                    setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' });
+                    setStatusMessage('Kept local unsaved changes');
+                }}
+                onReload={async () => {
+                    const handoff = externalChangeModal.handoff;
+                    setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' });
+                    if (handoff?.bin_path) {
+                        await processBinFile(handoff.bin_path, { forceRefreshFromBin: true });
+                    }
+                }}
+                onOverwrite={async () => {
+                    setExternalChangeModal({ open: false, handoff: null, localContent: '', diskContent: '' });
+                    await saveFile();
+                }}
             />
         </div>
     );

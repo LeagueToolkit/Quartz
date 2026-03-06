@@ -14,6 +14,7 @@ const { loadHashManager } = require('./src/main/services/hashManagerLoader');
 const { createDefaultResourcesService } = require('./src/main/services/defaultResources');
 const { createShutdownCleanup } = require('./src/main/services/shutdownCleanup');
 const { createAutoUpdaterService } = require('./src/main/services/autoUpdaterService');
+const { createModelInspectLaunchService } = require('./src/main/services/modelInspectLaunch');
 const { createMainWindowService } = require('./src/main/window/mainWindowService');
 const { registerAppLifecycleHandlers } = require('./src/main/services/appLifecycle');
 const { registerLocalFileProtocol, runStartupTasks } = require('./src/main/services/startup');
@@ -23,6 +24,7 @@ const { registerWindowChannels } = require('./src/main/ipc/channels/window');
 const { registerMiscChannels } = require('./src/main/ipc/channels/misc');
 const { registerContextMenuChannels } = require('./src/main/ipc/channels/contextMenu');
 const { registerToolsChannels } = require('./src/main/ipc/channels/tools');
+const { registerInteropChannels } = require('./src/main/ipc/channels/interop');
 const { registerHashChannels } = require('./src/main/ipc/channels/hashes');
 const { registerUpdateChannels } = require('./src/main/ipc/channels/update');
 const { registerAudioChannels } = require('./src/main/ipc/channels/audio');
@@ -95,6 +97,13 @@ const {
   logToFile,
 });
 
+const modelInspectLaunch = createModelInspectLaunchService({
+  fs,
+  logToFile,
+  getMainWindow: () => getUpdateWindow(),
+});
+modelInspectLaunch.initFromStartupArgs(process.argv);
+
 let hashManager;
 
 const { handleCommandLineArgs } = createCliArgsHandler({
@@ -113,6 +122,7 @@ const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
   app.quit();
+  return;
 } else {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
     // Focus window and handle file open
@@ -122,6 +132,12 @@ if (!gotTheLock) {
       updateCheckWindow.focus();
 
     }
+
+    modelInspectLaunch.handleSecondInstanceArgs(commandLine);
+
+    try {
+      updateCheckWindow?.webContents?.send('interop:check-now');
+    } catch {}
   });
 
   // Run CLI handler immediately
@@ -216,6 +232,16 @@ registerPrefsChannels({
   savePrefs,
 });
 
+registerInteropChannels({
+  ipcMain,
+  app,
+  fs,
+  path,
+  spawn,
+  loadPrefs,
+  savePrefs,
+});
+
 // ============================================================================
 // WINDOWS EXPLORER CONTEXT MENU INTEGRATION
 // ============================================================================
@@ -256,7 +282,10 @@ app.whenReady().then(() => {
     ensureDefaultCursors,
     refreshContextMenuIfStale,
     hashManager,
+    getMainWindow: getUpdateWindow,
   });
+
+  modelInspectLaunch.flushPendingOnReady();
 });
 
 registerAppLifecycleHandlers({

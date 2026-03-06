@@ -133,6 +133,16 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
   try {
     if (!Palette[paletteIndex]) return;
 
+    const clearClickedColorDotPreview = () => {
+      try {
+        if (!clickedColorDot?.style) return;
+        clickedColorDot.style.removeProperty('background-color');
+        clickedColorDot.style.removeProperty('background');
+      } catch {}
+    };
+
+    clearClickedColorDotPreview();
+
     // Clean up any existing color pickers
     const existingPickers = document.querySelectorAll('.color-picker-container');
     existingPickers.forEach(picker => {
@@ -408,7 +418,6 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
     const liveUpdate = (hex) => {
       try {
         preview.style.background = hex;
-        if (clickedColorDot) clickedColorDot.style.backgroundColor = hex;
         if (setColors) {
           setColors((prev) => {
             if (!Array.isArray(prev) || prev.length === 0) return prev;
@@ -595,6 +604,7 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
         // Check for onShadesCommit callback first (for filter picker and shades mode)
         if (mode === 'shades' && options && typeof options.onShadesCommit === 'function') {
           options.onShadesCommit(hex);
+          clearClickedColorDotPreview();
           try { if (container.parentNode) container.parentNode.removeChild(container); } catch {}
           return;
         }
@@ -604,9 +614,14 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
         if (setPalette) {
           setPalette(currentPalette => {
             if (currentPalette[paletteIndex]) {
-              // Create a new array to avoid mutation
+              // Replace the edited swatch with a fresh ColorHandler instance so
+              // React sees a real object change instead of an in-place mutation.
               const updatedPalette = [...currentPalette];
-              updatedPalette[paletteIndex].InputHex(hex);
+              const prevColor = currentPalette[paletteIndex];
+              const nextColor = new ColorHandler(prevColor?.ToVec4?.() || prevColor?.vec4 || [0.5, 0.5, 0.5, 1]);
+              nextColor.InputHex(hex);
+              nextColor.time = prevColor?.time ?? 0;
+              updatedPalette[paletteIndex] = nextColor;
               
               // Update colors display
               if (setColors) {
@@ -625,7 +640,11 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
         } else {
           // Fallback if setPalette is not available (shouldn't happen in normal usage)
           if (Palette[paletteIndex]) {
-            Palette[paletteIndex].InputHex(hex);
+            const prevColor = Palette[paletteIndex];
+            const nextColor = new ColorHandler(prevColor?.ToVec4?.() || prevColor?.vec4 || [0.5, 0.5, 0.5, 1]);
+            nextColor.InputHex(hex);
+            nextColor.time = prevColor?.time ?? 0;
+            Palette[paletteIndex] = nextColor;
             if (setColors) MapPalette(Palette, setColors);
             if (savePaletteForMode && mode && setSavedPalettes) {
               savePaletteForMode(mode, Palette, setSavedPalettes);
@@ -635,6 +654,7 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
       } catch (e) { 
         console.error('Error committing color:', e); 
       }
+      clearClickedColorDotPreview();
       try { if (container.parentNode) container.parentNode.removeChild(container); } catch {}
     };
 
@@ -659,6 +679,7 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
       if (p) commit(p.hex);
     });
     cancelBtn.addEventListener('click', () => {
+      clearClickedColorDotPreview();
       try { if (container.parentNode) container.parentNode.removeChild(container); } catch {}
     });
 
@@ -678,6 +699,7 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
           // Commit current color on outside click
           const p = parseHex(hexInput.value);
           if (p) commit(p.hex);
+          clearClickedColorDotPreview();
           // Check if container is still in the DOM before removing
           if (container.parentNode) {
             container.parentNode.removeChild(container);

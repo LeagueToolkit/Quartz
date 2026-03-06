@@ -113,6 +113,8 @@ repath tool test/
 # Rust native addon build artifacts
 native/wad_indexer/target/
 native/wad_indexer/*.node
+native/quartz_cli/target/
+native/**/target/
 
 # Third-party tools and external projects
 League Mod Repather/
@@ -136,3 +138,4 @@ ltk-manager-main/
 league-toolkit-main/
 Flint-main/
 Jade-League-Bin-Editor-main/
+reusable/

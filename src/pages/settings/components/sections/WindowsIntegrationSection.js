@@ -5,10 +5,25 @@ import { FormGroup, ToggleSwitch } from '../SettingsPrimitives';
 const WindowsIntegrationSection = ({
   contextMenuEnabled,
   handleToggleContextMenu,
-  contextMenuLoading
+  contextMenuLoading,
+  windowsIntegrationSectionRef,
+  highlightWindowsIntegrationSection
 }) => {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div
+      ref={windowsIntegrationSectionRef}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '20px',
+        background: highlightWindowsIntegrationSection ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
+        border: highlightWindowsIntegrationSection ? '2px solid rgba(139, 92, 246, 0.6)' : '2px solid transparent',
+        borderRadius: '10px',
+        boxShadow: highlightWindowsIntegrationSection ? '0 0 20px rgba(139, 92, 246, 0.3)' : 'none',
+        transition: 'all 0.3s ease',
+        padding: highlightWindowsIntegrationSection ? '12px' : '0px',
+      }}
+    >
       <FormGroup
         label="Windows Explorer Context Menu"
         description="Add Quartz to the right-click menu for .bin and .py files"
@@ -34,10 +49,12 @@ const WindowsIntegrationSection = ({
             <div style={{ padding: '12px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px', fontSize: '12px', color: 'var(--accent2)' }}>
               <div style={{ fontWeight: '600', marginBottom: '8px' }}>Available Actions:</div>
               <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.6' }}>
-                <li><strong>NoSkinLite:</strong> Right-click .bin files -> Quartz -> NoSkinLite (Auto-remove skin references)</li>
-                <li><strong>Split VFX:</strong> Right-click .bin files -> Quartz -> Split VFX (Extracts all VFX systems into a separate _vfx.bin)</li>
-                <li><strong>Combine Linked:</strong> Right-click .bin files -> Quartz -> Combine Linked (Merges linked bin files back into main bin)</li>
-                <li><strong>Batch Split (LD):</strong> Right-click .bin files -> Quartz -> Batch Split VFX (Splits emitters for League Director recording)</li>
+                <li><strong>BIN tools:</strong> Convert to .py, Separate VFX, Combine Linked, NoSkinLite, Batch Split VFX.</li>
+                <li><strong>PY tools:</strong> Convert to .bin directly from Explorer.</li>
+                <li><strong>Texture tools:</strong> .tex/.dds/.png conversions both single-file and folder batch.</li>
+                <li><strong>WAD tools:</strong> Extract hashes, Unpack WAD, and Extract hashes + Unpack for .wad/.wad.client.</li>
+                <li><strong>Folder ritobin:</strong> Convert all BIN to PY and all PY to BIN recursively.</li>
+                <li><strong>Folder WAD:</strong> Pack folder to .wad.client from right-click.</li>
               </ul>
             </div>
           )}

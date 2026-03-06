@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/Frog/Desktop/Projects coding/league-toolkit-main/crates/ltk_meta/src/**)"
+    ]
+  }
+}

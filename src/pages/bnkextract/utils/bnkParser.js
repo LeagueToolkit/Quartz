@@ -934,6 +934,8 @@ export function fnv1Hash(input) {
  */
 export function groupAudioFiles(audioFiles, stringHashes = [], rootName = 'root') {
     const root = new AudioNode(rootName);
+    const hasAudioChild = (node, audioId) =>
+        node.children.some((child) => child?.audioData && child.audioData.id === audioId);
 
     for (const audio of audioFiles) {
         let inserted = false;
@@ -962,15 +964,21 @@ export function groupAudioFiles(audioFiles, stringHashes = [], rootName = 'root'
                     currentRoot = currentRoot.getOrCreateChild(sh.musicSegmentId.toString());
                 }
 
-                // 5. Add WEM file
-                currentRoot.addChild(new AudioNode(`${audio.id}.wem`, audio));
+                // 5. Add WEM file, deduping only inside the same event/container branch.
+                // This matches LtMAO behavior: same WEM can appear in different events,
+                // but duplicate references inside one branch are collapsed.
+                if (!hasAudioChild(currentRoot, audio.id)) {
+                    currentRoot.addChild(new AudioNode(`${audio.id}.wem`, audio));
+                }
                 inserted = true;
             }
         }
 
         // If no match found, add directly to root
         if (!inserted) {
-            root.addChild(new AudioNode(`${audio.id}.wem`, audio));
+            if (!hasAudioChild(root, audio.id)) {
+                root.addChild(new AudioNode(`${audio.id}.wem`, audio));
+            }
         }
     }
 

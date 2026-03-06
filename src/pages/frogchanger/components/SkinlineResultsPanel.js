@@ -190,7 +190,7 @@ const SkinlineResultsPanel = ({
                                 </div>
                                 <div className="chroma-preview-ids">
                                   <div className="text-xs text-gray-300">
-                                    Skin ID: {chroma.id.toString().slice(-2)}
+                                    Chroma ID: {chroma.id}
                                   </div>
                                 </div>
                               </div>
