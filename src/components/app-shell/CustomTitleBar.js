@@ -200,7 +200,21 @@ const CustomTitleBar = () => {
         return;
       }
 
+      window.__DL_openInJadeHandled = false;
       window.dispatchEvent(new CustomEvent('interop:open-in-jade'));
+      // Fallback for pages that have no BIN context open:
+      // launch Jade directly so the topbar button still works.
+      setTimeout(async () => {
+        try {
+          if (window.__DL_openInJadeHandled) return;
+          const launchResult = await ipcRenderer.invoke('interop:launchJade');
+          if (!launchResult?.success) {
+            emitJadeMissingModal(launchResult?.error || 'jade-not-installed');
+          }
+        } catch (fallbackError) {
+          emitJadeMissingModal(fallbackError?.message || 'check-failed');
+        }
+      }, 120);
     } catch (error) {
       emitJadeMissingModal(error?.message || 'check-failed');
     }
@@ -261,7 +275,7 @@ const CustomTitleBar = () => {
             title={jadeInteropEnabled ? 'Open in Jade' : 'Open in Jade (disabled in Settings > External Tools)'}
             disabled={!jadeInteropEnabled}
           >
-            <img src="/jade.webp" alt="Jade" className="figma-window-control-image" />
+            <img src={`${process.env.PUBLIC_URL}/jade.webp`} alt="Jade" className="figma-window-control-image" />
           </button>
 
           <button

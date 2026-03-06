@@ -61,7 +61,8 @@ const ModernSettings = () => {
     particleRandomizerEnabled: false,
     glassBlur: 6,
     useNativeFileBrowser: false, // Default to custom explorer
-    communicateWithJade: true
+    communicateWithJade: true,
+    jadeExecutablePath: ''
   });
 
   // Theme-related state
@@ -127,6 +128,8 @@ const ModernSettings = () => {
   } = useUpdateSettings();
   const [highlightUpdateSection, setHighlightUpdateSection] = useState(false);
   const updateSectionRef = useRef(null);
+  const [highlightJadePathSection, setHighlightJadePathSection] = useState(false);
+  const jadePathSectionRef = useRef(null);
   const [highlightWindowsIntegrationSection, setHighlightWindowsIntegrationSection] = useState(false);
   const windowsIntegrationSectionRef = useRef(null);
 
@@ -273,6 +276,9 @@ const ModernSettings = () => {
           break;
         case 'communicateWithJade':
           await electronPrefs.set('CommunicateWithJade', value);
+          break;
+        case 'jadeExecutablePath':
+          await electronPrefs.set('JadeExecutablePath', value);
           break;
         default:
           // For other settings, try to save with the key name
@@ -448,7 +454,8 @@ const ModernSettings = () => {
         particleRandomizerEnabled: electronPrefs.obj.ParticleRandomizerEnabled === true,
         glassBlur: electronPrefs.obj.GlassBlur !== undefined ? electronPrefs.obj.GlassBlur : 6,
         useNativeFileBrowser: electronPrefs.obj.UseNativeFileBrowser === true, // Default to false
-        communicateWithJade: electronPrefs.obj.CommunicateWithJade !== false
+        communicateWithJade: electronPrefs.obj.CommunicateWithJade !== false,
+        jadeExecutablePath: electronPrefs.obj.JadeExecutablePath || ''
       }));
 
       // Load wallpaper settings
@@ -583,6 +590,37 @@ const ModernSettings = () => {
 
     const clearTimer = setTimeout(() => {
       setHighlightWindowsIntegrationSection(false);
+    }, 5000);
+
+    return () => {
+      clearTimeout(activateTimer);
+      clearTimeout(clearTimer);
+    };
+  }, [selectedSection]);
+
+  // Check for jade executable path highlight flag (when user navigates from Jade modal).
+  useEffect(() => {
+    const shouldHighlight = localStorage.getItem('settings:highlight-jade-path') === 'true';
+    if (!shouldHighlight) return;
+
+    localStorage.removeItem('settings:highlight-jade-path');
+
+    if (selectedSection !== 'tools') {
+      setSelectedSection('tools');
+    }
+
+    const activateTimer = setTimeout(() => {
+      setHighlightJadePathSection(true);
+      if (jadePathSectionRef.current) {
+        jadePathSectionRef.current.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+      }
+    }, 220);
+
+    const clearTimer = setTimeout(() => {
+      setHighlightJadePathSection(false);
     }, 5000);
 
     return () => {
@@ -854,6 +892,25 @@ const ModernSettings = () => {
     }
   };
 
+  const handleBrowseJadeExecutable = async () => {
+    try {
+      if (!window.require) return;
+      const { ipcRenderer } = window.require('electron');
+      const result = await ipcRenderer.invoke('dialog:openFile', {
+        title: 'Select Jade Executable',
+        filters: [
+          { name: 'Executable', extensions: ['exe'] }
+        ],
+        properties: ['openFile']
+      });
+      if (result && result.filePaths && result.filePaths.length > 0) {
+        await updateSetting('jadeExecutablePath', result.filePaths[0]);
+      }
+    } catch (error) {
+      console.error('Error selecting Jade executable:', error);
+    }
+  };
+
   const handleWallpaperPathChange = async (newPath) => {
     setWallpaperPath(newPath);
     await electronPrefs.set('WallpaperPath', newPath);
@@ -1094,11 +1151,14 @@ const ModernSettings = () => {
           <ToolsSection
             settings={settings}
             updateSetting={updateSetting}
+            handleBrowseJadeExecutable={handleBrowseJadeExecutable}
+            jadePathSectionRef={jadePathSectionRef}
             hashStatus={hashStatus}
             downloadingHashes={downloadingHashes}
             handleDownloadHashes={handleDownloadHashes}
             updateSectionRef={updateSectionRef}
             highlightUpdateSection={highlightUpdateSection}
+            highlightJadePathSection={highlightJadePathSection}
             currentVersion={currentVersion}
             newVersion={newVersion}
             updateStatus={updateStatus}
@@ -1253,7 +1313,5 @@ const ModernSettings = () => {
 };
 
 export default ModernSettings;
-
-
 
 

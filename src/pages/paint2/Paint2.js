@@ -602,6 +602,7 @@ function Paint2() {
 
         try {
             const { ipcRenderer } = window.require('electron');
+            window.__DL_openInJadeHandled = true;
             console.log('[Interop][Paint] Invoking interop:sendToJade', {
                 binPath: filePath,
                 sourceMode: 'paint',

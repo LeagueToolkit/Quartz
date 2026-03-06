@@ -1,15 +1,18 @@
 import React from 'react';
-import { Download, AlertTriangle, Check, RefreshCw, Upload } from 'lucide-react';
-import { FormGroup, StatusBadge, Button, ToggleSwitch } from '../SettingsPrimitives';
+import { Download, AlertTriangle, Check, RefreshCw, Upload, FolderOpen } from 'lucide-react';
+import { FormGroup, StatusBadge, Button, ToggleSwitch, InputWithButton } from '../SettingsPrimitives';
 
 const ToolsSection = ({
   settings,
   updateSetting,
+  handleBrowseJadeExecutable,
+  jadePathSectionRef,
   hashStatus,
   downloadingHashes,
   handleDownloadHashes,
   updateSectionRef,
   highlightUpdateSection,
+  highlightJadePathSection,
   currentVersion,
   newVersion,
   updateStatus,
@@ -27,6 +30,32 @@ const ToolsSection = ({
           checked={settings.communicateWithJade !== false}
           onChange={(checked) => updateSetting('communicateWithJade', checked)}
         />
+      </FormGroup>
+
+      <FormGroup label="Jade Executable Path" description="Optional override for Jade location (select Jade.exe)">
+        <div
+          ref={jadePathSectionRef}
+          style={{
+            background: highlightJadePathSection ? 'rgba(139, 92, 246, 0.15)' : 'rgba(255, 255, 255, 0.02)',
+            border: highlightJadePathSection ? '2px solid rgba(139, 92, 246, 0.6)' : '1px solid rgba(255, 255, 255, 0.06)',
+            borderRadius: '8px',
+            padding: '16px',
+            transition: 'all 0.3s ease',
+            boxShadow: highlightJadePathSection ? '0 0 20px rgba(139, 92, 246, 0.3)' : 'none'
+          }}
+        >
+          <InputWithButton
+            value={settings.jadeExecutablePath || ''}
+            onChange={(e) => updateSetting('jadeExecutablePath', e.target.value)}
+            placeholder="C:\\Users\\<user>\\AppData\\Local\\Jade\\Jade.exe"
+            buttonIcon={<FolderOpen size={16} />}
+            buttonText="Browse"
+            onButtonClick={handleBrowseJadeExecutable}
+          />
+          <div style={{ fontSize: '11px', color: 'var(--text-2)', opacity: 0.75, marginTop: '8px' }}>
+            Leave empty to use auto-detection (PATH / standard install locations).
+          </div>
+        </div>
       </FormGroup>
 
       <FormGroup label="File Browser" description="Choose between custom or native Windows file browser">

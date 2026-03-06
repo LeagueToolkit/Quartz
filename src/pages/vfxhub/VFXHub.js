@@ -197,6 +197,7 @@ const VFXHub = () => {
 
     try {
       const { ipcRenderer } = window.require('electron');
+      window.__DL_openInJadeHandled = true;
       const result = await ipcRenderer.invoke('interop:sendToJade', {
         binPath: targetPath,
         sourceMode: 'vfxhub',

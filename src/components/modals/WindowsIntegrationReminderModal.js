@@ -200,7 +200,7 @@ const WindowsIntegrationReminderModal = () => {
               background: 'rgba(255,255,255,0.02)',
             }}
           >
-            <Box component="img" src="/explanation1.webp" alt="Windows integration example 1" sx={{ width: '100%', display: 'block' }} />
+            <Box component="img" src={`${process.env.PUBLIC_URL}/explanation1.webp`} alt="Windows integration example 1" sx={{ width: '100%', display: 'block' }} />
           </Box>
           <Box
             sx={{
@@ -210,7 +210,7 @@ const WindowsIntegrationReminderModal = () => {
               background: 'rgba(255,255,255,0.02)',
             }}
           >
-            <Box component="img" src="/explanation2.webp" alt="Windows integration example 2" sx={{ width: '100%', display: 'block' }} />
+            <Box component="img" src={`${process.env.PUBLIC_URL}/explanation2.webp`} alt="Windows integration example 2" sx={{ width: '100%', display: 'block' }} />
           </Box>
         </Box>
 

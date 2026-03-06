@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogActions, Button, Box, Typography, IconButt
 import DownloadIcon from '@mui/icons-material/Download';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { Close as CloseIcon } from '@mui/icons-material';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { JADE_RELEASES_URL } from '../../utils/interop/jadeInterop';
 
 function JadeInstallModal() {
@@ -30,6 +31,19 @@ function JadeInstallModal() {
       window.open(JADE_RELEASES_URL, '_blank', 'noopener,noreferrer');
     }
   }, []);
+
+  const handleOpenSettings = useCallback(() => {
+    try {
+      localStorage.setItem('settings:open-section', 'tools');
+      localStorage.setItem('settings:highlight-jade-path', 'true');
+    } catch {}
+    handleClose();
+    try {
+      window.dispatchEvent(new CustomEvent('celestia:navigate', { detail: { path: '/settings' } }));
+    } catch {
+      window.location.hash = '#/settings';
+    }
+  }, [handleClose]);
 
   return (
     <Dialog
@@ -183,6 +197,22 @@ function JadeInstallModal() {
         justifyContent: 'flex-end',
         gap: 1.2,
       }}>
+        <Button
+          onClick={handleOpenSettings}
+          variant="outlined"
+          startIcon={<SettingsIcon />}
+          sx={{
+            textTransform: 'none',
+            color: '#ffffff',
+            border: '1px solid rgba(255, 255, 255, 0.32)',
+            borderRadius: '10px',
+            minWidth: 150,
+            py: 1,
+            px: 2,
+          }}
+        >
+          Open Settings
+        </Button>
         <Button
           onClick={handleClose}
           sx={{

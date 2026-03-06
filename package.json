@@ -1,7 +1,7 @@
 {
   "name": "quartz",
   "productName": "Quartz",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Quartz - League of Legends Modding Suite",
   "homepage": "./",
   "main": "electron-main.js",
@@ -117,14 +117,17 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "package": "electron-forge package",
-    "electron-build": "npm run build:native:wad-indexer && electron-builder build --win --publish never",
+    "electron-build": "npm run build:native:wad-indexer && npm run build:native:quartz-cli && electron-builder build --win --publish never",
     "deploy": "electron-builder build --win --publish always",
-    "release:win": "npm run build && npm run build:native:wad-indexer && electron-builder --win --publish never",
+    "release:win": "npm run build && npm run build:native:wad-indexer && npm run build:native:quartz-cli && electron-builder --win --publish never",
     "build:all": "npm run build && npm run electron-build",
-    "dist": "npm run build && npm run build:native:wad-indexer && electron-builder --win --publish never",
-    "dist:no-backend": "npm run build && npm run build:native:wad-indexer && electron-builder --win --publish never",
+    "dist": "npm run build && npm run build:native:wad-indexer && npm run build:native:quartz-cli && electron-builder --win --publish never",
+    "dist:no-backend": "npm run build && npm run build:native:wad-indexer && npm run build:native:quartz-cli && electron-builder --win --publish never",
+    "dist:bundle": "npm run build && electron-builder --win --publish never",
+    "dist:bundle-only": "electron-builder --win --publish never",
     "dev:test-updates": "cross-env ENABLE_AUTO_UPDATER=true concurrently \"react-scripts start\" \"wait-on http://localhost:3000 && electron .\"",
-    "build:native:wad-indexer": "npm exec --yes --package @napi-rs/cli -- napi build --platform --release --cwd native/wad_indexer"
+    "build:native:wad-indexer": "npm exec --yes --package @napi-rs/cli -- napi build --platform --release --cwd native/wad_indexer",
+    "build:native:quartz-cli": "cargo build --release --manifest-path native/quartz_cli/Cargo.toml"
   },
   "keywords": [
     "league-of-legends",

@@ -134,6 +134,14 @@ function pickFirstExistingPath(fs, candidates) {
   return null;
 }
 
+function isSupportedJadeExecutablePath(candidatePath) {
+  if (!candidatePath || typeof candidatePath !== 'string') return false;
+  const lower = candidatePath.toLowerCase().trim();
+  if (!lower.endsWith('.exe')) return false;
+  const filename = lower.split(/[\\/]/).pop() || '';
+  return filename === 'jade.exe' || filename === 'jade-rust.exe' || filename.includes('jade');
+}
+
 function queryRegistryValue(keyPath, valueName = null) {
   try {
     const args = ['query', keyPath];
@@ -187,6 +195,32 @@ function resolveExeFromDisplayIcon(iconValue) {
   return cleaned;
 }
 
+function findJadeOnPath({ fs }) {
+  const probe = (name) => {
+    try {
+      const result = spawnSync('where', [name], {
+        windowsHide: true,
+        encoding: 'utf8',
+      });
+      if (result.status !== 0 || !result.stdout) return null;
+      const lines = result.stdout
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      for (const line of lines) {
+        if (isSupportedJadeExecutablePath(line) && fs.existsSync(line)) {
+          return line;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  return probe('Jade.exe') || probe('jade-rust.exe');
+}
+
 function findInstalledJadePath({ fs, path }) {
   // 1) App Paths (most reliable for executable resolution)
   const appPathCandidates = [
@@ -230,13 +264,19 @@ function findInstalledJadePath({ fs, path }) {
   return null;
 }
 
-function isWorkspaceDebugJadePath(candidatePath, cwd, path) {
-  if (!candidatePath || !cwd) return false;
+function isWorkspaceDebugJadePath(candidatePath, _cwd, path) {
+  if (!candidatePath) return false;
   try {
     const normalizedCandidate = path.normalize(candidatePath).toLowerCase();
-    const normalizedCwd = path.normalize(cwd).toLowerCase();
-    if (!normalizedCandidate.startsWith(normalizedCwd)) return false;
-    return normalizedCandidate.includes(`${path.sep}src-tauri${path.sep}target${path.sep}debug${path.sep}jade-rust.exe`.toLowerCase());
+    // Treat any source-workspace debug executable as non-installed by default.
+    // This avoids launching stale dev builds in production (which open localhost pages).
+    if (normalizedCandidate.includes(`${path.sep}src-tauri${path.sep}target${path.sep}debug${path.sep}jade-rust.exe`.toLowerCase())) {
+      return true;
+    }
+    if (normalizedCandidate.endsWith(`${path.sep}target${path.sep}debug${path.sep}jade-rust.exe`.toLowerCase())) {
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -284,18 +324,19 @@ function resolveJadePathFast({ fs, path, loadPrefs }) {
     };
   }
 
-  const discoveredInstalledJade = null;
+  const discoveredInstalledJade = findJadeOnPath({ fs });
   const installPathCandidates = [
     resolvedPrefPathRaw,
     discoveredInstalledJade,
+    localAppData && path.join(localAppData, 'Jade', 'Jade.exe'),
+    localAppData && path.join(localAppData, 'Jade', 'jade-rust.exe'),
     localAppData && path.join(localAppData, 'Programs', 'Jade', 'Jade.exe'),
     localAppData && path.join(localAppData, 'Programs', 'jade-rust', 'jade-rust.exe'),
-    desktopDir && path.join(desktopDir, 'Jade.lnk'),
   ];
 
   const resolved = pickFirstExistingPath(fs, [
-    preferredJadePath,
-    ...installPathCandidates,
+    isSupportedJadeExecutablePath(preferredJadePath) ? preferredJadePath : null,
+    ...installPathCandidates.filter((p) => isSupportedJadeExecutablePath(p)),
   ]);
 
   jadePathCache = {
@@ -444,21 +485,16 @@ function registerInteropChannels({
           success: true,
           launched: null,
           alreadyRunning: jadeRunning,
-          warning: 'Handoff written, but Jade executable was not found for auto-launch. Set JadeExecutablePath in Quartz preferences.json or start Jade manually.',
+          warning: 'Handoff written, but Jade executable was not found for auto-launch. Configure Jade Executable Path in Settings > External Tools or start Jade manually.',
         };
       }
 
       persistResolvedJadePath({ loadPrefs, savePrefs }, jadePath);
 
-      // Always launch when we have a resolved executable/link path.
+      // Always launch when we have a resolved executable path.
       // If Jade is already running, Tauri single-instance will forward args to the existing process.
-      if (jadePath.toLowerCase().endsWith('.lnk')) {
-        console.log('[Interop][Main] Launching Jade via .lnk', { jadePath, binPath });
-        launchDetached(spawn, 'cmd', ['/c', 'start', '', jadePath, binPath]);
-      } else {
-        console.log('[Interop][Main] Launching Jade executable', { jadePath, binPath });
-        launchDetached(spawn, jadePath, [binPath]);
-      }
+      console.log('[Interop][Main] Launching Jade executable', { jadePath, binPath });
+      launchDetached(spawn, jadePath, [binPath]);
 
       console.log('[Interop][Main] Jade launch dispatched');
       return {
@@ -495,6 +531,35 @@ function registerInteropChannels({
         installed: false,
         error: error.message || String(error),
       };
+    }
+  });
+
+  // Launch Jade without opening a specific BIN.
+  ipcMain.handle('interop:launchJade', async () => {
+    try {
+      if (!isJadeInteropEnabled(loadPrefs)) {
+        return {
+          success: false,
+          disabled: true,
+          error: 'Jade communication is disabled in Settings > External Tools.',
+        };
+      }
+
+      const resolution = resolveJadePathFast({ fs, path, loadPrefs });
+      const jadePath = resolution.resolved;
+      if (!jadePath || !fs.existsSync(jadePath)) {
+        return {
+          success: false,
+          error: 'Jade executable was not found.',
+        };
+      }
+
+      persistResolvedJadePath({ loadPrefs, savePrefs }, jadePath);
+      console.log('[Interop][Main] Launching Jade executable (no bin)', { jadePath });
+      launchDetached(spawn, jadePath, []);
+      return { success: true, launched: jadePath };
+    } catch (error) {
+      return { success: false, error: error.message || String(error) };
     }
   });
 
