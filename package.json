@@ -54,10 +54,6 @@
     },
     "extraResources": [
       {
-        "from": "tools/ritobin_cli.exe",
-        "to": "ritobin_cli.exe"
-      },
-      {
         "from": "native/quartz_cli/target/release/quartz_cli.exe",
         "to": "quartz_cli.exe"
       },
