@@ -1,0 +1,13 @@
+[package]
+name = "ltk_primitives"
+version = "0.3.2"
+edition = "2021"
+description = "Primitive types and helpers for League Toolkit"
+license = "MIT OR Apache-2.0"
+readme = "../../README.md"
+
+[dependencies]
+thiserror = "1.0.60"
+glam = { version = "0.27.0", features = ["glam-assert"] }
+byteorder = "1.5.0"
+serde = { version = "1.0.204", features = ["derive"], optional = true }

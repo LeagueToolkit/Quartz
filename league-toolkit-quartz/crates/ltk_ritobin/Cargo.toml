@@ -1,0 +1,31 @@
+[package]
+name = "ltk_ritobin"
+version = "0.2.0"
+edition = "2021"
+description = "Ritobin text format parser and writer for League Toolkit"
+license = "MIT OR Apache-2.0"
+readme = "../../README.md"
+
+[features]
+default = []
+serde = ["dep:serde", "ltk_meta/serde"]
+
+[dependencies]
+nom = "7.1"
+nom_locate = "4.2"
+thiserror = { workspace = true }
+miette = { workspace = true }
+indexmap = { workspace = true }
+
+glam = { workspace = true }
+xxhash-rust = { workspace = true }
+
+ltk_meta = { version = "0.4.0", path = "../ltk_meta" }
+ltk_hash = { version = "0.2.5", path = "../ltk_hash" }
+ltk_primitives = { version = "0.3.2", path = "../ltk_primitives" }
+
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+

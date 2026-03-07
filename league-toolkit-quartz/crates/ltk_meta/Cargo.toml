@@ -1,0 +1,33 @@
+[package]
+name = "ltk_meta"
+version = "0.4.0"
+edition = "2021"
+description = "Metadata formats and utilities for League Toolkit"
+license = "MIT OR Apache-2.0"
+readme = "../../README.md"
+
+[features]
+serde = ["dep:serde", "ltk_primitives/serde", "glam/serde", "indexmap/serde"]
+
+[dependencies]
+log = { workspace = true }
+num_enum = { workspace = true }
+byteorder = { workspace = true }
+enum_dispatch = { workspace = true }
+miette = { workspace = true }
+thiserror = { workspace = true }
+
+glam = { workspace = true }
+paste = { workspace = true }
+indexmap = { workspace = true }
+
+serde = { workspace = true, optional = true }
+
+ltk_io_ext = { version = "0.4.1", path = "../ltk_io_ext" }
+ltk_primitives = { version = "0.3.2", path = "../ltk_primitives" }
+
+[dev-dependencies]
+approx = { workspace = true }
+insta = { workspace = true }
+
+ltk_meta = { path = ".", features = ["serde"] }

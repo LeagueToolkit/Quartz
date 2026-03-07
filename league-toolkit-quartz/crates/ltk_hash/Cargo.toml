@@ -1,0 +1,9 @@
+[package]
+name = "ltk_hash"
+version = "0.2.5"
+edition = "2021"
+description = "Hashes implementation used by League Toolkit"
+license = "MIT OR Apache-2.0"
+readme = "../../README.md"
+
+[dependencies]

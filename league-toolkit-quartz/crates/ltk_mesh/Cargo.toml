@@ -1,0 +1,19 @@
+[package]
+name = "ltk_mesh"
+version = "0.4.1"
+edition = "2021"
+description = "Mesh parsing and structures for League Toolkit"
+license = "MIT OR Apache-2.0"
+readme = "../../README.md"
+
+[dependencies]
+byteorder = { workspace = true }
+bitflags = { workspace = true }
+num_enum = { workspace = true }
+thiserror = { workspace = true }
+lazy_static = { workspace = true }
+
+glam = { workspace = true }
+
+ltk_io_ext = { version = "0.4.1", path = "../ltk_io_ext" }
+ltk_primitives = { version = "0.3.2", path = "../ltk_primitives" }

@@ -1,0 +1,14 @@
+[package]
+name = "ltk_file"
+version = "0.2.8"
+edition = "2021"
+description = "Core IO and file abstractions for League Toolkit"
+license = "MIT OR Apache-2.0"
+readme = "../../README.md"
+
+[features]
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+strum = { version = "0.27.2", features = ["derive"] }

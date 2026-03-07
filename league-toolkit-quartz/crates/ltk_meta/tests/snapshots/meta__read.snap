@@ -1,0 +1,139 @@
+---
+source: crates/ltk_meta/tests/meta.rs
+expression: bin
+---
+Bin(
+  is_override: false,
+  version: 3,
+  objects: {
+    2154231397: BinObject(
+      path_hash: 2154231397,
+      class_hash: 1171098015,
+      properties: {
+        2257500010: {
+          "kind": Container,
+          "name_hash": 2257500010,
+          "value": Struct(
+            items: [
+              Struct(
+                class_hash: 164488258,
+                properties: {
+                  431879391: {
+                    "kind": U8,
+                    "name_hash": 431879391,
+                    "value": U8(
+                      value: 0,
+                      meta: NoMeta,
+                    ),
+                  },
+                  607245356: {
+                    "kind": Optional,
+                    "name_hash": 607245356,
+                    "value": F32(Some(F32(
+                      value: 10.0,
+                      meta: NoMeta,
+                    ))),
+                  },
+                  895082843: {
+                    "kind": BitBool,
+                    "name_hash": 895082843,
+                    "value": BitBool(
+                      value: true,
+                      meta: NoMeta,
+                    ),
+                  },
+                  1013213428: {
+                    "kind": String,
+                    "name_hash": 1013213428,
+                    "value": String(
+                      value: "ASSETS/Characters/Leona/Skins/Base/Particles/common_Black.dds",
+                      meta: NoMeta,
+                    ),
+                  },
+                  1025882318: {
+                    "kind": String,
+                    "name_hash": 1025882318,
+                    "value": String(
+                      value: "empty",
+                      meta: NoMeta,
+                    ),
+                  },
+                  1376955374: {
+                    "kind": Optional,
+                    "name_hash": 1376955374,
+                    "value": F32(Some(F32(
+                      value: 1.0,
+                      meta: NoMeta,
+                    ))),
+                  },
+                  2927860839: {
+                    "kind": Embedded,
+                    "name_hash": 2927860839,
+                    "value": Embedded(Struct(
+                      class_hash: 70254680,
+                      properties: {
+                        3031705514: {
+                          "kind": F32,
+                          "name_hash": 3031705514,
+                          "value": F32(
+                            value: 1.0,
+                            meta: NoMeta,
+                          ),
+                        },
+                      },
+                      meta: NoMeta,
+                    )),
+                  },
+                  3043919889: {
+                    "kind": String,
+                    "name_hash": 3043919889,
+                    "value": String(
+                      value: "ASSETS/Characters/Leona/Skins/Base/Particles/common_Black.dds",
+                      meta: NoMeta,
+                    ),
+                  },
+                },
+                meta: NoMeta,
+              ),
+            ],
+            meta: NoMeta,
+          ),
+        },
+        2624027180: {
+          "kind": U16,
+          "name_hash": 2624027180,
+          "value": U16(
+            value: 132,
+            meta: NoMeta,
+          ),
+        },
+        3770906030: {
+          "kind": String,
+          "name_hash": 3770906030,
+          "value": String(
+            value: "Play_sfx_Leona_LeonaZenithBladeMissile_hit",
+            meta: NoMeta,
+          ),
+        },
+        3882058040: {
+          "kind": String,
+          "name_hash": 3882058040,
+          "value": String(
+            value: "Characters/Leona/Skins/Skin0/Particles/Leona_Base_E_ZB_sfx_01",
+            meta: NoMeta,
+          ),
+        },
+        3975268028: {
+          "kind": String,
+          "name_hash": 3975268028,
+          "value": String(
+            value: "Leona_Base_E_ZB_sfx_01",
+            meta: NoMeta,
+          ),
+        },
+      },
+    ),
+  },
+  dependencies: [],
+  data_overrides: [],
+)

@@ -1,0 +1,35 @@
+[package]
+name = "ltk_texture"
+version = "0.4.4"
+edition = "2021"
+description = "Texture decoding/encoding utilities for League Toolkit"
+license = "MIT OR Apache-2.0"
+readme = "../../README.md"
+
+[dependencies]
+bitflags = { workspace = true }
+byteorder = { workspace = true }
+thiserror = { workspace = true }
+num_enum = { workspace = true }
+ltk_io_ext = { version = "0.4.1", path = "../ltk_io_ext" }
+
+image = { version = "0.25.2", default-features = false, features = ["dds"] }
+ddsfile = "0.5.2"
+image_dds = { version = "0.6.0", default-features = false, features = [
+    "ddsfile",
+    "image",
+] }
+
+texture2ddecoder = "0.1.2"
+intel_tex_2 = { version = "0.5.0", optional = true }
+
+
+[features]
+default = []
+intel-tex = ["dep:intel_tex_2"]
+
+[dev-dependencies]
+image = { version = "0.25.2", default-features = false, features = [
+    "dds",
+    "png",
+] }

@@ -1,0 +1,23 @@
+[package]
+name = "ltk_anim"
+version = "0.3.2"
+edition = "2021"
+description = "Animation formats support for League Toolkit"
+license = "MIT OR Apache-2.0"
+readme = "../../README.md"
+
+[dependencies]
+thiserror = { workspace = true }
+byteorder = { workspace = true }
+bitflags = { workspace = true }
+num_enum = { workspace = true }
+bytemuck = { workspace = true }
+
+glam = { workspace = true }
+
+ltk_hash = { version = "0.2.5", path = "../ltk_hash/" }
+ltk_io_ext = { version = "0.4.1", path = "../ltk_io_ext" }
+
+[dev-dependencies]
+approx = { workspace = true }
+insta = { workspace = true }

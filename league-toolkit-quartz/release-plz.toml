@@ -1,0 +1,66 @@
+[workspace]
+release_always = false
+pr_draft = true                                   # draft the release PR
+changelog_update = true                           # update the changelog when a release PR is merged
+changelog_path = "./CHANGELOG.md"
+git_release_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"     # tag name
+git_release_name = "{{ package }} v{{ version }}" # release name
+git_release_body = "{{ changelog }}"              # release body
+pr_branch_prefix = "release-plz-"                 # PR branch prefix
+pr_labels = ["release"]                           # add the `release` label to the release Pull Request
+
+[[package]]
+name = "league-toolkit"
+publish = true
+release = true
+
+[[package]]
+name = "ltk_anim"
+publish = true
+release = true
+
+[[package]]
+name = "ltk_file"
+publish = true
+release = true
+
+[[package]]
+name = "ltk_mesh"
+publish = true
+release = true
+
+[[package]]
+name = "ltk_meta"
+publish = true
+release = true
+
+[[package]]
+name = "ltk_primitives"
+publish = true
+release = true
+
+[[package]]
+name = "ltk_texture"
+publish = true
+release = true
+
+[[package]]
+name = "ltk_wad"
+publish = true
+release = true
+
+[[package]]
+name = "ltk_hash"
+publish = true
+release = true
+
+[[package]]
+name = "ltk_io_ext"
+publish = true
+release = true
+
+[[package]]
+name = "ltk_ritobin"
+publish = true
+release = true

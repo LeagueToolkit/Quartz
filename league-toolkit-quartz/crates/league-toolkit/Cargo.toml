@@ -1,0 +1,43 @@
+[package]
+name = "league-toolkit"
+version = "0.2.18"
+edition = "2021"
+
+description = "Toolkit library for serializing and editing various League of Legends formats"
+license = "MIT OR Apache-2.0"
+readme = "../../README.md"
+
+
+# wad, file, meta have serde
+[features]
+default = [
+    "anim",
+    "file",
+    "mesh",
+    "meta",
+    "primitives",
+    "texture",
+    "wad",
+    "hash",
+]
+
+serde = ["ltk_wad/serde", "ltk_file/serde", "ltk_meta/serde"]
+
+anim = ["dep:ltk_anim"]
+file = ["dep:ltk_file"]
+mesh = ["dep:ltk_mesh"]
+meta = ["dep:ltk_meta"]
+primitives = ["dep:ltk_primitives"]
+texture = ["dep:ltk_texture"]
+wad = ["dep:ltk_wad"]
+hash = ["dep:ltk_hash"]
+
+[dependencies]
+ltk_anim = { version = "0.3.2", path = "../ltk_anim", optional = true }
+ltk_file = { version = "0.2.8", path = "../ltk_file", optional = true }
+ltk_mesh = { version = "0.4.1", path = "../ltk_mesh", optional = true }
+ltk_meta = { version = "0.4.0", path = "../ltk_meta", optional = true }
+ltk_primitives = { version = "0.3.2", path = "../ltk_primitives", optional = true }
+ltk_texture = { version = "0.4.4", path = "../ltk_texture", optional = true }
+ltk_wad = { version = "0.2.13", path = "../ltk_wad", optional = true }
+ltk_hash = { version = "0.2.5", path = "../ltk_hash", optional = true }
