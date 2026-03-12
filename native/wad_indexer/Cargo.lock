@@ -490,7 +490,7 @@ dependencies = [
  "ddsfile",
  "half",
  "image",
- "intel_tex_2",
+ "intel_tex_2 0.4.0",
  "strum 0.26.3",
  "thiserror",
 ]
@@ -510,6 +510,15 @@ name = "intel_tex_2"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd699c0e6adcac28c06db24a220c834c8ec811e0d2d80f0261bb14e01737b4dc"
+dependencies = [
+ "ispc_rt",
+]
+
+[[package]]
+name = "intel_tex_2"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7980d359170e7da4bc2421aa74c49d338a3153313e006d732a3430f1af375a60"
 dependencies = [
  "ispc_rt",
 ]
@@ -660,6 +669,7 @@ dependencies = [
  "ddsfile",
  "image",
  "image_dds",
+ "intel_tex_2 0.5.0",
  "ltk_io_ext",
  "num_enum",
  "texture2ddecoder",

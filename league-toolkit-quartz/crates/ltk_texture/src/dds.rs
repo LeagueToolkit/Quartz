@@ -25,7 +25,7 @@ impl Dds {
     #[inline]
     #[must_use]
     pub fn height(&self) -> u32 {
-        self.file.get_width()
+        self.file.get_height()
     }
 
     /// Get the number of mipmaps in the texture

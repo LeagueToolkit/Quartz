@@ -79,11 +79,9 @@ export default function WadExplorerSettingsModal({
   onClose,
   rowHeight,
   fontSize,
-  panelWidth,
   symbolSize,
   onRowHeightChange,
   onFontSizeChange,
-  onPanelWidthChange,
   onSymbolSizeChange,
 }) {
   if (!open) return null;
@@ -208,11 +206,6 @@ export default function WadExplorerSettingsModal({
               <span style={styles.label}>Text Size</span>
               <input type="range" min={11} max={15} step={1} value={fontSize} onChange={(e) => onFontSizeChange(Number(e.target.value))} />
               <span style={styles.value}>{fontSize}</span>
-            </div>
-            <div style={styles.row}>
-              <span style={styles.label}>Panel Width</span>
-              <input type="range" min={300} max={540} step={10} value={panelWidth} onChange={(e) => onPanelWidthChange(Number(e.target.value))} />
-              <span style={styles.value}>{panelWidth}</span>
             </div>
             <div style={styles.row}>
               <span style={styles.label}>Symbol Size</span>

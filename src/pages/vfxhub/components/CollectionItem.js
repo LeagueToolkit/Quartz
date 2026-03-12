@@ -6,6 +6,8 @@ export default function CollectionItem({
   isProcessing,
   onDownload,
   onPreview,
+  onDelete,
+  downloadLabel = 'Download',
 }) {
   const cardStyle = {
     background: 'linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015))',
@@ -180,8 +182,31 @@ export default function CollectionItem({
           transition: 'all 0.2s ease',
         }}
       >
-        {isProcessing ? 'Loading...' : 'Download'}
+        {isProcessing ? 'Loading...' : downloadLabel}
       </button>
+      {typeof onDelete === 'function' && (
+        <button
+          onClick={() => onDelete(system)}
+          disabled={isProcessing}
+          style={{
+            width: '100%',
+            padding: '0.42rem',
+            marginTop: '0.35rem',
+            background: 'rgba(220, 38, 38, 0.08)',
+            border: '1px solid rgba(220, 38, 38, 0.35)',
+            color: '#fca5a5',
+            borderRadius: '9px',
+            cursor: isProcessing ? 'not-allowed' : 'pointer',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontWeight: 'bold',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            transition: 'all 0.2s ease',
+            opacity: isProcessing ? 0.5 : 1,
+          }}
+        >
+          Delete
+        </button>
+      )}
     </div>
   );
 }

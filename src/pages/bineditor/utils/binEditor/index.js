@@ -12,6 +12,7 @@ export {
     updateLifetime,
     updateParticleLinger,
     updateRate,
+    updatePass,
     updateMiscRenderFlags,
     insertMiscRenderFlags
 } from './serializer.js';
@@ -29,9 +30,12 @@ export {
     scaleParticleLifetime,
     scaleLifetime,
     scaleParticleLinger,
+    scalePass,
     setParticleLifetime,
     setLifetime,
     setParticleLinger,
+    setPass,
+    addPass,
     setMiscRenderFlags,
     addMiscRenderFlags,
     // Utilities

@@ -150,7 +150,7 @@ const runSingleBumpathPass = async ({
     bumInstance.applyPrefix(allEntryHashes, customPrefix);
   }
 
-  await bumInstance.process(outputDir, ignoreMissing, combineLinked, progressCallback);
+  await bumInstance.process(outputDir, ignoreMissing, combineLinked, progressCallback, false, { copyAssets: false });
   if (preserveHudIcons2D) {
     const copied = await copyPreservedHudIcons2D(sourceDir, outputDir);
     if (copied > 0) {

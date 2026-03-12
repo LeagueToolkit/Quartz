@@ -46,16 +46,31 @@ function flattenInto(rows, nodes, wadPath, expandedDirs, depth) {
   }
 }
 
-function buildFilteredTree(nodes, q) {
+function createSearchMatcher(query) {
+  const trimmed = String(query || '').trim();
+  if (!trimmed) {
+    return () => true;
+  }
+
+  try {
+    const re = new RegExp(trimmed, 'i');
+    return (value) => re.test(String(value || ''));
+  } catch (_) {
+    const lower = trimmed.toLowerCase();
+    return (value) => String(value || '').toLowerCase().includes(lower);
+  }
+}
+
+function buildFilteredTree(nodes, matches) {
   const out = [];
   for (const node of nodes) {
     if (node.type === 'file') {
-      if (node.path.toLowerCase().includes(q)) out.push(node);
+      if (matches(node.path)) out.push(node);
       continue;
     }
     if (node.type !== 'dir') continue;
-    const childFiltered = node.children?.length ? buildFilteredTree(node.children, q) : [];
-    const selfMatches = node.path.toLowerCase().includes(q);
+    const childFiltered = node.children?.length ? buildFilteredTree(node.children, matches) : [];
+    const selfMatches = matches(node.path);
     if (!selfMatches && childFiltered.length === 0) continue;
     out.push({ ...node, children: childFiltered });
   }
@@ -392,10 +407,18 @@ export function useWadExplorer({ hashPath, indexReady = true }) {
 
   const indexingProgress = useMemo(() => {
     if (!groups) return null;
-    const all = Object.values(groups).reduce((s, items) => s + items.length, 0);
+    const wadPaths = new Set();
+    for (const items of Object.values(groups)) {
+      for (const entry of (items || [])) {
+        if (entry?.path) wadPaths.add(entry.path);
+      }
+    }
+    const all = wadPaths.size;
     if (all === 0) return null;
     let done = 0;
-    for (const d of wadData.values()) {
+    for (const wadPath of wadPaths) {
+      const d = wadData.get(wadPath);
+      if (!d) continue;
       if (d.status === 'indexed' || d.status === 'tree-loading' || d.status === 'loaded' || d.status === 'error') done++;
     }
     return { done, total: all, active: done < all };
@@ -673,8 +696,9 @@ export function useWadExplorer({ hashPath, indexReady = true }) {
 
   const flatRows = useMemo(() => {
     if (!groups) return [];
-    const q = debouncedSearch.trim().toLowerCase();
-    const inSearchMode = q.length > 0;
+    const searchQuery = debouncedSearch.trim();
+    const matchesSearch = createSearchMatcher(searchQuery);
+    const inSearchMode = searchQuery.length > 0;
 
     const groupKeys = Object.keys(groups).sort((a, b) => {
       if (a === 'Champions') return -1;
@@ -697,12 +721,12 @@ export function useWadExplorer({ hashPath, indexReady = true }) {
         const data = wadData.get(entry.path) || { status: 'idle', paths: null, tree: null };
 
         if (inSearchMode) {
-          const wadMatches = displayName.toLowerCase().includes(q) || entry.name.toLowerCase().includes(q);
+          const wadMatches = matchesSearch(displayName) || matchesSearch(entry.name);
           let filteredTree = [];
           if ((data.status === 'loaded' || data.status === 'tree-loading') && data.tree) {
-            filteredTree = buildFilteredTree(data.tree, q);
+            filteredTree = buildFilteredTree(data.tree, matchesSearch);
           } else if (Array.isArray(data.paths) && data.paths.length > 0) {
-            const matchingPaths = data.paths.filter(p => typeof p === 'string' && p.toLowerCase().includes(q));
+            const matchingPaths = data.paths.filter(p => typeof p === 'string' && matchesSearch(p));
             filteredTree = buildTreeFromPaths(matchingPaths);
           }
           if (!wadMatches && filteredTree.length === 0) continue;

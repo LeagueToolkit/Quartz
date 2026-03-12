@@ -14,7 +14,7 @@ ltk_wad = { path = "../../league-toolkit-quartz/crates/ltk_wad" }
 ltk_file = { path = "../../league-toolkit-quartz/crates/ltk_file" }
 ltk_meta = { path = "../../league-toolkit-quartz/crates/ltk_meta" }
 ltk_ritobin = { path = "../../league-toolkit-quartz/crates/ltk_ritobin" }
-ltk_texture = { path = "../../league-toolkit-quartz/crates/ltk_texture" }
+ltk_texture = { path = "../../league-toolkit-quartz/crates/ltk_texture", features = ["intel-tex"] }
 xxhash-rust = { version = "0.8.15", features = ["xxh64"] }
 heed = "0.20"
 serde_json = "1.0.149"

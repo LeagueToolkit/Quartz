@@ -17,6 +17,7 @@ import {
     updateParticleLifetime,
     updateLifetime,
     updateParticleLinger,
+    updatePass,
     updateMiscRenderFlags,
     insertMiscRenderFlags,
     markSystemModified
@@ -446,6 +447,39 @@ export function scaleParticleLinger(data, selectedKeys, multiplier) {
 }
 
 /**
+ * Scale pass for selected emitters
+ * @param {Object} data - Parsed data
+ * @param {Set<string>} selectedKeys - Selected emitter keys
+ * @param {number} multiplier - Scale multiplier
+ * @returns {{modified: number, errors: string[]}}
+ */
+export function scalePass(data, selectedKeys, multiplier) {
+    let modified = 0;
+    const errors = [];
+
+    for (const system of Object.values(data.systems)) {
+        for (const emitter of system.emitters) {
+            const key = `${system.name}:${emitter.name}`;
+
+            if (!selectedKeys.has(key)) continue;
+
+            if (emitter.pass !== undefined && emitter.pass !== null) {
+                const newValue = Math.abs(emitter.pass * multiplier);
+
+                if (updatePass(emitter, newValue)) {
+                    markSystemModified(data, system.name);
+                    modified++;
+                } else {
+                    errors.push(`Failed to scale pass for ${emitter.name}`);
+                }
+            }
+        }
+    }
+
+    return { modified, errors };
+}
+
+/**
  * Set particleLifetime to a specific value
  * @param {Object} data - Parsed data
  * @param {Set<string>} selectedKeys - Selected emitter keys
@@ -561,6 +595,69 @@ export function setMiscRenderFlags(data, selectedKeys, value) {
                     modified++;
                 } else {
                     errors.push(`Failed to update miscRenderFlags for ${emitter.name}`);
+                }
+            }
+        }
+    }
+
+    return { modified, errors };
+}
+
+/**
+ * Set pass to a specific value
+ * @param {Object} data - Parsed data
+ * @param {Set<string>} selectedKeys - Selected emitter keys
+ * @param {number} value - New value
+ * @returns {{modified: number, errors: string[]}}
+ */
+export function setPass(data, selectedKeys, value) {
+    let modified = 0;
+    const errors = [];
+
+    for (const system of Object.values(data.systems)) {
+        for (const emitter of system.emitters) {
+            const key = `${system.name}:${emitter.name}`;
+
+            if (!selectedKeys.has(key)) continue;
+
+            if (emitter.pass !== undefined && emitter.pass !== null) {
+                if (updatePass(emitter, value)) {
+                    markSystemModified(data, system.name);
+                    modified++;
+                } else {
+                    errors.push(`Failed to update pass for ${emitter.name}`);
+                }
+            }
+        }
+    }
+
+    return { modified, errors };
+}
+
+/**
+ * Add delta to pass for selected emitters
+ * @param {Object} data - Parsed data
+ * @param {Set<string>} selectedKeys - Selected emitter keys
+ * @param {number} delta - Amount to add (can be negative)
+ * @returns {{modified: number, errors: string[]}}
+ */
+export function addPass(data, selectedKeys, delta) {
+    let modified = 0;
+    const errors = [];
+
+    for (const system of Object.values(data.systems)) {
+        for (const emitter of system.emitters) {
+            const key = `${system.name}:${emitter.name}`;
+
+            if (!selectedKeys.has(key)) continue;
+
+            if (emitter.pass !== undefined && emitter.pass !== null) {
+                const newValue = emitter.pass + delta;
+                if (updatePass(emitter, newValue)) {
+                    markSystemModified(data, system.name);
+                    modified++;
+                } else {
+                    errors.push(`Failed to add to pass for ${emitter.name}`);
                 }
             }
         }

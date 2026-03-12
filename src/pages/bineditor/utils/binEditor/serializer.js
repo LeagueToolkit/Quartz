@@ -367,31 +367,38 @@ export function updateParticleLifetime(emitter, newValue) {
     if (!emitter.particleLifetime) return false;
 
     let content = emitter.rawContent;
+    const blockMatch = content.match(/particleLifetime:\s*embed\s*=\s*ValueFloat\s*\{/i);
+    if (!blockMatch) return false;
+
+    const blockStart = blockMatch.index;
+    const blockEnd = findClosingBrace(content, blockStart);
+    if (blockEnd === -1) return false;
+
+    const blockContent = content.substring(blockStart, blockEnd);
+    let updatedBlock = blockContent;
     let modified = false;
 
-    // Update constantValue
-    const constantPattern = /(particleLifetime:\s*embed\s*=\s*ValueFloat\s*\{[^}]*constantValue:\s*f32\s*=\s*)(-?[\d.]+)/i;
-    const constantReplacement = `$1${newValue}`;
-
-    content = content.replace(constantPattern, constantReplacement);
-    if (content !== emitter.rawContent) {
+    // Update the local constantValue inside the particleLifetime block only.
+    const constantPattern = /(constantValue:\s*f32\s*=\s*)(-?[\d.]+)/i;
+    updatedBlock = updatedBlock.replace(constantPattern, `$1${newValue}`);
+    if (updatedBlock !== blockContent) {
         modified = true;
     }
 
-    // Also update the dynamics values list if it exists
-    // Pattern: values: list[f32] = { value }
-    // This appears within the particleLifetime block
-    const dynamicsPattern = /(particleLifetime:[\s\S]*?values:\s*list\[f32\]\s*=\s*\{\s*)(-?[\d.]+)(\s*\})/i;
-
-    if (dynamicsPattern.test(content)) {
-        const dynamicsReplacement = `$1${newValue}$3`;
-        content = content.replace(dynamicsPattern, dynamicsReplacement);
+    // Also update the local dynamics values list if it exists.
+    const dynamicsPattern = /(values:\s*list\[f32\]\s*=\s*\{\s*)(-?[\d.]+)(\s*\})/i;
+    const blockAfterDynamics = updatedBlock.replace(dynamicsPattern, `$1${newValue}$3`);
+    if (blockAfterDynamics !== updatedBlock) {
+        updatedBlock = blockAfterDynamics;
         modified = true;
     }
 
     if (modified) {
-        emitter.rawContent = content;
+        emitter.rawContent = content.substring(0, blockStart) + updatedBlock + content.substring(blockEnd);
         emitter.particleLifetime.constantValue = newValue;
+        if (Array.isArray(emitter.particleLifetime.dynamicsValues) && emitter.particleLifetime.dynamicsValues.length > 0) {
+            emitter.particleLifetime.dynamicsValues[0] = newValue;
+        }
         return true;
     }
 
@@ -545,6 +552,29 @@ export function updateMiscRenderFlags(emitter, newValue) {
     if (newContent !== emitter.rawContent) {
         emitter.rawContent = newContent;
         emitter.miscRenderFlags = newValue;
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Update pass (i16, can be negative)
+ * @param {Object} emitter - Emitter object
+ * @param {number} newValue - New value
+ * @returns {boolean} Success
+ */
+export function updatePass(emitter, newValue) {
+    if (emitter.pass === undefined || emitter.pass === null) return false;
+
+    const pattern = /(pass:\s*i16\s*=\s*)[\d.\-]+/i;
+    const replacement = `$1${newValue}`;
+
+    const newContent = emitter.rawContent.replace(pattern, replacement);
+
+    if (newContent !== emitter.rawContent) {
+        emitter.rawContent = newContent;
+        emitter.pass = newValue;
         return true;
     }
 

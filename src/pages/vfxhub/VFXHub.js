@@ -18,6 +18,9 @@ import VfxHubDialogs from './components/VfxHubDialogs';
 import useGitHubCollections from './hooks/useGitHubCollections';
 import useVfxDownload from './hooks/useVfxDownload';
 import useVfxUpload from './hooks/useVfxUpload';
+import useLocalCollections from './hooks/useLocalCollections';
+import useLocalVfxDownload from './hooks/useLocalVfxDownload';
+import useLocalVfxUpload from './hooks/useLocalVfxUpload';
 import useVfxHistory from '../port2/hooks/useVfxHistory';
 import useVfxMutations from '../port2/hooks/useVfxMutations';
 import useVfxFile from '../port2/hooks/useVfxFile';
@@ -471,6 +474,10 @@ const VFXHub = () => {
     setStatusMessage,
     isProcessing
   });
+  const localCollections = useLocalCollections({
+    setStatusMessage,
+    isProcessing,
+  });
 
   const download = useVfxDownload({
     targetPath,
@@ -493,6 +500,27 @@ const VFXHub = () => {
     setProcessingText,
     loadVFXCollections: collections.loadVFXCollections,
     findProjectRoot: download.findProjectRoot
+  });
+  const localDownload = useLocalVfxDownload({
+    targetPath,
+    setStatusMessage,
+    setIsProcessing,
+    setProcessingText,
+    setDonorSystems,
+    setDonorPyContent,
+    setDonorPath,
+    setShowDownloadModal: localCollections.setShowDownloadModal,
+  });
+  const localUpload = useLocalVfxUpload({
+    targetSystems,
+    targetPath,
+    targetPyContent,
+    setStatusMessage,
+    setIsProcessing,
+    setProcessingText,
+    loadLocalCollections: localCollections.loadLocalCollections,
+    findProjectRoot: download.findProjectRoot,
+    collectionFiles: localCollections.categoryFiles,
   });
 
   // Shared port2 mutations, with VFXHub adapters for GitHub donor structure differences
@@ -697,13 +725,7 @@ const VFXHub = () => {
         githubAuthenticated={collections.githubAuthenticated}
         onOpenTargetBin={handleOpenTargetBin}
         onOpenHub={collections.handleOpenVFXHub}
-        onUpload={() => {
-          if (!collections.githubAuthenticated) {
-            setShowVfxAccessModal(true);
-          } else {
-            upload.handleUploadToVFXHub();
-          }
-        }}
+        onUpload={localCollections.handleOpenLocalHub}
       />
 
       <VfxHubSystemPanels
@@ -783,17 +805,27 @@ const VFXHub = () => {
       {/* Modals */}
       <VfxHubModalHosts
         collections={collections}
+        localCollections={localCollections}
         modalSize={modalSize}
         isProcessing={isProcessing}
         hoveredPreview={hoveredPreview}
         setHoveredPreview={setHoveredPreview}
         download={download}
+        localDownload={localDownload}
         handleMouseDown={handleMouseDown}
         downloadContentRef={downloadContentRef}
         saveDownloadScrollPos={saveDownloadScrollPos}
         upload={upload}
+        localUpload={localUpload}
         targetSystemEntries={targetSystemEntries}
         setStatusMessage={setStatusMessage}
+        onOpenGitHubUpload={() => {
+          if (!collections.githubAuthenticated) {
+            setShowVfxAccessModal(true);
+            setStatusMessage('GitHub upload requires authentication, but you can still prepare the upload now');
+          }
+          upload.handleUploadToVFXHub();
+        }}
       />
       <VfxAccessModal
         open={showVfxAccessModal}

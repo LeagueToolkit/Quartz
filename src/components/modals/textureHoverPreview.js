@@ -366,6 +366,18 @@ function openTextureInExternalApp(resolvedPath) {
   }
 }
 
+function openTextureInFileExplorer(resolvedPath) {
+  if (!resolvedPath || !window.require) return;
+  try {
+    const { shell } = window.require('electron');
+    if (shell?.showItemInFolder) {
+      shell.showItemInFolder(resolvedPath);
+    }
+  } catch (err) {
+    console.error('Error opening in file explorer:', err);
+  }
+}
+
 function openTextureInImgRecolor(resolvedPath, onClosePreview) {
   if (!resolvedPath) return;
   try {
@@ -527,6 +539,10 @@ function showTextureContextMenu({ x, y, data, onClosePreview, onRefreshPreview, 
   const canInspectModel = isModelFile(resolvedPath);
 
   if (!canInspectModel) {
+    menu.appendChild(makeItem('Open in File Explorer', () => {
+      openTextureInFileExplorer(resolvedPath);
+    }, !canUseExternal));
+
     menu.appendChild(makeItem('Open in External App', () => {
       openTextureInExternalApp(resolvedPath);
     }, !canUseExternal));
@@ -540,6 +556,12 @@ function showTextureContextMenu({ x, y, data, onClosePreview, onRefreshPreview, 
     if (onClosePreview) onClosePreview();
     openAssetPreview(resolvedPath, data.dataUrl);
   }, !resolvedPath));
+
+  if (canInspectModel) {
+    menu.appendChild(makeItem('Open in File Explorer', () => {
+      openTextureInFileExplorer(resolvedPath);
+    }, !canUseExternal));
+  }
 
   if (canInspectModel) {
     if (data?.type === 'mesh') {

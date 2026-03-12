@@ -41,13 +41,13 @@ export default function useVfxUpload({
   }, []);
 
   const handleUploadToVFXHub = useCallback(() => {
-    if (!targetSystems || Object.keys(targetSystems).length === 0) {
-      setStatusMessage('No VFX systems loaded to upload - Please open a target bin file first');
-      return;
-    }
     resetUploadState();
     setShowUploadModal(true);
-    setStatusMessage('Upload VFX systems from target bin to VFX Hub');
+    if (!targetSystems || Object.keys(targetSystems).length === 0) {
+      setStatusMessage('No VFX systems loaded yet - open a target bin to prepare upload');
+    } else {
+      setStatusMessage('Upload VFX systems from target bin to VFX Hub');
+    }
   }, [resetUploadState, setStatusMessage, targetSystems]);
 
   const handleCloseUploadModal = useCallback(() => {
@@ -98,10 +98,18 @@ export default function useVfxUpload({
       }
 
       const system = systemsToUpload[0];
-      const projectPath =
-        targetPath && typeof findProjectRoot === 'function'
-          ? (findProjectRoot(window.require('path').dirname(targetPath)) || '')
-          : '';
+      let projectPath = '';
+      if (targetPath && window.require) {
+        const path = window.require('path');
+        const targetDir = path.dirname(targetPath);
+        if (typeof findProjectRoot === 'function') {
+          // Prefer canonical project root, but fall back to target bin directory
+          // so assets can still be resolved in mods without a data/ root folder.
+          projectPath = findProjectRoot(targetDir) || targetDir;
+        } else {
+          projectPath = targetDir;
+        }
+      }
 
       const completeVFXSystems = parseIndividualVFXSystems(targetPyContent || '');
       const completeSystem = completeVFXSystems.find(
@@ -155,7 +163,7 @@ export default function useVfxUpload({
   const executeUpload = useCallback(async () => {
     if (!uploadPreparation) {
       setStatusMessage('No upload preparation found');
-      return;
+      return false;
     }
 
     try {
@@ -187,11 +195,14 @@ export default function useVfxUpload({
             loadVFXCollections();
           }
         }, 2000);
+        return true;
       } else {
         setStatusMessage('Upload completed with some issues - check console for details');
+        return false;
       }
     } catch (error) {
       setStatusMessage(`Upload failed: ${error.message}`);
+      return false;
     } finally {
       setIsProcessing(false);
       setProcessingText('');

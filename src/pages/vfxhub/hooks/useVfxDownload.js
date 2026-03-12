@@ -42,6 +42,25 @@ export default function useVfxDownload({
       const copiedAssets = [];
       for (const asset of assets) {
         try {
+          const sourcePath = asset.localPath || asset.path;
+          const isAbsoluteLocalPath = typeof sourcePath === 'string' && path.isAbsolute(sourcePath);
+          const isWindowsDrivePath = typeof sourcePath === 'string' && /^[a-zA-Z]:\\/.test(sourcePath);
+          const outputName = asset.name || (typeof sourcePath === 'string' ? path.basename(sourcePath) : '');
+          if (!outputName) continue;
+          const outputPath = path.join(vfxhubDir, outputName);
+
+          if ((isAbsoluteLocalPath || isWindowsDrivePath) && fs.existsSync(sourcePath)) {
+            // Local Hub assets: copy directly from local filesystem to avoid remote fetch corruption.
+            fs.copyFileSync(sourcePath, outputPath);
+            const stat = fs.statSync(outputPath);
+            copiedAssets.push({
+              originalName: outputName,
+              path: outputPath,
+              size: stat.size,
+            });
+            continue;
+          }
+
           let assetBuffer;
           try {
             assetBuffer = await githubApi.getRawBinaryFile(asset.path);
@@ -52,11 +71,10 @@ export default function useVfxDownload({
             assetBuffer = Buffer.from(arrayBuffer);
           }
 
-          const outputPath = path.join(vfxhubDir, asset.name);
           fs.writeFileSync(outputPath, assetBuffer);
 
           copiedAssets.push({
-            originalName: asset.name,
+            originalName: outputName,
             path: outputPath,
             size: assetBuffer.length,
           });

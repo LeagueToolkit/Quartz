@@ -31,4 +31,6 @@ pub enum DecodeErr {
     Bc3(&'static str),
     #[error("Could not decode BC1: {0}")]
     Bc1(&'static str),
+    #[error("Could not decode: {0}")]
+    ImageDds(#[from] image_dds::error::SurfaceError),
 }

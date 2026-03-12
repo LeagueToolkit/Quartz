@@ -1,7 +1,7 @@
 import React from 'react';
 import CollectionItem from './CollectionItem';
 
-const categories = ['All', 'Missiles', 'Auras', 'Explosions', 'Target', 'Shield', 'Buf'];
+const defaultCategories = ['All', 'Missiles', 'Auras', 'Explosions', 'Target', 'Shield', 'Buf'];
 
 const font = 'JetBrains Mono, monospace';
 
@@ -34,7 +34,24 @@ export default function CollectionBrowser({
   onMouseDownResize,
   contentRef,
   saveScrollPos,
+  title = 'VFX Hub Collections',
+  subtitle = null,
+  categories = defaultCategories,
+  onUpload = null,
+  uploadLabel = 'Upload',
+  onCreateCategory = null,
+  onDeleteCategory = null,
+  onDeleteSystem = null,
+  downloadButtonLabel = 'Download',
+  loadingText = 'Loading VFX collections...',
+  connectionErrorText = 'Failed to connect',
+  emptyText = 'No VFX effects found',
 }) {
+  const [showCreateCategoryInput, setShowCreateCategoryInput] = React.useState(false);
+  const [newCategoryName, setNewCategoryName] = React.useState('');
+  const [pendingDeleteCategory, setPendingDeleteCategory] = React.useState(null);
+  const [pendingDeleteSystem, setPendingDeleteSystem] = React.useState(null);
+
   if (!open) return null;
 
   const panelStyle = {
@@ -104,12 +121,25 @@ export default function CollectionBrowser({
               margin: 0, fontSize: '0.95rem',
               letterSpacing: '0.08em', textTransform: 'uppercase',
               fontWeight: 700, color: 'var(--text)', fontFamily: font,
-            }}>VFX Hub Collections</h2>
+            }}>{title}</h2>
             <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.68rem', marginTop: 4, fontFamily: font }}>
-              {filteredSystems.length} effect{filteredSystems.length !== 1 ? 's' : ''} available
+              {subtitle || `${filteredSystems.length} effect${filteredSystems.length !== 1 ? 's' : ''} available`}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {typeof onUpload === 'function' && (
+              <button
+                onClick={onUpload}
+                disabled={isProcessing}
+                style={{
+                  ...btnAccent,
+                  opacity: isProcessing ? 0.5 : 1,
+                  cursor: isProcessing ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {uploadLabel}
+              </button>
+            )}
             <button
               onClick={onRefresh}
               disabled={isProcessing || isLoadingCollections}
@@ -168,27 +198,116 @@ export default function CollectionBrowser({
             {categories.map((category) => {
               const active = category === selectedCategory;
               return (
-                <button
+                <div
                   key={category}
-                  onClick={() => { saveScrollPos(); onSelectedCategory(category); }}
                   style={{
-                    padding: '5px 12px', borderRadius: 6, cursor: 'pointer',
-                    fontFamily: font, fontSize: '0.72rem', fontWeight: active ? 700 : 600,
-                    transition: 'all 0.15s ease',
-                    background: active ? 'color-mix(in srgb, var(--accent2), transparent 82%)' : 'rgba(255,255,255,0.03)',
-                    color: active ? 'var(--accent2)' : 'rgba(255,255,255,0.65)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    borderRadius: 6,
                     border: active
                       ? '1px solid color-mix(in srgb, var(--accent2), transparent 50%)'
                       : '1px solid rgba(255,255,255,0.08)',
+                    background: active ? 'color-mix(in srgb, var(--accent2), transparent 82%)' : 'rgba(255,255,255,0.03)',
+                    overflow: 'hidden',
                   }}
-                  onMouseEnter={(e) => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = 'rgba(255,255,255,0.9)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; } }}
-                  onMouseLeave={(e) => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.color = 'rgba(255,255,255,0.65)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; } }}
                 >
-                  {category}
-                </button>
+                  <button
+                    onClick={() => { saveScrollPos(); onSelectedCategory(category); }}
+                    style={{
+                      padding: '5px 10px', cursor: 'pointer',
+                      fontFamily: font, fontSize: '0.72rem', fontWeight: active ? 700 : 600,
+                      transition: 'all 0.15s ease',
+                      background: 'transparent',
+                      color: active ? 'var(--accent2)' : 'rgba(255,255,255,0.65)',
+                      border: 'none',
+                    }}
+                  >
+                    {category}
+                  </button>
+                  {typeof onDeleteCategory === 'function' && category !== 'All' && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPendingDeleteCategory(category);
+                      }}
+                      style={{
+                        border: 'none',
+                        borderLeft: '1px solid rgba(255,255,255,0.12)',
+                        background: 'rgba(220, 38, 38, 0.08)',
+                        color: '#fca5a5',
+                        padding: '5px 7px',
+                        cursor: 'pointer',
+                        fontFamily: font,
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                      }}
+                      title={`Delete category ${category}`}
+                    >
+                      x
+                    </button>
+                  )}
+                </div>
               );
             })}
+            {typeof onCreateCategory === 'function' && (
+              <button
+                onClick={() => setShowCreateCategoryInput(true)}
+                style={{
+                  padding: '5px 12px', borderRadius: 6, cursor: 'pointer',
+                  fontFamily: font, fontSize: '0.72rem', fontWeight: 700,
+                  transition: 'all 0.15s ease',
+                  background: 'rgba(255,255,255,0.03)',
+                  color: 'rgba(255,255,255,0.9)',
+                  border: '1px dashed rgba(255,255,255,0.25)',
+                }}
+              >
+                + Category
+              </button>
+            )}
           </div>
+          {showCreateCategoryInput && typeof onCreateCategory === 'function' && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              <input
+                type="text"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="Auras for example"
+                style={{
+                  flex: 1,
+                  boxSizing: 'border-box',
+                  padding: '8px 10px',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: 8,
+                  color: 'var(--text)',
+                  fontFamily: font,
+                  fontSize: '0.78rem',
+                  outline: 'none',
+                }}
+              />
+              <button
+                onClick={async () => {
+                  const ok = await onCreateCategory(newCategoryName);
+                  if (ok) {
+                    setNewCategoryName('');
+                    setShowCreateCategoryInput(false);
+                  }
+                }}
+                style={btnAccent}
+              >
+                Create
+              </button>
+              <button
+                onClick={() => {
+                  setShowCreateCategoryInput(false);
+                  setNewCategoryName('');
+                }}
+                style={btnGhost}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Items grid */}
@@ -203,15 +322,15 @@ export default function CollectionBrowser({
         >
           {isLoadingCollections ? (
             <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: 'rgba(255,255,255,0.4)', fontFamily: font, fontSize: '0.82rem' }}>
-              Loading VFX collections from GitHub...
+              {loadingText}
             </div>
           ) : !githubConnected ? (
             <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: '#f87171', fontFamily: font, fontSize: '0.82rem' }}>
-              Failed to connect to GitHub
+              {connectionErrorText}
             </div>
           ) : filteredSystems.length === 0 ? (
             <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: 'rgba(255,255,255,0.4)', fontFamily: font, fontSize: '0.82rem' }}>
-              No VFX effects found
+              {emptyText}
             </div>
           ) : (
             paginatedSystems.map((system, index) => (
@@ -222,6 +341,12 @@ export default function CollectionBrowser({
                 isProcessing={isProcessing}
                 onDownload={onDownload}
                 onPreview={onSetHoveredPreview}
+                onDelete={
+                  typeof onDeleteSystem === 'function'
+                    ? (value) => setPendingDeleteSystem(value)
+                    : null
+                }
+                downloadLabel={downloadButtonLabel}
               />
             ))
           )}
@@ -354,6 +479,114 @@ export default function CollectionBrowser({
           onMouseDown={(e) => onMouseDownResize(e, 's')}
         />
       </div>
+      {pendingDeleteCategory && typeof onDeleteCategory === 'function' && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2001,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(0,0,0,0.45)',
+          }}
+        >
+          <div
+            style={{
+              width: 360,
+              borderRadius: 10,
+              border: '1px solid rgba(255,255,255,0.14)',
+              background: 'rgba(18,18,26,0.95)',
+              padding: 14,
+              color: 'var(--text)',
+              fontFamily: font,
+            }}
+          >
+            <div style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 8 }}>
+              Delete Category
+            </div>
+            <div style={{ fontSize: '0.76rem', color: 'rgba(255,255,255,0.75)', marginBottom: 12 }}>
+              Are you sure you want to delete "{pendingDeleteCategory}"?
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                onClick={() => setPendingDeleteCategory(null)}
+                style={btnGhost}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  await onDeleteCategory(pendingDeleteCategory);
+                  setPendingDeleteCategory(null);
+                }}
+                style={{
+                  ...btnAccent,
+                  background: 'rgba(220, 38, 38, 0.16)',
+                  border: '1px solid rgba(220, 38, 38, 0.45)',
+                  color: '#fca5a5',
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {pendingDeleteSystem && typeof onDeleteSystem === 'function' && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2001,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(0,0,0,0.45)',
+          }}
+        >
+          <div
+            style={{
+              width: 360,
+              borderRadius: 10,
+              border: '1px solid rgba(255,255,255,0.14)',
+              background: 'rgba(18,18,26,0.95)',
+              padding: 14,
+              color: 'var(--text)',
+              fontFamily: font,
+            }}
+          >
+            <div style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 8 }}>
+              Delete VFX System
+            </div>
+            <div style={{ fontSize: '0.76rem', color: 'rgba(255,255,255,0.75)', marginBottom: 12 }}>
+              Are you sure you want to delete "{pendingDeleteSystem.displayName || pendingDeleteSystem.name}"?
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                onClick={() => setPendingDeleteSystem(null)}
+                style={btnGhost}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  await onDeleteSystem(pendingDeleteSystem);
+                  setPendingDeleteSystem(null);
+                }}
+                style={{
+                  ...btnAccent,
+                  background: 'rgba(220, 38, 38, 0.16)',
+                  border: '1px solid rgba(220, 38, 38, 0.45)',
+                  color: '#fca5a5',
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

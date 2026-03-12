@@ -15,6 +15,8 @@ function createMainWindowService({
     let mainWindow = new BrowserWindow({
       width: 1200,
       height: 800,
+      minWidth: 1280,
+      minHeight: 800,
       icon: path.join(baseDir, 'public', 'divinelab.ico'),
       frame: false,
       titleBarStyle: 'hidden',
@@ -63,11 +65,13 @@ function createMainWindowService({
       });
 
       tryLoad();
-      mainWindow.webContents.openDevTools();
+      if (String(processRef.env.ELECTRON_OPEN_DEVTOOLS || '') === '1') {
+        mainWindow.webContents.openDevTools();
+      }
     } else {
       mainWindow.loadFile(path.join(baseDir, 'build', 'index.html'));
       mainWindow.webContents.on('devtools-opened', () => mainWindow.webContents.closeDevTools());
-      try { mainWindow.removeMenu(); } catch (_) {}
+      try { mainWindow.removeMenu(); } catch (_) { }
     }
 
     mainWindow.on('close', async (e) => {
@@ -87,7 +91,7 @@ function createMainWindowService({
         let hasUnsaved = false;
         try {
           hasUnsaved = await mainWindow.webContents.executeJavaScript('Boolean(window.__DL_unsavedBin)');
-        } catch (_) {}
+        } catch (_) { }
 
         if (hasUnsaved) {
           const result = await dialog.showMessageBox(mainWindow, {
@@ -110,16 +114,16 @@ function createMainWindowService({
         try {
           await mainWindow.webContents.executeJavaScript('window.__DL_forceClose = true;');
           mainWindow.webContents.send('app:closing');
-        } catch (_) {}
+        } catch (_) { }
 
         await new Promise((resolve) => setTimeout(resolve, 500));
         clearSavedBinPaths();
 
-        try { mainWindow.destroy(); } catch (_) {}
+        try { mainWindow.destroy(); } catch (_) { }
         app.quit();
       } catch (_) {
         setQuitState({ isQuitting: true, isShuttingDown: true });
-        try { mainWindow.destroy(); } catch (_) {}
+        try { mainWindow.destroy(); } catch (_) { }
         app.quit();
       }
     });
@@ -130,7 +134,7 @@ function createMainWindowService({
 
     try {
       mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    } catch (_) {}
+    } catch (_) { }
 
     mainWindow.webContents.on('will-navigate', (event, url) => {
       const isFile = typeof url === 'string' && url.startsWith('file://');
@@ -144,4 +148,3 @@ function createMainWindowService({
 }
 
 module.exports = { createMainWindowService };
-

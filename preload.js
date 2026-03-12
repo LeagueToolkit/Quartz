@@ -80,6 +80,9 @@ window.electronAPI = {
     cleanup: () => ipcRenderer.invoke('modelInspect:cleanup'),
   },
 
-
+  texture: {
+    /** Decode a TEX or DDS file to a PNG data URL via the native Rust addon. */
+    decodeToDataUrl: (filePath) => ipcRenderer.invoke('texture:decodeToDataUrl', { filePath }),
+  },
 
 };

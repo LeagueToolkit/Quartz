@@ -11,6 +11,7 @@ pub struct TexSurface<'a> {
 pub enum TexSurfaceData<'a> {
     Bgra8Slice(&'a [u8]),
     Bgra8Owned(Vec<u32>),
+    Rgba8Owned(Vec<u8>),
 }
 
 impl TexSurface<'_> {
@@ -37,6 +38,7 @@ impl TexSurface<'_> {
                         [r, g, b, a]
                     })
                     .collect(),
+                TexSurfaceData::Rgba8Owned(data) => data,
             },
         )
         .ok_or(ToImageError::InvalidContainerSize)

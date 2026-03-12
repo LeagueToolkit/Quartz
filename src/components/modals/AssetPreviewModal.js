@@ -481,10 +481,6 @@ const CustomExplorer = () => {
 
     const handleOpenInExplorer = () => {
         if (contextMenu && contextMenu.item && shell) {
-            if (pathModule) {
-                const toAdd = contextMenu.item.isDirectory ? contextMenu.item.path : pathModule.dirname(contextMenu.item.path);
-                addToRecent(toAdd);
-            }
             shell.showItemInFolder(contextMenu.item.path);
         }
         handleCloseContextMenu();
@@ -677,13 +673,45 @@ const CustomExplorer = () => {
     // This ensures specific modes (like port, vfxhub, bineditor) all share the "Recent Bins" list
     const isBinMode = (m) => ['bin', 'bineditor-bin', 'port-target', 'port-donor', 'vfxhub-target', 'paint-bin'].includes(m);
 
+    const sanitizeRecentPaths = useCallback((paths, targetMode) => {
+        if (!Array.isArray(paths) || !fs || !pathModule) return [];
+        const binMode = isBinMode(targetMode);
+        const unique = [];
+        const seen = new Set();
+
+        for (const rawPath of paths) {
+            const value = String(rawPath || '').trim();
+            if (!value || seen.has(value)) continue;
+            seen.add(value);
+
+            try {
+                if (!fs.existsSync(value)) continue;
+                const stat = fs.statSync(value);
+                if (binMode) {
+                    // Bin recents store file paths; tolerate directories for legacy entries.
+                    if (stat.isFile() || stat.isDirectory()) unique.push(value);
+                } else if (stat.isDirectory()) {
+                    unique.push(value);
+                }
+            } catch (_) {
+                // Skip invalid/stale paths.
+            }
+        }
+
+        return unique.slice(0, 10);
+    }, [fs, pathModule]);
+
     // Load Recents based on Mode
     useEffect(() => {
         try {
             const key = isBinMode(mode) ? 'divinelab_recent_bins' : 'divinelab_recent_folders';
             const saved = localStorage.getItem(key);
             if (saved) {
-                setRecentFolders(JSON.parse(saved));
+                const parsed = JSON.parse(saved);
+                const cleaned = sanitizeRecentPaths(parsed, mode);
+                setRecentFolders(cleaned);
+                // Persist cleanup so stale entries are removed globally.
+                localStorage.setItem(key, JSON.stringify(cleaned));
             } else {
                 setRecentFolders([]);
             }
@@ -691,7 +719,7 @@ const CustomExplorer = () => {
             console.error('Failed to load recents', e);
             setRecentFolders([]);
         }
-    }, [mode, isOpen]); // Reload when mode changes or modal opens
+    }, [mode, isOpen, sanitizeRecentPaths]); // Reload when mode changes or modal opens
 
     const addToRecent = (path, modeOverride = null) => {
         if (!path) return;
@@ -811,7 +839,7 @@ const CustomExplorer = () => {
             }).filter(Boolean);
 
             // Filter for Mode
-            if (currentMode === 'bin' || currentMode === 'port-target' || currentMode === 'port-donor') {
+            if (isBinMode(currentMode)) {
                 fileItems = fileItems.filter(item => item.isDirectory || item.extension === '.bin' || item.extension === '.py');
             }
 
@@ -883,16 +911,26 @@ const CustomExplorer = () => {
             if (mode !== 'browser') {
                 // Select Return for any selection mode
                 if (isBinMode(mode)) {
-                    // Only add .bin files to recent, not all files
-                    if (item.extension === '.bin') {
+                    // Track selected VFX source files in bin-mode recents
+                    if (item.extension === '.bin' || item.extension === '.py') {
                         addToRecent(item.path);
                     }
                 } else if (pathModule) {
                     addToRecent(pathModule.dirname(item.path));
                 }
 
+                let selectedPath = item.path;
+                if (isBinMode(mode) && pathModule && item.extension === '.py') {
+                    const pyDir = pathModule.dirname(item.path);
+                    const pyBase = pathModule.basename(item.path, '.py');
+                    const siblingBin = pathModule.join(pyDir, `${pyBase}.bin`);
+                    if (fs?.existsSync?.(siblingBin)) {
+                        selectedPath = siblingBin;
+                    }
+                }
+
                 window.dispatchEvent(new CustomEvent('asset-preview-selected', {
-                    detail: { path: item.path, mode: mode }
+                    detail: { path: selectedPath, mode: mode }
                 }));
 
                 setIsOpen(false);
@@ -1217,12 +1255,21 @@ const CustomExplorer = () => {
                                             key={path}
                                             onClick={() => {
                                                 const isBinMode = ['bin', 'bineditor-bin', 'port-target', 'port-donor', 'vfxhub-target', 'paint-bin'].includes(mode);
+                                                if (!fs || !pathModule || !fs.existsSync(path)) {
+                                                    removeFromRecent(path);
+                                                    return;
+                                                }
                                                 if (isBinMode && pathModule) {
-                                                    // Path is a file, open dir and select
-                                                    const dir = pathModule.dirname(path);
-                                                    const file = pathModule.basename(path);
-                                                    handleNavigateRequest(dir);
-                                                    setTimeout(() => setSelectedItem(file), 50);
+                                                    const stats = fs.statSync(path);
+                                                    if (stats.isDirectory()) {
+                                                        handleNavigateRequest(path);
+                                                    } else {
+                                                        // Path is a file, open dir and select
+                                                        const dir = pathModule.dirname(path);
+                                                        const file = pathModule.basename(path);
+                                                        handleNavigateRequest(dir);
+                                                        setTimeout(() => setSelectedItem(file), 50);
+                                                    }
                                                 } else {
                                                     handleNavigateRequest(path);
                                                 }

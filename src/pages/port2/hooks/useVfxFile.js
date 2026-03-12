@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { detectHashedContent } from '../../../components/modals/RitobinWarningModal';
 import { ToPyWithPath } from '../../../utils/io/fileOperations.js';
-import { createBackup } from '../../../utils/io/backupManager.js';
+import { createBackup, listBackups } from '../../../utils/io/backupManager.js';
 import { parseVfxEmitters } from '../../../utils/vfx/vfxEmitterParser.js';
 import { openAssetPreview } from '../../../utils/assets/assetPreviewEvent.js';
 import { emitJadeMissingModal, isJadeMissingResult } from '../../../utils/interop/jadeInterop.js';
@@ -392,12 +392,24 @@ export default function useVfxFile(
                 : targetPath.replace(/\.bin$/i, '.py');
             if (!pyFilePath) return;
 
-            const restoredContent = (restoreMeta && typeof restoreMeta.content === 'string')
-                ? restoreMeta.content
-                : (fs?.existsSync(pyFilePath) ? fs.readFileSync(pyFilePath, 'utf8') : null);
+            let restoredContent = null;
+
+            // 1) Preferred: explicit restore payload from BackupViewer
+            if (restoreMeta && typeof restoreMeta.content === 'string') {
+                restoredContent = restoreMeta.content;
+                console.log('[useVfxFile] performBackupRestore: using restoreMeta content');
+            } else {
+                // 2) Automatic error-dialog restore: use latest parse-time backup (component: "port")
+                const backups = listBackups(pyFilePath, 'port');
+                const latest = backups && backups.length > 0 ? backups[0] : null;
+                if (latest?.path && fs?.existsSync(latest.path)) {
+                    restoredContent = fs.readFileSync(latest.path, 'utf8');
+                    console.log('[useVfxFile] performBackupRestore: using latest port backup:', latest.path);
+                }
+            }
 
             if (!restoredContent) {
-                setStatusMessage('Error restoring backup: restored content is empty');
+                setStatusMessage('Error restoring backup: no parse-time backup found');
                 return;
             }
 

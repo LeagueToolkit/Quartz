@@ -1,7 +1,7 @@
 {
   "name": "quartz",
   "productName": "Quartz",
-  "version": "3.2.1",
+  "version": "3.3.0",
   "description": "Quartz - League of Legends Modding Suite",
   "homepage": "./",
   "main": "electron-main.js",
@@ -78,6 +78,14 @@
         "to": "public/screen.dds"
       },
       {
+        "from": "public/floor.dds",
+        "to": "public/floor.dds"
+      },
+      {
+        "from": "public/riots_sru_skybox_cubemap.dds",
+        "to": "public/riots_sru_skybox_cubemap.dds"
+      },
+      {
         "from": "public/divinelab.ico",
         "to": "divinelab.ico"
       },
@@ -107,7 +115,7 @@
     ]
   },
   "scripts": {
-    "dev": "concurrently \"react-scripts start\" \"wait-on http://localhost:3000 && electron --js-flags=--expose-gc .\"",
+    "dev": "concurrently \"set BROWSER=none&& react-scripts start\" \"wait-on http://localhost:3000 && electron --js-flags=--expose-gc .\"",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",

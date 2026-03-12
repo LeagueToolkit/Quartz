@@ -3,16 +3,6 @@ import * as THREE from 'three';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Grid } from '@react-three/drei';
 
-const isModelInspectPerfDebug = () => {
-  try {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage?.getItem('modelInspectPerfDebug') === '1'
-      || window.localStorage?.getItem('modelInspectDebug') === '1';
-  } catch {
-    return false;
-  }
-};
-
 const MAX_MODEL_TEXTURE_DIM = 4096;
 const MAX_ENV_TEXTURE_DIM = 2048;
 
@@ -148,6 +138,9 @@ const resolveBundledAssetAbsolutePath = (fileName) => {
 
   if (resourcesPath) {
     candidates.push(nodePath.join(resourcesPath, 'build', fileName));
+    candidates.push(nodePath.join(resourcesPath, 'public', fileName));
+    candidates.push(nodePath.join(resourcesPath, 'app.asar', 'build', fileName));
+    candidates.push(nodePath.join(resourcesPath, 'app.asar', 'public', fileName));
   }
   if (cwd) {
     candidates.push(nodePath.join(cwd, 'build', fileName));
@@ -161,44 +154,13 @@ const resolveBundledAssetAbsolutePath = (fileName) => {
 };
 
 const readGameTextureAsPngDataUrl = async (absolutePath) => {
-  const perf = isModelInspectPerfDebug();
-  const totalStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-
-  if (typeof window === 'undefined' || !window.require) return null;
-  const electron = window.require('electron');
-  const ipcRenderer = electron?.ipcRenderer;
-  if (!ipcRenderer) return null;
   try {
-    const nativeStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-    const native = await ipcRenderer.invoke('texture:decodeToDataUrl', { filePath: absolutePath });
-    if (native?.success && native?.dataUrl) {
-      if (perf) {
-        const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-        console.log('[modelInspect:perf] native decode', {
-          file: absolutePath,
-          totalMs: +(now - totalStart).toFixed(2),
-          nativeCallMs: +(now - nativeStart).toFixed(2),
-          nativeDecodeMs: native.decodeMs,
-          nativeEncodeMs: native.encodeMs,
-          nativeTotalMs: native.nativeTotalMs,
-        });
-      }
-      return native.dataUrl;
-    }
-    if (perf || native?.error) {
-      console.warn('[modelInspect:perf] native decode returned no data', {
-        file: absolutePath,
-        success: native?.success,
-        error: native?.error || '',
-      });
-    }
+    const result = await window.electronAPI.texture.decodeToDataUrl(absolutePath);
+    if (!result?.success || !result?.dataUrl) return null;
+    return result.dataUrl;
   } catch {
-    if (perf) {
-      console.warn('[modelInspect:perf] native decode threw', { file: absolutePath });
-    }
     return null;
   }
-  return null;
 };
 
 const resolveTextureSource = async (textureUrl) => {
@@ -222,8 +184,6 @@ const readBundledFloorAsPngDataUrl = async () => {
         return readGameTextureAsPngDataUrl(filePath);
       }
     }
-
-    // No JS decode fallback for model inspect textures.
     return null;
   } catch {
     return null;
@@ -239,8 +199,6 @@ const readBundledSkyboxAsPngDataUrl = async () => {
         return readGameTextureAsPngDataUrl(filePath);
       }
     }
-
-    // No JS decode fallback for model inspect textures.
     return null;
   } catch {
     return null;
@@ -275,9 +233,7 @@ class WebGLErrorBoundary extends React.Component {
     return { hasError: true, message: String(error?.message || error || 'WebGL initialization failed') };
   }
 
-  componentDidCatch() {
-    // keep silent: UI fallback is enough for this modal
-  }
+  componentDidCatch() { }
 
   render() {
     if (this.state.hasError) {
@@ -368,8 +324,6 @@ function ModelMesh({ modelData, visibleSubmeshes, wireframe, flatLighting, showS
       const end = Math.min(baseIdx.length, start + (submesh.indexCount || 0));
       const subIdx = baseIdx.slice(start, end);
 
-      // Some SKN variants store submesh-local indices. If index range fits within
-      // submesh vertexCount, offset by vertexStart to get global vertex indices.
       let adjustedIdx = subIdx;
       if (submesh.vertexStart > 0 && submesh.vertexCount > 0 && subIdx.length > 0) {
         let maxLocal = -1;
@@ -419,9 +373,9 @@ function ModelMesh({ modelData, visibleSubmeshes, wireframe, flatLighting, showS
               color={hasTex ? '#ffffff' : colorFromName(item.name)}
               map={textureCache.get(item.id) || null}
               wireframe={wireframe}
-              transparent={false}
               alphaTest={hasTex ? 0.08 : 0}
-              depthWrite
+              transparent={false}
+
             />
           </mesh>
         );
@@ -455,8 +409,6 @@ export default function ModelViewport({
 
   React.useEffect(() => {
     let cancelled = false;
-    const perf = isModelInspectPerfDebug();
-    const batchStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 
     const preloadTextures = async () => {
       if (!modelData) {
@@ -482,12 +434,9 @@ export default function ModelViewport({
       for (const [submeshId, textureUrl] of entries) {
         if (cancelled) break;
         try {
-          const itemStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
           const source = await resolveTextureSource(textureUrl);
-          const resolvedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
           if (!source) continue;
           const texture = await textureLoader.loadAsync(source);
-          const loadedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
           texture.flipY = false;
           configureTextureForGpu(texture, {
             maxDim: MAX_MODEL_TEXTURE_DIM,
@@ -495,15 +444,6 @@ export default function ModelViewport({
             wrapT: THREE.ClampToEdgeWrapping,
           });
           loaded.set(submeshId, texture);
-          if (perf) {
-            console.log('[modelInspect:perf] submesh texture loaded', {
-              submeshId,
-              resolveMs: +(resolvedAt - itemStart).toFixed(2),
-              loaderMs: +(loadedAt - resolvedAt).toFixed(2),
-              totalMs: +(loadedAt - itemStart).toFixed(2),
-              sourceType: String(textureUrl || '').toLowerCase().endsWith('.png') ? 'png' : 'game-texture',
-            });
-          }
         } catch {
           // Falls back to material color.
         }
@@ -519,14 +459,6 @@ export default function ModelViewport({
         return loaded;
       });
       setTexturesReady(true);
-      if (perf) {
-        const done = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-        console.log('[modelInspect:perf] preload complete', {
-          entryCount: entries.length,
-          loadedCount: loaded.size,
-          totalMs: +(done - batchStart).toFixed(2),
-        });
-      }
     };
 
     preloadTextures();
@@ -542,17 +474,13 @@ export default function ModelViewport({
 
   React.useEffect(() => {
     let cancelled = false;
-    const perf = isModelInspectPerfDebug();
     const loadGroundTexture = async () => {
       if (!showGroundTexture) return;
       if (groundTexture) return;
       try {
-        const start = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
         const dataUrl = await readBundledFloorAsPngDataUrl();
-        const decodedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
         if (!dataUrl || cancelled) return;
         const tex = await textureLoader.loadAsync(dataUrl);
-        const loadedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
         if (cancelled) {
           tex.dispose();
           return;
@@ -564,13 +492,6 @@ export default function ModelViewport({
         });
         tex.repeat.set(1, 1);
         setGroundTexture(tex);
-        if (perf) {
-          console.log('[modelInspect:perf] ground texture loaded', {
-            decodeMs: +(decodedAt - start).toFixed(2),
-            loaderMs: +(loadedAt - decodedAt).toFixed(2),
-            totalMs: +(loadedAt - start).toFixed(2),
-          });
-        }
       } catch {
         // Optional visual layer; fail silently.
       }
@@ -585,17 +506,13 @@ export default function ModelViewport({
 
   React.useEffect(() => {
     let cancelled = false;
-    const perf = isModelInspectPerfDebug();
     const loadSkybox = async () => {
       if (!showSkybox) return;
       if (skyboxTexture) return;
       try {
-        const start = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
         const source = await readBundledSkyboxAsPngDataUrl();
-        const decodedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
         if (!source) return;
         const tex = await textureLoader.loadAsync(source);
-        const loadedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
         if (!tex || !tex.image || cancelled) {
           tex?.dispose?.();
           return;
@@ -607,13 +524,6 @@ export default function ModelViewport({
         });
         tex.mapping = THREE.EquirectangularReflectionMapping;
         setSkyboxTexture(tex);
-        if (perf) {
-          console.log('[modelInspect:perf] skybox loaded', {
-            decodeMs: +(decodedAt - start).toFixed(2),
-            loaderMs: +(loadedAt - decodedAt).toFixed(2),
-            totalMs: +(loadedAt - start).toFixed(2),
-          });
-        }
       } catch {
         // Optional visual layer; fail silently.
       }

@@ -368,28 +368,44 @@ function Paint2() {
     const [blendModeChance, setBlendModeChance] = useState(100);
     const handleSaveRef = useRef(null);
 
+    const resolveVfxFilePaths = useCallback((inputPath) => {
+        if (!inputPath || !path) return null;
+        const isPy = String(inputPath).toLowerCase().endsWith('.py');
+        const dir = path.dirname(inputPath);
+        const baseName = path.basename(inputPath, isPy ? '.py' : '.bin');
+        return {
+            isPy,
+            baseName,
+            pyPath: isPy ? inputPath : path.join(dir, `${baseName}.py`),
+            binPath: isPy ? path.join(dir, `${baseName}.bin`) : inputPath,
+        };
+    }, []);
+
     // ============================================================
     // FILE OPERATIONS
     // ============================================================
 
     // === FILE OPERATIONS ===
-    const loadBinFile = useCallback(async (binPath, options = {}) => {
+    const loadBinFile = useCallback(async (selectedPath, options = {}) => {
         const preserveUndo = options?.preserveUndo === true;
         const forceRefreshFromBin = options?.forceRefreshFromBin === true;
-        if (!binPath || !fs) return;
+        if (!selectedPath || !fs) return;
 
         setIsLoading(true);
         setStatusMessage('Loading...');
 
         try {
-            const binDir = path.dirname(binPath);
-            const binName = path.basename(binPath, '.bin');
-            const pyPath = path.join(binDir, `${binName}.py`);
+            const resolvedPaths = resolveVfxFilePaths(selectedPath);
+            if (!resolvedPaths) throw new Error('Invalid file path');
+            const { isPy, baseName, pyPath, binPath } = resolvedPaths;
 
-            if (forceRefreshFromBin && binPath.toLowerCase().endsWith('.bin')) {
+            if (forceRefreshFromBin && !isPy) {
                 setStatusMessage('Refreshing from bin...');
                 await ToPyWithPath(binPath);
             } else if (!fs.existsSync(pyPath)) {
+                if (isPy) {
+                    throw new Error('Selected .py file does not exist');
+                }
                 setStatusMessage('Converting bin to py...');
                 await checkAndPromptCombine(binPath);
                 await ToPyWithPath(binPath);
@@ -409,7 +425,7 @@ function Paint2() {
             setParsedFile(parsed);
 
             setFilePath(binPath);
-            setFileName(binName);
+            setFileName(baseName);
             setFileSaved(true);
             setSelection(new Set());
             if (!preserveUndo) {
@@ -446,7 +462,7 @@ function Paint2() {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [resolveVfxFilePaths]);
 
     // === ASSET PREVIEW LISTENER ===
     useEffect(() => {
@@ -454,15 +470,13 @@ function Paint2() {
             const detail = e.detail || {};
             const { path: selectedPath, mode: selectedMode } = detail;
 
-            // Only respond if it's a bin file
-            if (selectedPath && selectedPath.toLowerCase().endsWith('.bin')) {
-                // Check if the mode matches what we expect (paint-bin or just bin, or undefined)
-                if (!selectedMode || selectedMode === 'paint-bin' || selectedMode === 'bin') {
-                    // Small delay to allow UI to close if needed
-                    setTimeout(async () => {
-                        await loadBinFile(selectedPath);
-                    }, 100);
-                }
+            if (!selectedPath) return;
+            // Check if the mode matches what we expect (paint-bin or just bin, or undefined)
+            if (!selectedMode || selectedMode === 'paint-bin' || selectedMode === 'bin') {
+                // Small delay to allow UI to close if needed
+                setTimeout(async () => {
+                    await loadBinFile(selectedPath);
+                }, 100);
             }
         };
 
@@ -478,21 +492,22 @@ function Paint2() {
         }
     }, []);
 
-    const getDiskContentForBin = useCallback(async (binPath) => {
+    const getDiskContentForBin = useCallback(async (filePath) => {
         try {
-            if (!binPath || !fs) return '';
-            if (binPath.toLowerCase().endsWith('.bin')) {
-                await ToPyWithPath(binPath);
+            if (!filePath || !fs) return '';
+            const resolvedPaths = resolveVfxFilePaths(filePath);
+            if (!resolvedPaths) return '';
+            if (!resolvedPaths.isPy) {
+                await ToPyWithPath(resolvedPaths.binPath);
             }
-            const pyPath = binPath.replace(/\.bin$/i, '.py');
-            if (fs.existsSync(pyPath)) {
-                return fs.readFileSync(pyPath, 'utf8');
+            if (fs.existsSync(resolvedPaths.pyPath)) {
+                return fs.readFileSync(resolvedPaths.pyPath, 'utf8');
             }
             return '';
         } catch {
             return '';
         }
-    }, []);
+    }, [resolveVfxFilePaths]);
 
     useEffect(() => {
         const openFromHandoff = async (handoff) => {
@@ -650,7 +665,9 @@ function Paint2() {
         console.log('[Paint2] Starting save process for:', filePath);
 
         try {
-            const pyPath = filePath.replace('.bin', '.py');
+            const resolvedPaths = resolveVfxFilePaths(filePath);
+            if (!resolvedPaths) throw new Error('Invalid file path');
+            const pyPath = resolvedPaths.pyPath;
             const content = linesRef.current.join('\n');
 
             console.log('[Paint2] Writing .py file to:', pyPath);
@@ -684,7 +701,7 @@ function Paint2() {
         } finally {
             setIsLoading(false);
         }
-    }, [filePath]);
+    }, [filePath, resolveVfxFilePaths]);
     useEffect(() => {
         handleSaveRef.current = handleSave;
     }, [handleSave]);
@@ -953,7 +970,9 @@ function Paint2() {
     const performBackupRestore = useCallback(() => {
         try {
             setStatusMessage('Backup restored - reloading file...');
-            const pyPath = filePath.replace('.bin', '.py');
+            const resolvedPaths = resolveVfxFilePaths(filePath);
+            if (!resolvedPaths) return;
+            const pyPath = resolvedPaths.pyPath;
 
             if (fs?.existsSync(pyPath)) {
                 const restoredContent = fs.readFileSync(pyPath, 'utf8');
@@ -967,7 +986,7 @@ function Paint2() {
             console.error('Error reloading restored backup:', error);
             setStatusMessage('Error reloading restored backup');
         }
-    }, [filePath]);
+    }, [filePath, resolveVfxFilePaths]);
 
     // === PALETTE MANAGEMENT ===
     const refreshSavedPalettes = useCallback(() => {
@@ -2263,7 +2282,7 @@ function Paint2() {
                         }
                     }
                 }}
-                filePath={filePath ? filePath.replace('.bin', '.py') : ''}
+                filePath={filePath ? (resolveVfxFilePaths(filePath)?.pyPath || '') : ''}
                 component="Paint2"
             />
 

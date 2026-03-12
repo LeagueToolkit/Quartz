@@ -10,7 +10,7 @@ path = "src/main.rs"
 [dependencies]
 ltk_meta = { path = "../../league-toolkit-quartz/crates/ltk_meta" }
 ltk_ritobin = { path = "../../league-toolkit-quartz/crates/ltk_ritobin" }
-ltk_texture = { path = "../../league-toolkit-quartz/crates/ltk_texture" }
+ltk_texture = { path = "../../league-toolkit-quartz/crates/ltk_texture", features = ["intel-tex"] }
 ltk_wad = { path = "../../league-toolkit-quartz/crates/ltk_wad" }
 ltk_file = { path = "../../league-toolkit-quartz/crates/ltk_file" }
 xxhash-rust = { version = "0.8", features = ["xxh64"] }

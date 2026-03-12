@@ -41,7 +41,9 @@ export default function useBumpathCoreApi({ bumpathCoreRef, addLog }) {
             data.combineLinked || false,
             (_count, message) => {
               addLog(message);
-            }
+            },
+            false,
+            { copyAssets: false }
           );
           return {
             success: true,

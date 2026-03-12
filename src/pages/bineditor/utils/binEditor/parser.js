@@ -270,6 +270,9 @@ function parseEmitter(rawContent, localStartLine) {
         // Rate property (emission rate)
         rate: parseFloatProperty(rawContent, 'rate'),
 
+        // Render pass (i16, can be negative)
+        pass: parseSimpleProperty(rawContent, 'pass', 'i16'),
+
         // Misc Render Flags (u8)
         miscRenderFlags: parseSimpleProperty(rawContent, 'miscRenderFlags', 'u8')
     };

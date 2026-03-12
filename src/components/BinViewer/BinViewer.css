@@ -1,0 +1,11 @@
+.bin-viewer-root,
+.bin-viewer-root * {
+  font-family: Consolas, "Cascadia Mono", "Cascadia Code", "Courier New", monospace !important;
+}
+
+[data-style="cs16"] .bin-viewer-root,
+[data-style="cs16"] .bin-viewer-root *,
+[data-style="winforms"] .bin-viewer-root,
+[data-style="winforms"] .bin-viewer-root * {
+  font-family: Consolas, "Cascadia Mono", "Cascadia Code", "Courier New", monospace !important;
+}

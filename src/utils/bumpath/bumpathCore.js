@@ -598,12 +598,13 @@ export class BumpathCore {
      * @param {Function} progressCallback - Progress callback (optional)
      * @returns {Object} - Process result
      */
-    async process(outputDir, ignoreMissing = false, combineLinked = false, progressCallback = null, skipRepath = false) {
+    async process(outputDir, ignoreMissing = false, combineLinked = false, progressCallback = null, skipRepath = false, options = {}) {
         console.log(`[BumpathCore] Starting process:`);
         console.log(`  OutputDir: ${outputDir}`);
         console.log(`  IgnoreMissing: ${ignoreMissing}`);
         console.log(`  CombineLinked: ${combineLinked}`);
         console.log(`  SkipRepath: ${skipRepath}`);
+        console.log(`  CopyAssets: ${options.copyAssets !== false}`);
         // Store for use in private methods (_copyAssetFiles)
         this._skipRepath = skipRepath;
 
@@ -778,8 +779,11 @@ export class BumpathCore {
             await this._combineLinkedBins(outputDir, processedFiles, progressCallback);
         }
 
-        // Scan and copy asset files
-        await this._copyAssetFiles(outputDir, processedFiles, progressCallback);
+        // Quartz's extra asset copy pass is optional. The bumpath page can
+        // disable it to match LTMAO behavior without affecting other callers.
+        if (options.copyAssets !== false) {
+            await this._copyAssetFiles(outputDir, processedFiles, progressCallback);
+        }
 
         return {
             success: true,
@@ -819,8 +823,8 @@ export class BumpathCore {
         const binsToScan = [];
 
         // Get all processed BIN files
-        for (const [unify, outputPath] of processedFiles.entries()) {
-            if (unify.toLowerCase().endsWith('.bin') && fs.existsSync(outputPath)) {
+        for (const [_, outputPath] of processedFiles.entries()) {
+            if (outputPath.toLowerCase().endsWith('.bin') && fs.existsSync(outputPath)) {
                 try {
                     const binObj = await new BIN().read(fs.readFileSync(outputPath), this.hashtables);
                     binsToScan.push(binObj);
@@ -831,8 +835,8 @@ export class BumpathCore {
         }
 
         // Also scan original source BINs (before repathing)
-        for (const [unify, fileInfo] of Object.entries(this.sourceFiles)) {
-            if (unify.toLowerCase().endsWith('.bin') && fs.existsSync(fileInfo.fullPath)) {
+        for (const fileInfo of Object.values(this.sourceFiles)) {
+            if (fileInfo.relPath.toLowerCase().endsWith('.bin') && fs.existsSync(fileInfo.fullPath)) {
                 try {
                     const binObj = await new BIN().read(fs.readFileSync(fileInfo.fullPath));
                     binsToScan.push(binObj);

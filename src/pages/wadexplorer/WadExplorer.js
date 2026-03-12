@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { FolderOpen, RefreshCw, Zap, ZapOff, Download, Settings, Upload, Database, File } from 'lucide-react';
+import { FolderOpen, RefreshCw, Zap, Download, Settings, Upload, Database, File } from 'lucide-react';
 import electronPrefs from '../../utils/core/electronPrefs.js';
 import WadExplorerTree from './components/WadExplorerTree.js';
 import { useWadExplorer } from './hooks/useWadExplorer.js';
@@ -193,6 +193,22 @@ function flattenFiles(nodes, out = []) {
     else if (node.type === 'dir') flattenFiles(node.children || [], out);
   }
   return out;
+}
+
+function getWadExportFolderName(wadPath) {
+  const base = String(wadPath || '').replace(/\\/g, '/').split('/').pop() || '';
+  return base.replace(/\.wad\.client$/i, '') || 'wad_export';
+}
+
+function buildExtractItemsFromTree(wadPath, treeNodes) {
+  const files = flattenFiles(treeNodes, []);
+  return files
+    .map((file) => ({
+      wadPath,
+      pathHash: String(file?.pathHash || '').trim(),
+      relPath: String(file?.path || '').replace(/\\/g, '/'),
+    }))
+    .filter((item) => item.wadPath && item.pathHash && item.relPath);
 }
 
 const MODEL_TEXTURE_EXTS = new Set(['dds', 'tex', 'png', 'jpg', 'jpeg', 'tga', 'bmp', 'webp']);
@@ -930,13 +946,25 @@ function WadLandingPanel({ onOpenWad, onIndexGame, isDragOver, isLoading }) {
   );
 }
 
+function RightPanelLoading({ indexingProgress, isHashPreloading }) {
+  const isIndexing = Boolean(indexingProgress?.active);
+  const message = isIndexing
+    ? 'Indexing WADs...'
+    : (isHashPreloading ? 'Loading hashes...' : 'Loading...');
+
+  return (
+    <div style={{ ...S.rightPanel, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+      <div style={S.spinner} />
+      <span style={{ fontSize: 12, color: 'var(--text-2)', opacity: 0.8 }}>{message}</span>
+    </div>
+  );
+}
+
 export default function WadExplorer() {
   const [gamePath, setGamePath] = useState('');
   const [hashPath, setHashPath] = useState('');
   const [indexHashReady, setIndexHashReady] = useState(false);
-  const [warmHashCache, setWarmHashCache] = useState(false);
   const [isPrimeLoading, setIsPrimeLoading] = useState(false);
-  const [isWarmLoading, setIsWarmLoading] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [replaceConfirmOpen, setReplaceConfirmOpen] = useState(false);
   const [noticeDialog, setNoticeDialog] = useState({ open: false, title: '', message: '', detail: '' });
@@ -946,11 +974,15 @@ export default function WadExplorer() {
   const [treeFontSize, setTreeFontSize] = useState(12);
   const [treePanelWidth, setTreePanelWidth] = useState(320);
   const [treeSymbolSize, setTreeSymbolSize] = useState(12);
+  const [isResizingPanels, setIsResizingPanels] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [wadContextMenu, setWadContextMenu] = useState({ open: false, x: 0, y: 0, row: null, target: null });
+  const bodyRef = useRef(null);
+  const resizeRef = useRef({ active: false, startX: 0, startWidth: 320 });
+  const panelWidthRef = useRef(320);
   const pendingExtractRef = useRef(null);
   const skipDevCleanupOnceRef = useRef(process.env.NODE_ENV === 'development');
-  const isHashPreloading = isPrimeLoading || isWarmLoading;
+  const isHashPreloading = isPrimeLoading;
 
   const {
     scanLoading, scanError, total, scan, loadSingleWad,
@@ -975,7 +1007,6 @@ export default function WadExplorer() {
     (async () => {
       await electronPrefs.initPromise;
       const savedGame = electronPrefs.obj.WadExplorerGamePath || '';
-      const savedWarm = electronPrefs.obj.WadExplorerWarmHashCache !== false;
       const savedRowHeight = Number(electronPrefs.obj.WadExplorerRowHeight || 24);
       const savedFontSize = Number(electronPrefs.obj.WadExplorerFontSize || 12);
       const savedPanelWidth = Number(electronPrefs.obj.WadExplorerPanelWidth || 320);
@@ -989,10 +1020,9 @@ export default function WadExplorer() {
       setGamePath(resolved);
       setHashPath(resolvedHash);
       setIndexHashReady(!resolvedHash);
-      setWarmHashCache(savedWarm);
       setTreeRowHeight(Number.isFinite(savedRowHeight) ? Math.max(20, Math.min(34, savedRowHeight)) : 24);
       setTreeFontSize(Number.isFinite(savedFontSize) ? Math.max(11, Math.min(15, savedFontSize)) : 12);
-      setTreePanelWidth(Number.isFinite(savedPanelWidth) ? Math.max(300, Math.min(540, savedPanelWidth)) : 320);
+      setTreePanelWidth(Number.isFinite(savedPanelWidth) ? Math.max(260, Math.min(900, savedPanelWidth)) : 320);
       setTreeSymbolSize(Number.isFinite(savedSymbolSize) ? Math.max(10, Math.min(18, savedSymbolSize)) : 12);
       setSettingsLoaded(true);
     })();
@@ -1003,34 +1033,6 @@ export default function WadExplorer() {
     if (!settingsLoaded) return;
     setIndexHashReady(true);
   }, [settingsLoaded]);
-
-  // ── Warm hash cache ───────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!settingsLoaded || !warmHashCache) return;
-    if (!hashPath) return;
-    let cancelled = false;
-    const onWarmProgress = () => {
-      if (cancelled) return;
-    };
-    setIsWarmLoading(true);
-    window.electronAPI?.hashtable?.setKeepAlive?.(true).catch(() => { });
-    window.electronAPI?.hashtable?.onWarmProgress?.(onWarmProgress);
-    window.electronAPI?.hashtable?.warmCache?.(hashPath)
-      ?.catch(e => console.warn('[WadExplorer] Hash warm failed:', e?.message))
-      ?.finally(() => {
-        window.electronAPI?.hashtable?.offWarmProgress?.(onWarmProgress);
-        if (!cancelled) setIsWarmLoading(false);
-      });
-    return () => {
-      cancelled = true;
-      window.electronAPI?.hashtable?.offWarmProgress?.(onWarmProgress);
-    };
-  }, [settingsLoaded, warmHashCache, hashPath]);
-
-  useEffect(() => {
-    if (!settingsLoaded) return;
-    if (!warmHashCache) window.electronAPI?.hashtable?.setKeepAlive?.(false).catch(() => { });
-  }, [settingsLoaded, warmHashCache]);
 
   useEffect(() => {
     return () => {
@@ -1075,13 +1077,6 @@ export default function WadExplorer() {
       await pickGamePath();
     }
   }, [gamePath, scan, pickGamePath, hashPath]);
-
-  const handleWarmToggle = useCallback(() => {
-    const next = !warmHashCache;
-    setWarmHashCache(next);
-    electronPrefs.obj.WadExplorerWarmHashCache = next;
-    electronPrefs.save();
-  }, [warmHashCache]);
 
   const handleOpenSingleWad = useCallback(async () => {
     const nodePath = window.require?.('path');
@@ -1207,17 +1202,49 @@ export default function WadExplorer() {
     electronPrefs.save();
   }, []);
 
-  const handleTreePanelWidthChange = useCallback((v) => {
-    setTreePanelWidth(v);
-    electronPrefs.obj.WadExplorerPanelWidth = v;
-    electronPrefs.save();
-  }, []);
-
   const handleTreeSymbolSizeChange = useCallback((v) => {
     setTreeSymbolSize(v);
     electronPrefs.obj.WadExplorerSymbolSize = v;
     electronPrefs.save();
   }, []);
+
+  const handleResizeStart = useCallback((event) => {
+    event.preventDefault();
+    resizeRef.current = { active: true, startX: event.clientX, startWidth: treePanelWidth };
+    panelWidthRef.current = treePanelWidth;
+    setIsResizingPanels(true);
+  }, [treePanelWidth]);
+
+  useEffect(() => {
+    if (!isResizingPanels) return undefined;
+
+    const onMouseMove = (event) => {
+      if (!resizeRef.current.active) return;
+      const dx = event.clientX - resizeRef.current.startX;
+      const bodyWidth = bodyRef.current?.clientWidth || window.innerWidth || 1280;
+      const minWidth = 260;
+      const maxWidth = Math.max(minWidth + 40, bodyWidth - 320);
+      const next = Math.max(minWidth, Math.min(maxWidth, resizeRef.current.startWidth + dx));
+      const rounded = Math.round(next);
+      panelWidthRef.current = rounded;
+      setTreePanelWidth(rounded);
+    };
+
+    const onMouseUp = () => {
+      if (!resizeRef.current.active) return;
+      resizeRef.current.active = false;
+      setIsResizingPanels(false);
+      electronPrefs.obj.WadExplorerPanelWidth = panelWidthRef.current;
+      electronPrefs.save();
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [isResizingPanels]);
 
   const runExtractRequest = useCallback(async ({
     items,
@@ -1269,14 +1296,36 @@ export default function WadExplorer() {
   const queueExtract = useCallback(async ({
     items,
     preservePaths,
+    outputSubdir = '',
     onSuccess = null,
     successTitle = 'Extract Selected Complete',
     failureTitle = 'Extract Selected Failed',
   }) => {
     if (extractBusy || !Array.isArray(items) || items.length === 0) return;
-    const outputDir = await openDirectoryDialog();
-    if (!outputDir) return;
-    const hasExisting = hasExtractConflicts(outputDir, items, preservePaths);
+    const outputBaseDir = await openDirectoryDialog();
+    if (!outputBaseDir) return;
+
+    const nodePath = window.require?.('path');
+    const fs = window.require?.('fs');
+    const safeSubdir = String(outputSubdir || '')
+      .trim()
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+      .replace(/[. ]+$/g, '');
+    const outputDir = safeSubdir && nodePath
+      ? nodePath.join(outputBaseDir, safeSubdir)
+      : outputBaseDir;
+
+    if (safeSubdir && fs) {
+      try { fs.mkdirSync(outputDir, { recursive: true }); } catch (_) { }
+    }
+
+    let hasExisting = hasExtractConflicts(outputDir, items, preservePaths);
+    if (!hasExisting && safeSubdir && fs) {
+      try {
+        const existing = fs.existsSync(outputDir) ? fs.readdirSync(outputDir) : [];
+        hasExisting = existing.length > 0;
+      } catch (_) { }
+    }
 
     if (hasExisting) {
       pendingExtractRef.current = { outputDir, items, preservePaths, onSuccess, successTitle, failureTitle };
@@ -1289,14 +1338,26 @@ export default function WadExplorer() {
 
   const handleExtractSelected = useCallback(async () => {
     if (extractSelectedCount === 0) return;
+    const wadPaths = Array.from(new Set(extractSelectedItems.map((item) => item?.wadPath).filter(Boolean)));
+    let outputSubdir = '';
+    if (wadPaths.length === 1) {
+      const onlyWadPath = wadPaths[0];
+      const wadTree = wadData.get(onlyWadPath)?.tree;
+      const totalInWad = Array.isArray(wadTree) ? buildExtractItemsFromTree(onlyWadPath, wadTree).length : 0;
+      const selectedInWad = extractSelectedItems.filter((item) => item?.wadPath === onlyWadPath).length;
+      if (totalInWad > 0 && selectedInWad === totalInWad) {
+        outputSubdir = getWadExportFolderName(onlyWadPath);
+      }
+    }
     await queueExtract({
       items: extractSelectedItems,
       preservePaths: true,
+      outputSubdir,
       onSuccess: clearExtractSelection,
       successTitle: 'Extract Selected Complete',
       failureTitle: 'Extract Selected Failed',
     });
-  }, [clearExtractSelection, extractSelectedCount, extractSelectedItems, queueExtract]);
+  }, [clearExtractSelection, extractSelectedCount, extractSelectedItems, queueExtract, wadData]);
 
   const runPendingExtract = useCallback(async (replaceExisting) => {
     const pending = pendingExtractRef.current;
@@ -1318,15 +1379,89 @@ export default function WadExplorer() {
     const row = wadContextMenu.row;
     closeWadContextMenu();
     if (!row || (row.type !== 'file' && row.type !== 'dir')) return;
-    const items = getExtractItemsForRow(row);
+    let items = getExtractItemsForRow(row);
     if (items.length === 0) return;
+    let effectivePreservePaths = preservePaths;
+
+    // Folder right-click extract should keep the selected folder itself as root.
+    // Native extractor only preserves folder structure when preservePaths=true.
+    if (row.type === 'dir' && row.node?.path) {
+      effectivePreservePaths = true;
+      const selectedDirPath = String(row.node.path).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+      const parentDir = selectedDirPath.includes('/')
+        ? selectedDirPath.slice(0, selectedDirPath.lastIndexOf('/'))
+        : '';
+
+      items = items.map((item) => {
+        const relPath = String(item?.relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+        let nextRelPath = relPath;
+        if (parentDir) {
+          if (relPath.toLowerCase().startsWith(`${parentDir.toLowerCase()}/`)) {
+            nextRelPath = relPath.slice(parentDir.length + 1);
+          }
+        } else if (selectedDirPath) {
+          // Selected top-level folder: keep from selected folder downward.
+          if (relPath.toLowerCase().startsWith(`${selectedDirPath.toLowerCase()}/`)) {
+            nextRelPath = relPath.slice(selectedDirPath.length + 1);
+            nextRelPath = `${selectedDirPath.split('/').pop()}/${nextRelPath}`;
+          }
+        }
+
+        return {
+          ...item,
+          relPath: nextRelPath,
+        };
+      });
+    }
+
     await queueExtract({
       items,
-      preservePaths,
+      preservePaths: effectivePreservePaths,
       successTitle: 'Extract Complete',
       failureTitle: 'Extract Failed',
     });
   }, [wadContextMenu, closeWadContextMenu, getExtractItemsForRow, queueExtract]);
+
+  const handleContextExtractWholeWad = useCallback(async () => {
+    const row = wadContextMenu.row;
+    closeWadContextMenu();
+    if (!row || row.type !== 'wad' || !row.entry?.path) return;
+
+    let items = getExtractItemsForRow(row);
+    if (items.length === 0) {
+      try {
+        const mounted = await window.electronAPI?.wad?.mountTree?.({ wadPath: row.entry.path, hashPath });
+        if (mounted?.error) throw new Error(mounted.error);
+        items = buildExtractItemsFromTree(row.entry.path, mounted?.tree || []);
+      } catch (e) {
+        setNoticeDialog({
+          open: true,
+          title: 'Extract Whole WAD Failed',
+          message: e?.message || 'Failed to mount WAD tree',
+          detail: '',
+        });
+        return;
+      }
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      setNoticeDialog({
+        open: true,
+        title: 'Extract Whole WAD Failed',
+        message: 'No extractable files found for this WAD.',
+        detail: '',
+      });
+      return;
+    }
+
+    await queueExtract({
+      items,
+      preservePaths: true,
+      outputSubdir: getWadExportFolderName(row.entry.path),
+      successTitle: 'Extract Whole WAD Complete',
+      failureTitle: 'Extract Whole WAD Failed',
+    });
+  }, [wadContextMenu, closeWadContextMenu, getExtractItemsForRow, hashPath, queueExtract]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -1363,17 +1498,6 @@ export default function WadExplorer() {
         <div style={{ width: 1, height: 18, background: 'rgba(255,255,255,0.08)', margin: '0 6px', flexShrink: 0 }} />
 
         <button
-          style={{ ...S.iconBtn, gap: 5, color: warmHashCache ? 'var(--accent)' : 'var(--text-2)', borderColor: warmHashCache ? 'var(--accent)' : 'rgba(255,255,255,0.10)' }}
-          onClick={handleWarmToggle}
-          title={warmHashCache ? 'Hash cache: ON (click to disable)' : 'Hash cache: OFF (click to enable)'}
-        >
-          {warmHashCache ? <Zap size={13} /> : <ZapOff size={13} />}
-          <span style={{ fontSize: 11 }}>
-            {isHashPreloading ? 'Loading hashes...' : (warmHashCache ? 'Hashes loaded' : 'Hashes')}
-          </span>
-        </button>
-
-        <button
           style={{
             ...S.iconBtn,
             gap: 5,
@@ -1403,10 +1527,10 @@ export default function WadExplorer() {
       </div>
 
       {/* Body */}
-      <div style={{ ...S.body }}>
+      <div ref={bodyRef} style={{ ...S.body }}>
         {/* Left: unified WAD + file tree */}
         {scanError ? (
-          <div style={{ ...S.leftPanel, alignItems: 'center', justifyContent: 'center', padding: '0 16px' }}>
+          <div style={{ ...S.leftPanel, width: treePanelWidth, alignItems: 'center', justifyContent: 'center', padding: '0 16px' }}>
             <span style={{ color: '#ef4444', fontSize: 12, textAlign: 'center' }}>{scanError}</span>
           </div>
         ) : (
@@ -1432,8 +1556,25 @@ export default function WadExplorer() {
           />
         )}
 
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          title="Drag to resize panels"
+          onMouseDown={handleResizeStart}
+          style={{
+            width: 7,
+            cursor: 'col-resize',
+            flexShrink: 0,
+            borderLeft: '1px solid rgba(255,255,255,0.04)',
+            borderRight: '1px solid rgba(255,255,255,0.04)',
+            background: isResizingPanels ? 'rgba(120, 80, 255, 0.24)' : 'rgba(255,255,255,0.02)',
+          }}
+        />
+
         {/* Right: landing or file detail */}
-        {total === 0 && !scanLoading && !scanError ? (
+        {(scanLoading || indexingActive || isHashPreloading) ? (
+          <RightPanelLoading indexingProgress={indexingProgress} isHashPreloading={isHashPreloading} />
+        ) : total === 0 && !scanError ? (
           <WadLandingPanel
             onOpenWad={handleOpenSingleWad}
             onIndexGame={handleIndexGame}
@@ -1531,11 +1672,9 @@ export default function WadExplorer() {
         onClose={() => setSettingsOpen(false)}
         rowHeight={treeRowHeight}
         fontSize={treeFontSize}
-        panelWidth={treePanelWidth}
         symbolSize={treeSymbolSize}
         onRowHeightChange={handleTreeRowHeightChange}
         onFontSizeChange={handleTreeFontSizeChange}
-        onPanelWidthChange={handleTreePanelWidthChange}
         onSymbolSizeChange={handleTreeSymbolSizeChange}
       />
       {/* Wad Context Menu */}
@@ -1566,6 +1705,15 @@ export default function WadExplorer() {
             </div>
             {wadContextMenu.target?.type === 'wad' ? (
               <>
+                <button
+                  style={{ ...S.contextMenuItem, color: 'var(--accent)' }}
+                  onClick={handleContextExtractWholeWad}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <Download size={14} />
+                  <span>Extract Whole WAD</span>
+                </button>
                 <button
                   style={{ ...S.contextMenuItem, color: 'var(--accent)' }}
                   onClick={handleExtractHashes}

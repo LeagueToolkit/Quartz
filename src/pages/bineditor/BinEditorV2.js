@@ -22,6 +22,9 @@ import {
     scaleTranslationOverride,
     scaleParticleLifetime,
     scaleLifetime,
+    scalePass,
+    setPass,
+    addPass,
     searchEmitters,
     createEmitterKey,
     updateParticleLifetime,
@@ -36,6 +39,7 @@ import {
     updateScale0,
     updateBindWeight,
     updateTranslationOverride,
+    updatePass,
     updateMiscRenderFlags,
     markSystemModified,
     updateRate as updateRateSerializer
@@ -117,15 +121,31 @@ export default function BinEditorV2() {
     const [toX, setToX] = useState(0);
     const [toY, setToY] = useState(0);
     const [toZ, setToZ] = useState(0);
+    const [passValue, setPassValue] = useState(0);
+    const [passDeltaValue, setPassDeltaValue] = useState(0);
 
     // Toolbar state
-    const [toolbarTab, setToolbarTab] = useState('scale'); // 'scale', 'bindWeight', 'misc', 'to'
+    const [toolbarTab, setToolbarTab] = useState('scale'); // 'scale', 'bindWeight', 'misc', 'pass', 'to'
 
     // ============ REFS ============
     const fileInputRef = useRef(null);
     const activeConversions = useRef(new Set());
     const conversionTimers = useRef(new Map());
     const MAX_UNDO_HISTORY = 20; // Limit undo history size
+
+    const resolveVfxFilePaths = useCallback((inputPath) => {
+        if (!inputPath || !window.require) return null;
+        const path = window.require('path');
+        const isPy = String(inputPath).toLowerCase().endsWith('.py');
+        const dir = path.dirname(inputPath);
+        const baseName = path.basename(inputPath, isPy ? '.py' : '.bin');
+        return {
+            isPy,
+            pyPath: isPy ? inputPath : path.join(dir, `${baseName}.py`),
+            binPath: isPy ? path.join(dir, `${baseName}.bin`) : inputPath,
+            baseName,
+        };
+    }, []);
 
     // ============ COMPUTED VALUES ============
     const stats = useMemo(() => {
@@ -179,36 +199,36 @@ export default function BinEditorV2() {
         }
 
         try {
-            setBinPath(filePath);
-
-
-            setBinPath(filePath);
+            const resolvedPaths = resolveVfxFilePaths(filePath);
+            if (!resolvedPaths) {
+                throw new Error('Invalid file path');
+            }
+            const { isPy, pyPath, binPath: resolvedBinPath } = resolvedPaths;
+            setBinPath(resolvedBinPath);
 
             try {
-                await electronPrefs.set('BinEditorLastBinPath', filePath);
-                await electronPrefs.set('SharedLastBinPath', filePath);
+                await electronPrefs.set('BinEditorLastBinPath', resolvedBinPath);
+                await electronPrefs.set('SharedLastBinPath', resolvedBinPath);
             } catch (e) { console.warn('Failed to save BinEditor path', e); }
 
             setIsLoading(true);
             setLoadingText('Processing .bin file...');
 
-            const path = window.require('path');
             const fs = window.require('fs');
             const forceRefreshFromBin = options?.forceRefreshFromBin === true;
-
-            const binDir = path.dirname(filePath);
-            const binName = path.basename(filePath, '.bin');
-            const pyPath = path.join(binDir, `${binName}.py`);
             // Check if .py already exists
-            if (forceRefreshFromBin && filePath.toLowerCase().endsWith('.bin')) {
+            if (forceRefreshFromBin && !isPy) {
                 setLoadingText('Refreshing from .bin...');
-                await ToPy(filePath);
+                await ToPy(resolvedBinPath);
             } else if (!fs.existsSync(pyPath)) {
+                if (isPy) {
+                    throw new Error('Selected .py file does not exist');
+                }
                 setLoadingText('Converting .bin to .py...');
-                await checkAndPromptCombine(filePath);
+                await checkAndPromptCombine(resolvedBinPath);
 
                 try {
-                    await ToPy(filePath);
+                    await ToPy(resolvedBinPath);
                 } catch (err) {
                     throw new Error(`RitoBin failed: ${err.message}`);
                 }
@@ -256,7 +276,7 @@ export default function BinEditorV2() {
             setIsLoading(false);
             setLoadingText('');
         }
-    }, []);
+    }, [resolveVfxFilePaths]);
 
     const loadBinFile = useCallback(async () => {
         let binFilePath = binPath || undefined;
@@ -460,21 +480,19 @@ export default function BinEditorV2() {
         try {
             if (!binFilePath || !window.require) return '';
             const fs = window.require('fs');
-            const path = window.require('path');
-            if (binFilePath.toLowerCase().endsWith('.bin')) {
-                await ToPy(binFilePath);
+            const resolvedPaths = resolveVfxFilePaths(binFilePath);
+            if (!resolvedPaths) return '';
+            if (!resolvedPaths.isPy) {
+                await ToPy(resolvedPaths.binPath);
             }
-            const binDir = path.dirname(binFilePath);
-            const binName = path.basename(binFilePath, '.bin');
-            const pyPath = path.join(binDir, `${binName}.py`);
-            if (fs.existsSync(pyPath)) {
-                return fs.readFileSync(pyPath, 'utf8');
+            if (fs.existsSync(resolvedPaths.pyPath)) {
+                return fs.readFileSync(resolvedPaths.pyPath, 'utf8');
             }
             return '';
         } catch {
             return '';
         }
-    }, []);
+    }, [resolveVfxFilePaths]);
 
     useEffect(() => {
         const openFromHandoff = async (handoff) => {
@@ -894,6 +912,60 @@ export default function BinEditorV2() {
         }
     }, [data, selectedEmitters, markChanged, saveToUndoHistory]);
 
+    const handleScalePass = useCallback(() => {
+        if (!data || selectedEmitters.size === 0) {
+            setStatusMessage('Select emitters first');
+            return;
+        }
+
+        saveToUndoHistory();
+        const result = scalePass(data, selectedEmitters, scaleMultiplier);
+
+        if (result.modified > 0) {
+            setData({ ...data });
+            markChanged();
+            setStatusMessage(`Scaled pass for ${result.modified} emitter(s) by ${scaleMultiplier}x`);
+        } else {
+            setStatusMessage('No emitters with pass in selection');
+        }
+    }, [data, selectedEmitters, scaleMultiplier, markChanged, saveToUndoHistory]);
+
+    const handleSetPass = useCallback(() => {
+        if (!data || selectedEmitters.size === 0) {
+            setStatusMessage('Select emitters first');
+            return;
+        }
+
+        saveToUndoHistory();
+        const result = setPass(data, selectedEmitters, passValue);
+
+        if (result.modified > 0) {
+            setData({ ...data });
+            markChanged();
+            setStatusMessage(`Set pass to ${passValue} for ${result.modified} emitter(s)`);
+        } else {
+            setStatusMessage('No emitters with pass in selection');
+        }
+    }, [data, selectedEmitters, passValue, markChanged, saveToUndoHistory]);
+
+    const handleAddPass = useCallback(() => {
+        if (!data || selectedEmitters.size === 0) {
+            setStatusMessage('Select emitters first');
+            return;
+        }
+
+        saveToUndoHistory();
+        const result = addPass(data, selectedEmitters, passDeltaValue);
+
+        if (result.modified > 0) {
+            setData({ ...data });
+            markChanged();
+            setStatusMessage(`Added ${passDeltaValue} to pass for ${result.modified} emitter(s)`);
+        } else {
+            setStatusMessage('No emitters with pass in selection');
+        }
+    }, [data, selectedEmitters, passDeltaValue, markChanged, saveToUndoHistory]);
+
     // Single emitter property changes
     const handlePropertyChange = useCallback((property, axis, value) => {
         if (!selectedEmitter || !data) return;
@@ -932,6 +1004,8 @@ export default function BinEditorV2() {
             success = updateParticleLinger(selectedEmitter, numValue);
         } else if (property === 'rate') {
             success = updateRate(selectedEmitter, numValue);
+        } else if (property === 'pass') {
+            success = updatePass(selectedEmitter, numValue);
         } else if (property === 'miscRenderFlags') {
             success = updateMiscRenderFlags(selectedEmitter, numValue);
         }
@@ -1406,6 +1480,9 @@ export default function BinEditorV2() {
                         {emitter.rate?.constantValue != null && (
                             <span style={{ color: '#06b6d4' }} title="Emission Rate">R: {emitter.rate.constantValue}</span>
                         )}
+                        {emitter.pass != null && (
+                            <span style={{ color: '#facc15' }} title="Render Pass">P: {emitter.pass}</span>
+                        )}
                         {emitter.miscRenderFlags != null && (
                             <span style={{ color: '#ef4444' }} title="Misc Render Flags">MR: {emitter.miscRenderFlags}</span>
                         )}
@@ -1739,6 +1816,29 @@ export default function BinEditorV2() {
                     </div>
                 )}
 
+                {selectedEmitter.pass != null && (
+                    <div style={{ marginBottom: '16px' }}>
+                        <div style={{ fontWeight: 600, color: '#facc15', marginBottom: '8px' }}>Render Pass</div>
+                        <input
+                            type="text"
+                            key={`${selectedEmitter.name}-pass`}
+                            defaultValue={selectedEmitter.pass}
+                            onBlur={(e) => handlePropertyChange('pass', null, e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                            style={{
+                                width: '100%',
+                                padding: '6px 8px',
+                                background: 'rgba(0,0,0,0.3)',
+                                border: '1px solid rgba(250, 204, 21, 0.3)',
+                                borderRadius: '4px',
+                                color: '#facc15',
+                                fontFamily: 'JetBrains Mono, monospace',
+                                fontSize: '13px'
+                            }}
+                        />
+                    </div>
+                )}
+
                 {selectedEmitter.miscRenderFlags != null && (
                     <div style={{ marginBottom: '16px' }}>
                         <div style={{ fontWeight: 600, color: '#ef4444', marginBottom: '8px' }}>Misc Render Flags</div>
@@ -1766,6 +1866,7 @@ export default function BinEditorV2() {
                     !selectedEmitter.bindWeight && !selectedEmitter.translationOverride &&
                     !selectedEmitter.particleLifetime && !selectedEmitter.lifetime &&
                     !selectedEmitter.particleLinger && !selectedEmitter.rate &&
+                    selectedEmitter.pass == null &&
                     selectedEmitter.miscRenderFlags == null && (
                         <div style={{ color: '#666', fontStyle: 'italic' }}>
                             No editable properties found
@@ -1868,6 +1969,7 @@ export default function BinEditorV2() {
                             <option value="scale">Scale Controls</option>
                             <option value="bindWeight">Bind Weight</option>
                             <option value="misc">Misc Flags</option>
+                            <option value="pass">Pass</option>
                             <option value="to">Translation</option>
                         </select>
                     </div>
@@ -1875,6 +1977,52 @@ export default function BinEditorV2() {
                     <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)', marginRight: '16px' }} />
 
                     {/* Scale Controls */}
+                    {false && toolbarTab === 'scale' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input
+                                type="text"
+                                defaultValue={passValue}
+                                onBlur={(e) => {
+                                    const val = parseLocaleFloat(e.target.value);
+                                    setPassValue(isNaN(val) ? 0 : val);
+                                }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                placeholder="Pass"
+                                title="Pass value (i16, can be negative)"
+                                style={{
+                                    width: '60px',
+                                    padding: '4px 8px',
+                                    background: 'rgba(0,0,0,0.3)',
+                                    border: '1px solid rgba(250, 204, 21, 0.3)',
+                                    borderRadius: '4px',
+                                    color: '#facc15',
+                                    fontSize: '12px',
+                                    textAlign: 'center'
+                                }}
+                            />
+                            <button onClick={applyScaleBirthScale} style={smallButtonStyle('#6cb6ff')} title="Scale Birth Scale">
+                                BS x{scaleMultiplier}
+                            </button>
+                            <button onClick={applyScaleScale0} style={smallButtonStyle('#7ee787')} title="Scale Scale">
+                                S x{scaleMultiplier}
+                            </button>
+                            <button onClick={handleScaleParticleLifetime} style={smallButtonStyle('#f97316')} title="Scale Particle Lifetime">
+                                PL x{scaleMultiplier}
+                            </button>
+                            <button onClick={handleScaleLifetime} style={smallButtonStyle('#22c55e')} title="Scale Emitter Lifetime">
+                                LT x{scaleMultiplier}
+                            </button>
+                        </div>
+                    )}
+
+                    {false && toolbarTab === 'scale' && (
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginLeft: '12px' }}>
+                            <button onClick={handleScalePass} style={smallButtonStyle('#facc15')} title="Scale pass">
+                                P x{scaleMultiplier}
+                            </button>
+                        </div>
+                    )}
+
                     {toolbarTab === 'scale' && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ fontSize: '12px', color: '#888' }}>Multiplier:</span>
@@ -1897,16 +2045,19 @@ export default function BinEditorV2() {
                                 }}
                             />
                             <button onClick={applyScaleBirthScale} style={smallButtonStyle('#6cb6ff')} title="Scale Birth Scale">
-                                BS ×{scaleMultiplier}
+                                BS x{scaleMultiplier}
                             </button>
                             <button onClick={applyScaleScale0} style={smallButtonStyle('#7ee787')} title="Scale Scale">
-                                S ×{scaleMultiplier}
+                                S x{scaleMultiplier}
                             </button>
                             <button onClick={handleScaleParticleLifetime} style={smallButtonStyle('#f97316')} title="Scale Particle Lifetime">
-                                PL ×{scaleMultiplier}
+                                PL x{scaleMultiplier}
                             </button>
                             <button onClick={handleScaleLifetime} style={smallButtonStyle('#22c55e')} title="Scale Emitter Lifetime">
-                                LT ×{scaleMultiplier}
+                                LT x{scaleMultiplier}
+                            </button>
+                            <button onClick={handleScalePass} style={smallButtonStyle('#facc15')} title="Scale pass">
+                                P x{scaleMultiplier}
                             </button>
                         </div>
                     )}
@@ -1937,6 +2088,88 @@ export default function BinEditorV2() {
                             </button>
                             <button onClick={handleSetMiscRenderFlagsOne} style={smallButtonStyle('#ef4444')} title="Set Misc Render Flags to 1">
                                 MR=1
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Pass */}
+                    {false && toolbarTab === 'pass' && (
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '12px', color: '#888' }}>Multiplier:</span>
+                            <input
+                                type="text"
+                                defaultValue={scaleMultiplier}
+                                onBlur={(e) => {
+                                    const val = parseLocaleFloat(e.target.value);
+                                    setScaleMultiplier(isNaN(val) || val <= 0 ? 1 : val);
+                                }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                style={{
+                                    width: '60px',
+                                    padding: '4px 8px',
+                                    background: 'rgba(0,0,0,0.3)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '4px',
+                                    color: '#e8e6e3',
+                                    fontSize: '12px'
+                                }}
+                            />
+                            <button onClick={handleScalePass} style={smallButtonStyle('#facc15')} title="Scale pass for selected emitters">
+                                P x{scaleMultiplier}
+                            </button>
+                        </div>
+                    )}
+
+                    {toolbarTab === 'pass' && (
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            <input
+                                type="text"
+                                defaultValue={passValue}
+                                onBlur={(e) => {
+                                    const val = parseLocaleFloat(e.target.value);
+                                    setPassValue(isNaN(val) ? 0 : val);
+                                }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                placeholder="Pass"
+                                title="Pass value (i16, can be negative)"
+                                style={{
+                                    width: '60px',
+                                    padding: '4px 8px',
+                                    background: 'rgba(0,0,0,0.3)',
+                                    border: '1px solid rgba(250, 204, 21, 0.3)',
+                                    borderRadius: '4px',
+                                    color: '#facc15',
+                                    fontSize: '12px',
+                                    textAlign: 'center'
+                                }}
+                            />
+                            <button onClick={handleSetPass} style={smallButtonStyle('#facc15')} title="Set pass for selected emitters">
+                                P={passValue}
+                            </button>
+                            <span style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
+                            <input
+                                type="text"
+                                defaultValue={passDeltaValue}
+                                onBlur={(e) => {
+                                    const val = parseLocaleFloat(e.target.value);
+                                    setPassDeltaValue(isNaN(val) ? 0 : val);
+                                }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                placeholder="+/-"
+                                title="Amount to add to current pass value"
+                                style={{
+                                    width: '60px',
+                                    padding: '4px 8px',
+                                    background: 'rgba(0,0,0,0.3)',
+                                    border: '1px solid rgba(250, 204, 21, 0.3)',
+                                    borderRadius: '4px',
+                                    color: '#facc15',
+                                    fontSize: '12px',
+                                    textAlign: 'center'
+                                }}
+                            />
+                            <button onClick={handleAddPass} style={smallButtonStyle('#facc15')} title="Add amount to pass for selected emitters">
+                                P+={passDeltaValue}
                             </button>
                         </div>
                     )}
@@ -2177,3 +2410,4 @@ function hexToRgb(hex) {
     }
     return '255, 255, 255';
 }
+

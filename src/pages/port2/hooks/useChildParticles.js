@@ -138,15 +138,17 @@ export default function useChildParticles(
                     targetPyContent,
                     selectedSystemForChild.key,
                     emitterName,
-                    selectedChildSystem,
-                    parseFloat(childParticleRate),
-                    parseFloat(childParticleLifetime),
-                    parseFloat(childParticleBindWeight),
-                    childParticleIsSingle,
-                    parseFloat(childParticleTimeBeforeFirstEmission),
-                    parseFloat(childParticleTranslationOverrideX),
-                    parseFloat(childParticleTranslationOverrideY),
-                    parseFloat(childParticleTranslationOverrideZ)
+                    {
+                        effectKey: selectedChildSystem,
+                        rate: parseFloat(childParticleRate),
+                        lifetime: parseFloat(childParticleLifetime),
+                        bindWeight: parseFloat(childParticleBindWeight),
+                        isSingleParticle: childParticleIsSingle,
+                        timeBeforeFirstEmission: parseFloat(childParticleTimeBeforeFirstEmission),
+                        translationOverrideX: parseFloat(childParticleTranslationOverrideX),
+                        translationOverrideY: parseFloat(childParticleTranslationOverrideY),
+                        translationOverrideZ: parseFloat(childParticleTranslationOverrideZ)
+                    }
                 );
             } else {
                 updated = addChildParticleEffect(

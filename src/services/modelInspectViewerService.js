@@ -23,6 +23,72 @@ const toArray3 = (v, fallback = [0, 0, 0]) => [v?.x ?? fallback[0], v?.y ?? fall
 const toArray2 = (v, fallback = [0, 0]) => [v?.x ?? fallback[0], v?.y ?? fallback[1]];
 
 const toQuat = (v, fallback = [0, 0, 0, 1]) => [v?.x ?? fallback[0], v?.y ?? fallback[1], v?.z ?? fallback[2], v?.w ?? fallback[3]];
+const lerp3 = (a, b, t) => [
+  a[0] + (b[0] - a[0]) * t,
+  a[1] + (b[1] - a[1]) * t,
+  a[2] + (b[2] - a[2]) * t,
+];
+
+const sampleVecKeys = (keys, frame) => {
+  if (!keys.length) return null;
+  if (frame <= keys[0].time) return keys[0].value;
+  if (frame >= keys[keys.length - 1].time) return keys[keys.length - 1].value;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const left = keys[i];
+    const right = keys[i + 1];
+    if (frame < left.time || frame > right.time) continue;
+    const dt = right.time - left.time;
+    if (dt <= 1e-6) return left.value;
+    const t = (frame - left.time) / dt;
+    return lerp3(left.value, right.value, t);
+  }
+  return keys[keys.length - 1].value;
+};
+
+const sampleQuatKeys = (keys, frame) => {
+  if (!keys.length) return null;
+  if (frame <= keys[0].time) return keys[0].value;
+  if (frame >= keys[keys.length - 1].time) return keys[keys.length - 1].value;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const left = keys[i];
+    const right = keys[i + 1];
+    if (frame < left.time || frame > right.time) continue;
+    const dt = right.time - left.time;
+    if (dt <= 1e-6) return left.value;
+    const t = (frame - left.time) / dt;
+    const q0 = new THREE.Quaternion(left.value[0], left.value[1], left.value[2], left.value[3]);
+    const q1 = new THREE.Quaternion(right.value[0], right.value[1], right.value[2], right.value[3]);
+    const q = new THREE.Quaternion().slerpQuaternions(q0, q1, t).normalize();
+    return [q.x, q.y, q.z, q.w];
+  }
+  return keys[keys.length - 1].value;
+};
+
+const buildDenseTrackFrames = (poses, durationFrames) => {
+  const translationKeys = [];
+  const rotationKeys = [];
+  const scaleKeys = [];
+  for (const [timeKey, pose] of poses.entries()) {
+    const time = Number(timeKey);
+    if (!Number.isFinite(time)) continue;
+    if (pose?.translate) translationKeys.push({ time, value: toArray3(pose.translate) });
+    if (pose?.rotate) rotationKeys.push({ time, value: toQuat(pose.rotate) });
+    if (pose?.scale) scaleKeys.push({ time, value: toArray3(pose.scale, [1, 1, 1]) });
+  }
+  translationKeys.sort((a, b) => a.time - b.time);
+  rotationKeys.sort((a, b) => a.time - b.time);
+  scaleKeys.sort((a, b) => a.time - b.time);
+
+  const frames = {};
+  for (let frame = 0; frame < durationFrames; frame++) {
+    frames[frame] = {
+      translate: sampleVecKeys(translationKeys, frame),
+      rotate: sampleQuatKeys(rotationKeys, frame),
+      scale: sampleVecKeys(scaleKeys, frame),
+    };
+  }
+  return frames;
+};
 const normalizeMaterialName = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const cleanMaterialName = (name) => String(name || '').split('.')[0];
 
@@ -93,7 +159,7 @@ const getAnmCtor = () => {
   try {
     // Narrow import to ANM format runtime only.
     const mod = window.require('ts-ritofile/dist/formats/anm.js');
-    return mod?.ANM || null;
+    return mod || null;
   } catch {
     return null;
   }
@@ -280,6 +346,7 @@ const isModelInspectDebug = () => {
     return false;
   }
 };
+
 
 const buildTextureResolver = ({ filesDir, textureFiles = [], sknRelativePath = '' }) => {
   const path = getNodePath();
@@ -473,7 +540,8 @@ export const loadAnmClip = async ({ filesDir, anmRelativePath }) => {
     throw new Error('Missing filesDir or anmRelativePath');
   }
 
-  const ANM = getAnmCtor();
+  const anmModule = getAnmCtor();
+  const ANM = anmModule?.ANM;
   if (!ANM) {
     throw new Error('ANM runtime is unavailable');
   }
@@ -481,21 +549,18 @@ export const loadAnmClip = async ({ filesDir, anmRelativePath }) => {
   const anmPath = resolveInRoot(filesDir, anmRelativePath);
   const anm = new ANM();
   anm.read(anmPath);
+  // Compressed ANM stores sparse keys per channel. Expand to per-frame poses before playback.
+  if (anm.signature === 'r3d2canm' && typeof anmModule?.ANMHelper?.evaluateAllFrames === 'function') {
+    anm.duration = Math.max(1, Math.floor(Number(anm.duration || 1)));
+    anmModule.ANMHelper.evaluateAllFrames(anm);
+  }
 
   const durationFrames = Math.max(1, Math.floor(Number(anm.duration || 1)));
   const fps = Number(anm.fps || 30);
 
   // Convert map-based pose tracks to plain arrays for fast lookup.
   const tracks = (anm.tracks || []).map((track) => {
-    const frames = {};
-    for (const [frameKey, pose] of track.poses.entries()) {
-      const frame = Math.max(0, Math.floor(Number(frameKey)));
-      frames[frame] = {
-        translate: toArray3(pose?.translate),
-        rotate: toQuat(pose?.rotate),
-        scale: toArray3(pose?.scale, [1, 1, 1]),
-      };
-    }
+    const frames = buildDenseTrackFrames(track.poses || new Map(), durationFrames);
     return {
       jointHash: Number(track.jointHash || 0) >>> 0,
       frames,

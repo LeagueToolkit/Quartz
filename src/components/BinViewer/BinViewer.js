@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { List, useListRef } from 'react-window';
+import './BinViewer.css';
+
+const BIN_MONO_FONT = 'Consolas, "Cascadia Mono", "Cascadia Code", "Courier New", monospace';
 
 // ─── Tokenizer ────────────────────────────────────────────────────────────────
 
@@ -52,6 +55,35 @@ function tokenizeLine(line) {
     }
   }
   return tokens;
+}
+
+function buildFoldStarts(lines) {
+  const stack = [];
+  const regions = [];
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = String(lines[lineIndex] || '');
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '{') {
+        stack.push(lineIndex);
+      } else if (ch === '}') {
+        const start = stack.pop();
+        if (Number.isInteger(start) && lineIndex > start) {
+          regions.push({ start, end: lineIndex });
+        }
+      }
+    }
+  }
+
+  const starts = new Map();
+  for (const region of regions) {
+    const existing = starts.get(region.start);
+    if (!existing || region.end > existing.end) {
+      starts.set(region.start, region);
+    }
+  }
+  return starts;
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────
@@ -111,15 +143,70 @@ function applyHighlights(tokens, lineMatches, currentMatch) {
 const LINE_H = 20;
 const GUTTER_W = 56;
 
-const LineRow = memo(({ index, style, tokenizedLines, lineMatchesByLine, currentMatch }) => {
-  const rawTokens = tokenizedLines[index];
-  const lineMatches = lineMatchesByLine[index];
-  const curOnLine = currentMatch?.lineIndex === index ? currentMatch : null;
+const LineRow = memo(({
+  index,
+  style,
+  visibleRows,
+  tokenizedLines,
+  lineMatchesByLine,
+  currentMatch,
+  foldStarts,
+  collapsedStarts,
+  onToggleFold,
+  selectedRange,
+  onLineMouseDown,
+  onLineMouseEnter,
+}) => {
+  const row = visibleRows[index];
+  if (!row) return null;
+  const lineIndex = row.lineIndex;
+  const rawTokens = tokenizedLines[lineIndex] || [];
+  const lineMatches = lineMatchesByLine[lineIndex];
+  const curOnLine = currentMatch?.lineIndex === lineIndex ? currentMatch : null;
   const segments = lineMatches ? applyHighlights(rawTokens, lineMatches, curOnLine) : rawTokens;
+  const hasSelection = selectedRange && Number.isInteger(selectedRange.start) && Number.isInteger(selectedRange.end);
+  const selFrom = hasSelection ? Math.min(selectedRange.start, selectedRange.end) : -1;
+  const selTo = hasSelection ? Math.max(selectedRange.start, selectedRange.end) : -1;
+  const isSelected = hasSelection && lineIndex >= selFrom && lineIndex <= selTo;
+  const foldRegion = foldStarts.get(lineIndex);
+  const canFold = Boolean(foldRegion);
+  const isCollapsed = canFold && collapsedStarts.has(lineIndex);
+  const hiddenCount = isCollapsed ? Math.max(0, foldRegion.end - foldRegion.start) : 0;
 
   return (
-    <div style={{ ...style, display: 'flex', alignItems: 'center' }}>
-      <span style={ROW_S.gutter}>{index + 1}</span>
+    <div
+      style={{
+        ...style,
+        display: 'flex',
+        alignItems: 'center',
+        background: isSelected ? 'rgba(90, 125, 180, 0.28)' : undefined,
+      }}
+      onMouseDown={(e) => onLineMouseDown(lineIndex, e)}
+      onMouseEnter={(e) => onLineMouseEnter(lineIndex, e)}
+    >
+      <span style={ROW_S.gutter}>
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (canFold) onToggleFold(lineIndex, { expandDescendants: e.shiftKey });
+          }}
+          style={{
+            ...ROW_S.foldBtn,
+            visibility: canFold ? 'visible' : 'hidden',
+          }}
+          title={canFold ? (isCollapsed ? 'Expand block' : 'Collapse block') : ''}
+          aria-label={canFold ? (isCollapsed ? 'Expand block' : 'Collapse block') : 'No fold block'}
+        >
+          <span style={isCollapsed ? ROW_S.foldGlyphCollapsed : ROW_S.foldGlyphExpanded} />
+        </button>
+        <span style={ROW_S.lineNumber}>{lineIndex + 1}</span>
+      </span>
       <span style={ROW_S.code}>
         {segments.map((seg, i) => (
           <span
@@ -133,6 +220,13 @@ const LineRow = memo(({ index, style, tokenizedLines, lineMatchesByLine, current
             {seg.text}
           </span>
         ))}
+        {isCollapsed && (
+          <span style={ROW_S.foldSummary}>
+            {'  ... '}
+            {hiddenCount}
+            {' lines'}
+          </span>
+        )}
       </span>
     </div>
   );
@@ -147,15 +241,61 @@ const ROW_S = {
     paddingRight: 14,
     color: '#4a4a4a',
     fontSize: 11,
-    fontFamily: 'monospace',
+    fontFamily: BIN_MONO_FONT,
     userSelect: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 0,
+  },
+  foldBtn: {
+    width: 14,
+    minWidth: 14,
+    height: 14,
+    lineHeight: '12px',
+    padding: 0,
+    border: 'none',
+    background: 'transparent',
+    color: '#888',
+    cursor: 'pointer',
+    fontSize: 10,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+    flexShrink: 0,
+  },
+  lineNumber: {
+    marginLeft: 'auto',
+    minWidth: 24,
+    textAlign: 'right',
+  },
+  foldGlyphCollapsed: {
+    width: 0,
+    height: 0,
+    borderTop: '4px solid transparent',
+    borderBottom: '4px solid transparent',
+    borderLeft: '6px solid #8e97a6',
+    transform: 'translateX(1px)',
+  },
+  foldGlyphExpanded: {
+    width: 0,
+    height: 0,
+    borderLeft: '4px solid transparent',
+    borderRight: '4px solid transparent',
+    borderTop: '6px solid #8e97a6',
+    transform: 'translateY(1px)',
   },
   code: {
     flex: 1,
-    fontFamily: 'monospace',
+    fontFamily: BIN_MONO_FONT,
     fontSize: 12,
     whiteSpace: 'pre',
     overflow: 'hidden',
+  },
+  foldSummary: {
+    color: '#6f7681',
+    fontStyle: 'italic',
   },
 };
 
@@ -190,7 +330,7 @@ function SearchBar({ query, onChange, isRegex, onRegex, matchCase, onMatchCase,
         >Aa</button>
         <button
           onClick={onRegex}
-          style={{ ...SRCH_S.chip, opacity: isRegex ? 1 : 0.4, fontFamily: 'monospace' }}
+          style={{ ...SRCH_S.chip, opacity: isRegex ? 1 : 0.4, fontFamily: BIN_MONO_FONT }}
           title="Use regex"
         >.*</button>
       </div>
@@ -232,7 +372,7 @@ const SRCH_S = {
     padding: '3px 8px',
     fontSize: 12,
     color: '#c0c0c0',
-    fontFamily: 'monospace',
+    fontFamily: BIN_MONO_FONT,
   },
   chip: {
     background: 'transparent',
@@ -271,6 +411,12 @@ export default function BinViewer({ content, loading, error, fileName }) {
   const [isRegex, setIsRegex] = useState(false);
   const [matchCase, setMatchCase] = useState(false);
   const [currentMatchIdx, setIdx] = useState(0);
+  const [selectedRange, setSelectedRange] = useState(null);
+  const [collapsedStarts, setCollapsedStarts] = useState(() => new Set());
+  const [viewerActive, setViewerActive] = useState(false);
+  const viewerActiveRef = useRef(false);
+  const dragAnchorRef = useRef(null);
+  const draggingRef = useRef(false);
   const listRef = useListRef();
   const containerRef = useRef(null);
   const [height, setHeight] = useState(400);
@@ -286,6 +432,31 @@ export default function BinViewer({ content, loading, error, fileName }) {
   // Lines + tokenization (memoized)
   const lines = useMemo(() => (content ?? '').split('\n'), [content]);
   const tokenizedLines = useMemo(() => lines.map(tokenizeLine), [lines]);
+  const foldStarts = useMemo(() => buildFoldStarts(lines), [lines]);
+  const foldableStarts = useMemo(() => Array.from(foldStarts.keys()).sort((a, b) => a - b), [foldStarts]);
+  const visibleRows = useMemo(() => {
+    if (!lines.length) return [{ lineIndex: 0 }];
+    const rows = [];
+    for (let lineIndex = 0; lineIndex < lines.length;) {
+      rows.push({ lineIndex });
+      if (collapsedStarts.has(lineIndex)) {
+        const region = foldStarts.get(lineIndex);
+        if (region) {
+          lineIndex = region.end + 1;
+          continue;
+        }
+      }
+      lineIndex += 1;
+    }
+    return rows;
+  }, [lines, foldStarts, collapsedStarts]);
+  const lineToVisibleIndex = useMemo(() => {
+    const map = new Map();
+    for (let i = 0; i < visibleRows.length; i++) {
+      map.set(visibleRows[i].lineIndex, i);
+    }
+    return map;
+  }, [visibleRows]);
 
   // Search matches
   const [regexError, setRegexError] = useState(false);
@@ -310,15 +481,37 @@ export default function BinViewer({ content, loading, error, fileName }) {
 
   const currentMatch = matches[currentMatchIdx] ?? null;
 
+  const ensureLineVisible = useCallback((lineIndex) => {
+    if (lineToVisibleIndex.has(lineIndex)) return false;
+    let collapsedAncestor = null;
+    for (const start of collapsedStarts) {
+      const region = foldStarts.get(start);
+      if (!region) continue;
+      if (lineIndex > region.start && lineIndex <= region.end) {
+        if (collapsedAncestor == null || start > collapsedAncestor) collapsedAncestor = start;
+      }
+    }
+    if (collapsedAncestor == null) return false;
+    setCollapsedStarts((prev) => {
+      const next = new Set(prev);
+      next.delete(collapsedAncestor);
+      return next;
+    });
+    return true;
+  }, [lineToVisibleIndex, collapsedStarts, foldStarts]);
+
   // Scroll to match
   useEffect(() => {
     if (!currentMatch) return;
+    if (ensureLineVisible(currentMatch.lineIndex)) return;
+    const visibleIndex = lineToVisibleIndex.get(currentMatch.lineIndex);
+    if (!Number.isInteger(visibleIndex)) return;
     listRef.current?.scrollToRow({
-      index: currentMatch.lineIndex,
+      index: visibleIndex,
       align: 'center',
       behavior: 'auto',
     });
-  }, [currentMatch, listRef]);
+  }, [currentMatch, listRef, ensureLineVisible, lineToVisibleIndex]);
 
   // Reset index when query/options change
   useEffect(() => setIdx(0), [query, isRegex, matchCase]);
@@ -331,17 +524,168 @@ export default function BinViewer({ content, loading, error, fileName }) {
     setIdx(i => Math.min(i, matches.length - 1));
   }, [matches.length]);
 
-  // Ctrl+F
   useEffect(() => {
-    const handler = e => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault();
-        setSearchOpen(true);
+    setSelectedRange(null);
+    setCollapsedStarts(new Set());
+  }, [content, fileName]);
+
+  const toggleFold = useCallback((lineIndex, options = {}) => {
+    const expandDescendants = Boolean(options?.expandDescendants);
+    setCollapsedStarts((prev) => {
+      const next = new Set(prev);
+      const isCollapsed = next.has(lineIndex);
+      if (isCollapsed) {
+        next.delete(lineIndex);
+        if (expandDescendants) {
+          const region = foldStarts.get(lineIndex);
+          if (region) {
+            for (const start of Array.from(next)) {
+              if (start > region.start && start <= region.end) next.delete(start);
+            }
+          }
+        }
+      } else {
+        next.add(lineIndex);
+      }
+      return next;
+    });
+  }, [foldStarts]);
+
+  const collapseAll = useCallback(() => {
+    setCollapsedStarts(new Set(foldableStarts));
+  }, [foldableStarts]);
+
+  const expandAll = useCallback(() => {
+    setCollapsedStarts(new Set());
+  }, []);
+
+  const handleMouseDown = useCallback(() => {
+    setViewerActive(true);
+    viewerActiveRef.current = true;
+    containerRef.current?.focus?.({ preventScroll: true });
+  }, []);
+
+  const handleCopy = useCallback((e) => {
+    if (!selectedRange) return;
+    const from = Math.min(selectedRange.start, selectedRange.end);
+    const to = Math.max(selectedRange.start, selectedRange.end);
+    const text = lines.slice(from, to + 1).join('\n');
+    e.preventDefault();
+    e.clipboardData?.setData('text/plain', text);
+  }, [selectedRange, lines]);
+
+  const copySelectedText = useCallback(async () => {
+    let text = '';
+    if (selectedRange) {
+      const from = Math.min(selectedRange.start, selectedRange.end);
+      const to = Math.max(selectedRange.start, selectedRange.end);
+      text = lines.slice(from, to + 1).join('\n');
+    } else {
+      text = String(content ?? '');
+    }
+    if (!text) return;
+    if (navigator?.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return;
+      } catch {
+        // fallback below
+      }
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    textarea.style.pointerEvents = 'none';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try { document.execCommand('copy'); } catch {}
+    document.body.removeChild(textarea);
+  }, [selectedRange, lines, content]);
+
+  const onLineMouseDown = useCallback((lineIndex, e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    setViewerActive(true);
+    viewerActiveRef.current = true;
+    containerRef.current?.focus?.({ preventScroll: true });
+    dragAnchorRef.current = lineIndex;
+    draggingRef.current = true;
+    setSelectedRange({ start: lineIndex, end: lineIndex });
+  }, []);
+
+  const onLineMouseEnter = useCallback((lineIndex) => {
+    if (!draggingRef.current) return;
+    const anchor = dragAnchorRef.current ?? lineIndex;
+    setSelectedRange({ start: anchor, end: lineIndex });
+  }, []);
+
+  const handleKeyDown = useCallback((e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const key = String(e.key || '').toLowerCase();
+
+    if (key === 'f') {
+      e.preventDefault();
+      setSearchOpen(true);
+      return;
+    }
+    if (key === 'a') {
+      e.preventDefault();
+      setSelectedRange({ start: 0, end: Math.max(0, lines.length - 1) });
+      return;
+    }
+    if (key === 'c' && selectedRange) {
+      e.preventDefault();
+      copySelectedText();
+    }
+  }, [selectedRange, copySelectedText, lines.length]);
+
+  useEffect(() => {
+    const onWindowMouseDown = (event) => {
+      if (containerRef.current?.contains(event.target)) return;
+      setViewerActive(false);
+      viewerActiveRef.current = false;
+      draggingRef.current = false;
+      dragAnchorRef.current = null;
+    };
+    const onWindowMouseUp = () => {
+      draggingRef.current = false;
+      dragAnchorRef.current = null;
+    };
+
+    const onWindowKeyDownCapture = (event) => {
+      if (!viewerActiveRef.current) return;
+      if (!(event.ctrlKey || event.metaKey)) return;
+
+      const target = event.target;
+      const tag = String(target?.tagName || '').toLowerCase();
+      const isEditable = target?.isContentEditable || tag === 'input' || tag === 'textarea';
+      if (isEditable) return;
+
+      const key = String(event.key || '').toLowerCase();
+      if (key === 'a') {
+        event.preventDefault();
+        event.stopPropagation();
+        setSelectedRange({ start: 0, end: Math.max(0, lines.length - 1) });
+        return;
+      }
+      if (key === 'c' && selectedRange) {
+        event.preventDefault();
+        event.stopPropagation();
+        copySelectedText();
       }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
+
+    window.addEventListener('mousedown', onWindowMouseDown, true);
+    window.addEventListener('mouseup', onWindowMouseUp, true);
+    window.addEventListener('keydown', onWindowKeyDownCapture, true);
+    return () => {
+      window.removeEventListener('mousedown', onWindowMouseDown, true);
+      window.removeEventListener('mouseup', onWindowMouseUp, true);
+      window.removeEventListener('keydown', onWindowKeyDownCapture, true);
+    };
+  }, [selectedRange, copySelectedText, lines.length]);
 
   const prev = useCallback(() => {
     if (matches.length === 0) return;
@@ -354,8 +698,30 @@ export default function BinViewer({ content, loading, error, fileName }) {
   const closeSearch = useCallback(() => { setSearchOpen(false); setQuery(''); }, []);
 
   const rowProps = useMemo(
-    () => ({ tokenizedLines, lineMatchesByLine, currentMatch }),
-    [tokenizedLines, lineMatchesByLine, currentMatch],
+    () => ({
+      visibleRows,
+      tokenizedLines,
+      lineMatchesByLine,
+      currentMatch,
+      foldStarts,
+      collapsedStarts,
+      onToggleFold: toggleFold,
+      selectedRange,
+      onLineMouseDown,
+      onLineMouseEnter,
+    }),
+    [
+      visibleRows,
+      tokenizedLines,
+      lineMatchesByLine,
+      currentMatch,
+      foldStarts,
+      collapsedStarts,
+      toggleFold,
+      selectedRange,
+      onLineMouseDown,
+      onLineMouseEnter,
+    ],
   );
 
   // ── States ──
@@ -383,8 +749,28 @@ export default function BinViewer({ content, loading, error, fileName }) {
   }
 
   return (
-    <div style={S.root}>
+    <div className="bin-viewer-root" style={S.root}>
       {fileName && <div style={S.header}>{fileName}</div>}
+      <div style={S.foldBar}>
+        <button
+          type="button"
+          style={S.foldBtn}
+          onClick={collapseAll}
+          disabled={foldableStarts.length === 0}
+          title="Collapse all foldable blocks"
+        >
+          Collapse All
+        </button>
+        <button
+          type="button"
+          style={S.foldBtn}
+          onClick={expandAll}
+          disabled={collapsedStarts.size === 0}
+          title="Expand all collapsed blocks"
+        >
+          Expand All
+        </button>
+      </div>
 
       {searchOpen && (
         <SearchBar
@@ -397,12 +783,27 @@ export default function BinViewer({ content, loading, error, fileName }) {
         />
       )}
 
-      <div ref={containerRef} style={S.listWrap}>
+      <div
+        ref={containerRef}
+        style={S.listWrap}
+        tabIndex={0}
+        onMouseDown={handleMouseDown}
+        onCopy={handleCopy}
+        onKeyDown={handleKeyDown}
+      >
+        {selectedRange && (
+          <div style={S.selectionBadge}>
+            {`${Math.abs(selectedRange.end - selectedRange.start) + 1} lines selected`}
+          </div>
+        )}
+        {viewerActive && !selectedRange && (
+          <div style={S.selectionHint}>Drag lines to select, then Ctrl/Cmd+C</div>
+        )}
         <List
           listRef={listRef}
           width="100%"
           height={height}
-          rowCount={lines.length}
+          rowCount={visibleRows.length}
           rowHeight={LINE_H}
           rowComponent={LineRow}
           rowProps={rowProps}
@@ -433,10 +834,55 @@ const S = {
     textOverflow: 'ellipsis',
     flexShrink: 0,
   },
+  foldBar: {
+    display: 'flex',
+    gap: 6,
+    padding: '4px 10px',
+    borderBottom: '1px solid rgba(255,255,255,0.06)',
+    background: 'rgba(255,255,255,0.015)',
+    flexShrink: 0,
+  },
+  foldBtn: {
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: 4,
+    color: '#c0c0c0',
+    fontSize: 11,
+    padding: '2px 8px',
+    cursor: 'pointer',
+  },
   listWrap: {
     flex: 1,
     minHeight: 0,
     overflow: 'hidden',
+    position: 'relative',
+    userSelect: 'none',
+  },
+  selectionBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 10,
+    zIndex: 5,
+    pointerEvents: 'none',
+    fontSize: 11,
+    color: '#e8c84a',
+    background: 'rgba(0,0,0,0.45)',
+    border: '1px solid rgba(232,200,74,0.35)',
+    borderRadius: 4,
+    padding: '2px 6px',
+  },
+  selectionHint: {
+    position: 'absolute',
+    top: 8,
+    right: 10,
+    zIndex: 5,
+    pointerEvents: 'none',
+    fontSize: 11,
+    color: '#8ea8c8',
+    background: 'rgba(0,0,0,0.35)',
+    border: '1px solid rgba(142,168,200,0.3)',
+    borderRadius: 4,
+    padding: '2px 6px',
   },
   muted: { color: '#555', fontSize: 12 },
   spinner: {

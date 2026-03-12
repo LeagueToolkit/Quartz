@@ -133,26 +133,43 @@ impl Tex {
         // size of mip
         let (w, h) = mip_dims(level);
 
-        let data = match matches!(self.format, Format::Bgra8) {
-            true => TexSurfaceData::Bgra8Slice(
+        let data = match self.format {
+            Format::Bgra8 => TexSurfaceData::Bgra8Slice(
                 // TODO: test me (this is likely wrong)
                 &self.data[off..off + (w * h * self.format.bytes_per_block())],
             ),
-            false => {
-                let mut data = vec![0; w * h];
+            Format::Bc1 | Format::Bc3 => {
+                let image_format = match self.format {
+                    Format::Bc1 => image_dds::ImageFormat::BC1RgbaUnorm,
+                    Format::Bc3 => image_dds::ImageFormat::BC3RgbaUnorm,
+                    // Safety: outer match guarantees only Bc1/Bc3 reach here
+                    _ => unsafe { unreachable_unchecked() },
+                };
+                let surface = image_dds::Surface {
+                    width: w as u32,
+                    height: h as u32,
+                    depth: 1,
+                    layers: 1,
+                    mipmaps: 1,
+                    image_format,
+                    data: &self.data[off..off + mip_bytes((w, h))],
+                };
+                let rgba8 = surface.decode_layers_mipmaps_rgba8(0..1, 0..1)?;
+                TexSurfaceData::Rgba8Owned(rgba8.data)
+            }
+            _ => {
+                let mut data = vec![0u32; w * h];
                 let i = &self.data[off..off + mip_bytes((w, h))];
                 let o = &mut data;
                 match self.format {
                     Format::Etc1 => {
                         texture2ddecoder::decode_etc1(i, w, h, o).map_err(DecodeErr::Etc1)
                     }
-                    Format::Bc1 => texture2ddecoder::decode_bc1(i, w, h, o).map_err(DecodeErr::Bc1),
-                    Format::Bc3 => texture2ddecoder::decode_bc3(i, w, h, o).map_err(DecodeErr::Bc3),
                     Format::Etc2Eac => {
                         texture2ddecoder::decode_etc2_rgba8(i, w, h, o).map_err(DecodeErr::Etc2Eac)
                     }
-                    // Safety: the outer match ensures we can't reach this arm
-                    Format::Bgra8 => unsafe { unreachable_unchecked() },
+                    // Safety: Bgra8/Bc1/Bc3 are handled above
+                    Format::Bgra8 | Format::Bc1 | Format::Bc3 => unsafe { unreachable_unchecked() },
                 }?;
                 TexSurfaceData::Bgra8Owned(data)
             }

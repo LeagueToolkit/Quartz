@@ -55,36 +55,6 @@ function Checkbox({ checked, onChange, label }) {
   );
 }
 
-function StyledSelect({ value, onChange, children, style }) {
-  return (
-    <select
-      value={value}
-      onChange={onChange}
-      style={{
-        width: '100%', boxSizing: 'border-box',
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        color: 'var(--text)', borderRadius: 6,
-        padding: '7px 10px', fontSize: '0.74rem',
-        fontFamily: 'inherit', outline: 'none',
-        transition: 'all 0.2s ease',
-        cursor: 'pointer',
-        ...style,
-      }}
-      onFocus={(e) => {
-        e.target.style.borderColor = 'var(--accent)';
-        e.target.style.boxShadow = '0 0 12px color-mix(in srgb, var(--accent), transparent 75%)';
-      }}
-      onBlur={(e) => {
-        e.target.style.borderColor = 'rgba(255,255,255,0.1)';
-        e.target.style.boxShadow = 'none';
-      }}
-    >
-      {children}
-    </select>
-  );
-}
-
 function CustomDropdown({ value, options, onChange, placeholder = '(None)', style }) {
   const [open, setOpen] = useState(false);
   const selectedLabel = options.find((o) => o.value === value)?.label || placeholder;
@@ -779,17 +749,18 @@ export default function ModelInspectModal({
                 <GhostButton onClick={() => { setIsPlaying(false); setCurrentTime(0); }}>
                   Reset
                 </GhostButton>
-                <StyledSelect
+                <CustomDropdown
                   value={String(playRate)}
-                  onChange={(e) => setPlayRate(Number(e.target.value))}
-                  style={{ width: 72, flex: 'none' }}
-                >
-                  <option value="0.25">0.25x</option>
-                  <option value="0.5">0.5x</option>
-                  <option value="1">1x</option>
-                  <option value="1.5">1.5x</option>
-                  <option value="2">2x</option>
-                </StyledSelect>
+                  onChange={(value) => setPlayRate(Number(value))}
+                  options={[
+                    { value: '0.25', label: '0.25x' },
+                    { value: '0.5', label: '0.5x' },
+                    { value: '1', label: '1x' },
+                    { value: '1.5', label: '1.5x' },
+                    { value: '2', label: '2x' },
+                  ]}
+                  style={{ width: 92, flex: 'none' }}
+                />
               </div>
 
               <input

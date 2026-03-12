@@ -976,14 +976,38 @@ class GitHubAPI {
       }
       
       const { owner, repo } = credentials;
+      let resolvedCollectionFile = collectionFile;
+
+      // GitHub paths are case-sensitive. Resolve to the exact existing filename when possible.
+      try {
+        const collectionDirEntries = await this.request(`/repos/${owner}/${repo}/contents/collection/vfx collection`);
+        const matchedEntry = Array.isArray(collectionDirEntries)
+          ? collectionDirEntries.find(
+            (entry) =>
+              entry?.type === 'file' &&
+              typeof entry.name === 'string' &&
+              entry.name.toLowerCase() === String(collectionFile || '').toLowerCase()
+          )
+          : null;
+        if (matchedEntry?.name) {
+          resolvedCollectionFile = matchedEntry.name;
+        }
+      } catch (error) {
+        console.warn(`Could not resolve collection filename casing for ${collectionFile}:`, error.message);
+      }
       
              // Step 1: Get the current collection file (or create a new one if it doesn't exist)
        let currentContent;
        try {
-         currentContent = await this.getRawFile(`collection/vfx collection/${collectionFile}`);
+         currentContent = await this.getRawFile(`collection/vfx collection/${resolvedCollectionFile}`);
        } catch (error) {
-                 if (error.message.includes('File not found')) {
-          console.log(`Creating new collection file: ${collectionFile}`);
+         const isNotFound =
+           error?.status === 404 ||
+           String(error?.message || '').includes('File not found') ||
+           String(error?.message || '').includes('Not found') ||
+           String(error?.message || '').includes('404');
+         if (isNotFound) {
+          console.log(`Creating new collection file: ${resolvedCollectionFile}`);
           // Use the buildonit.py template structure
           currentContent = `entries: map[hash,embed] = {
     #addvfxsystemswithrightbrackets
@@ -1003,7 +1027,7 @@ class GitHubAPI {
       const updatedContent = this.addVFXSystemToCollection(currentContent, systemData, metadata);
       
              // Step 3: Upload the updated collection file
-       await this.updateFile(`collection/vfx collection/${collectionFile}`, updatedContent, 
+       await this.updateFile(`collection/vfx collection/${resolvedCollectionFile}`, updatedContent, 
          `Add VFX system: ${metadata.name || systemData.name}`);
       
              // Step 4: Upload assets to the collection/assets/vfxhub folder
@@ -1024,7 +1048,7 @@ class GitHubAPI {
       
       // Step 5: Update index.json if it exists
       try {
-        await this.updateIndexJson(metadata, collectionFile, uploadedAssets);
+        await this.updateIndexJson(metadata, resolvedCollectionFile, uploadedAssets);
       } catch (error) {
         console.warn('Failed to update index.json:', error);
       }

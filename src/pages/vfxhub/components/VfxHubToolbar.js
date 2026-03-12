@@ -81,7 +81,7 @@ export default function VfxHubToolbar({
         }}
         title="Upload VFX system to VFX Hub"
       >
-        Upload to VFX Hub
+        Local Hub
       </Button>
     </div>
   );

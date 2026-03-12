@@ -222,7 +222,7 @@ export async function copyAsset(assetPath, outputDir, prefix, sourceDirs, source
     
     // Copy file
     fs.copyFileSync(sourcePath, outputPath);
-    
+
     return outputPath;
 }
 
