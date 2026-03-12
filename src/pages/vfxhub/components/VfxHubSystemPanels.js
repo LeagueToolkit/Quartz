@@ -266,7 +266,7 @@ function VfxHubSystemPanels({
               height: '100%',
               textAlign: 'center',
             }}>
-              Drop bin file here or use Open Target Bin
+              No target bin loaded
             </div>
           )}
         </div>

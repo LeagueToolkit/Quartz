@@ -11,6 +11,7 @@ import {
 } from '../../../components/modals/textureHoverPreview.js';
 
 const path = window.require ? window.require('path') : null;
+const os = window.require ? window.require('os') : null;
 
 export default function useVfxHubEmitterPreview({
   targetPath,
@@ -18,6 +19,79 @@ export default function useVfxHubEmitterPreview({
   conversionTimers,
   textureCloseTimerRef,
 }) {
+  const resolveProjectRootFromBin = useCallback((binFilePath) => {
+    if (!binFilePath) return '';
+    const normalized = String(binFilePath).replace(/\\/g, '/');
+    const dataMatch = normalized.match(/\/data\//i);
+    if (!dataMatch) return '';
+    return normalized.substring(0, dataMatch.index);
+  }, []);
+
+  const resolveHubAssetPath = useCallback((rawAssetPath, binPathHint = '') => {
+    if (!rawAssetPath || !window.require || !path) return rawAssetPath;
+    const fsNode = window.require('fs');
+    const pathNode = window.require('path');
+    if (!fsNode || !pathNode) return rawAssetPath;
+
+    if (pathNode.isAbsolute(rawAssetPath) && fsNode.existsSync(rawAssetPath)) {
+      return rawAssetPath;
+    }
+
+    const normalizedRel = String(rawAssetPath).replace(/\\/g, '/').replace(/^\/+/, '');
+    const relNoAssets = normalizedRel.replace(/^assets\//i, '');
+    const fileName = pathNode.basename(normalizedRel);
+    const targetRoot = resolveProjectRootFromBin(targetPath);
+    const hintRoot = resolveProjectRootFromBin(binPathHint);
+    const localHubRoot = os && pathNode
+      ? pathNode.join(os.homedir(), 'Documents', 'Quartz', 'VFXHub')
+      : '';
+    const localHubAssetsRoot = localHubRoot
+      ? pathNode.join(localHubRoot, 'collection', 'assets')
+      : '';
+    const localHubVfxhubAssets = localHubAssetsRoot
+      ? pathNode.join(localHubAssetsRoot, 'vfxhub')
+      : '';
+    const candidates = [];
+
+    const pushRootCandidates = (root) => {
+      if (!root) return;
+      candidates.push(pathNode.join(root, normalizedRel));
+      candidates.push(pathNode.join(root, relNoAssets));
+      candidates.push(pathNode.join(root, 'assets', relNoAssets));
+      candidates.push(pathNode.join(root, 'ASSETS', relNoAssets));
+      candidates.push(pathNode.join(root, 'assets', 'vfxhub', fileName));
+      candidates.push(pathNode.join(root, 'ASSETS', 'vfxhub', fileName));
+    };
+
+    pushRootCandidates(targetRoot);
+    if (hintRoot && hintRoot !== targetRoot) {
+      pushRootCandidates(hintRoot);
+    }
+
+    if (localHubRoot) {
+      candidates.push(pathNode.join(localHubRoot, normalizedRel));
+      if (localHubAssetsRoot) {
+        candidates.push(pathNode.join(localHubAssetsRoot, relNoAssets));
+      }
+      if (localHubVfxhubAssets) {
+        candidates.push(pathNode.join(localHubVfxhubAssets, fileName));
+      }
+    }
+
+    for (const candidate of candidates) {
+      try {
+        if (candidate && fsNode.existsSync(candidate)) return candidate;
+      } catch {
+        // ignore
+      }
+    }
+
+    const smartPath =
+      findActualTexturePath(rawAssetPath, targetPath, binPathHint, targetRoot || undefined) ||
+      findActualTexturePath(rawAssetPath, targetPath, donorPath, targetRoot || undefined);
+    return smartPath || rawAssetPath;
+  }, [donorPath, resolveProjectRootFromBin, targetPath]);
+
   const showTexturePreview = useCallback(async (firstTexturePath, firstDataUrl, buttonElement, emitterData = null, allTextures = [], allMeshes = []) => {
     const textureData = (allTextures && allTextures.length > 0)
       ? allTextures
@@ -65,11 +139,11 @@ export default function useVfxHubEmitterPreview({
         const textureData = [];
         const meshData = [];
         const binPath = isTarget ? targetPath : donorPath;
-        const projectRoot = binPath && binPath.includes(':') ? path.dirname(binPath) : '';
+        const projectRoot = resolveProjectRootFromBin(binPath) || (targetPath && path ? path.dirname(targetPath) : '');
 
         for (const tex of textures) {
           try {
-            let resolvedDiskPath = tex.path;
+            let resolvedDiskPath = resolveHubAssetPath(tex.path, binPath);
             if (window.require && binPath && binPath.includes(':')) {
               const fsNode = window.require('fs');
               const pathNode = window.require('path');
@@ -82,12 +156,17 @@ export default function useVfxHubEmitterPreview({
                 if (fsNode.existsSync(candidate)) resolvedDiskPath = candidate;
               }
               if (resolvedDiskPath === tex.path) {
-                const smartPath = findActualTexturePath(tex.path, binPath);
+                const smartPath = findActualTexturePath(tex.path, targetPath, donorPath, projectRoot);
                 if (smartPath) resolvedDiskPath = smartPath;
               }
             }
 
-            const result = await convertTextureToPNG(tex.path, targetPath, donorPath, projectRoot);
+            const result = await convertTextureToPNG(
+              resolvedDiskPath || tex.path,
+              targetPath,
+              donorPath,
+              projectRoot
+            );
             let dataUrl = null;
             if (result) {
               if (result.startsWith('data:')) {
@@ -109,9 +188,9 @@ export default function useVfxHubEmitterPreview({
 
         for (const mesh of meshes) {
           try {
-            let resolvedDiskPath = mesh.path;
-            let resolvedSkeletonPath = mesh.skeletonPath || '';
-            let resolvedAnimationPath = mesh.animationPath || '';
+            let resolvedDiskPath = resolveHubAssetPath(mesh.path, binPath);
+            let resolvedSkeletonPath = mesh.skeletonPath ? resolveHubAssetPath(mesh.skeletonPath, binPath) : '';
+            let resolvedAnimationPath = mesh.animationPath ? resolveHubAssetPath(mesh.animationPath, binPath) : '';
             if (window.require && binPath && binPath.includes(':')) {
               const fsNode = window.require('fs');
               const pathNode = window.require('path');
@@ -124,7 +203,7 @@ export default function useVfxHubEmitterPreview({
                 if (fsNode.existsSync(candidate)) resolvedDiskPath = candidate;
               }
               if (resolvedDiskPath === mesh.path) {
-                const smartPath = findActualTexturePath(mesh.path, binPath);
+                const smartPath = findActualTexturePath(mesh.path, targetPath, donorPath, projectRoot);
                 if (smartPath) resolvedDiskPath = smartPath;
               }
 
@@ -136,7 +215,7 @@ export default function useVfxHubEmitterPreview({
                   if (fsNode.existsSync(candidate)) resolvedSkeletonPath = candidate;
                 }
                 if (resolvedSkeletonPath === mesh.skeletonPath) {
-                  const smartPath = findActualTexturePath(mesh.skeletonPath, binPath);
+                  const smartPath = findActualTexturePath(mesh.skeletonPath, targetPath, donorPath, projectRoot);
                   if (smartPath) resolvedSkeletonPath = smartPath;
                 }
               }
@@ -149,7 +228,7 @@ export default function useVfxHubEmitterPreview({
                   if (fsNode.existsSync(candidate)) resolvedAnimationPath = candidate;
                 }
                 if (resolvedAnimationPath === mesh.animationPath) {
-                  const smartPath = findActualTexturePath(mesh.animationPath, binPath);
+                  const smartPath = findActualTexturePath(mesh.animationPath, targetPath, donorPath, projectRoot);
                   if (smartPath) resolvedAnimationPath = smartPath;
                 }
               }
@@ -191,7 +270,7 @@ export default function useVfxHubEmitterPreview({
     }, 200);
 
     conversionTimers.current.set('hover', timer);
-  }, [conversionTimers, donorPath, showTexturePreview, targetPath, textureCloseTimerRef]);
+  }, [conversionTimers, donorPath, resolveHubAssetPath, resolveProjectRootFromBin, showTexturePreview, targetPath, textureCloseTimerRef]);
 
   const handleEmitterMouseLeave = useCallback((e) => {
     e.stopPropagation();
@@ -219,7 +298,7 @@ export default function useVfxHubEmitterPreview({
 
     const texturePath = fullEmitterData.texturePath;
     const binPath = isTarget ? targetPath : donorPath;
-    let resolvedPath = texturePath;
+    let resolvedPath = resolveHubAssetPath(texturePath, binPath);
 
     if (binPath && binPath !== 'This will show target bin' && binPath !== 'This will show donor bin') {
       const fsNode = window.require?.('fs');
@@ -235,12 +314,12 @@ export default function useVfxHubEmitterPreview({
         }
       }
       if (resolvedPath === texturePath) {
-        const smartPath = findActualTexturePath(texturePath, binPath);
+        const smartPath = findActualTexturePath(texturePath, targetPath, donorPath);
         if (smartPath) resolvedPath = smartPath;
       }
     }
     openAssetPreview(resolvedPath);
-  }, [conversionTimers, donorPath, targetPath, textureCloseTimerRef]);
+  }, [conversionTimers, donorPath, resolveHubAssetPath, targetPath, textureCloseTimerRef]);
 
   const handleEmitterContextMenu = useCallback(async (e, emitter, system, isTarget) => {
     e.preventDefault();
@@ -250,7 +329,7 @@ export default function useVfxHubEmitterPreview({
       if (!fullEmitterData || !fullEmitterData.texturePath) return;
       const texturePath = fullEmitterData.texturePath;
       const binPath = isTarget ? targetPath : donorPath;
-      let resolvedPath = texturePath;
+      let resolvedPath = resolveHubAssetPath(texturePath, binPath);
 
       if (binPath && binPath !== 'This will show target bin' && binPath !== 'This will show donor bin') {
         const fsNode = window.require?.('fs');
@@ -266,7 +345,7 @@ export default function useVfxHubEmitterPreview({
           }
         }
         if (resolvedPath === texturePath) {
-          const smartPath = findActualTexturePath(texturePath, binPath);
+          const smartPath = findActualTexturePath(texturePath, targetPath, donorPath);
           if (smartPath) resolvedPath = smartPath;
         }
       }
@@ -278,7 +357,7 @@ export default function useVfxHubEmitterPreview({
     } catch (err) {
       console.error('Error opening external app:', err);
     }
-  }, [donorPath, targetPath]);
+  }, [donorPath, resolveHubAssetPath, targetPath]);
 
   return {
     showTexturePreview,

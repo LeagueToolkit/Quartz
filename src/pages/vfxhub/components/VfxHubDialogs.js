@@ -39,7 +39,7 @@ function VfxHubDialogs({
   hasSkinCharacterData,
   showBackupViewer,
   setShowBackupViewer,
-  fileSaved,
+  hasChangesToSave,
   performBackupRestore,
   setStatusMessage,
   targetPath,
@@ -169,23 +169,25 @@ function VfxHubDialogs({
 
       <BackupViewer
         open={showBackupViewer}
-        onClose={(restored) => {
+        onClose={async (restored, restoreMeta = null) => {
           setShowBackupViewer(false);
-          if (restored) {
-            if (!fileSaved) {
-              if (window.confirm('You have unsaved changes. Restoring a backup will overwrite them. Continue?')) {
-                performBackupRestore();
-              } else {
-                setStatusMessage('Backup restore cancelled - unsaved changes preserved');
-                return;
-              }
-            } else {
-              performBackupRestore();
+          if (!restored) return;
+
+          if (hasChangesToSave()) {
+            if (!window.confirm('You have unsaved changes. Restoring a backup will overwrite them. Continue?')) {
+              setStatusMessage('Backup restore cancelled - unsaved changes preserved');
+              return;
             }
           }
+
+          await performBackupRestore(restoreMeta);
         }}
-        filePath={targetPath !== 'This will show target bin' ? targetPath.replace('.bin', '.py') : null}
-        component="VFXHub"
+        filePath={
+          targetPath !== 'This will show target bin'
+            ? (/\.bin$/i.test(targetPath) ? targetPath.replace(/\.bin$/i, '.py') : targetPath)
+            : null
+        }
+        component="port"
       />
 
       <UnsavedChangesModal

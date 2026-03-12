@@ -3,10 +3,9 @@ import { Button } from '@mui/material';
 
 export default function VfxHubFooter({
   statusMessage,
+  showTrimTargetNames,
   trimTargetNames,
-  trimDonorNames,
   setTrimTargetNames,
-  setTrimDonorNames,
   handleUndo,
   undoHistory,
   handleSave,
@@ -30,16 +29,14 @@ export default function VfxHubFooter({
         }}
       >
         <span style={{ flex: 1 }}>{statusMessage}</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '11px', color: 'rgba(255,255,255,0.7)' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-            <input type="checkbox" checked={trimTargetNames} onChange={(e) => setTrimTargetNames(e.target.checked)} />
-            <span>Trim Target Names</span>
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-            <input type="checkbox" checked={trimDonorNames} onChange={(e) => setTrimDonorNames(e.target.checked)} />
-            <span>Trim Donor Names</span>
-          </label>
-        </div>
+        {showTrimTargetNames && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '11px', color: 'rgba(255,255,255,0.7)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <input type="checkbox" checked={trimTargetNames} onChange={(e) => setTrimTargetNames(e.target.checked)} />
+              <span>Trim Target Names</span>
+            </label>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: '12px', padding: '12px 20px', background: 'transparent' }}>

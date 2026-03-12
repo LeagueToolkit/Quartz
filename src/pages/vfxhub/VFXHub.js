@@ -285,7 +285,7 @@ const VFXHub = () => {
 
   // Trimming options
   const [trimTargetNames, setTrimTargetNames] = useState(true);
-  const [trimDonorNames, setTrimDonorNames] = useState(true);
+  const trimDonorNames = false;
 
   const {
     modalSize,
@@ -707,6 +707,7 @@ const VFXHub = () => {
     onSave: handleSave,
     navigate,
   });
+  const showTrimTargetNames = Boolean(targetPyContent);
 
   return (
     <div className="vfx-hub-container" style={{
@@ -791,10 +792,9 @@ const VFXHub = () => {
 
       <VfxHubFooter
         statusMessage={statusMessage}
+        showTrimTargetNames={showTrimTargetNames}
         trimTargetNames={trimTargetNames}
-        trimDonorNames={trimDonorNames}
         setTrimTargetNames={setTrimTargetNames}
-        setTrimDonorNames={setTrimDonorNames}
         handleUndo={handleUndo}
         undoHistory={undoHistory}
         handleSave={handleSave}
@@ -868,7 +868,7 @@ const VFXHub = () => {
         hasSkinCharacterData={hasSkinCharacterData}
         showBackupViewer={showBackupViewer}
         setShowBackupViewer={setShowBackupViewer}
-        fileSaved={fileSaved}
+        hasChangesToSave={hasChangesToSave}
         performBackupRestore={performBackupRestore}
         setStatusMessage={setStatusMessage}
         targetPath={targetPath}
