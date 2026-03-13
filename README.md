@@ -28,7 +28,7 @@ A comprehensive toolkit for League of Legends modding and visual effects editing
 - **Hash Management**: Automatic hash file download and management
 - **External Tools**: Configure ritobin CLI and manage backend services
 
-<img width="1194" height="795" alt="image" src="https://github.com/user-attachments/assets/b8ccd4dd-ceff-469d-93c6-2d7b6ea59218" />
+
 
 
 
