@@ -10,7 +10,7 @@ let count = 0;
 let running = false;
 let timerId = null;
 let lastRender = 0;
-let frameTimeMs = 1000 / 60;
+let frameTimeMs = 1000 / 30;
 let spawnCursor = 0;
 
 let primary = { ...DEFAULT_PRIMARY };
@@ -173,7 +173,7 @@ self.onmessage = (event) => {
     height = payload.height;
     canvas.width = width;
     canvas.height = height;
-    frameTimeMs = 1000 / (payload.targetFps || 60);
+    frameTimeMs = 1000 / (payload.targetFps || 30);
     setColors(payload.colors);
     rebuild();
     start();

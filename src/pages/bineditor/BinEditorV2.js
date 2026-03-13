@@ -80,14 +80,14 @@ const ICONS = {
 };
 
 const UI_COLORS = {
-    primary: '#FFC233',
+    primary: 'var(--accent)',
     bs: '#3FA9FF',
     scale: '#39E86C',
     bw: '#B184FF',
     pl: '#FF7A00',
     lt: '#00D65A',
-    pass: '#FFD400',
-    to: '#F0A020',
+    pass: 'color-mix(in srgb, var(--accent), white 10%)',
+    to: 'color-mix(in srgb, var(--accent), white 18%)',
 };
 
 // Helper to parse numbers with both comma and period as decimal separators
@@ -1541,7 +1541,7 @@ export default function BinEditorV2() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, color: isSelected ? UI_COLORS.primary : '#e8e6e3', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {emitter.name}
-                        {isSelected && <span>✓</span>}
+                        {isSelected && <span>{ICONS.check}</span>}
                     </div>
                     <div style={{ fontSize: '11px', color: '#888', marginTop: '4px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         {emitter.birthScale0?.constantValue && (
@@ -1627,7 +1627,9 @@ export default function BinEditorV2() {
                     style={{
                         display: 'flex',
                         alignItems: 'center',
-                        background: selectedCount > 0 ? 'rgba(157, 140, 217, 0.2)' : 'rgba(255,255,255,0.08)',
+                        background: selectedCount > 0
+                            ? 'color-mix(in srgb, var(--accent), transparent 84%)'
+                            : 'rgba(255,255,255,0.08)',
                         border: '1px solid rgba(255,255,255,0.06)',
                         borderRadius: '6px',
                         cursor: 'pointer',
@@ -1679,7 +1681,7 @@ export default function BinEditorV2() {
                     >
                         <span style={{ flex: 1, fontWeight: 600, color: 'var(--accent)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {system.displayName}
-                            {selectedCount > 0 && <span style={{ color: UI_COLORS.primary }}>✓</span>}
+                            {selectedCount > 0 && <span style={{ color: UI_COLORS.primary }}>{ICONS.check}</span>}
                         </span>
 
                         <span
@@ -1975,56 +1977,67 @@ export default function BinEditorV2() {
         }}>
             {isLoading && <GlowingSpinner text={loadingText} />}
 
-            {/* Header */}
-            <div style={{
-                padding: '16px 20px',
-                borderBottom: '1px solid rgba(255,255,255,0.08)',
+            {/* Top Action Bar */}
+            <div className="bin-editor-topbar" style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                padding: '10px 16px',
+                borderBottom: '1px solid rgba(255,255,255,0.1)',
+                background: 'transparent',
+                backdropFilter: 'none',
+                WebkitBackdropFilter: 'none',
+                flexShrink: 0
             }}>
-                {/* Title Bar */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--accent)' }}>
-                        VFX Bin Editor {binPath ? `- ${window.require?.('path').basename(binPath)}` : ''}
-                    </h1>
-
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={loadBinFile} style={buttonStyle(UI_COLORS.lt)}>
-                            {ICONS.folder} Load .bin
-                        </button>
-                        <button
-                            onClick={undoLastChange}
-                            disabled={undoHistory.length === 0}
-                            style={buttonStyle(UI_COLORS.bs, undoHistory.length === 0)}
-                            title={`Undo (${undoHistory.length} steps available)`}
-                        >
-                            {ICONS.undo} Undo{undoHistory.length > 0 ? ` (${undoHistory.length})` : ''}
-                        </button>
-                        <button
-                            onClick={restoreOriginal}
-                            disabled={!initialContent}
-                            style={buttonStyle(UI_COLORS.bw, !initialContent)}
-                            title="Restore to original state when file was first loaded"
-                        >
-                            ↺ Restore
-                        </button>
-                        <button
-                            onClick={saveFile}
-                            disabled={!hasUnsavedChanges}
-                            style={buttonStyle(UI_COLORS.primary, !hasUnsavedChanges)}
-                        >
-                            {ICONS.save} Save
-                        </button>
-                    </div>
+                <div
+                    style={{
+                        minWidth: 0,
+                        flex: 1,
+                        fontSize: '12px',
+                        color: 'var(--accent-muted)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                    }}
+                    title={statusMessage}
+                >
+                    {statusMessage}
                 </div>
 
-                {/* Status */}
-                <div style={{ fontSize: '12px', color: 'var(--accent-muted)' }}>{statusMessage}</div>
-
-
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <button onClick={loadBinFile} className="bin-editor-action-btn is-load">
+                        {ICONS.folder} Load .bin
+                    </button>
+                    <button
+                        onClick={undoLastChange}
+                        disabled={undoHistory.length === 0}
+                        className="bin-editor-action-btn is-undo"
+                        title={`Undo (${undoHistory.length} steps available)`}
+                    >
+                        {ICONS.undo} Undo{undoHistory.length > 0 ? ` (${undoHistory.length})` : ''}
+                    </button>
+                    <button
+                        onClick={restoreOriginal}
+                        disabled={!initialContent}
+                        className="bin-editor-action-btn is-restore"
+                        title="Restore to original state when file was first loaded"
+                    >
+                        Restore
+                    </button>
+                    <button
+                        onClick={saveFile}
+                        disabled={!hasUnsavedChanges}
+                        className="bin-editor-action-btn is-save"
+                    >
+                        {ICONS.save} Save
+                    </button>
+                </div>
             </div>
 
             {/* Toolbar */}
             {data && (
-                <div style={{
+                <div className="bin-editor-toolbar" style={{
                     padding: '12px 20px',
                     borderBottom: '1px solid rgba(255,255,255,0.08)',
                     display: 'flex',
@@ -2342,7 +2355,7 @@ export default function BinEditorV2() {
             )}
 
             {/* Main Content */}
-            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            <div className="bin-editor-main" style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
                 {/* Left Panel - Systems List */}
                 <div className="bin-editor-list" style={{
                     width: '50%',
@@ -2359,7 +2372,6 @@ export default function BinEditorV2() {
                             height: '100%',
                             color: 'var(--accent)'
                         }}>
-                            <div style={{ fontSize: '48px', marginBottom: '16px' }}>📁</div>
                             <div>Load a .bin file to start editing</div>
                         </div>
                     ) : filteredSystems.length === 0 ? (
@@ -2380,7 +2392,6 @@ export default function BinEditorV2() {
                     {data && renderPropertyEditor()}
                 </div>
             </div>
-
             {/* Ritobin Warning Modal */}
             <RitobinWarningModal
                 open={showRitobinWarning}
@@ -2446,23 +2457,9 @@ export default function BinEditorV2() {
 
 // ============ STYLES ============
 
-const buttonStyle = (color, disabled = false) => ({
-    padding: '8px 14px',
-    background: disabled ? 'rgba(100,100,100,0.2)' : `rgba(${hexToRgb(color)}, 0.15)`,
-    border: `1px solid ${disabled ? 'rgba(100,100,100,0.3)' : color}`,
-    borderRadius: 'var(--border-radius, 6px)',
-    color: disabled ? '#666' : color,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    fontFamily: 'inherit',
-    fontSize: '13px',
-    fontWeight: 600,
-    opacity: disabled ? 0.5 : 1,
-    transition: 'all 0.15s ease'
-});
-
 const smallButtonStyle = (color, disabled = false) => ({
     padding: '4px 10px',
-    background: disabled ? 'rgba(100,100,100,0.2)' : `rgba(${hexToRgb(color)}, 0.24)`,
+    background: disabled ? 'rgba(100,100,100,0.2)' : `color-mix(in srgb, ${color} 24%, transparent)`,
     border: `1px solid ${disabled ? 'rgba(100,100,100,0.3)' : color}`,
     borderRadius: 'var(--border-radius, 4px)',
     color: disabled ? '#666' : color,
@@ -2474,10 +2471,4 @@ const smallButtonStyle = (color, disabled = false) => ({
     transition: 'all 0.15s ease'
 });
 
-function hexToRgb(hex) {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    if (result) {
-        return `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`;
-    }
-    return '255, 255, 255';
-}
+

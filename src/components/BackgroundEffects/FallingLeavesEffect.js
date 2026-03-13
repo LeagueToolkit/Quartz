@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-const TARGET_FPS = 60;
+const TARGET_FPS = 30;
 const DEFAULT_ACCENT = { r: 210, g: 139, b: 42 };
 
 const createWorker = () => new Worker(new URL('./fallingLeaves.worker.js', import.meta.url), { type: 'module' });

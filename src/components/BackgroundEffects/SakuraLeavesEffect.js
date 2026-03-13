@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-const TARGET_FPS = 60;
+const TARGET_FPS = 30;
 
 const createWorker = () => new Worker(new URL('./sakuraLeaves.worker.js', import.meta.url), { type: 'module' });
 

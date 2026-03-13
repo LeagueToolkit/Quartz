@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useLayoutEffect } from 'react';
+import React, { useEffect, useState, useMemo, useLayoutEffect, useCallback } from 'react';
 import { HashRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -314,8 +314,8 @@ function createDynamicTheme(fontFamily, interfaceStyle = 'quartz') {
             borderRadius: 999,
             backgroundColor: isLiquid ? 'var(--liquid-button-bg, rgba(255,255,255,0.1))' : 'var(--glass-bg)',
             border: isLiquid ? '1px solid var(--liquid-border-strong, rgba(255,255,255,0.3))' : '1px solid var(--glass-border)',
-            backdropFilter: isLiquid ? 'blur(14px) saturate(130%)' : 'saturate(180%) blur(12px)',
-            WebkitBackdropFilter: isLiquid ? 'blur(14px) saturate(130%)' : 'saturate(180%) blur(12px)',
+            backdropFilter: isLiquid ? 'blur(var(--liquid-button-blur, 14px)) saturate(130%)' : 'saturate(180%) blur(12px)',
+            WebkitBackdropFilter: isLiquid ? 'blur(var(--liquid-button-blur, 14px)) saturate(130%)' : 'saturate(180%) blur(12px)',
             boxShadow: isLiquid ? 'inset 0 1px 0 rgba(255,255,255,0.22), 0 8px 20px rgba(0,0,0,0.28)' : undefined,
             color: isLiquid ? 'var(--text)' : undefined,
             '&:hover': isLiquid ? {
@@ -360,8 +360,8 @@ function createDynamicTheme(fontFamily, interfaceStyle = 'quartz') {
           root: isLiquid ? {
             border: '1px solid rgba(255,255,255,0.16)',
             background: 'rgba(255,255,255,0.06)',
-            backdropFilter: 'blur(12px) saturate(120%)',
-            WebkitBackdropFilter: 'blur(12px) saturate(120%)',
+            backdropFilter: 'blur(var(--liquid-button-blur, 14px)) saturate(120%)',
+            WebkitBackdropFilter: 'blur(var(--liquid-button-blur, 14px)) saturate(120%)',
             '&:hover': {
               background: 'rgba(255,255,255,0.12)',
               borderColor: 'rgba(255,255,255,0.28)',
@@ -411,6 +411,25 @@ function App() {
   const [cursorEffectEnabled, setCursorEffectEnabled] = useState(false);
   const [cursorEffectPath, setCursorEffectPath] = useState('');
   const [cursorEffectSize, setCursorEffectSize] = useState(32);
+  const applyLiquidButtonVars = useCallback((values = {}) => {
+    const root = document.documentElement;
+    const setOpt = (name, value) => {
+      const raw = String(value ?? '').trim();
+      if (!raw) root.style.removeProperty(name);
+      else root.style.setProperty(name, raw);
+    };
+    const setBlur = (name, value) => {
+      const n = Number.parseFloat(String(value ?? ''));
+      if (!Number.isFinite(n)) {
+        root.style.removeProperty(name);
+        return;
+      }
+      root.style.setProperty(name, `${n}px`);
+    };
+    setOpt('--liquid-button-bg', values.liquidTint);
+    setOpt('--liquid-button-hover-bg', values.liquidHoverTint);
+    setBlur('--liquid-button-blur', values.liquidBlur);
+  }, []);
 
   useEffect(() => {
     // Load theme preference and wallpaper
@@ -430,7 +449,10 @@ function App() {
 
         // Load Interface Style
         if (electronPrefs.obj.InterfaceStyle) {
-          const safeStyle = electronPrefs.obj.InterfaceStyle === 'cs16' ? 'quartz' : electronPrefs.obj.InterfaceStyle;
+          const safeStyle =
+            electronPrefs.obj.InterfaceStyle === 'cs16' ? 'quartz'
+              : electronPrefs.obj.InterfaceStyle === 'fluid' ? 'liquid'
+                : electronPrefs.obj.InterfaceStyle;
           if (safeStyle !== electronPrefs.obj.InterfaceStyle) {
             electronPrefs.obj.InterfaceStyle = safeStyle;
             await electronPrefs.save();
@@ -478,7 +500,11 @@ function App() {
         }
         // Check for style change
         if (electronPrefs.obj.InterfaceStyle) {
-          setInterfaceStyle(electronPrefs.obj.InterfaceStyle === 'cs16' ? 'quartz' : electronPrefs.obj.InterfaceStyle);
+          const nextStyle =
+            electronPrefs.obj.InterfaceStyle === 'cs16' ? 'quartz'
+              : electronPrefs.obj.InterfaceStyle === 'fluid' ? 'liquid'
+                : electronPrefs.obj.InterfaceStyle;
+          setInterfaceStyle(nextStyle);
         }
       } catch { }
     };
@@ -526,6 +552,11 @@ function App() {
     };
     window.addEventListener('cursorEffectChanged', onCursorEffectChanged);
 
+    const onGlassButtonStyleChanged = (event) => {
+      applyLiquidButtonVars(event.detail || {});
+    };
+    window.addEventListener('glassButtonStyleChanged', onGlassButtonStyleChanged);
+
     // Load click effect setting
     if (electronPrefs.obj.ClickEffectEnabled !== undefined) {
       setClickEffectEnabled(electronPrefs.obj.ClickEffectEnabled);
@@ -552,6 +583,11 @@ function App() {
     if (electronPrefs.obj.CursorEffectSize !== undefined) {
       setCursorEffectSize(electronPrefs.obj.CursorEffectSize);
     }
+    applyLiquidButtonVars({
+      liquidTint: electronPrefs.obj.LiquidButtonTint,
+      liquidHoverTint: electronPrefs.obj.LiquidButtonHoverTint,
+      liquidBlur: electronPrefs.obj.LiquidButtonBlur
+    });
 
     if (electronPrefs.obj.PerformanceMode === true) {
       setClickEffectEnabled(false);
@@ -655,6 +691,7 @@ function App() {
       window.removeEventListener('clickEffectChanged', onClickEffectChanged);
       window.removeEventListener('backgroundEffectChanged', onBackgroundEffectChanged);
       window.removeEventListener('cursorEffectChanged', onCursorEffectChanged);
+      window.removeEventListener('glassButtonStyleChanged', onGlassButtonStyleChanged);
       window.removeEventListener('globalFontChange', handleGlobalFontChange);
       document.removeEventListener('fontChanged', handleFontChange);
 
@@ -665,7 +702,7 @@ function App() {
         ipcRenderer.removeAllListeners('app:open-model-inspect');
       }
     };
-  }, []);
+  }, [applyLiquidButtonVars]);
 
   // Pre-apply CSS variables synchronously before paint to prevent flash with wrong colors
   useLayoutEffect(() => {

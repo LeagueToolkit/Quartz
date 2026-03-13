@@ -312,6 +312,7 @@ const Row = React.memo((props) => {
     return (
         <Box
             style={style}
+            className={`paint-emitter-row${isSelected ? ' is-selected' : ''}`}
             onClick={() => !isLocked && onToggleEmitter && onToggleEmitter(row.key)}
             sx={{
                 display: 'flex',

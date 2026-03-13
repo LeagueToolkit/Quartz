@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
+const TARGET_FPS = 30;
+
 const createWorker = () => {
     return new Worker(new URL('./starfield.worker.js', import.meta.url), { type: 'module' });
 };
@@ -39,6 +41,7 @@ const DivineStarfieldEffect = ({ enabled }) => {
                     width: window.innerWidth,
                     height: window.innerHeight,
                     count: 150,
+                    targetFps: TARGET_FPS,
                 },
             },
             [offscreen]

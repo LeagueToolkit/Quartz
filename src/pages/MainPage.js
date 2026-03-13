@@ -7,8 +7,6 @@ import {
   IconButton,
   Alert,
   Tooltip,
-  useTheme,
-  useMediaQuery,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -40,58 +38,9 @@ import electronPrefs from '../utils/core/electronPrefs.js';
 
 const MainPage = () => {
   const navigate = useNavigate();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
-  const [particles, setParticles] = useState([]);
   const [showWelcome, setShowWelcome] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [renderKey, setRenderKey] = useState(0);
-
-
-  const logThemeVars = (label) => {
-    try {
-      const root = getComputedStyle(document.documentElement);
-      const keys = ['--accent', '--accent2', '--accent-muted', '--bg', '--bg-2', '--surface', '--surface-2'];
-      const out = {};
-      keys.forEach(k => { out[k] = root.getPropertyValue(k).trim(); });
-      // eslint-disable-next-line no-console
-      console.log('[ThemeVars]', label, out);
-    } catch { }
-  };
-
-  const debugCardHover = (event, title) => {
-    try {
-      const el = event.currentTarget;
-      logThemeVars(`Card Hover Enter: ${title}`);
-      const dump = (when) => {
-        const cs = getComputedStyle(el);
-        // eslint-disable-next-line no-console
-        console.log('[CardStyles]', title, when, {
-          background: cs.backgroundImage || cs.backgroundColor,
-          borderColor: cs.borderTopColor,
-          boxShadow: cs.boxShadow
-        });
-      };
-      dump('now');
-      requestAnimationFrame(() => dump('raf1'));
-      requestAnimationFrame(() => requestAnimationFrame(() => dump('raf2')));
-      setTimeout(() => dump('+100ms'), 100);
-    } catch { }
-  };
-
-  const debugCardLeave = (event, title) => {
-    try {
-      const el = event.currentTarget;
-      const cs = getComputedStyle(el);
-      // eslint-disable-next-line no-console
-      console.log('[CardLeave]', title, {
-        background: cs.backgroundImage || cs.backgroundColor,
-        borderColor: cs.borderTopColor,
-        boxShadow: cs.boxShadow
-      });
-    } catch { }
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -120,18 +69,6 @@ const MainPage = () => {
     try { localStorage.setItem('celestialShown', '1'); } catch { }
     electronPrefs.set('CelestialWelcomeSeen', true).catch(() => { });
   }, [showWelcome]);
-
-  useEffect(() => {
-    const count = isMobile ? 10 : 20;
-    setParticles(Array.from({ length: count }, (_, i) => ({
-      id: i,
-      x: Math.random() * 100, y: Math.random() * 100,
-      size: Math.random() * 3 + 1,
-      opacity: Math.random() * 0.5 + 0.1,
-      animationDuration: Math.random() * 10 + 10,
-    })));
-    return () => { };
-  }, [isMobile]);
 
   const toolCards = [
     // Row 1 — core creative tools
@@ -186,7 +123,7 @@ const MainPage = () => {
   };
 
 
-  // ─── Shared notification style ─────────────────────────────────────────────
+  // --- Shared notification style ---------------------------------------------
   const notifSx = {
     position: 'fixed',
     top: { xs: 60, sm: 70, md: 80 },
@@ -245,7 +182,7 @@ const MainPage = () => {
         />
       )}
 
-      {/* ══════════════════════════════════════════════════════════════ HERO */}
+      {/* -------------------------------------------------------------- HERO */}
       <Box sx={{
         position: 'relative',
         display: 'flex', flexDirection: 'column',
@@ -263,8 +200,8 @@ const MainPage = () => {
           width: { xs: 300, sm: 440, md: 580 },
           height: { xs: 160, sm: 220, md: 280 },
           background: 'radial-gradient(ellipse, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 68%)',
-          filter: 'blur(45px)',
-          animation: 'glow-pulse 6s ease-in-out infinite',
+          filter: 'blur(32px)',
+          animation: 'glow-pulse 10s ease-in-out infinite',
           pointerEvents: 'none',
           zIndex: 0,
         }} />
@@ -276,8 +213,8 @@ const MainPage = () => {
           width: { xs: 200, sm: 300, md: 380 },
           height: { xs: 100, sm: 150, md: 190 },
           background: 'radial-gradient(ellipse, color-mix(in srgb, var(--accent2) 7%, transparent) 0%, transparent 70%)',
-          filter: 'blur(55px)',
-          animation: 'glow-pulse 6s ease-in-out infinite 1.5s',
+          filter: 'blur(38px)',
+          animation: 'glow-pulse 11s ease-in-out infinite 1.5s',
           pointerEvents: 'none',
           zIndex: 0,
         }} />
@@ -294,7 +231,7 @@ const MainPage = () => {
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
           backgroundClip: 'text',
-          animation: 'shimmer-text 5s linear infinite',
+          animation: 'shimmer-text 12s linear infinite',
           willChange: 'background-position',
           textAlign: 'center',
           textShadow: '0 0 20px color-mix(in srgb, var(--accent) 30%, transparent)',
@@ -383,7 +320,7 @@ const MainPage = () => {
         zIndex: 2,
       }} />
 
-      {/* ═══════════════════════════════════════════════════════════ TOOL GRID */}
+      {/* ----------------------------------------------------------- TOOL GRID */}
       <Box sx={{
         flex: 1, minHeight: 0,
         px: { xs: 1.5, sm: 2.5, md: 3.5 },
@@ -421,7 +358,7 @@ const MainPage = () => {
                 </Typography>
                 {tool.wip && (
                   <Typography sx={{ fontSize: '0.68rem', mt: 0.75, color: 'rgb(239,68,68)', opacity: 0.9, lineHeight: 1.4 }}>
-                    ⚠ This tool is incomplete and may have bugs.
+                    ? This tool is incomplete and may have bugs.
                   </Typography>
                 )}
               </Box>
@@ -449,8 +386,6 @@ const MainPage = () => {
               onClick={() => handleCardClick(tool.path)}
               className="main-page-card"
               data-tour={`card-${tool.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
-              onMouseEnter={(e) => debugCardHover(e, tool.title)}
-              onMouseLeave={(e) => debugCardLeave(e, tool.title)}
               sx={{
                 background: 'rgba(255,255,255,0.04)',
                 border: tool.wip ? '1px solid rgba(239,68,68,0.2)' : tool.isNew ? '1px solid rgba(59,130,246,0.35)' : '1px solid rgba(255,255,255,0.055)',
@@ -463,8 +398,6 @@ const MainPage = () => {
                 position: 'relative',
                 overflow: 'hidden',
                 opacity: tool.wip ? 0.55 : 1,
-                backdropFilter: 'blur(calc(var(--glass-blur, 10px) + 4px)) saturate(122%)',
-                WebkitBackdropFilter: 'blur(calc(var(--glass-blur, 10px) + 4px)) saturate(122%)',
                 boxShadow: tool.isNew ? '0 0 18px rgba(59,130,246,0.18)' : 'none',
                 transition: 'border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, background-color 0.2s ease, opacity 0.2s ease',
                 '&::before': {

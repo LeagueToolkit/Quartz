@@ -644,6 +644,23 @@ function normalizeThemeObject(input) {
   return theme;
 }
 
+function normalizeBlurValue(value) {
+  if (value === undefined || value === null) return '';
+  const raw = String(value).trim();
+  if (!raw) return '';
+  if (/^-?\d+(\.\d+)?$/.test(raw)) return `${raw}px`;
+  return raw;
+}
+
+function setOptionalCssVar(root, name, value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    root.style.removeProperty(name);
+    return;
+  }
+  root.style.setProperty(name, raw);
+}
+
 export function applyThemeFromObject(themeObject = {}) {
   const t = normalizeThemeObject(themeObject);
   const root = document.documentElement;
@@ -666,6 +683,9 @@ export function applyThemeFromObject(themeObject = {}) {
   root.style.setProperty('--glass-bg', t.glassBg);
   root.style.setProperty('--glass-border', t.glassBorder);
   root.style.setProperty('--glass-shadow', t.glassShadow);
+  setOptionalCssVar(root, '--liquid-button-bg', t.liquidButtonTint);
+  setOptionalCssVar(root, '--liquid-button-hover-bg', t.liquidButtonHoverTint);
+  setOptionalCssVar(root, '--liquid-button-blur', normalizeBlurValue(t.liquidButtonBlur));
 
   // Gradients
   root.style.setProperty('--accent-gradient', `linear-gradient(135deg, ${t.accent}, ${t.accentMuted})`);
@@ -680,9 +700,10 @@ export function applyThemeFromObject(themeObject = {}) {
  */
 export function applyThemeVariables(themeName = 'amethyst', styleName = STYLES.QUARTZ) {
   const root = document.documentElement;
+  const resolvedStyle = styleName === 'fluid' ? STYLES.LIQUID : styleName;
 
   // Set Interface Style
-  root.setAttribute('data-style', styleName);
+  root.setAttribute('data-style', resolvedStyle);
 
   let theme;
 

@@ -1,5 +1,6 @@
-import React from 'react';
+﻿import React from 'react';
 import { Button } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
 import { SearchInput } from './common/Inputs';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
 
@@ -92,8 +93,11 @@ export default function DonorColumn({
         <button
           onClick={() => setEnableDonorEmitterSearch(!enableDonorEmitterSearch)}
           title={enableDonorEmitterSearch ? 'Disable emitter search (faster)' : 'Enable emitter search'}
+          aria-label={enableDonorEmitterSearch ? 'Disable emitter search' : 'Enable emitter search'}
           style={{
-            padding: '8px 14px',
+            height: '40px',
+            minWidth: '52px',
+            padding: '0 14px',
             background: enableDonorEmitterSearch
               ? 'color-mix(in srgb, var(--accent2) 15%, transparent)'
               : 'color-mix(in srgb, var(--accent2) 12%, transparent)',
@@ -107,9 +111,13 @@ export default function DonorColumn({
             cursor: 'pointer',
             transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
             boxShadow: enableDonorEmitterSearch ? '0 0 10px color-mix(in srgb, var(--accent2) 15%, transparent)' : 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxSizing: 'border-box',
           }}
         >
-          {enableDonorEmitterSearch ? '🔍+' : '🔍-'}
+          <SearchIcon sx={{ fontSize: 16, color: 'var(--accent2)', opacity: enableDonorEmitterSearch ? 1 : 0.78 }} />
         </button>
       </div>
 

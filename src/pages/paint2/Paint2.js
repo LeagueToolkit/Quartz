@@ -2069,7 +2069,7 @@ function Paint2() {
             </Box>
 
             {/* Footer */}
-            <Box sx={{
+            <Box className="paint2-footer" sx={{
                 padding: '12px 24px',
                 background: 'var(--bg)',
                 borderTop: '1px solid rgba(255,255,255,0.05)',
@@ -2083,38 +2083,27 @@ function Paint2() {
                 </Typography>
 
                 <Box sx={{ display: 'flex', gap: 2 }}>
-                    <Button
+                    <button
                         onClick={handleUndo}
                         disabled={undoStack.length === 0}
-                        sx={{
-                            flex: 1, height: 44, background: 'rgba(255,255,255,0.03)', color: 'var(--text-2)',
-                            border: '1px solid rgba(255,255,255,0.1)', textTransform: 'none', fontWeight: 600,
-                            '&:disabled': { opacity: 0.2 }
-                        }}
+                        className="paint2-footer-btn is-undo"
                     >
                         Undo ({undoStack.length})
-                    </Button>
-                    <Button
+                    </button>
+                    <button
                         onClick={handleRecolor}
                         disabled={selection.size === 0}
-                        sx={{
-                            flex: 3, height: 44, background: 'color-mix(in srgb, var(--accent), transparent 95%)', color: 'var(--accent)',
-                            border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)', textTransform: 'none', fontWeight: 700,
-                            fontSize: '1rem', '&:hover': { background: 'color-mix(in srgb, var(--accent), transparent 90%)' }
-                        }}
+                        className="paint2-footer-btn is-recolor"
                     >
                         Recolor Selected ({visibleSelectionCount})
-                    </Button>
-                    <Button
+                    </button>
+                    <button
                         onClick={handleSave}
                         disabled={isLoading || fileSaved}
-                        sx={{
-                            flex: 1, height: 44, background: 'rgba(52, 211, 153, 0.05)', color: '#34d399',
-                            border: '1px solid rgba(52, 211, 153, 0.3)', textTransform: 'none', fontWeight: 600
-                        }}
+                        className="paint2-footer-btn is-save"
                     >
                         Save Bin
-                    </Button>
+                    </button>
                 </Box>
             </Box>
 

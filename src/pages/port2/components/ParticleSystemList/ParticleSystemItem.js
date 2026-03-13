@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { RenameInput } from '../common/Inputs';
 import SystemActionsButton from '../SystemActionsButton';
 import EmitterItem from './EmitterItem';
@@ -219,8 +219,8 @@ const ParticleSystemItem = ({
                     onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
                     title={collapsedSystems.has(system.key) ? "Expand" : "Collapse"}
                 >
-                    <span style={{ fontSize: '14px', opacity: 0.9 }}>
-                        {collapsedSystems.has(system.key) ? '🞂' : '▼'}
+                    <span style={{ fontSize: '14px', opacity: 0.9, color: isTarget ? 'var(--accent)' : 'var(--accent2)' }}>
+                        {collapsedSystems.has(system.key) ? '▶' : '▼'}
                     </span>
                 </div>
 
@@ -262,8 +262,9 @@ const ParticleSystemItem = ({
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 borderRadius: '7px',
-                                border: '1px solid rgba(255,255,255,0.16)',
-                                background: 'rgba(255,255,255,0.05)'
+                                border: '1px solid color-mix(in srgb, var(--accent2) 45%, transparent)',
+                                background: 'color-mix(in srgb, var(--accent2) 14%, transparent)',
+                                color: 'var(--accent2)'
                             }}
                         >
                             <KeyboardDoubleArrowLeftIcon sx={{ fontSize: 18, lineHeight: 1, opacity: 0.95 }} />
@@ -288,7 +289,7 @@ const ParticleSystemItem = ({
                             className="label ellipsis flex-1"
                             title={system.particleName || system.name}
                             style={{
-                                color: 'var(--accent)',
+                                color: isTarget ? 'var(--accent)' : 'var(--accent2)',
                                 fontWeight: '600',
                                 fontSize: '0.95rem',
                                 cursor: 'pointer',
@@ -327,11 +328,15 @@ const ParticleSystemItem = ({
                                 marginLeft: 'auto',
                                 opacity: 1.0,
                                 fontSize: '12px',
-                                background: 'rgba(255,255,255,0.08)',
+                                background: isTarget
+                                    ? 'rgba(255,255,255,0.08)'
+                                    : 'color-mix(in srgb, var(--accent2) 14%, transparent)',
                                 padding: '1px 7px',
                                 borderRadius: '12px',
-                                color: 'var(--text)',
-                                border: '1px solid rgba(255,255,255,0.05)',
+                                color: isTarget ? 'var(--text)' : 'var(--accent2)',
+                                border: isTarget
+                                    ? '1px solid rgba(255,255,255,0.05)'
+                                    : '1px solid color-mix(in srgb, var(--accent2) 40%, transparent)',
                                 fontWeight: '600'
                             }}>
                                 {system.emitters.length}
@@ -392,4 +397,5 @@ const ParticleSystemItem = ({
 };
 
 export default ParticleSystemItem;
+
 

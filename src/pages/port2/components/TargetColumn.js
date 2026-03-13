@@ -1,5 +1,6 @@
-import React from 'react';
+﻿import React from 'react';
 import { Button } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
 import { SearchInput } from './common/Inputs';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
 
@@ -98,12 +99,18 @@ export default function TargetColumn({
           initialValue={targetFilterInput}
           placeholder={enableTargetEmitterSearch ? 'Filter by Particle or Emitter Name' : 'Filter by Particle Name Only'}
           onChange={filterTargetParticles}
+          accentVar="var(--accent)"
+          style={{ color: 'var(--accent)' }}
+          className="port-target-search"
         />
         <button
           onClick={() => setEnableTargetEmitterSearch(!enableTargetEmitterSearch)}
           title={enableTargetEmitterSearch ? 'Disable emitter search (faster)' : 'Enable emitter search'}
+          aria-label={enableTargetEmitterSearch ? 'Disable emitter search' : 'Enable emitter search'}
           style={{
-            padding: '8px 14px',
+            height: '40px',
+            minWidth: '52px',
+            padding: '0 14px',
             background: enableTargetEmitterSearch
               ? 'linear-gradient(180deg, rgba(236, 185, 106, 0.15), rgba(236, 185, 106, 0.05))'
               : 'color-mix(in srgb, var(--accent) 12%, transparent)',
@@ -117,9 +124,13 @@ export default function TargetColumn({
             cursor: 'pointer',
             transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
             boxShadow: enableTargetEmitterSearch ? '0 0 10px rgba(236, 185, 106, 0.1)' : 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxSizing: 'border-box',
           }}
         >
-          {enableTargetEmitterSearch ? '🔍+' : '🔍-'}
+          <SearchIcon sx={{ fontSize: 16, color: 'var(--accent)', opacity: enableTargetEmitterSearch ? 1 : 0.78 }} />
         </button>
       </div>
 

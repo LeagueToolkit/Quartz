@@ -94,7 +94,10 @@ export class BumpathCore {
     _isBlockedSfxPath(value) {
         if (!this.skipSfxRepath || typeof value !== 'string') return false;
         const norm = value.replace(/\\/g, '/').toLowerCase();
-        return /(^|\/)sounds\/wwise2016\/sfx(\/|$)/i.test(norm);
+        // "Skip SFX repath" should only bypass actual Wwise SFX audio payloads,
+        // not every string that happens to be under the SFX folder tree.
+        if (!/(^|\/)sounds\/wwise2016\/sfx(\/|$)/i.test(norm)) return false;
+        return /\.(bnk|wpk|wem)(\?|#|$)/i.test(norm);
     }
 
     /**
@@ -900,6 +903,12 @@ export class BumpathCore {
             await initNodeModules();
         }
         const binObj = await new BIN().read(fs.readFileSync(binPath));
+        const defaultPrefix = this.entryPrefix[defaultEntryHash] || 'bum';
+
+        // Repath BIN links as well (mainBin.links is not part of entry fields).
+        if (Array.isArray(binObj.links)) {
+            binObj.links = binObj.links.map((link) => this._bumBinLink(link, defaultPrefix));
+        }
 
         // Modify entries - use entry's own hash to get prefix
         for (const entry of binObj.entries) {
@@ -916,6 +925,20 @@ export class BumpathCore {
     }
 
     /**
+     * Apply prefix to a BIN link path.
+     * @private
+     */
+    _bumBinLink(link, prefix) {
+        if (typeof link !== 'string') return link;
+        if (isCharacterBin(link)) return link;
+        const linkLower = link.toLowerCase();
+        if (!linkLower.includes('assets/') && !linkLower.includes('data/')) {
+            return link;
+        }
+        return bumPath(link, prefix);
+    }
+
+    /**
      * Apply prefix to a field
      * @private
      */
@@ -928,27 +951,8 @@ export class BumpathCore {
             }
             const valueLower = field.data.toLowerCase();
             if (valueLower.includes('assets/') || valueLower.includes('data/')) {
-                const unify = unifyPath(valueLower);
-                // Check if this file exists in our scanned tree or source files
-                let shouldRepath = false;
-                if (entryHash && this.scannedTree[entryHash] && unify in this.scannedTree[entryHash]) {
-                    shouldRepath = this.scannedTree[entryHash][unify].exists;
-                } else {
-                    // Fallback: check all entries or source files
-                    for (const [eh, files] of Object.entries(this.scannedTree)) {
-                        if (eh === 'All_BINs') continue;
-                        if (unify in files && files[unify].exists) {
-                            shouldRepath = true;
-                            break;
-                        }
-                    }
-                    if (!shouldRepath && unify in this.sourceFiles) {
-                        shouldRepath = true;
-                    }
-                }
-                if (shouldRepath) {
-                    field.data = bumPath(field.data, prefix);
-                }
+                // Repath raw asset/data strings even when source lookup misses.
+                field.data = bumPath(field.data, prefix);
             }
         } else if (field.type === BINType.LIST || field.type === BINType.LIST2) {
             if (field.data && Array.isArray(field.data)) {
@@ -989,27 +993,8 @@ export class BumpathCore {
             }
             const valueLower = value.toLowerCase();
             if (valueLower.includes('assets/') || valueLower.includes('data/')) {
-                const unify = unifyPath(valueLower);
-                // Check if this file exists in our scanned tree or source files
-                let shouldRepath = false;
-                if (currentEntryHash && this.scannedTree[currentEntryHash] && unify in this.scannedTree[currentEntryHash]) {
-                    shouldRepath = this.scannedTree[currentEntryHash][unify].exists;
-                } else {
-                    // Fallback: check all entries
-                    for (const [eh, files] of Object.entries(this.scannedTree)) {
-                        if (eh === 'All_BINs') continue;
-                        if (unify in files && files[unify].exists) {
-                            shouldRepath = true;
-                            break;
-                        }
-                    }
-                    if (!shouldRepath && unify in this.sourceFiles) {
-                        shouldRepath = true;
-                    }
-                }
-                if (shouldRepath) {
-                    return bumPath(value, prefix);
-                }
+                // Repath raw asset/data strings even when source lookup misses.
+                return bumPath(value, prefix);
             }
         } else if (valueType === BINType.LIST || valueType === BINType.LIST2) {
             if (value && value.data && Array.isArray(value.data)) {
@@ -1083,11 +1068,27 @@ export class BumpathCore {
                         console.log(`[BumpathCore] Linked BIN not found in source: ${link} (unify: ${linkUnify})`);
                         continue;
                     }
+                    if (!sourceInfo.fullPath || !fs.existsSync(sourceInfo.fullPath)) {
+                        console.log(`[BumpathCore] Linked BIN source missing on disk: ${link} -> ${sourceInfo.relPath}`);
+                        continue;
+                    }
+
+                    const sourceUnify = unifyPath(normalizePath(sourceInfo.relPath));
+                    if (processedFiles.has(sourceUnify)) {
+                        continue;
+                    }
 
                     // Copy linked BIN to output (same relative path structure)
                     // Like Python: os.path.join(output_dir, short_file.lower()).replace('\\', '/')
                     const normalizedLinkedRelPath = normalizePath(sourceInfo.relPath);
-                    const linkedOutputPath = path.join(outputDir, normalizedLinkedRelPath).replace(/\\/g, '/');
+                    let linkedOutputPath = path.join(outputDir, normalizedLinkedRelPath).replace(/\\/g, '/');
+                    // Windows can fail on very long alias paths; use a stable short temp path for linked BINs.
+                    if (linkedOutputPath.length >= 240) {
+                        const shortName = (path.basename(sourceInfo.fullPath || `${sourceUnify}.bin`) || `${sourceUnify}.bin`).toLowerCase();
+                        const shortRelPath = normalizePath(`data/__linked_tmp/${shortName}`);
+                        linkedOutputPath = path.join(outputDir, shortRelPath).replace(/\\/g, '/');
+                        console.log(`[BumpathCore] Linked BIN path too long, using temp path: ${shortRelPath}`);
+                    }
                     const linkedOutputDir = path.dirname(linkedOutputPath).replace(/\\/g, '/');
 
                     fs.mkdirSync(linkedOutputDir, { recursive: true });
@@ -1096,7 +1097,8 @@ export class BumpathCore {
                     // Repath the linked BIN (await to ensure it's fully written before combining)
                     await this._repathBin(linkedOutputPath, null);
 
-                    // Track it as processed
+                    // Track both canonical unify and original link unify to avoid alias misses.
+                    processedFiles.set(sourceUnify, linkedOutputPath);
                     processedFiles.set(linkUnify, linkedOutputPath);
 
                     if (progressCallback) {
@@ -1179,8 +1181,14 @@ export class BumpathCore {
 
                         mergedUnifySet.add(linkedUnify);
 
-                        if (fs.existsSync(linkedBinPath) && linkedBinPath.startsWith(outputDir)) {
+                        const normalizedLinkedPath = normalizePath(linkedBinPath);
+                        const normalizedOutputDir = normalizePath(outputDir).replace(/\/+$/, '');
+                        const isInsideOutput = normalizedLinkedPath === normalizedOutputDir ||
+                            normalizedLinkedPath.startsWith(`${normalizedOutputDir}/`);
+
+                        if (fs.existsSync(linkedBinPath) && isInsideOutput) {
                             fs.unlinkSync(linkedBinPath);
+                            this._cleanupEmptyParentDirs(path.dirname(linkedBinPath), outputDir);
                         }
                     }
 
@@ -1190,7 +1198,9 @@ export class BumpathCore {
                     mainBin.links = mainBin.links.filter(link => {
                         if (isCharacterBin(link)) return true;
                         const linkUnify = unifyPath(normalizePath(link));
-                        const shouldRemove = mergedUnifySet.has(linkUnify);
+                        const unprefixed = this._stripKnownPrefixFromLinkPath(link);
+                        const unprefixedUnify = unifyPath(unprefixed);
+                        const shouldRemove = mergedUnifySet.has(linkUnify) || mergedUnifySet.has(unprefixedUnify);
                         if (shouldRemove) {
                             console.log(`[BumpathCore] Removing link: ${link}`);
                         }
@@ -1231,6 +1241,23 @@ export class BumpathCore {
         };
         visit(sourceUnify);
         return result;
+    }
+
+    /**
+     * Remove prefix segment after "data/" or "assets/" for link matching.
+     * @private
+     */
+    _stripKnownPrefixFromLinkPath(linkPath) {
+        if (typeof linkPath !== 'string') return linkPath;
+        const normalized = normalizePath(linkPath);
+        const parts = normalized.split('/').filter(Boolean);
+        if (parts.length < 3) return normalized;
+        if (parts[0] !== 'data' && parts[0] !== 'assets') return normalized;
+        const knownPrefixes = new Set(['bum', ...Object.values(this.entryPrefix || {})]
+            .map((v) => String(v || '').toLowerCase())
+            .filter(Boolean));
+        if (!knownPrefixes.has(parts[1])) return normalized;
+        return [parts[0], ...parts.slice(2)].join('/');
     }
 
     /**
@@ -1342,6 +1369,31 @@ export class BumpathCore {
         }
 
         return linkedBins;
+    }
+
+    /**
+     * Remove empty directories up to (but not including) the output root.
+     * @private
+     */
+    _cleanupEmptyParentDirs(startDir, outputRoot) {
+        if (!startDir || !outputRoot) return;
+        const normalizedOutputRoot = normalizePath(outputRoot).replace(/\/+$/, '');
+        let currentDir = startDir;
+
+        while (currentDir) {
+            const normalizedCurrent = normalizePath(currentDir).replace(/\/+$/, '');
+            if (normalizedCurrent === normalizedOutputRoot) break;
+            if (!normalizedCurrent.startsWith(`${normalizedOutputRoot}/`)) break;
+
+            try {
+                const entries = fs.readdirSync(currentDir);
+                if (entries.length > 0) break;
+                fs.rmdirSync(currentDir);
+                currentDir = path.dirname(currentDir);
+            } catch (_) {
+                break;
+            }
+        }
     }
 
     /**

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-const TARGET_FPS = 60;
+const TARGET_FPS = 30;
 const DEFAULT_PRIMARY = { r: 236, g: 185, b: 106 };
 const DEFAULT_SECONDARY = { r: 192, g: 132, b: 252 };
 

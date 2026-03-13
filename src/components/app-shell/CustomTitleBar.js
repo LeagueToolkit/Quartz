@@ -52,16 +52,10 @@ const CustomTitleBar = () => {
         const roamingGifPath = path.join(appDataPath, 'assets', 'navbar.gif');
         if (fs.existsSync(roamingGifPath)) {
           try {
-            const fileBuffer = fs.readFileSync(roamingGifPath);
-            const ext = path.extname(roamingGifPath).toLowerCase();
-            const mimeType = ext === '.gif' ? 'image/gif' :
-              ext === '.png' ? 'image/png' :
-                ext === '.webp' ? 'image/webp' : 'image/gif';
-            const base64 = fileBuffer.toString('base64');
-            return `data:${mimeType};base64,${base64}`;
-          } catch (error) {
-            console.error('Error reading AppData gif:', error);
-            return `file://${roamingGifPath.replace(/\\/g, '/')}`;
+            // Keep protocol path plain; query params can break custom protocol resolvers.
+            return `local-file:///${roamingGifPath.replace(/\\/g, '/')}`;
+          } catch {
+            return `local-file:///${roamingGifPath.replace(/\\/g, '/')}`;
           }
         }
       }
@@ -109,19 +103,20 @@ const CustomTitleBar = () => {
   }, []);
 
   useEffect(() => {
+    let active = true;
     const loadGifSrc = async () => {
       const src = await getNavbarGifSrc();
-      setGifSrc(src);
+      if (active) {
+        setGifSrc((prev) => (prev === src ? prev : src));
+      }
     };
     loadGifSrc();
-    const interval = setInterval(async () => {
-      const newSrc = await getNavbarGifSrc();
-      if (newSrc !== gifSrc) {
-        setGifSrc(newSrc);
-      }
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [gifSrc]);
+    const interval = setInterval(loadGifSrc, 10000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     const loadJadeInteropEnabled = async () => {
@@ -249,7 +244,7 @@ const CustomTitleBar = () => {
           style={{ cursor: 'pointer' }}
         >
           <img
-            src={gifSrc || getNavbarGifSrc() || iconSrc}
+            src={gifSrc || iconSrc}
             alt="Home"
             className="header-logo"
             onError={(e) => {

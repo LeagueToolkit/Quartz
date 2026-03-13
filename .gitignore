@@ -9,6 +9,7 @@ pnpm-debug.log*
 build/
 dist/
 out/
+tools/
 coverage/
 .cache/
 .eslintcache

@@ -13,7 +13,7 @@ export default function PortBottomControls({
       style={{
         display: 'flex',
         gap: '12px',
-        padding: '12px 20px',
+        padding: '12px 12px',
         background: 'transparent',
       }}
     >

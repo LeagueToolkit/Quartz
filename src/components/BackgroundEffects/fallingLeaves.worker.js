@@ -9,7 +9,7 @@ let count = 0;
 let running = false;
 let timerId = null;
 let lastRender = 0;
-let frameTimeMs = 1000 / 60;
+let frameTimeMs = 1000 / 30;
 let lastTime = 0;
 let spawnCursor = 0;
 let accent = { ...DEFAULT_ACCENT };
@@ -174,7 +174,7 @@ self.onmessage = (event) => {
     height = payload.height;
     canvas.width = width;
     canvas.height = height;
-    frameTimeMs = 1000 / (payload.targetFps || 60);
+    frameTimeMs = 1000 / (payload.targetFps || 30);
     accent = payload.accent || DEFAULT_ACCENT;
     rebuild();
     start();

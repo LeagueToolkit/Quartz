@@ -9,7 +9,7 @@ let running = false;
 let timerId = null;
 let lastRender = 0;
 let lastTime = 0;
-let frameTimeMs = 1000 / 60;
+let frameTimeMs = 1000 / 30;
 
 let x = null;
 let y = null;
@@ -114,7 +114,7 @@ self.onmessage = (event) => {
     height = payload.height;
     canvas.width = width;
     canvas.height = height;
-    frameTimeMs = 1000 / (payload.targetFps || 60);
+    frameTimeMs = 1000 / (payload.targetFps || 30);
     rebuild();
     start();
     return;

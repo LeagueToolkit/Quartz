@@ -6,6 +6,8 @@ let ctx = null;
 let running = false;
 let rafId = null;
 let lastTime = 0;
+let lastRender = 0;
+let frameTimeMs = 1000 / 30;
 let idleTimer = null;
 
 // Flat typed arrays — cache-friendly, no object overhead
@@ -63,6 +65,12 @@ function initStars(n) {
 function loop(timestamp) {
     if (!running) return;
 
+    if (timestamp - lastRender < frameTimeMs) {
+        rafId = requestAnimationFrame(loop);
+        return;
+    }
+    lastRender = timestamp;
+
     const dt = lastTime === 0 ? 0.016 : Math.min((timestamp - lastTime) / 1000, 0.05);
     lastTime = timestamp;
 
@@ -104,6 +112,7 @@ function startLoop() {
     if (running) return;
     running = true;
     lastTime = 0;
+    lastRender = 0;
     rafId = requestAnimationFrame(loop);
 }
 
@@ -114,6 +123,7 @@ function stopLoop() {
         rafId = null;
     }
     lastTime = 0;
+    lastRender = 0;
 }
 
 function resetIdleTimer() {
@@ -131,6 +141,7 @@ self.onmessage = (e) => {
             ctx = canvas.getContext('2d');
             canvas.width = payload.width;
             canvas.height = payload.height;
+            frameTimeMs = 1000 / (payload.targetFps || 30);
             buildSprite();
             initStars(payload.count || 150);
             startLoop();

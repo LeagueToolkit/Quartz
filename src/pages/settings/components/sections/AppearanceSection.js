@@ -30,6 +30,13 @@ const AppearanceSection = ({
   handleWallpaperVignetteEnabledChange,
   handleWallpaperVignetteStrengthChange,
   handleGlassBlurChange,
+  liquidButtonTint,
+  liquidButtonHoverTint,
+  liquidButtonBlur,
+  handleLiquidButtonTintChange,
+  handleLiquidButtonHoverTintChange,
+  handleLiquidButtonBlurChange,
+  handleGlassTintColorPickerClick,
   performanceMode,
   handlePerformanceModeToggle,
   clickEffectEnabled,
@@ -50,6 +57,32 @@ const AppearanceSection = ({
   cursorEffectSize,
   handleCursorSizeChange
 }) => {
+  const parseColorAlpha = (value, fallbackHex, fallbackAlpha) => {
+    const raw = String(value || '').trim();
+    if (!raw) return { hex: fallbackHex, alpha: fallbackAlpha };
+    const rgba = raw.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(\d*\.?\d+))?\s*\)$/i);
+    if (!rgba) return { hex: fallbackHex, alpha: fallbackAlpha };
+    const r = Math.max(0, Math.min(255, parseInt(rgba[1], 10)));
+    const g = Math.max(0, Math.min(255, parseInt(rgba[2], 10)));
+    const b = Math.max(0, Math.min(255, parseInt(rgba[3], 10)));
+    const a = rgba[4] === undefined ? 1 : Math.max(0, Math.min(1, parseFloat(rgba[4])));
+    const hex = `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+    return { hex, alpha: a };
+  };
+  const toRgba = (hex, alpha) => {
+    const cleaned = String(hex || '').replace('#', '');
+    if (cleaned.length !== 6) return '';
+    const r = parseInt(cleaned.slice(0, 2), 16);
+    const g = parseInt(cleaned.slice(2, 4), 16);
+    const b = parseInt(cleaned.slice(4, 6), 16);
+    const a = Math.max(0, Math.min(1, Number(alpha)));
+    return `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})`;
+  };
+  const isGlassStyle = settings.interfaceStyle === 'liquid';
+  const liquidTintParsed = parseColorAlpha(liquidButtonTint, '#ffffff', 0.1);
+  const liquidHoverParsed = parseColorAlpha(liquidButtonHoverTint, '#ffffff', 0.16);
+  const liquidBlurValue = Number.isFinite(Number.parseFloat(liquidButtonBlur)) ? Number.parseFloat(liquidButtonBlur) : 14;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <FormGroup label="Font Family" description="Select the interface font">
@@ -108,6 +141,82 @@ const AppearanceSection = ({
           ))}
         </div>
       </FormGroup>
+      {isGlassStyle && (
+        <FormGroup label="Glass Button Tuning" description="Adjust tint and blur for Liquid button style">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
+            <div>
+              <div style={{ fontSize: '12px', color: 'var(--text-2)', marginBottom: '6px' }}>Liquid Tint</div>
+              <div
+                onClick={(e) => handleGlassTintColorPickerClick(e, 'liquidButtonTint')}
+                style={{
+                  width: '100%',
+                  height: '34px',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(255,255,255,0.24)',
+                  background: toRgba(liquidTintParsed.hex, liquidTintParsed.alpha),
+                  cursor: 'pointer'
+                }}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: '12px', color: 'var(--text-2)', marginBottom: '6px' }}>Liquid Hover Tint</div>
+              <div
+                onClick={(e) => handleGlassTintColorPickerClick(e, 'liquidButtonHoverTint')}
+                style={{
+                  width: '100%',
+                  height: '34px',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(255,255,255,0.24)',
+                  background: toRgba(liquidHoverParsed.hex, liquidHoverParsed.alpha),
+                  cursor: 'pointer'
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
+            <div>
+              <div style={{ fontSize: '12px', color: 'var(--text-2)', marginBottom: '6px' }}>
+                Liquid Tint Opacity: {Math.round(liquidTintParsed.alpha * 100)}%
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={Math.round(liquidTintParsed.alpha * 100)}
+                onChange={(e) => handleLiquidButtonTintChange(toRgba(liquidTintParsed.hex, parseInt(e.target.value, 10) / 100))}
+                style={{ width: '100%', accentColor: 'var(--accent)' }}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: '12px', color: 'var(--text-2)', marginBottom: '6px' }}>
+                Liquid Hover Opacity: {Math.round(liquidHoverParsed.alpha * 100)}%
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={Math.round(liquidHoverParsed.alpha * 100)}
+                onChange={(e) => handleLiquidButtonHoverTintChange(toRgba(liquidHoverParsed.hex, parseInt(e.target.value, 10) / 100))}
+                style={{ width: '100%', accentColor: 'var(--accent)' }}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: '12px', color: 'var(--text-2)', marginBottom: '6px' }}>
+                Liquid Button Blur: {Math.round(liquidBlurValue)}px
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="36"
+                value={Math.round(liquidBlurValue)}
+                onChange={(e) => handleLiquidButtonBlurChange(String(parseInt(e.target.value, 10)))}
+                style={{ width: '100%', accentColor: 'var(--accent)' }}
+              />
+            </div>
+          </div>
+        </FormGroup>
+      )}
 
       <FormGroup
         label="Color Theme"

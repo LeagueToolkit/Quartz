@@ -623,7 +623,7 @@ const Port2 = () => {
         display: 'flex',
         flex: 1,
         gap: '20px',
-        padding: '20px',
+        padding: '12px',
         overflow: 'hidden',
         position: 'relative',
         zIndex: 1,

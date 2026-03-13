@@ -89,7 +89,13 @@ const EmitterItem = ({
                         handlePortEmitter(system.key, emitter.name);
                     }}
                     title="Port emitter to selected target system"
-                    style={{ flexShrink: 0, minWidth: '24px' }}
+                    style={{
+                        flexShrink: 0,
+                        minWidth: '24px',
+                        color: 'var(--accent2)',
+                        borderColor: 'color-mix(in srgb, var(--accent2) 45%, transparent)',
+                        background: 'color-mix(in srgb, var(--accent2) 14%, transparent)'
+                    }}
                 >
                     <KeyboardArrowLeftIcon sx={{ fontSize: 18, lineHeight: 1 }} />
                 </button>
@@ -112,7 +118,7 @@ const EmitterItem = ({
                     className="label flex-1 ellipsis"
                     style={{
                         minWidth: 0,
-                        color: 'var(--accent)',
+                        color: isTarget ? 'var(--accent)' : 'var(--accent2)',
                         fontWeight: '600',
                         fontSize: '0.95rem',
                         textShadow: '0 1px 2px rgba(0,0,0,0.5)'
@@ -214,7 +220,7 @@ const EmitterItem = ({
                     background: 'transparent',
                     border: '1px solid rgba(255, 255, 255, 0.2)',
                     borderRadius: '4px',
-                    color: 'var(--accent, #3b82f6)',
+                    color: isTarget ? 'var(--accent, #3b82f6)' : 'var(--accent2)',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',

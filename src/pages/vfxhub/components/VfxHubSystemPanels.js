@@ -1,6 +1,7 @@
 import React from 'react';
 import ParticleSystemList from '../../port2/components/ParticleSystemList/ParticleSystemList';
 import { SearchInput } from '../../port2/components/common/Inputs';
+import SearchIcon from '@mui/icons-material/Search';
 
 function VfxHubSystemPanels({
   sectionStyle,
@@ -116,17 +117,33 @@ function VfxHubSystemPanels({
       display: 'flex',
       flex: 1,
       gap: '20px',
-      padding: '12px',
+      padding: '0 12px 12px',
       overflow: 'hidden',
       minHeight: '0',
     }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px', minHeight: '0' }}>
-        <SearchInput
-          initialValue={targetFilter}
-          placeholder="Filter Selected Systems"
-          onChange={onTargetFilterChange}
-          style={{ flex: '0 0 auto', width: '100%' }}
-        />
+        <div style={{ position: 'relative', width: '100%' }}>
+          <SearchInput
+            initialValue={targetFilter}
+            placeholder="Filter Selected Systems"
+            onChange={onTargetFilterChange}
+            accentVar="var(--accent)"
+            className="vfx-left-search"
+            style={{ flex: '0 0 auto', width: '100%', paddingRight: '40px' }}
+          />
+          <SearchIcon
+            sx={{
+              position: 'absolute',
+              right: 12,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              fontSize: 16,
+              color: 'var(--accent)',
+              opacity: 0.9,
+              pointerEvents: 'none'
+            }}
+          />
+        </div>
         <div
           onDrop={handleTargetDrop}
           onDragOver={handleTargetDragOver}
@@ -247,14 +264,28 @@ function VfxHubSystemPanels({
       </div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <SearchInput
-          initialValue={donorFilter}
-          placeholder="Filter Downloaded VFX Systems"
-          onChange={onDonorFilterChange}
-          accentVar="var(--accent2)"
-          className="vfx-right-search"
-          style={{ flex: '0 0 auto', width: '100%' }}
-        />
+        <div style={{ position: 'relative', width: '100%' }}>
+          <SearchInput
+            initialValue={donorFilter}
+            placeholder="Filter Downloaded VFX Systems"
+            onChange={onDonorFilterChange}
+            accentVar="var(--accent2)"
+            className="vfx-right-search"
+            style={{ flex: '0 0 auto', width: '100%', paddingRight: '40px' }}
+          />
+          <SearchIcon
+            sx={{
+              position: 'absolute',
+              right: 12,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              fontSize: 16,
+              color: 'var(--accent2)',
+              opacity: 0.9,
+              pointerEvents: 'none'
+            }}
+          />
+        </div>
         <div style={{
           flex: 1,
           ...sectionStyle,

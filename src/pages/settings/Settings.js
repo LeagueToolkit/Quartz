@@ -42,7 +42,10 @@ const DEFAULT_CUSTOM_THEME_VALUES = {
   text2: '',
   glassBg: '',
   glassBorder: '',
-  glassShadow: ''
+  glassShadow: '',
+  liquidButtonTint: '',
+  liquidButtonHoverTint: '',
+  liquidButtonBlur: ''
 };
 
 const DEFAULT_CUSTOM_THEME_BEHAVIOR = {
@@ -161,6 +164,12 @@ const ModernSettings = () => {
   const [wallpaperVignetteEnabled, setWallpaperVignetteEnabled] = useState(false);
   const [wallpaperVignetteStrength, setWallpaperVignetteStrength] = useState(0.35);
   const [performanceMode, setPerformanceMode] = useState(false);
+  const [liquidButtonTint, setLiquidButtonTint] = useState('');
+  const [liquidButtonHoverTint, setLiquidButtonHoverTint] = useState('');
+  const [liquidButtonBlur, setLiquidButtonBlur] = useState('');
+  const liquidTintSaveTimerRef = useRef(null);
+  const liquidHoverSaveTimerRef = useRef(null);
+  const liquidBlurSaveTimerRef = useRef(null);
 
   const {
     contextMenuEnabled,
@@ -193,6 +202,24 @@ const ModernSettings = () => {
     const { r, g, b } = hexToRgb(hex);
     const a = clamp01((alphaPercent || 0) / 100);
     return `rgba(${r}, ${g}, ${b}, ${a})`;
+  };
+  const parseRgba = (value, fallbackHex = '#ffffff', fallbackAlpha = 0.15) => {
+    const raw = String(value || '').trim();
+    const m = raw.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(\d*\.?\d+))?\s*\)$/i);
+    if (!m) return { hex: fallbackHex, alpha: fallbackAlpha };
+    const r = Math.max(0, Math.min(255, parseInt(m[1], 10)));
+    const g = Math.max(0, Math.min(255, parseInt(m[2], 10)));
+    const b = Math.max(0, Math.min(255, parseInt(m[3], 10)));
+    const a = m[4] === undefined ? 1 : Math.max(0, Math.min(1, parseFloat(m[4])));
+    return { hex: `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`, alpha: a };
+  };
+  const hexWithAlphaToRgba = (hex, alpha = 0.15) => {
+    const cleaned = String(hex || '').replace('#', '').trim();
+    if (cleaned.length !== 6) return '';
+    const r = parseInt(cleaned.slice(0, 2), 16);
+    const g = parseInt(cleaned.slice(2, 4), 16);
+    const b = parseInt(cleaned.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha)).toFixed(2)})`;
   };
 
   // Section definitions for sidebar
@@ -361,7 +388,10 @@ const ModernSettings = () => {
         await electronPrefs.set('ThemeVariant', savedTheme);
       }
       const savedStyleRaw = electronPrefs.obj.InterfaceStyle || STYLES.QUARTZ;
-      const savedStyle = savedStyleRaw === 'cs16' ? STYLES.QUARTZ : savedStyleRaw;
+      const savedStyle =
+        savedStyleRaw === 'cs16' ? STYLES.QUARTZ
+          : savedStyleRaw === 'fluid' ? STYLES.LIQUID
+            : savedStyleRaw;
       if (savedStyle !== savedStyleRaw) {
         await electronPrefs.set('InterfaceStyle', savedStyle);
       }
@@ -385,6 +415,10 @@ const ModernSettings = () => {
           const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
           return v || fb;
         };
+        const getBlurVar = (name) => {
+          const parsed = Number.parseFloat(getVar(name, ''));
+          return Number.isFinite(parsed) ? String(parsed) : '';
+        };
         const initialValues = {
           ...DEFAULT_CUSTOM_THEME_VALUES,
           accent: getVar('--accent', DEFAULT_CUSTOM_THEME_VALUES.accent),
@@ -400,6 +434,9 @@ const ModernSettings = () => {
           glassBg: getVar('--glass-bg', ''),
           glassBorder: getVar('--glass-border', ''),
           glassShadow: getVar('--glass-shadow', ''),
+          liquidButtonTint: getVar('--liquid-button-bg', ''),
+          liquidButtonHoverTint: getVar('--liquid-button-hover-bg', ''),
+          liquidButtonBlur: getBlurVar('--liquid-button-blur'),
         };
         setCustomThemeValues(initialValues);
         customThemeValuesRef.current = initialValues;
@@ -548,6 +585,15 @@ const ModernSettings = () => {
       }
       if (electronPrefs.obj.WallpaperVignetteStrength !== undefined) {
         setWallpaperVignetteStrength(electronPrefs.obj.WallpaperVignetteStrength);
+      }
+      if (electronPrefs.obj.LiquidButtonTint !== undefined) {
+        setLiquidButtonTint(String(electronPrefs.obj.LiquidButtonTint || ''));
+      }
+      if (electronPrefs.obj.LiquidButtonHoverTint !== undefined) {
+        setLiquidButtonHoverTint(String(electronPrefs.obj.LiquidButtonHoverTint || ''));
+      }
+      if (electronPrefs.obj.LiquidButtonBlur !== undefined) {
+        setLiquidButtonBlur(String(electronPrefs.obj.LiquidButtonBlur || ''));
       }
 
       // Load available fonts (one fresh scan on settings open)
@@ -913,6 +959,12 @@ const ModernSettings = () => {
     if (hex8) return `#${hex8[1].toUpperCase()}`;
     return value;
   };
+  const normalizeBlurControlValue = (raw) => {
+    const value = String(raw ?? '').trim();
+    if (!value) return '';
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? String(parsed) : '';
+  };
 
   const createThemeCreatorValuesFromTheme = useCallback((themeColors = {}) => ({
     ...DEFAULT_CUSTOM_THEME_VALUES,
@@ -931,6 +983,9 @@ const ModernSettings = () => {
     glassBg: String(themeColors.glassBg || '').trim(),
     glassBorder: String(themeColors.glassBorder || '').trim(),
     glassShadow: String(themeColors.glassShadow || '').trim(),
+    liquidButtonTint: String(themeColors.liquidButtonTint || '').trim(),
+    liquidButtonHoverTint: String(themeColors.liquidButtonHoverTint || '').trim(),
+    liquidButtonBlur: normalizeBlurControlValue(themeColors.liquidButtonBlur),
   }), []);
 
   const getThemeCreatorSourceByVariant = useCallback((themeVariant) => {
@@ -945,7 +1000,10 @@ const ModernSettings = () => {
   }, []);
 
   const normalizeThemeCreatorBehavior = useCallback((behavior) => ({
-    preferredStyle: behavior?.preferredStyle === 'cs16' ? '' : (behavior?.preferredStyle || ''),
+    preferredStyle:
+      behavior?.preferredStyle === 'cs16' ? ''
+        : behavior?.preferredStyle === 'fluid' ? 'liquid'
+          : (behavior?.preferredStyle || ''),
     click: {
       override: !!behavior?.effects?.click,
       enabled: behavior?.effects?.click?.enabled === true,
@@ -1179,6 +1237,9 @@ const ModernSettings = () => {
   useEffect(() => {
     return () => {
       cleanupColorPickers();
+      if (liquidTintSaveTimerRef.current) clearTimeout(liquidTintSaveTimerRef.current);
+      if (liquidHoverSaveTimerRef.current) clearTimeout(liquidHoverSaveTimerRef.current);
+      if (liquidBlurSaveTimerRef.current) clearTimeout(liquidBlurSaveTimerRef.current);
     };
   }, []);
 
@@ -1386,6 +1447,90 @@ const ModernSettings = () => {
       detail: { amount }
     }));
   };
+
+  const dispatchGlassButtonStyleChanged = (overrides = {}) => {
+    window.dispatchEvent(new CustomEvent('glassButtonStyleChanged', {
+      detail: {
+        liquidTint: liquidButtonTint,
+        liquidHoverTint: liquidButtonHoverTint,
+        liquidBlur: liquidButtonBlur,
+        ...overrides
+      }
+    }));
+  };
+  const schedulePrefWrite = (timerRef, key, value) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      electronPrefs.set(key, value).catch(() => { });
+    }, 120);
+  };
+
+  const handleLiquidButtonTintChange = (value) => {
+    setLiquidButtonTint(value);
+    schedulePrefWrite(liquidTintSaveTimerRef, 'LiquidButtonTint', value);
+    dispatchGlassButtonStyleChanged({ liquidTint: value });
+  };
+
+  const handleLiquidButtonHoverTintChange = (value) => {
+    setLiquidButtonHoverTint(value);
+    schedulePrefWrite(liquidHoverSaveTimerRef, 'LiquidButtonHoverTint', value);
+    dispatchGlassButtonStyleChanged({ liquidHoverTint: value });
+  };
+
+  const handleLiquidButtonBlurChange = (value) => {
+    const next = String(value || '');
+    setLiquidButtonBlur(next);
+    schedulePrefWrite(liquidBlurSaveTimerRef, 'LiquidButtonBlur', next);
+    dispatchGlassButtonStyleChanged({ liquidBlur: next });
+  };
+
+  const handleGlassTintColorPickerClick = useCallback((event, field) => {
+    cleanupColorPickers();
+
+    const fieldMap = {
+      liquidButtonTint: { value: liquidButtonTint, fallback: 0.1, setter: handleLiquidButtonTintChange },
+      liquidButtonHoverTint: { value: liquidButtonHoverTint, fallback: 0.16, setter: handleLiquidButtonHoverTintChange },
+    };
+    const target = fieldMap[field];
+    if (!target) return;
+
+    const parsed = parseRgba(target.value, '#ffffff', target.fallback);
+    const currentHex = parsed.hex.toUpperCase();
+    const currentAlpha = parsed.alpha;
+    const setter = target.setter;
+
+    const mockPalette = [{
+      ToHEX: () => currentHex,
+      InputHex: (hex) => {
+        setter(hexWithAlphaToRgba(String(hex || '').toUpperCase(), currentAlpha));
+      },
+      vec4: (() => {
+        const handler = new ColorHandler();
+        handler.InputHex(currentHex);
+        return handler.vec4;
+      })()
+    }];
+
+    CreatePicker(
+      0,
+      event,
+      mockPalette,
+      null,
+      'theme',
+      null,
+      null,
+      event.target,
+      {
+        onLivePreview: (hex) => setter(hexWithAlphaToRgba(String(hex || '').toUpperCase(), currentAlpha)),
+        onCommit: (hex) => setter(hexWithAlphaToRgba(String(hex || '').toUpperCase(), currentAlpha)),
+      }
+    );
+  }, [
+    liquidButtonTint,
+    liquidButtonHoverTint,
+    handleLiquidButtonTintChange,
+    handleLiquidButtonHoverTintChange,
+  ]);
 
   const handleClearWallpaper = async () => {
     setWallpaperPath('');
@@ -1651,6 +1796,13 @@ const ModernSettings = () => {
             handleWallpaperVignetteEnabledChange={handleWallpaperVignetteEnabledChange}
             handleWallpaperVignetteStrengthChange={handleWallpaperVignetteStrengthChange}
             handleGlassBlurChange={handleGlassBlurChange}
+            liquidButtonTint={liquidButtonTint}
+            liquidButtonHoverTint={liquidButtonHoverTint}
+            liquidButtonBlur={liquidButtonBlur}
+            handleLiquidButtonTintChange={handleLiquidButtonTintChange}
+            handleLiquidButtonHoverTintChange={handleLiquidButtonHoverTintChange}
+            handleLiquidButtonBlurChange={handleLiquidButtonBlurChange}
+            handleGlassTintColorPickerClick={handleGlassTintColorPickerClick}
             performanceMode={performanceMode}
             handlePerformanceModeToggle={handlePerformanceModeToggle}
             clickEffectEnabled={clickEffectEnabled}

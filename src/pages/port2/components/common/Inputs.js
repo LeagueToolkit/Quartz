@@ -63,7 +63,8 @@ export const SearchInput = React.memo(({
     onChange,
     accentVar = 'var(--accent)',
     style = {},
-    className = ""
+    className = "",
+    showIcon = false
 }) => {
     const [localValue, setLocalValue] = useState(initialValue || '');
     const [isFocused, setIsFocused] = useState(false);
@@ -97,11 +98,13 @@ export const SearchInput = React.memo(({
         lastSyncedValueRef.current = localValue;
     };
 
+    const resolvedPlaceholder = showIcon ? `🔍 ${placeholder}` : placeholder;
+
     return (
         <input
             type="text"
             className={className}
-            placeholder={placeholder}
+            placeholder={resolvedPlaceholder}
             value={localValue}
             onChange={handleChange}
             onFocus={handleFocus}

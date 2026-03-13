@@ -13,8 +13,8 @@ export default function VfxHubToolbar({
     <div
       style={{
         display: 'flex',
-        gap: '12px',
-        padding: '12px 20px',
+        gap: '8px',
+        padding: '12px 12px 8px',
         background: 'transparent',
         position: 'relative',
         zIndex: 1,

@@ -569,6 +569,7 @@
     --liquid-surface-strong: rgba(255, 255, 255, 0.13);
     --liquid-button-bg: rgba(255, 255, 255, 0.1);
     --liquid-button-hover-bg: rgba(255, 255, 255, 0.16);
+    --liquid-button-blur: 14px;
     --liquid-input-bg: rgba(255, 255, 255, 0.06);
     --liquid-border: rgba(255, 255, 255, 0.22);
     --liquid-border-strong: rgba(255, 255, 255, 0.32);
@@ -587,18 +588,24 @@
     -webkit-backdrop-filter: blur(18px) saturate(132%) !important;
 }
 
-[data-style="liquid"] button:not(.nav-button):not(.settings-style-card),
+/* Main page has many cards at once; use a lighter glass pass to avoid compositor spikes. */
+[data-style="liquid"] .main-page-card {
+    backdrop-filter: blur(8px) saturate(116%) !important;
+    -webkit-backdrop-filter: blur(8px) saturate(116%) !important;
+}
+
+[data-style="liquid"] button:not(.nav-button):not(.settings-style-card):not(.bin-editor-action-btn),
 [data-style="liquid"] .MuiButton-root,
 [data-style="liquid"] .MuiIconButton-root,
 [data-style="liquid"] .MuiButtonBase-root:not(.nav-button):not(.settings-style-card) {
     background: linear-gradient(180deg, var(--liquid-button-bg), color-mix(in srgb, var(--liquid-button-bg), transparent 25%)) !important;
     border: 1px solid var(--liquid-border-strong) !important;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), 0 8px 20px rgba(0, 0, 0, 0.22) !important;
-    backdrop-filter: blur(14px) saturate(130%) !important;
-    -webkit-backdrop-filter: blur(14px) saturate(130%) !important;
+    backdrop-filter: blur(var(--liquid-button-blur, 14px)) saturate(130%) !important;
+    -webkit-backdrop-filter: blur(var(--liquid-button-blur, 14px)) saturate(130%) !important;
 }
 
-[data-style="liquid"] button:not(.nav-button):not(.settings-style-card):hover,
+[data-style="liquid"] button:not(.nav-button):not(.settings-style-card):not(.bin-editor-action-btn):hover,
 [data-style="liquid"] .MuiButton-root:hover,
 [data-style="liquid"] .MuiIconButton-root:hover,
 [data-style="liquid"] .MuiButtonBase-root:not(.nav-button):not(.settings-style-card):hover {
@@ -628,9 +635,6 @@
 [data-style="liquid"] .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
     border-color: var(--accent) !important;
 }
-
-
-
 
 /* CS 1.6 - Locked Style (Overrides data-theme colors) */
 [data-style="cs16"] {

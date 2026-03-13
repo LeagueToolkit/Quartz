@@ -57,7 +57,46 @@ body,
   opacity: 1 !important;
 }
 
+.port-container .port-target-search {
+  color: var(--accent) !important;
+}
+
+.port-container .port-target-search::placeholder {
+  color: var(--accent) !important;
+  opacity: 1 !important;
+}
+
+/* VFXHub search text colors (all modes) */
+.vfx-hub-container .vfx-left-search {
+  color: var(--accent) !important;
+}
+
+.vfx-hub-container .vfx-left-search::placeholder {
+  color: var(--accent) !important;
+  opacity: 1 !important;
+}
+
+.vfx-hub-container .vfx-right-search {
+  color: var(--accent2) !important;
+}
+
+.vfx-hub-container .vfx-right-search::placeholder {
+  color: var(--accent2) !important;
+  opacity: 1 !important;
+}
+
 /* VFXHub right search should stay accent2 in wallpaper/liquid mode */
+.has-wallpaper .vfx-hub-container .vfx-left-search,
+[data-style="liquid"] .vfx-hub-container .vfx-left-search {
+  color: var(--accent) !important;
+}
+
+.has-wallpaper .vfx-hub-container .vfx-left-search::placeholder,
+[data-style="liquid"] .vfx-hub-container .vfx-left-search::placeholder {
+  color: var(--accent) !important;
+  opacity: 1 !important;
+}
+
 .has-wallpaper .vfx-hub-container .vfx-right-search,
 [data-style="liquid"] .vfx-hub-container .vfx-right-search {
   color: var(--accent2) !important;
@@ -68,6 +107,8 @@ body,
   color: var(--accent2) !important;
   opacity: 1 !important;
 }
+
+/* Port: donor bin emitter names should use accent2 */
 
 /* Paint - make all top bar rows transparent in wallpaper/liquid mode */
 .has-wallpaper .paint-toolbar,
@@ -85,10 +126,46 @@ body,
   background-color: transparent !important;
 }
 
-/* Bin Editor - make top header/toolbar bar transparent in wallpaper/liquid mode */
-.has-wallpaper .bin-editor-container>div,
-[data-style="liquid"] .bin-editor-container>div {
-  background: transparent !important;
+/* Paint2 - selected emitter visibility boost in wallpaper/liquid mode */
+.has-wallpaper .paint2-container .paint-emitter-row.is-selected,
+[data-style="liquid"] .paint2-container .paint-emitter-row.is-selected {
+  background: linear-gradient(90deg,
+      color-mix(in srgb, var(--accent) 22%, transparent),
+      color-mix(in srgb, var(--accent) 10%, transparent)) !important;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 82%, white 8%) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent) !important;
+}
+
+.has-wallpaper .paint2-container .paint-emitter-row.is-selected .MuiTypography-root,
+[data-style="liquid"] .paint2-container .paint-emitter-row.is-selected .MuiTypography-root {
+  color: color-mix(in srgb, var(--accent) 88%, white 12%) !important;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.has-wallpaper .paint2-container .paint-emitter-row.is-selected .MuiCheckbox-root.Mui-checked,
+[data-style="liquid"] .paint2-container .paint-emitter-row.is-selected .MuiCheckbox-root.Mui-checked {
+  color: color-mix(in srgb, var(--accent) 88%, white 12%) !important;
+}
+
+/* Bin Editor - enforce readable contrast in wallpaper/liquid mode */
+.has-wallpaper .bin-editor-topbar,
+[data-style="liquid"] .bin-editor-topbar,
+.has-wallpaper .bin-editor-toolbar,
+[data-style="liquid"] .bin-editor-toolbar {
+  background: color-mix(in srgb, var(--surface) 72%, transparent) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.has-wallpaper .bin-editor-main,
+[data-style="liquid"] .bin-editor-main {
+  background: color-mix(in srgb, var(--bg) 45%, transparent) !important;
+}
+
+.has-wallpaper .bin-editor-list,
+[data-style="liquid"] .bin-editor-list,
+.has-wallpaper .bin-editor-props,
+[data-style="liquid"] .bin-editor-props {
+  background: rgba(14, 24, 36, 0.24) !important;
 }
 
 /* Bin Editor - frosted glass on list items when wallpaper/liquid is active */
@@ -98,22 +175,174 @@ body,
 [data-style="liquid"] .bin-editor-emitter {
   backdrop-filter: blur(14px) saturate(160%) !important;
   -webkit-backdrop-filter: blur(14px) saturate(160%) !important;
-  background: rgba(255, 255, 255, 0.06) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(20, 32, 46, 0.26) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+/* Bin Editor - selected system/emitter visibility boost in wallpaper/liquid mode */
+.has-wallpaper .bin-editor-item.selected,
+.has-wallpaper .bin-editor-emitter.selected,
+[data-style="liquid"] .bin-editor-item.selected,
+[data-style="liquid"] .bin-editor-emitter.selected {
+  background: linear-gradient(90deg,
+      color-mix(in srgb, var(--accent) 24%, transparent),
+      color-mix(in srgb, var(--accent) 10%, transparent)) !important;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 84%, white 8%) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 36%, transparent) !important;
+}
+
+.has-wallpaper .bin-editor-item.selected span,
+.has-wallpaper .bin-editor-emitter.selected span,
+.has-wallpaper .bin-editor-item.selected .MuiTypography-root,
+.has-wallpaper .bin-editor-emitter.selected .MuiTypography-root,
+[data-style="liquid"] .bin-editor-item.selected span,
+[data-style="liquid"] .bin-editor-emitter.selected span,
+[data-style="liquid"] .bin-editor-item.selected .MuiTypography-root,
+[data-style="liquid"] .bin-editor-emitter.selected .MuiTypography-root {
+  color: color-mix(in srgb, var(--accent) 88%, white 12%) !important;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 /* Bin Editor search bar colors & placeholder */
 .has-wallpaper .bin-editor-search,
 [data-style="liquid"] .bin-editor-search {
-  background: color-mix(in srgb, var(--accent) 15%, transparent) !important;
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent) !important;
-  color: var(--accent) !important;
+  background: rgba(14, 28, 42, 0.28) !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 52%, transparent) !important;
+  color: color-mix(in srgb, var(--accent) 90%, white 10%) !important;
 }
 
 .has-wallpaper .bin-editor-search::placeholder,
 [data-style="liquid"] .bin-editor-search::placeholder {
   color: var(--accent) !important;
   opacity: 1 !important;
+}
+
+/* Bin Editor - Port-like top action buttons (HTML buttons, no MUI) */
+.bin-editor-topbar .bin-editor-action-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: color-mix(in srgb, #9ca3af 14%, transparent);
+  color: #9ca3af;
+  font-family: JetBrains Mono, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  line-height: 1;
+  box-shadow: none;
+  outline: none;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.bin-editor-topbar .bin-editor-action-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, #9ca3af 22%, transparent);
+  border-color: #9ca3af;
+  text-shadow: 0 0 8px color-mix(in srgb, #9ca3af, transparent 50%);
+}
+
+.bin-editor-topbar .bin-editor-action-btn.is-load {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent), transparent 70%);
+  color: var(--accent);
+}
+
+.bin-editor-topbar .bin-editor-action-btn.is-load:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: var(--accent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent), transparent 50%);
+}
+
+.bin-editor-topbar .bin-editor-action-btn.is-restore {
+  background: color-mix(in srgb, var(--accent2) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent2), transparent 70%);
+  color: var(--accent2);
+}
+
+.bin-editor-topbar .bin-editor-action-btn.is-restore:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent2) 22%, transparent);
+  border-color: var(--accent2);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent2), transparent 50%);
+}
+
+.bin-editor-topbar .bin-editor-action-btn.is-save {
+  background: color-mix(in srgb, #22c55e 14%, transparent);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+.bin-editor-topbar .bin-editor-action-btn.is-save:hover:not(:disabled) {
+  background: color-mix(in srgb, #22c55e 22%, transparent);
+  border-color: #22c55e;
+  text-shadow: 0 0 8px color-mix(in srgb, #22c55e, transparent 50%);
+}
+
+.bin-editor-topbar .bin-editor-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Paint2 footer actions - match Port/Open Bin button style */
+.paint2-footer .paint2-footer-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: color-mix(in srgb, #9ca3af 14%, transparent);
+  color: #9ca3af;
+  font-family: JetBrains Mono, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  line-height: 1;
+  box-shadow: none;
+  outline: none;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  flex: 1;
+}
+
+.paint2-footer .paint2-footer-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, #9ca3af 22%, transparent);
+  border-color: #9ca3af;
+  text-shadow: 0 0 8px color-mix(in srgb, #9ca3af, transparent 50%);
+}
+
+.paint2-footer .paint2-footer-btn.is-recolor {
+  flex: 3;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent), transparent 70%);
+  color: var(--accent);
+}
+
+.paint2-footer .paint2-footer-btn.is-recolor:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: var(--accent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent), transparent 50%);
+}
+
+.paint2-footer .paint2-footer-btn.is-save {
+  background: color-mix(in srgb, #22c55e 14%, transparent);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+.paint2-footer .paint2-footer-btn.is-save:hover:not(:disabled) {
+  background: color-mix(in srgb, #22c55e 22%, transparent);
+  border-color: #22c55e;
+  text-shadow: 0 0 8px color-mix(in srgb, #22c55e, transparent 50%);
+}
+
+.paint2-footer .paint2-footer-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* BNK: wallpaper mode should respect glass blur/opacity settings */

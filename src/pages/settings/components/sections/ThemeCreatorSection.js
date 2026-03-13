@@ -39,6 +39,11 @@ const ThemeCreatorSection = ({
     if (hex8) return `#${hex8[1].toUpperCase()}`;
     return raw;
   };
+  const parseBlur = (value, fallback) => {
+    const n = Number.parseFloat(String(value ?? ''));
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const liquidBlur = parseBlur(customThemeValues.liquidButtonBlur, 14);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -284,6 +289,39 @@ const ThemeCreatorSection = ({
                   placeholder={field}
                 />
               ))}
+            </div>
+
+            <div style={{ border: '1px dashed rgba(255, 255, 255, 0.1)', borderRadius: '6px', padding: '12px', background: 'rgba(255, 255, 255, 0.01)' }}>
+              <div style={{ fontSize: '12px', color: 'var(--accent2)', marginBottom: '12px', fontWeight: '600' }}>
+                Glass Button Tuning
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px', marginBottom: '12px' }}>
+                <Input
+                  value={customThemeValues.liquidButtonTint || ''}
+                  onChange={(e) => handleCustomThemeValueChange('liquidButtonTint', e.target.value)}
+                  placeholder="Liquid tint (e.g. rgba(255,255,255,0.10))"
+                />
+                <Input
+                  value={customThemeValues.liquidButtonHoverTint || ''}
+                  onChange={(e) => handleCustomThemeValueChange('liquidButtonHoverTint', e.target.value)}
+                  placeholder="Liquid hover tint"
+                />
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--accent2)', marginBottom: '6px' }}>
+                  Liquid Button Blur: {liquidBlur}px
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="36"
+                  value={liquidBlur}
+                  onChange={(e) => handleCustomThemeValueChange('liquidButtonBlur', String(parseInt(e.target.value, 10)))}
+                  style={{ width: '100%', accentColor: 'var(--accent)' }}
+                />
+              </div>
+
             </div>
 
             <div style={{ border: '1px dashed rgba(255, 255, 255, 0.1)', borderRadius: '6px', padding: '12px', background: 'rgba(255, 255, 255, 0.01)' }}>
