@@ -69,7 +69,7 @@ export default function TargetColumn({
           fontSize: '13px',
           fontWeight: 700,
           height: '36px',
-          background: 'color-mix(in srgb, var(--accent), var(--bg) 85%)',
+          background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
           border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)',
           color: 'var(--accent)',
           borderRadius: '4px',
@@ -78,7 +78,7 @@ export default function TargetColumn({
           transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
           position: 'relative',
           '&:hover': {
-            background: 'color-mix(in srgb, var(--accent), var(--bg) 75%)',
+            background: 'color-mix(in srgb, var(--accent) 22%, transparent)',
             borderColor: 'var(--accent)',
             textShadow: '0 0 8px color-mix(in srgb, var(--accent), transparent 50%)',
           },
@@ -106,16 +106,15 @@ export default function TargetColumn({
             padding: '8px 14px',
             background: enableTargetEmitterSearch
               ? 'linear-gradient(180deg, rgba(236, 185, 106, 0.15), rgba(236, 185, 106, 0.05))'
-              : 'rgba(0, 0, 0, 0.25)',
+              : 'color-mix(in srgb, var(--accent) 12%, transparent)',
             border: enableTargetEmitterSearch
               ? '1px solid var(--accent)'
-              : '1px solid rgba(255, 255, 255, 0.1)',
+              : '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
             borderRadius: '10px',
             color: 'var(--accent)',
             fontFamily: 'JetBrains Mono, monospace',
             fontSize: '12px',
             cursor: 'pointer',
-            marginTop: '-4px',
             transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
             boxShadow: enableTargetEmitterSearch ? '0 0 10px rgba(236, 185, 106, 0.1)' : 'none',
           }}
@@ -125,6 +124,7 @@ export default function TargetColumn({
       </div>
 
       <div
+        className="port-panel"
         style={{
           flex: 1,
           ...sectionStyle,

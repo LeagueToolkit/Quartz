@@ -12,6 +12,7 @@
     --surface-2: #2a2737;
     --text: #ecb96a;
     --text-2: #c084fc;
+    --nav-icon-color: var(--text-2);
     --glass-bg: rgba(16, 14, 22, 0.35);
     --glass-border: rgba(255, 255, 255, 0.10);
     --glass-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
@@ -560,6 +561,72 @@
 [data-style="winforms"] .MuiBottomNavigationAction-root:hover {
     background-color: var(--surface-2) !important;
     border-radius: 0 !important;
+}
+
+/* Liquid Glass Style */
+[data-style="liquid"] {
+    --liquid-surface: rgba(255, 255, 255, 0.08);
+    --liquid-surface-strong: rgba(255, 255, 255, 0.13);
+    --liquid-button-bg: rgba(255, 255, 255, 0.1);
+    --liquid-button-hover-bg: rgba(255, 255, 255, 0.16);
+    --liquid-input-bg: rgba(255, 255, 255, 0.06);
+    --liquid-border: rgba(255, 255, 255, 0.22);
+    --liquid-border-strong: rgba(255, 255, 255, 0.32);
+    --liquid-highlight: rgba(255, 255, 255, 0.38);
+}
+
+[data-style="liquid"] .theme-glass,
+[data-style="liquid"] .main-page-card,
+[data-style="liquid"] .settings-card,
+[data-style="liquid"] .MuiPaper-root,
+[data-style="liquid"] .MuiCard-root {
+    background: linear-gradient(180deg, var(--liquid-surface), color-mix(in srgb, var(--liquid-surface), transparent 20%)) !important;
+    border: 1px solid var(--liquid-border) !important;
+    box-shadow: inset 0 1px 0 var(--liquid-highlight), 0 12px 30px rgba(0, 0, 0, 0.26) !important;
+    backdrop-filter: blur(18px) saturate(132%) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(132%) !important;
+}
+
+[data-style="liquid"] button:not(.nav-button):not(.settings-style-card),
+[data-style="liquid"] .MuiButton-root,
+[data-style="liquid"] .MuiIconButton-root,
+[data-style="liquid"] .MuiButtonBase-root:not(.nav-button):not(.settings-style-card) {
+    background: linear-gradient(180deg, var(--liquid-button-bg), color-mix(in srgb, var(--liquid-button-bg), transparent 25%)) !important;
+    border: 1px solid var(--liquid-border-strong) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), 0 8px 20px rgba(0, 0, 0, 0.22) !important;
+    backdrop-filter: blur(14px) saturate(130%) !important;
+    -webkit-backdrop-filter: blur(14px) saturate(130%) !important;
+}
+
+[data-style="liquid"] button:not(.nav-button):not(.settings-style-card):hover,
+[data-style="liquid"] .MuiButton-root:hover,
+[data-style="liquid"] .MuiIconButton-root:hover,
+[data-style="liquid"] .MuiButtonBase-root:not(.nav-button):not(.settings-style-card):hover {
+    background: linear-gradient(180deg, var(--liquid-button-hover-bg), color-mix(in srgb, var(--liquid-button-hover-bg), transparent 20%)) !important;
+    border-color: rgba(255, 255, 255, 0.46) !important;
+}
+
+[data-style="liquid"] input,
+[data-style="liquid"] textarea,
+[data-style="liquid"] select,
+[data-style="liquid"] .MuiInputBase-root,
+[data-style="liquid"] .MuiOutlinedInput-root {
+    background: linear-gradient(180deg, var(--liquid-input-bg), color-mix(in srgb, var(--liquid-input-bg), transparent 18%)) !important;
+    border-color: rgba(255, 255, 255, 0.24) !important;
+    backdrop-filter: blur(12px) saturate(126%) !important;
+    -webkit-backdrop-filter: blur(12px) saturate(126%) !important;
+}
+
+[data-style="liquid"] .MuiOutlinedInput-notchedOutline {
+    border-color: rgba(255, 255, 255, 0.28) !important;
+}
+
+[data-style="liquid"] .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline {
+    border-color: rgba(255, 255, 255, 0.42) !important;
+}
+
+[data-style="liquid"] .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+    border-color: var(--accent) !important;
 }
 
 

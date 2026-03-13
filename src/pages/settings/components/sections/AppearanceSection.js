@@ -14,14 +14,20 @@ const AppearanceSection = ({
   builtInThemes,
   customThemesMap,
   handleThemeChange,
-  STYLES,
   wallpaperPath,
+  wallpaperEnabled,
+  wallpaperId,
+  wallpaperItems,
   wallpaperOpacity,
-  handleWallpaperPathChange,
   handleBrowseWallpaper,
-  handleClearWallpaper,
+  handleSelectWallpaper,
+  handleDeleteWallpaper,
+  handleDeleteActiveWallpaper,
+  handleWallpaperEnabledChange,
   handleWallpaperOpacityChange,
   handleGlassBlurChange,
+  performanceMode,
+  handlePerformanceModeToggle,
   clickEffectEnabled,
   handleClickEffectToggle,
   clickEffectType,
@@ -69,6 +75,22 @@ const AppearanceSection = ({
         </div>
       </FormGroup>
 
+      <FormGroup label="Performance Mode" description="Reduce heavy visual effects for smoother performance on weaker hardware">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={performanceMode}
+              onChange={(e) => handlePerformanceModeToggle(e.target.checked)}
+              style={{ width: '18px', height: '18px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: '13px', color: 'var(--text)' }}>
+              Enable performance mode
+            </span>
+          </label>
+        </div>
+      </FormGroup>
+
       <FormGroup label="Interface Style" description="Select the application's visual layout">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
           {interfaceStyles.map(style => (
@@ -77,6 +99,7 @@ const AppearanceSection = ({
               theme={style}
               selected={settings.interfaceStyle === style.id}
               onClick={() => handleStyleChange(style.id)}
+              preventLiquidArtifact
             />
           ))}
         </div>
@@ -84,17 +107,13 @@ const AppearanceSection = ({
 
       <FormGroup
         label="Color Theme"
-        description={settings.interfaceStyle === STYLES.CS16
-          ? 'Color selection is disabled in 1.6 style'
-          : 'Choose your preferred color scheme'}
+        description="Choose your preferred color scheme"
       >
         <div
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-            gap: '12px',
-            opacity: settings.interfaceStyle === STYLES.CS16 ? 0.5 : 1,
-            pointerEvents: settings.interfaceStyle === STYLES.CS16 ? 'none' : 'auto'
+            gap: '12px'
           }}
         >
           {builtInThemes.map(theme => (
@@ -118,6 +137,18 @@ const AppearanceSection = ({
 
       <FormGroup label="Wallpaper" description="Set a background image that covers the entire app">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={wallpaperEnabled}
+              onChange={(e) => handleWallpaperEnabledChange(e.target.checked)}
+              style={{ width: '18px', height: '18px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: '13px', color: 'var(--text)' }}>
+              Enable wallpaper
+            </span>
+          </label>
+
           {wallpaperPath && (
             <div style={{ width: '100%', height: '120px', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255, 255, 255, 0.1)', position: 'relative' }}>
               <img
@@ -146,28 +177,79 @@ const AppearanceSection = ({
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <input
-              type="text"
-              value={wallpaperPath}
-              onChange={(e) => handleWallpaperPathChange(e.target.value)}
-              placeholder="No wallpaper selected"
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                background: 'rgba(0, 0, 0, 0.2)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '6px',
-                color: 'var(--text)',
-                fontSize: '13px'
-              }}
-            />
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <Button icon={<Folder size={16} />} variant="secondary" onClick={handleBrowseWallpaper}>
-              Browse
+              Add Wallpaper
             </Button>
             {wallpaperPath && (
-              <Button icon={<Trash2 size={16} />} variant="secondary" onClick={handleClearWallpaper} style={{ padding: '8px 12px' }} />
+              <Button icon={<Trash2 size={16} />} variant="secondary" onClick={handleDeleteActiveWallpaper} style={{ padding: '8px 12px' }}>
+                Delete Active
+              </Button>
             )}
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+              gap: '10px',
+              maxHeight: '220px',
+              overflowY: 'auto',
+              paddingRight: '2px'
+            }}
+          >
+            {wallpaperItems.length === 0 && (
+              <div style={{ gridColumn: '1 / -1', fontSize: '12px', color: 'var(--text-2)', opacity: 0.8, padding: '12px 4px' }}>
+                No wallpapers yet. Click `Add Wallpaper` to import into your Quartz roaming gallery.
+              </div>
+            )}
+            {wallpaperItems.map((item) => {
+              const isActive = wallpaperId === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleSelectWallpaper(item.id)}
+                  style={{
+                    border: isActive ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.12)',
+                    background: isActive ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.03)',
+                    borderRadius: '8px',
+                    overflow: 'hidden',
+                    cursor: 'pointer',
+                    padding: 0,
+                    textAlign: 'left',
+                    display: 'flex',
+                    flexDirection: 'column'
+                  }}
+                  title={item.displayName}
+                >
+                  <div style={{ width: '100%', height: '76px', background: 'rgba(0,0,0,0.35)' }}>
+                    <img
+                      src={item.previewSrc}
+                      alt={item.displayName}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  </div>
+                  <div style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.displayName}
+                    </span>
+                    {item.source !== 'bundled' && (
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteWallpaper(item.id);
+                        }}
+                        style={{ fontSize: '11px', color: 'rgba(255,120,120,0.9)', padding: '0 2px' }}
+                        title="Delete wallpaper"
+                      >
+                        x
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -201,12 +283,13 @@ const AppearanceSection = ({
       </FormGroup>
 
       <FormGroup label="Click Effect" description="Show interactive visual effects on click">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', opacity: performanceMode ? 0.6 : 1 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', userSelect: 'none' }}>
             <input
               type="checkbox"
               checked={clickEffectEnabled}
               onChange={(e) => handleClickEffectToggle(e.target.checked)}
+              disabled={performanceMode}
               style={{ width: '18px', height: '18px', accentColor: 'var(--accent)', cursor: 'pointer' }}
             />
             <span style={{ fontSize: '13px', color: 'var(--text)' }}>
@@ -218,7 +301,7 @@ const AppearanceSection = ({
             icon={<Palette size={16} />}
             value={clickEffectType}
             onChange={handleClickEffectTypeChange}
-            disabled={!clickEffectEnabled}
+            disabled={!clickEffectEnabled || performanceMode}
             options={[
               { value: 'water', label: 'Water Ripple' },
               { value: 'particles', label: 'Particle Burst' },
@@ -233,12 +316,13 @@ const AppearanceSection = ({
       </FormGroup>
 
       <FormGroup label="Background Effect" description="Show animated background effects">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', opacity: performanceMode ? 0.6 : 1 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', userSelect: 'none' }}>
             <input
               type="checkbox"
               checked={backgroundEffectEnabled}
               onChange={(e) => handleBackgroundEffectToggle(e.target.checked)}
+              disabled={performanceMode}
               style={{ width: '18px', height: '18px', accentColor: 'var(--accent)', cursor: 'pointer' }}
             />
             <span style={{ fontSize: '13px', color: 'var(--text)' }}>
@@ -250,24 +334,29 @@ const AppearanceSection = ({
             icon={<Palette size={16} />}
             value={backgroundEffectType}
             onChange={handleBackgroundEffectTypeChange}
-            disabled={!backgroundEffectEnabled}
+            disabled={!backgroundEffectEnabled || performanceMode}
             options={[
               { value: 'fireflies', label: 'Swirling Fireflies' },
               { value: 'starfield', label: 'Starfield' },
               { value: 'constellation', label: 'Constellation' },
-              { value: 'divine', label: 'Divine Stars' }
+              { value: 'divine', label: 'Divine Stars' },
+              { value: 'bubbles', label: 'Water Bubbles' },
+              { value: 'leaves', label: 'Falling Leaves' },
+              { value: 'rain', label: 'Rain' },
+              { value: 'sparkleSymbol', label: 'Sparkle Symbol' }
             ]}
           />
         </div>
       </FormGroup>
 
       <FormGroup label="Cursor Effect" description="Replace the system cursor with a custom style">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', opacity: performanceMode ? 0.6 : 1 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', userSelect: 'none' }}>
             <input
               type="checkbox"
               checked={cursorEffectEnabled}
               onChange={(e) => handleCursorEffectToggle(e.target.checked)}
+              disabled={performanceMode}
               style={{ width: '18px', height: '18px', accentColor: 'var(--accent)', cursor: 'pointer' }}
             />
             <span style={{ fontSize: '13px', color: 'var(--text)' }}>
@@ -275,7 +364,7 @@ const AppearanceSection = ({
             </span>
           </label>
 
-          {cursorEffectEnabled && (
+          {cursorEffectEnabled && !performanceMode && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <Button icon={<Folder size={16} />} variant="secondary" onClick={handleOpenCursorsFolder}>
@@ -335,7 +424,7 @@ const AppearanceSection = ({
             </div>
           )}
         </div>
-        {cursorEffectEnabled && (
+        {cursorEffectEnabled && !performanceMode && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
             <span style={{ fontSize: '12px', color: 'var(--text-2)', whiteSpace: 'nowrap' }}>Size</span>
             <input

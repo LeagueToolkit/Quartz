@@ -3,7 +3,7 @@
 export const STYLES = {
   QUARTZ: 'quartz',
   WINFORMS: 'winforms',
-  CS16: 'cs16'
+  LIQUID: 'liquid'
 };
 
 const THEMES = {
@@ -37,6 +37,174 @@ const THEMES = {
     accentGreen: '#22c55e',
     accentGreenMuted: '#166534'
   },
+  ocean: {
+    accent: '#0EC1F6',
+    accent2: '#FFFFFF',
+    accentMuted: '#FAFAFA',
+    bg: '#06537A',
+    bg2: '#054666',
+    surface: '#012A40',
+    surface2: '#012336',
+    text: '#FFFFFF',
+    text2: '#FFFFFF',
+    navIconColor: '#FFFFFF',
+    glassBg: 'rgba(1, 42, 64, 0.36)',
+    glassBorder: 'rgba(255,255,255,0.10)',
+    glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+    muiPrimary: '#0EC1F6',
+    muiPrimaryLight: '#53D6FB',
+    muiPrimaryDark: '#0895BF',
+    muiSecondary: '#FFFFFF',
+    muiSecondaryLight: '#FFFFFF',
+    muiSecondaryDark: '#DDEAF0',
+    muiBackground: '#06537A',
+    muiPaper: '#012A40',
+    muiTextPrimary: '#FFFFFF',
+    muiTextSecondary: '#FFFFFF',
+    muiDivider: '#2B6E8D',
+    accentGreen: '#22c55e',
+    accentGreenMuted: '#166534'
+  },
+  empress: {
+    accent: '#FFFFFF',
+    accent2: '#FFFFFF',
+    accentMuted: '#FAFAFA',
+    bg: '#06537A',
+    bg2: '#054666',
+    surface: '#012A40',
+    surface2: '#012336',
+    text: '#FFFFFF',
+    text2: '#FFFFFF',
+    navIconColor: '#FFFFFF',
+    glassBg: 'rgba(1, 42, 64, 0.36)',
+    glassBorder: 'rgba(255,255,255,0.10)',
+    glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+    muiPrimary: '#FFFFFF',
+    muiPrimaryLight: '#FFFFFF',
+    muiPrimaryDark: '#E0E0E0',
+    muiSecondary: '#FFFFFF',
+    muiSecondaryLight: '#FFFFFF',
+    muiSecondaryDark: '#DDEAF0',
+    muiBackground: '#06537A',
+    muiPaper: '#012A40',
+    muiTextPrimary: '#FFFFFF',
+    muiTextSecondary: '#FFFFFF',
+    muiDivider: '#2B6E8D',
+    accentGreen: '#22c55e',
+    accentGreenMuted: '#166534'
+  },
+  forest: {
+    accent: '#9DD9C8',
+    accent2: '#FFFFFF',
+    accentMuted: '#FAFAFA',
+    bg: '#2F4A40',
+    bg2: '#4F7060',
+    surface: '#29433A',
+    surface2: '#32503A',
+    text: '#FFFFFF',
+    text2: '#FFFFFF',
+    navIconColor: '#FFFFFF',
+    glassBg: 'rgba(1, 42, 64, 0.36)',
+    glassBorder: 'rgba(255,255,255,0.10)',
+    glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+    muiPrimary: '#9DD9C8',
+    muiPrimaryLight: '#B7E6DA',
+    muiPrimaryDark: '#6FB29D',
+    muiSecondary: '#FFFFFF',
+    muiSecondaryLight: '#FFFFFF',
+    muiSecondaryDark: '#DDEAF0',
+    muiBackground: '#2F4A40',
+    muiPaper: '#29433A',
+    muiTextPrimary: '#FFFFFF',
+    muiTextSecondary: '#FFFFFF',
+    muiDivider: '#4A6A60',
+    accentGreen: '#7AC7A8',
+    accentGreenMuted: '#4A8F75'
+  },
+  amogus: {
+    accent: '#83D0FF',
+    accent2: '#FFFFFF',
+    accentMuted: '#FFFFFF',
+    bg: '#393939',
+    bg2: '#4D4D4D',
+    surface: '#363636',
+    surface2: '#525252',
+    text: '#FFFFFF',
+    text2: '#83D0FF',
+    navIconColor: '#FFFFFF',
+    glassBg: 'rgba(16,14,22,0.35)',
+    glassBorder: 'rgba(255,255,255,0.10)',
+    glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+    muiPrimary: '#83D0FF',
+    muiPrimaryLight: '#B3E4FF',
+    muiPrimaryDark: '#4AA7DD',
+    muiSecondary: '#FFFFFF',
+    muiSecondaryLight: '#FFFFFF',
+    muiSecondaryDark: '#D9D9D9',
+    muiBackground: '#393939',
+    muiPaper: '#363636',
+    muiTextPrimary: '#FFFFFF',
+    muiTextSecondary: '#FFFFFF',
+    muiDivider: '#5A5A5A',
+    accentGreen: '#83D0FF',
+    accentGreenMuted: '#4AA7DD'
+  },
+  city: {
+    accent: '#00FFEB',
+    accent2: '#FF40E6',
+    accentMuted: '#FAFAFA',
+    bg: '#71067A',
+    bg2: '#5C0566',
+    surface: '#3D0140',
+    surface2: '#2B0136',
+    text: '#FFFFFF',
+    text2: '#00FFFF',
+    navIconColor: '#2FFFE4',
+    glassBg: 'rgba(1, 42, 64, 0.36)',
+    glassBorder: 'rgba(255,255,255,0.10)',
+    glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+    muiPrimary: '#00FFEB',
+    muiPrimaryLight: '#66FFF4',
+    muiPrimaryDark: '#00BFB0',
+    muiSecondary: '#FF40E6',
+    muiSecondaryLight: '#FF80EF',
+    muiSecondaryDark: '#C020AE',
+    muiBackground: '#71067A',
+    muiPaper: '#3D0140',
+    muiTextPrimary: '#FFFFFF',
+    muiTextSecondary: '#00FFFF',
+    muiDivider: '#5C0566',
+    accentGreen: '#00FFEB',
+    accentGreenMuted: '#00BFB0'
+  },
+  starSky: {
+    accent: '#4681FF',
+    accent2: '#1BDBFF',
+    accentMuted: '#6FB5FC',
+    bg: '#0B0A0F',
+    bg2: '#0E1220',
+    surface: '#0F0D14',
+    surface2: '#141B2B',
+    text: '#FFFFFF',
+    text2: '#6FB5FC',
+    navIconColor: '#6FB5FC',
+    glassBg: 'rgba(1, 42, 64, 0.36)',
+    glassBorder: 'rgba(255,255,255,0.10)',
+    glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+    muiPrimary: '#4681FF',
+    muiPrimaryLight: '#77A3FF',
+    muiPrimaryDark: '#2E5FD1',
+    muiSecondary: '#1BDBFF',
+    muiSecondaryLight: '#67EBFF',
+    muiSecondaryDark: '#10A7C2',
+    muiBackground: '#0B0A0F',
+    muiPaper: '#0F0D14',
+    muiTextPrimary: '#FFFFFF',
+    muiTextSecondary: '#6FB5FC',
+    muiDivider: '#1E2740',
+    accentGreen: '#1BDBFF',
+    accentGreenMuted: '#10A7C2'
+  },
   // Neutral theme
   onyx: {
     accent: '#c3cedaff',
@@ -66,90 +234,6 @@ const THEMES = {
     muiDivider: '#2b3340',
     accentGreen: '#22c55e',
     accentGreenMuted: '#14532d'
-  },
-  // Neon theme (cyan + pink)
-  neon: {
-    accent: '#06b6d4',
-    accent2: '#f472b6',
-    accentMuted: '#0e7490',
-    bg: '#0a0c12',
-    bg2: '#121726',
-    surface: '#0e121b',
-    surface2: '#171d2b',
-    text: '#a5f3fc',
-    text2: '#fbcfe8',
-    glassBg: 'rgba(10,12,18,0.35)',
-    glassBorder: 'rgba(255,255,255,0.10)',
-    glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
-    muiPrimary: '#06b6d4',
-    muiPrimaryLight: '#67e8f9',
-    muiPrimaryDark: '#0e7490',
-    muiSecondary: '#f472b6',
-    muiSecondaryLight: '#f9a8d4',
-    muiSecondaryDark: '#be185d',
-    muiBackground: '#0a0c12',
-    muiPaper: '#121726',
-    muiTextPrimary: '#e5faff',
-    muiTextSecondary: '#fbcfe8',
-    muiDivider: '#2a3144',
-    accentGreen: '#34d399',
-    accentGreenMuted: '#065f46'
-  },
-  // Aurora theme (mint + lime)
-  aurora: {
-    accent: '#34d399',
-    accent2: '#a3e635',
-    accentMuted: '#059669',
-    bg: '#0c1110',
-    bg2: '#121a18',
-    surface: '#0f1615',
-    surface2: '#16201d',
-    text: '#d1fae5',
-    text2: '#ecfccb',
-    glassBg: 'rgba(12,17,16,0.35)',
-    glassBorder: 'rgba(255,255,255,0.10)',
-    glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
-    muiPrimary: '#34d399',
-    muiPrimaryLight: '#6ee7b7',
-    muiPrimaryDark: '#059669',
-    muiSecondary: '#a3e635',
-    muiSecondaryLight: '#bef264',
-    muiSecondaryDark: '#65a30d',
-    muiBackground: '#0c1110',
-    muiPaper: '#121a18',
-    muiTextPrimary: '#e7fff5',
-    muiTextSecondary: '#eaffd1',
-    muiDivider: '#26332f',
-    accentGreen: '#34d399',
-    accentGreenMuted: '#065f46'
-  },
-  // Solar theme (orange + gold)
-  solar: {
-    accent: '#f59e0b',
-    accent2: '#fde68a',
-    accentMuted: '#b45309',
-    bg: '#0e0c0a',
-    bg2: '#1a140d',
-    surface: '#120f0b',
-    surface2: '#1b160e',
-    text: '#fde68a',
-    text2: '#fcd34d',
-    glassBg: 'rgba(18,15,11,0.35)',
-    glassBorder: 'rgba(255,255,255,0.10)',
-    glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
-    muiPrimary: '#f59e0b',
-    muiPrimaryLight: '#fbbf24',
-    muiPrimaryDark: '#b45309',
-    muiSecondary: '#fde68a',
-    muiSecondaryLight: '#fef3c7',
-    muiSecondaryDark: '#f59e0b',
-    muiBackground: '#0e0c0a',
-    muiPaper: '#1a140d',
-    muiTextPrimary: '#fff7d6',
-    muiTextSecondary: '#fee9a6',
-    muiDivider: '#3a2e1f',
-    accentGreen: '#84cc16',
-    accentGreenMuted: '#3f6212'
   },
   // Charcoal Olive theme (graphite → olive gradient)
   charcoalOlive: {
@@ -213,66 +297,6 @@ const THEMES = {
     accentGreen: '#10b981',
     accentGreenMuted: '#047857'
   },
-  // Futurist Quartz theme (inspired by natural quartz stone - rose, clear, and smoky tones)
-  futuristQuartz: {
-    accent: '#f8d7d9', // soft rose quartz pink (like rose quartz)
-    accent2: '#e8d5d0', // pale smoky quartz gray-pink
-    accentMuted: '#d4a5a8', // deeper rose quartz
-    bg: '#0f0d0f', // deep stone black (like quartz base)
-    bg2: '#1a181a', // smoky quartz dark gray
-    surface: '#141214', // quartz crystal dark surface
-    surface2: '#1f1d1f', // lighter smoky quartz
-    text: '#f5e6e8', // pale rose-white (quartz crystal clarity)
-    text2: '#e8d5d0', // soft smoky pink-gray
-    glassBg: 'rgba(20,18,20,0.40)',
-    glassBorder: 'rgba(248,215,217,0.20)',
-    glassShadow: '0 12px 32px rgba(248,215,217,0.12)',
-    // MUI specific colors
-    muiPrimary: '#f8d7d9',
-    muiPrimaryLight: '#fce8e9',
-    muiPrimaryDark: '#d4a5a8',
-    muiSecondary: '#e8d5d0',
-    muiSecondaryLight: '#f0e5e0',
-    muiSecondaryDark: '#c4b5b0',
-    muiBackground: '#0f0d0f',
-    muiPaper: '#141214',
-    muiTextPrimary: '#f5e6e8',
-    muiTextSecondary: '#e8d5d0',
-    muiDivider: '#2a262a',
-    // Green accent for success/ported states (natural stone green)
-    accentGreen: '#9db4a8',
-    accentGreenMuted: '#6b8a7a'
-  },
-  // Cyber Quartz theme (cyberpunk crystal aesthetic)
-  cyberQuartz: {
-    accent: '#00d9ff', // bright cyan (quartz crystal glow)
-    accent2: '#a855f7', // vibrant purple (futuristic tech accent)
-    accentMuted: '#0099cc', // deep cyan
-    bg: '#0a0f1a', // deep blue-black (void)
-    bg2: '#0f1a2e', // dark blue slate
-    surface: '#0d1526', // tech surface dark blue
-    surface2: '#152238', // elevated tech surface
-    text: '#e0f2fe', // bright cyan-white (crystal light)
-    text2: '#c4b5fd', // light purple-cyan
-    glassBg: 'rgba(13,21,38,0.40)',
-    glassBorder: 'rgba(0,217,255,0.25)',
-    glassShadow: '0 12px 32px rgba(0,217,255,0.15)',
-    // MUI specific colors
-    muiPrimary: '#00d9ff',
-    muiPrimaryLight: '#33e0ff',
-    muiPrimaryDark: '#0099cc',
-    muiSecondary: '#a855f7',
-    muiSecondaryLight: '#c084fc',
-    muiSecondaryDark: '#7c3aed',
-    muiBackground: '#0a0f1a',
-    muiPaper: '#0d1526',
-    muiTextPrimary: '#e0f2fe',
-    muiTextSecondary: '#c4b5fd',
-    muiDivider: '#1a2744',
-    // Green accent for success/ported states (neon success)
-    accentGreen: '#00ff88',
-    accentGreenMuted: '#00cc6a'
-  },
   // Crystal theme (inspired by clear/white crystals - pure white, no pink)
   crystal: {
     accent: '#ffffff', // pure white crystal
@@ -332,67 +356,144 @@ const THEMES = {
     // Accents
     accentGreen: '#6cc200',
     accentGreenMuted: '#529400'
-  },
-  // Divine Theme (inspired by the Divine Skins website)
-  divine: {
-    accent: '#a855f7', // Purple-500
-    accent2: '#ecb96a', // Gold/Orange secondary
-    accentMuted: '#7e22ce', // Purple-700
-    bg: '#0b0a0f', // Deep dark background from Stars.tsx
-    bg2: '#16141d', // Slightly lighter background
-    surface: '#1c1a24', // Surface color
-    surface2: '#23202d',
-    text: '#ffffff',
-    text2: '#e9d5ff', // Purple-100/200ish
-    glassBg: 'rgba(11, 10, 15, 0.65)',
-    glassBorder: 'rgba(168, 85, 247, 0.2)', // Purple border
-    glassShadow: '0 8px 32px rgba(168, 85, 247, 0.15)',
-    // MUI
-    muiPrimary: '#a855f7',
-    muiPrimaryLight: '#c084fc',
-    muiPrimaryDark: '#7e22ce',
-    muiSecondary: '#ecb96a',
-    muiSecondaryLight: '#fbbf24',
-    muiSecondaryDark: '#d97706',
-    muiBackground: '#0b0a0f',
-    muiPaper: '#16141d',
-    muiTextPrimary: '#ffffff',
-    muiTextSecondary: '#e9d5ff',
-    muiDivider: 'rgba(168, 85, 247, 0.15)',
-    accentGreen: '#10b981', // Emerald-500
-    accentGreenMuted: '#047857'
   }
 };
 
-// CS 1.6 Hardcoded Palette (Locked)
-const CS16_PALETTE = {
-  accent: '#c4b550', // Gold
-  accent2: '#958831', // Darker Gold
-  accentMuted: '#75806f', // Muted/Disabled
-  bg: '#4a5942', // Olive Green
-  bg2: '#3e4637', // Darker Olive
-  surface: '#3e4637', // Darker Olive
-  surface2: '#292c21', // Darkest Olive/Black
-  text: '#dedfd6', // Off-white
-  text2: '#a0aa95', // Muted Text
-  glassBg: '#4a5942', // Opaque
-  glassBorder: '#8c9284', // Light Border
-  glassShadow: 'none',
-  // MUI Colors
-  muiPrimary: '#c4b550',
-  muiPrimaryLight: '#e0d478',
-  muiPrimaryDark: '#958831',
-  muiSecondary: '#d8ded3',
-  muiSecondaryLight: '#edf2e9',
-  muiSecondaryDark: '#a0aa95',
-  muiBackground: '#4a5942',
-  muiPaper: '#3e4637',
-  muiTextPrimary: '#dedfd6',
-  muiTextSecondary: '#a0aa95',
-  muiDivider: '#292c21',
-  // Accents
-  accentGreen: '#c4b550',
-  accentGreenMuted: '#958831'
+// Theme-level behavior metadata consumed by Settings.
+// Keeps theme side-effects (preferred style, effects, wallpaper preset) centralized.
+const THEME_BEHAVIORS = {
+  amethyst: {
+    preferredStyle: STYLES.QUARTZ,
+    effects: {
+      click: { enabled: false },
+      background: { enabled: false },
+    },
+    wallpaper: {
+      enabled: false,
+    },
+  },
+  onyx: {
+    preferredStyle: STYLES.QUARTZ,
+    effects: {
+      click: { enabled: false },
+      background: { enabled: false },
+    },
+    wallpaper: {
+      enabled: false,
+    },
+  },
+  charcoalOlive: {
+    preferredStyle: STYLES.QUARTZ,
+    effects: {
+      click: { enabled: false },
+      background: { enabled: false },
+    },
+    wallpaper: {
+      enabled: false,
+    },
+  },
+  quartz: {
+    preferredStyle: STYLES.QUARTZ,
+    effects: {
+      click: { enabled: false },
+      background: { enabled: false },
+    },
+    wallpaper: {
+      enabled: false,
+    },
+  },
+  crystal: {
+    preferredStyle: STYLES.QUARTZ,
+    effects: {
+      click: { enabled: false },
+      background: { enabled: false },
+    },
+    wallpaper: {
+      enabled: false,
+    },
+  },
+  classicGray: {
+    preferredStyle: STYLES.WINFORMS,
+    effects: {
+      click: { enabled: false },
+      background: { enabled: false },
+    },
+    wallpaper: {
+      enabled: false,
+    },
+  },
+  ocean: {
+    preferredStyle: STYLES.LIQUID,
+    effects: {
+      click: { enabled: true, type: 'water' },
+      background: { enabled: true, type: 'bubbles' },
+    },
+    wallpaper: {
+      displayName: 'wavethemewallpaper',
+      fileNamePrefix: 'wavethemewallpaper.',
+    },
+  },
+  empress: {
+    preferredStyle: STYLES.LIQUID,
+    effects: {
+      click: { enabled: false },
+      background: { enabled: true, type: 'sparkleSymbol' },
+    },
+    wallpaper: {
+      fileNamePrefix: 'slime.',
+      fileNames: ['slime.webp'],
+    },
+  },
+  forest: {
+    preferredStyle: STYLES.LIQUID,
+    effects: {
+      click: { enabled: false, type: 'water' },
+      background: { enabled: true, type: 'leaves' },
+    },
+    wallpaper: {
+      enabled: true,
+      displayName: 'Forest',
+      fileNamePrefix: 'forest.',
+    },
+  },
+  amogus: {
+    preferredStyle: STYLES.QUARTZ,
+    effects: {
+      click: { enabled: false, type: 'water' },
+      background: { enabled: true, type: 'starfield' },
+    },
+    wallpaper: {
+      enabled: true,
+      displayName: 'amogus',
+      fileNamePrefix: 'amogus.',
+      fileNames: ['amogus.webp', 'amogus.png', 'amogus.jpg', 'amogus.jpeg']
+    },
+  },
+  city: {
+    preferredStyle: STYLES.QUARTZ,
+    effects: {
+      click: { enabled: false, type: 'water' },
+      background: { enabled: true, type: 'rain' },
+    },
+    wallpaper: {
+      enabled: true,
+      displayName: 'cyberpunkcityrain',
+      fileNamePrefix: 'cyberpunkcityrain.',
+      fileNames: ['cyberpunkcityrain.webp', 'cyberpunkcityrain.png', 'cyberpunkcityrain.jpg', 'cyberpunkcityrain.jpeg']
+    },
+  },
+  starSky: {
+    effects: {
+      click: { enabled: false, type: 'water' },
+      background: { enabled: true, type: 'fireflies' },
+    },
+    wallpaper: {
+      enabled: true,
+      displayName: 'starsky',
+      fileNamePrefix: 'starsky.',
+      fileNames: ['starsky.webp', 'starsky.png', 'starsky.jpg', 'starsky.jpeg']
+    },
+  },
 };
 
 // Optional Electron preferences import (guarded)
@@ -454,6 +555,7 @@ function normalizeThemeObject(input) {
   if (!theme.surface2 && theme.surface) theme.surface2 = darkenHex(theme.surface, 0.15);
   if (!theme.text && theme.accent) theme.text = theme.accent;
   if (!theme.text2 && theme.accent2) theme.text2 = theme.accent2;
+  if (!theme.navIconColor) theme.navIconColor = theme.text2 || theme.accentMuted || theme.accent2 || theme.accent;
   if (!theme.glassBg) theme.glassBg = withAlpha(theme.surface || theme.bg || '#0b0a0f', 0.35);
   if (!theme.glassBorder) theme.glassBorder = 'rgba(255,255,255,0.10)';
   if (!theme.glassShadow) theme.glassShadow = '0 12px 28px rgba(0,0,0,0.35)';
@@ -478,6 +580,7 @@ export function applyThemeFromObject(themeObject = {}) {
   root.style.setProperty('--surface-2', t.surface2);
   root.style.setProperty('--text', t.text);
   root.style.setProperty('--text-2', t.text2);
+  root.style.setProperty('--nav-icon-color', t.navIconColor || t.text2 || t.accentMuted || t.accent2 || t.accent);
   root.style.setProperty('--glass-bg', t.glassBg);
   root.style.setProperty('--glass-border', t.glassBorder);
   root.style.setProperty('--glass-shadow', t.glassShadow);
@@ -491,7 +594,7 @@ export function applyThemeFromObject(themeObject = {}) {
 /**
  * Applies both Interface Style and Color Theme
  * @param {string} themeName - Name of the color theme (onyx, amethyst, etc.)
- * @param {string} styleName - Name of the style (quartz, winforms, cs16)
+ * @param {string} styleName - Name of the style (quartz, winforms, liquid)
  */
 export function applyThemeVariables(themeName = 'amethyst', styleName = STYLES.QUARTZ) {
   const root = document.documentElement;
@@ -501,28 +604,21 @@ export function applyThemeVariables(themeName = 'amethyst', styleName = STYLES.Q
 
   let theme;
 
-  // 1. Check if CS1.6 Style is active -> Enforce Locked Palette
-  if (styleName === STYLES.CS16) {
-    theme = CS16_PALETTE;
-    // We still set data-theme for consistency, but colors are overridden by the palette below
-    root.setAttribute('data-theme', 'cs16');
-  } else {
-    // 2. Handle Custom Theme
-    if (typeof themeName === 'string' && themeName.startsWith('custom:') && electronPrefs && electronPrefs.obj) {
-      const name = themeName.slice('custom:'.length);
-      const all = electronPrefs.obj.CustomThemes || {};
-      const t = all[name];
-      if (t) {
-        applyThemeFromObject(t);
-        return;
-      }
+  // 1. Handle Custom Theme
+  if (typeof themeName === 'string' && themeName.startsWith('custom:') && electronPrefs && electronPrefs.obj) {
+    const name = themeName.slice('custom:'.length);
+    const all = electronPrefs.obj.CustomThemes || {};
+    const t = all[name];
+    if (t) {
+      applyThemeFromObject(t);
+      return;
     }
-
-    // 3. Fallback to built-in theme
-    theme = THEMES[themeName] || THEMES.amethyst;
-    const appliedTheme = THEMES[themeName] ? themeName : 'amethyst';
-    root.setAttribute('data-theme', appliedTheme);
   }
+
+  // 2. Fallback to built-in theme
+  theme = THEMES[themeName] || THEMES.amethyst;
+  const appliedTheme = THEMES[themeName] ? themeName : 'amethyst';
+  root.setAttribute('data-theme', appliedTheme);
 
   // Core theme variables
   root.style.setProperty('--accent', theme.accent);
@@ -536,6 +632,7 @@ export function applyThemeVariables(themeName = 'amethyst', styleName = STYLES.Q
   root.style.setProperty('--surface-2', theme.surface2);
   root.style.setProperty('--text', theme.text);
   root.style.setProperty('--text-2', theme.text2);
+  root.style.setProperty('--nav-icon-color', theme.navIconColor || theme.text2 || theme.accentMuted || theme.accent2 || theme.accent);
   root.style.setProperty('--glass-bg', theme.glassBg);
   root.style.setProperty('--glass-border', theme.glassBorder);
   root.style.setProperty('--glass-shadow', theme.glassShadow);
@@ -562,6 +659,19 @@ export function applyThemeVariables(themeName = 'amethyst', styleName = STYLES.Q
 // Get current theme object
 export function getCurrentTheme(themeName = 'amethyst') {
   return THEMES[themeName] || THEMES.amethyst;
+}
+
+// Get optional theme behavior/preset metadata.
+export function getThemeBehavior(themeName = 'amethyst') {
+  if (typeof themeName === 'string' && themeName.startsWith('custom:') && electronPrefs && electronPrefs.obj) {
+    const name = themeName.slice('custom:'.length);
+    const all = electronPrefs.obj.CustomThemes || {};
+    const t = all[name];
+    if (t && typeof t.__behavior === 'object' && t.__behavior) {
+      return t.__behavior;
+    }
+  }
+  return THEME_BEHAVIORS[themeName] || null;
 }
 
 // Get all available theme names
@@ -607,6 +717,4 @@ export async function deleteCustomTheme(name) {
   }
 }
 
-export default { applyThemeVariables, applyThemeFromObject, getCustomThemes, setCustomTheme, deleteCustomTheme, STYLES };
-
-
+export default { applyThemeVariables, applyThemeFromObject, getCustomThemes, setCustomTheme, deleteCustomTheme, getThemeBehavior, STYLES };

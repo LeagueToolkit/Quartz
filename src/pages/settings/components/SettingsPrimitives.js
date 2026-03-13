@@ -3,18 +3,18 @@ import { Check, AlertTriangle, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucid
 
 const SettingsCard = ({ title, icon, expanded, onToggle, children, hasWallpaper = false }) => (
   <div style={{
-    background: hasWallpaper ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.02)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: hasWallpaper ? 'var(--settings-card-bg, rgba(255, 255, 255, 0.12))' : 'rgba(255, 255, 255, 0.02)',
+    border: hasWallpaper ? '1px solid var(--settings-card-border, rgba(255, 255, 255, 0.3))' : '1px solid rgba(255, 255, 255, 0.08)',
     borderRadius: '12px',
     overflow: 'visible',
     transition: 'all 0.2s ease',
     height: 'fit-content',
     maxHeight: 'none',
-    backdropFilter: hasWallpaper ? 'blur(16px) saturate(180%)' : 'none',
-    WebkitBackdropFilter: hasWallpaper ? 'blur(16px) saturate(180%)' : 'none',
+    backdropFilter: hasWallpaper ? 'blur(20px) saturate(110%)' : 'none',
+    WebkitBackdropFilter: hasWallpaper ? 'blur(20px) saturate(110%)' : 'none',
     zIndex: expanded ? 10 : 1,
     position: 'relative', // Ensure z-index works
-    boxShadow: hasWallpaper ? '0 4px 30px rgba(0, 0, 0, 0.3)' : 'none'
+    boxShadow: hasWallpaper ? '0 8px 22px rgba(4, 12, 20, 0.22), inset 0 1px 0 rgba(255,255,255,0.2)' : 'none'
   }}>
     <button
       onClick={(e) => {
@@ -64,7 +64,7 @@ const FormGroup = ({ label, description, children }) => (
       <label style={{
         fontSize: '13px',
         fontWeight: '600',
-        color: 'var(--accent2)',
+        color: 'var(--settings-subtle-ink, var(--accent2))',
         display: 'block'
       }}>
         {label}
@@ -72,8 +72,8 @@ const FormGroup = ({ label, description, children }) => (
       {description && (
         <span style={{
           fontSize: '11px',
-          color: 'var(--text)',
-          opacity: 0.5,
+          color: 'var(--settings-muted, var(--text))',
+          opacity: 1,
           display: 'block',
           marginTop: '2px'
         }}>
@@ -104,10 +104,10 @@ const Input = ({ icon, wrapperStyle, ...props }) => (
       style={{
         width: '100%',
         padding: icon ? '10px 12px 10px 36px' : '10px 12px',
-        background: 'rgba(255, 255, 255, 0.03)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
+        background: 'var(--settings-control-bg, rgba(255, 255, 255, 0.03))',
+        border: '1px solid var(--settings-control-border, rgba(255, 255, 255, 0.1))',
         borderRadius: '6px',
-        color: 'var(--accent)',
+        color: 'var(--settings-ink, var(--accent))',
         fontSize: '13px',
         fontFamily: 'inherit',
         outline: 'none',
@@ -115,12 +115,12 @@ const Input = ({ icon, wrapperStyle, ...props }) => (
         ...props.style
       }}
       onFocus={(e) => {
-        e.target.style.borderColor = 'var(--accent)';
-        e.target.style.background = 'rgba(255, 255, 255, 0.05)';
+        e.target.style.borderColor = 'var(--settings-control-border-strong, var(--accent))';
+        e.target.style.background = 'var(--settings-control-bg-focus, rgba(255, 255, 255, 0.05))';
       }}
       onBlur={(e) => {
-        e.target.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-        e.target.style.background = 'rgba(255, 255, 255, 0.03)';
+        e.target.style.borderColor = 'var(--settings-control-border, rgba(255, 255, 255, 0.1))';
+        e.target.style.background = 'var(--settings-control-bg, rgba(255, 255, 255, 0.03))';
       }}
     />
   </div>
@@ -153,10 +153,10 @@ const CustomSelect = ({ value, onChange, options, icon, disabled, placeholder = 
         style={{
           width: '100%',
           padding: icon ? '10px 32px 10px 36px' : '10px 32px 10px 12px',
-          background: 'rgba(255, 255, 255, 0.03)',
-          border: isOpen ? '1px solid var(--accent)' : '1px solid rgba(255, 255, 255, 0.1)',
+          background: 'var(--settings-control-bg, rgba(255, 255, 255, 0.03))',
+          border: isOpen ? '1px solid var(--settings-control-border-strong, var(--accent))' : '1px solid var(--settings-control-border, rgba(255, 255, 255, 0.1))',
           borderRadius: '6px',
-          color: 'var(--accent)',
+          color: 'var(--settings-ink, var(--accent))',
           fontSize: '13px',
           fontFamily: 'inherit',
           outline: 'none',
@@ -190,7 +190,7 @@ const CustomSelect = ({ value, onChange, options, icon, disabled, placeholder = 
             right: '12px',
             top: '50%',
             transform: 'translateY(-50%)',
-            color: 'var(--accent2)',
+            color: 'var(--settings-subtle-ink, var(--accent2))',
             pointerEvents: 'none',
             transition: 'transform 0.2s ease',
             transform: isOpen ? 'translateY(-50%) rotate(180deg)' : 'translateY(-50%)'
@@ -300,10 +300,10 @@ const Button = ({ icon, children, variant = 'primary', fullWidth, hasWallpaper =
         background: variant === 'primary'
           ? 'var(--accent)'
           : isInWallpaperContext
-            ? 'rgba(0, 0, 0, 0.6)'
+            ? 'var(--settings-btn-bg, rgba(255, 255, 255, 0.14))'
             : 'rgba(255, 255, 255, 0.03)',
-        color: variant === 'primary' ? 'var(--bg)' : 'var(--accent2)',
-        border: variant === 'primary' ? 'none' : '1px solid rgba(255, 255, 255, 0.15)',
+        color: variant === 'primary' ? 'var(--bg)' : 'var(--settings-subtle-ink, var(--accent2))',
+        border: variant === 'primary' ? 'none' : (isInWallpaperContext ? '1px solid var(--settings-btn-border, rgba(255, 255, 255, 0.35))' : '1px solid rgba(255, 255, 255, 0.15)'),
         borderRadius: '6px',
         fontSize: '13px',
         fontWeight: '600',
@@ -318,25 +318,25 @@ const Button = ({ icon, children, variant = 'primary', fullWidth, hasWallpaper =
         whiteSpace: 'nowrap',
         opacity: props.disabled ? 0.6 : 1,
         pointerEvents: props.disabled ? 'none' : 'auto',
-        backdropFilter: isInWallpaperContext ? 'blur(12px) saturate(180%)' : 'none',
-        WebkitBackdropFilter: isInWallpaperContext ? 'blur(12px) saturate(180%)' : 'none',
-        boxShadow: isInWallpaperContext ? '0 2px 12px rgba(0, 0, 0, 0.4)' : 'none',
+        backdropFilter: isInWallpaperContext ? 'blur(16px) saturate(110%)' : 'none',
+        WebkitBackdropFilter: isInWallpaperContext ? 'blur(16px) saturate(110%)' : 'none',
+        boxShadow: isInWallpaperContext ? '0 4px 12px rgba(3, 10, 17, 0.24), inset 0 1px 0 rgba(255,255,255,0.16)' : 'none',
         ...(props.style || {})
       }}
       onMouseEnter={(e) => {
         if (variant === 'primary') {
           e.currentTarget.style.background = 'color-mix(in srgb, var(--accent) 90%, black)';
         } else {
-          e.currentTarget.style.background = isInWallpaperContext ? 'rgba(0, 0, 0, 0.75)' : 'rgba(255, 255, 255, 0.05)';
-          e.currentTarget.style.borderColor = 'var(--accent)';
+          e.currentTarget.style.background = isInWallpaperContext ? 'var(--settings-btn-bg-hover, rgba(255, 255, 255, 0.22))' : 'rgba(255, 255, 255, 0.05)';
+          e.currentTarget.style.borderColor = 'var(--settings-control-border-strong, var(--accent))';
         }
       }}
       onMouseLeave={(e) => {
         if (variant === 'primary') {
           e.currentTarget.style.background = 'var(--accent)';
         } else {
-          e.currentTarget.style.background = isInWallpaperContext ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.03)';
-          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+          e.currentTarget.style.background = isInWallpaperContext ? 'var(--settings-btn-bg, rgba(255, 255, 255, 0.14))' : 'rgba(255, 255, 255, 0.03)';
+          e.currentTarget.style.borderColor = isInWallpaperContext ? 'var(--settings-btn-border, rgba(255, 255, 255, 0.35))' : 'rgba(255, 255, 255, 0.15)';
         }
       }}
     >
@@ -417,7 +417,7 @@ const ToggleSwitch = ({ label, checked, onChange, compact }) => (
   </label>
 );
 
-const ThemeCard = ({ theme, selected, onClick }) => {
+const ThemeCard = ({ theme, selected, onClick, preventLiquidArtifact = false }) => {
   // Handle both object format { id, name, desc } and string format
   const themeId = typeof theme === 'string' ? theme : theme.id;
   const themeName = typeof theme === 'string' ? theme : theme.name;
@@ -426,42 +426,48 @@ const ThemeCard = ({ theme, selected, onClick }) => {
 
   return (
     <button
+      className={preventLiquidArtifact ? 'settings-style-card' : undefined}
       onClick={onClick}
       style={{
         padding: '12px',
-        background: selected ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.02)',
-        border: `2px solid ${selected ? 'var(--accent)' : 'rgba(255, 255, 255, 0.06)'}`,
+        background: selected ? 'var(--settings-card-bg-selected, rgba(255, 255, 255, 0.08))' : 'var(--settings-card-bg, rgba(255, 255, 255, 0.02))',
+        border: `1px solid ${selected ? 'var(--settings-card-border-selected, var(--accent))' : 'var(--settings-card-border, rgba(255, 255, 255, 0.06))'}`,
         borderRadius: '8px',
         cursor: 'pointer',
         transition: 'all 0.2s ease',
         textAlign: 'left',
-        fontFamily: 'inherit'
+        fontFamily: 'inherit',
+        boxShadow: selected ? 'var(--settings-card-shadow-selected, none)' : 'var(--settings-card-shadow, none)',
+        backdropFilter: 'blur(calc(var(--glass-blur, 10px) + 3px)) saturate(118%)',
+        WebkitBackdropFilter: 'blur(calc(var(--glass-blur, 10px) + 3px)) saturate(118%)'
       }}
       onMouseEnter={(e) => {
         if (!selected) {
-          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
-          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+          e.currentTarget.style.background = 'var(--settings-card-bg-selected, rgba(255, 255, 255, 0.04))';
+          e.currentTarget.style.borderColor = 'var(--settings-card-border-selected, rgba(255, 255, 255, 0.12))';
+          e.currentTarget.style.boxShadow = 'var(--settings-card-shadow-selected, none)';
         }
       }}
       onMouseLeave={(e) => {
         if (!selected) {
-          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
-          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.06)';
+          e.currentTarget.style.background = 'var(--settings-card-bg, rgba(255, 255, 255, 0.02))';
+          e.currentTarget.style.borderColor = 'var(--settings-card-border, rgba(255, 255, 255, 0.06))';
+          e.currentTarget.style.boxShadow = 'var(--settings-card-shadow, none)';
         }
       }}
     >
       <div style={{
         fontSize: '13px',
         fontWeight: 'bold',
-        color: 'var(--accent)',
+        color: 'var(--settings-ink, var(--accent))',
         marginBottom: '4px'
       }}>
         {themeName}
       </div>
       <div style={{
         fontSize: '11px',
-        color: 'var(--accent2)',
-        opacity: 0.7
+        color: 'var(--settings-muted, var(--accent2))',
+        opacity: 1
       }}>
         {themeDesc}
       </div>

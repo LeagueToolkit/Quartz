@@ -8,7 +8,8 @@ const GitHubSection = ({
   setSettings,
   connectionStatus,
   isTestingConnection,
-  handleTestGitHubConnection
+  handleTestGitHubConnection,
+  wallpaperPath
 }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -70,6 +71,8 @@ const GitHubSection = ({
       <Button
         icon={isTestingConnection ? <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Github size={16} />}
         fullWidth
+        variant="secondary"
+        hasWallpaper={!!wallpaperPath}
         onClick={handleTestGitHubConnection}
         disabled={isTestingConnection || !settings.githubUsername || !settings.githubToken}
       >

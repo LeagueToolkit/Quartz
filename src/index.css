@@ -21,128 +21,160 @@ body,
   --bg-2: rgba(15, 15, 15, 0.2) !important;
   --surface: rgba(10, 10, 15, 0.25) !important;
   --surface-2: rgba(20, 20, 30, 0.2) !important;
-  --glass-bg: rgba(0, 0, 0, 0.1) !important;
+  --accent-muted: var(--accent) !important;
 }
 
-/* Target the main content container specifically */
-.has-wallpaper .main-content-area,
-.has-wallpaper .modern-navigation {
+/* Port Donor Bin Button - same behavior for wallpaper and liquid style */
+.has-wallpaper .port-container .donor-bin-btn,
+[data-style="liquid"] .port-container .donor-bin-btn {
+  background: color-mix(in srgb, var(--accent2) 14%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--accent2), transparent 70%) !important;
+  color: var(--accent2) !important;
+}
+
+.has-wallpaper .port-container .donor-bin-btn:not(:disabled):hover,
+[data-style="liquid"] .port-container .donor-bin-btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent2) 22%, transparent) !important;
+  border-color: var(--accent2) !important;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent2), transparent 50%) !important;
+}
+
+/* Search Inputs placeholder styling */
+.has-wallpaper .port-container input::placeholder,
+.has-wallpaper .vfx-hub-container input::placeholder,
+.has-wallpaper .bnk-extract-main input::placeholder,
+[data-style="liquid"] .port-container input::placeholder,
+[data-style="liquid"] .vfx-hub-container input::placeholder,
+[data-style="liquid"] .bnk-extract-main input::placeholder {
+  color: var(--accent) !important;
+  opacity: 1 !important;
+}
+
+/* Donor search keeps accent2 even in wallpaper/liquid global placeholder override */
+.has-wallpaper .port-container .port-donor-search::placeholder,
+[data-style="liquid"] .port-container .port-donor-search::placeholder {
+  color: var(--accent2) !important;
+  opacity: 1 !important;
+}
+
+/* VFXHub right search should stay accent2 in wallpaper/liquid mode */
+.has-wallpaper .vfx-hub-container .vfx-right-search,
+[data-style="liquid"] .vfx-hub-container .vfx-right-search {
+  color: var(--accent2) !important;
+}
+
+.has-wallpaper .vfx-hub-container .vfx-right-search::placeholder,
+[data-style="liquid"] .vfx-hub-container .vfx-right-search::placeholder {
+  color: var(--accent2) !important;
+  opacity: 1 !important;
+}
+
+/* Paint - make all top bar rows transparent in wallpaper/liquid mode */
+.has-wallpaper .paint-toolbar,
+.has-wallpaper .paint-palette-manager,
+.has-wallpaper .paint2-container>div[class=""],
+[data-style="liquid"] .paint-toolbar,
+[data-style="liquid"] .paint-palette-manager,
+[data-style="liquid"] .paint2-container>div[class=""] {
+  background: transparent !important;
+}
+
+/* Broad fallback: any direct MUI Box child of paint2-container that uses --surface */
+.has-wallpaper .paint2-container>div,
+[data-style="liquid"] .paint2-container>div {
   background-color: transparent !important;
 }
 
-/* Glassy effect for main containers and list backgrounds - stays transparent */
-.has-wallpaper .bin-editor-container,
-.has-wallpaper .frog-changer-container,
-.has-wallpaper .vfx-hub-container,
-.has-wallpaper .port-container,
-.has-wallpaper .paint-container,
-.has-wallpaper .upscale-container,
-.has-wallpaper .bumpath-container,
-.has-wallpaper .img-recolor-container,
-.has-wallpaper .settings-container,
-.has-wallpaper .bnk-extract-container,
-.has-wallpaper .vfx-particle-list,
-.has-wallpaper .bin-editor-list,
-.has-wallpaper .bin-editor-props {
-  background: rgba(15, 13, 20, 0.6) !important;
-  backdrop-filter: blur(var(--glass-blur, 10px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-}
-
-/* Tinted cards with increased transparency as requested */
-.has-wallpaper .main-page-card {
-  background: rgba(22, 20, 28, 0.35) !important;
-  backdrop-filter: blur(var(--glass-blur, 10px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2) !important;
-}
-
-/* BNK Extract specific - darker panels for readability */
-.has-wallpaper .bnk-extract-tree,
-.has-wallpaper .bnk-extract-header {
-  background: rgba(10, 10, 15, 0.75) !important;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-/* Systems and Emitters - Less transparent for high readability (Port, VFX Hub, Bin Editor) */
-.has-wallpaper .Particle-Div,
-.has-wallpaper .Material-Div,
-.has-wallpaper .particle-div,
-.has-wallpaper .material-div,
-.has-wallpaper .Emitter-Div,
-.has-wallpaper .bin-editor-item,
-.has-wallpaper .bin-editor-emitter {
-  background: rgba(22, 20, 28, 0.85) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  margin-bottom: 4px;
-  backdrop-filter: blur(8px);
-}
-
-/* Paint Page Override - Keep ultra-transparent as per original design */
-.has-wallpaper .paint-container .Particle-Div,
-.has-wallpaper .paint-container .Material-Div,
-.has-wallpaper .paint-container .Emitter-Div {
-  background: rgba(255, 255, 255, 0.02) !important;
-  border: 1px solid rgba(255, 255, 255, 0.05) !important;
-  margin-bottom: 2px;
-  backdrop-filter: none;
-}
-
-.has-wallpaper .Emitter-Div:hover,
-.has-wallpaper .bin-editor-item:hover,
-.has-wallpaper .bin-editor-emitter:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
-}
-
-/* Bin Editor Selection */
-.has-wallpaper .bin-editor-item.selected,
-.has-wallpaper .bin-editor-emitter.selected {
-  background: rgba(157, 140, 217, 0.2) !important;
-  border: 1px solid rgba(157, 140, 217, 0.4) !important;
-}
-
-.has-wallpaper .bin-editor-emitter.selected {
-  background: rgba(236, 185, 106, 0.2) !important;
-  border: 1px solid rgba(236, 185, 106, 0.4) !important;
-}
-
-/* Port Selection & Highlights */
-.has-wallpaper .particle-div.selected-system {
-  border: 1px solid rgba(var(--accent-rgb, 236, 185, 106), 0.4) !important;
-}
-
-.has-wallpaper .selected-system .particle-title-div {
-  background: rgba(var(--accent-rgb, 236, 185, 106), 0.25) !important;
-  border-bottom: 1px solid rgba(var(--accent-rgb, 236, 185, 106), 0.2) !important;
-}
-
-.has-wallpaper .selected-system .particle-title-div .selected {
+/* Bin Editor - make top header/toolbar bar transparent in wallpaper/liquid mode */
+.has-wallpaper .bin-editor-container>div,
+[data-style="liquid"] .bin-editor-container>div {
   background: transparent !important;
-  /* Prevent double background since parent handles it */
 }
 
-.has-wallpaper .Particle-Title-Div {
-  background: rgba(255, 255, 255, 0.03) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+/* Bin Editor - frosted glass on list items when wallpaper/liquid is active */
+.has-wallpaper .bin-editor-item,
+.has-wallpaper .bin-editor-emitter,
+[data-style="liquid"] .bin-editor-item,
+[data-style="liquid"] .bin-editor-emitter {
+  backdrop-filter: blur(14px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(160%) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
-/* Special case for pages with hardcoded background variables */
-.has-wallpaper [style*="--bg"] {
-  background-color: var(--bg) !important;
+/* Bin Editor search bar colors & placeholder */
+.has-wallpaper .bin-editor-search,
+[data-style="liquid"] .bin-editor-search {
+  background: color-mix(in srgb, var(--accent) 15%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent) !important;
+  color: var(--accent) !important;
 }
 
-/* Persistent Modal - Fix for wallpaper transparency */
-.persistent-modal {
-  background: var(--bg-2);
+.has-wallpaper .bin-editor-search::placeholder,
+[data-style="liquid"] .bin-editor-search::placeholder {
+  color: var(--accent) !important;
+  opacity: 1 !important;
 }
 
-.has-wallpaper .persistent-modal {
-  background: rgba(18, 18, 24, 0.95) !important;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+/* BNK: wallpaper mode should respect glass blur/opacity settings */
+.has-wallpaper .bnk-extract-container {
+  background: transparent !important;
+}
+
+/* Bin Viewer - needs solid background in wallpaper mode for readability */
+.has-wallpaper .bin-viewer-root {
+  background: #0c0c0c !important;
+}
+
+/* BNK Extractor - Fix muted/transparent text in wallpaper/liquid mode */
+.has-wallpaper .bnk-extract-main p,
+.has-wallpaper .bnk-extract-main span,
+.has-wallpaper .bnk-extract-main h6,
+.has-wallpaper .bnk-extract-main .MuiTypography-root,
+[data-style="liquid"] .bnk-extract-main p,
+[data-style="liquid"] .bnk-extract-main span,
+[data-style="liquid"] .bnk-extract-main h6,
+[data-style="liquid"] .bnk-extract-main .MuiTypography-root {
+  opacity: 1 !important;
+}
+
+/* Ensure all text in trees is opaque */
+.has-wallpaper .bnk-extract-tree .MuiTypography-root,
+.has-wallpaper .bnk-extract-tree-right .MuiTypography-root,
+[data-style="liquid"] .bnk-extract-tree .MuiTypography-root,
+[data-style="liquid"] .bnk-extract-tree-right .MuiTypography-root {
+  opacity: 1 !important;
+  color: var(--text) !important;
+}
+
+/* File name accent colors and size labels */
+.has-wallpaper .bnk-extract-main .MuiTypography-root[style*="var(--accent)"],
+[data-style="liquid"] .bnk-extract-main .MuiTypography-root[style*="var(--accent)"] {
+  color: var(--accent) !important;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent), transparent 60%);
+}
+
+.has-wallpaper .bnk-extract-main .MuiTypography-root[style*="0.35"],
+[data-style="liquid"] .bnk-extract-main .MuiTypography-root[style*="0.35"] {
+  color: color-mix(in srgb, var(--accent) 70%, white) !important;
+  opacity: 0.8 !important;
+}
+
+/* Specific empty state text and labels */
+.has-wallpaper .bnk-extract-tree .MuiTypography-root[style*="3rem"],
+.has-wallpaper .bnk-extract-tree-right .MuiTypography-root[style*="3rem"],
+[data-style="liquid"] .bnk-extract-tree .MuiTypography-root[style*="3rem"],
+[data-style="liquid"] .bnk-extract-tree-right .MuiTypography-root[style*="3rem"] {
+  color: var(--accent) !important;
+  opacity: 1 !important;
+  text-shadow: 0 0 12px color-mix(in srgb, var(--accent), transparent 40%);
+  font-weight: 700 !important;
+}
+
+.has-wallpaper .bnk-extract-main .MuiTypography-root[style*="0.6"],
+[data-style="liquid"] .bnk-extract-main .MuiTypography-root[style*="0.6"] {
+  color: var(--accent) !important;
+  opacity: 1 !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.05em;
 }

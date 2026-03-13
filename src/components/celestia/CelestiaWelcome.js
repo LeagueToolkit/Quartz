@@ -19,6 +19,10 @@ const BG_EFFECTS = [
   { id: 'starfield', name: 'Starfield', icon: <Stars size={16} /> },
   { id: 'constellation', name: 'Constellation', icon: <Monitor size={16} /> },
   { id: 'divine', name: 'Divine', icon: <Sparkles size={16} /> },
+  { id: 'bubbles', name: 'Bubbles', icon: <Sparkles size={16} /> },
+  { id: 'leaves', name: 'Leaves', icon: <Sparkles size={16} /> },
+  { id: 'rain', name: 'Rain', icon: <Sparkles size={16} /> },
+  { id: 'sparkleSymbol', name: 'Sparkle Symbol', icon: <Sparkles size={16} /> },
 ];
 
 const WallpaperStep = () => {
@@ -28,12 +32,14 @@ const WallpaperStep = () => {
   useEffect(() => {
     // Snapshot whatever wallpaper was active before entering this step
     prevWallpaper.current = {
+      id: electronPrefs.obj.WallpaperId || '',
       path: electronPrefs.obj.WallpaperPath || '',
       opacity: electronPrefs.obj.WallpaperOpacity ?? 0.15,
     };
     return () => {
       // Restore the previous wallpaper state when leaving this step
-      const { path, opacity } = prevWallpaper.current;
+      const { id, path, opacity } = prevWallpaper.current;
+      electronPrefs.set('WallpaperId', id);
       electronPrefs.set('WallpaperPath', path);
       electronPrefs.set('WallpaperOpacity', opacity);
       window.dispatchEvent(new CustomEvent('wallpaperChanged', { detail: { path, opacity } }));
@@ -47,6 +53,7 @@ const WallpaperStep = () => {
       const path = window.require('path');
       const resourcesPath = await ipcRenderer.invoke('getResourcesPath');
       const imgPath = path.join(resourcesPath, 'UxYW2KY_x2.png');
+      await electronPrefs.set('WallpaperId', '');
       await electronPrefs.set('WallpaperPath', imgPath);
       await electronPrefs.set('WallpaperOpacity', 0.3);
       window.dispatchEvent(new CustomEvent('wallpaperChanged', { detail: { path: imgPath, opacity: 0.3 } }));
@@ -55,6 +62,7 @@ const WallpaperStep = () => {
   };
 
   const handleClear = async () => {
+    await electronPrefs.set('WallpaperId', '');
     await electronPrefs.set('WallpaperPath', '');
     window.dispatchEvent(new CustomEvent('wallpaperChanged', { detail: { path: '', opacity: 0.15 } }));
     setPreviewing(false);

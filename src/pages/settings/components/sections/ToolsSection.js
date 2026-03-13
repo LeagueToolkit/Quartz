@@ -36,12 +36,14 @@ const ToolsSection = ({
         <div
           ref={jadePathSectionRef}
           style={{
-            background: highlightJadePathSection ? 'rgba(139, 92, 246, 0.15)' : 'rgba(255, 255, 255, 0.02)',
-            border: highlightJadePathSection ? '2px solid rgba(139, 92, 246, 0.6)' : '1px solid rgba(255, 255, 255, 0.06)',
+            background: highlightJadePathSection ? 'rgba(139, 92, 246, 0.15)' : 'var(--settings-card-bg, rgba(255, 255, 255, 0.02))',
+            border: highlightJadePathSection ? '2px solid rgba(139, 92, 246, 0.6)' : '1px solid var(--settings-card-border, rgba(255, 255, 255, 0.08))',
             borderRadius: '8px',
             padding: '16px',
             transition: 'all 0.3s ease',
-            boxShadow: highlightJadePathSection ? '0 0 20px rgba(139, 92, 246, 0.3)' : 'none'
+            boxShadow: highlightJadePathSection ? '0 0 20px rgba(139, 92, 246, 0.3)' : 'var(--settings-card-shadow, none)',
+            backdropFilter: 'blur(calc(var(--glass-blur, 10px) + 3px)) saturate(118%)',
+            WebkitBackdropFilter: 'blur(calc(var(--glass-blur, 10px) + 3px)) saturate(118%)'
           }}
         >
           <InputWithButton
@@ -73,7 +75,15 @@ const ToolsSection = ({
       </FormGroup>
 
       <FormGroup label="Hash Files" description="Manage hash file downloads and updates">
-        <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '8px', padding: '16px' }}>
+        <div style={{
+          background: 'var(--settings-card-bg, rgba(255, 255, 255, 0.02))',
+          border: '1px solid var(--settings-card-border, rgba(255, 255, 255, 0.08))',
+          borderRadius: '8px',
+          padding: '16px',
+          boxShadow: 'var(--settings-card-shadow, none)',
+          backdropFilter: 'blur(calc(var(--glass-blur, 10px) + 3px)) saturate(118%)',
+          WebkitBackdropFilter: 'blur(calc(var(--glass-blur, 10px) + 3px)) saturate(118%)'
+        }}>
           {hashStatus && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
               <StatusBadge
@@ -102,12 +112,14 @@ const ToolsSection = ({
         <div
           ref={updateSectionRef}
           style={{
-            background: highlightUpdateSection ? 'rgba(139, 92, 246, 0.15)' : 'rgba(255, 255, 255, 0.02)',
-            border: highlightUpdateSection ? '2px solid rgba(139, 92, 246, 0.6)' : '1px solid rgba(255, 255, 255, 0.06)',
+            background: highlightUpdateSection ? 'rgba(139, 92, 246, 0.15)' : 'var(--settings-card-bg, rgba(255, 255, 255, 0.02))',
+            border: highlightUpdateSection ? '2px solid rgba(139, 92, 246, 0.6)' : '1px solid var(--settings-card-border, rgba(255, 255, 255, 0.08))',
             borderRadius: '8px',
             padding: '16px',
             transition: 'all 0.3s ease',
-            boxShadow: highlightUpdateSection ? '0 0 20px rgba(139, 92, 246, 0.3)' : 'none'
+            boxShadow: highlightUpdateSection ? '0 0 20px rgba(139, 92, 246, 0.3)' : 'var(--settings-card-shadow, none)',
+            backdropFilter: 'blur(calc(var(--glass-blur, 10px) + 3px)) saturate(118%)',
+            WebkitBackdropFilter: 'blur(calc(var(--glass-blur, 10px) + 3px)) saturate(118%)'
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '13px', color: 'var(--accent2)' }}>

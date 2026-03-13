@@ -7,7 +7,7 @@
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-    background: var(--bg);
+    background: transparent;
     color: var(--accent);
     font-family: 'JetBrains Mono', monospace;
 }
@@ -16,7 +16,7 @@
     display: flex;
     align-items: center;
     padding: 1rem 1.5rem;
-    background: rgba(0, 0, 0, 0.2);
+    background: transparent;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -36,7 +36,7 @@
 .bnk-extract-tree {
     flex: 1;
     overflow: auto;
-    background: rgba(0, 0, 0, 0.15);
+    background: transparent;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 10px;
     margin: 1.25rem;
@@ -72,7 +72,7 @@
 }
 
 .bnk-extract-btn {
-    background: rgba(255, 255, 255, 0.05);
+    background: transparent;
     color: var(--accent);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
@@ -89,7 +89,7 @@
 }
 
 .bnk-extract-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: transparent;
     border-color: var(--accent);
 }
 
@@ -99,7 +99,7 @@
 }
 
 .bnk-extract-btn.primary {
-    background: rgba(var(--accent-rgb), 0.2);
+    background: transparent;
 }
 
 /* Tree Node Styles */
@@ -173,7 +173,7 @@
 
 /* Input Styles */
 .bnk-extract-input {
-    background: rgba(0, 0, 0, 0.2);
+    background: transparent;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     color: var(--accent);

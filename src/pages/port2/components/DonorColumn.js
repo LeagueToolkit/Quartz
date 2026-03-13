@@ -46,6 +46,7 @@ export default function DonorColumn({
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <Button
+        className="donor-bin-btn"
         onClick={handleOpenDonorBin}
         disabled={isProcessing}
         sx={{
@@ -55,18 +56,18 @@ export default function DonorColumn({
           fontSize: '13px',
           fontWeight: 700,
           height: '36px',
-          background: 'color-mix(in srgb, #ef4444, var(--bg) 85%)',
-          border: '1px solid rgba(239, 68, 68, 0.3)',
-          color: '#ef4444',
+          background: 'color-mix(in srgb, var(--accent2) 14%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--accent2), transparent 70%)',
+          color: 'var(--accent2)',
           borderRadius: '4px',
           letterSpacing: '0.05em',
           textTransform: 'uppercase',
           transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
           position: 'relative',
           '&:hover': {
-            background: 'color-mix(in srgb, #ef4444, var(--bg) 75%)',
-            borderColor: '#ef4444',
-            textShadow: '0 0 8px color-mix(in srgb, #ef4444, transparent 50%)',
+            background: 'color-mix(in srgb, var(--accent2) 22%, transparent)',
+            borderColor: 'var(--accent2)',
+            textShadow: '0 0 8px color-mix(in srgb, var(--accent2), transparent 50%)',
           },
           '&:disabled': {
             opacity: 0.5,
@@ -84,6 +85,9 @@ export default function DonorColumn({
           initialValue={donorFilterInput}
           placeholder={enableDonorEmitterSearch ? 'Filter by Particle or Emitter Name' : 'Filter by Particle Name Only'}
           onChange={filterDonorParticles}
+          accentVar="var(--accent2)"
+          style={{ color: 'var(--accent2)' }}
+          className="port-donor-search"
         />
         <button
           onClick={() => setEnableDonorEmitterSearch(!enableDonorEmitterSearch)}
@@ -91,19 +95,18 @@ export default function DonorColumn({
           style={{
             padding: '8px 14px',
             background: enableDonorEmitterSearch
-              ? 'linear-gradient(180deg, rgba(236, 185, 106, 0.15), rgba(236, 185, 106, 0.05))'
-              : 'rgba(0, 0, 0, 0.25)',
+              ? 'color-mix(in srgb, var(--accent2) 15%, transparent)'
+              : 'color-mix(in srgb, var(--accent2) 12%, transparent)',
             border: enableDonorEmitterSearch
-              ? '1px solid var(--accent)'
-              : '1px solid rgba(255, 255, 255, 0.1)',
+              ? '1px solid var(--accent2)'
+              : '1px solid color-mix(in srgb, var(--accent2) 35%, transparent)',
             borderRadius: '10px',
-            color: 'var(--accent)',
+            color: 'var(--accent2)',
             fontFamily: 'JetBrains Mono, monospace',
             fontSize: '12px',
             cursor: 'pointer',
-            marginTop: '-4px',
             transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-            boxShadow: enableDonorEmitterSearch ? '0 0 10px rgba(236, 185, 106, 0.1)' : 'none',
+            boxShadow: enableDonorEmitterSearch ? '0 0 10px color-mix(in srgb, var(--accent2) 15%, transparent)' : 'none',
           }}
         >
           {enableDonorEmitterSearch ? '🔍+' : '🔍-'}
@@ -111,6 +114,7 @@ export default function DonorColumn({
       </div>
 
       <div
+        className="port-panel"
         style={{
           flex: 1,
           ...sectionStyle,

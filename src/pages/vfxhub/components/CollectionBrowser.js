@@ -1,5 +1,6 @@
 import React from 'react';
 import CollectionItem from './CollectionItem';
+import { SearchInput } from '../../port2/components/common/Inputs';
 
 const defaultCategories = ['All', 'Missiles', 'Auras', 'Explosions', 'Target', 'Shield', 'Buf'];
 
@@ -177,22 +178,12 @@ export default function CollectionBrowser({
           borderBottom: '1px solid rgba(255,255,255,0.06)',
           flexShrink: 0,
         }}>
-          <input
-            type="text"
+          <SearchInput
+            initialValue={searchTerm}
             placeholder="Search by name, category, description..."
-            value={searchTerm}
-            onChange={(e) => { saveScrollPos(); onSearchTerm(e.target.value); }}
-            style={{
-              width: '100%', boxSizing: 'border-box',
-              padding: '8px 12px', marginBottom: 10,
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 8, color: 'var(--text)',
-              fontFamily: font, fontSize: '0.8rem', outline: 'none',
-              transition: 'border-color 0.2s',
-            }}
-            onFocus={(e) => { e.target.style.borderColor = 'var(--accent2)'; }}
-            onBlur={(e) => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+            onChange={(val) => { saveScrollPos(); onSearchTerm(val); }}
+            accentVar="var(--accent2)"
+            style={{ marginBottom: 10, width: '100%' }}
           />
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {categories.map((category) => {

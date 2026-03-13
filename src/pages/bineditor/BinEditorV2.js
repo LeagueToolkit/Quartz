@@ -9,6 +9,7 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Select, MenuItem } from '@mui/material';
 import {
     parsePyFile,
     getParseStats,
@@ -64,6 +65,7 @@ import {
     removeTextureHoverPreview,
     scheduleTextureHoverClose
 } from '../../components/modals/textureHoverPreview.js';
+import { SearchInput } from '../port2/components/common/Inputs';
 
 // Icons (using simple Unicode for now)
 const ICONS = {
@@ -77,6 +79,17 @@ const ICONS = {
     check: '✓'
 };
 
+const UI_COLORS = {
+    primary: '#FFC233',
+    bs: '#3FA9FF',
+    scale: '#39E86C',
+    bw: '#B184FF',
+    pl: '#FF7A00',
+    lt: '#00D65A',
+    pass: '#FFD400',
+    to: '#F0A020',
+};
+
 // Helper to parse numbers with both comma and period as decimal separators
 const parseLocaleFloat = (value) => {
     if (typeof value === 'number') return value;
@@ -84,6 +97,71 @@ const parseLocaleFloat = (value) => {
     // Replace comma with period for European locales
     const normalized = value.replace(',', '.');
     return parseFloat(normalized);
+};
+
+const toolbarSelectStyle = {
+    fontFamily: 'JetBrains Mono, monospace',
+    fontSize: '0.82rem',
+    color: 'var(--text)',
+    height: '34px',
+    minWidth: '170px',
+    borderRadius: '8px',
+    background: 'rgba(18, 20, 28, 0.55)',
+    border: '1px solid rgba(255, 255, 255, 0.24)',
+    transition: 'all 160ms ease',
+    '& .MuiSelect-select': {
+        padding: '6px 10px',
+        paddingRight: '28px !important'
+    },
+    '& .MuiSelect-icon': {
+        color: 'rgba(255,255,255,0.78)',
+        fontSize: '1rem'
+    },
+    '&:hover': {
+        background: 'rgba(34, 38, 52, 0.62)',
+        borderColor: 'rgba(255, 255, 255, 0.52)',
+        boxShadow: '0 8px 18px rgba(0,0,0,0.28)'
+    },
+    '&.Mui-focused': {
+        borderColor: 'color-mix(in srgb, var(--accent2), transparent 35%)',
+        boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent2), transparent 75%)'
+    },
+    '& fieldset': { border: 'none' },
+    '&:hover fieldset': { border: 'none' },
+    '&.Mui-focused fieldset': { border: 'none' }
+};
+
+const toolbarMenuPaperSx = {
+    mt: 0.6,
+    background: 'var(--glass-bg, rgba(20, 20, 24, 0.94))',
+    border: '1px solid var(--glass-border, rgba(255,255,255,0.12))',
+    borderRadius: '12px',
+    boxShadow: '0 20px 48px rgba(0,0,0,0.5), 0 0 16px color-mix(in srgb, var(--accent2), transparent 80%)',
+    backdropFilter: 'saturate(180%) blur(12px)',
+    WebkitBackdropFilter: 'saturate(180%) blur(12px)',
+    overflow: 'hidden',
+    '& .MuiMenu-list': { py: 0.5 },
+    '& .MuiMenuItem-root': {
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: '0.82rem',
+        color: 'var(--text-2)',
+        mx: 0.6,
+        borderRadius: '8px',
+        minHeight: '34px',
+        transition: 'all 140ms ease',
+        '&:hover': {
+            background: 'rgba(255,255,255,0.07)',
+            color: 'var(--text)'
+        },
+        '&.Mui-selected': {
+            background: 'color-mix(in srgb, var(--accent), transparent 85%)',
+            color: 'var(--accent)',
+            fontWeight: 700
+        },
+        '&.Mui-selected:hover': {
+            background: 'color-mix(in srgb, var(--accent), transparent 80%)'
+        }
+    }
 };
 
 export default function BinEditorV2() {
@@ -126,6 +204,13 @@ export default function BinEditorV2() {
 
     // Toolbar state
     const [toolbarTab, setToolbarTab] = useState('scale'); // 'scale', 'bindWeight', 'misc', 'pass', 'to'
+    const toolbarTabOptions = useMemo(() => ([
+        { value: 'scale', label: 'Scale Controls' },
+        { value: 'bindWeight', label: 'Bind Weight' },
+        { value: 'misc', label: 'Misc Flags' },
+        { value: 'pass', label: 'Pass' },
+        { value: 'to', label: 'Translation' },
+    ]), []);
 
     // ============ REFS ============
     const fileInputRef = useRef(null);
@@ -1454,34 +1539,34 @@ export default function BinEditorV2() {
                 }}
             >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, color: isSelected ? '#ecb96a' : '#e8e6e3', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ fontWeight: 600, color: isSelected ? UI_COLORS.primary : '#e8e6e3', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {emitter.name}
                         {isSelected && <span>✓</span>}
                     </div>
                     <div style={{ fontSize: '11px', color: '#888', marginTop: '4px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         {emitter.birthScale0?.constantValue && (
-                            <span style={{ color: '#6cb6ff' }} title="Birth Scale">BS: ({emitter.birthScale0.constantValue.x.toFixed(1)}, {emitter.birthScale0.constantValue.y.toFixed(1)}, {emitter.birthScale0.constantValue.z.toFixed(1)})</span>
+                            <span style={{ color: UI_COLORS.bs }} title="Birth Scale">BS: ({emitter.birthScale0.constantValue.x.toFixed(1)}, {emitter.birthScale0.constantValue.y.toFixed(1)}, {emitter.birthScale0.constantValue.z.toFixed(1)})</span>
                         )}
                         {emitter.scale0?.constantValue && (
-                            <span style={{ color: '#7ee787' }} title="Scale">S: ({emitter.scale0.constantValue.x.toFixed(1)}, {emitter.scale0.constantValue.y.toFixed(1)}, {emitter.scale0.constantValue.z.toFixed(1)})</span>
+                            <span style={{ color: UI_COLORS.scale }} title="Scale">S: ({emitter.scale0.constantValue.x.toFixed(1)}, {emitter.scale0.constantValue.y.toFixed(1)}, {emitter.scale0.constantValue.z.toFixed(1)})</span>
                         )}
                         {emitter.bindWeight && (
-                            <span style={{ color: '#9d8cd9' }} title="Bind Weight">BW: {emitter.bindWeight.constantValue}</span>
+                            <span style={{ color: UI_COLORS.bw }} title="Bind Weight">BW: {emitter.bindWeight.constantValue}</span>
                         )}
                         {emitter.translationOverride && (
-                            <span style={{ color: '#d29922' }} title="Translation Override">TO: ({emitter.translationOverride.constantValue.x}, {emitter.translationOverride.constantValue.y}, {emitter.translationOverride.constantValue.z})</span>
+                            <span style={{ color: UI_COLORS.to }} title="Translation Override">TO: ({emitter.translationOverride.constantValue.x}, {emitter.translationOverride.constantValue.y}, {emitter.translationOverride.constantValue.z})</span>
                         )}
                         {emitter.particleLifetime?.constantValue != null && (
-                            <span style={{ color: '#f97316' }} title="Particle Lifetime">PL: {emitter.particleLifetime.constantValue.toFixed(2)}</span>
+                            <span style={{ color: UI_COLORS.pl }} title="Particle Lifetime">PL: {emitter.particleLifetime.constantValue.toFixed(2)}</span>
                         )}
                         {emitter.lifetime?.value != null && (
-                            <span style={{ color: '#22c55e' }} title="Emitter Lifetime">LT: {emitter.lifetime.value.toFixed(2)}</span>
+                            <span style={{ color: UI_COLORS.lt }} title="Emitter Lifetime">LT: {emitter.lifetime.value.toFixed(2)}</span>
                         )}
                         {emitter.rate?.constantValue != null && (
                             <span style={{ color: '#06b6d4' }} title="Emission Rate">R: {emitter.rate.constantValue}</span>
                         )}
                         {emitter.pass != null && (
-                            <span style={{ color: '#facc15' }} title="Render Pass">P: {emitter.pass}</span>
+                            <span style={{ color: UI_COLORS.pass }} title="Render Pass">P: {emitter.pass}</span>
                         )}
                         {emitter.miscRenderFlags != null && (
                             <span style={{ color: '#ef4444' }} title="Misc Render Flags">MR: {emitter.miscRenderFlags}</span>
@@ -1592,19 +1677,19 @@ export default function BinEditorV2() {
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                         title={`Click to select all emitters in ${system.name}`}
                     >
-                        <span style={{ flex: 1, fontWeight: 600, color: '#9d8cd9', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ flex: 1, fontWeight: 600, color: 'var(--accent)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {system.displayName}
-                            {selectedCount > 0 && <span style={{ color: '#ecb96a' }}>✓</span>}
+                            {selectedCount > 0 && <span style={{ color: UI_COLORS.primary }}>✓</span>}
                         </span>
 
                         <span
                             style={{
                                 padding: '1px 7px',
-                                background: 'rgba(157, 140, 217, 0.15)',
+                                background: 'color-mix(in srgb, var(--accent), transparent 85%)',
                                 borderRadius: '12px',
                                 fontSize: '12px',
-                                color: '#9d8cd9',
-                                border: '1px solid rgba(157, 140, 217, 0.2)',
+                                color: 'var(--accent)',
+                                border: '1px solid color-mix(in srgb, var(--accent), transparent 80%)',
                                 fontWeight: '600'
                             }}
                         >
@@ -1626,7 +1711,7 @@ export default function BinEditorV2() {
     const renderPropertyEditor = () => {
         if (!selectedEmitter) {
             return (
-                <div style={{ color: '#666', fontStyle: 'italic', textAlign: 'center', marginTop: '40px' }}>
+                <div style={{ color: 'var(--accent-muted)', fontStyle: 'italic', textAlign: 'center', marginTop: '40px' }}>
                     {selectedEmitters.size === 0
                         ? 'Select an emitter to edit properties'
                         : `${selectedEmitters.size} emitters selected - use bulk actions above`
@@ -1641,7 +1726,7 @@ export default function BinEditorV2() {
                 <div style={{ display: 'flex', gap: '8px' }}>
                     {['x', 'y', 'z'].map(axis => (
                         <div key={axis} style={{ flex: 1 }}>
-                            <label style={{ fontSize: '11px', color: '#888' }}>{axis.toUpperCase()}</label>
+                            <label style={{ fontSize: '11px', color: 'var(--accent-muted)' }}>{axis.toUpperCase()}</label>
                             <input
                                 type="text"
                                 key={`${selectedEmitter?.name}-${property}-${axis}`}
@@ -1671,7 +1756,7 @@ export default function BinEditorV2() {
 
         return (
             <div>
-                <div style={{ fontWeight: 700, fontSize: '16px', marginBottom: '16px', color: '#ecb96a' }}>
+                <div style={{ fontWeight: 700, fontSize: '16px', marginBottom: '16px', color: UI_COLORS.primary }}>
                     {selectedEmitter.name}
                 </div>
 
@@ -1680,7 +1765,7 @@ export default function BinEditorV2() {
                         label="Birth Scale"
                         value={selectedEmitter.birthScale0.constantValue}
                         property="birthScale0"
-                        color="#6cb6ff"
+                        color={UI_COLORS.bs}
                     />
                 )}
 
@@ -1689,7 +1774,7 @@ export default function BinEditorV2() {
                         label="Scale"
                         value={selectedEmitter.scale0.constantValue}
                         property="scale0"
-                        color="#7ee787"
+                        color={UI_COLORS.scale}
                     />
                 )}
 
@@ -1698,13 +1783,13 @@ export default function BinEditorV2() {
                         label="Translation Override"
                         value={selectedEmitter.translationOverride.constantValue}
                         property="translationOverride"
-                        color="#d29922"
+                        color={UI_COLORS.to}
                     />
                 )}
 
                 {selectedEmitter.bindWeight && (
                     <div style={{ marginBottom: '16px' }}>
-                        <div style={{ fontWeight: 600, color: '#9d8cd9', marginBottom: '8px' }}>Bind Weight</div>
+                        <div style={{ fontWeight: 600, color: UI_COLORS.bw, marginBottom: '8px' }}>Bind Weight</div>
                         <input
                             type="text"
                             key={`${selectedEmitter.name}-bindWeight`}
@@ -1727,7 +1812,7 @@ export default function BinEditorV2() {
 
                 {selectedEmitter.particleLifetime?.constantValue != null && (
                     <div style={{ marginBottom: '16px' }}>
-                        <div style={{ fontWeight: 600, color: '#f97316', marginBottom: '8px' }}>Particle Lifetime</div>
+                        <div style={{ fontWeight: 600, color: UI_COLORS.pl, marginBottom: '8px' }}>Particle Lifetime</div>
                         <input
                             type="text"
                             key={`${selectedEmitter.name}-particleLifetime`}
@@ -1740,7 +1825,7 @@ export default function BinEditorV2() {
                                 background: 'rgba(0,0,0,0.3)',
                                 border: '1px solid rgba(249, 115, 22, 0.3)',
                                 borderRadius: '4px',
-                                color: '#f97316',
+                                color: UI_COLORS.pl,
                                 fontFamily: 'JetBrains Mono, monospace',
                                 fontSize: '13px'
                             }}
@@ -1750,7 +1835,7 @@ export default function BinEditorV2() {
 
                 {selectedEmitter.lifetime?.value != null && (
                     <div style={{ marginBottom: '16px' }}>
-                        <div style={{ fontWeight: 600, color: '#22c55e', marginBottom: '8px' }}>Emitter Lifetime</div>
+                        <div style={{ fontWeight: 600, color: UI_COLORS.lt, marginBottom: '8px' }}>Emitter Lifetime</div>
                         <input
                             type="text"
                             key={`${selectedEmitter.name}-lifetime`}
@@ -1763,7 +1848,7 @@ export default function BinEditorV2() {
                                 background: 'rgba(0,0,0,0.3)',
                                 border: '1px solid rgba(34, 197, 94, 0.3)',
                                 borderRadius: '4px',
-                                color: '#22c55e',
+                                color: UI_COLORS.lt,
                                 fontFamily: 'JetBrains Mono, monospace',
                                 fontSize: '13px'
                             }}
@@ -1818,7 +1903,7 @@ export default function BinEditorV2() {
 
                 {selectedEmitter.pass != null && (
                     <div style={{ marginBottom: '16px' }}>
-                        <div style={{ fontWeight: 600, color: '#facc15', marginBottom: '8px' }}>Render Pass</div>
+                        <div style={{ fontWeight: 600, color: UI_COLORS.pass, marginBottom: '8px' }}>Render Pass</div>
                         <input
                             type="text"
                             key={`${selectedEmitter.name}-pass`}
@@ -1831,7 +1916,7 @@ export default function BinEditorV2() {
                                 background: 'rgba(0,0,0,0.3)',
                                 border: '1px solid rgba(250, 204, 21, 0.3)',
                                 borderRadius: '4px',
-                                color: '#facc15',
+                                color: UI_COLORS.pass,
                                 fontFamily: 'JetBrains Mono, monospace',
                                 fontSize: '13px'
                             }}
@@ -1868,7 +1953,7 @@ export default function BinEditorV2() {
                     !selectedEmitter.particleLinger && !selectedEmitter.rate &&
                     selectedEmitter.pass == null &&
                     selectedEmitter.miscRenderFlags == null && (
-                        <div style={{ color: '#666', fontStyle: 'italic' }}>
+                        <div style={{ color: 'var(--accent-muted)', fontStyle: 'italic' }}>
                             No editable properties found
                         </div>
                     )}
@@ -1893,8 +1978,7 @@ export default function BinEditorV2() {
             {/* Header */}
             <div style={{
                 padding: '16px 20px',
-                borderBottom: '1px solid rgba(255,255,255,0.1)',
-                background: 'rgba(0,0,0,0.2)'
+                borderBottom: '1px solid rgba(255,255,255,0.08)',
             }}>
                 {/* Title Bar */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -1903,13 +1987,13 @@ export default function BinEditorV2() {
                     </h1>
 
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={loadBinFile} style={buttonStyle('#22c55e')}>
+                        <button onClick={loadBinFile} style={buttonStyle(UI_COLORS.lt)}>
                             {ICONS.folder} Load .bin
                         </button>
                         <button
                             onClick={undoLastChange}
                             disabled={undoHistory.length === 0}
-                            style={buttonStyle('#6cb6ff', undoHistory.length === 0)}
+                            style={buttonStyle(UI_COLORS.bs, undoHistory.length === 0)}
                             title={`Undo (${undoHistory.length} steps available)`}
                         >
                             {ICONS.undo} Undo{undoHistory.length > 0 ? ` (${undoHistory.length})` : ''}
@@ -1917,7 +2001,7 @@ export default function BinEditorV2() {
                         <button
                             onClick={restoreOriginal}
                             disabled={!initialContent}
-                            style={buttonStyle('#9d8cd9', !initialContent)}
+                            style={buttonStyle(UI_COLORS.bw, !initialContent)}
                             title="Restore to original state when file was first loaded"
                         >
                             ↺ Restore
@@ -1925,7 +2009,7 @@ export default function BinEditorV2() {
                         <button
                             onClick={saveFile}
                             disabled={!hasUnsavedChanges}
-                            style={buttonStyle('#ecb96a', !hasUnsavedChanges)}
+                            style={buttonStyle(UI_COLORS.primary, !hasUnsavedChanges)}
                         >
                             {ICONS.save} Save
                         </button>
@@ -1933,7 +2017,7 @@ export default function BinEditorV2() {
                 </div>
 
                 {/* Status */}
-                <div style={{ fontSize: '12px', color: '#888' }}>{statusMessage}</div>
+                <div style={{ fontSize: '12px', color: 'var(--accent-muted)' }}>{statusMessage}</div>
 
 
             </div>
@@ -1942,36 +2026,31 @@ export default function BinEditorV2() {
             {data && (
                 <div style={{
                     padding: '12px 20px',
-                    borderBottom: '1px solid rgba(255,255,255,0.1)',
+                    borderBottom: '1px solid rgba(255,255,255,0.08)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '16px',
-                    background: 'rgba(0,0,0,0.1)',
                     overflowX: 'auto'
                 }}>
                     {/* Tool Selector */}
                     <div style={{ marginRight: '16px', display: 'flex', alignItems: 'center' }}>
-                        <select
+                        <Select
                             value={toolbarTab}
                             onChange={(e) => setToolbarTab(e.target.value)}
-                            style={{
-                                padding: '6px 12px',
-                                background: 'var(--surface)',
-                                border: '1px solid var(--surface-2)',
-                                borderRadius: '6px',
-                                color: 'var(--text)',
-                                fontSize: '13px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                outline: 'none'
+                            size="small"
+                            sx={toolbarSelectStyle}
+                            MenuProps={{
+                                PaperProps: {
+                                    sx: toolbarMenuPaperSx
+                                }
                             }}
                         >
-                            <option value="scale">Scale Controls</option>
-                            <option value="bindWeight">Bind Weight</option>
-                            <option value="misc">Misc Flags</option>
-                            <option value="pass">Pass</option>
-                            <option value="to">Translation</option>
-                        </select>
+                            {toolbarTabOptions.map((opt) => (
+                                <MenuItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </MenuItem>
+                            ))}
+                        </Select>
                     </div>
 
                     <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)', marginRight: '16px' }} />
@@ -1995,21 +2074,21 @@ export default function BinEditorV2() {
                                     background: 'rgba(0,0,0,0.3)',
                                     border: '1px solid rgba(250, 204, 21, 0.3)',
                                     borderRadius: '4px',
-                                    color: '#facc15',
+                                    color: UI_COLORS.pass,
                                     fontSize: '12px',
                                     textAlign: 'center'
                                 }}
                             />
-                            <button onClick={applyScaleBirthScale} style={smallButtonStyle('#6cb6ff')} title="Scale Birth Scale">
+                            <button onClick={applyScaleBirthScale} style={smallButtonStyle(UI_COLORS.bs)} title="Scale Birth Scale">
                                 BS x{scaleMultiplier}
                             </button>
-                            <button onClick={applyScaleScale0} style={smallButtonStyle('#7ee787')} title="Scale Scale">
+                            <button onClick={applyScaleScale0} style={smallButtonStyle(UI_COLORS.scale)} title="Scale Scale">
                                 S x{scaleMultiplier}
                             </button>
-                            <button onClick={handleScaleParticleLifetime} style={smallButtonStyle('#f97316')} title="Scale Particle Lifetime">
+                            <button onClick={handleScaleParticleLifetime} style={smallButtonStyle(UI_COLORS.pl)} title="Scale Particle Lifetime">
                                 PL x{scaleMultiplier}
                             </button>
-                            <button onClick={handleScaleLifetime} style={smallButtonStyle('#22c55e')} title="Scale Emitter Lifetime">
+                            <button onClick={handleScaleLifetime} style={smallButtonStyle(UI_COLORS.lt)} title="Scale Emitter Lifetime">
                                 LT x{scaleMultiplier}
                             </button>
                         </div>
@@ -2017,7 +2096,7 @@ export default function BinEditorV2() {
 
                     {false && toolbarTab === 'scale' && (
                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginLeft: '12px' }}>
-                            <button onClick={handleScalePass} style={smallButtonStyle('#facc15')} title="Scale pass">
+                            <button onClick={handleScalePass} style={smallButtonStyle(UI_COLORS.pass)} title="Scale pass">
                                 P x{scaleMultiplier}
                             </button>
                         </div>
@@ -2025,7 +2104,7 @@ export default function BinEditorV2() {
 
                     {toolbarTab === 'scale' && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '12px', color: '#888' }}>Multiplier:</span>
+                            <span style={{ fontSize: '12px', color: 'var(--accent-muted)' }}>Multiplier:</span>
                             <input
                                 type="text"
                                 defaultValue={scaleMultiplier}
@@ -2044,19 +2123,19 @@ export default function BinEditorV2() {
                                     fontSize: '12px'
                                 }}
                             />
-                            <button onClick={applyScaleBirthScale} style={smallButtonStyle('#6cb6ff')} title="Scale Birth Scale">
+                            <button onClick={applyScaleBirthScale} style={smallButtonStyle(UI_COLORS.bs)} title="Scale Birth Scale">
                                 BS x{scaleMultiplier}
                             </button>
-                            <button onClick={applyScaleScale0} style={smallButtonStyle('#7ee787')} title="Scale Scale">
+                            <button onClick={applyScaleScale0} style={smallButtonStyle(UI_COLORS.scale)} title="Scale Scale">
                                 S x{scaleMultiplier}
                             </button>
-                            <button onClick={handleScaleParticleLifetime} style={smallButtonStyle('#f97316')} title="Scale Particle Lifetime">
+                            <button onClick={handleScaleParticleLifetime} style={smallButtonStyle(UI_COLORS.pl)} title="Scale Particle Lifetime">
                                 PL x{scaleMultiplier}
                             </button>
-                            <button onClick={handleScaleLifetime} style={smallButtonStyle('#22c55e')} title="Scale Emitter Lifetime">
+                            <button onClick={handleScaleLifetime} style={smallButtonStyle(UI_COLORS.lt)} title="Scale Emitter Lifetime">
                                 LT x{scaleMultiplier}
                             </button>
-                            <button onClick={handleScalePass} style={smallButtonStyle('#facc15')} title="Scale pass">
+                            <button onClick={handleScalePass} style={smallButtonStyle(UI_COLORS.pass)} title="Scale pass">
                                 P x{scaleMultiplier}
                             </button>
                         </div>
@@ -2065,13 +2144,13 @@ export default function BinEditorV2() {
                     {/* BindWeight */}
                     {toolbarTab === 'bindWeight' && (
                         <div style={{ display: 'flex', gap: '4px' }}>
-                            <button onClick={handleAddBindWeight} style={smallButtonStyle('#9d8cd9')} title="Add Bind Weight property">
+                            <button onClick={handleAddBindWeight} style={smallButtonStyle(UI_COLORS.bw)} title="Add Bind Weight property">
                                 + BindWeight
                             </button>
-                            <button onClick={handleSetBindWeightZero} style={smallButtonStyle('#9d8cd9')} title="Set Bind Weight to 0">
+                            <button onClick={handleSetBindWeightZero} style={smallButtonStyle(UI_COLORS.bw)} title="Set Bind Weight to 0">
                                 BW=0
                             </button>
-                            <button onClick={handleSetBindWeightOne} style={smallButtonStyle('#9d8cd9')} title="Set Bind Weight to 1">
+                            <button onClick={handleSetBindWeightOne} style={smallButtonStyle(UI_COLORS.bw)} title="Set Bind Weight to 1">
                                 BW=1
                             </button>
                         </div>
@@ -2114,7 +2193,7 @@ export default function BinEditorV2() {
                                     fontSize: '12px'
                                 }}
                             />
-                            <button onClick={handleScalePass} style={smallButtonStyle('#facc15')} title="Scale pass for selected emitters">
+                            <button onClick={handleScalePass} style={smallButtonStyle(UI_COLORS.pass)} title="Scale pass for selected emitters">
                                 P x{scaleMultiplier}
                             </button>
                         </div>
@@ -2138,12 +2217,12 @@ export default function BinEditorV2() {
                                     background: 'rgba(0,0,0,0.3)',
                                     border: '1px solid rgba(250, 204, 21, 0.3)',
                                     borderRadius: '4px',
-                                    color: '#facc15',
+                                    color: UI_COLORS.pass,
                                     fontSize: '12px',
                                     textAlign: 'center'
                                 }}
                             />
-                            <button onClick={handleSetPass} style={smallButtonStyle('#facc15')} title="Set pass for selected emitters">
+                            <button onClick={handleSetPass} style={smallButtonStyle(UI_COLORS.pass)} title="Set pass for selected emitters">
                                 P={passValue}
                             </button>
                             <span style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
@@ -2163,12 +2242,12 @@ export default function BinEditorV2() {
                                     background: 'rgba(0,0,0,0.3)',
                                     border: '1px solid rgba(250, 204, 21, 0.3)',
                                     borderRadius: '4px',
-                                    color: '#facc15',
+                                    color: UI_COLORS.pass,
                                     fontSize: '12px',
                                     textAlign: 'center'
                                 }}
                             />
-                            <button onClick={handleAddPass} style={smallButtonStyle('#facc15')} title="Add amount to pass for selected emitters">
+                            <button onClick={handleAddPass} style={smallButtonStyle(UI_COLORS.pass)} title="Add amount to pass for selected emitters">
                                 P+={passDeltaValue}
                             </button>
                         </div>
@@ -2177,7 +2256,7 @@ export default function BinEditorV2() {
                     {/* TranslationOverride */}
                     {toolbarTab === 'to' && (
                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                            <button onClick={handleAddTranslationOverride} style={smallButtonStyle('#d29922')} title="Add Translation Override property">
+                            <button onClick={handleAddTranslationOverride} style={smallButtonStyle(UI_COLORS.to)} title="Add Translation Override property">
                                 + TO
                             </button>
                             <input
@@ -2196,7 +2275,7 @@ export default function BinEditorV2() {
                                     background: 'rgba(0,0,0,0.3)',
                                     border: '1px solid rgba(210, 153, 34, 0.3)',
                                     borderRadius: '4px',
-                                    color: '#d29922',
+                                    color: UI_COLORS.to,
                                     fontSize: '11px',
                                     textAlign: 'center'
                                 }}
@@ -2217,7 +2296,7 @@ export default function BinEditorV2() {
                                     background: 'rgba(0,0,0,0.3)',
                                     border: '1px solid rgba(210, 153, 34, 0.3)',
                                     borderRadius: '4px',
-                                    color: '#d29922',
+                                    color: UI_COLORS.to,
                                     fontSize: '11px',
                                     textAlign: 'center'
                                 }}
@@ -2238,12 +2317,12 @@ export default function BinEditorV2() {
                                     background: 'rgba(0,0,0,0.3)',
                                     border: '1px solid rgba(210, 153, 34, 0.3)',
                                     borderRadius: '4px',
-                                    color: '#d29922',
+                                    color: UI_COLORS.to,
                                     fontSize: '11px',
                                     textAlign: 'center'
                                 }}
                             />
-                            <button onClick={handleSetTranslationOverride} style={smallButtonStyle('#d29922')} title="Set Translation Override values for selected emitters">
+                            <button onClick={handleSetTranslationOverride} style={smallButtonStyle(UI_COLORS.to)} title="Set Translation Override values for selected emitters">
                                 Set
                             </button>
                         </div>
@@ -2251,20 +2330,12 @@ export default function BinEditorV2() {
 
                     {/* Search */}
                     <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
-                        <input
-                            type="text"
+                        <SearchInput
+                            initialValue={searchQuery}
+                            onChange={setSearchQuery}
                             placeholder="Search emitters..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            style={{
-                                width: '200px',
-                                padding: '6px 12px',
-                                background: 'rgba(0,0,0,0.3)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                borderRadius: 'var(--border-radius, 4px)',
-                                color: '#e8e6e3',
-                                fontSize: '12px'
-                            }}
+                            className="bin-editor-search"
+                            style={{ width: '240px' }}
                         />
                     </div>
                 </div>
@@ -2286,13 +2357,13 @@ export default function BinEditorV2() {
                             alignItems: 'center',
                             justifyContent: 'center',
                             height: '100%',
-                            color: '#666'
+                            color: 'var(--accent)'
                         }}>
                             <div style={{ fontSize: '48px', marginBottom: '16px' }}>📁</div>
                             <div>Load a .bin file to start editing</div>
                         </div>
                     ) : filteredSystems.length === 0 ? (
-                        <div style={{ color: '#666', textAlign: 'center', marginTop: '40px' }}>
+                        <div style={{ color: 'var(--accent)', textAlign: 'center', marginTop: '40px' }}>
                             No systems match your search
                         </div>
                     ) : (
@@ -2391,14 +2462,14 @@ const buttonStyle = (color, disabled = false) => ({
 
 const smallButtonStyle = (color, disabled = false) => ({
     padding: '4px 10px',
-    background: disabled ? 'rgba(100,100,100,0.2)' : `rgba(${hexToRgb(color)}, 0.15)`,
+    background: disabled ? 'rgba(100,100,100,0.2)' : `rgba(${hexToRgb(color)}, 0.24)`,
     border: `1px solid ${disabled ? 'rgba(100,100,100,0.3)' : color}`,
     borderRadius: 'var(--border-radius, 4px)',
     color: disabled ? '#666' : color,
     cursor: disabled ? 'not-allowed' : 'pointer',
     fontFamily: 'inherit',
     fontSize: '11px',
-    fontWeight: 600,
+    fontWeight: 700,
     opacity: disabled ? 0.5 : 1,
     transition: 'all 0.15s ease'
 });
@@ -2410,4 +2481,3 @@ function hexToRgb(hex) {
     }
     return '255, 255, 255';
 }
-

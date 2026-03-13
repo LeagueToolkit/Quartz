@@ -17,7 +17,7 @@ class ElectronPrefs {
         // Load all preferences
         const allPrefs = await ipcRenderer.invoke('prefs:getAll');
         this.obj = {
-          PreferredMode: allPrefs.PreferredMode || 'amethyst',
+          PreferredMode: allPrefs.PreferredMode || 'empress',
           IgnoreBW: allPrefs.IgnoreBW !== undefined ? allPrefs.IgnoreBW : true,
           Targets: allPrefs.Targets || [false, false, false, false, true],
           Regenerate: allPrefs.Regenerate || false,
@@ -39,7 +39,7 @@ class ElectronPrefs {
       } else {
         // Fallback for non-Electron environment
         this.obj = {
-          PreferredMode: 'amethyst',
+          PreferredMode: 'empress',
           IgnoreBW: true,
           Targets: [false, false, false, false, true],
           Regenerate: false,
@@ -61,7 +61,7 @@ class ElectronPrefs {
       console.error('Error initializing ElectronPrefs:', error);
       // Fallback
       this.obj = {
-        PreferredMode: 'amethyst',
+        PreferredMode: 'empress',
         IgnoreBW: true,
         Targets: [false, false, false, false, true],
         Regenerate: false,

@@ -443,7 +443,7 @@ const PaletteManager = ({
     if (mode !== 'random' && mode !== 'random-keyframe' && mode !== 'linear' && mode !== 'materials') return null;
 
     return (
-        <Box sx={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+        <Box className="paint-palette-manager" sx={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
             <Box sx={{ padding: '8px 16px', display: 'flex', gap: 1, height: '42px', alignItems: 'stretch' }}>
                 {palette.map((color, idx) => (
                     <Tooltip key={idx} title={`Stop: ${Math.round(color.time * 100)}%`}>

@@ -17,6 +17,7 @@ import {
     AutoFixHigh,
 } from '@mui/icons-material';
 import TreeNode from './TreeNode';
+import { inputStyle } from '../styles';
 
 const ROW_HEIGHT = 30;
 const OVERSCAN = 6;
@@ -249,46 +250,37 @@ export default function BnkMainContent(props) {
     const rightRows = useMemo(() => flattenVisibleTree(filteredRightTree, rightExpandedNodes), [filteredRightTree, rightExpandedNodes]);
 
     return (
-        <Box sx={mainContentStyle}>
+        <Box className="bnk-extract-main" sx={mainContentStyle}>
             <Box
                 className="bnk-extract-tree"
                 onDragOver={handleLeftDragOver}
                 onDragLeave={handleLeftDragLeave}
                 onDrop={handleLeftDrop}
                 sx={{
-                ...treeViewStyle,
-                border: leftDragOver
-                    ? '2px dashed var(--accent)'
-                    : (viewMode === 'split' && activePane === 'left' ? '1px solid var(--accent)' : treeViewStyle.border),
-                background: leftDragOver ? 'rgba(var(--accent-rgb), 0.06)' : treeViewStyle.background,
-                position: 'relative',
-                display: 'flex',
-                flexDirection: 'column',
-                transition: 'border-color 0.15s, background 0.15s',
-            }}>
-                <Box sx={{ p: 1, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 1 }}>
+                    ...treeViewStyle,
+                    border: leftDragOver
+                        ? '2px dashed var(--accent)'
+                        : (viewMode === 'split' && activePane === 'left' ? '1px solid var(--accent)' : treeViewStyle.border),
+                    background: leftDragOver ? 'rgba(var(--accent-rgb), 0.06)' : treeViewStyle.background,
+                    position: 'relative',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    transition: 'border-color 0.15s, background 0.15s',
+                }}>
+                <Box sx={{ p: 1.25, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 1, minHeight: 56 }}>
                     <TextField
-                        placeholder="Filter left..."
-                        size="small"
-                        variant="standard"
                         value={leftSearchQuery}
                         onChange={(e) => setLeftSearchQuery(e.target.value)}
+                        placeholder="Filter left..."
+                        size="small"
+                        sx={{ ...inputStyle, flex: 1 }}
                         InputProps={{
-                            disableUnderline: true,
-                            startAdornment: <Search sx={{ fontSize: 14, mr: 0.5, color: 'var(--accent)', opacity: 0.5 }} />,
+                            startAdornment: <Search sx={{ fontSize: 18, mr: 0.75, color: 'var(--accent)', opacity: 0.8 }} />,
                             endAdornment: leftSearchQuery && (
-                                <IconButton size="small" onClick={() => setLeftSearchQuery('')} sx={{ p: 0.2 }}>
-                                    <Close sx={{ fontSize: 12, opacity: 0.5 }} />
+                                <IconButton size="small" onClick={() => setLeftSearchQuery('')} sx={{ p: 0.25, ml: 0.5 }}>
+                                    <Close sx={{ fontSize: 14, opacity: 0.7 }} />
                                 </IconButton>
                             ),
-                        }}
-                        sx={{
-                            flex: 1,
-                            background: 'rgba(0,0,0,0.2)',
-                            px: 1,
-                            py: '2px',
-                            borderRadius: '4px',
-                            '& .MuiInputBase-input': { fontSize: '0.65rem', fontFamily: 'JetBrains Mono' },
                         }}
                     />
                     {leftSearchQuery && (
@@ -340,29 +332,20 @@ export default function BnkMainContent(props) {
                         transition: 'all 0.2s ease',
                     }}
                 >
-                    <Box sx={{ p: 1, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ p: 1.25, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 1, minHeight: 56 }}>
                         <TextField
-                            placeholder="Filter right..."
-                            size="small"
-                            variant="standard"
                             value={rightSearchQuery}
                             onChange={(e) => setRightSearchQuery(e.target.value)}
+                            placeholder="Filter right..."
+                            size="small"
+                            sx={{ ...inputStyle, flex: 1 }}
                             InputProps={{
-                                disableUnderline: true,
-                                startAdornment: <Search sx={{ fontSize: 14, mr: 0.5, color: 'var(--accent)', opacity: 0.5 }} />,
+                                startAdornment: <Search sx={{ fontSize: 18, mr: 0.75, color: 'var(--accent)', opacity: 0.8 }} />,
                                 endAdornment: rightSearchQuery && (
-                                    <IconButton size="small" onClick={() => setRightSearchQuery('')} sx={{ p: 0.2 }}>
-                                        <Close sx={{ fontSize: 12, opacity: 0.5 }} />
+                                    <IconButton size="small" onClick={() => setRightSearchQuery('')} sx={{ p: 0.25, ml: 0.5 }}>
+                                        <Close sx={{ fontSize: 14, opacity: 0.7 }} />
                                     </IconButton>
                                 ),
-                            }}
-                            sx={{
-                                flex: 1,
-                                background: 'rgba(0,0,0,0.2)',
-                                px: 1,
-                                py: '2px',
-                                borderRadius: '4px',
-                                '& .MuiInputBase-input': { fontSize: '0.65rem', fontFamily: 'JetBrains Mono' },
                             }}
                         />
                         <Tooltip title={`Sort by size: ${rightSortMode === 'none' ? 'None' : (rightSortMode === 'size-asc' ? 'Low to High' : 'High to Low')}`}>
@@ -372,10 +355,10 @@ export default function BnkMainContent(props) {
                                 sx={{
                                     color: rightSortMode !== 'none' ? 'var(--accent)' : 'rgba(255,255,255,0.3)',
                                     background: rightSortMode !== 'none' ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
-                                    p: '4px',
+                                    p: '6px',
                                 }}
                             >
-                                <Sort sx={{ fontSize: 14, transform: rightSortMode === 'size-asc' ? 'scaleY(-1)' : 'none' }} />
+                                <Sort sx={{ fontSize: 16, transform: rightSortMode === 'size-asc' ? 'scaleY(-1)' : 'none' }} />
                             </IconButton>
                         </Tooltip>
                         {rightSearchQuery && (
@@ -405,7 +388,7 @@ export default function BnkMainContent(props) {
                 </Box>
             )}
 
-            <Box sx={sidebarStyle}>
+            <Box className="bnk-extract-sidebar" sx={sidebarStyle}>
                 <Box sx={{ display: 'flex', gap: 0.5, mb: 1 }}>
                     <Tooltip title="Undo (Ctrl+Z)">
                         <Button

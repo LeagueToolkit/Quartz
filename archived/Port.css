@@ -24,7 +24,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: var(--surface);
+
   color: var(--accent-muted);
   font-family: 'JetBrains Mono', monospace;
   font-size: small;

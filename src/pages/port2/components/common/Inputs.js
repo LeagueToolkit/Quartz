@@ -60,7 +60,10 @@ export const RenameInput = React.memo(({ initialValue, onConfirm, onCancel, onCl
 export const SearchInput = React.memo(({
     initialValue,
     placeholder,
-    onChange
+    onChange,
+    accentVar = 'var(--accent)',
+    style = {},
+    className = ""
 }) => {
     const [localValue, setLocalValue] = useState(initialValue || '');
     const [isFocused, setIsFocused] = useState(false);
@@ -97,6 +100,7 @@ export const SearchInput = React.memo(({
     return (
         <input
             type="text"
+            className={className}
             placeholder={placeholder}
             value={localValue}
             onChange={handleChange}
@@ -104,19 +108,25 @@ export const SearchInput = React.memo(({
             onBlur={handleBlur}
             style={{
                 flex: 1,
+                minWidth: 0,
+                boxSizing: 'border-box',
                 padding: '10px 18px',
-                background: isFocused ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0.25)',
-                border: isFocused ? '1px solid var(--accent)' : '1px solid rgba(255, 255, 255, 0.1)',
+                background: isFocused
+                    ? `color-mix(in srgb, ${accentVar} 18%, transparent)`
+                    : `color-mix(in srgb, ${accentVar} 10%, transparent)`,
+                border: isFocused
+                    ? `1px solid color-mix(in srgb, ${accentVar} 75%, transparent)`
+                    : `1px solid color-mix(in srgb, ${accentVar} 35%, transparent)`,
                 borderRadius: '10px',
-                color: 'var(--accent)',
+                color: accentVar,
                 fontFamily: 'JetBrains Mono, monospace',
                 fontSize: '0.85rem',
                 outline: 'none',
-                marginTop: '-4px',
                 transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                 boxShadow: isFocused
-                    ? '0 0 15px rgba(236, 185, 106, 0.1), inset 0 2px 4px rgba(0,0,0,0.4)'
-                    : 'inset 0 2px 4px rgba(0,0,0,0.2)',
+                    ? `0 0 15px color-mix(in srgb, ${accentVar} 28%, transparent), inset 0 1px 2px rgba(0,0,0,0.16)`
+                    : 'inset 0 1px 2px rgba(0,0,0,0.12)',
+                ...style
             }}
         />
     );

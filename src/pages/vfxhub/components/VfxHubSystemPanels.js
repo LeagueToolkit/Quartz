@@ -1,5 +1,6 @@
 import React from 'react';
 import ParticleSystemList from '../../port2/components/ParticleSystemList/ParticleSystemList';
+import { SearchInput } from '../../port2/components/common/Inputs';
 
 function VfxHubSystemPanels({
   sectionStyle,
@@ -108,31 +109,7 @@ function VfxHubSystemPanels({
     handleDrop(event);
   };
 
-  const filterInputStyle = {
-    width: '100%',
-    padding: '10px 18px',
-    background: 'rgba(0, 0, 0, 0.35)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    borderRadius: '10px',
-    color: 'var(--accent)',
-    fontFamily: 'JetBrains Mono, monospace',
-    fontSize: '0.85rem',
-    outline: 'none',
-    transition: 'all 0.3s ease',
-    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.3)',
-  };
 
-  const onInputFocus = (e) => {
-    e.target.style.background = 'rgba(0, 0, 0, 0.5)';
-    e.target.style.borderColor = 'var(--accent)';
-    e.target.style.boxShadow = '0 0 15px rgba(236, 185, 106, 0.1), inset 0 2px 4px rgba(0,0,0,0.4)';
-  };
-
-  const onInputBlur = (e) => {
-    e.target.style.background = 'rgba(0, 0, 0, 0.35)';
-    e.target.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-    e.target.style.boxShadow = 'inset 0 2px 4px rgba(0,0,0,0.2)';
-  };
 
   return (
     <div style={{
@@ -144,14 +121,11 @@ function VfxHubSystemPanels({
       minHeight: '0',
     }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px', minHeight: '0' }}>
-        <input
-          type="text"
+        <SearchInput
+          initialValue={targetFilter}
           placeholder="Filter Selected Systems"
-          value={targetFilter}
-          onChange={(e) => onTargetFilterChange(e.target.value)}
-          style={filterInputStyle}
-          onFocus={onInputFocus}
-          onBlur={onInputBlur}
+          onChange={onTargetFilterChange}
+          style={{ flex: '0 0 auto', width: '100%' }}
         />
         <div
           onDrop={handleTargetDrop}
@@ -273,14 +247,13 @@ function VfxHubSystemPanels({
       </div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <input
-          type="text"
+        <SearchInput
+          initialValue={donorFilter}
           placeholder="Filter Downloaded VFX Systems"
-          value={donorFilter}
-          onChange={(e) => onDonorFilterChange(e.target.value)}
-          style={filterInputStyle}
-          onFocus={onInputFocus}
-          onBlur={onInputBlur}
+          onChange={onDonorFilterChange}
+          accentVar="var(--accent2)"
+          className="vfx-right-search"
+          style={{ flex: '0 0 auto', width: '100%' }}
         />
         <div style={{
           flex: 1,

@@ -1,120 +1,114 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+
+const TARGET_FPS = 60;
+const DEFAULT_PRIMARY = { r: 236, g: 185, b: 106 };
+const DEFAULT_SECONDARY = { r: 192, g: 132, b: 252 };
+
+const createWorker = () => new Worker(new URL('./firefly.worker.js', import.meta.url), { type: 'module' });
+
+const hexToRgb = (hex, fallback) => {
+  const safe = String(hex || '').trim();
+  const match = /^#?([0-9a-f\d]{2})([0-9a-f\d]{2})([0-9a-f\d]{2})$/i.exec(safe);
+  if (!match) return fallback;
+  return {
+    r: parseInt(match[1], 16),
+    g: parseInt(match[2], 16),
+    b: parseInt(match[3], 16)
+  };
+};
+
+const readColors = () => {
+  const style = getComputedStyle(document.documentElement);
+  return {
+    primary: hexToRgb(style.getPropertyValue('--accent').trim(), DEFAULT_PRIMARY),
+    secondary: hexToRgb(style.getPropertyValue('--accent2').trim(), DEFAULT_SECONDARY)
+  };
+};
 
 const FireflyEffect = ({ enabled }) => {
-    const canvasRef = useRef(null);
+  const canvasRef = useRef(null);
+  const retryRef = useRef(false);
+  const [canvasVersion, setCanvasVersion] = useState(0);
 
-    useEffect(() => {
-        if (!enabled) return;
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const canvas = canvasRef.current;
+    if (!canvas || typeof Worker === 'undefined' || typeof canvas.transferControlToOffscreen !== 'function') {
+      return undefined;
+    }
 
-        const canvas = canvasRef.current;
-        if (!canvas) return;
+    let worker;
+    let colorInterval;
 
-        const ctx = canvas.getContext('2d');
-        let animationFrameId;
-        let fireflies = [];
+    try {
+      worker = createWorker();
+      const offscreen = canvas.transferControlToOffscreen();
+      worker.postMessage(
+        {
+          type: 'init',
+          payload: {
+            canvas: offscreen,
+            width: window.innerWidth,
+            height: window.innerHeight,
+            colors: readColors(),
+            targetFps: TARGET_FPS,
+            count: 50
+          }
+        },
+        [offscreen]
+      );
+    } catch (error) {
+      if (worker) worker.terminate();
+      if (!retryRef.current) {
+        retryRef.current = true;
+        setCanvasVersion((v) => v + 1);
+      }
+      return undefined;
+    }
+    retryRef.current = false;
 
-        const resizeCanvas = () => {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        };
+    const onResize = () => {
+      worker.postMessage({
+        type: 'resize',
+        payload: { width: window.innerWidth, height: window.innerHeight }
+      });
+    };
 
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
+    const syncColors = () => {
+      worker.postMessage({
+        type: 'colors',
+        payload: readColors()
+      });
+    };
 
-        // Helper to convert hex to rgb
-        const hexToRgb = (hex) => {
-            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-            return result ? {
-                r: parseInt(result[1], 16),
-                g: parseInt(result[2], 16),
-                b: parseInt(result[3], 16)
-            } : { r: 255, g: 255, b: 150 }; // Fallback to yellow
-        };
+    window.addEventListener('resize', onResize);
+    colorInterval = window.setInterval(syncColors, 1200);
 
-        const createFirefly = () => ({
-            x: Math.random() * canvas.width,
-            y: Math.random() * canvas.height,
-            size: Math.random() * 2 + 1,
-            speedX: Math.random() * 0.5 - 0.25,
-            speedY: Math.random() * 0.5 - 0.25,
-            opacity: Math.random(),
-            pulseSpeed: Math.random() * 0.02 + 0.01,
-            colorType: Math.random() > 0.5 ? 'primary' : 'secondary'
-        });
+    return () => {
+      window.removeEventListener('resize', onResize);
+      if (colorInterval) window.clearInterval(colorInterval);
+      worker.postMessage({ type: 'destroy' });
+      worker.terminate();
+    };
+  }, [enabled, canvasVersion]);
 
-        for (let i = 0; i < 50; i++) {
-            fireflies.push(createFirefly());
-        }
+  if (!enabled) return null;
 
-        const animate = () => {
-            if (!canvas) return; // Safety check
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Get current theme colors
-            const style = getComputedStyle(document.documentElement);
-            const primaryHex = style.getPropertyValue('--accent').trim() || '#ecb96a';
-            const secondaryHex = style.getPropertyValue('--accent2').trim() || '#c084fc';
-
-            const primaryRgb = hexToRgb(primaryHex);
-            const secondaryRgb = hexToRgb(secondaryHex);
-
-            fireflies.forEach(fly => {
-                // Update position
-                fly.x += fly.speedX;
-                fly.y += fly.speedY;
-
-                // Wrap around screen
-                if (fly.x < 0) fly.x = canvas.width;
-                if (fly.x > canvas.width) fly.x = 0;
-                if (fly.y < 0) fly.y = canvas.height;
-                if (fly.y > canvas.height) fly.y = 0;
-
-                // Update opacity (pulse)
-                fly.opacity += fly.pulseSpeed;
-                if (fly.opacity > 1 || fly.opacity < 0.2) {
-                    fly.pulseSpeed = -fly.pulseSpeed;
-                }
-
-                // Determine color based on type
-                const color = fly.colorType === 'primary' ? primaryRgb : secondaryRgb;
-                const { r, g, b } = color;
-
-                // Draw
-                ctx.beginPath();
-                ctx.arc(fly.x, fly.y, fly.size, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${Math.abs(fly.opacity) * 0.8})`;
-                ctx.shadowBlur = 15;
-                ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.8)`;
-                ctx.fill();
-            });
-
-            animationFrameId = requestAnimationFrame(animate);
-        };
-
-        animate();
-
-        return () => {
-            window.removeEventListener('resize', resizeCanvas);
-            cancelAnimationFrame(animationFrameId);
-        };
-    }, [enabled]);
-
-    if (!enabled) return null;
-
-    return (
-        <canvas
-            ref={canvasRef}
-            style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                pointerEvents: 'none',
-                zIndex: 9999 // Overlay on top of everything
-            }}
-        />
-    );
+  return (
+    <canvas
+      key={canvasVersion}
+      ref={canvasRef}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        zIndex: 2147483000
+      }}
+    />
+  );
 };
 
 export default FireflyEffect;

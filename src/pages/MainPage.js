@@ -307,11 +307,11 @@ const MainPage = () => {
         {/* Tagline */}
         <Typography sx={{
           position: 'relative', zIndex: 1,
-          color: 'var(--text-2)',
+          color: 'var(--text)',
           fontSize: { xs: '0.6rem', sm: '0.68rem', md: '0.73rem' },
           letterSpacing: '0.2em',
           textTransform: 'uppercase',
-          opacity: 0.55,
+          opacity: 1,
           mb: { xs: 2.5, sm: 3, md: 3.5 },
           textAlign: 'center',
           userSelect: 'none',
@@ -328,7 +328,7 @@ const MainPage = () => {
             sx={{
               background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
               border: '1px solid color-mix(in srgb, var(--accent) 45%, transparent)',
-              color: 'var(--accent)',
+              color: 'var(--text)',
               fontWeight: 600,
               px: { xs: 2, sm: 2.5 }, py: { xs: 0.7, sm: 0.9 },
               borderRadius: '8px',
@@ -353,7 +353,7 @@ const MainPage = () => {
             sx={{
               background: 'transparent',
               border: '1px solid rgba(255,255,255,0.12)',
-              color: 'rgba(255,255,255,0.45)',
+              color: 'var(--text)',
               px: { xs: 2, sm: 2.5 }, py: { xs: 0.7, sm: 0.9 },
               borderRadius: '8px',
               fontSize: { xs: '0.75rem', sm: '0.82rem' },
@@ -452,7 +452,7 @@ const MainPage = () => {
               onMouseEnter={(e) => debugCardHover(e, tool.title)}
               onMouseLeave={(e) => debugCardLeave(e, tool.title)}
               sx={{
-                background: 'rgba(255,255,255,0.026)',
+                background: 'rgba(255,255,255,0.04)',
                 border: tool.wip ? '1px solid rgba(239,68,68,0.2)' : tool.isNew ? '1px solid rgba(59,130,246,0.35)' : '1px solid rgba(255,255,255,0.055)',
                 borderRadius: '12px',
                 cursor: 'pointer',
@@ -463,6 +463,8 @@ const MainPage = () => {
                 position: 'relative',
                 overflow: 'hidden',
                 opacity: tool.wip ? 0.55 : 1,
+                backdropFilter: 'blur(calc(var(--glass-blur, 10px) + 4px)) saturate(122%)',
+                WebkitBackdropFilter: 'blur(calc(var(--glass-blur, 10px) + 4px)) saturate(122%)',
                 boxShadow: tool.isNew ? '0 0 18px rgba(59,130,246,0.18)' : 'none',
                 transition: 'border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, background-color 0.2s ease, opacity 0.2s ease',
                 '&::before': {
@@ -477,7 +479,7 @@ const MainPage = () => {
                   pointerEvents: 'none',
                 },
                 '&:hover': {
-                  background: 'rgba(255,255,255,0.055)',
+                  background: 'rgba(255,255,255,0.07)',
                   borderColor: tool.wip ? 'rgba(239,68,68,0.45)' : tool.isNew ? 'rgba(59,130,246,0.65)' : 'color-mix(in srgb, var(--accent) 55%, transparent)',
                   transform: 'translateY(-3px)',
                   opacity: tool.wip ? 0.75 : 1,

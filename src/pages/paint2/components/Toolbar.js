@@ -110,7 +110,9 @@ function Toolbar({
     onModeChange
 }) {
     return (
-        <Box sx={{
+        <Box 
+            className="paint-toolbar"
+            sx={{
             display: 'flex',
             alignItems: 'center',
             padding: '4px 16px',

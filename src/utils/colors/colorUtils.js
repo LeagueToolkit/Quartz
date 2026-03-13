@@ -134,11 +134,8 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
     if (!Palette[paletteIndex]) return;
 
     const clearClickedColorDotPreview = () => {
-      try {
-        if (!clickedColorDot?.style) return;
-        clickedColorDot.style.removeProperty('background-color');
-        clickedColorDot.style.removeProperty('background');
-      } catch {}
+      // Keep no-op: picker commits through React state (onLivePreview/onCommit).
+      // Mutating clicked swatch inline styles here can override committed color.
     };
 
     clearClickedColorDotPreview();
@@ -418,6 +415,9 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
     const liveUpdate = (hex) => {
       try {
         preview.style.background = hex;
+        if (options && typeof options.onLivePreview === 'function') {
+          options.onLivePreview(hex);
+        }
         if (setColors) {
           setColors((prev) => {
             if (!Array.isArray(prev) || prev.length === 0) return prev;
@@ -601,6 +601,12 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
 
     const commit = (hex) => {
       try {
+        if (options && typeof options.onCommit === 'function') {
+          options.onCommit(hex);
+          clearClickedColorDotPreview();
+          try { if (container.parentNode) container.parentNode.removeChild(container); } catch {}
+          return;
+        }
         // Check for onShadesCommit callback first (for filter picker and shades mode)
         if (mode === 'shades' && options && typeof options.onShadesCommit === 'function') {
           options.onShadesCommit(hex);

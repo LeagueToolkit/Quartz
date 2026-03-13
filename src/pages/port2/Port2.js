@@ -612,7 +612,6 @@ const Port2 = () => {
     <div className="port-container" style={{
       minHeight: '100%',
       height: '100%', // Use 100% of parent container instead of 100vh to account for title bar
-      background: 'var(--bg)',
       position: 'relative',
       overflow: 'hidden',
       display: 'flex',

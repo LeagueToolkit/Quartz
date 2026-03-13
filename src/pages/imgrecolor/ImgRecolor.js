@@ -12,16 +12,16 @@ import { loadFolder, loadSingleImage, saveImageFile, isGrayscaleImage } from './
 // Celestial-style minimalistic button
 const celestialButtonStyle = {
   background: 'rgba(0, 0, 0, 0.35)',
-  border: '2px solid rgba(236, 185, 106, 0.3)',
+  border: '2px solid color-mix(in srgb, var(--accent) 30%, transparent)',
   color: 'var(--accent)',
   borderRadius: '8px',
   transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
   textTransform: 'none',
   fontFamily: 'JetBrains Mono, monospace',
   '&:hover': {
-    background: 'rgba(236, 185, 106, 0.1)',
+    background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
     borderColor: 'var(--accent)',
-    boxShadow: '0 0 15px rgba(236, 185, 106, 0.1)',
+    boxShadow: '0 0 15px color-mix(in srgb, var(--accent) 25%, transparent)',
     transform: 'translateY(-1px)'
   },
   '&:disabled': {

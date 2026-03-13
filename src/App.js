@@ -200,7 +200,7 @@ const QuartzInteropBridge = () => {
 };
 
 // Dynamic theme generator using computed CSS variables
-function createDynamicTheme(fontFamily) {
+function createDynamicTheme(fontFamily, interfaceStyle = 'quartz') {
   // Get computed CSS variable values for MUI
   const getCSSVar = (varName, fallback = '#8b5cf6') => {
     if (typeof window !== 'undefined' && window.getComputedStyle) {
@@ -209,6 +209,8 @@ function createDynamicTheme(fontFamily) {
     }
     return fallback;
   };
+
+  const isLiquid = interfaceStyle === 'liquid';
 
   return createTheme({
     palette: {
@@ -277,10 +279,11 @@ function createDynamicTheme(fontFamily) {
       MuiCard: {
         styleOverrides: {
           root: {
-            backgroundColor: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
-            backdropFilter: 'saturate(180%) blur(16px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(16px)',
+            backgroundColor: isLiquid ? 'var(--liquid-surface, rgba(255,255,255,0.08))' : 'var(--glass-bg)',
+            border: isLiquid ? '1px solid var(--liquid-border, rgba(255,255,255,0.22))' : '1px solid var(--glass-border)',
+            backdropFilter: isLiquid ? 'blur(18px) saturate(132%)' : 'saturate(180%) blur(16px)',
+            WebkitBackdropFilter: isLiquid ? 'blur(18px) saturate(132%)' : 'saturate(180%) blur(16px)',
+            boxShadow: isLiquid ? 'inset 0 1px 0 rgba(255,255,255,0.25), 0 10px 26px rgba(0,0,0,0.3)' : undefined,
           },
         },
       },
@@ -309,20 +312,80 @@ function createDynamicTheme(fontFamily) {
           root: {
             textTransform: 'none',
             borderRadius: 999,
-            backgroundColor: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
-            backdropFilter: 'saturate(180%) blur(12px)',
-            WebkitBackdropFilter: 'saturate(180%) blur(12px)',
+            backgroundColor: isLiquid ? 'var(--liquid-button-bg, rgba(255,255,255,0.1))' : 'var(--glass-bg)',
+            border: isLiquid ? '1px solid var(--liquid-border-strong, rgba(255,255,255,0.3))' : '1px solid var(--glass-border)',
+            backdropFilter: isLiquid ? 'blur(14px) saturate(130%)' : 'saturate(180%) blur(12px)',
+            WebkitBackdropFilter: isLiquid ? 'blur(14px) saturate(130%)' : 'saturate(180%) blur(12px)',
+            boxShadow: isLiquid ? 'inset 0 1px 0 rgba(255,255,255,0.22), 0 8px 20px rgba(0,0,0,0.28)' : undefined,
+            color: isLiquid ? 'var(--text)' : undefined,
+            '&:hover': isLiquid ? {
+              backgroundColor: 'var(--liquid-button-hover-bg, rgba(255,255,255,0.15))',
+              borderColor: 'rgba(255,255,255,0.42)',
+            } : undefined,
           },
+        },
+      },
+      MuiPaper: {
+        styleOverrides: {
+          root: isLiquid ? {
+            background: 'var(--liquid-surface, rgba(255,255,255,0.08))',
+            border: '1px solid var(--liquid-border, rgba(255,255,255,0.2))',
+            backdropFilter: 'blur(18px) saturate(128%)',
+            WebkitBackdropFilter: 'blur(18px) saturate(128%)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22), 0 10px 26px rgba(0,0,0,0.3)',
+          } : {},
+        },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: isLiquid ? {
+            background: 'var(--liquid-input-bg, rgba(255,255,255,0.06))',
+            borderRadius: 10,
+            backdropFilter: 'blur(12px) saturate(125%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(125%)',
+            '& fieldset': {
+              borderColor: 'rgba(255,255,255,0.22)',
+            },
+            '&:hover fieldset': {
+              borderColor: 'rgba(255,255,255,0.34)',
+            },
+            '&.Mui-focused fieldset': {
+              borderColor: 'var(--accent)',
+            },
+          } : {},
+        },
+      },
+      MuiIconButton: {
+        styleOverrides: {
+          root: isLiquid ? {
+            border: '1px solid rgba(255,255,255,0.16)',
+            background: 'rgba(255,255,255,0.06)',
+            backdropFilter: 'blur(12px) saturate(120%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(120%)',
+            '&:hover': {
+              background: 'rgba(255,255,255,0.12)',
+              borderColor: 'rgba(255,255,255,0.28)',
+            },
+          } : {},
         },
       },
       MuiMenuItem: {
         styleOverrides: {
           root: {
             '&:hover': {
-              backgroundColor: 'var(--surface-2)',
+              backgroundColor: isLiquid ? 'rgba(255,255,255,0.12)' : 'var(--surface-2)',
             },
           },
+        },
+      },
+      MuiMenu: {
+        styleOverrides: {
+          paper: isLiquid ? {
+            background: 'rgba(18,22,30,0.45)',
+            border: '1px solid rgba(255,255,255,0.22)',
+            backdropFilter: 'blur(18px) saturate(132%)',
+            WebkitBackdropFilter: 'blur(18px) saturate(132%)',
+          } : {},
         },
       },
     },
@@ -365,18 +428,35 @@ function App() {
 
         // Load Interface Style
         if (electronPrefs.obj.InterfaceStyle) {
-          setInterfaceStyle(electronPrefs.obj.InterfaceStyle);
+          const safeStyle = electronPrefs.obj.InterfaceStyle === 'cs16' ? 'quartz' : electronPrefs.obj.InterfaceStyle;
+          if (safeStyle !== electronPrefs.obj.InterfaceStyle) {
+            electronPrefs.obj.InterfaceStyle = safeStyle;
+            await electronPrefs.save();
+          }
+          setInterfaceStyle(safeStyle);
         }
 
         // Load wallpaper settings
-        if (electronPrefs.obj.WallpaperPath) {
+        const wallpaperEnabled = electronPrefs.obj.WallpaperEnabled !== false;
+        if (wallpaperEnabled && electronPrefs.obj.WallpaperPath) {
           setWallpaperPath(electronPrefs.obj.WallpaperPath);
+        } else {
+          setWallpaperPath('');
         }
         if (electronPrefs.obj.WallpaperOpacity !== undefined) {
           setWallpaperOpacity(electronPrefs.obj.WallpaperOpacity);
         }
         if (electronPrefs.obj.GlassBlur !== undefined) {
           setGlassBlur(electronPrefs.obj.GlassBlur);
+        }
+
+        if (electronPrefs.obj.PerformanceMode === true) {
+          setClickEffectEnabled(false);
+          setBackgroundEffectEnabled(false);
+          setCursorEffectEnabled(false);
+          if ((electronPrefs.obj.GlassBlur ?? 6) > 2) {
+            setGlassBlur(2);
+          }
         }
       } catch { }
     })();
@@ -390,7 +470,7 @@ function App() {
         }
         // Check for style change
         if (electronPrefs.obj.InterfaceStyle) {
-          setInterfaceStyle(electronPrefs.obj.InterfaceStyle);
+          setInterfaceStyle(electronPrefs.obj.InterfaceStyle === 'cs16' ? 'quartz' : electronPrefs.obj.InterfaceStyle);
         }
       } catch { }
     };
@@ -461,6 +541,15 @@ function App() {
     }
     if (electronPrefs.obj.CursorEffectSize !== undefined) {
       setCursorEffectSize(electronPrefs.obj.CursorEffectSize);
+    }
+
+    if (electronPrefs.obj.PerformanceMode === true) {
+      setClickEffectEnabled(false);
+      setBackgroundEffectEnabled(false);
+      setCursorEffectEnabled(false);
+      if ((electronPrefs.obj.GlassBlur ?? 6) > 2) {
+        setGlassBlur(2);
+      }
     }
 
     // Listen for global font changes from fontManager
@@ -599,7 +688,7 @@ function App() {
     // Ensure variables also applied when theme object rebuilds (idempotent)
     try { themeManager.applyThemeVariables(themeVariant, interfaceStyle); } catch { }
 
-    return createDynamicTheme(themeFontFamily);
+    return createDynamicTheme(themeFontFamily, interfaceStyle);
   }, [currentFont, fontFamily, themeVariant, interfaceStyle]);
 
   return (

@@ -3,7 +3,7 @@ import {
   Github, Eye, Terminal, Palette, HardDrive
 } from 'lucide-react';
 // Import theme management
-import themeManager, { applyThemeFromObject, setCustomTheme, getCustomThemes, deleteCustomTheme, getCurrentTheme, STYLES } from '../../utils/theme/themeManager.js';
+import themeManager, { applyThemeFromObject, setCustomTheme, getCustomThemes, deleteCustomTheme, getCurrentTheme, getThemeBehavior, STYLES } from '../../utils/theme/themeManager.js';
 import electronPrefs from '../../utils/core/electronPrefs.js';
 import fontManager from '../../utils/theme/fontManager.js';
 import { CreatePicker, cleanupColorPickers } from '../../utils/colors/colorUtils.js';
@@ -18,6 +18,7 @@ import useGitHubSettings from './hooks/useGitHubSettings';
 import useHashSettings from './hooks/useHashSettings';
 import useUpdateSettings from './hooks/useUpdateSettings';
 import useWindowsIntegrationSettings from './hooks/useWindowsIntegrationSettings';
+import wallpaperManager from '../../utils/wallpapers/wallpaperManager';
 
 const SETTINGS_SECTION_IDS = [
   'appearance',
@@ -27,6 +28,29 @@ const SETTINGS_SECTION_IDS = [
   'themeCreator',
   'github',
 ];
+
+const DEFAULT_CUSTOM_THEME_VALUES = {
+  accent: '#ecb96a',
+  accent2: '#c084fc',
+  bg: '#0b0a0f',
+  surface: '#0f0d14',
+  text: '#ecb96a',
+  navIconColor: '#c084fc',
+  accentMuted: '',
+  bg2: '',
+  surface2: '',
+  text2: '',
+  glassBg: '',
+  glassBorder: '',
+  glassShadow: ''
+};
+
+const DEFAULT_CUSTOM_THEME_BEHAVIOR = {
+  preferredStyle: '',
+  click: { override: false, enabled: false, type: 'water' },
+  background: { override: false, enabled: false, type: 'fireflies' },
+  wallpaper: { override: false, enabled: false, id: '' },
+};
 
 const ModernSettings = () => {
   const [selectedSection, setSelectedSection] = useState('appearance');
@@ -72,22 +96,13 @@ const ModernSettings = () => {
   const [customThemeName, setCustomThemeName] = useState('My Theme');
   const [livePreview, setLivePreview] = useState(false);
   const [showAdvancedTheme, setShowAdvancedTheme] = useState(false);
-  const [customThemeValues, setCustomThemeValues] = useState({
-    accent: '#ecb96a',
-    accent2: '#c084fc',
-    bg: '#0b0a0f',
-    surface: '#0f0d14',
-    text: '#ecb96a',
-    // advanced optional values
-    accentMuted: '',
-    bg2: '',
-    surface2: '',
-    text2: '',
-    glassBg: '',
-    glassBorder: '',
-    glassShadow: ''
-  });
+  const [isThemeCreatorDirty, setIsThemeCreatorDirty] = useState(false);
+  const [customThemeValues, setCustomThemeValues] = useState(DEFAULT_CUSTOM_THEME_VALUES);
+  const [customThemeBehavior, setCustomThemeBehavior] = useState(DEFAULT_CUSTOM_THEME_BEHAVIOR);
   const livePreviewTimer = useRef(null);
+  const customThemeValuesRef = useRef(customThemeValues);
+  const customThemeBehaviorRef = useRef(customThemeBehavior);
+  const isSyncingThemeCreatorRef = useRef(false);
   const settingsLoadedRef = useRef(false);
   const [advancedStrength, setAdvancedStrength] = useState({
     accentMutedPercent: 35,
@@ -139,7 +154,11 @@ const ModernSettings = () => {
 
   // Wallpaper state
   const [wallpaperPath, setWallpaperPath] = useState('');
+  const [wallpaperId, setWallpaperId] = useState('');
+  const [wallpaperItems, setWallpaperItems] = useState([]);
+  const [wallpaperEnabled, setWallpaperEnabled] = useState(true);
   const [wallpaperOpacity, setWallpaperOpacity] = useState(0.15);
+  const [performanceMode, setPerformanceMode] = useState(false);
 
   const {
     contextMenuEnabled,
@@ -302,22 +321,22 @@ const ModernSettings = () => {
   const builtInThemes = [
     { id: 'onyx', name: 'Onyx', desc: 'Neutral' },
     { id: 'amethyst', name: 'Amethyst', desc: 'Purple + Gold' },
-    { id: 'neon', name: 'Neon', desc: 'Cyan + Pink' },
-    { id: 'aurora', name: 'Aurora', desc: 'Mint + Lime' },
-    { id: 'solar', name: 'Solar', desc: 'Orange + Gold' },
+    { id: 'ocean', name: 'Ocean', desc: 'Liquid Blue' },
+    { id: 'empress', name: 'Empress', desc: 'Liquid White' },
+    { id: 'forest', name: 'Forest', desc: 'Misty Green' },
+    { id: 'amogus', name: 'Amogus', desc: 'Space Gray + Blue' },
+    { id: 'city', name: 'Neon City', desc: 'Neon Rain' },
+    { id: 'starSky', name: 'Star Sky', desc: 'Night Blue' },
     { id: 'charcoalOlive', name: 'Charcoal Olive', desc: 'Graphite + Olive' },
     { id: 'quartz', name: 'Quartz', desc: 'Flask + Galaxy' },
-    { id: 'futuristQuartz', name: 'Futurist Quartz', desc: 'Rose + Smoky' },
-    { id: 'cyberQuartz', name: 'Cyber Quartz', desc: 'Cyan + Purple' },
     { id: 'crystal', name: 'Crystal', desc: 'White + Blue Iridescent' },
     { id: 'classicGray', name: 'Classic Gray', desc: 'Windows Dark Mode' },
-    { id: 'divine', name: 'Divine', desc: 'Purple + Gold (Divine Skins)' },
   ];
 
   const interfaceStyles = [
     { id: STYLES.QUARTZ, name: 'Quartz', desc: 'Modern Glassy UI' },
     { id: STYLES.WINFORMS, name: 'WinForms', desc: 'Classic Flat UI' },
-    { id: STYLES.CS16, name: '1.6', desc: 'Counter-Strike 1.6' }
+    { id: STYLES.LIQUID, name: 'Liquid Glass', desc: 'High-fidelity refractive glass UI' }
   ];
 
   // Load settings (theme, fonts, etc.) from electronPrefs on mount
@@ -326,8 +345,22 @@ const ModernSettings = () => {
       await electronPrefs.initPromise;
 
       // Load theme and style
-      const savedTheme = electronPrefs.obj.ThemeVariant || 'amethyst';
-      const savedStyle = electronPrefs.obj.InterfaceStyle || STYLES.QUARTZ;
+      const savedThemeRaw = electronPrefs.obj.ThemeVariant || 'amethyst';
+      const savedTheme = (
+        typeof savedThemeRaw === 'string' &&
+        !savedThemeRaw.startsWith('custom:') &&
+        !builtInThemes.some((theme) => theme.id === savedThemeRaw)
+      )
+        ? 'amethyst'
+        : savedThemeRaw;
+      if (savedTheme !== savedThemeRaw) {
+        await electronPrefs.set('ThemeVariant', savedTheme);
+      }
+      const savedStyleRaw = electronPrefs.obj.InterfaceStyle || STYLES.QUARTZ;
+      const savedStyle = savedStyleRaw === 'cs16' ? STYLES.QUARTZ : savedStyleRaw;
+      if (savedStyle !== savedStyleRaw) {
+        await electronPrefs.set('InterfaceStyle', savedStyle);
+      }
       setSettings(prev => ({
         ...prev,
         themeVariant: savedTheme,
@@ -348,14 +381,24 @@ const ModernSettings = () => {
           const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
           return v || fb;
         };
-        setCustomThemeValues(prev => ({
-          ...prev,
-          accent: getVar('--accent', prev.accent),
-          accent2: getVar('--accent2', prev.accent2),
-          bg: getVar('--bg', prev.bg),
-          surface: getVar('--surface', prev.surface),
-          text: getVar('--text', prev.text),
-        }));
+        const initialValues = {
+          ...DEFAULT_CUSTOM_THEME_VALUES,
+          accent: getVar('--accent', DEFAULT_CUSTOM_THEME_VALUES.accent),
+          accent2: getVar('--accent2', DEFAULT_CUSTOM_THEME_VALUES.accent2),
+          bg: getVar('--bg', DEFAULT_CUSTOM_THEME_VALUES.bg),
+          surface: getVar('--surface', DEFAULT_CUSTOM_THEME_VALUES.surface),
+          text: getVar('--text', DEFAULT_CUSTOM_THEME_VALUES.text),
+          navIconColor: getVar('--nav-icon-color', getVar('--text-2', DEFAULT_CUSTOM_THEME_VALUES.navIconColor)),
+          accentMuted: getVar('--accent-muted', ''),
+          bg2: getVar('--bg-2', ''),
+          surface2: getVar('--surface-2', ''),
+          text2: getVar('--text-2', ''),
+          glassBg: getVar('--glass-bg', ''),
+          glassBorder: getVar('--glass-border', ''),
+          glassShadow: getVar('--glass-shadow', ''),
+        };
+        setCustomThemeValues(initialValues);
+        customThemeValuesRef.current = initialValues;
       } catch (error) {
         console.error('Error initializing custom theme values:', error);
       }
@@ -458,10 +501,41 @@ const ModernSettings = () => {
         jadeExecutablePath: electronPrefs.obj.JadeExecutablePath || ''
       }));
 
-      // Load wallpaper settings
-      if (electronPrefs.obj.WallpaperPath) {
-        setWallpaperPath(electronPrefs.obj.WallpaperPath);
+      // Load/migrate wallpaper settings and gallery
+      setPerformanceMode(electronPrefs.obj.PerformanceMode === true);
+      try {
+        const allWallpapers = await wallpaperManager.listWallpapers();
+        setWallpaperItems(allWallpapers);
+        setWallpaperEnabled(electronPrefs.obj.WallpaperEnabled !== false);
+
+        let selectedId = electronPrefs.obj.WallpaperId || '';
+        let selectedItem = selectedId ? allWallpapers.find((item) => item.id === selectedId) : null;
+
+        if (!selectedItem && electronPrefs.obj.WallpaperPath) {
+          const migrated = await wallpaperManager.migrateLegacyWallpaperPath(electronPrefs.obj.WallpaperPath);
+          if (migrated) {
+            selectedId = migrated.id;
+            selectedItem = migrated;
+          }
+        }
+
+        if (selectedItem) {
+          setWallpaperId(selectedItem.id);
+          setWallpaperPath(selectedItem.filePath);
+          await electronPrefs.set('WallpaperId', selectedItem.id);
+          await electronPrefs.set('WallpaperPath', selectedItem.filePath);
+        } else {
+          setWallpaperId('');
+          setWallpaperPath('');
+        }
+      } catch (error) {
+        console.error('Error loading wallpaper gallery:', error);
+        setWallpaperEnabled(electronPrefs.obj.WallpaperEnabled !== false);
+        if (electronPrefs.obj.WallpaperPath) {
+          setWallpaperPath(electronPrefs.obj.WallpaperPath);
+        }
       }
+
       if (electronPrefs.obj.WallpaperOpacity !== undefined) {
         setWallpaperOpacity(electronPrefs.obj.WallpaperOpacity);
       }
@@ -646,12 +720,41 @@ const ModernSettings = () => {
     }
   }, [settings.selectedFont]);
 
+  const findThemePresetWallpaper = useCallback(async (wallpaperPreset) => {
+    if (!wallpaperPreset) return null;
+    const wallpapers = await wallpaperManager.listWallpapers();
+    return wallpapers.find((item) => {
+      const display = String(item?.displayName || '').toLowerCase();
+      const fileName = String(item?.filePath || '').split(/[\\/]/).pop()?.toLowerCase() || '';
+
+      const displayMatch = wallpaperPreset.displayName
+        ? display === String(wallpaperPreset.displayName).toLowerCase()
+        : false;
+
+      const fileNamePrefixMatch = wallpaperPreset.fileNamePrefix
+        ? fileName.startsWith(String(wallpaperPreset.fileNamePrefix).toLowerCase())
+        : false;
+
+      const fileNameListMatch = Array.isArray(wallpaperPreset.fileNames)
+        ? wallpaperPreset.fileNames.some((name) => fileName === String(name).toLowerCase())
+        : false;
+
+      return displayMatch || fileNamePrefixMatch || fileNameListMatch;
+    }) || null;
+  }, []);
+
   // Handle theme change (Color)
   const handleThemeChange = async (themeId) => {
+    const behavior = getThemeBehavior(themeId) || null;
     let currentStyle;
+
     setSettings(prev => {
-      currentStyle = prev.interfaceStyle || STYLES.QUARTZ; // Preserve current interface style
-      return { ...prev, themeVariant: themeId };
+      currentStyle = behavior?.preferredStyle || (prev.interfaceStyle || STYLES.QUARTZ);
+      return {
+        ...prev,
+        themeVariant: themeId,
+        ...(behavior?.preferredStyle ? { interfaceStyle: behavior.preferredStyle } : {})
+      };
     });
 
     // Save to electronPrefs
@@ -661,6 +764,70 @@ const ModernSettings = () => {
       themeManager.applyThemeVariables(themeId, currentStyle);
       // Ensure interface style is also saved (preserve it)
       await electronPrefs.set('InterfaceStyle', currentStyle);
+
+      if (behavior?.effects?.click) {
+        const { enabled, type } = behavior.effects.click;
+        setClickEffectEnabled(enabled);
+        await electronPrefs.set('ClickEffectEnabled', enabled);
+        if (type !== undefined) {
+          setClickEffectType(type);
+          await electronPrefs.set('ClickEffectType', type);
+        }
+        window.dispatchEvent(new CustomEvent('clickEffectChanged', {
+          detail: { enabled, ...(type !== undefined ? { type } : {}) }
+        }));
+      }
+
+      if (behavior?.effects?.background) {
+        const { enabled, type } = behavior.effects.background;
+        setBackgroundEffectEnabled(enabled);
+        await electronPrefs.set('BackgroundEffectEnabled', enabled);
+        if (type !== undefined) {
+          setBackgroundEffectType(type);
+          await electronPrefs.set('BackgroundEffectType', type);
+        }
+        window.dispatchEvent(new CustomEvent('backgroundEffectChanged', {
+          detail: { enabled, ...(type !== undefined ? { type } : {}) }
+        }));
+      }
+
+      if (behavior?.wallpaper) {
+        try {
+          const wallpaperEnabledByPreset = behavior.wallpaper.enabled;
+          if (wallpaperEnabledByPreset === false) {
+            setWallpaperEnabled(false);
+            await electronPrefs.set('WallpaperEnabled', false);
+            window.dispatchEvent(new CustomEvent('wallpaperChanged', {
+              detail: { path: '', opacity: wallpaperOpacity }
+            }));
+          } else {
+            if (wallpaperEnabledByPreset === true) {
+              setWallpaperEnabled(true);
+              await electronPrefs.set('WallpaperEnabled', true);
+            }
+
+            let presetWallpaper = null;
+            if (behavior.wallpaper.id) {
+              const selectedById = wallpaperItems.find((item) => item.id === behavior.wallpaper.id)
+                || await wallpaperManager.resolveById(behavior.wallpaper.id);
+              presetWallpaper = selectedById || null;
+            }
+            if (!presetWallpaper) {
+              presetWallpaper = await findThemePresetWallpaper(behavior.wallpaper);
+            }
+            if (presetWallpaper) {
+              await applyWallpaperSelection(presetWallpaper);
+            }
+          }
+        } catch (wallpaperError) {
+          console.error(`Error applying ${themeId} wallpaper preset:`, wallpaperError);
+        }
+      }
+
+      if (performanceMode) {
+        await enforcePerformanceModeConstraints(true);
+      }
+
       window.dispatchEvent(new CustomEvent('settingsChanged'));
     } catch (error) {
       console.error('Error saving theme:', error);
@@ -723,19 +890,241 @@ const ModernSettings = () => {
     : 'system';
 
   // Custom Theme handlers
-  const handleCustomThemeValueChange = (field, value) => {
-    setCustomThemeValues(prev => ({ ...prev, [field]: value }));
+  const normalizeThemeColorValue = (raw) => {
+    const value = String(raw ?? '').trim();
+    const hex3 = value.match(/^#?([0-9a-fA-F]{3})$/);
+    if (hex3) {
+      const h = hex3[1].toUpperCase();
+      return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`;
+    }
+    const hex6 = value.match(/^#?([0-9a-fA-F]{6})$/);
+    if (hex6) return `#${hex6[1].toUpperCase()}`;
+    const hex8 = value.match(/^#?([0-9a-fA-F]{8})$/);
+    if (hex8) return `#${hex8[1].toUpperCase()}`;
+    return value;
+  };
+
+  const createThemeCreatorValuesFromTheme = useCallback((themeColors = {}) => ({
+    ...DEFAULT_CUSTOM_THEME_VALUES,
+    accent: normalizeThemeColorValue(themeColors.accent || DEFAULT_CUSTOM_THEME_VALUES.accent),
+    accent2: normalizeThemeColorValue(themeColors.accent2 || DEFAULT_CUSTOM_THEME_VALUES.accent2),
+    bg: normalizeThemeColorValue(themeColors.bg || DEFAULT_CUSTOM_THEME_VALUES.bg),
+    surface: normalizeThemeColorValue(themeColors.surface || DEFAULT_CUSTOM_THEME_VALUES.surface),
+    text: normalizeThemeColorValue(themeColors.text || DEFAULT_CUSTOM_THEME_VALUES.text),
+    navIconColor: normalizeThemeColorValue(
+      themeColors.navIconColor || themeColors.text2 || DEFAULT_CUSTOM_THEME_VALUES.navIconColor
+    ),
+    accentMuted: normalizeThemeColorValue(themeColors.accentMuted || ''),
+    bg2: normalizeThemeColorValue(themeColors.bg2 || ''),
+    surface2: normalizeThemeColorValue(themeColors.surface2 || ''),
+    text2: normalizeThemeColorValue(themeColors.text2 || ''),
+    glassBg: String(themeColors.glassBg || '').trim(),
+    glassBorder: String(themeColors.glassBorder || '').trim(),
+    glassShadow: String(themeColors.glassShadow || '').trim(),
+  }), []);
+
+  const getThemeCreatorSourceByVariant = useCallback((themeVariant) => {
+    if (!themeVariant) return null;
+    if (themeVariant.startsWith('custom:')) {
+      const customName = themeVariant.replace('custom:', '');
+      const customThemes = getCustomThemes();
+      const customTheme = customThemes[customName];
+      return customTheme ? { theme: customTheme, customName, behavior: customTheme.__behavior || getThemeBehavior(themeVariant) || null } : null;
+    }
+    return { theme: getCurrentTheme(themeVariant), customName: null, behavior: getThemeBehavior(themeVariant) || null };
+  }, []);
+
+  const normalizeThemeCreatorBehavior = useCallback((behavior) => ({
+    preferredStyle: behavior?.preferredStyle === 'cs16' ? '' : (behavior?.preferredStyle || ''),
+    click: {
+      override: !!behavior?.effects?.click,
+      enabled: behavior?.effects?.click?.enabled === true,
+      type: behavior?.effects?.click?.type || 'water',
+    },
+    background: {
+      override: !!behavior?.effects?.background,
+      enabled: behavior?.effects?.background?.enabled === true,
+      type: behavior?.effects?.background?.type || 'fireflies',
+    },
+    wallpaper: {
+      override: typeof behavior?.wallpaper?.enabled === 'boolean',
+      enabled: behavior?.wallpaper?.enabled === true,
+      id: String(behavior?.wallpaper?.id || ''),
+    },
+  }), []);
+
+  const buildThemeBehaviorPayload = useCallback((editorBehavior) => {
+    const next = {};
+    if (editorBehavior?.preferredStyle) next.preferredStyle = editorBehavior.preferredStyle;
+
+    const effects = {};
+    if (editorBehavior?.click?.override) {
+      effects.click = {
+        enabled: editorBehavior.click.enabled === true,
+        ...(editorBehavior.click.type ? { type: editorBehavior.click.type } : {}),
+      };
+    }
+    if (editorBehavior?.background?.override) {
+      effects.background = {
+        enabled: editorBehavior.background.enabled === true,
+        ...(editorBehavior.background.type ? { type: editorBehavior.background.type } : {}),
+      };
+    }
+    if (Object.keys(effects).length) next.effects = effects;
+
+    if (editorBehavior?.wallpaper?.override) {
+      next.wallpaper = {
+        enabled: editorBehavior.wallpaper.enabled === true,
+        ...(editorBehavior.wallpaper.id ? { id: editorBehavior.wallpaper.id } : {})
+      };
+    }
+
+    return Object.keys(next).length ? next : null;
+  }, []);
+
+  const applyThemeCreatorLivePreview = useCallback(async (values, behavior) => {
+    applyThemeFromObject(values);
+
+    const previewStyle = behavior?.preferredStyle || settings.interfaceStyle || STYLES.QUARTZ;
+    document.documentElement.setAttribute('data-style', previewStyle);
+
+    if (behavior?.click?.override) {
+      window.dispatchEvent(new CustomEvent('clickEffectChanged', {
+        detail: {
+          enabled: behavior.click.enabled === true,
+          type: behavior.click.type || 'water'
+        }
+      }));
+    }
+
+    if (behavior?.background?.override) {
+      window.dispatchEvent(new CustomEvent('backgroundEffectChanged', {
+        detail: {
+          enabled: behavior.background.enabled === true,
+          type: behavior.background.type || 'fireflies'
+        }
+      }));
+    }
+
+    if (behavior?.wallpaper?.override) {
+      let previewPath = '';
+      if (behavior.wallpaper.enabled === true) {
+        const selectedId = String(behavior.wallpaper.id || '');
+        if (selectedId) {
+          const selected = wallpaperItems.find((item) => item.id === selectedId) || await wallpaperManager.resolveById(selectedId);
+          previewPath = selected?.filePath || '';
+        }
+        if (!previewPath) {
+          previewPath = wallpaperEnabled ? wallpaperPath : '';
+        }
+      }
+      window.dispatchEvent(new CustomEvent('wallpaperChanged', {
+        detail: { path: previewPath, opacity: wallpaperOpacity }
+      }));
+    }
+  }, [settings.interfaceStyle, wallpaperEnabled, wallpaperItems, wallpaperOpacity, wallpaperPath]);
+
+  const restoreFromThemeCreatorLivePreview = () => {
+    themeManager.applyThemeVariables(settings.themeVariant || 'amethyst', settings.interfaceStyle || STYLES.QUARTZ);
+    window.dispatchEvent(new CustomEvent('clickEffectChanged', {
+      detail: { enabled: clickEffectEnabled, type: clickEffectType }
+    }));
+    window.dispatchEvent(new CustomEvent('backgroundEffectChanged', {
+      detail: { enabled: backgroundEffectEnabled, type: backgroundEffectType }
+    }));
+    window.dispatchEvent(new CustomEvent('wallpaperChanged', {
+      detail: { path: wallpaperEnabled ? wallpaperPath : '', opacity: wallpaperOpacity }
+    }));
+  };
+
+  const syncThemeCreatorValuesFromVariant = useCallback((themeVariant) => {
+    const source = getThemeCreatorSourceByVariant(themeVariant);
+    if (!source?.theme) return;
+    const nextValues = createThemeCreatorValuesFromTheme(source.theme);
+    const nextBehavior = normalizeThemeCreatorBehavior(source.behavior);
+    isSyncingThemeCreatorRef.current = true;
+    setCustomThemeValues(nextValues);
+    setCustomThemeBehavior(nextBehavior);
+    customThemeValuesRef.current = nextValues;
+    customThemeBehaviorRef.current = nextBehavior;
+    if (source.customName) {
+      setCustomThemeName(source.customName);
+    }
+    setTimeout(() => {
+      isSyncingThemeCreatorRef.current = false;
+    }, 0);
+  }, [createThemeCreatorValuesFromTheme, getThemeCreatorSourceByVariant, normalizeThemeCreatorBehavior]);
+
+  const handleCustomThemeValueChange = useCallback((field, value) => {
+    const normalizedValue = normalizeThemeColorValue(value);
+    const nextValues = {
+      ...customThemeValuesRef.current,
+      [field]: normalizedValue
+    };
+    customThemeValuesRef.current = nextValues;
+    setCustomThemeValues(nextValues);
+    if (!isSyncingThemeCreatorRef.current) {
+      setIsThemeCreatorDirty(true);
+    }
     if (livePreview) {
-      // Debounce live preview to reduce lag while sliding
       if (livePreviewTimer.current) {
         clearTimeout(livePreviewTimer.current);
       }
-      const next = { ...customThemeValues, [field]: value };
       livePreviewTimer.current = setTimeout(() => {
-        try { applyThemeFromObject(next); } catch { }
+        applyThemeCreatorLivePreview(nextValues, customThemeBehaviorRef.current).catch(() => { });
       }, 120);
     }
-  };
+  }, [applyThemeCreatorLivePreview, livePreview]);
+
+  const handleCustomThemeBehaviorChange = useCallback((path, value) => {
+    const nextBehavior = {
+      ...customThemeBehaviorRef.current,
+      click: { ...customThemeBehaviorRef.current.click },
+      background: { ...customThemeBehaviorRef.current.background },
+      wallpaper: { ...customThemeBehaviorRef.current.wallpaper },
+    };
+
+    const [root, key] = String(path || '').split('.');
+    if (root === 'preferredStyle') {
+      nextBehavior.preferredStyle = String(value || '');
+    } else if (root === 'click' && key) {
+      nextBehavior.click[key] = value;
+    } else if (root === 'background' && key) {
+      nextBehavior.background[key] = value;
+    } else if (root === 'wallpaper' && key) {
+      nextBehavior.wallpaper[key] = value;
+    }
+
+    customThemeBehaviorRef.current = nextBehavior;
+    setCustomThemeBehavior(nextBehavior);
+    if (!isSyncingThemeCreatorRef.current) {
+      setIsThemeCreatorDirty(true);
+    }
+    if (livePreview) {
+      applyThemeCreatorLivePreview(customThemeValuesRef.current, nextBehavior).catch(() => { });
+    }
+  }, [applyThemeCreatorLivePreview, livePreview]);
+
+  useEffect(() => {
+    customThemeValuesRef.current = customThemeValues;
+  }, [customThemeValues]);
+
+  useEffect(() => {
+    customThemeBehaviorRef.current = customThemeBehavior;
+  }, [customThemeBehavior]);
+
+  useEffect(() => {
+    return () => {
+      if (livePreviewTimer.current) {
+        clearTimeout(livePreviewTimer.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!livePreview) return;
+    applyThemeCreatorLivePreview(customThemeValuesRef.current, customThemeBehaviorRef.current).catch(() => { });
+  }, [applyThemeCreatorLivePreview, livePreview, wallpaperItems]);
 
   // Handle color picker click - opens custom color picker for theme colors
   const handleThemeColorPickerClick = useCallback((event, field) => {
@@ -743,11 +1132,11 @@ const ModernSettings = () => {
     cleanupColorPickers();
 
     // Get current color value
-    const currentHex = customThemeValues[field] || '#ffffff';
+    const currentHex = customThemeValuesRef.current?.[field] || '#ffffff';
 
     // Create a mock palette structure for the CreatePicker function
     const mockPalette = [{
-      ToHEX: () => customThemeValues[field] || '#ffffff',
+      ToHEX: () => customThemeValuesRef.current?.[field] || '#ffffff',
       InputHex: (hex) => {
         // Update the theme value when color is committed from picker
         handleCustomThemeValueChange(field, hex.toUpperCase());
@@ -768,9 +1157,13 @@ const ModernSettings = () => {
       'theme', // mode
       null, // savePaletteForMode (not needed)
       null, // setColors (not needed)
-      event.target // clickedColorDot for live preview
+      event.target, // clickedColorDot for live preview
+      {
+        onLivePreview: (hex) => handleCustomThemeValueChange(field, String(hex || '').toUpperCase()),
+        onCommit: (hex) => handleCustomThemeValueChange(field, String(hex || '').toUpperCase()),
+      }
     );
-  }, [customThemeValues, handleCustomThemeValueChange]);
+  }, [handleCustomThemeValueChange]);
 
   // Cleanup color pickers on unmount
   useEffect(() => {
@@ -779,64 +1172,35 @@ const ModernSettings = () => {
     };
   }, []);
 
-  // Update custom theme creator values when theme changes
+  // Sync creator values from selected theme while creator is clean.
   useEffect(() => {
     if (!settings.themeVariant) return;
-
-    try {
-      let themeColors = null;
-
-      // Check if it's a custom theme
-      if (settings.themeVariant.startsWith('custom:')) {
-        const customThemeName = settings.themeVariant.replace('custom:', '');
-        const customThemes = getCustomThemes();
-        themeColors = customThemes[customThemeName];
-      } else {
-        // It's a premade theme
-        themeColors = getCurrentTheme(settings.themeVariant);
-      }
-
-      if (themeColors) {
-        // Update custom theme values with the selected theme's colors
-        setCustomThemeValues(prev => ({
-          ...prev,
-          accent: themeColors.accent || prev.accent,
-          accent2: themeColors.accent2 || prev.accent2,
-          bg: themeColors.bg || prev.bg,
-          surface: themeColors.surface || prev.surface,
-          text: themeColors.text || prev.text,
-        }));
-      }
-    } catch (error) {
-      console.error('Error updating custom theme values from selected theme:', error);
-    }
-  }, [settings.themeVariant]);
+    if (selectedSection !== 'themeCreator') return;
+    if (isThemeCreatorDirty) return;
+    syncThemeCreatorValuesFromVariant(settings.themeVariant);
+  }, [isThemeCreatorDirty, selectedSection, settings.themeVariant, syncThemeCreatorValuesFromVariant]);
 
   const handleToggleLivePreview = (enabled) => {
     setLivePreview(enabled);
     try {
       if (enabled) {
-        applyThemeFromObject(customThemeValues);
+        applyThemeCreatorLivePreview(customThemeValuesRef.current, customThemeBehaviorRef.current).catch(() => { });
       } else {
-        // Restore current theme from settings
-        themeManager.applyThemeVariables(settings.themeVariant || 'amethyst');
+        restoreFromThemeCreatorLivePreview();
       }
     } catch { }
   };
 
-  const handleSaveCustomTheme = async () => {
-    if (!customThemeName) return;
-    await setCustomTheme(customThemeName, customThemeValues);
-    const updated = getCustomThemes();
-    setCustomThemesMap(updated || {});
-    console.log(`Theme '${customThemeName}' saved`);
-  };
-
   const handleApplyCustomTheme = async () => {
     if (!customThemeName) return;
-    await setCustomTheme(customThemeName, customThemeValues);
+    const behaviorPayload = buildThemeBehaviorPayload(customThemeBehaviorRef.current);
+    await setCustomTheme(customThemeName, {
+      ...customThemeValuesRef.current,
+      ...(behaviorPayload ? { __behavior: behaviorPayload } : {})
+    });
     const variant = `custom:${customThemeName}`;
     await handleThemeChange(variant);
+    setIsThemeCreatorDirty(false);
     console.log(`Theme '${customThemeName}' applied`);
   };
 
@@ -848,24 +1212,44 @@ const ModernSettings = () => {
   };
 
   const handleResetCustomTheme = () => {
-    // Reset to Amethyst theme colors
-    setCustomThemeValues({
-      accent: '#ecb96a',
-      accent2: '#c084fc',
-      bg: '#0b0a0f',
-      surface: '#0f0d14',
-      text: '#ecb96a',
-      accentMuted: '',
-      bg2: '',
-      surface2: '',
-      text2: '',
-      glassBg: '',
-      glassBorder: '',
-      glassShadow: ''
-    });
+    const resetValues = createThemeCreatorValuesFromTheme(getCurrentTheme('amethyst'));
+    const resetBehavior = normalizeThemeCreatorBehavior(getThemeBehavior('amethyst'));
+    setCustomThemeValues(resetValues);
+    setCustomThemeBehavior(resetBehavior);
+    customThemeValuesRef.current = resetValues;
+    customThemeBehaviorRef.current = resetBehavior;
+    setIsThemeCreatorDirty(false);
+    if (livePreview) {
+      applyThemeCreatorLivePreview(resetValues, resetBehavior).catch(() => { });
+    }
   };
 
   // Wallpaper handlers
+  const refreshWallpaperGallery = useCallback(async () => {
+    try {
+      const all = await wallpaperManager.listWallpapers();
+      setWallpaperItems(all);
+      return all;
+    } catch (error) {
+      console.error('Error refreshing wallpaper gallery:', error);
+      return [];
+    }
+  }, []);
+
+  const applyWallpaperSelection = useCallback(async (item) => {
+    const nextPath = item?.filePath || '';
+    const nextId = item?.id || '';
+    setWallpaperPath(nextPath);
+    setWallpaperId(nextId);
+    setWallpaperEnabled(true);
+    await electronPrefs.set('WallpaperId', nextId);
+    await electronPrefs.set('WallpaperPath', nextPath);
+    await electronPrefs.set('WallpaperEnabled', true);
+    window.dispatchEvent(new CustomEvent('wallpaperChanged', {
+      detail: { path: nextPath, opacity: wallpaperOpacity }
+    }));
+  }, [wallpaperOpacity]);
+
   const handleBrowseWallpaper = async () => {
     try {
       if (window.require) {
@@ -879,12 +1263,11 @@ const ModernSettings = () => {
         });
 
         if (result && result.filePaths && result.filePaths.length > 0) {
-          const newPath = result.filePaths[0];
-          setWallpaperPath(newPath);
-          await electronPrefs.set('WallpaperPath', newPath);
-          window.dispatchEvent(new CustomEvent('wallpaperChanged', {
-            detail: { path: newPath, opacity: wallpaperOpacity }
-          }));
+          const imported = await wallpaperManager.importWallpaper(result.filePaths[0]);
+          if (imported) {
+            await refreshWallpaperGallery();
+            await applyWallpaperSelection(imported);
+          }
         }
       }
     } catch (error) {
@@ -911,19 +1294,37 @@ const ModernSettings = () => {
     }
   };
 
-  const handleWallpaperPathChange = async (newPath) => {
-    setWallpaperPath(newPath);
-    await electronPrefs.set('WallpaperPath', newPath);
-    window.dispatchEvent(new CustomEvent('wallpaperChanged', {
-      detail: { path: newPath, opacity: wallpaperOpacity }
-    }));
+  const handleSelectWallpaper = async (id) => {
+    if (!id) return;
+    const selected = wallpaperItems.find((item) => item.id === id) || await wallpaperManager.resolveById(id);
+    if (!selected) return;
+    await applyWallpaperSelection(selected);
+  };
+
+  const handleDeleteWallpaper = async (id) => {
+    if (!id) return;
+    const ok = await wallpaperManager.deleteWallpaper(id);
+    if (!ok) return;
+    const refreshed = await refreshWallpaperGallery();
+    if (wallpaperId === id) {
+      const fallback = refreshed[0] || null;
+      await applyWallpaperSelection(fallback);
+    }
   };
 
   const handleWallpaperOpacityChange = async (opacity) => {
     setWallpaperOpacity(opacity);
     await electronPrefs.set('WallpaperOpacity', opacity);
     window.dispatchEvent(new CustomEvent('wallpaperChanged', {
-      detail: { path: wallpaperPath, opacity }
+      detail: { path: wallpaperEnabled ? wallpaperPath : '', opacity }
+    }));
+  };
+
+  const handleWallpaperEnabledChange = async (enabled) => {
+    setWallpaperEnabled(enabled);
+    await electronPrefs.set('WallpaperEnabled', enabled);
+    window.dispatchEvent(new CustomEvent('wallpaperChanged', {
+      detail: { path: enabled ? wallpaperPath : '', opacity: wallpaperOpacity }
     }));
   };
 
@@ -937,10 +1338,22 @@ const ModernSettings = () => {
 
   const handleClearWallpaper = async () => {
     setWallpaperPath('');
+    setWallpaperId('');
+    setWallpaperEnabled(false);
+    await electronPrefs.set('WallpaperId', '');
     await electronPrefs.set('WallpaperPath', '');
+    await electronPrefs.set('WallpaperEnabled', false);
     window.dispatchEvent(new CustomEvent('wallpaperChanged', {
       detail: { path: '', opacity: wallpaperOpacity }
     }));
+  };
+
+  const handleDeleteActiveWallpaper = async () => {
+    if (wallpaperId) {
+      await handleDeleteWallpaper(wallpaperId);
+      return;
+    }
+    await handleClearWallpaper();
   };
 
   // Click effect state
@@ -1098,11 +1511,58 @@ const ModernSettings = () => {
     }));
   };
 
+  const enforcePerformanceModeConstraints = async (force = false) => {
+    if (!force && !performanceMode) return;
+
+    setClickEffectEnabled(false);
+    await electronPrefs.set('ClickEffectEnabled', false);
+    window.dispatchEvent(new CustomEvent('clickEffectChanged', {
+      detail: { enabled: false }
+    }));
+
+    setBackgroundEffectEnabled(false);
+    await electronPrefs.set('BackgroundEffectEnabled', false);
+    window.dispatchEvent(new CustomEvent('backgroundEffectChanged', {
+      detail: { enabled: false }
+    }));
+
+    setCursorEffectEnabled(false);
+    await electronPrefs.set('CursorEffectEnabled', false);
+    window.dispatchEvent(new CustomEvent('cursorEffectChanged', {
+      detail: { enabled: false }
+    }));
+
+    const cappedBlur = Math.min(settings.glassBlur || 0, 2);
+    if (cappedBlur !== settings.glassBlur) {
+      setSettings(prev => ({ ...prev, glassBlur: cappedBlur }));
+      await electronPrefs.set('GlassBlur', cappedBlur);
+      window.dispatchEvent(new CustomEvent('glassBlurChanged', {
+        detail: { amount: cappedBlur }
+      }));
+    }
+  };
+
+  const handlePerformanceModeToggle = async (enabled) => {
+    setPerformanceMode(enabled);
+    await electronPrefs.set('PerformanceMode', enabled);
+    if (enabled) {
+      await enforcePerformanceModeConstraints(true);
+    }
+    window.dispatchEvent(new CustomEvent('settingsChanged'));
+  };
+
   useEffect(() => {
     if (cursorEffectEnabled) loadCursorFiles();
   }, [cursorEffectEnabled]); // eslint-disable-line
 
+  useEffect(() => {
+    if (!performanceMode) return;
+    enforcePerformanceModeConstraints(true).catch(() => { });
+  }, [performanceMode]); // eslint-disable-line
+
   // Render section content based on selected section
+  const activeWallpaperPath = wallpaperEnabled ? wallpaperPath : '';
+
   const renderSectionContent = () => {
     switch (selectedSection) {
       case 'appearance':
@@ -1119,14 +1579,20 @@ const ModernSettings = () => {
             builtInThemes={builtInThemes}
             customThemesMap={customThemesMap}
             handleThemeChange={handleThemeChange}
-            STYLES={STYLES}
             wallpaperPath={wallpaperPath}
+            wallpaperEnabled={wallpaperEnabled}
+            wallpaperId={wallpaperId}
+            wallpaperItems={wallpaperItems}
             wallpaperOpacity={wallpaperOpacity}
-            handleWallpaperPathChange={handleWallpaperPathChange}
             handleBrowseWallpaper={handleBrowseWallpaper}
-            handleClearWallpaper={handleClearWallpaper}
+            handleSelectWallpaper={handleSelectWallpaper}
+            handleDeleteWallpaper={handleDeleteWallpaper}
+            handleDeleteActiveWallpaper={handleDeleteActiveWallpaper}
+            handleWallpaperEnabledChange={handleWallpaperEnabledChange}
             handleWallpaperOpacityChange={handleWallpaperOpacityChange}
             handleGlassBlurChange={handleGlassBlurChange}
+            performanceMode={performanceMode}
+            handlePerformanceModeToggle={handlePerformanceModeToggle}
             clickEffectEnabled={clickEffectEnabled}
             handleClickEffectToggle={handleClickEffectToggle}
             clickEffectType={clickEffectType}
@@ -1187,8 +1653,10 @@ const ModernSettings = () => {
             customThemeName={customThemeName}
             setCustomThemeName={setCustomThemeName}
             customThemeValues={customThemeValues}
+            customThemeBehavior={customThemeBehavior}
             handleThemeColorPickerClick={handleThemeColorPickerClick}
             handleCustomThemeValueChange={handleCustomThemeValueChange}
+            handleCustomThemeBehaviorChange={handleCustomThemeBehaviorChange}
             showAdvancedTheme={showAdvancedTheme}
             setShowAdvancedTheme={setShowAdvancedTheme}
             advancedStrength={advancedStrength}
@@ -1200,7 +1668,8 @@ const ModernSettings = () => {
             handleResetCustomTheme={handleResetCustomTheme}
             handleApplyCustomTheme={handleApplyCustomTheme}
             customThemesMap={customThemesMap}
-            wallpaperPath={wallpaperPath}
+            wallpaperItems={wallpaperItems}
+            wallpaperPath={activeWallpaperPath}
             handleDeleteCustomTheme={handleDeleteCustomTheme}
           />
         );
@@ -1213,6 +1682,7 @@ const ModernSettings = () => {
             connectionStatus={connectionStatus}
             isTestingConnection={isTestingConnection}
             handleTestGitHubConnection={handleTestGitHubConnection}
+            wallpaperPath={activeWallpaperPath}
           />
         );
       default:
@@ -1254,7 +1724,9 @@ const ModernSettings = () => {
                 style={{
                   padding: '12px 16px',
                   background: selectedSection === section.id
-                    ? (wallpaperPath ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.05)')
+                    ? (activeWallpaperPath
+                      ? 'linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.026))'
+                      : 'rgba(255, 255, 255, 0.05)')
                     : 'transparent',
                   border: selectedSection === section.id
                     ? '1px solid var(--accent)'
@@ -1270,12 +1742,14 @@ const ModernSettings = () => {
                   gap: '12px',
                   transition: 'all 0.2s ease',
                   textAlign: 'left',
-                  backdropFilter: wallpaperPath && selectedSection === section.id ? 'blur(8px) saturate(180%)' : 'none',
-                  WebkitBackdropFilter: wallpaperPath && selectedSection === section.id ? 'blur(8px) saturate(180%)' : 'none'
+                  backdropFilter: activeWallpaperPath ? 'blur(calc(var(--glass-blur, 10px) + 1px)) saturate(118%)' : 'none',
+                  WebkitBackdropFilter: activeWallpaperPath ? 'blur(calc(var(--glass-blur, 10px) + 1px)) saturate(118%)' : 'none'
                 }}
                 onMouseEnter={(e) => {
                   if (selectedSection !== section.id) {
-                    e.currentTarget.style.background = wallpaperPath ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.02)';
+                    e.currentTarget.style.background = activeWallpaperPath
+                      ? 'linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.016))'
+                      : 'rgba(255, 255, 255, 0.02)';
                     e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
                   }
                 }}
@@ -1297,15 +1771,44 @@ const ModernSettings = () => {
         <div style={{
           flex: 1,
           minWidth: 0,
-          background: wallpaperPath ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.02)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          background: activeWallpaperPath
+            ? 'transparent'
+            : 'rgba(255, 255, 255, 0.02)',
+          border: activeWallpaperPath ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(255, 255, 255, 0.08)',
           borderRadius: '12px',
           padding: '24px',
-          backdropFilter: wallpaperPath ? 'blur(16px) saturate(180%)' : 'none',
-          WebkitBackdropFilter: wallpaperPath ? 'blur(16px) saturate(180%)' : 'none',
-          boxShadow: wallpaperPath ? '0 4px 30px rgba(0, 0, 0, 0.3)' : 'none'
+          backdropFilter: activeWallpaperPath ? 'none' : 'none',
+          WebkitBackdropFilter: activeWallpaperPath ? 'none' : 'none',
+          boxShadow: activeWallpaperPath ? 'none' : 'none',
+          position: 'relative',
+          ...(activeWallpaperPath ? {
+            '--settings-ink': 'var(--text)',
+            '--settings-subtle-ink': 'var(--text)',
+            '--settings-muted': 'var(--text-2)',
+            '--settings-control-bg': 'linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.07))',
+            '--settings-control-bg-focus': 'linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.1))',
+            '--settings-control-border': 'rgba(255, 255, 255, 0.3)',
+            '--settings-control-border-strong': 'rgba(255, 255, 255, 0.42)',
+            '--settings-card-bg': 'linear-gradient(180deg, rgba(255, 255, 255, 0.038), rgba(255, 255, 255, 0.014))',
+            '--settings-card-bg-selected': 'linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.026))',
+            '--settings-card-border': 'rgba(255, 255, 255, 0.1)',
+            '--settings-card-border-selected': 'rgba(255, 255, 255, 0.15)',
+            '--settings-card-shadow': '0 10px 28px rgba(0, 0, 0, 0.24)',
+            '--settings-card-shadow-selected': '0 14px 34px rgba(0, 0, 0, 0.28)',
+            '--settings-btn-bg': 'color-mix(in srgb, var(--accent) 12%, transparent)',
+            '--settings-btn-bg-hover': 'color-mix(in srgb, var(--accent) 22%, transparent)',
+            '--settings-btn-border': 'color-mix(in srgb, var(--accent) 45%, transparent)'
+          } : {})
         }}>
           {renderSectionContent()}
+          {activeWallpaperPath && (
+            <style>{`
+              .settings-container input::placeholder {
+                color: color-mix(in srgb, var(--settings-muted, var(--text-2)) 88%, white 12%);
+                opacity: 0.95;
+              }
+            `}</style>
+          )}
         </div>
       </div>
     </div>
@@ -1313,5 +1816,3 @@ const ModernSettings = () => {
 };
 
 export default ModernSettings;
-
-

@@ -24,8 +24,8 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: var(--surface);
-  color: var(--accent-muted);
+  background: var(--bg);
+  color: var(--text);
   font-family: 'JetBrains Mono', monospace;
   font-size: small;
 }
@@ -717,4 +717,9 @@ mark {
 
 .donor-container .port-btn:hover:not(:disabled) {
   box-shadow: none;
+}
+
+.port-donor-search::placeholder {
+  color: color-mix(in srgb, var(--accent2), transparent 20%);
+  opacity: 1;
 }

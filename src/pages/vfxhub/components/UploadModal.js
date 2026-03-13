@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import githubApi from '../services/githubApi.js';
+import { SearchInput } from '../../port2/components/common/Inputs';
 
 function CustomDropdown({ value, options, onChange, placeholder = '(None)', style }) {
   const [open, setOpen] = useState(false);
@@ -538,12 +539,11 @@ export default function UploadModal({
             <p style={{ margin: '0 0 10px 0', fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)', fontFamily: font }}>
               Select from target bin
             </p>
-            <input
-              type="text"
-              value={systemSearch}
-              onChange={(e) => setSystemSearch(e.target.value)}
+            <SearchInput
+              initialValue={systemSearch}
+              onChange={setSystemSearch}
               placeholder="Search systems..."
-              style={{ ...inputStyle, marginBottom: 8 }}
+              style={{ marginBottom: 8, width: '100%' }}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 260, overflowY: 'auto' }}>
               {targetSystemEntries.length === 0 ? (
