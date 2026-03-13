@@ -328,6 +328,7 @@ const ModernSettings = () => {
     { id: 'forest', name: 'Forest', desc: 'Misty Green' },
     { id: 'amogus', name: 'Amogus', desc: 'Space Gray + Blue' },
     { id: 'city', name: 'Neon City', desc: 'Neon Rain' },
+    { id: 'cafe', name: 'Cafe', desc: 'Rose Neon Night' },
     { id: 'starSky', name: 'Star Sky', desc: 'Night Blue' },
     { id: 'charcoalOlive', name: 'Charcoal Olive', desc: 'Graphite + Olive' },
     { id: 'quartz', name: 'Quartz', desc: 'Flask + Galaxy' },

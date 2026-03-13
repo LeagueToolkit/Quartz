@@ -177,6 +177,34 @@ const THEMES = {
     accentGreen: '#00FFEB',
     accentGreenMuted: '#00BFB0'
   },
+  cafe: {
+    accent: '#FA7E8F',
+    accent2: '#A4C6FF',
+    accentMuted: '#FA7E8F',
+    bg: '#0B0A0F',
+    bg2: '#2A2737',
+    surface: '#0F0D14',
+    surface2: '#2A2737',
+    text: '#FFFFFF',
+    text2: '#A4C6FF',
+    navIconColor: '#FA7E8F',
+    glassBg: 'rgba(16,14,22,0.35)',
+    glassBorder: 'rgba(255,255,255,0.10)',
+    glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+    muiPrimary: '#FA7E8F',
+    muiPrimaryLight: '#FF9DAC',
+    muiPrimaryDark: '#D85F73',
+    muiSecondary: '#A4C6FF',
+    muiSecondaryLight: '#C4DAFF',
+    muiSecondaryDark: '#7FA7E6',
+    muiBackground: '#0B0A0F',
+    muiPaper: '#0F0D14',
+    muiTextPrimary: '#FFFFFF',
+    muiTextSecondary: '#A4C6FF',
+    muiDivider: '#2A2737',
+    accentGreen: '#A4C6FF',
+    accentGreenMuted: '#7FA7E6'
+  },
   starSky: {
     accent: '#4681FF',
     accent2: '#1BDBFF',
@@ -480,6 +508,19 @@ const THEME_BEHAVIORS = {
       displayName: 'cyberpunkcityrain',
       fileNamePrefix: 'cyberpunkcityrain.',
       fileNames: ['cyberpunkcityrain.webp', 'cyberpunkcityrain.png', 'cyberpunkcityrain.jpg', 'cyberpunkcityrain.jpeg']
+    },
+  },
+  cafe: {
+    preferredStyle: STYLES.QUARTZ,
+    effects: {
+      click: { enabled: false, type: 'water' },
+      background: { enabled: true, type: 'fireflies' },
+    },
+    wallpaper: {
+      enabled: true,
+      displayName: 'cafe',
+      fileNamePrefix: 'cafe.',
+      fileNames: ['cafe.webp', 'cafe.png', 'cafe.jpg', 'cafe.jpeg']
     },
   },
   starSky: {
