@@ -401,6 +401,8 @@ function App() {
   const [isClosing, setIsClosing] = useState(false);
   const [wallpaperPath, setWallpaperPath] = useState('');
   const [wallpaperOpacity, setWallpaperOpacity] = useState(0.15);
+  const [wallpaperVignetteEnabled, setWallpaperVignetteEnabled] = useState(false);
+  const [wallpaperVignetteStrength, setWallpaperVignetteStrength] = useState(0.35);
   const [glassBlur, setGlassBlur] = useState(6);
   const [clickEffectEnabled, setClickEffectEnabled] = useState(false);
   const [clickEffectType, setClickEffectType] = useState('water');
@@ -446,6 +448,12 @@ function App() {
         if (electronPrefs.obj.WallpaperOpacity !== undefined) {
           setWallpaperOpacity(electronPrefs.obj.WallpaperOpacity);
         }
+        if (electronPrefs.obj.WallpaperVignetteEnabled !== undefined) {
+          setWallpaperVignetteEnabled(electronPrefs.obj.WallpaperVignetteEnabled === true);
+        }
+        if (electronPrefs.obj.WallpaperVignetteStrength !== undefined) {
+          setWallpaperVignetteStrength(electronPrefs.obj.WallpaperVignetteStrength);
+        }
         if (electronPrefs.obj.GlassBlur !== undefined) {
           setGlassBlur(electronPrefs.obj.GlassBlur);
         }
@@ -478,9 +486,11 @@ function App() {
 
     // Listen for wallpaper changes
     const onWallpaperChanged = (event) => {
-      const { path, opacity } = event.detail || {};
+      const { path, opacity, vignetteEnabled, vignetteStrength } = event.detail || {};
       if (path !== undefined) setWallpaperPath(path);
       if (opacity !== undefined) setWallpaperOpacity(opacity);
+      if (vignetteEnabled !== undefined) setWallpaperVignetteEnabled(vignetteEnabled === true);
+      if (vignetteStrength !== undefined) setWallpaperVignetteStrength(vignetteStrength);
     };
     window.addEventListener('wallpaperChanged', onWallpaperChanged);
 
@@ -723,24 +733,37 @@ function App() {
           >
             {/* Global Wallpaper Background */}
             {wallpaperPath && (
-              <Box
-                sx={{
-                  position: 'fixed',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  zIndex: 0,
-                  pointerEvents: 'none',
-                  backgroundImage: `url("local-file:///${wallpaperPath.replace(/\\/g, '/')}")`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  backgroundRepeat: 'no-repeat',
-                  opacity: wallpaperOpacity,
-                  filter: 'blur(var(--glass-blur))',
-                  transform: 'scale(1.05)', // Prevent white edges when blurring
-                }}
-              />
+              <>
+                <Box
+                  sx={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: 0,
+                    pointerEvents: 'none',
+                    backgroundImage: `url("local-file:///${wallpaperPath.replace(/\\/g, '/')}")`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    backgroundRepeat: 'no-repeat',
+                    opacity: wallpaperOpacity,
+                    filter: 'blur(var(--glass-blur))',
+                    transform: 'scale(1.05)', // Prevent white edges when blurring
+                  }}
+                />
+                {wallpaperVignetteEnabled && (
+                  <Box
+                    sx={{
+                      position: 'fixed',
+                      inset: 0,
+                      zIndex: 0,
+                      pointerEvents: 'none',
+                      background: `radial-gradient(circle at center, rgba(0,0,0,0) 38%, rgba(0,0,0,${Math.min(0.95, Math.max(0, wallpaperVignetteStrength))}) 100%)`
+                    }}
+                  />
+                )}
+              </>
             )}
 
 

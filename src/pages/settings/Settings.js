@@ -158,6 +158,8 @@ const ModernSettings = () => {
   const [wallpaperItems, setWallpaperItems] = useState([]);
   const [wallpaperEnabled, setWallpaperEnabled] = useState(true);
   const [wallpaperOpacity, setWallpaperOpacity] = useState(0.15);
+  const [wallpaperVignetteEnabled, setWallpaperVignetteEnabled] = useState(false);
+  const [wallpaperVignetteStrength, setWallpaperVignetteStrength] = useState(0.35);
   const [performanceMode, setPerformanceMode] = useState(false);
 
   const {
@@ -538,6 +540,12 @@ const ModernSettings = () => {
 
       if (electronPrefs.obj.WallpaperOpacity !== undefined) {
         setWallpaperOpacity(electronPrefs.obj.WallpaperOpacity);
+      }
+      if (electronPrefs.obj.WallpaperVignetteEnabled !== undefined) {
+        setWallpaperVignetteEnabled(electronPrefs.obj.WallpaperVignetteEnabled === true);
+      }
+      if (electronPrefs.obj.WallpaperVignetteStrength !== undefined) {
+        setWallpaperVignetteStrength(electronPrefs.obj.WallpaperVignetteStrength);
       }
 
       // Load available fonts (one fresh scan on settings open)
@@ -1246,9 +1254,14 @@ const ModernSettings = () => {
     await electronPrefs.set('WallpaperPath', nextPath);
     await electronPrefs.set('WallpaperEnabled', true);
     window.dispatchEvent(new CustomEvent('wallpaperChanged', {
-      detail: { path: nextPath, opacity: wallpaperOpacity }
+      detail: {
+        path: nextPath,
+        opacity: wallpaperOpacity,
+        vignetteEnabled: wallpaperVignetteEnabled,
+        vignetteStrength: wallpaperVignetteStrength
+      }
     }));
-  }, [wallpaperOpacity]);
+  }, [wallpaperOpacity, wallpaperVignetteEnabled, wallpaperVignetteStrength]);
 
   const handleBrowseWallpaper = async () => {
     try {
@@ -1316,7 +1329,38 @@ const ModernSettings = () => {
     setWallpaperOpacity(opacity);
     await electronPrefs.set('WallpaperOpacity', opacity);
     window.dispatchEvent(new CustomEvent('wallpaperChanged', {
-      detail: { path: wallpaperEnabled ? wallpaperPath : '', opacity }
+      detail: {
+        path: wallpaperEnabled ? wallpaperPath : '',
+        opacity,
+        vignetteEnabled: wallpaperVignetteEnabled,
+        vignetteStrength: wallpaperVignetteStrength
+      }
+    }));
+  };
+
+  const handleWallpaperVignetteEnabledChange = async (enabled) => {
+    setWallpaperVignetteEnabled(enabled);
+    await electronPrefs.set('WallpaperVignetteEnabled', enabled);
+    window.dispatchEvent(new CustomEvent('wallpaperChanged', {
+      detail: {
+        path: wallpaperEnabled ? wallpaperPath : '',
+        opacity: wallpaperOpacity,
+        vignetteEnabled: enabled,
+        vignetteStrength: wallpaperVignetteStrength
+      }
+    }));
+  };
+
+  const handleWallpaperVignetteStrengthChange = async (strength) => {
+    setWallpaperVignetteStrength(strength);
+    await electronPrefs.set('WallpaperVignetteStrength', strength);
+    window.dispatchEvent(new CustomEvent('wallpaperChanged', {
+      detail: {
+        path: wallpaperEnabled ? wallpaperPath : '',
+        opacity: wallpaperOpacity,
+        vignetteEnabled: wallpaperVignetteEnabled,
+        vignetteStrength: strength
+      }
     }));
   };
 
@@ -1324,7 +1368,12 @@ const ModernSettings = () => {
     setWallpaperEnabled(enabled);
     await electronPrefs.set('WallpaperEnabled', enabled);
     window.dispatchEvent(new CustomEvent('wallpaperChanged', {
-      detail: { path: enabled ? wallpaperPath : '', opacity: wallpaperOpacity }
+      detail: {
+        path: enabled ? wallpaperPath : '',
+        opacity: wallpaperOpacity,
+        vignetteEnabled: wallpaperVignetteEnabled,
+        vignetteStrength: wallpaperVignetteStrength
+      }
     }));
   };
 
@@ -1344,7 +1393,12 @@ const ModernSettings = () => {
     await electronPrefs.set('WallpaperPath', '');
     await electronPrefs.set('WallpaperEnabled', false);
     window.dispatchEvent(new CustomEvent('wallpaperChanged', {
-      detail: { path: '', opacity: wallpaperOpacity }
+      detail: {
+        path: '',
+        opacity: wallpaperOpacity,
+        vignetteEnabled: wallpaperVignetteEnabled,
+        vignetteStrength: wallpaperVignetteStrength
+      }
     }));
   };
 
@@ -1584,12 +1638,16 @@ const ModernSettings = () => {
             wallpaperId={wallpaperId}
             wallpaperItems={wallpaperItems}
             wallpaperOpacity={wallpaperOpacity}
+            wallpaperVignetteEnabled={wallpaperVignetteEnabled}
+            wallpaperVignetteStrength={wallpaperVignetteStrength}
             handleBrowseWallpaper={handleBrowseWallpaper}
             handleSelectWallpaper={handleSelectWallpaper}
             handleDeleteWallpaper={handleDeleteWallpaper}
             handleDeleteActiveWallpaper={handleDeleteActiveWallpaper}
             handleWallpaperEnabledChange={handleWallpaperEnabledChange}
             handleWallpaperOpacityChange={handleWallpaperOpacityChange}
+            handleWallpaperVignetteEnabledChange={handleWallpaperVignetteEnabledChange}
+            handleWallpaperVignetteStrengthChange={handleWallpaperVignetteStrengthChange}
             handleGlassBlurChange={handleGlassBlurChange}
             performanceMode={performanceMode}
             handlePerformanceModeToggle={handlePerformanceModeToggle}

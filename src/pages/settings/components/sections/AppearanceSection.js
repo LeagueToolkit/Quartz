@@ -19,12 +19,16 @@ const AppearanceSection = ({
   wallpaperId,
   wallpaperItems,
   wallpaperOpacity,
+  wallpaperVignetteEnabled,
+  wallpaperVignetteStrength,
   handleBrowseWallpaper,
   handleSelectWallpaper,
   handleDeleteWallpaper,
   handleDeleteActiveWallpaper,
   handleWallpaperEnabledChange,
   handleWallpaperOpacityChange,
+  handleWallpaperVignetteEnabledChange,
+  handleWallpaperVignetteStrengthChange,
   handleGlassBlurChange,
   performanceMode,
   handlePerformanceModeToggle,
@@ -262,6 +266,33 @@ const AppearanceSection = ({
               max="100"
               value={wallpaperOpacity * 100}
               onChange={(e) => handleWallpaperOpacityChange(parseFloat(e.target.value) / 100)}
+              style={{ flex: 1, accentColor: 'var(--accent)' }}
+            />
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={wallpaperVignetteEnabled}
+              onChange={(e) => handleWallpaperVignetteEnabledChange(e.target.checked)}
+              style={{ width: '18px', height: '18px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: '13px', color: 'var(--text)' }}>
+              Enable vignette
+            </span>
+          </label>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', opacity: wallpaperVignetteEnabled ? 1 : 0.6 }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-2)', minWidth: '120px' }}>
+              Vignette: {Math.round(wallpaperVignetteStrength * 100)}%
+            </span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={Math.round(wallpaperVignetteStrength * 100)}
+              onChange={(e) => handleWallpaperVignetteStrengthChange(parseFloat(e.target.value) / 100)}
+              disabled={!wallpaperVignetteEnabled}
               style={{ flex: 1, accentColor: 'var(--accent)' }}
             />
           </div>
