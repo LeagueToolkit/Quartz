@@ -31,6 +31,10 @@ class ElectronPrefs {
           RGBAEnabled: allPrefs.RGBAEnabled !== undefined ? allPrefs.RGBAEnabled : false,
           ToolsEnabled: allPrefs.ToolsEnabled !== undefined ? allPrefs.ToolsEnabled : false,
           FileRandomizerEnabled: allPrefs.FileRandomizerEnabled !== undefined ? allPrefs.FileRandomizerEnabled : false,
+          WallpaperOpacity: allPrefs.WallpaperOpacity !== undefined ? allPrefs.WallpaperOpacity : 0.75,
+          WallpaperVignetteEnabled: allPrefs.WallpaperVignetteEnabled !== undefined ? allPrefs.WallpaperVignetteEnabled : true,
+          WallpaperVignetteStrength: allPrefs.WallpaperVignetteStrength !== undefined ? allPrefs.WallpaperVignetteStrength : 0.30,
+          GlassBlur: allPrefs.GlassBlur !== undefined ? allPrefs.GlassBlur : 2,
           ...allPrefs
         };
 
@@ -52,7 +56,11 @@ class ElectronPrefs {
           UpscaleEnabled: false,
           RGBAEnabled: false,
           ToolsEnabled: false,
-          FileRandomizerEnabled: false
+          FileRandomizerEnabled: false,
+          WallpaperOpacity: 0.75,
+          WallpaperVignetteEnabled: true,
+          WallpaperVignetteStrength: 0.30,
+          GlassBlur: 2
         };
         this.initialized = true;
         console.log('ElectronPrefs initialized (fallback):', this.obj);
@@ -74,7 +82,11 @@ class ElectronPrefs {
         UpscaleEnabled: false,
         RGBAEnabled: false,
         ToolsEnabled: false,
-        FileRandomizerEnabled: false
+        FileRandomizerEnabled: false,
+        WallpaperOpacity: 0.75,
+        WallpaperVignetteEnabled: true,
+        WallpaperVignetteStrength: 0.30,
+        GlassBlur: 2
       };
       this.initialized = true;
     }

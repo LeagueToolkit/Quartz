@@ -205,6 +205,34 @@ const THEMES = {
     accentGreen: '#A4C6FF',
     accentGreenMuted: '#7FA7E6'
   },
+  sakura: {
+    accent: '#FFC6D5',
+    accent2: '#BCDDFF',
+    accentMuted: '#FF8CAB',
+    bg: '#0B0A0F',
+    bg2: '#85338C',
+    surface: '#0F0D14',
+    surface2: '#8A227F',
+    text: '#FFFFFF',
+    text2: '#BCDDFF',
+    navIconColor: '#FFC6D5',
+    glassBg: 'rgba(16,14,22,0.35)',
+    glassBorder: 'rgba(255,255,255,0.10)',
+    glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+    muiPrimary: '#FFC6D5',
+    muiPrimaryLight: '#FFD9E2',
+    muiPrimaryDark: '#EFA3B8',
+    muiSecondary: '#BCDDFF',
+    muiSecondaryLight: '#D7E9FF',
+    muiSecondaryDark: '#98BFE7',
+    muiBackground: '#0B0A0F',
+    muiPaper: '#0F0D14',
+    muiTextPrimary: '#FFFFFF',
+    muiTextSecondary: '#BCDDFF',
+    muiDivider: '#85338C',
+    accentGreen: '#BCDDFF',
+    accentGreenMuted: '#98BFE7'
+  },
   starSky: {
     accent: '#4681FF',
     accent2: '#1BDBFF',
@@ -521,6 +549,19 @@ const THEME_BEHAVIORS = {
       displayName: 'cafe',
       fileNamePrefix: 'cafe.',
       fileNames: ['cafe.webp', 'cafe.png', 'cafe.jpg', 'cafe.jpeg']
+    },
+  },
+  sakura: {
+    preferredStyle: STYLES.LIQUID,
+    effects: {
+      click: { enabled: false, type: 'water' },
+      background: { enabled: true, type: 'sakuraLeaves' },
+    },
+    wallpaper: {
+      enabled: true,
+      displayName: 'sakura',
+      fileNamePrefix: 'sakura.',
+      fileNames: ['sakura.webp', 'sakura.png', 'sakura.jpg', 'sakura.jpeg']
     },
   },
   starSky: {

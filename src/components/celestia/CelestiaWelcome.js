@@ -21,6 +21,7 @@ const BG_EFFECTS = [
   { id: 'divine', name: 'Divine', icon: <Sparkles size={16} /> },
   { id: 'bubbles', name: 'Bubbles', icon: <Sparkles size={16} /> },
   { id: 'leaves', name: 'Leaves', icon: <Sparkles size={16} /> },
+  { id: 'sakuraLeaves', name: 'Sakura Leaves', icon: <Sparkles size={16} /> },
   { id: 'rain', name: 'Rain', icon: <Sparkles size={16} /> },
   { id: 'sparkleSymbol', name: 'Sparkle Symbol', icon: <Sparkles size={16} /> },
 ];

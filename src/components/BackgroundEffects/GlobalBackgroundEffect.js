@@ -6,6 +6,7 @@ import ConstellationEffect from './ConstellationEffect';
 import DivineStarfieldEffect from './DivineStarfieldEffect';
 import BubbleEffect from './BubbleEffect';
 import FallingLeavesEffect from './FallingLeavesEffect';
+import SakuraLeavesEffect from './SakuraLeavesEffect';
 import RainEffect from './RainEffect';
 import SparkleSymbolEffect from './SparkleSymbolEffect';
 
@@ -23,6 +24,8 @@ const GlobalBackgroundEffect = ({ enabled, type = 'fireflies' }) => {
             return <BubbleEffect enabled={enabled} />;
         case 'leaves':
             return <FallingLeavesEffect enabled={enabled} />;
+        case 'sakuraLeaves':
+            return <SakuraLeavesEffect enabled={enabled} />;
         case 'rain':
             return <RainEffect enabled={enabled} />;
         case 'sparkleSymbol':

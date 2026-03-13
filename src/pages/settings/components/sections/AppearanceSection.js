@@ -373,6 +373,7 @@ const AppearanceSection = ({
               { value: 'divine', label: 'Divine Stars' },
               { value: 'bubbles', label: 'Water Bubbles' },
               { value: 'leaves', label: 'Falling Leaves' },
+              { value: 'sakuraLeaves', label: 'Sakura Leaves' },
               { value: 'rain', label: 'Rain' },
               { value: 'sparkleSymbol', label: 'Sparkle Symbol' }
             ]}
