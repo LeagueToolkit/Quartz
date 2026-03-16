@@ -135,9 +135,11 @@ const runSingleBumpathPass = async ({
   progressCallback,
   preserveHudIcons2D = true,
   skipSfxRepath = true,
+  skipVoiceoverRepath = true,
 }) => {
   const bumInstance = new BumpathCore();
   bumInstance.skipSfxRepath = skipSfxRepath;
+  bumInstance.skipVoiceoverRepath = skipVoiceoverRepath;
   await bumInstance.addSourceDirs([sourceDir]);
 
   const { binSelections } = buildBinSelections(bumInstance, skinIdsForPass);
@@ -168,6 +170,7 @@ export const runBumpathRepath = async ({
   processTogether = false,
   preserveHudIcons2D = true,
   skipSfxRepath = true,
+  skipVoiceoverRepath = true,
 }) => {
   try {
     if (window.require) {
@@ -201,6 +204,7 @@ export const runBumpathRepath = async ({
         progressCallback,
         preserveHudIcons2D,
         skipSfxRepath,
+        skipVoiceoverRepath,
       });
 
       return {
@@ -222,6 +226,7 @@ export const runBumpathRepath = async ({
         progressCallback,
         preserveHudIcons2D,
         skipSfxRepath,
+        skipVoiceoverRepath,
       });
       results.push({ skinId, success: true });
     }

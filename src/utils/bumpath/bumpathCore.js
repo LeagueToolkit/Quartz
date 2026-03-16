@@ -65,6 +65,7 @@ export class BumpathCore {
         this.hashtablesPath = null; // Path to hashtables directory
         this.nativeAddon = null; // Native addon for hash resolution
         this.skipSfxRepath = false; // Optional: bypass SFX path repathing
+        this.skipVoiceoverRepath = true; // Optional: bypass VO path repathing (default: true)
         this.linkedBins = {}; // Map: unifyPath -> [linked unify paths]
     }
 
@@ -88,6 +89,7 @@ export class BumpathCore {
         this.entryName = {};
         this.entryTypeName = {};
         this.skipSfxRepath = false;
+        this.skipVoiceoverRepath = true;
         this.linkedBins = {};
     }
 
@@ -97,6 +99,16 @@ export class BumpathCore {
         // "Skip SFX repath" should only bypass actual Wwise SFX audio payloads,
         // not every string that happens to be under the SFX folder tree.
         if (!/(^|\/)sounds\/wwise2016\/sfx(\/|$)/i.test(norm)) return false;
+        return /\.(bnk|wpk|wem)(\?|#|$)/i.test(norm);
+    }
+
+    _isBlockedVoPath(value) {
+        if (!this.skipVoiceoverRepath || typeof value !== 'string') return false;
+        const norm = value.replace(/\\/g, '/').toLowerCase();
+        // Block voiceover audio paths (VO banks/wems under sounds/wwise2016/vo/).
+        // These are language-specific and should not be repathed unless the user
+        // explicitly included voiceover files in their mod.
+        if (!/(^|\/)sounds\/wwise2016\/vo(\/|$)/i.test(norm)) return false;
         return /\.(bnk|wpk|wem)(\?|#|$)/i.test(norm);
     }
 
@@ -664,6 +676,9 @@ export class BumpathCore {
 
                 // Python: if not existed: continue
                 if (!existed) continue;
+                if (!shortFile.toLowerCase().endsWith('.bin') && (this._isBlockedSfxPath(shortFile) || this._isBlockedVoPath(shortFile))) {
+                    continue;
+                }
 
                 // Python: if not short_file.endswith('.bin'): short_file = bum_path(short_file, prefix)
                 // skipRepath: keep original paths, no prefix transformation
@@ -871,6 +886,9 @@ export class BumpathCore {
             if (processedAssets.has(assetPath.toLowerCase())) {
                 continue;
             }
+            if (this._isBlockedSfxPath(assetPath) || this._isBlockedVoPath(assetPath)) {
+                continue;
+            }
             processedAssets.add(assetPath.toLowerCase());
 
             // Determine prefix from entry that references this asset
@@ -946,7 +964,7 @@ export class BumpathCore {
         if (!field) return;
 
         if (field.type === BINType.STRING && typeof field.data === 'string') {
-            if (this._isBlockedSfxPath(field.data)) {
+            if (this._isBlockedSfxPath(field.data) || this._isBlockedVoPath(field.data)) {
                 return;
             }
             const valueLower = field.data.toLowerCase();
@@ -988,7 +1006,7 @@ export class BumpathCore {
      */
     _bumValue(value, valueType, prefix, currentEntryHash = null) {
         if (valueType === BINType.STRING && typeof value === 'string') {
-            if (this._isBlockedSfxPath(value)) {
+            if (this._isBlockedSfxPath(value) || this._isBlockedVoPath(value)) {
                 return value;
             }
             const valueLower = value.toLowerCase();
@@ -1094,8 +1112,12 @@ export class BumpathCore {
                     fs.mkdirSync(linkedOutputDir, { recursive: true });
                     fs.copyFileSync(sourceInfo.fullPath, linkedOutputPath);
 
-                    // Repath the linked BIN (await to ensure it's fully written before combining)
-                    await this._repathBin(linkedOutputPath, null);
+                    // Keep linked BIN content untouched during clean/skipRepath mode.
+                    // Repathing here would inject "bum" links and leak prefixed assets
+                    // into normal "extract + clean" output.
+                    if (!this._skipRepath) {
+                        await this._repathBin(linkedOutputPath, null);
+                    }
 
                     // Track both canonical unify and original link unify to avoid alias misses.
                     processedFiles.set(sourceUnify, linkedOutputPath);

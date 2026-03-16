@@ -578,6 +578,9 @@ function registerWadBumpathChannels({
           sendProgress(0, 'Filtering skin files...');
           const { BumpathCore } = await loadBumpathModule();
           const cleanDir = outputDir + '_clean';
+          if (fs.existsSync(cleanDir)) {
+            fs.rmSync(cleanDir, { recursive: true, force: true });
+          }
 
           const bum = new BumpathCore();
           if (tryLoadNativeWadIndexer) {
@@ -665,6 +668,7 @@ function registerWadBumpathChannels({
       const processTogether = data.processTogether || false;
       const preserveHudIcons2D = data.preserveHudIcons2D !== false;
       const skipSfxRepath = data.skipSfxRepath !== false;
+      const skipVoiceoverRepath = data.skipVoiceoverRepath !== false;
 
       const { BumpathCore } = await loadBumpathModule();
 
@@ -679,6 +683,7 @@ function registerWadBumpathChannels({
       const runPass = async (skinIdsForPass) => {
         const bum = new BumpathCore();
         bum.skipSfxRepath = skipSfxRepath;
+        bum.skipVoiceoverRepath = skipVoiceoverRepath;
         await bum.addSourceDirs([data.sourceDir]);
         const normalizedSkinIds = skinIdsForPass
           .map(normalizeSkinSelectionId)

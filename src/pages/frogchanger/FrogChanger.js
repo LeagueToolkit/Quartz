@@ -236,7 +236,9 @@ const FrogChanger = () => {
       setHashPath(loaded.hashPath || '');
       setLeaguePath(loaded.leaguePath || '');
       setExtractionPath(loaded.extractionPath || '');
-      setRepathExtractVoiceover(loaded.extractVoiceover === true);
+      // repathExtractVoiceover intentionally NOT loaded from prefs — it must always
+      // default to false so repath never silently includes voiceover unless the
+      // user explicitly checks it in the CustomPrefixModal for that session.
       setRepathPreserveHudIcons2D(loaded.preserveHudIcons2D !== false);
       if (loaded.hashStatus) setHashStatus(loaded.hashStatus);
       setSettingsLoaded(true);
@@ -1040,6 +1042,7 @@ const FrogChanger = () => {
           processTogether,
           preserveHudIcons2D: repathPreserveHudIcons2D,
           skipSfxRepath,
+          skipVoiceoverRepath: !repathExtractVoiceover,
         });
 
         if (repathResult.success) {
