@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CircularProgress, Tooltip } from '@mui/material';
 import {
   Apps as AppsIcon,
+  BubbleChart as BubbleChartIcon,
   Add as AddIcon,
   Folder as FolderIcon,
   ArrowBack as ArrowBackIcon,
@@ -32,12 +33,14 @@ function VfxFloatingActions({
   isProcessing,
   handleOpenBackupViewer,
   handleOpenPersistent,
+  handleOpenIdleParticles,
   handleOpenNewSystemModal,
   hasResourceResolver,
   hasSkinCharacterData,
   showPortAllButton = false,
   showNewSystemButton = true,
   showPersistentButton = true,
+  showIdleParticlesButton = false,
   onPortAll,
   isPortAllLoading = false,
   disablePortAll = false,
@@ -78,6 +81,12 @@ function VfxFloatingActions({
       title: pDis ? 'Persistent Effects (needs ResourceResolver + SkinData)' : 'Persistent Effects',
       icon: <AppsIcon sx={{ fontSize: 16 }} />,
       onClick: handleOpenPersistent, disabled: pDis
+    }] : []),
+    ...(showIdleParticlesButton ? [{
+      id: 'idleParticles', color: '#22d3ee',
+      title: pDis ? 'Idle Particles (needs ResourceResolver + SkinData)' : 'Idle Particles',
+      icon: <BubbleChartIcon sx={{ fontSize: 16 }} />,
+      onClick: handleOpenIdleParticles, disabled: pDis
     }] : []),
     {
       id: 'backup', color: '#c084fc',

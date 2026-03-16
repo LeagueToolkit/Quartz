@@ -559,6 +559,29 @@ export function updateMiscRenderFlags(emitter, newValue) {
 }
 
 /**
+ * Update isGroundLayer (flag)
+ * @param {Object} emitter - Emitter object
+ * @param {boolean} newValue - New value
+ * @returns {boolean} Success
+ */
+export function updateIsGroundLayer(emitter, newValue) {
+    if (emitter.isGroundLayer === undefined || emitter.isGroundLayer === null) return false;
+
+    const pattern = /(isGroundLayer:\s*flag\s*=\s*)(true|false)/i;
+    const replacement = `$1${newValue ? 'true' : 'false'}`;
+
+    const newContent = emitter.rawContent.replace(pattern, replacement);
+
+    if (newContent !== emitter.rawContent) {
+        emitter.rawContent = newContent;
+        emitter.isGroundLayer = !!newValue;
+        return true;
+    }
+
+    return false;
+}
+
+/**
  * Update pass (i16, can be negative)
  * @param {Object} emitter - Emitter object
  * @param {number} newValue - New value
@@ -605,6 +628,36 @@ export function insertMiscRenderFlags(emitter, value = 1) {
     if (newContent !== emitter.rawContent) {
         emitter.rawContent = newContent;
         emitter.miscRenderFlags = value;
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Insert isGroundLayer: flag = false into an emitter
+ * @param {Object} emitter - Emitter object
+ * @param {boolean} value - Initial value (default false)
+ * @returns {boolean} Success
+ */
+export function insertIsGroundLayer(emitter, value = false) {
+    if (emitter.isGroundLayer !== undefined && emitter.isGroundLayer !== null) return false;
+
+    // Find emitterName line to insert after
+    const emitterNamePattern = /(emitterName:\s*string\s*=\s*"[^"]+"\n)/i;
+
+    const match = emitter.rawContent.match(emitterNamePattern);
+    if (!match) return false;
+
+    // Build the isGroundLayer line
+    const glLine = `                isGroundLayer: flag = ${value ? 'true' : 'false'}\n`;
+
+    // Insert after emitterName
+    const newContent = emitter.rawContent.replace(emitterNamePattern, `$1${glLine}`);
+
+    if (newContent !== emitter.rawContent) {
+        emitter.rawContent = newContent;
+        emitter.isGroundLayer = !!value;
         return true;
     }
 

@@ -33,7 +33,9 @@ import {
     updateParticleLinger,
     updateRate,
     setMiscRenderFlags,
-    addMiscRenderFlags
+    addMiscRenderFlags,
+    setIsGroundLayer,
+    addIsGroundLayer
 } from './utils/binEditor/index.js';
 import {
     updateBirthScale,
@@ -42,6 +44,7 @@ import {
     updateTranslationOverride,
     updatePass,
     updateMiscRenderFlags,
+    updateIsGroundLayer,
     markSystemModified,
     updateRate as updateRateSerializer
 } from './utils/binEditor/serializer.js';
@@ -88,6 +91,7 @@ const UI_COLORS = {
     lt: '#00D65A',
     pass: 'color-mix(in srgb, var(--accent), white 10%)',
     to: 'color-mix(in srgb, var(--accent), white 18%)',
+    ground: '#22c55e'
 };
 
 // Helper to parse numbers with both comma and period as decimal separators
@@ -203,12 +207,13 @@ export default function BinEditorV2() {
     const [passDeltaValue, setPassDeltaValue] = useState(0);
 
     // Toolbar state
-    const [toolbarTab, setToolbarTab] = useState('scale'); // 'scale', 'bindWeight', 'misc', 'pass', 'to'
+    const [toolbarTab, setToolbarTab] = useState('scale'); // 'scale', 'bindWeight', 'misc', 'pass', 'ground', 'to'
     const toolbarTabOptions = useMemo(() => ([
         { value: 'scale', label: 'Scale Controls' },
         { value: 'bindWeight', label: 'Bind Weight' },
         { value: 'misc', label: 'Misc Flags' },
         { value: 'pass', label: 'Pass' },
+        { value: 'ground', label: 'Ground Layer' },
         { value: 'to', label: 'Translation' },
     ]), []);
 
@@ -997,6 +1002,60 @@ export default function BinEditorV2() {
         }
     }, [data, selectedEmitters, markChanged, saveToUndoHistory]);
 
+    const handleAddIsGroundLayer = useCallback(() => {
+        if (!data || selectedEmitters.size === 0) {
+            setStatusMessage('Select emitters first');
+            return;
+        }
+
+        saveToUndoHistory();
+        const result = addIsGroundLayer(data, selectedEmitters, false);
+
+        if (result.added > 0) {
+            setData({ ...data });
+            markChanged();
+            setStatusMessage(`Added isGroundLayer to ${result.added} emitter(s)`);
+        } else {
+            setStatusMessage('Selected emitters already have isGroundLayer');
+        }
+    }, [data, selectedEmitters, markChanged, saveToUndoHistory]);
+
+    const handleSetIsGroundLayerTrue = useCallback(() => {
+        if (!data || selectedEmitters.size === 0) {
+            setStatusMessage('Select emitters first');
+            return;
+        }
+
+        saveToUndoHistory();
+        const result = setIsGroundLayer(data, selectedEmitters, true);
+
+        if (result.modified > 0) {
+            setData({ ...data });
+            markChanged();
+            setStatusMessage(`Set isGroundLayer to true for ${result.modified} emitter(s)`);
+        } else {
+            setStatusMessage('No emitters with isGroundLayer in selection');
+        }
+    }, [data, selectedEmitters, markChanged, saveToUndoHistory]);
+
+    const handleSetIsGroundLayerFalse = useCallback(() => {
+        if (!data || selectedEmitters.size === 0) {
+            setStatusMessage('Select emitters first');
+            return;
+        }
+
+        saveToUndoHistory();
+        const result = setIsGroundLayer(data, selectedEmitters, false);
+
+        if (result.modified > 0) {
+            setData({ ...data });
+            markChanged();
+            setStatusMessage(`Set isGroundLayer to false for ${result.modified} emitter(s)`);
+        } else {
+            setStatusMessage('No emitters with isGroundLayer in selection');
+        }
+    }, [data, selectedEmitters, markChanged, saveToUndoHistory]);
+
     const handleScalePass = useCallback(() => {
         if (!data || selectedEmitters.size === 0) {
             setStatusMessage('Select emitters first');
@@ -1054,6 +1113,24 @@ export default function BinEditorV2() {
     // Single emitter property changes
     const handlePropertyChange = useCallback((property, axis, value) => {
         if (!selectedEmitter || !data) return;
+
+        if (property === 'isGroundLayer') {
+            saveToUndoHistory();
+
+            const systemName = [...selectedEmitters][0].split(':')[0];
+            const system = data.systems[systemName];
+            if (!system) return;
+
+            const boolValue = value === true || value === 'true';
+            const success = updateIsGroundLayer(selectedEmitter, boolValue);
+
+            if (success) {
+                markSystemModified(data, systemName);
+                setData({ ...data });
+                markChanged();
+            }
+            return;
+        }
 
         const numValue = parseLocaleFloat(value);
         if (isNaN(numValue)) return;
@@ -1571,6 +1648,9 @@ export default function BinEditorV2() {
                         {emitter.miscRenderFlags != null && (
                             <span style={{ color: '#ef4444' }} title="Misc Render Flags">MR: {emitter.miscRenderFlags}</span>
                         )}
+                        {emitter.isGroundLayer != null && (
+                            <span style={{ color: UI_COLORS.ground }} title="Ground Layer">GL: {emitter.isGroundLayer ? 'T' : 'F'}</span>
+                        )}
                     </div>
                 </div>
                 {/* Texture Preview Button */}
@@ -1949,12 +2029,37 @@ export default function BinEditorV2() {
                     </div>
                 )}
 
+                {selectedEmitter.isGroundLayer != null && (
+                    <div style={{ marginBottom: '16px' }}>
+                        <div style={{ fontWeight: 600, color: UI_COLORS.ground, marginBottom: '8px' }}>Ground Layer</div>
+                        <select
+                            key={`${selectedEmitter.name}-isGroundLayer`}
+                            defaultValue={selectedEmitter.isGroundLayer ? 'true' : 'false'}
+                            onChange={(e) => handlePropertyChange('isGroundLayer', null, e.target.value)}
+                            style={{
+                                width: '100%',
+                                padding: '6px 8px',
+                                background: 'rgba(0,0,0,0.3)',
+                                border: '1px solid rgba(34, 197, 94, 0.35)',
+                                borderRadius: '4px',
+                                color: UI_COLORS.ground,
+                                fontFamily: 'JetBrains Mono, monospace',
+                                fontSize: '13px'
+                            }}
+                        >
+                            <option value="false">false</option>
+                            <option value="true">true</option>
+                        </select>
+                    </div>
+                )}
+
                 {!selectedEmitter.birthScale0 && !selectedEmitter.scale0 &&
                     !selectedEmitter.bindWeight && !selectedEmitter.translationOverride &&
                     !selectedEmitter.particleLifetime && !selectedEmitter.lifetime &&
                     !selectedEmitter.particleLinger && !selectedEmitter.rate &&
                     selectedEmitter.pass == null &&
-                    selectedEmitter.miscRenderFlags == null && (
+                    selectedEmitter.miscRenderFlags == null &&
+                    selectedEmitter.isGroundLayer == null && (
                         <div style={{ color: 'var(--accent-muted)', fontStyle: 'italic' }}>
                             No editable properties found
                         </div>
@@ -2180,6 +2285,20 @@ export default function BinEditorV2() {
                             </button>
                             <button onClick={handleSetMiscRenderFlagsOne} style={smallButtonStyle('#ef4444')} title="Set Misc Render Flags to 1">
                                 MR=1
+                            </button>
+                        </div>
+                    )}
+
+                    {toolbarTab === 'ground' && (
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                            <button onClick={handleAddIsGroundLayer} style={smallButtonStyle(UI_COLORS.ground)} title="Add isGroundLayer property">
+                                + Ground
+                            </button>
+                            <button onClick={handleSetIsGroundLayerTrue} style={smallButtonStyle(UI_COLORS.ground)} title="Set isGroundLayer to true">
+                                Ground=true
+                            </button>
+                            <button onClick={handleSetIsGroundLayerFalse} style={smallButtonStyle(UI_COLORS.ground)} title="Set isGroundLayer to false">
+                                Ground=false
                             </button>
                         </div>
                     )}

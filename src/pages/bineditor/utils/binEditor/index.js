@@ -14,7 +14,9 @@ export {
     updateRate,
     updatePass,
     updateMiscRenderFlags,
-    insertMiscRenderFlags
+    insertMiscRenderFlags,
+    updateIsGroundLayer,
+    insertIsGroundLayer
 } from './serializer.js';
 export {
     scaleBirthScale,
@@ -38,6 +40,8 @@ export {
     addPass,
     setMiscRenderFlags,
     addMiscRenderFlags,
+    setIsGroundLayer,
+    addIsGroundLayer,
     // Utilities
     filterEmitters,
     searchEmitters,

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import './Port.css';
 import PersistentEffectsModal from './components/modals/PersistentEffectsModal';
 import IdleParticleModal from './components/modals/IdleParticleModal';
+import IdleParticlesManagerModal from './components/modals/IdleParticlesManagerModal';
 import ChildParticleModal from './components/modals/ChildParticleModal';
 import TargetColumn from './components/TargetColumn';
 import DonorColumn from './components/DonorColumn';
@@ -39,6 +40,7 @@ const VIRTUALIZATION_THRESHOLD = 20;
 
 const Port2 = () => {
   const [showPortAllModeModal, setShowPortAllModeModal] = useState(false);
+  const [showIdleManagerModal, setShowIdleManagerModal] = useState(false);
 
   // All state and handlers live in usePort hook
   const {
@@ -98,6 +100,8 @@ const Port2 = () => {
     handleClearSelection,
     handleConfirmChildParticles,
     handleConfirmIdleParticles,
+    handleUpsertIdleParticlesForSystem,
+    handleRemoveIdleParticlesByEffectKey,
     handleCreateNewSystem,
     handleDeleteAllEmitters,
     handleDeleteEmitter,
@@ -497,6 +501,18 @@ const Port2 = () => {
     setShowPortAllModeModal(true);
   }, []);
 
+  const handleOpenIdleManager = useCallback(() => {
+    if (!targetPyContent) {
+      setStatusMessage('No target file loaded');
+      return;
+    }
+    if (!hasResourceResolver || !hasSkinCharacterData) {
+      setStatusMessage('Locked: target bin missing ResourceResolver or SkinCharacterDataProperties');
+      return;
+    }
+    setShowIdleManagerModal(true);
+  }, [targetPyContent, hasResourceResolver, hasSkinCharacterData, setStatusMessage]);
+
   const handleSelectPortAllMode = useCallback((mode) => {
     setShowPortAllModeModal(false);
     handlePortAllSystems(hasResourceResolver, mode);
@@ -717,6 +733,15 @@ const Port2 = () => {
         handleConfirmIdleParticles={handleConfirmIdleParticles}
       />
 
+      <IdleParticlesManagerModal
+        open={showIdleManagerModal}
+        onClose={() => setShowIdleManagerModal(false)}
+        targetSystems={targetSystems}
+        targetPyContent={targetPyContent}
+        onUpsertSystem={handleUpsertIdleParticlesForSystem}
+        onRemoveEffectKey={handleRemoveIdleParticlesByEffectKey}
+      />
+
       <ChildParticleModal
         open={showChildModal}
         onClose={resetChildState}
@@ -769,9 +794,11 @@ const Port2 = () => {
         isProcessing={isProcessing}
         handleOpenBackupViewer={handleOpenBackupViewer}
         handleOpenPersistent={handleOpenPersistent}
+        handleOpenIdleParticles={handleOpenIdleManager}
         handleOpenNewSystemModal={handleOpenNewSystemModal}
         hasResourceResolver={hasResourceResolver}
         hasSkinCharacterData={hasSkinCharacterData}
+        showIdleParticlesButton
         placement="top"
         showPortAllButton={!!(targetPyContent && donorPyContent)}
         onPortAll={handleOpenPortAllModeModal}

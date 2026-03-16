@@ -6,6 +6,7 @@ import UnsavedChangesModal from '../../../components/modals/UnsavedChangesModal'
 import VfxFloatingActions from '../../../components/floating/VfxFloatingActions';
 import PersistentEffectsModal from '../../port2/components/modals/PersistentEffectsModal';
 import IdleParticleModal from '../../port2/components/modals/IdleParticleModal';
+import IdleParticlesManagerModal from '../../port2/components/modals/IdleParticlesManagerModal';
 import ChildParticleModal from '../../port2/components/modals/ChildParticleModal';
 import VfxMatrixEditorAdapter from '../../port2/components/VfxMatrixEditorAdapter';
 import NewVfxSystemModal from '../../port2/components/modals/NewVfxSystemModal';
@@ -54,6 +55,20 @@ function VfxHubDialogs({
   setShowRitoBinErrorDialog,
   celestialButtonStyle,
 }) {
+  const [showIdleManagerModal, setShowIdleManagerModal] = React.useState(false);
+
+  const handleOpenIdleManager = React.useCallback(() => {
+    if (!targetPyContent) {
+      setStatusMessage('No target file loaded');
+      return;
+    }
+    if (!hasResourceResolver || !hasSkinCharacterData) {
+      setStatusMessage('Locked: target bin missing ResourceResolver or SkinCharacterDataProperties');
+      return;
+    }
+    setShowIdleManagerModal(true);
+  }, [targetPyContent, hasResourceResolver, hasSkinCharacterData, setStatusMessage]);
+
   return (
     <>
       <PersistentEffectsModal
@@ -114,6 +129,15 @@ function VfxHubDialogs({
         handleConfirmIdleParticles={idle.handleConfirmIdleParticles}
       />
 
+      <IdleParticlesManagerModal
+        open={showIdleManagerModal}
+        onClose={() => setShowIdleManagerModal(false)}
+        targetSystems={targetSystems}
+        targetPyContent={targetPyContent}
+        onUpsertSystem={idle.handleUpsertIdleParticlesForSystem}
+        onRemoveEffectKey={idle.handleRemoveIdleParticlesByEffectKey}
+      />
+
       <ChildParticleModal
         open={child.showChildModal}
         onClose={child.resetChildState}
@@ -161,9 +185,11 @@ function VfxHubDialogs({
         isProcessing={isProcessing}
         handleOpenBackupViewer={handleOpenBackupViewer}
         handleOpenPersistent={handleOpenPersistent}
+        handleOpenIdleParticles={handleOpenIdleManager}
         handleOpenNewSystemModal={handleOpenNewSystemModal}
         hasResourceResolver={hasResourceResolver}
         hasSkinCharacterData={hasSkinCharacterData}
+        showIdleParticlesButton
         placement="left"
       />
 

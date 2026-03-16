@@ -274,7 +274,10 @@ function parseEmitter(rawContent, localStartLine) {
         pass: parseSimpleProperty(rawContent, 'pass', 'i16'),
 
         // Misc Render Flags (u8)
-        miscRenderFlags: parseSimpleProperty(rawContent, 'miscRenderFlags', 'u8')
+        miscRenderFlags: parseSimpleProperty(rawContent, 'miscRenderFlags', 'u8'),
+
+        // Ground layer flag
+        isGroundLayer: parseFlagProperty(rawContent, 'isGroundLayer')
     };
 
     return emitter;
@@ -464,6 +467,24 @@ function parseSimpleProperty(content, propName, type) {
     if (!match) return null;
 
     return parseFloat(match[1]);
+}
+
+/**
+ * Parse a flag property like propName: flag = true/false
+ * @param {string} content - Content to search
+ * @param {string} propName - Property name
+ * @returns {boolean|null}
+ */
+function parseFlagProperty(content, propName) {
+    const regex = new RegExp(
+        `${propName}:\\s*flag\\s*=\\s*(true|false)`,
+        'i'
+    );
+
+    const match = content.match(regex);
+    if (!match) return null;
+
+    return match[1].toLowerCase() === 'true';
 }
 
 /**

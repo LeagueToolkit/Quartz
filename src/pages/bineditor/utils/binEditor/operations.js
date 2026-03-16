@@ -20,6 +20,8 @@ import {
     updatePass,
     updateMiscRenderFlags,
     insertMiscRenderFlags,
+    updateIsGroundLayer,
+    insertIsGroundLayer,
     markSystemModified
 } from './serializer.js';
 
@@ -689,6 +691,68 @@ export function addMiscRenderFlags(data, selectedKeys, value = 1) {
                     added++;
                 } else {
                     errors.push(`Failed to add miscRenderFlags to ${emitter.name}`);
+                }
+            }
+        }
+    }
+
+    return { added, errors };
+}
+
+/**
+ * Set isGroundLayer to a specific value
+ * @param {Object} data - Parsed data
+ * @param {Set<string>} selectedKeys - Selected emitter keys
+ * @param {boolean} value - New value
+ * @returns {{modified: number, errors: string[]}}
+ */
+export function setIsGroundLayer(data, selectedKeys, value) {
+    let modified = 0;
+    const errors = [];
+
+    for (const system of Object.values(data.systems)) {
+        for (const emitter of system.emitters) {
+            const key = `${system.name}:${emitter.name}`;
+
+            if (!selectedKeys.has(key)) continue;
+
+            if (emitter.isGroundLayer !== undefined && emitter.isGroundLayer !== null) {
+                if (updateIsGroundLayer(emitter, !!value)) {
+                    markSystemModified(data, system.name);
+                    modified++;
+                } else {
+                    errors.push(`Failed to update isGroundLayer for ${emitter.name}`);
+                }
+            }
+        }
+    }
+
+    return { modified, errors };
+}
+
+/**
+ * Add isGroundLayer to selected emitters that don't have it
+ * @param {Object} data - Parsed data
+ * @param {Set<string>} selectedKeys - Selected emitter keys
+ * @param {boolean} value - Initial value (default false)
+ * @returns {{added: number, errors: string[]}}
+ */
+export function addIsGroundLayer(data, selectedKeys, value = false) {
+    let added = 0;
+    const errors = [];
+
+    for (const system of Object.values(data.systems)) {
+        for (const emitter of system.emitters) {
+            const key = `${system.name}:${emitter.name}`;
+
+            if (!selectedKeys.has(key)) continue;
+
+            if (emitter.isGroundLayer === undefined || emitter.isGroundLayer === null) {
+                if (insertIsGroundLayer(emitter, !!value)) {
+                    markSystemModified(data, system.name);
+                    added++;
+                } else {
+                    errors.push(`Failed to add isGroundLayer to ${emitter.name}`);
                 }
             }
         }
