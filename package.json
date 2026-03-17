@@ -1,7 +1,7 @@
 {
   "name": "quartz",
   "productName": "Quartz",
-  "version": "3.3.3",
+  "version": "3.3.4",
   "description": "Quartz - League of Legends Modding Suite",
   "homepage": "./",
   "main": "electron-main.js",
@@ -56,6 +56,18 @@
       {
         "from": "native/quartz_cli/target/release/quartz_cli.exe",
         "to": "quartz_cli.exe"
+      },
+      {
+        "from": "native/fbx_runtime/xps_fbx_bridge.exe",
+        "to": "xps_fbx_bridge.exe"
+      },
+      {
+        "from": "native/fbx_runtime/pmx_fbx_bridge.exe",
+        "to": "pmx_fbx_bridge.exe"
+      },
+      {
+        "from": "native/fbx_runtime/libfbxsdk.dll",
+        "to": "libfbxsdk.dll"
       },
       {
         "from": "public/your-logo.gif",
@@ -128,17 +140,21 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "package": "electron-forge package",
-    "electron-build": "npm run build:native:wad-indexer && npm run build:native:quartz-cli && electron-builder build --win --publish never",
+    "electron-build": "npm run build:native:wad-indexer && npm run build:native:quartz-cli && npm run build:native:fbx-bridges && electron-builder build --win --publish never",
     "deploy": "electron-builder build --win --publish always",
-    "release:win": "npm run build && npm run build:native:wad-indexer && npm run build:native:quartz-cli && electron-builder --win --publish never",
+    "release:win": "npm run build && npm run build:native:wad-indexer && npm run build:native:quartz-cli && npm run build:native:fbx-bridges && electron-builder --win --publish never",
     "build:all": "npm run build && npm run electron-build",
-    "dist": "npm run build && npm run build:native:wad-indexer && npm run build:native:quartz-cli && electron-builder --win --publish never",
-    "dist:no-backend": "npm run build && npm run build:native:wad-indexer && npm run build:native:quartz-cli && electron-builder --win --publish never",
-    "dist:bundle": "npm run build && electron-builder --win --publish never",
-    "dist:bundle-only": "electron-builder --win --publish never",
+    "dist": "npm run build && npm run build:native:wad-indexer && npm run build:native:quartz-cli && npm run build:native:fbx-bridges && electron-builder --win --publish never",
+    "dist:no-backend": "npm run build && npm run build:native:wad-indexer && npm run build:native:quartz-cli && npm run build:native:fbx-bridges && electron-builder --win --publish never",
+    "dist:bundle": "npm run build && npm run build:native:fbx-bridges && electron-builder --win --publish never",
+    "dist:bundle-only": "npm run build:native:fbx-bridges && electron-builder --win --publish never",
     "dev:test-updates": "cross-env ENABLE_AUTO_UPDATER=true concurrently \"react-scripts start\" \"wait-on http://localhost:3000 && electron .\"",
     "build:native:wad-indexer": "npm exec --yes --package @napi-rs/cli -- napi build --platform --release --cwd native/wad_indexer",
-    "build:native:quartz-cli": "cargo build --release --manifest-path native/quartz_cli/Cargo.toml"
+    "build:native:quartz-cli": "cargo build --release --manifest-path native/quartz_cli/Cargo.toml",
+    "build:native:xps-fbx-bridge": "cmd /c \"native\\xps_fbx_bridge\\build_release.bat\"",
+    "build:native:pmx-fbx-bridge": "cmd /c \"native\\pmx_fbx_bridge\\build_release.bat\"",
+    "prepare:fbx-runtime": "node scripts/prepare-fbx-runtime.js",
+    "build:native:fbx-bridges": "npm run build:native:xps-fbx-bridge && npm run build:native:pmx-fbx-bridge && npm run prepare:fbx-runtime"
   },
   "keywords": [
     "league-of-legends",

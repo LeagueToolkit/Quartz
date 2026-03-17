@@ -3,7 +3,8 @@
 export const STYLES = {
   QUARTZ: 'quartz',
   WINFORMS: 'winforms',
-  LIQUID: 'liquid'
+  LIQUID: 'liquid',
+  MINECRAFT: 'minecraft'
 };
 
 const THEMES = {
@@ -696,7 +697,7 @@ export function applyThemeFromObject(themeObject = {}) {
 /**
  * Applies both Interface Style and Color Theme
  * @param {string} themeName - Name of the color theme (onyx, amethyst, etc.)
- * @param {string} styleName - Name of the style (quartz, winforms, liquid)
+ * @param {string} styleName - Name of the style (quartz, winforms, liquid, minecraft)
  */
 export function applyThemeVariables(themeName = 'amethyst', styleName = STYLES.QUARTZ) {
   const root = document.documentElement;

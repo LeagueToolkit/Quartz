@@ -85,4 +85,11 @@ window.electronAPI = {
     decodeToDataUrl: (filePath) => ipcRenderer.invoke('texture:decodeToDataUrl', { filePath }),
   },
 
+  misc: {
+    openFolder: (folderPath) => ipcRenderer.invoke('file:open-folder', folderPath),
+    getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
+    listFontFiles: () => ipcRenderer.invoke('fonts:list-files'),
+    readFontFileBase64: (fileName) => ipcRenderer.invoke('fonts:read-file-base64', fileName),
+  },
+
 };

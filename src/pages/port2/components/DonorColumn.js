@@ -47,7 +47,6 @@ export default function DonorColumn({
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <Button
-        className="donor-bin-btn"
         onClick={handleOpenDonorBin}
         disabled={isProcessing}
         sx={{
@@ -91,6 +90,7 @@ export default function DonorColumn({
           className="port-donor-search"
         />
         <button
+          className="port-search-toggle-btn"
           onClick={() => setEnableDonorEmitterSearch(!enableDonorEmitterSearch)}
           title={enableDonorEmitterSearch ? 'Disable emitter search (faster)' : 'Enable emitter search'}
           aria-label={enableDonorEmitterSearch ? 'Disable emitter search' : 'Enable emitter search'}

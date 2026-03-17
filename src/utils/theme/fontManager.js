@@ -2,7 +2,7 @@ import electronPrefs from '../core/electronPrefs.js';
 
 class FontManager {
   constructor() {
-    this.fontsDirectory = this.getFontsDirectoryPath();
+    this.fontsDirectory = null;
     this.availableFonts = [];
     this.lastScanTime = 0;
     this.currentFont = 'system';
@@ -22,34 +22,6 @@ class FontManager {
         }
       }
     }
-  }
-
-  getUserDataBasePath() {
-    if (typeof process === 'undefined') return null;
-
-    if (process.platform === 'win32') {
-      return process.env.APPDATA || process.env.USERPROFILE || process.env.HOME || null;
-    }
-    if (process.platform === 'darwin') {
-      return process.env.HOME ? `${process.env.HOME}/Library/Preferences` : null;
-    }
-    return process.env.XDG_DATA_HOME || (process.env.HOME ? `${process.env.HOME}/.local/share` : null);
-  }
-
-  getFontsDirectoryPath() {
-    const basePath = this.getUserDataBasePath();
-    if (!basePath) return null;
-
-    if (window.require) {
-      try {
-        const path = window.require('path');
-        return path.join(basePath, 'Quartz', 'fonts');
-      } catch (error) {
-        console.warn('Error resolving fonts directory path, using fallback:', error);
-      }
-    }
-
-    return `${basePath}/Quartz/fonts`;
   }
 
   async init() {
@@ -170,27 +142,38 @@ class FontManager {
     ];
     
     this.availableFonts = [...commonSystemFonts];
-    
-    if (!window.require) return;
-    
+
     try {
-      const fs = window.require('fs');
-      const path = window.require('path');
-      if (!this.fontsDirectory) return;
-      
-      const fontsPath = path.resolve(this.fontsDirectory);
-      if (!fs.existsSync(fontsPath)) {
-        fs.mkdirSync(fontsPath, { recursive: true });
+      let fontFiles = [];
+      if (window.electronAPI?.misc?.listFontFiles) {
+        const result = await window.electronAPI.misc.listFontFiles();
+        if (!result?.success) return;
+        if (result.fontsDir) this.fontsDirectory = result.fontsDir;
+        fontFiles = Array.isArray(result.files) ? result.files : [];
+      } else if (window.require) {
+        const fs = window.require('fs');
+        const path = window.require('path');
+        if (!this.fontsDirectory) return;
+
+        const fontsPath = path.resolve(this.fontsDirectory);
+        if (!fs.existsSync(fontsPath)) {
+          fs.mkdirSync(fontsPath, { recursive: true });
+          return;
+        }
+
+        fontFiles = fs.readdirSync(fontsPath).filter(file =>
+          /\.(ttf|otf|woff|woff2)$/i.test(file)
+        );
+      } else {
         return;
       }
-      
-      const files = fs.readdirSync(fontsPath);
-      const fontFiles = files.filter(file => 
-        /\.(ttf|otf|woff|woff2)$/i.test(file)
-      );
+
+      const seenNames = new Set(this.availableFonts.map((f) => String(f.name).toLowerCase()));
       
       for (const file of fontFiles) {
-        const name = path.basename(file, path.extname(file));
+        const fileName = String(file).split(/[\\/]/).pop() || '';
+        const name = fileName.replace(/\.[^.]+$/, '');
+        if (!name) continue;
         let displayName = name.replace(/[-_]/g, ' ');
         let fontFamily = name;
         
@@ -301,6 +284,10 @@ class FontManager {
           }
         }
         
+        const dedupeKey = String(fontFamily).toLowerCase();
+        if (seenNames.has(dedupeKey)) continue;
+        seenNames.add(dedupeKey);
+
         this.availableFonts.push({
           name: fontFamily, // Use the proper font family name
           displayName,
@@ -461,24 +448,32 @@ class FontManager {
         return true;
       }
       
-      if (!window.require) {
-        console.warn('❌ Electron environment not available');
-        return false;
-      }
-      
       try {
-        // Read font file as base64 to bypass Electron file URL restrictions
-        const fs = window.require('fs');
-        const path = window.require('path');
-        if (!this.fontsDirectory) return false;
-        
-        const fontPath = path.resolve(this.fontsDirectory, font.file);
-        
-        const fontBuffer = fs.readFileSync(fontPath);
-        const fontBase64 = fontBuffer.toString('base64');
+        let fontBase64 = null;
+        let ext = String(font.file || '').match(/\.[^.]+$/)?.[0]?.toLowerCase() || '.ttf';
+
+        if (window.electronAPI?.misc?.readFontFileBase64) {
+          const result = await window.electronAPI.misc.readFontFileBase64(font.file);
+          if (!result?.success || !result.base64) {
+            console.warn('Failed to read font via IPC:', result?.error || 'unknown');
+            return false;
+          }
+          fontBase64 = result.base64;
+        } else if (window.require) {
+          // Read font file as base64 to bypass Electron file URL restrictions
+          const fs = window.require('fs');
+          const path = window.require('path');
+          if (!this.fontsDirectory) return false;
+          const fontPath = path.resolve(this.fontsDirectory, font.file);
+          const fontBuffer = fs.readFileSync(fontPath);
+          fontBase64 = fontBuffer.toString('base64');
+          ext = path.extname(font.file).toLowerCase();
+        } else {
+          console.warn('Electron environment not available');
+          return false;
+        }
         
         // Determine MIME type based on file extension
-        const ext = path.extname(font.file).toLowerCase();
         let mimeType = 'font/truetype';
         if (ext === '.woff') mimeType = 'font/woff';
         else if (ext === '.woff2') mimeType = 'font/woff2';
@@ -607,18 +602,43 @@ class FontManager {
     }
   }
 
-  openFontsFolder() {
-    if (!window.require) return;
-    
+  async openFontsFolder() {
+    const electronApi = window.electronAPI;
+
     try {
-      const { shell } = window.require('electron');
-      const path = window.require('path');
-      if (!this.fontsDirectory) return;
-      const fontsPath = path.resolve(this.fontsDirectory);
-      shell.openPath(fontsPath);
+      let fontsPath = this.fontsDirectory;
+
+      if (!fontsPath && electronApi?.misc?.getUserDataPath) {
+        const userDataPath = await electronApi.misc.getUserDataPath();
+        if (userDataPath) {
+          fontsPath = `${String(userDataPath).replace(/[\\/]+$/, '')}/fonts`;
+        }
+      }
+
+      if (!fontsPath) return false;
+
+      let result = null;
+      if (window.require) {
+        const { ipcRenderer } = window.require('electron');
+        const path = window.require('path');
+        const resolved = path.resolve(fontsPath);
+        result = await ipcRenderer.invoke('file:open-folder', resolved);
+        fontsPath = resolved;
+      } else if (electronApi?.misc?.openFolder) {
+        result = await electronApi.misc.openFolder(fontsPath);
+      } else {
+        return false;
+      }
+
+      if (!result?.success) {
+        console.error('Error opening fonts folder:', result?.error || 'unknown error');
+        return false;
+      }
       console.log('📁 Opened fonts folder:', fontsPath);
+      return true;
     } catch (error) {
       console.error('Error opening fonts folder:', error);
+      return false;
     }
   }
 
@@ -682,3 +702,4 @@ class FontManager {
 }
 
 export default new FontManager();
+

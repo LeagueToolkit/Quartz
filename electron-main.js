@@ -381,6 +381,7 @@ registerHashChannels({
 
 registerMiscChannels({
   ipcMain,
+  app,
   fs,
   path,
   processRef: process,

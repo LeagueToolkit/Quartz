@@ -5,7 +5,7 @@
  * Now includes StaticMaterialDef support
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { List } from 'react-window';
 import { Box, Typography, Checkbox, IconButton, Tooltip } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
@@ -38,6 +38,7 @@ const Row = React.memo((props) => {
         return (
             <Box
                 style={style}
+                className="paint-material-row"
                 onClick={() => onToggleMaterialExpand && onToggleMaterialExpand(row.key)}
                 sx={{
                     display: 'flex',
@@ -109,6 +110,7 @@ const Row = React.memo((props) => {
         return (
             <Box
                 style={style}
+                className={`paint-material-param-row${isSelected ? ' is-selected' : ''}${isNonColor ? ' is-non-color' : ''}`}
                 onClick={() => {
                     // Only allow selection of color params
                     if (isColor && onToggleMaterialParam) {
@@ -237,6 +239,7 @@ const Row = React.memo((props) => {
         return (
             <Box
                 style={style}
+                className={`paint-system-row${isLocked ? ' is-locked' : ''}${allSelected ? ' is-selected' : ''}`}
                 onClick={() => onToggleExpand && onToggleExpand(row.key)}
                 sx={{
                     display: 'flex',
@@ -489,6 +492,30 @@ function SystemList({
     onTextureClick,
     showBaseColor = true
 }) {
+    const [isMinecraftStyle, setIsMinecraftStyle] = useState(false);
+
+    useEffect(() => {
+        const updateStyle = () => {
+            try {
+                const style =
+                    document.documentElement?.getAttribute('data-style') ||
+                    document.body?.getAttribute('data-style') ||
+                    '';
+                setIsMinecraftStyle(String(style).toLowerCase() === 'minecraft');
+            } catch {
+                setIsMinecraftStyle(false);
+            }
+        };
+
+        updateStyle();
+        const observer = new MutationObserver(updateStyle);
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-style'] });
+        if (document.body) {
+            observer.observe(document.body, { attributes: true, attributeFilter: ['data-style'] });
+        }
+        return () => observer.disconnect();
+    }, []);
+
     const rows = useMemo(() => {
         if (!parsedFile) return [];
         const result = [];
@@ -600,25 +627,29 @@ function SystemList({
         <Box sx={{
             width: '100%',
             height: '100%',
-            // Custom scrollbar styling - BIG AND VISIBLE
             '& .react-window-list': {
                 overflowX: 'hidden !important',
                 '&::-webkit-scrollbar': {
-                    width: '16px',
-                    background: 'var(--bg)',
+                    width: isMinecraftStyle ? '12px' : '16px',
+                    background: isMinecraftStyle ? '#2f2f2f' : 'var(--bg)',
                 },
                 '&::-webkit-scrollbar-track': {
-                    background: 'var(--surface)',
-                    borderRadius: '8px',
+                    background: isMinecraftStyle ? '#2f2f2f' : 'var(--surface)',
+                    border: isMinecraftStyle ? '1px solid #000000' : 'none',
+                    borderRadius: isMinecraftStyle ? '0' : '8px',
                     margin: '4px 0',
                 },
                 '&::-webkit-scrollbar-thumb': {
-                    background: 'var(--accent)',
-                    borderRadius: '8px',
-                    border: '3px solid var(--surface)',
+                    background: isMinecraftStyle
+                        ? 'linear-gradient(180deg, #b3b3b3 0%, #9a9a9a 45%, #848484 100%)'
+                        : 'var(--accent)',
+                    borderRadius: isMinecraftStyle ? '0' : '8px',
+                    border: isMinecraftStyle ? '1px solid #000000' : '3px solid var(--surface)',
                     minHeight: '60px',
                     '&:hover': {
-                        background: 'color-mix(in srgb, var(--accent), white 20%)',
+                        background: isMinecraftStyle
+                            ? 'linear-gradient(180deg, #c1c1c1 0%, #ababab 45%, #939393 100%)'
+                            : 'color-mix(in srgb, var(--accent), white 20%)',
                     },
                 },
             }

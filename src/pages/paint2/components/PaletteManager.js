@@ -297,6 +297,7 @@ const PaletteManager = ({
     onPalettesChanged,
     onStatus
 }) => {
+    const [isMinecraftStyle, setIsMinecraftStyle] = useState(false);
     const [managerOpen, setManagerOpen] = useState(false);
     const [paletteName, setPaletteName] = useState('');
 
@@ -310,6 +311,28 @@ const PaletteManager = ({
             setPaletteName(defaultPaletteName);
         }
     }, [managerOpen, paletteName, defaultPaletteName]);
+
+    useEffect(() => {
+        const updateStyle = () => {
+            try {
+                const style =
+                    document.documentElement?.getAttribute('data-style') ||
+                    document.body?.getAttribute('data-style') ||
+                    '';
+                setIsMinecraftStyle(String(style).toLowerCase() === 'minecraft');
+            } catch {
+                setIsMinecraftStyle(false);
+            }
+        };
+
+        updateStyle();
+        const observer = new MutationObserver(updateStyle);
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-style'] });
+        if (document.body) {
+            observer.observe(document.body, { attributes: true, attributeFilter: ['data-style'] });
+        }
+        return () => observer.disconnect();
+    }, []);
 
     const setStatus = (msg) => {
         if (typeof onStatus === 'function') onStatus(msg);
@@ -443,8 +466,24 @@ const PaletteManager = ({
     if (mode !== 'random' && mode !== 'random-keyframe' && mode !== 'linear' && mode !== 'materials') return null;
 
     return (
-        <Box className="paint-palette-manager" sx={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
-            <Box sx={{ padding: '8px 16px', display: 'flex', gap: 1, height: '42px', alignItems: 'stretch' }}>
+        <Box
+            className="paint-palette-manager"
+            sx={{
+                background: isMinecraftStyle ? '#2f2f2f' : 'var(--surface)',
+                borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)'
+            }}
+        >
+            <Box
+                className="paint-palette-strip"
+                sx={{
+                    padding: '8px 16px',
+                    display: 'flex',
+                    gap: 1,
+                    height: '42px',
+                    alignItems: 'stretch',
+                    background: isMinecraftStyle ? '#353535' : 'transparent'
+                }}
+            >
                 {palette.map((color, idx) => (
                     <Tooltip key={idx} title={`Stop: ${Math.round(color.time * 100)}%`}>
                         <Box
@@ -470,7 +509,16 @@ const PaletteManager = ({
                 ))}
             </Box>
 
-            <Box sx={{ padding: '4px 16px 8px 16px', display: 'flex', alignItems: 'center', gap: 3 }}>
+            <Box
+                className="paint-palette-controls"
+                sx={{
+                    padding: '4px 16px 8px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 3,
+                    background: isMinecraftStyle ? '#353535' : 'transparent'
+                }}
+            >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
                     <PaletteCountSlider
                         value={colorCount}

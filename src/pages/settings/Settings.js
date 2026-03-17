@@ -367,7 +367,8 @@ const ModernSettings = () => {
   const interfaceStyles = [
     { id: STYLES.QUARTZ, name: 'Quartz', desc: 'Modern Glassy UI' },
     { id: STYLES.WINFORMS, name: 'WinForms', desc: 'Classic Flat UI' },
-    { id: STYLES.LIQUID, name: 'Liquid Glass', desc: 'High-fidelity refractive glass UI' }
+    { id: STYLES.LIQUID, name: 'Liquid Glass', desc: 'High-fidelity refractive glass UI' },
+    { id: STYLES.MINECRAFT, name: 'Minecraft', desc: 'Pixel bevel buttons and retro depth' }
   ];
 
   // Load settings (theme, fonts, etc.) from electronPrefs on mount
@@ -911,13 +912,18 @@ const ModernSettings = () => {
   };
 
   // Handle opening fonts folder
-  const handleOpenFontsFolder = () => {
-    const success = fontManager.openFontsFolder();
+  const handleOpenFontsFolder = async () => {
+    const success = await fontManager.openFontsFolder();
     if (success) {
-      // Could show a message here if CreateMessage is available
       console.log('Fonts folder opened');
+      // Re-scan fonts when user comes back from Explorer.
+      const onFocusRefresh = () => {
+        window.removeEventListener('focus', onFocusRefresh);
+        handleRefreshFonts();
+      };
+      window.addEventListener('focus', onFocusRefresh);
     } else {
-      console.error('Unable to open fonts folder. This feature requires the Electron environment.');
+      console.error('Unable to open fonts folder.');
     }
   };
 
@@ -959,6 +965,30 @@ const ModernSettings = () => {
     if (hex8) return `#${hex8[1].toUpperCase()}`;
     return value;
   };
+
+  useEffect(() => {
+    let timeoutId = null;
+
+    const refreshOnReturn = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        handleRefreshFonts();
+      }, 150);
+    };
+
+    const onVisibilityChange = () => {
+      if (!document.hidden) refreshOnReturn();
+    };
+
+    window.addEventListener('focus', refreshOnReturn);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', refreshOnReturn);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []); // eslint-disable-line
   const normalizeBlurControlValue = (raw) => {
     const value = String(raw ?? '').trim();
     if (!value) return '';

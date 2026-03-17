@@ -41,6 +41,35 @@ const MainPage = () => {
   const [showWelcome, setShowWelcome] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [renderKey, setRenderKey] = useState(0);
+  const [isMinecraftTheme, setIsMinecraftTheme] = useState(false);
+
+  useEffect(() => {
+    const getCurrentStyle = () => {
+      try {
+        return (
+          document.documentElement?.getAttribute('data-style') ||
+          document.body?.getAttribute('data-style') ||
+          ''
+        ).toLowerCase();
+      } catch {
+        return '';
+      }
+    };
+
+    const updateThemeState = () => {
+      setIsMinecraftTheme(getCurrentStyle() === 'minecraft');
+    };
+
+    updateThemeState();
+
+    const observer = new MutationObserver(updateThemeState);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-style'] });
+    if (document.body) {
+      observer.observe(document.body, { attributes: true, attributeFilter: ['data-style'] });
+    }
+
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -219,42 +248,65 @@ const MainPage = () => {
           zIndex: 0,
         }} />
 
-        {/* QUARTZ */}
-        <Typography variant="h1" sx={{
-          position: 'relative', zIndex: 1,
-          fontSize: { xs: '3.8rem', sm: '5.5rem', md: '7rem' },
-          fontWeight: 900,
-          letterSpacing: '-0.04em',
-          lineHeight: 1,
-          background: 'linear-gradient(to right, var(--accent), var(--accent2), var(--accent))',
-          backgroundSize: '200% auto',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-          animation: 'shimmer-text 12s linear infinite',
-          willChange: 'background-position',
-          textAlign: 'center',
-          textShadow: '0 0 20px color-mix(in srgb, var(--accent) 30%, transparent)',
-          mb: 1.25,
-          userSelect: 'none',
-        }}>
-          Quartz
-        </Typography>
+        {isMinecraftTheme ? (
+          <Box
+            sx={{
+              position: 'relative',
+              zIndex: 1,
+              width: { xs: 'min(82vw, 420px)', sm: 'min(64vw, 520px)', md: 'min(52vw, 620px)' },
+              aspectRatio: '16 / 5',
+              maxHeight: { xs: 110, sm: 130, md: 150 },
+              mb: { xs: 2.25, sm: 2.5, md: 3 },
+              border: 'none',
+              boxShadow: 'none',
+              overflow: 'hidden',
+              imageRendering: 'pixelated',
+              backgroundImage: 'url("/quartzminecraft.WEBP")',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+            }}
+          />
+        ) : (
+          <>
+            {/* QUARTZ */}
+            <Typography variant="h1" sx={{
+              position: 'relative', zIndex: 1,
+              fontSize: { xs: '3.8rem', sm: '5.5rem', md: '7rem' },
+              fontWeight: 900,
+              letterSpacing: '-0.04em',
+              lineHeight: 1,
+              background: 'linear-gradient(to right, var(--accent), var(--accent2), var(--accent))',
+              backgroundSize: '200% auto',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              animation: 'shimmer-text 12s linear infinite',
+              willChange: 'background-position',
+              textAlign: 'center',
+              textShadow: '0 0 20px color-mix(in srgb, var(--accent) 30%, transparent)',
+              mb: 1.25,
+              userSelect: 'none',
+            }}>
+              Quartz
+            </Typography>
 
-        {/* Tagline */}
-        <Typography sx={{
-          position: 'relative', zIndex: 1,
-          color: 'var(--text)',
-          fontSize: { xs: '0.6rem', sm: '0.68rem', md: '0.73rem' },
-          letterSpacing: '0.2em',
-          textTransform: 'uppercase',
-          opacity: 1,
-          mb: { xs: 2.5, sm: 3, md: 3.5 },
-          textAlign: 'center',
-          userSelect: 'none',
-        }}>
-          League of Legends Toolkit
-        </Typography>
+            {/* Tagline */}
+            <Typography sx={{
+              position: 'relative', zIndex: 1,
+              color: 'var(--text)',
+              fontSize: { xs: '0.6rem', sm: '0.68rem', md: '0.73rem' },
+              letterSpacing: '0.2em',
+              textTransform: 'uppercase',
+              opacity: 1,
+              mb: { xs: 2.5, sm: 3, md: 3.5 },
+              textAlign: 'center',
+              userSelect: 'none',
+            }}>
+              League of Legends Toolkit
+            </Typography>
+          </>
+        )}
 
         {/* CTA buttons */}
         <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', gap: { xs: 1, sm: 1.5 } }}>

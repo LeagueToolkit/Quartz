@@ -10,6 +10,7 @@ export default function PortStatusBar({
 }) {
   return (
     <div
+      className="port-status-bar"
       style={{
         padding: '6px 12px',
         background: 'transparent',

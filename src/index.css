@@ -4,6 +4,24 @@
 
 /* Theme Variables */
 @import './styles/theme-variables.css';
+@import './styles/minecraft-theme.css';
+
+/* Global font behavior: widen glyph spacing when a Minecraft font is active */
+html[data-current-font*="minecraft" i],
+body[data-current-font*="minecraft" i] {
+  --minecraft-letter-spacing: 0.13em;
+}
+
+html[data-current-font*="minecraft" i] :is(h1, h2, h3, h4, h5, h6,
+  p, span, div, label, a, li, td, th,
+  button, input, textarea, select, option,
+  .MuiTypography-root, .MuiButton-root, .MuiMenuItem-root, .MuiInputBase-input),
+body[data-current-font*="minecraft" i] :is(h1, h2, h3, h4, h5, h6,
+  p, span, div, label, a, li, td, th,
+  button, input, textarea, select, option,
+  .MuiTypography-root, .MuiButton-root, .MuiMenuItem-root, .MuiInputBase-input) {
+  letter-spacing: var(--minecraft-letter-spacing) !important;
+}
 
 
 
@@ -22,21 +40,6 @@ body,
   --surface: rgba(10, 10, 15, 0.25) !important;
   --surface-2: rgba(20, 20, 30, 0.2) !important;
   --accent-muted: var(--accent) !important;
-}
-
-/* Port Donor Bin Button - same behavior for wallpaper and liquid style */
-.has-wallpaper .port-container .donor-bin-btn,
-[data-style="liquid"] .port-container .donor-bin-btn {
-  background: color-mix(in srgb, var(--accent2) 14%, transparent) !important;
-  border: 1px solid color-mix(in srgb, var(--accent2), transparent 70%) !important;
-  color: var(--accent2) !important;
-}
-
-.has-wallpaper .port-container .donor-bin-btn:not(:disabled):hover,
-[data-style="liquid"] .port-container .donor-bin-btn:not(:disabled):hover {
-  background: color-mix(in srgb, var(--accent2) 22%, transparent) !important;
-  border-color: var(--accent2) !important;
-  text-shadow: 0 0 8px color-mix(in srgb, var(--accent2), transparent 50%) !important;
 }
 
 /* Search Inputs placeholder styling */
@@ -223,67 +226,51 @@ body,
   -webkit-appearance: none;
   height: 36px;
   padding: 0 16px;
+  box-sizing: border-box;
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background: color-mix(in srgb, #9ca3af 14%, transparent);
-  color: #9ca3af;
+  border: 1px solid color-mix(in srgb, var(--bin-btn-color, var(--accent)), transparent 70%);
+  background: color-mix(in srgb, var(--bin-btn-color, var(--accent)) 14%, transparent);
+  color: var(--bin-btn-color, var(--accent));
   font-family: JetBrains Mono, monospace;
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.05em;
   text-transform: none;
   line-height: 1;
   box-shadow: none;
   outline: none;
+  position: relative;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
 }
 
 .bin-editor-topbar .bin-editor-action-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, #9ca3af 22%, transparent);
-  border-color: #9ca3af;
-  text-shadow: 0 0 8px color-mix(in srgb, #9ca3af, transparent 50%);
+  background: color-mix(in srgb, var(--bin-btn-color, var(--accent)) 22%, transparent);
+  border-color: var(--bin-btn-color, var(--accent));
+  text-shadow: 0 0 8px color-mix(in srgb, var(--bin-btn-color, var(--accent)), transparent 50%);
 }
 
 .bin-editor-topbar .bin-editor-action-btn.is-load {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  border-color: color-mix(in srgb, var(--accent), transparent 70%);
-  color: var(--accent);
+  --bin-btn-color: var(--accent);
 }
 
-.bin-editor-topbar .bin-editor-action-btn.is-load:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
-  border-color: var(--accent);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--accent), transparent 50%);
+.bin-editor-topbar .bin-editor-action-btn.is-undo {
+  --bin-btn-color: #9ca3af;
 }
 
 .bin-editor-topbar .bin-editor-action-btn.is-restore {
-  background: color-mix(in srgb, var(--accent2) 14%, transparent);
-  border-color: color-mix(in srgb, var(--accent2), transparent 70%);
-  color: var(--accent2);
-}
-
-.bin-editor-topbar .bin-editor-action-btn.is-restore:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent2) 22%, transparent);
-  border-color: var(--accent2);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--accent2), transparent 50%);
+  --bin-btn-color: var(--accent2);
 }
 
 .bin-editor-topbar .bin-editor-action-btn.is-save {
-  background: color-mix(in srgb, #22c55e 14%, transparent);
-  border-color: rgba(34, 197, 94, 0.3);
-  color: #22c55e;
-}
-
-.bin-editor-topbar .bin-editor-action-btn.is-save:hover:not(:disabled) {
-  background: color-mix(in srgb, #22c55e 22%, transparent);
-  border-color: #22c55e;
-  text-shadow: 0 0 8px color-mix(in srgb, #22c55e, transparent 50%);
+  --bin-btn-color: #22c55e;
 }
 
 .bin-editor-topbar .bin-editor-action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.3);
 }
 
 /* Paint2 footer actions - match Port/Open Bin button style */
@@ -406,4 +393,85 @@ body,
   opacity: 1 !important;
   font-weight: 800 !important;
   letter-spacing: 0.05em;
+}
+
+/* Minecraft mode must fully disable glass on BinEditor controls/lists,
+   even when wallpaper mode (.has-wallpaper) is active. */
+[data-style="minecraft"].has-wallpaper .bin-editor-topbar,
+[data-style="minecraft"].has-wallpaper .bin-editor-toolbar,
+[data-style="minecraft"].has-wallpaper .bin-editor-list,
+[data-style="minecraft"].has-wallpaper .bin-editor-props,
+[data-style="minecraft"].has-wallpaper .bin-editor-item,
+[data-style="minecraft"].has-wallpaper .bin-editor-emitter,
+[data-style="minecraft"] .bin-editor-topbar,
+[data-style="minecraft"] .bin-editor-toolbar,
+[data-style="minecraft"] .bin-editor-list,
+[data-style="minecraft"] .bin-editor-props,
+[data-style="minecraft"] .bin-editor-item,
+[data-style="minecraft"] .bin-editor-emitter {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-image: none !important;
+}
+
+[data-style="minecraft"].has-wallpaper .bin-editor-item,
+[data-style="minecraft"].has-wallpaper .bin-editor-emitter,
+[data-style="minecraft"] .bin-editor-item,
+[data-style="minecraft"] .bin-editor-emitter {
+  background: linear-gradient(180deg, #5d5d5d, #414141) !important;
+  border-color: #000 !important;
+}
+
+[data-style="minecraft"].has-wallpaper .bin-editor-item.selected,
+[data-style="minecraft"].has-wallpaper .bin-editor-emitter.selected,
+[data-style="minecraft"] .bin-editor-item.selected,
+[data-style="minecraft"] .bin-editor-emitter.selected {
+  background: linear-gradient(180deg, #8a8a8a, #5a5a5a) !important;
+}
+
+/* Minecraft mode must disable wallpaper transparency for Paint controls/lists */
+[data-style="minecraft"].has-wallpaper .paint-toolbar,
+[data-style="minecraft"].has-wallpaper .paint-palette-manager,
+[data-style="minecraft"].has-wallpaper .paint2-footer,
+[data-style="minecraft"].has-wallpaper .paint2-container>div,
+[data-style="minecraft"] .paint-toolbar,
+[data-style="minecraft"] .paint-palette-manager,
+[data-style="minecraft"] .paint2-footer {
+  background: #2f2f2f !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+[data-style="minecraft"].has-wallpaper .paint2-subtoolbar-main,
+[data-style="minecraft"].has-wallpaper .paint2-subtoolbar-search,
+[data-style="minecraft"].has-wallpaper .paint2-color-filter,
+[data-style="minecraft"].has-wallpaper .paint2-materials-info,
+[data-style="minecraft"].has-wallpaper .paint2-main-list-wrap,
+[data-style="minecraft"].has-wallpaper .paint-palette-strip,
+[data-style="minecraft"].has-wallpaper .paint-palette-controls {
+  background: #353535 !important;
+  background-image: none !important;
+}
+
+[data-style="minecraft"].has-wallpaper .paint-emitter-row,
+[data-style="minecraft"] .paint-emitter-row {
+  background: linear-gradient(180deg, #595959, #3f3f3f) !important;
+  border-color: #000 !important;
+}
+
+/* Beat .has-wallpaper .paint2-container>div transparency rule with higher specificity */
+[data-style="minecraft"] .has-wallpaper .paint2-container>div {
+  background: #353535 !important;
+  background-color: #353535 !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+[data-style="minecraft"] .has-wallpaper .paint2-container>.paint-toolbar,
+[data-style="minecraft"] .has-wallpaper .paint2-container>.paint-palette-manager,
+[data-style="minecraft"] .has-wallpaper .paint2-container>.paint2-footer {
+  background: #2f2f2f !important;
+  background-color: #2f2f2f !important;
 }

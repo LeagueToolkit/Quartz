@@ -111,6 +111,7 @@ const ThemeCreatorSection = ({
               { value: 'quartz', label: 'Quartz' },
               { value: 'winforms', label: 'WinForms' },
               { value: 'liquid', label: 'Liquid Glass' },
+              { value: 'minecraft', label: 'Minecraft' },
             ]}
           />
 

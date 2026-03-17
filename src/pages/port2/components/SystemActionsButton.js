@@ -79,6 +79,7 @@ const SystemActionsButton = React.memo(({
     return (
         <>
             <IconButton
+                className="port-actions-menu-button"
                 onClick={handleOpen}
                 size="small"
                 sx={{
@@ -109,6 +110,7 @@ const SystemActionsButton = React.memo(({
                 onClick={(e) => e.stopPropagation()}
                 marginThreshold={16}
                 PaperProps={{
+                    className: 'port-actions-menu-paper',
                     sx: {
                         mt: 1,
                         width: '200px',

@@ -52,6 +52,9 @@ fn print_usage() {
     eprintln!("  quartz_cli extract-unpack-wad <file.wad|file.wad.client> [output_dir]  Extract hashes, then unpack");
     eprintln!("  quartz_cli unpack-wad    <file.wad|file.wad.client> [output_dir]  Unpack WAD using available hashes");
     eprintln!("  quartz_cli pack-wad      <folder> [output.wad.client]  Pack folder into .wad.client");
+    eprintln!("  quartz_cli xps2fbx       <file.mesh|file.xps|file.ascii> [output.fbx]  Convert XPS model to FBX (bridge)");
+    eprintln!("  quartz_cli pmx2fbx       <file.pmx> [output.fbx]  Convert PMX model to FBX (bridge)");
+    eprintln!("  quartz_cli pnx2fbx       <file.pmx> [output.fbx]  Alias for pmx2fbx");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  --hash-dir <dir>  Custom hash directory (default: %APPDATA%/FrogTools/hashes/)");
@@ -590,6 +593,50 @@ fn main() {
                 None
             };
             if let Err(e) = commands::wad::pack_dir_to_wad(input_dir, output_wad) {
+                eprintln!("Error: {}", e);
+                pause_and_exit(1);
+            }
+        }
+        "xps2fbx" => {
+            if args.len() < 3 {
+                eprintln!("Error: missing XPS input path");
+                pause_and_exit(1);
+            }
+            let input = Path::new(&args[2]);
+            if !input.exists() {
+                eprintln!("Error: file not found: {}", input.display());
+                pause_and_exit(1);
+            }
+
+            let output = if args.len() >= 4 {
+                Some(Path::new(&args[3]))
+            } else {
+                None
+            };
+
+            if let Err(e) = commands::xps::xps2fbx(input, output) {
+                eprintln!("Error: {}", e);
+                pause_and_exit(1);
+            }
+        }
+        "pmx2fbx" | "pnx2fbx" => {
+            if args.len() < 3 {
+                eprintln!("Error: missing PMX input path");
+                pause_and_exit(1);
+            }
+            let input = Path::new(&args[2]);
+            if !input.exists() {
+                eprintln!("Error: file not found: {}", input.display());
+                pause_and_exit(1);
+            }
+
+            let output = if args.len() >= 4 {
+                Some(Path::new(&args[3]))
+            } else {
+                None
+            };
+
+            if let Err(e) = commands::pmx::pmx2fbx(input, output) {
                 eprintln!("Error: {}", e);
                 pause_and_exit(1);
             }

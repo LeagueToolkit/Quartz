@@ -26,7 +26,7 @@ const WindowsIntegrationSection = ({
     >
       <FormGroup
         label="Windows Explorer Context Menu"
-        description="Add Quartz to the right-click menu for .bin and .py files"
+        description="Add Quartz to the right-click menu for BIN/PY, model, texture, WAD, and folder workflows"
       >
         <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '8px', padding: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -51,6 +51,7 @@ const WindowsIntegrationSection = ({
               <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.6' }}>
                 <li><strong>BIN tools:</strong> Convert to .py, Separate VFX, Combine Linked, NoSkinLite, Batch Split VFX.</li>
                 <li><strong>PY tools:</strong> Convert to .bin directly from Explorer.</li>
+                <li><strong>Model tools:</strong> Convert XPS (.mesh/.xps/.ascii) and PMX (.pmx) to .fbx.</li>
                 <li><strong>Texture tools:</strong> .tex/.dds/.png conversions both single-file and folder batch.</li>
                 <li><strong>WAD tools:</strong> Extract hashes, Unpack WAD, and Extract hashes + Unpack for .wad/.wad.client.</li>
                 <li><strong>Folder ritobin:</strong> Convert all BIN to PY and all PY to BIN recursively.</li>

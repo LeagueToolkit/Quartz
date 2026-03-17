@@ -81,6 +81,9 @@ impl<M> WriteProperty for Struct<M> {
         }
 
         writer.write_u32::<LE>(self.class_hash)?;
+        if self.class_hash == 0 {
+            return Ok(());
+        }
 
         let size_pos = writer.stream_position()?;
         writer.write_u32::<LE>(0)?;

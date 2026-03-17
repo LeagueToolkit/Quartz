@@ -104,6 +104,7 @@ export default function TargetColumn({
           className="port-target-search"
         />
         <button
+          className="port-search-toggle-btn"
           onClick={() => setEnableTargetEmitterSearch(!enableTargetEmitterSearch)}
           title={enableTargetEmitterSearch ? 'Disable emitter search (faster)' : 'Enable emitter search'}
           aria-label={enableTargetEmitterSearch ? 'Disable emitter search' : 'Enable emitter search'}

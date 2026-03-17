@@ -1,0 +1,3 @@
+C:/Users/Frog/Desktop/Projects coding/Quartz-main/native/xps_fbx_bridge/build_release/CMakeFiles/xps_fbx_bridge.dir
+C:/Users/Frog/Desktop/Projects coding/Quartz-main/native/xps_fbx_bridge/build_release/CMakeFiles/edit_cache.dir
+C:/Users/Frog/Desktop/Projects coding/Quartz-main/native/xps_fbx_bridge/build_release/CMakeFiles/rebuild_cache.dir

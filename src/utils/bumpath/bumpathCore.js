@@ -1039,63 +1039,27 @@ export class BumpathCore {
             .map(([unify, _]) => unify);
 
         for (const unify of selectedBins) {
-            const outputPath = processedFiles.get(unify);
-            if (!outputPath || !fs.existsSync(outputPath)) continue;
+            const linkedUnifyFiles = this._flatListLinkedBins(unify);
+            if (linkedUnifyFiles.length === 0) continue;
 
-            try {
-                // Read main BIN to get links
-                const mainBin = await new BIN().read(fs.readFileSync(outputPath), this.hashtables);
+            for (const linkedUnify of linkedUnifyFiles) {
+                // Skip if already copied/repathed
+                if (processedFiles.has(linkedUnify)) continue;
 
-                for (const link of mainBin.links || []) {
-                    if (!link || typeof link !== 'string') continue;
-                    if (isCharacterBin(link)) continue;
+                const sourceInfo = this.sourceFiles[linkedUnify];
+                if (!sourceInfo) {
+                    console.log(`[BumpathCore] Linked BIN not found in source map: ${linkedUnify}`);
+                    continue;
+                }
+                if (!sourceInfo.fullPath || !fs.existsSync(sourceInfo.fullPath)) {
+                    console.log(`[BumpathCore] Linked BIN source missing on disk: ${linkedUnify} -> ${sourceInfo.relPath}`);
+                    continue;
+                }
 
-                    // Skip if already processed
-                    const linkUnify = unifyPath(normalizePath(link));
-                    if (processedFiles.has(linkUnify)) continue;
+                const sourceUnify = unifyPath(normalizePath(sourceInfo.relPath));
+                if (processedFiles.has(sourceUnify)) continue;
 
-                    // Find source file for this linked BIN
-                    // Try exact match first
-                    let sourceInfo = this.sourceFiles[linkUnify];
-
-                    // If not found, try alternative matching
-                    // Links might be in different format (e.g., DATA/Aatrox_Skins... vs data/aatrox_skins...)
-                    if (!sourceInfo) {
-                        const normalizedLink = normalizePath(link);
-                        // Extract key parts from link (e.g., "aatrox_skins_skin0_skins_skin1" from "DATA/Aatrox_Skins_Skin0_Skins_Skin1.bin")
-                        const linkParts = normalizedLink.replace(/^data\//, '').replace(/\.bin$/, '').split('/');
-                        const linkKey = linkParts.join('_').replace(/_/g, '_');
-
-                        // Try matching by key parts
-                        for (const [unify, fileInfo] of Object.entries(this.sourceFiles)) {
-                            const normalizedRelPath = normalizePath(fileInfo.relPath);
-                            const fileKey = normalizedRelPath.replace(/^data\//, '').replace(/\.bin$/, '').replace(/\//g, '_');
-
-                            // Check if keys match (handles different path formats)
-                            if (fileKey === linkKey ||
-                                fileKey.includes(linkKey) ||
-                                linkKey.includes(fileKey)) {
-                                sourceInfo = fileInfo;
-                                console.log(`[BumpathCore] Matched linked BIN: ${link} -> ${fileInfo.relPath}`);
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!sourceInfo) {
-                        console.log(`[BumpathCore] Linked BIN not found in source: ${link} (unify: ${linkUnify})`);
-                        continue;
-                    }
-                    if (!sourceInfo.fullPath || !fs.existsSync(sourceInfo.fullPath)) {
-                        console.log(`[BumpathCore] Linked BIN source missing on disk: ${link} -> ${sourceInfo.relPath}`);
-                        continue;
-                    }
-
-                    const sourceUnify = unifyPath(normalizePath(sourceInfo.relPath));
-                    if (processedFiles.has(sourceUnify)) {
-                        continue;
-                    }
-
+                try {
                     // Copy linked BIN to output (same relative path structure)
                     // Like Python: os.path.join(output_dir, short_file.lower()).replace('\\', '/')
                     const normalizedLinkedRelPath = normalizePath(sourceInfo.relPath);
@@ -1119,16 +1083,16 @@ export class BumpathCore {
                         await this._repathBin(linkedOutputPath, null);
                     }
 
-                    // Track both canonical unify and original link unify to avoid alias misses.
+                    // Track both canonical unify and discovered linked unify.
                     processedFiles.set(sourceUnify, linkedOutputPath);
-                    processedFiles.set(linkUnify, linkedOutputPath);
+                    processedFiles.set(linkedUnify, linkedOutputPath);
 
                     if (progressCallback) {
                         progressCallback(0, `Copied linked BIN: ${sourceInfo.relPath}`);
                     }
+                } catch (error) {
+                    console.error(`[BumpathCore] Error copying linked BIN ${linkedUnify}:`, error);
                 }
-            } catch (error) {
-                console.error(`[BumpathCore] Error copying linked BINs for ${unify}:`, error);
             }
         }
     }

@@ -4,7 +4,7 @@
  * Styled to match the original Paint.js layout
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Box, Typography, Button, Select, MenuItem, Tooltip } from '@mui/material';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 
@@ -109,6 +109,30 @@ function Toolbar({
     mode,
     onModeChange
 }) {
+    const [isMinecraftStyle, setIsMinecraftStyle] = useState(false);
+
+    useEffect(() => {
+        const updateStyle = () => {
+            try {
+                const style =
+                    document.documentElement?.getAttribute('data-style') ||
+                    document.body?.getAttribute('data-style') ||
+                    '';
+                setIsMinecraftStyle(String(style).toLowerCase() === 'minecraft');
+            } catch {
+                setIsMinecraftStyle(false);
+            }
+        };
+
+        updateStyle();
+        const observer = new MutationObserver(updateStyle);
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-style'] });
+        if (document.body) {
+            observer.observe(document.body, { attributes: true, attributeFilter: ['data-style'] });
+        }
+        return () => observer.disconnect();
+    }, []);
+
     return (
         <Box 
             className="paint-toolbar"
@@ -116,8 +140,8 @@ function Toolbar({
             display: 'flex',
             alignItems: 'center',
             padding: '4px 16px',
-            background: 'var(--surface)',
-            borderBottom: '1px solid var(--border)',
+            background: isMinecraftStyle ? '#2f2f2f' : 'var(--surface)',
+            borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)',
             flexShrink: 0,
             gap: 2
         }}>
@@ -162,9 +186,11 @@ function Toolbar({
                     value={mode}
                     onChange={(e) => onModeChange(e.target.value)}
                     size="small"
+                    className="paint-toolbar-mode-select"
                     sx={selectStyle}
                     MenuProps={{
                         PaperProps: {
+                            className: 'paint-toolbar-mode-menu',
                             sx: modeMenuPaperSx
                         }
                     }}

@@ -2156,9 +2156,11 @@ export default function BinEditorV2() {
                             value={toolbarTab}
                             onChange={(e) => setToolbarTab(e.target.value)}
                             size="small"
+                            className="bin-editor-toolbar-select"
                             sx={toolbarSelectStyle}
                             MenuProps={{
                                 PaperProps: {
+                                    className: 'bin-editor-toolbar-menu-paper',
                                     sx: toolbarMenuPaperSx
                                 }
                             }}

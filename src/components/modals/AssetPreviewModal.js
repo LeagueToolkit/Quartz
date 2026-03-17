@@ -963,6 +963,7 @@ const CustomExplorer = () => {
 
     return (
         <Box
+            className="asset-preview-modal-overlay"
             sx={{
                 position: 'fixed',
                 top: 0,
@@ -1000,6 +1001,7 @@ const CustomExplorer = () => {
             </style>
 
             <Box
+                className="asset-preview-modal"
                 sx={{
                     width: '1000px',
                     height: '80vh',
@@ -1015,7 +1017,7 @@ const CustomExplorer = () => {
                 }}
             >
                 {/* Header / Navigation Bar */}
-                <Box sx={{
+                <Box className="asset-preview-modal-header" sx={{
                     p: 1.5,
                     borderBottom: '1px solid rgba(255,255,255,0.08)',
                     display: 'flex',
@@ -1049,6 +1051,7 @@ const CustomExplorer = () => {
 
                     {/* Address Bar - Click to edit like Windows Explorer */}
                     <Box
+                        className="asset-preview-address-bar"
                         onClick={() => {
                             if (!isEditingPath) {
                                 setEditPath(currentPath);
@@ -1135,7 +1138,7 @@ const CustomExplorer = () => {
                     </Box>
 
                     {/* Search Bar */}
-                    <Box sx={{
+                    <Box className="asset-preview-search-bar" sx={{
                         width: '240px',
                         display: 'flex',
                         alignItems: 'center',
@@ -1180,10 +1183,10 @@ const CustomExplorer = () => {
                 </Box>
 
                 {/* Content Area with Sidebar */}
-                <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                <Box className="asset-preview-content" sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
                     {/* Sidebar */}
-                    <Box sx={{
+                    <Box className="asset-preview-sidebar" sx={{
                         width: '200px',
                         borderRight: '1px solid rgba(255,255,255,0.08)',
                         background: 'rgba(0,0,0,0.15)',
@@ -1205,6 +1208,7 @@ const CustomExplorer = () => {
                         </Box>
                         {QuickLinks.map((link) => (
                             <Box
+                                className={`asset-preview-quick-item ${currentPath === link.path ? 'selected' : ''}`}
                                 key={link.name + link.path}
                                 onClick={() => link.path && handleNavigateRequest(link.path)}
                                 onContextMenu={(e) => {
@@ -1252,6 +1256,7 @@ const CustomExplorer = () => {
                                     const folderName = pathModule ? pathModule.basename(path) : path;
                                     return (
                                         <Box
+                                            className={`asset-preview-recent-item ${currentPath === path ? 'selected' : ''}`}
                                             key={path}
                                             onClick={() => {
                                                 const isBinMode = ['bin', 'bineditor-bin', 'port-target', 'port-donor', 'vfxhub-target', 'paint-bin'].includes(mode);
@@ -1311,9 +1316,10 @@ const CustomExplorer = () => {
                     </Box>
 
                     {/* Main Content Area */}
-                    <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                    <Box className="asset-preview-main-layout" sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
                         {/* Main File Grid */}
                         <Box
+                            className="asset-preview-main"
                             ref={ScrollContainerRef}
                             sx={{
                                 flex: 1,
@@ -1359,6 +1365,7 @@ const CustomExplorer = () => {
                                         if (viewMode === 'list') {
                                             return (
                                                 <Box
+                                                    className={`asset-preview-file-item asset-preview-file-item-list ${isSelected ? 'selected' : ''}`}
                                                     key={item.name}
                                                     id={`file-item-${item.name}`}
                                                     onClick={() => handleItemClick(item)}
@@ -1401,6 +1408,7 @@ const CustomExplorer = () => {
 
                                         return (
                                             <Box
+                                                className={`asset-preview-file-item asset-preview-file-item-grid ${isSelected ? 'selected' : ''}`}
                                                 key={item.name}
                                                 id={`file-item-${item.name}`}
                                                 onClick={() => handleItemClick(item)}
@@ -1458,7 +1466,7 @@ const CustomExplorer = () => {
 
                         {/* Preview Pane */}
                         {selectedItem && items.find(i => i.name === selectedItem && ['.scb', '.sco'].includes(i.extension)) && (
-                            <Box sx={{
+                            <Box className="asset-preview-pane" sx={{
                                 width: '300px',
                                 borderLeft: '1px solid rgba(255,255,255,0.08)',
                                 background: 'rgba(0,0,0,0.15)',
@@ -1477,7 +1485,7 @@ const CustomExplorer = () => {
                 </Box>
 
                 {/* Footer / Status Bar */}
-                <Box sx={{
+                <Box className="asset-preview-footer" sx={{
                     borderTop: '1px solid rgba(255,255,255,0.08)',
                     background: 'rgba(0,0,0,0.2)',
                     p: 1,
@@ -1524,6 +1532,7 @@ const CustomExplorer = () => {
                         : undefined
                 }
                 PaperProps={{
+                    className: 'asset-preview-context-menu',
                     sx: {
                         background: 'var(--bg-2)',
                         border: '1px solid var(--accent-muted)',

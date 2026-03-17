@@ -635,7 +635,7 @@ const Port2 = () => {
     }}>
       {isProcessing && <GlowingSpinner text={processingText || 'Working...'} />}
       {/* Main Content Area */}
-      <div style={{
+      <div className="port-main-content" style={{
         display: 'flex',
         flex: 1,
         gap: '20px',

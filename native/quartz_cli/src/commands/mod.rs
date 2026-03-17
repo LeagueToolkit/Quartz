@@ -9,3 +9,5 @@ pub mod wad;
 pub mod ritobin_dir;
 pub mod pyntex;
 pub mod bin_hashes;
+pub mod xps;
+pub mod pmx;

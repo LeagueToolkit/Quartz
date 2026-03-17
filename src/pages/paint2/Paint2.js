@@ -260,6 +260,29 @@ function Paint2() {
     const [filterAnchor, setFilterAnchor] = useState(null);
     const [variantFilter, setVariantFilter] = useState('all'); // 'all', 'v1', 'v2'
     const [searchByTexture, setSearchByTexture] = useState(false);
+    const [isMinecraftStyle, setIsMinecraftStyle] = useState(false);
+
+    useEffect(() => {
+        const updateStyle = () => {
+            try {
+                const style =
+                    document.documentElement?.getAttribute('data-style') ||
+                    document.body?.getAttribute('data-style') ||
+                    '';
+                setIsMinecraftStyle(String(style).toLowerCase() === 'minecraft');
+            } catch {
+                setIsMinecraftStyle(false);
+            }
+        };
+
+        updateStyle();
+        const observer = new MutationObserver(updateStyle);
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-style'] });
+        if (document.body) {
+            observer.observe(document.body, { attributes: true, attributeFilter: ['data-style'] });
+        }
+        return () => observer.disconnect();
+    }, []);
 
     // Persist auto-expand across sessions/navigations
     useEffect(() => {
@@ -1516,7 +1539,7 @@ function Paint2() {
             display: 'flex',
             flexDirection: 'column',
             height: '100%', // Use 100% to fit within parent (App.js TitleBar offset)
-            background: 'var(--bg)',
+            background: isMinecraftStyle ? '#2a2a2a' : 'var(--bg)',
             color: 'var(--accent)',
             overflow: 'hidden'
         }} className="paint2-container">
@@ -1565,14 +1588,14 @@ function Paint2() {
 
             {/* Sub-Toolbar Row 1: BM & Visibility (hidden in materials mode) */}
             {mode !== 'materials' && (
-                <Box sx={{
+                <Box className="paint2-subtoolbar-main" sx={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between', // Split left and right
                     padding: '4px 16px',
                     gap: 2,
-                    borderBottom: '1px solid rgba(255,255,255,0.03)',
-                    background: 'var(--surface)',
+                    borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid rgba(255,255,255,0.03)',
+                    background: isMinecraftStyle ? '#353535' : 'var(--surface)',
                     flexShrink: 0
                 }}>
                     {/* Left Side: Blend Mode Controls */}
@@ -1583,6 +1606,7 @@ function Paint2() {
                                 value={blendModeSelect}
                                 onChange={(e) => setBlendModeSelect(e.target.value)}
                                 size="small"
+                                className="paint2-bm-select"
                                 sx={{
                                     fontFamily: 'JetBrains Mono, monospace',
                                     fontSize: '0.82rem',
@@ -1603,28 +1627,10 @@ function Paint2() {
                                 }}
                                 MenuProps={{
                                     PaperProps: {
+                                        className: 'paint2-bm-menu',
                                         sx: {
                                             mt: 0.6,
-                                            background: 'var(--glass-bg, rgba(20, 20, 24, 0.94))',
-                                            border: '1px solid var(--glass-border, rgba(255,255,255,0.12))',
-                                            borderRadius: '12px',
-                                            boxShadow: '0 20px 48px rgba(0,0,0,0.5), 0 0 16px color-mix(in srgb, var(--accent2), transparent 80%)',
-                                            backdropFilter: 'saturate(180%) blur(12px)',
-                                            WebkitBackdropFilter: 'saturate(180%) blur(12px)',
-                                            overflow: 'hidden',
-                                            '& .MuiMenu-list': { py: 0.5 },
-                                            '& .MuiMenuItem-root': {
-                                                fontFamily: 'JetBrains Mono, monospace',
-                                                fontSize: '0.82rem',
-                                                color: 'var(--text-2)',
-                                                mx: 0.6,
-                                                borderRadius: '8px',
-                                                minHeight: '34px',
-                                                transition: 'all 140ms ease',
-                                                '&:hover': { background: 'rgba(255,255,255,0.07)', color: 'var(--text)' },
-                                                '&.Mui-selected': { background: 'color-mix(in srgb, var(--accent), transparent 85%)', color: 'var(--accent)', fontWeight: 700 },
-                                                '&.Mui-selected:hover': { background: 'color-mix(in srgb, var(--accent), transparent 80%)' }
-                                            }
+                                            minWidth: 90
                                         }
                                     }
                                 }}
@@ -1688,13 +1694,13 @@ function Paint2() {
 
             {/* Materials Mode Info Bar */}
             {mode === 'materials' && (
-                <Box sx={{
+                <Box className="paint2-materials-info" sx={{
                     display: 'flex',
                     alignItems: 'center',
                     padding: '8px 16px',
                     gap: 2,
-                    borderBottom: '1px solid color-mix(in srgb, var(--accent), transparent 85%)',
-                    background: 'linear-gradient(90deg, color-mix(in srgb, var(--accent), transparent 92%), transparent)',
+                    borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid color-mix(in srgb, var(--accent), transparent 85%)',
+                    background: isMinecraftStyle ? '#353535' : 'linear-gradient(90deg, color-mix(in srgb, var(--accent), transparent 92%), transparent)',
                     flexShrink: 0
                 }}>
                     <PaletteIcon sx={{ color: 'var(--accent)', fontSize: 18 }} />
@@ -1711,13 +1717,13 @@ function Paint2() {
 
             {/* Color Filter Controls */}
             {colorFilterEnabled && (
-                <Box sx={{
+                <Box className="paint2-color-filter" sx={{
                     display: 'flex',
                     alignItems: 'center',
                     padding: '8px 16px',
                     gap: 1.5,
-                    borderBottom: '1px solid rgba(255,255,255,0.05)',
-                    background: 'color-mix(in srgb, var(--surface-2), black 10%)',
+                    borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid rgba(255,255,255,0.05)',
+                    background: isMinecraftStyle ? '#353535' : 'color-mix(in srgb, var(--surface-2), black 10%)',
                     flexShrink: 0
                 }}>
                     <Typography sx={{ ...controlLabelStyle, minWidth: '80px' }}>
@@ -1830,13 +1836,13 @@ function Paint2() {
             )}
 
             {/* Sub-Toolbar Row 2: Search */}
-            <Box sx={{
+            <Box className="paint2-subtoolbar-search" sx={{
                 display: 'flex',
                 alignItems: 'center',
                 padding: '4px 16px',
                 gap: 1.5,
-                borderBottom: '1px solid rgba(255,255,255,0.05)',
-                background: 'color-mix(in srgb, var(--bg), black 15%)',
+                borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid rgba(255,255,255,0.05)',
+                background: isMinecraftStyle ? '#353535' : 'color-mix(in srgb, var(--bg), black 15%)',
                 flexShrink: 0
             }}>
                 {/* Moved Select All here */}
@@ -1862,6 +1868,7 @@ function Paint2() {
                 </Box>
 
                 <TextField
+                    className="paint2-search-field"
                     size="small"
                     placeholder="Filter systems..."
                     value={searchQuery}
@@ -1886,8 +1893,8 @@ function Paint2() {
                         value={variantFilter}
                         onChange={(e) => setVariantFilter(e.target.value)}
                         size="small"
-                        variant="standard"
-                        disableUnderline
+                        variant="outlined"
+                        className="paint2-variant-select"
                         sx={{
                             fontFamily: 'JetBrains Mono, monospace',
                             fontSize: '0.75rem',
@@ -1895,6 +1902,11 @@ function Paint2() {
                             minWidth: '85px',
                             '& .MuiSelect-select': { py: 0, display: 'flex', alignItems: 'center' },
                             '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.2)', fontSize: '1rem' }
+                        }}
+                        MenuProps={{
+                            PaperProps: {
+                                className: 'paint2-variant-menu'
+                            }
                         }}
                     >
                         <MenuItem value="all" sx={{ fontSize: '0.75rem' }}>All Vars</MenuItem>
@@ -1924,21 +1936,14 @@ function Paint2() {
                     open={Boolean(filterAnchor)}
                     onClose={() => setFilterAnchor(null)}
                     PaperProps={{
+                        className: 'paint2-filter-menu',
                         sx: {
-                            background: 'var(--surface-2)',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            minWidth: '200px',
-                            '& .MuiMenuItem-root': {
-                                fontFamily: 'JetBrains Mono, monospace',
-                                fontSize: '0.8rem',
-                                color: 'var(--text-2)',
-                                '&:hover': { background: 'rgba(255,255,255,0.05)' }
-                            }
+                            minWidth: '200px'
                         }
                     }}
                 >
-                    <Box sx={{ px: 2, py: 1, borderBottom: '1px solid rgba(255,255,255,0.05)', mb: 1 }}>
-                        <Typography sx={{ fontSize: '0.7rem', color: 'var(--accent)', fontWeight: 700, opacity: 0.6 }}>SETTINGS</Typography>
+                    <Box className="paint2-filter-section-title" sx={{ px: 2, py: 1, borderBottom: '1px solid rgba(255,255,255,0.05)', mb: 1 }}>
+                        <Typography className="paint2-filter-section-title-text" sx={{ fontSize: '0.7rem', color: 'var(--accent)', fontWeight: 700, opacity: 0.6 }}>SETTINGS</Typography>
                     </Box>
                     <MenuItem onClick={() => {
                         const next = !autoExpand;
@@ -1991,8 +1996,8 @@ function Paint2() {
                         Search Textures
                     </MenuItem>
 
-                    <Box sx={{ px: 2, py: 1, mt: 1, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                        <Typography sx={{ fontSize: '0.7rem', color: 'var(--text-2)', opacity: 0.4 }}>VIEW</Typography>
+                    <Box className="paint2-filter-section-title" sx={{ px: 2, py: 1, mt: 1, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <Typography className="paint2-filter-section-title-text" sx={{ fontSize: '0.7rem', color: 'var(--text-2)', opacity: 0.4 }}>VIEW</Typography>
                     </Box>
                     <MenuItem onClick={() => {
                         if (parsedFile) {
@@ -2014,7 +2019,7 @@ function Paint2() {
             </Box>
 
             {/* Main List */}
-            <Box sx={{ flex: 1, overflow: 'hidden' }}>
+            <Box className="paint2-main-list-wrap" sx={{ flex: 1, overflow: 'hidden' }}>
                 {parsedFile ? (
                     <SystemList
                         parsedFile={parsedFile}
@@ -2071,8 +2076,8 @@ function Paint2() {
             {/* Footer */}
             <Box className="paint2-footer" sx={{
                 padding: '12px 24px',
-                background: 'var(--bg)',
-                borderTop: '1px solid rgba(255,255,255,0.05)',
+                background: isMinecraftStyle ? '#2f2f2f' : 'var(--bg)',
+                borderTop: isMinecraftStyle ? '1px solid #000000' : '1px solid rgba(255,255,255,0.05)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 1,

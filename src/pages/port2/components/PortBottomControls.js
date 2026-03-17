@@ -10,6 +10,7 @@ export default function PortBottomControls({
 }) {
   return (
     <div
+      className="port-bottom-controls"
       style={{
         display: 'flex',
         gap: '12px',

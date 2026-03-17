@@ -163,9 +163,12 @@ const wallpaperManager = {
     // Do not persist them into roaming manifest (avoids dev absolute paths leaking there).
     const bundledFiles = await getBundledWallpaperFiles({ fs, path, ipcRenderer });
     const bundledItems = [];
+    const bundledSeen = new Set();
     for (const filePath of bundledFiles) {
       const base = path.basename(filePath, path.extname(filePath));
       const id = `bundled:${slugifyName(base)}`;
+      if (bundledSeen.has(id)) continue;
+      bundledSeen.add(id);
       bundledItems.push({
         id,
         displayName: base,
