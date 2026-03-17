@@ -116,6 +116,10 @@ native/wad_indexer/target/
 native/wad_indexer/*.node
 native/quartz_cli/target/
 native/**/target/
+native/pmx_fbx_bridge/build_release/
+native/xps_fbx_bridge/build_release/
+native/fbx_runtime/*.exe
+native/fbx_runtime/*.dll
 
 # Third-party tools and external projects
 League Mod Repather/
