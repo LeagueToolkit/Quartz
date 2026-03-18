@@ -1,4 +1,5 @@
 import React from 'react';
+import { Youtube } from 'lucide-react';
 
 const ChampionSkinsPanel = ({
   selectedChampion,
@@ -14,6 +15,7 @@ const ChampionSkinsPanel = ({
   onSkinClick,
   onChromaClick,
   onDownloadSplashArt,
+  onYouTubeSkin,
   offlineMode = false,
 }) => (
   <div>
@@ -61,7 +63,7 @@ const ChampionSkinsPanel = ({
             <div className="aspect-[3/4] relative overflow-hidden">
               {!offlineMode ? (
                 <img
-                  src={`https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${selectedChampion.alias}_${skin.id}.jpg`}
+                  src={skin.centeredSplashPath || `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${selectedChampion.alias}_${skin.id}.jpg`}
                   alt={skin.name}
                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                   draggable={false}
@@ -128,6 +130,22 @@ const ChampionSkinsPanel = ({
                   </svg>
                 </button>
               )}
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onYouTubeSkin?.(selectedChampion.name, skin.name);
+                }}
+                className="absolute bottom-2 left-2 text-white p-2 rounded-full transition-colors duration-200 opacity-0 group-hover:opacity-100"
+                style={{
+                  border: '1px solid rgba(255, 77, 77, 0.55)',
+                  background: 'color-mix(in srgb, #ff2c2c, transparent 84%)',
+                  color: '#ff2c2c',
+                }}
+                title="Search skin spotlight on YouTube"
+              >
+                <Youtube size={14} color="#ff2c2c" />
+              </button>
             </div>
 
             <div className="p-3">

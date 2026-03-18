@@ -25,6 +25,7 @@ import BnkSessionManager from './components/BnkSessionManager';
 import BnkModDropModal from './components/BnkModDropModal';
 import BnkGroupNameModal from './components/BnkGroupNameModal';
 import BnkAddToGroupModal from './components/BnkAddToGroupModal';
+import BnkGameBanksModal from './components/BnkGameBanksModal';
 import { saveSession } from './utils/sessionManager';
 import { loadBanks } from './utils/bnkLoader';
 import { useBnkHistory } from './hooks/useBnkHistory';
@@ -43,6 +44,7 @@ import { useBnkWwiseBridge } from './hooks/useBnkWwiseBridge';
 import { useBnkGainOps } from './hooks/useBnkGainOps';
 import { useBnkPersistence } from './hooks/useBnkPersistence';
 import { getModFiles } from './utils/modAutoProcessor';
+import electronPrefs from '../../utils/core/electronPrefs.js';
 import {
     containerStyle,
     headerStyle,
@@ -146,6 +148,9 @@ export default function BnkExtract() {
     const [pendingModFolder, setPendingModFolder] = useState(null);
     const [groupNameModalOpen, setGroupNameModalOpen] = useState(false);
     const [addToGroupModalOpen, setAddToGroupModalOpen] = useState(false);
+    const [showGameBanksModal, setShowGameBanksModal] = useState(false);
+    const [isGameBanksLoading, setIsGameBanksLoading] = useState(false);
+    const [gameBanksProgress, setGameBanksProgress] = useState('');
 
     const {
         leftSearchQuery,
@@ -380,6 +385,20 @@ export default function BnkExtract() {
         };
     }, [autoSaveSession]);
 
+    useEffect(() => {
+        const onProgress = (_event, payload) => {
+            setGameBanksProgress(String(payload?.message || ''));
+        };
+        window.electronAPI?.wad?.onBnkGameProgress?.(onProgress);
+        return () => {
+            window.electronAPI?.wad?.offBnkGameProgress?.(onProgress);
+            // Fire-and-forget cleanup to avoid renderer/UI stalls while leaving BNK page.
+            Promise.resolve()
+                .then(() => window.electronAPI?.wad?.cleanupBnkGameCache?.({ cleanupAll: true }))
+                .catch(() => { });
+        };
+    }, []);
+
     const handleLoadSession = async (session) => {
         setIsLoading(true);
         setStatusMessage(`Loading session: ${session.name}...`);
@@ -601,6 +620,117 @@ export default function BnkExtract() {
         }
     };
 
+    const handleConfirmGameBanks = async ({ champion, skinIds, selections, includeVoiceover, includeSfx }) => {
+        const requestItems = Array.isArray(selections) && selections.length > 0
+            ? selections
+                .map((item) => ({
+                    champion: item?.champion || null,
+                    skinIds: Array.isArray(item?.skinIds) ? item.skinIds : [],
+                }))
+                .filter((item) => item.champion && item.skinIds.length > 0)
+            : [{ champion, skinIds: Array.isArray(skinIds) ? skinIds : [] }];
+
+        if (requestItems.length === 0) {
+            setStatusMessage('Select at least one champion skin');
+            return;
+        }
+        if (!includeVoiceover && !includeSfx) {
+            setStatusMessage('Enable at least one bank type: VO or SFX');
+            return;
+        }
+
+        setIsGameBanksLoading(true);
+        setGameBanksProgress('Resolving paths...');
+        setStatusMessage(`Loading game banks for ${requestItems.length} selection group(s)...`);
+
+        try {
+            await electronPrefs.initPromise;
+            const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
+            const leaguePath = String(electronPrefs.obj?.FrogChangerLeaguePath || '').trim();
+            const hashDirResult = ipcRenderer ? await ipcRenderer.invoke('hashes:get-directory') : { hashDir: '' };
+            const hashPath = String(hashDirResult?.hashDir || '').trim();
+
+            if (!leaguePath) {
+                throw new Error('FrogChanger League path is not set. Configure it first in FrogChanger settings.');
+            }
+            if (!hashPath) {
+                throw new Error('Hash directory not set. Download hashes first.');
+            }
+
+            const loadedTrees = [];
+            let totalGroups = 0;
+            const warnings = [];
+            for (let i = 0; i < requestItems.length; i++) {
+                const req = requestItems[i];
+                const reqChampion = req.champion;
+                const reqSkinIds = req.skinIds;
+
+                setGameBanksProgress(`Extracting ${reqChampion.name} (${i + 1}/${requestItems.length})...`);
+                const result = await window.electronAPI?.wad?.extractBnkBanksFromGame?.({
+                    championName: reqChampion.name,
+                    skinIds: reqSkinIds,
+                    includeVoiceover,
+                    includeSfx,
+                    leaguePath,
+                    hashPath,
+                });
+
+                if (!result?.success) {
+                    warnings.push(`${reqChampion.name}: ${result?.error || 'Failed to extract banks from game'}`);
+                    continue;
+                }
+
+                const groups = Array.isArray(result.groups) ? result.groups : [];
+                totalGroups += groups.length;
+                if (groups.length === 0) {
+                    warnings.push(`${reqChampion.name}: no bank groups returned`);
+                    continue;
+                }
+
+                setGameBanksProgress(`Parsing ${reqChampion.name} banks...`);
+                for (const group of groups) {
+                    try {
+                        const parsed = await loadBanks({
+                            bnkPath: String(group?.eventsBnk || ''),
+                            wpkPath: String(group?.audioWpk || group?.audioBnk || ''),
+                            binPath: String(group?.binPath || ''),
+                        });
+                        if (parsed?.tree) loadedTrees.push(parsed.tree);
+                        else warnings.push(`${reqChampion.name}: group "${group?.name || 'unknown'}" did not parse`);
+                    } catch (parseErr) {
+                        warnings.push(`${reqChampion.name}: parse failed for "${group?.name || 'unknown'}" (${parseErr.message})`);
+                    }
+                }
+            }
+
+            if (loadedTrees.length === 0) {
+                if (totalGroups === 0) {
+                    throw new Error(warnings[0] || 'No bank groups returned after extraction');
+                }
+                throw new Error(warnings[0] || 'Extracted banks could not be parsed');
+            }
+
+            pushToHistory();
+            setRightTreeData((prev) => [...prev, ...loadedTrees]);
+            setActivePane('right');
+            setShowGameBanksModal(false);
+            setStatusMessage(
+                warnings.length > 0
+                    ? `Loaded ${loadedTrees.length} bank group(s) with ${warnings.length} warning(s)`
+                    : `Loaded ${loadedTrees.length} bank group(s) from ${requestItems.length} selection group(s)`
+            );
+            if (warnings.length > 0) {
+                console.warn('[BnkExtract] Game banks warnings:', warnings);
+            }
+        } catch (error) {
+            console.error('[BnkExtract] Failed to load banks from game:', error);
+            setStatusMessage(`Failed to load banks from game: ${error.message}`);
+        } finally {
+            setIsGameBanksLoading(false);
+            setGameBanksProgress('');
+        }
+    };
+
     useBnkCodebookLoader({ codebookDataRef, setStatusMessage });
 
     /**
@@ -685,6 +815,7 @@ export default function BnkExtract() {
                 handleClearPane={handleClearPane}
                 onSessionClick={() => setShowSessionManager(true)}
                 setAutoExtractOpen={setAutoExtractOpen}
+                onOpenGameBanks={() => setShowGameBanksModal(true)}
             />
 
             <AutoExtractDialog
@@ -846,6 +977,17 @@ export default function BnkExtract() {
                 onLoadSession={handleLoadSession}
                 autoSaveEnabled={autoSaveSession}
                 setAutoSaveEnabled={setAutoSaveSession}
+            />
+
+            <BnkGameBanksModal
+                open={showGameBanksModal}
+                loading={isGameBanksLoading}
+                progressText={gameBanksProgress}
+                onClose={() => {
+                    if (isGameBanksLoading) return;
+                    setShowGameBanksModal(false);
+                }}
+                onConfirm={handleConfirmGameBanks}
             />
         </Box>
     );

@@ -276,6 +276,12 @@ export const getChromaDataForSkin = async (championId, skinId) => {
   }));
 };
 
+const isDoomBotEntry = (champ) => {
+  const name = String(champ?.name || '').toLowerCase();
+  const alias = String(champ?.alias || '').toLowerCase();
+  return name.includes('doom bot') || name.includes('doombot') || alias.includes('doom bot') || alias.includes('doombot');
+};
+
 export const api = {
   getChampions: async () => {
     setFrogDataStatus({
@@ -299,6 +305,7 @@ export const api = {
           name: champ.name,
           alias: champ.alias,
         }))
+        .filter((champ) => !isDoomBotEntry(champ))
         .sort((a, b) => a.name.localeCompare(b.name));
 
       writeJsonCache('champions.json', champions);
@@ -311,13 +318,14 @@ export const api = {
       console.error('Error fetching champions:', error);
       const cachedChampions = readJsonCache('champions.json');
       if (Array.isArray(cachedChampions) && cachedChampions.length > 0) {
+        const filteredCachedChampions = cachedChampions.filter((champ) => !isDoomBotEntry(champ));
         setFrogDataStatus({
           offlineDetected: isLikelyNetworkError(error),
           usedCache: true,
           source: { champions: 'cache' },
         });
         console.warn('Using cached champion-summary data');
-        return cachedChampions;
+        return filteredCachedChampions;
       }
       throw error;
     }
@@ -333,6 +341,49 @@ export const api = {
         return [];
       }
 
+      let championSkinDetails = null;
+      try {
+        const championDetailsUrl = `${CDRAGON_BASE_URL}/v1/champions/${champion.id}.json`;
+        championSkinDetails = await fetchWithRetry(championDetailsUrl);
+      } catch (e) {
+        console.warn(`Failed to fetch champion details for ${championName}:`, e.message);
+      }
+
+      const tilePathBySkinNum = new Map();
+      const splashPathBySkinNum = new Map();
+      const uncenteredSplashPathBySkinNum = new Map();
+      const skinLineIdsBySkinNum = new Map();
+
+      if (Array.isArray(championSkinDetails?.skins)) {
+        const mapCdragonAssetPath = (assetPath) => {
+          if (!assetPath) return null;
+          return `${CDRAGON_BASE_URL}${assetPath.toLowerCase().replace('/lol-game-data/assets', '')}`;
+        };
+
+        for (const skin of championSkinDetails.skins) {
+          const rawSkinId = Number(skin?.id);
+          if (!Number.isFinite(rawSkinId)) continue;
+          const skinNum = rawSkinId >= 1000 ? rawSkinId % 1000 : rawSkinId;
+          
+          if (typeof skin?.tilePath === 'string' && skin.tilePath) {
+            tilePathBySkinNum.set(skinNum, mapCdragonAssetPath(skin.tilePath));
+          }
+          if (typeof skin?.splashPath === 'string' && skin.splashPath) {
+            splashPathBySkinNum.set(skinNum, mapCdragonAssetPath(skin.splashPath));
+          }
+          if (typeof skin?.uncenteredSplashPath === 'string' && skin.uncenteredSplashPath) {
+            uncenteredSplashPathBySkinNum.set(skinNum, mapCdragonAssetPath(skin.uncenteredSplashPath));
+          }
+
+          const skinLineIds = Array.isArray(skin?.skinLines)
+            ? skin.skinLines
+              .map((line) => Number(line?.id))
+              .filter((id) => Number.isFinite(id))
+            : [];
+          skinLineIdsBySkinNum.set(skinNum, skinLineIds);
+        }
+      }
+
       const championSkins = [];
       for (const [skinId, skinData] of Object.entries(skinsData)) {
         const championId = skinId.slice(0, -3);
@@ -344,6 +395,10 @@ export const api = {
             name: skinData.name,
             full_id: skinId,
             rarity: skinData.rarity,
+            tilePath: tilePathBySkinNum.get(skinNum) || null,
+            centeredSplashPath: splashPathBySkinNum.get(skinNum) || null,
+            uncenteredSplashPath: uncenteredSplashPathBySkinNum.get(skinNum) || null,
+            skinLines: skinLineIdsBySkinNum.get(skinNum) || [],
           });
         }
       }

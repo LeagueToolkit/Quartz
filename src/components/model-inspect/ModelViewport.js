@@ -125,7 +125,15 @@ function CameraAutoFit({ modelData, controlsRef }) {
 const toAbsolutePathFromLocalProtocol = (value) => {
   const text = String(value || '');
   if (!text.startsWith('local-file://')) return text;
-  return decodeURIComponent(text.slice('local-file://'.length));
+  // Strip query params if any (e.g. ?refresh=123)
+  let base = text.split('?')[0];
+  // Handle local-file:/// (triple slash) vs local-file:// (double slash)
+  if (base.startsWith('local-file:///')) {
+    base = base.slice('local-file:///'.length);
+  } else {
+    base = base.slice('local-file://'.length);
+  }
+  return decodeURIComponent(base);
 };
 
 const resolveBundledAssetAbsolutePath = (fileName) => {
@@ -407,6 +415,74 @@ export default function ModelViewport({
   const [groundTexture, setGroundTexture] = React.useState(null);
   const [skyboxTexture, setSkyboxTexture] = React.useState(null);
 
+  // Local refresh seed to force reload within viewport only
+  const [refreshSeed, setRefreshSeed] = React.useState(0);
+  const activeWatchersRef = React.useRef(new Map());
+
+  // File Watching Effect inside Viewport
+  React.useEffect(() => {
+    if (!modelData?.submeshTextureMap) return undefined;
+    if (!(window && window.require)) return undefined;
+    const fs = window.require('fs');
+    const nodePath = window.require('path');
+
+    const toAbs = (url) => {
+      if (!url) return '';
+      const base = String(url).split('?')[0];
+      if (!base.startsWith('local-file://')) return '';
+      return decodeURIComponent(base.slice('local-file://'.length));
+    };
+
+    const textureMap = modelData.submeshTextureMap;
+
+    // Cleanup watchers for removed/changed paths
+    activeWatchersRef.current.forEach((watcher, submeshId) => {
+      const url = textureMap[submeshId];
+      const abs = toAbs(url);
+      if (!abs || watcher._watchedPath !== abs) {
+        watcher.close();
+        activeWatchersRef.current.delete(submeshId);
+      }
+    });
+
+    // Setup watchers
+    Object.entries(textureMap).forEach(([submeshId, url]) => {
+      const absPath = toAbs(url);
+      if (!absPath || !fs.existsSync(absPath)) return;
+      if (activeWatchersRef.current.has(submeshId)) return;
+
+      try {
+        let lastSize = 0;
+        try { lastSize = fs.statSync(absPath).size; } catch (_) {}
+
+        const watcher = fs.watch(absPath, () => {
+          setTimeout(() => {
+            try {
+              if (!fs.existsSync(absPath)) return;
+              const newSize = fs.statSync(absPath).size;
+              if (newSize !== lastSize) {
+                lastSize = newSize;
+                setRefreshSeed((v) => v + 1);
+              }
+            } catch (_) {}
+          }, 100);
+        });
+        watcher._watchedPath = absPath;
+        activeWatchersRef.current.set(submeshId, watcher);
+      } catch (_) {}
+    });
+
+    return undefined;
+  }, [modelData]);
+
+  // Total cleanup
+  React.useEffect(() => {
+    return () => {
+      activeWatchersRef.current.forEach((w) => w.close());
+      activeWatchersRef.current.clear();
+    };
+  }, []);
+
   React.useEffect(() => {
     let cancelled = false;
 
@@ -434,7 +510,12 @@ export default function ModelViewport({
       for (const [submeshId, textureUrl] of entries) {
         if (cancelled) break;
         try {
-          const source = await resolveTextureSource(textureUrl);
+          // Add refresh query to bypass three.js cache and browser cache
+          const finalUrl = refreshSeed > 0
+            ? (textureUrl.includes('?') ? `${textureUrl}&ref=${refreshSeed}` : `${textureUrl}?ref=${refreshSeed}`)
+            : textureUrl;
+
+          const source = await resolveTextureSource(finalUrl);
           if (!source) continue;
           const texture = await textureLoader.loadAsync(source);
           texture.flipY = false;
@@ -463,7 +544,7 @@ export default function ModelViewport({
 
     preloadTextures();
     return () => { cancelled = true; };
-  }, [modelData, textureLoader]);
+  }, [modelData, textureLoader, refreshSeed]);
 
   React.useEffect(() => () => {
     setTextureCache((prev) => {

@@ -55,6 +55,21 @@ window.electronAPI = {
 
     /** Read a .bin chunk from a WAD and return ritobin text (fake-python format). */
     readBinAsText: (params) => ipcRenderer.invoke('wad:readBinAsText', params),
+
+    /** Prepare Port donor from champion/skin via TOC-first selective extraction. */
+    preparePortDonorFromSkin: (params) => ipcRenderer.invoke('port:prepareDonorFromSkin', params),
+    cleanupPortDonorTemp: (params) => ipcRenderer.invoke('port:cleanupDonorTemp', params),
+    onPortDonorProgress: (callback) => ipcRenderer.on('port:donorProgress', callback),
+    offPortDonorProgress: (callback) => ipcRenderer.removeListener('port:donorProgress', callback),
+    extractBnkBanksFromGame: (params) => ipcRenderer.invoke('bnk:extractBanksFromGame', params),
+    onBnkGameProgress: (callback) => ipcRenderer.on('bnk:gameProgress', callback),
+    offBnkGameProgress: (callback) => ipcRenderer.removeListener('bnk:gameProgress', callback),
+    cleanupBnkGameCache: (params) => ipcRenderer.invoke('bnk:cleanupGameCache', params),
+  },
+
+  bumpath: {
+    /** Perform a Bumpath repath. Runs in main process for better folder management. */
+    repath: (params) => ipcRenderer.invoke('bumpath:repath', params),
   },
 
   hashtable: {

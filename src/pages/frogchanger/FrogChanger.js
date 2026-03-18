@@ -42,6 +42,12 @@ import {
 } from './services/setupService.js';
 
 const FrogChanger = () => {
+  const SIDEBAR_WIDTH_STORAGE_KEY = 'frogchanger-sidebar-width';
+  const OUTPUT_RECENT_PATHS_STORAGE_KEY = 'frogchanger-recent-output-paths';
+  const SIDEBAR_MIN = 220;
+  const SIDEBAR_MAX = 620;
+  const clampSidebarWidth = (value) => Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Number(value) || 260));
+
   const modelInspect = useModelInspect();
   const [champions, setChampions] = useState([]);
   const [selectedChampion, setSelectedChampion] = useState(null);
@@ -132,6 +138,11 @@ const FrogChanger = () => {
   const [pendingRepathData, setPendingRepathData] = useState(null);
   const [currentSkinIndex, setCurrentSkinIndex] = useState(0);
   const [skinPrefixes, setSkinPrefixes] = useState({});
+  const [repathOutputOverrideEnabled, setRepathOutputOverrideEnabled] = useState(false);
+  const [repathOutputKeepForAll, setRepathOutputKeepForAll] = useState(true);
+  const [repathOutputPath, setRepathOutputPath] = useState('');
+  const [repathOutputPathsBySkin, setRepathOutputPathsBySkin] = useState({});
+  const [recentOutputPaths, setRecentOutputPaths] = useState([]);
   const [skipSfxRepath, setSkipSfxRepath] = useState(true);
   const [repathExtractVoiceover, setRepathExtractVoiceover] = useState(false);
   const [repathPreserveHudIcons2D, setRepathPreserveHudIcons2D] = useState(true);
@@ -147,14 +158,67 @@ const FrogChanger = () => {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [offlineMode, setOfflineMode] = useState(false);
   const [offlineSimulationEnabled, setOfflineSimulationEnabled] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    try {
+      const raw = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+      return clampSidebarWidth(raw ? Number(raw) : 260);
+    } catch (_) {
+      return 260;
+    }
+  });
   const hasShownOfflineNoticeRef = useRef(false);
   const leaguePathRef = useRef(null);
   const extractionPathRef = useRef(null);
+  const isResizingRef = useRef(false);
+  const resizeStartXRef = useRef(0);
+  const resizeStartWidthRef = useRef(260);
+
+  const normalizePathString = (value) => String(value || '').trim();
+  const pathExists = (candidate) => {
+    const value = normalizePathString(candidate);
+    if (!value || !window.require) return false;
+    try {
+      const fs = window.require('fs');
+      return fs.existsSync(value);
+    } catch (_) {
+      return false;
+    }
+  };
+  const loadValidRecentOutputPaths = () => {
+    try {
+      const raw = localStorage.getItem(OUTPUT_RECENT_PATHS_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      const unique = [...new Set(parsed.map(normalizePathString).filter(Boolean))];
+      const valid = unique.filter(pathExists);
+      if (valid.length !== unique.length) {
+        localStorage.setItem(OUTPUT_RECENT_PATHS_STORAGE_KEY, JSON.stringify(valid));
+      }
+      return valid;
+    } catch (_) {
+      return [];
+    }
+  };
+  const refreshRecentOutputPaths = () => {
+    setRecentOutputPaths(loadValidRecentOutputPaths());
+  };
+  const addRecentOutputPath = (value) => {
+    const normalized = normalizePathString(value);
+    if (!normalized || !pathExists(normalized)) return;
+    const existing = loadValidRecentOutputPaths().filter((p) => p !== normalized);
+    const next = [normalized, ...existing].slice(0, 15);
+    try {
+      localStorage.setItem(OUTPUT_RECENT_PATHS_STORAGE_KEY, JSON.stringify(next));
+    } catch (_) { }
+    setRecentOutputPaths(next);
+  };
 
   // Load champions and settings on component mount
   useEffect(() => {
     loadChampions();
     loadSettings();
+    refreshRecentOutputPaths();
   }, []);
 
   useEffect(() => {
@@ -176,13 +240,39 @@ const FrogChanger = () => {
     };
   }, []);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth));
+    } catch (_) { }
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    const onMouseMove = (event) => {
+      if (!isResizingRef.current) return;
+      const delta = Number(event.clientX) - resizeStartXRef.current;
+      setSidebarWidth(clampSidebarWidth(resizeStartWidthRef.current + delta));
+    };
+    const onMouseUp = () => {
+      isResizingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
+
   // Clear main-process caches when leaving FrogChanger.
   useEffect(() => {
     return () => {
       window.electronAPI?.hashtable?.setKeepAlive?.(false).catch(() => { });
       window.electronAPI?.hashtable?.clearCache?.();
       // Delete model inspect temp files (userData/cache/model-inspect/).
-      window.electronAPI?.modelInspect?.cleanup?.();
+      // window.electronAPI?.modelInspect?.cleanup?.();
     };
   }, []);
 
@@ -236,7 +326,7 @@ const FrogChanger = () => {
       setHashPath(loaded.hashPath || '');
       setLeaguePath(loaded.leaguePath || '');
       setExtractionPath(loaded.extractionPath || '');
-      // repathExtractVoiceover intentionally NOT loaded from prefs — it must always
+      // repathExtractVoiceover intentionally NOT loaded from prefs â€” it must always
       // default to false so repath never silently includes voiceover unless the
       // user explicitly checks it in the CustomPrefixModal for that session.
       setRepathPreserveHudIcons2D(loaded.preserveHudIcons2D !== false);
@@ -268,11 +358,11 @@ const FrogChanger = () => {
     addConsoleLog(`Searching for "${skinlineSearchTerm}" skins...`, 'info');
     try {
       const searchTermLower = skinlineSearchTerm.toLowerCase();
-      console.log(`🔍 Searching for "${skinlineSearchTerm}" in Community Dragon skins data...`);
+      console.log(`ðŸ” Searching for "${skinlineSearchTerm}" in Community Dragon skins data...`);
 
       // Fetch all skins data from Community Dragon
       const allSkinsData = await fetchAllChromaData();
-      console.log(`📊 Loaded ${Object.keys(allSkinsData).length} skins from Community Dragon`);
+      console.log(`ðŸ“Š Loaded ${Object.keys(allSkinsData).length} skins from Community Dragon`);
 
       // Find all skins that match the search term (skinline or rarity matching)
       const matchingSkins = [];
@@ -333,7 +423,7 @@ const FrogChanger = () => {
         }
       }
 
-      console.log(`🎯 Found ${matchingSkins.length} skins matching "${skinlineSearchTerm}":`, matchingSkins.map(s => s.name));
+      console.log(`ðŸŽ¯ Found ${matchingSkins.length} skins matching "${skinlineSearchTerm}":`, matchingSkins.map(s => s.name));
 
       // Group skins by champion
       const results = [];
@@ -380,7 +470,7 @@ const FrogChanger = () => {
       setSkinlineSearchResults(results);
       setShowSkinlineSearch(true);
       addConsoleLog(`Found ${results.length} champions with "${skinlineSearchTerm}" skins`, 'success');
-      console.log(`🎯 Search complete! Found ${results.length} champions with "${skinlineSearchTerm}" skins:`, results);
+      console.log(`ðŸŽ¯ Search complete! Found ${results.length} champions with "${skinlineSearchTerm}" skins:`, results);
 
       // Load chroma data for all found skins
       loadChromaDataForSkinlineResults(results);
@@ -476,40 +566,78 @@ const FrogChanger = () => {
   const handlePreviousPrefix = () => {
     if (!pendingRepathData) return;
     const currentSkin = pendingRepathData.allSkins[currentSkinIndex];
+    const currentSkinKey = `${currentSkin.championName}_${currentSkin.skinId}`;
     const updatedPrefixes = {
       ...skinPrefixes,
       [currentSkin.skinId]: customPrefix.trim() || 'bum',
     };
+    const updatedOutputPaths = { ...repathOutputPathsBySkin };
+    if (repathOutputOverrideEnabled && !repathOutputKeepForAll) {
+      updatedOutputPaths[currentSkinKey] = normalizePathString(repathOutputPath) || extractionPath;
+      setRepathOutputPathsBySkin(updatedOutputPaths);
+    }
     setSkinPrefixes(updatedPrefixes);
     const prevIndex = currentSkinIndex - 1;
     setCurrentSkinIndex(prevIndex);
     setCustomPrefix(updatedPrefixes[pendingRepathData.allSkins[prevIndex]?.skinId] || '');
+    const prevSkin = pendingRepathData.allSkins[prevIndex];
+    if (repathOutputOverrideEnabled) {
+      if (repathOutputKeepForAll) {
+        setRepathOutputPath((prev) => normalizePathString(prev) || extractionPath);
+      } else if (prevSkin) {
+        const prevKey = `${prevSkin.championName}_${prevSkin.skinId}`;
+        setRepathOutputPath(updatedOutputPaths[prevKey] || extractionPath);
+      }
+    }
   };
 
   const handleNextOrStartPrefix = () => {
     if (!pendingRepathData) return;
     const currentSkin = pendingRepathData.allSkins[currentSkinIndex];
+    const currentSkinKey = `${currentSkin.championName}_${currentSkin.skinId}`;
     const newPrefixes = {
       ...skinPrefixes,
       [currentSkin.skinId]: customPrefix.trim() || 'bum',
     };
+    const newOutputPaths = { ...repathOutputPathsBySkin };
+    if (repathOutputOverrideEnabled && !repathOutputKeepForAll) {
+      newOutputPaths[currentSkinKey] = normalizePathString(repathOutputPath) || extractionPath;
+    }
 
     if (applyToAll) {
       const remainingSkins = pendingRepathData.allSkins.slice(currentSkinIndex + 1);
       remainingSkins.forEach(skin => {
         newPrefixes[skin.skinId] = customPrefix.trim() || 'bum';
+        if (repathOutputOverrideEnabled && !repathOutputKeepForAll) {
+          const key = `${skin.championName}_${skin.skinId}`;
+          newOutputPaths[key] = normalizePathString(repathOutputPath) || extractionPath;
+        }
       });
     }
 
     setSkinPrefixes(newPrefixes);
+    if (repathOutputOverrideEnabled && !repathOutputKeepForAll) {
+      setRepathOutputPathsBySkin(newOutputPaths);
+    }
 
     if (currentSkinIndex === pendingRepathData.allSkins.length - 1) {
+      const activeOutputPath = normalizePathString(repathOutputPath);
+      if (repathOutputOverrideEnabled && activeOutputPath) addRecentOutputPath(activeOutputPath);
       setShowPrefixModal(false);
       executeRepath(newPrefixes);
     } else {
       const nextIndex = currentSkinIndex + 1;
       setCurrentSkinIndex(nextIndex);
       setCustomPrefix(newPrefixes[pendingRepathData.allSkins[nextIndex]?.skinId] || '');
+      const nextSkin = pendingRepathData.allSkins[nextIndex];
+      if (repathOutputOverrideEnabled) {
+        if (repathOutputKeepForAll) {
+          setRepathOutputPath((prev) => normalizePathString(prev) || extractionPath);
+        } else if (nextSkin) {
+          const nextKey = `${nextSkin.championName}_${nextSkin.skinId}`;
+          setRepathOutputPath(newOutputPaths[nextKey] || extractionPath);
+        }
+      }
       setApplyToAll(false);
     }
   };
@@ -820,6 +948,63 @@ const FrogChanger = () => {
     };
   };
 
+  const handleBrowseOverrideOutputPath = async () => {
+    try {
+      const result = await electronPrefs.selectDirectory();
+      if (result) {
+        addRecentOutputPath(result);
+      }
+      return result || '';
+    } catch (error) {
+      console.error('Error selecting override output directory:', error);
+      return '';
+    }
+  };
+
+  const openExternalUrl = (url) => {
+    try {
+      if (window?.require) {
+        const { shell } = window.require('electron');
+        if (shell?.openExternal) {
+          shell.openExternal(url);
+          return;
+        }
+      }
+    } catch (_) { }
+    try {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (_) { }
+  };
+
+  const openYouTubeSearch = (query) => {
+    const q = String(query || '').trim();
+    if (!q) return;
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+    openExternalUrl(url);
+  };
+
+  const handleYouTubeChampion = (champion) => {
+    const championName = String(champion?.name || '').trim();
+    if (!championName) return;
+    openYouTubeSearch(`ALL ${championName} SKINS SPOTLIGHT League of Legends`);
+  };
+
+  const handleYouTubeSkin = (championName, skinName) => {
+    const c = String(championName || '').trim();
+    const s = String(skinName || '').trim();
+    if (!c && !s) return;
+    openYouTubeSearch(`${c} ${s} skin spotlight League of Legends`);
+  };
+
+  const handleStartSidebarResize = (event) => {
+    event.preventDefault();
+    isResizingRef.current = true;
+    resizeStartXRef.current = Number(event.clientX);
+    resizeStartWidthRef.current = sidebarWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
   const getNormalizedSelectedSkins = () => (
     selectedSkins
       .map(normalizeSelectedSkin)
@@ -863,7 +1048,8 @@ const FrogChanger = () => {
     const normalizedSelections = getNormalizedSelectedSkins();
     if (normalizedSelections.length === 0) return;
 
-    // Show the extraction mode modal — the actual loop runs in executeExtraction()
+    // Show the extraction mode modal â€” the actual loop runs in executeExtraction()
+    refreshRecentOutputPaths();
     setPendingExtractionSkins(normalizedSelections);
     setShowExtractionModeModal(true);
   };
@@ -873,6 +1059,12 @@ const FrogChanger = () => {
     const extractOptions = payload?.options || {};
     const useExtractVoiceover = extractOptions.extractVoiceover === true;
     const usePreserveHudIcons2D = extractOptions.preserveHudIcons2D !== false;
+    const outputOverride = extractOptions.outputOverride || {};
+    const useOutputOverride = outputOverride?.enabled === true;
+    const outputOverrideDefault = normalizePathString(outputOverride?.path || '');
+    const outputOverridePerSkin = outputOverride?.perSkinPaths && typeof outputOverride.perSkinPaths === 'object'
+      ? outputOverride.perSkinPaths
+      : {};
 
     setShowExtractionModeModal(false);
     const normalizedSelections = pendingExtractionSkins;
@@ -891,6 +1083,9 @@ const FrogChanger = () => {
         const decision = decisions.find(d => d.skinKey === skinKey);
         const cleanAfterExtract = decision?.clean ?? false;
         const progress = `${i + 1}/${normalizedSelections.length}`;
+        const outputPathForSkin = useOutputOverride
+          ? normalizePathString(outputOverridePerSkin[skinKey] || outputOverrideDefault)
+          : '';
 
         if (useExtractVoiceover) {
           addConsoleLog(`${progress} Extracting ${skinName} (${championName}) - Normal & Voiceover WADs...`, 'info');
@@ -903,14 +1098,19 @@ const FrogChanger = () => {
           addConsoleLog(`${progress} Extracting with chroma ${selectedChroma.id}...`, 'info');
           await extractWadFile(championName, skinId, skinName, selectedChroma.id, cleanAfterExtract, {
             extractVoiceover: useExtractVoiceover,
+            fastSkinOnly: cleanAfterExtract === true,
             preserveHudIcons2D: usePreserveHudIcons2D,
+            outputPathOverride: outputPathForSkin || null,
           });
         } else {
           await extractWadFile(championName, skinId, skinName, null, cleanAfterExtract, {
             extractVoiceover: useExtractVoiceover,
+            fastSkinOnly: cleanAfterExtract === true,
             preserveHudIcons2D: usePreserveHudIcons2D,
+            outputPathOverride: outputPathForSkin || null,
           });
         }
+        if (outputPathForSkin) addRecentOutputPath(outputPathForSkin);
 
         addConsoleLog(`${progress} Successfully extracted ${skinName} (${championName})`, 'success');
       }
@@ -953,6 +1153,11 @@ const FrogChanger = () => {
       setPendingRepathData({ skinsByChampion, allSkins });
       setCurrentSkinIndex(0);
       setSkinPrefixes({});
+      refreshRecentOutputPaths();
+      setRepathOutputOverrideEnabled(false);
+      setRepathOutputKeepForAll(true);
+      setRepathOutputPath(extractionPath || '');
+      setRepathOutputPathsBySkin({});
       setApplyToAll(false);
       setSkipSfxRepath(true);
       setShowPrefixModal(true);
@@ -966,16 +1171,13 @@ const FrogChanger = () => {
     addConsoleLog(`Repathing ${selectedSkins.length} skin(s) with individual prefixes...`, 'info');
 
     try {
-      const { skinsByChampion, allSkins } = pendingRepathData;
+      const { skinsByChampion } = pendingRepathData;
       const championNames = Object.keys(skinsByChampion);
 
-      // Use the passed prefixes or fall back to state
       const prefixesToUse = finalPrefixes || skinPrefixes;
-      console.log('🔍 Using prefixes:', prefixesToUse);
+      console.log('[REPATH] Using prefixes:', prefixesToUse);
 
-      // Process each champion separately
       for (let i = 0; i < championNames.length; i++) {
-        // Check for cancellation (but not immediately)
         if (isCancelling) {
           addConsoleLog('Repath cancelled by user', 'warning');
           break;
@@ -984,90 +1186,144 @@ const FrogChanger = () => {
         const championName = championNames[i];
         const championSkins = skinsByChampion[championName];
         const progress = `${i + 1}/${championNames.length}`;
+        const championFileName = getChampionFileName(championName);
 
         addConsoleLog(`${progress} Processing ${championName} (${championSkins.length} skins)...`, 'info');
 
-        // Use first skin for extraction (all skins of same champion share the same WAD)
+        const perSkinJobs = championSkins.map((skin) => {
+          const skinKey = `${championName}_${skin.skinId}`;
+          const effectiveBasePath = repathOutputOverrideEnabled
+            ? normalizePathString(
+              repathOutputKeepForAll
+                ? repathOutputPath
+                : (repathOutputPathsBySkin[skinKey] || repathOutputPath)
+            ) || extractionPath
+            : extractionPath;
+          const effectivePrefix = prefixesToUse[skin.skinId] || 'bum';
+          return {
+            ...skin,
+            skinKey,
+            effectiveBasePath,
+            effectivePrefix,
+            selectedSkinId: skin.chromaId ?? skin.skinId,
+          };
+        });
+
+        const extractionBase = perSkinJobs[0]?.effectiveBasePath || extractionPath;
         const firstSkin = championSkins[0];
         const firstSkinId = firstSkin.skinId;
         const firstChromaId = firstSkin.chromaId ?? null;
 
         addConsoleLog(`${progress} Extracting ${firstSkin.skinName} (${championName}) - Normal WAD for repath...`, 'info');
-        // Extract WAD file (only once per champion)
-        await extractWadFile(championName, firstSkinId, firstSkin.skinName, firstChromaId, false, {
+        const extractionResult = await extractWadFile(championName, firstSkinId, firstSkin.skinName, firstChromaId, true, {
           extractVoiceover: repathExtractVoiceover,
+          fastSkinOnly: true,
           preserveHudIcons2D: repathPreserveHudIcons2D,
+          outputPathOverride: extractionBase,
+          isRepathExtract: true, // USER REQUEST: Prefix folder if for repath
         });
+        addRecentOutputPath(extractionBase);
 
-        // Check for cancellation after extraction
         if (isCancelling) {
           addConsoleLog('Repath cancelled by user', 'warning');
           break;
         }
 
-        // Now run repath using the extracted folder as source
-        const skinNameSafe = firstSkin.skinName.replace(/[^a-zA-Z0-9]/g, '_');
-        const championFileName = getChampionFileName(championName);
-        const sourceDir = firstChromaId != null
-          ? `${extractionPath}\\${championFileName}_extracted_${skinNameSafe}_chroma_${firstChromaId}`
-          : `${extractionPath}\\${championFileName}_extracted_${skinNameSafe}`;
-        const outputDir = firstChromaId != null
-          ? `${extractionPath}\\${championFileName}_repathed_${skinNameSafe}_chroma_${firstChromaId}`
-          : `${extractionPath}\\${championFileName}_repathed_${skinNameSafe}`;
+        const firstSkinSafe = firstSkin.skinName.replace(/[^a-zA-Z0-9]/g, '_');
+        const extractedDir = firstChromaId != null
+          ? `${extractionBase}\\repath_extracted_${firstSkinSafe}_chroma_${firstChromaId}`
+          : `${extractionBase}\\repath_extracted_${firstSkinSafe}`;
+        const cleanedDir = `${extractedDir}_clean`;
+        const usedFastSelected = String(extractionResult?.finalMessage || '').toLowerCase().includes('fast selected mode');
+        let sourceDir = usedFastSelected
+          ? (extractionResult?.outputDir || extractedDir)
+          : (extractionResult?.outputDir ? `${extractionResult.outputDir}_clean` : cleanedDir);
 
-        // Use chroma ids when selected; otherwise fall back to base skin ids.
-        const championSkinIds = championSkins.map(s => s.chromaId ?? s.skinId);
-        const prefixes = championSkins.map(s => prefixesToUse[s.skinId] || 'bum');
-        const uniquePrefixes = [...new Set(prefixes)];
-
-        console.log(`🔍 Champion ${championName} ALL skin IDs:`, championSkinIds);
-        console.log(`🔍 Champion ${championName} prefixes:`, prefixes);
-        console.log(`🔍 Champion ${championName} unique prefixes:`, uniquePrefixes);
-
-        if (uniquePrefixes.length === 1) {
-          addConsoleLog(`${progress} Running repath for ${championName} with ${championSkinIds.length} skins using prefix "${uniquePrefixes[0]}"...`, 'info');
-        } else {
-          addConsoleLog(`${progress} Running repath for ${championName} with ${championSkinIds.length} skins using mixed prefixes: ${uniquePrefixes.join(', ')}...`, 'info');
-        }
-
-        // Run repath through Bumpath backend with ALL skin IDs for this champion
-        // If multiple skins from same champion, process them together
-        const processTogether = championSkinIds.length > 1;
-        const repathResult = await runBumpathRepath({
-          sourceDir,
-          outputDir,
-          selectedSkinIds: championSkinIds,
-          hashPath,
-          prefix: uniquePrefixes[0],
-          processTogether,
-          preserveHudIcons2D: repathPreserveHudIcons2D,
-          skipSfxRepath,
-          skipVoiceoverRepath: !repathExtractVoiceover,
-        });
-
-        if (repathResult.success) {
-          addConsoleLog(`${progress} Successfully repathed ${championName} (${championSkinIds.length} skins) to: ${outputDir}`, 'success');
-          console.log(`Successfully repathed ${championName} (${championSkinIds.length} skins) to: ${outputDir}`);
-
-          // Clean up extracted folder after successful repath
+        if (window.require) {
           try {
             const fs = window.require('fs');
-            if (fs.existsSync(sourceDir)) {
-              fs.rmSync(sourceDir, { recursive: true, force: true });
-              addConsoleLog(`${progress} Cleaned up extracted folder for ${championName}`, 'info');
-              console.log(`Cleaned up extracted folder: ${sourceDir}`);
+            if (!fs.existsSync(sourceDir) && fs.existsSync(extractedDir)) {
+              sourceDir = extractedDir;
+              addConsoleLog(`${progress} Clean folder missing, falling back to extracted source for ${championName}`, 'warning');
             }
-          } catch (cleanupError) {
-            console.warn(`Failed to clean up extracted folder: ${cleanupError.message}`);
-            // Don't fail the whole operation if cleanup fails
+          } catch (_) {
+            // Ignore fs lookup errors; repath call will report a proper error if source is invalid.
           }
-        } else if (repathResult.cancelled) {
-          addConsoleLog(`${progress} Repath cancelled for ${championName}`, 'warning');
-          console.log(`Repath cancelled for ${championName}`);
-          break; // Stop processing remaining champions
-        } else {
-          addConsoleLog(`${progress} Failed to repath ${championName}: ${repathResult.error}`, 'error');
-          console.error(`Repath failed for ${championName}: ${repathResult.error}`);
+        }
+
+        const groupedRuns = new Map();
+        for (const job of perSkinJobs) {
+          const key = `${job.effectiveBasePath}|||${job.effectivePrefix}`;
+          if (!groupedRuns.has(key)) {
+            groupedRuns.set(key, {
+              outputBasePath: job.effectiveBasePath,
+              prefix: job.effectivePrefix,
+              skins: [],
+            });
+          }
+          groupedRuns.get(key).skins.push(job);
+        }
+
+        let runIndex = 0;
+        for (const run of groupedRuns.values()) {
+          if (isCancelling) {
+            addConsoleLog('Repath cancelled by user', 'warning');
+            break;
+          }
+
+          runIndex += 1;
+          const repathSkinIds = run.skins.map((s) => s.selectedSkinId);
+          const representative = run.skins[0];
+          const repathSkinSafe = representative.skinName.replace(/[^a-zA-Z0-9]/g, '_');
+          const outputDir = representative.chromaId != null
+            ? `${run.outputBasePath}\\repathed_${repathSkinSafe}_chroma_${representative.chromaId}`
+            : `${run.outputBasePath}\\repathed_${repathSkinSafe}`;
+
+          addConsoleLog(
+            `${progress} Run ${runIndex}/${groupedRuns.size}: repathing ${championName} (${repathSkinIds.length} skin${repathSkinIds.length > 1 ? 's' : ''}) to ${run.outputBasePath} with prefix "${run.prefix}"...`,
+            'info'
+          );
+
+          const repathResult = await runBumpathRepath({
+            sourceDir,
+            outputDir,
+            selectedSkinIds: repathSkinIds,
+            hashPath,
+            prefix: run.prefix,
+            processTogether: repathSkinIds.length > 1,
+            preserveHudIcons2D: repathPreserveHudIcons2D,
+            skipSfxRepath,
+            skipVoiceoverRepath: !repathExtractVoiceover,
+          });
+
+          if (repathResult.success) {
+            addRecentOutputPath(run.outputBasePath);
+            addConsoleLog(`${progress} Successfully repathed ${championName} (${repathSkinIds.length} skins) to: ${outputDir}`, 'success');
+          } else if (repathResult.cancelled) {
+            addConsoleLog(`${progress} Repath cancelled for ${championName}`, 'warning');
+            break;
+          } else {
+            addConsoleLog(`${progress} Failed to repath ${championName}: ${repathResult.error}`, 'error');
+          }
+        }
+
+        try {
+          const fs = window.require?.('fs');
+          if (fs) {
+            const cleanupDirs = [...new Set([sourceDir, cleanedDir, extractedDir])];
+            let cleanedAny = false;
+            for (const dir of cleanupDirs) {
+              if (!dir || !fs.existsSync(dir)) continue;
+              fs.rmSync(dir, { recursive: true, force: true });
+              cleanedAny = true;
+              console.log(`Cleaned up extracted folder: ${dir}`);
+            }
+            if (cleanedAny) {
+              addConsoleLog(`${progress} Cleaned up extracted folders for ${championName}`, 'info');
+            }
+          }
+        } catch (cleanupError) {
+          console.warn(`Failed to clean up extracted folder: ${cleanupError.message}`);
         }
       }
 
@@ -1082,8 +1338,6 @@ const FrogChanger = () => {
       setPendingRepathData(null);
     }
   };
-
-
   const downloadSplashArt = async (championName, championAlias, skinId, skinName) => {
     if (!extractionPath) {
       alert('Please set the WAD extraction output path in settings first!');
@@ -1112,34 +1366,40 @@ const FrogChanger = () => {
       alert('Please set the League of Legends Games folder path in settings first!');
       return;
     }
-    if (!extractionPath) {
+    const outputPath = normalizePathString(options.outputPathOverride || extractionPath);
+    if (!outputPath) {
       alert('Please set the WAD extraction output path in settings first!');
       return;
     }
 
     const extractVoiceover = options.extractVoiceover === true;
+    const fastSkinOnly = options.fastSkinOnly === true;
     const preserveHudIcons2D = options.preserveHudIcons2D !== false;
+    const isRepathExtract = options.isRepathExtract === true;
 
     const skinKey = `${championName}_${skinId}`;
     setExtractingSkins(prev => ({ ...prev, [skinKey]: true }));
     setExtractionProgress(prev => ({ ...prev, [skinKey]: 'Starting extraction...' }));
 
     try {
-      await extractSkinWadBundle({
+      const result = await extractSkinWadBundle({
         championName,
         skinId,
         skinName,
         chromaId,
         leaguePath,
-        extractionPath,
+        extractionPath: outputPath,
         hashPath,
         extractVoiceover,
         cleanAfterExtract,
+        fastSkinOnly,
         preserveHudIcons2D,
+        isRepathExtract,
         onProgress: (message) => {
           setExtractionProgress(prev => ({ ...prev, [skinKey]: message }));
         },
       });
+      return result;
     } catch (error) {
       console.error('WAD extraction error:', error);
       console.error('Error stack:', error.stack);
@@ -1149,9 +1409,11 @@ const FrogChanger = () => {
         championName,
         skinId,
         wadFilePath: `${leaguePath}\\${getChampionFileName(championName)}.wad.client`,
+        outputPath,
       });
       setExtractionProgress(prev => ({ ...prev, [skinKey]: `Error: ${error.message}` }));
       alert(`Failed to extract WAD file: ${error.message}`);
+      return null;
     } finally {
       setExtractingSkins(prev => ({ ...prev, [skinKey]: false }));
     }
@@ -1175,7 +1437,7 @@ const FrogChanger = () => {
 
       <SearchHelpModal open={showSearchInfo} onClose={() => setShowSearchInfo(false)} />
 
-      <div className="frog-changer-container flex h-screen">
+      <div className="frog-changer-container flex h-screen" style={{ userSelect: isResizingRef.current ? 'none' : 'auto' }}>
         {/* Sidebar */}
         <ChampionSidebar
           searchTerm={searchTerm}
@@ -1188,12 +1450,29 @@ const FrogChanger = () => {
           filteredChampions={filteredChampions}
           selectedChampion={selectedChampion}
           onSelectChampion={handleChampionSelect}
+          onYouTubeChampion={handleYouTubeChampion}
           getChampionIconUrl={getChampionIconUrl}
           offlineMode={offlineMode}
+          sidebarWidth={sidebarWidth}
+        />
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          onMouseDown={handleStartSidebarResize}
+          title="Drag to resize sidebar"
+          style={{
+            width: 8,
+            cursor: 'col-resize',
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))',
+            borderLeft: '1px solid rgba(255,255,255,0.06)',
+            borderRight: '1px solid rgba(255,255,255,0.06)',
+            boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.25)',
+            flexShrink: 0,
+          }}
         />
 
         {/* Main Content */}
-        <main className="flex-1 p-6 overflow-y-auto relative">
+        <main className="flex-1 p-6 overflow-y-auto relative" style={{ minWidth: 0 }}>
           {offlineMode && (
             <div className="mb-4 px-3 py-2 rounded-md border border-yellow-600/40 bg-yellow-500/10 text-yellow-300 text-sm">
               {offlineSimulationEnabled
@@ -1225,6 +1504,7 @@ const FrogChanger = () => {
               onSkinClick={handleSkinlineSkinClick}
               onChromaClick={handleChromaClick}
               onDownloadSplashArt={downloadSplashArt}
+              onYouTubeSkin={handleYouTubeSkin}
               offlineMode={offlineMode}
             />
           ) : selectedChampion ? (
@@ -1242,6 +1522,7 @@ const FrogChanger = () => {
               onSkinClick={handleSkinClick}
               onChromaClick={handleChromaClick}
               onDownloadSplashArt={downloadSplashArt}
+              onYouTubeSkin={handleYouTubeSkin}
               offlineMode={offlineMode}
             />
           ) : (
@@ -1297,6 +1578,14 @@ const FrogChanger = () => {
         setExtractVoiceover={setRepathExtractVoiceover}
         preserveHudIcons2D={repathPreserveHudIcons2D}
         setPreserveHudIcons2D={setRepathPreserveHudIcons2D}
+        outputOverrideEnabled={repathOutputOverrideEnabled}
+        setOutputOverrideEnabled={setRepathOutputOverrideEnabled}
+        outputKeepForAll={repathOutputKeepForAll}
+        setOutputKeepForAll={setRepathOutputKeepForAll}
+        outputPath={repathOutputPath}
+        setOutputPath={setRepathOutputPath}
+        recentOutputPaths={recentOutputPaths}
+        onBrowseOutputPath={handleBrowseOverrideOutputPath}
         onCancel={handleCancelPrefixModal}
         onPrevious={handlePreviousPrefix}
         onNextOrStart={handleNextOrStartPrefix}
@@ -1305,6 +1594,9 @@ const FrogChanger = () => {
       <ExtractionModeModal
         open={showExtractionModeModal}
         skins={pendingExtractionSkins}
+        defaultOutputPath={extractionPath}
+        recentOutputPaths={recentOutputPaths}
+        onBrowseOutputPath={handleBrowseOverrideOutputPath}
         onDecide={executeExtraction}
         onCancel={() => {
           setShowExtractionModeModal(false);
@@ -1373,6 +1665,7 @@ const FrogChanger = () => {
 };
 
 export default FrogChanger;
+
 
 
 

@@ -30,6 +30,8 @@ const { registerUpdateChannels } = require('./src/main/ipc/channels/update');
 const { registerAudioChannels } = require('./src/main/ipc/channels/audio');
 const { registerUpscaleChannels } = require('./src/main/ipc/channels/upscale');
 const { registerWadBumpathChannels, tryLoadNativeWadIndexer } = require('./src/main/ipc/channels/wadBumpath');
+const { registerPortDonorChannels } = require('./src/main/ipc/channels/portDonor');
+const { registerBnkGameBanksChannels } = require('./src/main/ipc/channels/bnkGameBanks');
 const { registerModelInspectChannels } = require('./src/main/ipc/channels/modelInspect');
 const { registerFileRandomizerChannels } = require('./src/main/ipc/channels/fileRandomizer');
 const { registerBinToolsChannels } = require('./src/main/ipc/channels/binTools');
@@ -350,6 +352,25 @@ registerWadBumpathChannels({
   loadBinModule: async () => importLocalModule('./src/jsritofile/bin.js'),
   loadBinHasherModule: async () => importLocalModule('./src/jsritofile/binHasher.js'),
   loadWadHasherModule: async () => importLocalModule('./src/jsritofile/wadHasher.js'),
+});
+
+registerPortDonorChannels({
+  ipcMain,
+  fs,
+  getHashPath,
+  getNativeAddon: tryLoadNativeWadIndexer,
+  loadWadClassModule: async () => importLocalModule('./src/jsritofile/wad.js'),
+  loadBinModule: async () => importLocalModule('./src/jsritofile/bin.js'),
+  loadJsRitoModule: async () => importLocalModule('./src/jsritofile/bin.js'),
+  loadBumpathModule: async () => importLocalModule('./src/utils/bumpath/bumpathCore.js'),
+});
+
+registerBnkGameBanksChannels({
+  ipcMain,
+  fs,
+  getHashPath,
+  getNativeAddon: tryLoadNativeWadIndexer,
+  loadWadClassModule: async () => importLocalModule('./src/jsritofile/wad.js'),
 });
 
 registerModelInspectChannels({

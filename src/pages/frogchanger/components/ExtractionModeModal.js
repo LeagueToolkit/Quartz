@@ -12,23 +12,41 @@ import React, { useState, useEffect } from 'react';
  *   onDecide    {(payload: { decisions: Array<{ skinKey, clean }>, options: { extractVoiceover, preserveHudIcons2D } }) => void}
  *   onCancel    {() => void}
  */
-const ExtractionModeModal = ({ open, skins = [], onDecide, onCancel }) => {
-  const [phase, setPhase] = useState('initial'); // 'initial' | 'per-skin'
+const ExtractionModeModal = ({
+  open,
+  skins = [],
+  defaultOutputPath = '',
+  recentOutputPaths = [],
+  onBrowseOutputPath,
+  onDecide,
+  onCancel,
+}) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [decisions, setDecisions] = useState([]);
   const [extractVoiceover, setExtractVoiceover] = useState(false);
   const [preserveHudIcons2D, setPreserveHudIcons2D] = useState(true);
+  const [outputOverrideEnabled, setOutputOverrideEnabled] = useState(false);
+  const [outputKeepForAll, setOutputKeepForAll] = useState(true);
+  const [outputPath, setOutputPath] = useState('');
+  const [outputPathsBySkin, setOutputPathsBySkin] = useState({});
+  const [applyToAll, setApplyToAll] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
 
   // Reset state whenever modal opens
   useEffect(() => {
     if (open) {
-      setPhase('initial');
       setCurrentIndex(0);
       setDecisions([]);
       setExtractVoiceover(false);
       setPreserveHudIcons2D(true);
+      setOutputOverrideEnabled(false);
+      setOutputKeepForAll(true);
+      setOutputPath(String(defaultOutputPath || ''));
+      setOutputPathsBySkin({});
+      setApplyToAll(false);
+      setInfoOpen(false);
     }
-  }, [open]);
+  }, [open, defaultOutputPath]);
 
   if (!open || skins.length === 0) return null;
 
@@ -36,41 +54,81 @@ const ExtractionModeModal = ({ open, skins = [], onDecide, onCancel }) => {
   const multiSkin = total > 1;
   const current = skins[currentIndex];
   const skinKey = (s) => `${s.championName}_${s.skinId}`;
+
   const resolvePayload = (nextDecisions) => ({
     decisions: nextDecisions,
     options: {
       extractVoiceover,
       preserveHudIcons2D,
+      outputOverride: {
+        enabled: outputOverrideEnabled,
+        keepForAll: outputKeepForAll,
+        path: outputPath,
+        perSkinPaths: outputPathsBySkin,
+      },
     },
   });
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
+  // --- Handlers -----------------------------------------------------------
 
-  const handleNoAll = () => {
-    onDecide(resolvePayload(skins.map(s => ({ skinKey: skinKey(s), clean: false }))));
-  };
+  const handleDecision = (clean) => {
+    const nextDecisions = [...decisions];
+    const currentEntry = { skinKey: skinKey(current), clean };
 
-  const handleYesAll = () => {
-    onDecide(resolvePayload(skins.map(s => ({ skinKey: skinKey(s), clean: true }))));
-  };
+    if (applyToAll) {
+      // Apply the same mode to all remaining skins
+      const remaining = skins.slice(currentIndex).map((s) => ({
+        skinKey: skinKey(s),
+        clean,
+      }));
+      const finalDecisions = [...decisions, ...remaining];
 
-  const handleYesPerSkin = () => {
-    setDecisions([]);
-    setCurrentIndex(0);
-    setPhase('per-skin');
-  };
+      // Handle path override if enabled
+      const finalPathsBySkin = { ...outputPathsBySkin };
+      if (outputOverrideEnabled) {
+        skins.slice(currentIndex).forEach((s) => {
+          finalPathsBySkin[skinKey(s)] = outputPath || defaultOutputPath;
+        });
+      }
 
-  const handlePerSkinDecision = (clean) => {
-    const next = [...decisions, { skinKey: skinKey(current), clean }];
+      onDecide({
+        decisions: finalDecisions,
+        options: {
+          extractVoiceover,
+          preserveHudIcons2D,
+          outputOverride: {
+            enabled: outputOverrideEnabled,
+            keepForAll: outputKeepForAll,
+            path: outputPath,
+            perSkinPaths: finalPathsBySkin,
+          },
+        },
+      });
+      return;
+    }
+
+    // Normal per-skin flow
+    const mappedPaths = { ...outputPathsBySkin };
+    if (outputOverrideEnabled) {
+      mappedPaths[skinKey(current)] = outputPath || defaultOutputPath;
+      setOutputPathsBySkin(mappedPaths);
+    }
+
+    const next = [...decisions, currentEntry];
     if (currentIndex + 1 >= total) {
       onDecide(resolvePayload(next));
     } else {
       setDecisions(next);
-      setCurrentIndex(i => i + 1);
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
+      if (outputOverrideEnabled && !outputKeepForAll) {
+        const nextSkinKey = skinKey(skins[nextIndex]);
+        setOutputPath(mappedPaths[nextSkinKey] || outputPath || defaultOutputPath);
+      }
     }
   };
 
-  // ── Styles ────────────────────────────────────────────────────────────────
+  // --- Styles -------------------------------------------------------------
 
   const styles = {
     overlay: {
@@ -81,8 +139,8 @@ const ExtractionModeModal = ({ open, skins = [], onDecide, onCancel }) => {
     backdrop: {
       position: 'absolute', inset: 0,
       background: 'rgba(0,0,0,0.75)',
-      backdropFilter: 'blur(4px)',
-      WebkitBackdropFilter: 'blur(4px)',
+      backdropFilter: 'blur(10px)',
+      WebkitBackdropFilter: 'blur(10px)',
     },
     modal: {
       position: 'relative', width: '100%', maxWidth: 480,
@@ -121,6 +179,22 @@ const ExtractionModeModal = ({ open, skins = [], onDecide, onCancel }) => {
     skinName: { fontSize: '0.9rem', fontWeight: 700, color: 'var(--text)' },
     skinSub: { fontSize: '0.8rem', color: 'rgba(255,255,255,0.65)', marginTop: 2 },
     divider: { borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 20, paddingTop: 16 },
+    infoBtn: {
+      width: 24, height: 24, borderRadius: '50%',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: '0.75rem', fontWeight: 700,
+      color: 'var(--accent2)', border: '1px solid color-mix(in srgb, var(--accent2), transparent 60%)',
+      background: 'color-mix(in srgb, var(--accent2), transparent 90%)',
+      cursor: 'pointer', transition: 'all 0.2s ease',
+      marginLeft: 8,
+    },
+    infoSection: {
+      marginTop: 12, padding: 12, borderRadius: 10,
+      background: 'rgba(255,255,255,0.03)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      fontSize: '0.74rem', color: 'rgba(255,255,255,0.7)',
+      lineHeight: 1.4,
+    },
   };
 
   const btnBase = {
@@ -144,6 +218,11 @@ const ExtractionModeModal = ({ open, skins = [], onDecide, onCancel }) => {
     background: 'color-mix(in srgb, var(--accent), transparent 80%)',
     color: 'var(--accent)',
     border: '1px solid color-mix(in srgb, var(--accent), transparent 60%)',
+  };
+
+  const btnBrowse = {
+    ...btnBase,
+    minWidth: 72,
   };
 
   const hoverAccent2 = (e) => {
@@ -197,110 +276,60 @@ const ExtractionModeModal = ({ open, skins = [], onDecide, onCancel }) => {
     </button>
   );
 
-  // ── Initial phase ─────────────────────────────────────────────────────────
-
-  if (phase === 'initial') {
-    return (
-      <div style={styles.overlay}>
-        <div style={styles.backdrop} onClick={onCancel} />
-        <div style={styles.modal} onClick={e => e.stopPropagation()}>
-          <div style={styles.accentBar} />
-          <div style={styles.body}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <h2 style={styles.title}>Extraction Mode</h2>
-              {closeBtn}
-            </div>
-            <p style={styles.subtitle}>
-              {multiSkin ? `${total} skins queued` : `${skins[0].championName} — ${skins[0].skinName}`}
-            </p>
-
-            <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>Skin Files Only</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: 'rgba(255,255,255,0.65)', lineHeight: 1.5 }}>
-                Extracts only the files referenced by the selected skin's BIN — meshes, textures,
-                animations, particles. Linked BINs are merged into one. Original paths are kept.
-                Unreferenced files are discarded.
-              </p>
-            </div>
-
-            <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>Whole WAD</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: 'rgba(255,255,255,0.65)', lineHeight: 1.5 }}>
-                Extracts all files from the WAD client as-is. No filtering or merging.
-              </p>
-            </div>
-
-            <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>Options</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={extractVoiceover}
-                    onChange={(e) => setExtractVoiceover(e.target.checked)}
-                    style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
-                  />
-                  Extract Voiceover (VO)
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={preserveHudIcons2D}
-                    onChange={(e) => setPreserveHudIcons2D(e.target.checked)}
-                    style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
-                  />
-                  Preserve HUD Icons2D (clean-after-extract)
-                </label>
-              </div>
-            </div>
-
-            <div style={{ ...styles.divider, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button style={btnGhost} onMouseEnter={hoverGhost} onMouseLeave={leaveGhost} onClick={handleNoAll}>
-                {multiSkin ? 'No — Whole WAD' : 'Whole WAD'}
-              </button>
-              {multiSkin && (
-                <button style={btnBase} onMouseEnter={hoverAccent2} onMouseLeave={leaveAccent2} onClick={handleYesPerSkin}>
-                  Yes — Ask Each
-                </button>
-              )}
-              <button style={btnPrimary} onMouseEnter={hoverPrimary} onMouseLeave={leavePrimary} onClick={handleYesAll}>
-                {multiSkin ? 'Yes to All' : 'Skin Files Only'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Per-skin phase ────────────────────────────────────────────────────────
-
   return (
     <div style={styles.overlay}>
       <div style={styles.backdrop} onClick={onCancel} />
-      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.accentBar} />
         <div style={styles.body}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-            <h2 style={styles.title}>Skin {currentIndex + 1} of {total}</h2>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <h2 style={styles.title}>{multiSkin ? `Extraction Skin ${currentIndex + 1} of ${total}` : 'Extraction Mode'}</h2>
+              <button
+                style={styles.infoBtn}
+                onClick={() => setInfoOpen(!infoOpen)}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--accent2), transparent 75%)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--accent2), transparent 90%)')}
+                title="Help Info"
+              >
+                i
+              </button>
+            </div>
             {closeBtn}
           </div>
 
-          <div style={{ ...styles.section, marginTop: 16 }}>
-            <h3 style={styles.sectionTitle}>Current Skin</h3>
-            <div style={styles.skinName}>{current.championName}</div>
-            <div style={styles.skinSub}>{current.skinName}</div>
-          </div>
+          {infoOpen && (
+            <div style={styles.infoSection}>
+              <div style={{ marginBottom: 6 }}>
+                <strong style={{ color: 'var(--accent2)' }}>Whole WAD:</strong> Extracts everything as-is. Best for finding missing assets.
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                <strong style={{ color: 'var(--accent2)' }}>Skin Files Only:</strong> Only extracts models/skins and ignores sound effects (recommended).
+              </div>
+              <div>
+                <strong style={{ color: 'var(--accent2)' }}>Preserve HUD:</strong> Preserves the ability icons in the folder.
+              </div>
+            </div>
+          )}
 
-          <div style={{ ...styles.section }}>
-            <p style={{ margin: 0, fontSize: '0.8rem', color: 'rgba(255,255,255,0.65)', lineHeight: 1.5 }}>
-              Extract skin files only (filtered + BINs merged) or the whole WAD for this skin?
-            </p>
-          </div>
+          <p style={styles.subtitle}>
+            {current.championName} — {current.skinName}
+          </p>
 
           <div style={{ ...styles.section }}>
             <h3 style={styles.sectionTitle}>Options</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {multiSkin && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={applyToAll}
+                    onChange={(e) => setApplyToAll(e.target.checked)}
+                    style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                  />
+                  Apply mode to all remaining skins
+                </label>
+              )}
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
@@ -308,7 +337,7 @@ const ExtractionModeModal = ({ open, skins = [], onDecide, onCancel }) => {
                   onChange={(e) => setExtractVoiceover(e.target.checked)}
                   style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
                 />
-                Extract Voiceover (VO)
+                Extract Voiceover
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
                 <input
@@ -317,17 +346,85 @@ const ExtractionModeModal = ({ open, skins = [], onDecide, onCancel }) => {
                   onChange={(e) => setPreserveHudIcons2D(e.target.checked)}
                   style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
                 />
-                Preserve HUD Icons2D (clean-after-extract)
+                Preserve HUD Icons2D
               </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={outputOverrideEnabled}
+                  onChange={(e) => setOutputOverrideEnabled(e.target.checked)}
+                  style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                />
+                Override Output Path
+              </label>
+              {outputOverrideEnabled && multiSkin && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', marginLeft: 20 }}>
+                  <input
+                    type="checkbox"
+                    checked={outputKeepForAll}
+                    onChange={(e) => setOutputKeepForAll(e.target.checked)}
+                    style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                  />
+                  Keep same output path for all selected skins
+                </label>
+              )}
+              {outputOverrideEnabled && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, marginTop: 4 }}>
+                  <input
+                    list="recent-paths-datalist-extract"
+                    value={outputPath}
+                    onChange={(e) => setOutputPath(e.target.value)}
+                    placeholder={defaultOutputPath || 'Select output path...'}
+                    style={{
+                      borderRadius: 6,
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      background: 'rgba(255,255,255,0.03)',
+                      padding: '8px 10px',
+                      fontSize: '0.75rem',
+                      color: 'var(--text)',
+                      fontFamily: 'inherit',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    style={btnBrowse}
+                    onMouseEnter={hoverAccent2}
+                    onMouseLeave={leaveAccent2}
+                    onClick={async () => {
+                      const picked = await onBrowseOutputPath?.();
+                      if (picked) setOutputPath(String(picked));
+                    }}
+                  >
+                    Browse
+                  </button>
+                  {recentOutputPaths.length > 0 && (
+                    <datalist id="recent-paths-datalist-extract">
+                      {recentOutputPaths.map((p) => (
+                        <option key={p} value={p} />
+                      ))}
+                    </datalist>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
           <div style={{ ...styles.divider, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button style={btnGhost} onMouseEnter={hoverGhost} onMouseLeave={leaveGhost} onClick={() => handlePerSkinDecision(false)}>
+            <button
+              style={btnGhost}
+              onMouseEnter={hoverGhost}
+              onMouseLeave={leaveGhost}
+              onClick={() => handleDecision(false)}
+            >
               Whole WAD
             </button>
-            <button style={btnPrimary} onMouseEnter={hoverPrimary} onMouseLeave={leavePrimary} onClick={() => handlePerSkinDecision(true)}>
-              {currentIndex + 1 < total ? 'Skin Files — Next' : 'Skin Files — Start'}
+            <button
+              style={btnPrimary}
+              onMouseEnter={hoverPrimary}
+              onMouseLeave={leavePrimary}
+              onClick={() => handleDecision(true)}
+            >
+              Skin Files Only
             </button>
           </div>
         </div>

@@ -11,6 +11,7 @@ import { scanBinForAssets, copyAsset } from './bumpathAssetScanner.js';
 // This will be set dynamically based on environment
 let fs = null;
 let path = null;
+let crypto = null;
 let initPromise = null;
 
 // Initialize fs/path - call this function to set them up (async for ES modules)
@@ -23,6 +24,7 @@ async function initNodeModules() {
             // Electron environment
             fs = window.require('fs');
             path = window.require('path');
+            crypto = window.require('crypto');
         } else if (typeof process !== 'undefined' && process.versions && process.versions.node && typeof __webpack_require__ === 'undefined') {
             // Node.js environment (not webpack) - use createRequire from module
             // Skip in webpack environment to avoid static analysis
@@ -32,6 +34,7 @@ async function initNodeModules() {
                 const nodeRequire = createRequire(import.meta.url);
                 fs = nodeRequire('fs');
                 path = nodeRequire('path');
+                crypto = nodeRequire('crypto');
             } catch (e) {
                 console.error('[BumpathCore] Failed to initialize fs/path:', e);
                 // fs/path will remain null
@@ -662,6 +665,44 @@ export class BumpathCore {
         // Python: for entry_hash in self.scanned_tree: ... for unify_file in self.scanned_tree[entry_hash]: ...
         const processedFiles = new Map(); // Like Python's bum_files = {}
         let totalProcessed = 0;
+        const longPathMap = new Map();
+        const makeLongPathFallback = (normalizedRelPath, sourcePath) => {
+            const ext = (path.extname(normalizedRelPath) || path.extname(sourcePath || '') || '.bin').toLowerCase();
+            const rel = String(normalizedRelPath || '').toLowerCase();
+            // Use a proper digest of the full path so distinct long names do not collide.
+            let digest = '';
+            try {
+                if (crypto && typeof crypto.createHash === 'function') {
+                    digest = crypto.createHash('sha1').update(rel, 'utf8').digest('hex').slice(0, 24);
+                }
+            } catch (_) {
+                // fall through to deterministic fallback below
+            }
+            if (!digest) {
+                // Deterministic fallback if crypto is unavailable.
+                let h = 2166136261 >>> 0;
+                for (let i = 0; i < rel.length; i++) {
+                    h ^= rel.charCodeAt(i) & 0xff;
+                    h = Math.imul(h, 16777619) >>> 0;
+                }
+                digest = `${h.toString(16).padStart(8, '0')}${rel.length.toString(16).padStart(4, '0')}`;
+            }
+            let shortName = `${digest}${ext}`;
+            if (longPathMap.has(rel)) {
+                shortName = longPathMap.get(rel);
+            } else {
+                // Rare collision guard: if digest exists for another source path, disambiguate.
+                let seq = 1;
+                let candidate = shortName;
+                while (fs.existsSync(path.join(outputDir, normalizePath(`data/__longpath/${candidate}`)).replace(/\\/g, '/'))) {
+                    candidate = `${digest}_${seq}${ext}`;
+                    seq += 1;
+                }
+                shortName = candidate;
+                longPathMap.set(rel, shortName);
+            }
+            return path.join(outputDir, normalizePath(`data/__longpath/${shortName}`)).replace(/\\/g, '/');
+        };
 
         // Process all files from scanned_tree (like Python)
         for (const [entryHash, files] of Object.entries(this.scannedTree)) {
@@ -698,7 +739,10 @@ export class BumpathCore {
 
                 // Python: output_file = os.path.join(output_dir, short_file.lower()).replace('\\', '/')
                 const normalizedRelPath = normalizePath(outputRelPath);
-                const outputPath = path.join(outputDir, normalizedRelPath).replace(/\\/g, '/');
+                let outputPath = path.join(outputDir, normalizedRelPath).replace(/\\/g, '/');
+                if (outputPath.length >= 240) {
+                    outputPath = makeLongPathFallback(normalizedRelPath, sourcePath);
+                }
                 const outputDirPath = path.dirname(outputPath).replace(/\\/g, '/');
 
                 console.log(`[BumpathCore] Processing: ${shortFile} -> ${outputPath}`);
@@ -715,8 +759,21 @@ export class BumpathCore {
                 try {
                     fs.copyFileSync(sourcePath, outputPath);
                 } catch (error) {
-                    console.error(`[BumpathCore] Error copying file:`, error);
-                    throw error;
+                    const isPathError = error?.code === 'ENAMETOOLONG' || error?.code === 'ENOENT' || outputPath.length >= 240;
+                    if (isPathError) {
+                        try {
+                            const fallbackPath = makeLongPathFallback(normalizedRelPath, sourcePath);
+                            fs.mkdirSync(path.dirname(fallbackPath).replace(/\\/g, '/'), { recursive: true });
+                            fs.copyFileSync(sourcePath, fallbackPath);
+                            outputPath = fallbackPath;
+                        } catch (fallbackError) {
+                            console.error(`[BumpathCore] Error copying file (fallback failed):`, fallbackError);
+                            throw fallbackError;
+                        }
+                    } else {
+                        console.error(`[BumpathCore] Error copying file:`, error);
+                        throw error;
+                    }
                 }
 
                 // Python: if output_file.endswith('.bin'): bum_bin(output_file)
@@ -753,7 +810,10 @@ export class BumpathCore {
 
             // Python: output_file = os.path.join(output_dir, short_file.lower()).replace('\\', '/')
             const normalizedRelPath = normalizePath(relPath);
-            const outputPath = path.join(outputDir, normalizedRelPath).replace(/\\/g, '/');
+            let outputPath = path.join(outputDir, normalizedRelPath).replace(/\\/g, '/');
+            if (outputPath.length >= 240) {
+                outputPath = makeLongPathFallback(normalizedRelPath, sourcePath);
+            }
             const outputDirPath = path.dirname(outputPath).replace(/\\/g, '/');
 
             console.log(`[BumpathCore] Processing selected BIN: ${relPath} -> ${outputPath}`);
@@ -770,8 +830,21 @@ export class BumpathCore {
             try {
                 fs.copyFileSync(sourcePath, outputPath);
             } catch (error) {
-                console.error(`[BumpathCore] Error copying BIN file:`, error);
-                throw error;
+                const isPathError = error?.code === 'ENAMETOOLONG' || error?.code === 'ENOENT' || outputPath.length >= 240;
+                if (isPathError) {
+                    try {
+                        const fallbackPath = makeLongPathFallback(normalizedRelPath, sourcePath);
+                        fs.mkdirSync(path.dirname(fallbackPath).replace(/\\/g, '/'), { recursive: true });
+                        fs.copyFileSync(sourcePath, fallbackPath);
+                        outputPath = fallbackPath;
+                    } catch (fallbackError) {
+                        console.error(`[BumpathCore] Error copying BIN file (fallback failed):`, fallbackError);
+                        throw fallbackError;
+                    }
+                } else {
+                    console.error(`[BumpathCore] Error copying BIN file:`, error);
+                    throw error;
+                }
             }
 
             // Repath BIN file (modify paths inside) — skipped when skipRepath=true

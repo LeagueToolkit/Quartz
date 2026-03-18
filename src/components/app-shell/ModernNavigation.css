@@ -10,7 +10,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 0 30px 0;
+
   background: var(--bg, #0b0a0f);
   position: fixed;
   top: 48px;
@@ -24,9 +24,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 30px;
-  margin-top: 20px;
-  /* Move icons down from the top */
+  gap: 6px;
+  /* Adjusted gap for 44px buttons */
+  margin-top: 15px;
   width: 100%;
 }
 
@@ -50,6 +50,10 @@
   transform: scale(1.05);
 }
 
+.nav-button.active svg {
+  color: var(--accent, #783CB5);
+}
+
 .modern-nav-bottom {
   display: flex;
   flex-direction: column;
@@ -60,8 +64,8 @@
 }
 
 .nav-button {
-  width: 22px;
-  height: 22px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -70,53 +74,29 @@
   border: none;
   cursor: pointer;
   position: relative;
-  transition: none;
-  min-width: 22px;
-  min-height: 22px;
-  max-width: 22px;
-  max-height: 22px;
   margin: 0 auto;
   padding: 0;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
 }
 
 .nav-button svg {
   width: 22px;
   height: 22px;
   color: var(--nav-icon-color, var(--text-2, #828699));
-  transition: color 0.2s ease;
-}
-
-.nav-button.active::before {
-  content: '';
-  position: absolute;
-  width: 40px;
-  height: 40px;
-  left: calc(50% - 40px/2);
-  top: calc(50% - 40px/2);
-  border-radius: 50%;
-  z-index: -1;
-  transition: none;
-  background: var(--active-nav-button-glow);
+  transition: color 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+  pointer-events: none;
 }
 
 .nav-button.active svg {
   color: var(--accent, #783CB5);
+  filter: drop-shadow(0 0 5px var(--accent, #783CB5));
 }
 
-.nav-button:not(.active):hover::before {
-  content: '';
-  position: absolute;
-  width: 40px;
-  height: 40px;
-  left: calc(50% - 40px/2);
-  top: calc(50% - 40px/2);
-  background: rgba(130, 134, 153, 0.1);
-  border-radius: 50%;
-  z-index: -1;
-}
-
-.nav-button.active:hover::before {
-  background: var(--premium-symbol-glow);
+.nav-button:hover svg {
+  color: var(--accent, #783CB5);
+  transform: scale(1.18);
+  filter: drop-shadow(0 0 8px var(--accent, #783CB5));
 }
 
 /* Tooltip styles */

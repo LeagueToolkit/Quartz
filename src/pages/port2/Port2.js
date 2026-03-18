@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import './Port.css';
 import PersistentEffectsModal from './components/modals/PersistentEffectsModal';
 import IdleParticleModal from './components/modals/IdleParticleModal';
@@ -21,6 +21,7 @@ import CombineLinkedBinsModal from '../../components/modals/CombineLinkedBinsMod
 import RitoBinErrorDialog from '../../components/modals/RitoBinErrorDialog';
 import VfxFloatingActions from '../../components/floating/VfxFloatingActions';
 import NewVfxSystemModal from './components/modals/NewVfxSystemModal';
+import PortDonorFromGameModal from './components/modals/PortDonorFromGameModal';
 import { parseVfxEmitters } from '../../utils/vfx/vfxEmitterParser.js';
 import { insertVFXSystemIntoFile, insertVFXSystemWithPreservedNames } from '../../utils/vfx/vfxInsertSystem.js';
 import { findAssetFiles, copyAssetFiles, showAssetCopyResults } from '../../utils/assets/assetCopier.js';
@@ -30,6 +31,7 @@ import { openAssetPreview } from '../../utils/assets/assetPreviewEvent.js';
 import UnsavedChangesModal from '../../components/modals/UnsavedChangesModal';
 import ExternalFileChangeModal from '../../components/modals/ExternalFileChangeModal';
 import { reparseBinWithFreshPy } from '../../utils/io/reparseHelpers.js';
+import electronPrefs from '../../utils/core/electronPrefs.js';
 
 
 // Feature flag for virtualization - set to false to disable if issues occur
@@ -37,10 +39,16 @@ import { reparseBinWithFreshPy } from '../../utils/io/reparseHelpers.js';
 const ENABLE_VIRTUALIZATION = true;
 // Minimum number of systems before virtualization kicks in (to avoid overhead for small lists)
 const VIRTUALIZATION_THRESHOLD = 20;
+const PORT_RECENT_DONORS_KEY = 'port2:recentDonorsFromGame';
+const PORT_RECENT_DONORS_LIMIT = 12;
 
 const Port2 = () => {
   const [showPortAllModeModal, setShowPortAllModeModal] = useState(false);
   const [showIdleManagerModal, setShowIdleManagerModal] = useState(false);
+  const [showPortDonorModal, setShowPortDonorModal] = useState(false);
+  const [isPreparingPortDonor, setIsPreparingPortDonor] = useState(false);
+  const [portDonorProgress, setPortDonorProgress] = useState('');
+  const [recentDonors, setRecentDonors] = useState([]);
 
   // All state and handlers live in usePort hook
   const {
@@ -274,6 +282,113 @@ const Port2 = () => {
     handleCombineYes,
     handleCombineNo,
   } = usePort();
+
+  useEffect(() => {
+    const onProgress = (_event, payload) => {
+      setPortDonorProgress(String(payload?.message || ''));
+    };
+    window.electronAPI?.wad?.onPortDonorProgress?.(onProgress);
+    return () => {
+      window.electronAPI?.wad?.offPortDonorProgress?.(onProgress);
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(PORT_RECENT_DONORS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      setRecentDonors(parsed.slice(0, PORT_RECENT_DONORS_LIMIT));
+    } catch (_) { }
+  }, []);
+
+  const handleOpenDonorFromGame = useCallback(() => {
+    setPortDonorProgress('');
+    setShowPortDonorModal(true);
+  }, []);
+
+  const handleConfirmDonorFromGame = useCallback(async ({ champion, skin }) => {
+    if (!champion || !skin) return;
+
+    setIsPreparingPortDonor(true);
+    setPortDonorProgress('Preparing donor...');
+    setStatusMessage(`Preparing donor from ${champion.name} skin ${skin.id}...`);
+
+    try {
+      await electronPrefs.initPromise;
+      const leaguePath = electronPrefs.obj?.FrogChangerLeaguePath || '';
+      if (!leaguePath) {
+        throw new Error('FrogChanger League path is not set. Configure it first in FrogChanger settings.');
+      }
+
+      const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
+      const hashDirResult = ipcRenderer ? await ipcRenderer.invoke('hashes:get-directory') : { hashDir: '' };
+      const hashPath = hashDirResult?.hashDir || '';
+
+      const result = await window.electronAPI?.wad?.preparePortDonorFromSkin?.({
+        championName: champion.name,
+        skinId: skin.id,
+        leaguePath,
+        hashPath,
+      });
+
+      if (!result?.success) {
+        throw new Error(result?.error || 'Failed to prepare donor from game');
+      }
+
+      const donorPyContentNext = String(result.donorPyContent || '');
+      const systems = parseVfxEmitters(donorPyContentNext) || {};
+      setDonorPyContent(donorPyContentNext);
+      setDonorSystems(systems);
+      setCollapsedDonorSystems(new Set(Object.keys(systems)));
+      setDonorPath(result.combinedBinPath || `Game:${champion.name}:${skin.id}`);
+      setRecentDonors((prev) => {
+        const nextItem = {
+          championId: champion.id,
+          championName: champion.name,
+          championAlias: champion.alias || '',
+          skinId: skin.id,
+          skinName: skin.name,
+          tilePath: skin.tilePath || null,
+          tempRoot: result.tempRoot || null,
+          timestamp: Date.now(),
+        };
+        const prevList = Array.isArray(prev) ? prev : [];
+        const duplicates = prevList.filter(
+          (item) => String(item?.championId) === String(nextItem.championId) && Number(item?.skinId) === Number(nextItem.skinId)
+        );
+        const deduped = prevList.filter(
+          (item) => !(String(item?.championId) === String(nextItem.championId) && Number(item?.skinId) === Number(nextItem.skinId))
+        );
+        const combined = [nextItem, ...deduped];
+        const next = combined.slice(0, PORT_RECENT_DONORS_LIMIT);
+        const evicted = combined.slice(PORT_RECENT_DONORS_LIMIT);
+        const rootsToDelete = [
+          ...duplicates.map((item) => item?.tempRoot),
+          ...evicted.map((item) => item?.tempRoot),
+        ].filter((root) => typeof root === 'string' && root.trim() && root !== nextItem.tempRoot);
+
+        if (rootsToDelete.length > 0) {
+          window.electronAPI?.wad?.cleanupPortDonorTemp?.({
+            tempRoots: [...new Set(rootsToDelete)],
+          }).catch(() => { });
+        }
+
+        try {
+          window.localStorage.setItem(PORT_RECENT_DONORS_KEY, JSON.stringify(next));
+        } catch (_) { }
+        return next;
+      });
+      setStatusMessage(`Donor loaded from game: ${champion.name} skin ${skin.id} (${Object.keys(systems).length} systems)`);
+      setShowPortDonorModal(false);
+    } catch (error) {
+      console.error('[Port2] Failed to load donor from game:', error);
+      setStatusMessage(`Failed to load donor from game: ${error.message}`);
+    } finally {
+      setIsPreparingPortDonor(false);
+    }
+  }, [setCollapsedDonorSystems, setDonorPath, setDonorPyContent, setDonorSystems, setStatusMessage]);
 
   useEffect(() => {
     const onNavbarOpenInJade = () => {
@@ -574,6 +689,7 @@ const Port2 = () => {
   const donorColumnProps = {
     isProcessing,
     handleOpenDonorBin,
+    handleOpenDonorFromGame,
     donorFilterInput,
     enableDonorEmitterSearch,
     filterDonorParticles,
@@ -650,6 +766,17 @@ const Port2 = () => {
         {/* Donor Column */}
         <DonorColumn {...donorColumnProps} />
       </div>
+
+      <PortDonorFromGameModal
+        open={showPortDonorModal}
+        loading={isPreparingPortDonor}
+        progressText={portDonorProgress}
+        recentDonors={recentDonors}
+        onClose={() => {
+          if (!isPreparingPortDonor) setShowPortDonorModal(false);
+        }}
+        onConfirm={handleConfirmDonorFromGame}
+      />
 
       {/* Persistent Modal */}
       <PersistentEffectsModal

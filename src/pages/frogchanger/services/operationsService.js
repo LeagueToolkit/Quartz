@@ -172,72 +172,33 @@ export const runBumpathRepath = async ({
   skipSfxRepath = true,
   skipVoiceoverRepath = true,
 }) => {
+  if (!window.electronAPI?.bumpath?.repath) {
+    throw new Error('Bumpath IPC bridge not available — check preload.js.');
+  }
+
   try {
-    if (window.require) {
-      const fs = window.require('fs');
-      if (!fs.existsSync(sourceDir)) {
-        return { success: false, error: `Source directory not found: ${sourceDir}` };
-      }
-    }
+    const result = await window.electronAPI.bumpath.repath({
+      sourceDir,
+      outputDir,
+      selectedSkinIds: Array.isArray(selectedSkinIds) ? selectedSkinIds : [],
+      hashPath,
+      customPrefix: prefix,
+      processTogether,
+      preserveHudIcons2D,
+      skipSfxRepath,
+      skipVoiceoverRepath,
+    });
 
-    const ignoreMissing = true;
-    const combineLinked = true;
-    const customPrefix = prefix;
-
-    let lastProgress = 0;
-    const progressCallback = (count, message) => {
-      if (count > lastProgress + 10 || message) {
-        lastProgress = count;
-        console.log(`[Bumpath Progress] ${message || `Processed ${count} files...`}`);
-      }
-    };
-
-    if (processTogether) {
-      await runSingleBumpathPass({
-        sourceDir,
-        outputDir,
-        skinIdsForPass: selectedSkinIds,
-        hashPath,
-        customPrefix,
-        ignoreMissing,
-        combineLinked,
-        progressCallback,
-        preserveHudIcons2D,
-        skipSfxRepath,
-        skipVoiceoverRepath,
-      });
-
-      return {
-        success: true,
-        message: `Processed ${selectedSkinIds.length} skins together`,
-      };
-    }
-
-    const results = [];
-    for (const skinId of selectedSkinIds) {
-      await runSingleBumpathPass({
-        sourceDir,
-        outputDir,
-        skinIdsForPass: [skinId],
-        hashPath,
-        customPrefix,
-        ignoreMissing,
-        combineLinked,
-        progressCallback,
-        preserveHudIcons2D,
-        skipSfxRepath,
-        skipVoiceoverRepath,
-      });
-      results.push({ skinId, success: true });
+    if (result.error) {
+      throw new Error(result.error);
     }
 
     return {
       success: true,
-      message: `Processed ${selectedSkinIds.length} skins individually`,
-      results,
+      ...result
     };
   } catch (error) {
-    console.error('Bumpath repath error:', error);
+    console.error('Bumpath repath IPC error:', error);
     return { success: false, error: error.message, stack: error.stack };
   }
 };

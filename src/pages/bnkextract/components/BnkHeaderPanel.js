@@ -9,6 +9,7 @@ import {
     Delete,
     Bookmark,
     AutoFixHigh,
+    SportsEsports,
 } from '@mui/icons-material';
 
 export default function BnkHeaderPanel({
@@ -36,6 +37,7 @@ export default function BnkHeaderPanel({
     onSessionClick,
     setHistoryAnchor,
     setAutoExtractOpen,
+    onOpenGameBanks,
 }) {
     const controlShellSx = {
         background: 'var(--bg)',
@@ -281,6 +283,21 @@ export default function BnkHeaderPanel({
                                 }}
                             >
                                 <AutoFixHigh sx={{ fontSize: 14 }} />
+                            </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Load Banks From Game">
+                            <IconButton
+                                size="small"
+                                onClick={onOpenGameBanks}
+                                sx={{
+                                    color: 'rgba(255,255,255,0.5)',
+                                    ...controlShellSx,
+                                    borderRadius: '4px',
+                                    padding: '4px',
+                                    '&:hover': { color: 'var(--accent2)', borderColor: 'var(--accent2)' },
+                                }}
+                            >
+                                <SportsEsports sx={{ fontSize: 14 }} />
                             </IconButton>
                         </Tooltip>
                     </Box>

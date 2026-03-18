@@ -1,4 +1,5 @@
 import React from 'react';
+import { Youtube } from 'lucide-react';
 
 const SkinlineResultsPanel = ({
   skinlineSearchTerm,
@@ -12,6 +13,7 @@ const SkinlineResultsPanel = ({
   onSkinClick,
   onChromaClick,
   onDownloadSplashArt,
+  onYouTubeSkin,
   offlineMode = false,
 }) => {
   if (loading) {
@@ -136,6 +138,22 @@ const SkinlineResultsPanel = ({
                     </svg>
                   </button>
                 )}
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onYouTubeSkin?.(champion.name, skin.name);
+                  }}
+                  className="absolute bottom-2 left-2 text-white p-2 rounded-full transition-colors duration-200 opacity-0 group-hover:opacity-100"
+                  style={{
+                    border: '1px solid rgba(255, 77, 77, 0.55)',
+                    background: 'color-mix(in srgb, #ff2c2c, transparent 84%)',
+                    color: '#ff2c2c',
+                  }}
+                  title="Search skin spotlight on YouTube"
+                >
+                  <Youtube size={14} color="#ff2c2c" />
+                </button>
               </div>
 
               <div className="p-3">

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Youtube } from 'lucide-react';
 
 const ChampionSidebar = ({
   searchTerm,
@@ -11,8 +12,10 @@ const ChampionSidebar = ({
   filteredChampions,
   selectedChampion,
   onSelectChampion,
+  onYouTubeChampion,
   getChampionIconUrl,
   offlineMode = false,
+  sidebarWidth = 256,
 }) => {
   const [useSkinlineMode, setUseSkinlineMode] = useState(false);
   const activeValue = useSkinlineMode ? skinlineSearchTerm : searchTerm;
@@ -37,7 +40,7 @@ const ChampionSidebar = ({
   };
 
   return (
-    <aside className="w-64 border-r border-gray-800 p-4 overflow-y-auto">
+    <aside className="border-r border-gray-800 p-4 overflow-y-auto flex-shrink-0" style={{ width: sidebarWidth }}>
     <div className="relative mb-4">
       <input
         placeholder={placeholder}
@@ -153,6 +156,32 @@ const ChampionSidebar = ({
                 {champion.alias}
               </div>
             </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onYouTubeChampion?.(champion);
+              }}
+              title={`Search ${champion.name} skins on YouTube`}
+              style={{
+                marginLeft: 'auto',
+                width: 28,
+                height: 24,
+                borderRadius: 6,
+                border: '1px solid rgba(255, 77, 77, 0.55)',
+                background: 'color-mix(in srgb, #ff2c2c, transparent 84%)',
+                color: '#ff2c2c',
+                fontFamily: 'JetBrains Mono, monospace',
+                cursor: 'pointer',
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 0 10px rgba(255, 46, 46, 0.22), inset 0 1px 0 rgba(255,255,255,0.16)',
+              }}
+            >
+              <Youtube size={14} color="#ff2c2c" />
+            </button>
           </button>
         );
       })}

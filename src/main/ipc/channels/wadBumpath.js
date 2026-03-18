@@ -85,6 +85,44 @@ function normalizeSkinSelectionId(value) {
   return num >= 1000 ? num % 1000 : num;
 }
 
+function normalizeRelPathLower(value) {
+  return String(value || '').replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
+}
+
+function toAbsFromRel(rootDir, relPathLower) {
+  return path.join(rootDir, ...String(relPathLower || '').split('/'));
+}
+
+function normalizeLinkCandidate(linkValue) {
+  const raw = normalizeRelPathLower(linkValue);
+  if (!raw) return [];
+  const candidates = [raw];
+  if (!raw.endsWith('.bin')) candidates.push(`${raw}.bin`);
+  return [...new Set(candidates)];
+}
+
+function getUniqueOutputDir(fs, baseDir) {
+  let target = baseDir.replace(/[\\/]+$/, '');
+  if (!fs.existsSync(target)) return target;
+
+  const parent = path.dirname(target);
+  let name = path.basename(target);
+  
+  // Detect if name already has a counter prefix like "2_", "3_", etc.
+  let counter = 2;
+  const match = name.match(/^(\d+)_/);
+  if (match) {
+    counter = parseInt(match[1], 10) + 1;
+    name = name.slice(match[0].length);
+  }
+
+  while (true) {
+    const candidate = path.join(parent, `${counter}_${name}`);
+    if (!fs.existsSync(candidate)) return candidate;
+    counter++;
+  }
+}
+
 function copyPreservedHudIcons2D(fs, sourceDir, targetDir) {
   if (!sourceDir || !targetDir || !fs.existsSync(sourceDir)) return 0;
 
@@ -427,7 +465,9 @@ function registerWadBumpathChannels({
         hashPath: rawHashPath,
         extractVoiceover,
         cleanAfterExtract = false,
+        fastSkinOnly = false,
         preserveHudIcons2D = true,
+        isRepathExtract = false, // USER REQUEST: Prefix folder if for repath
       } = data || {};
 
       if (!championName || !leaguePath || !extractionPath) {
@@ -452,9 +492,25 @@ function registerWadBumpathChannels({
 
       const skinNameSafe = skinName ? skinName.replace(/[^a-zA-Z0-9]/g, '_') : String(skinId);
       const effectiveSkinId = normalizeSkinSelectionId(chromaId != null ? chromaId : skinId);
-      const outputDir = chromaId
-        ? path.join(extractionPath, `${championFileName}_extracted_${skinNameSafe}_chroma_${chromaId}`)
-        : path.join(extractionPath, `${championFileName}_extracted_${skinNameSafe}`);
+
+      let folderName = chromaId
+        ? `extracted_${skinNameSafe}_chroma_${chromaId}`
+        : `extracted_${skinNameSafe}`;
+
+      // USER REQUEST: Prefix folder if part of repath workflow
+      if (isRepathExtract) {
+        folderName = `repath_${folderName}`;
+      }
+
+      let outputDir = path.join(extractionPath, folderName);
+
+      // USER REQUEST: Add _clean suffix for Skin Files Only
+      if (fastSkinOnly) {
+        outputDir += '_clean';
+      }
+
+      // USER REQUEST: Auto-version if directory exists
+      outputDir = getUniqueOutputDir(fs, outputDir);
 
       // Find voiceover WADs (sync readdir is fine in main process)
       let voiceoverWadFiles = [];
@@ -478,8 +534,6 @@ function registerWadBumpathChannels({
       }
 
       const hashPath = getHashPath(rawHashPath);
-      const { unpackWAD } = await loadWadModule();
-      const progressCallback = (count, message) => sendProgress(count, message);
       const nativeAddon = tryLoadNativeWadIndexer();
       if (nativeAddon && typeof nativeAddon.primeHashTables === 'function' && hashPath) {
         try {
@@ -490,6 +544,317 @@ function registerWadBumpathChannels({
       }
 
       const replaceExisting = await askReplaceExistingForOutput(event?.sender, outputDir, 'bundle');
+
+      // Fast skin-only path for repath: TOC + linked BIN graph + native selected extraction.
+      if (fastSkinOnly) {
+        if (!nativeAddon || typeof nativeAddon.extractSelectedAsync !== 'function' || typeof nativeAddon.resolveHashes !== 'function') {
+          return { error: 'Fast skin-only extraction requires native extractSelectedAsync + resolveHashes.' };
+        }
+        if (!hashPath || !fs.existsSync(hashPath)) {
+          return { error: 'Integrated hash path is required for fast skin-only extraction.' };
+        }
+
+        sendProgress(0, 'Reading WAD table of contents...');
+        const { WAD } = await loadWadClassModule();
+        const { BIN } = await loadBinModule();
+        const { BumpathCore } = await loadBumpathModule();
+        const { loadHashtables } = await loadJsRitoModule();
+
+        let binHashtables = null;
+        try {
+          binHashtables = await loadHashtables(hashPath, {
+            tables: ['hashes.binentries.txt', 'hashes.binhashes.txt', 'hashes.bintypes.txt', 'hashes.binfields.txt'],
+          });
+        } catch (_) { }
+
+        const fd = await fs.promises.open(wadFilePath, 'r');
+        let wad;
+        try {
+          const stat = await fd.stat();
+          const tocSize = Math.min(4 * 1024 * 1024, stat.size);
+          const tocBuffer = Buffer.alloc(tocSize);
+          const { bytesRead } = await fd.read(tocBuffer, 0, tocSize, 0);
+          const buf = bytesRead < tocSize ? tocBuffer.subarray(0, bytesRead) : tocBuffer;
+          wad = await new WAD().read(buf);
+        } finally {
+          await fd.close().catch(() => { });
+        }
+
+        for (const chunk of wad.chunks) {
+          if (!chunk.path_hash_hex) chunk.path_hash_hex = chunk.hash;
+        }
+        const resolved = nativeAddon.resolveHashes(wad.chunks.map(c => c.hash), hashPath);
+        for (let i = 0; i < wad.chunks.length; i++) {
+          const resolvedPath = resolved?.[i];
+          if (resolvedPath && resolvedPath !== wad.chunks[i].hash) {
+            wad.chunks[i].hash = resolvedPath;
+          }
+        }
+
+        const chunkByPath = new Map();
+        const chunkByPathHashHex = new Map();
+        for (const chunk of wad.chunks) {
+          const relPath = normalizeRelPathLower(chunk.hash);
+          if (!relPath || chunkByPath.has(relPath)) continue;
+          const pathHashHex = String(chunk.path_hash_hex || chunk.hash || '').toLowerCase();
+          chunkByPath.set(relPath, { relPath, pathHashHex });
+          if (/^[0-9a-f]{16}$/i.test(pathHashHex) && !chunkByPathHashHex.has(pathHashHex)) {
+            chunkByPathHashHex.set(pathHashHex, relPath);
+          }
+        }
+
+        const skinNum = Number(effectiveSkinId);
+        const candidateMainBins = [
+          `assets/characters/${championFileName}/skins/skin${skinNum}.bin`,
+          `assets/characters/${championFileName}/skins/skin${String(skinNum).padStart(2, '0')}.bin`,
+          `data/characters/${championFileName}/skins/skin${skinNum}.bin`,
+          `data/characters/${championFileName}/skins/skin${String(skinNum).padStart(2, '0')}.bin`,
+        ].map(normalizeRelPathLower);
+        const mainBinPath = candidateMainBins.find((p) => chunkByPath.has(p));
+        if (!mainBinPath) {
+          return { error: `Could not locate skin BIN in WAD TOC for skin ${skinNum}` };
+        }
+
+        const runSelectiveExtract = async (wantedPathsLower) => {
+          if (!wantedPathsLower || wantedPathsLower.size === 0) return { extractedCount: 0, skippedCount: 0 };
+          const nativeItems = [];
+          for (const rel of wantedPathsLower) {
+            const info = chunkByPath.get(rel);
+            if (!info) continue;
+            if (!/^[0-9a-f]{16}$/i.test(info.pathHashHex)) continue;
+            nativeItems.push({
+              wadPath: wadFilePath,
+              pathHash: info.pathHashHex,
+              relPath: info.relPath,
+            });
+          }
+          if (nativeItems.length === 0) return { extractedCount: 0, skippedCount: 0 };
+          const result = await nativeAddon.extractSelectedAsync(nativeItems, outputDir, replaceExisting, true);
+          if (result?.error) throw new Error(result.error);
+          return {
+            extractedCount: Number(result?.extractedCount || 0),
+            skippedCount: Number(result?.skippedCount || 0),
+          };
+        };
+
+        const stageBinsDir = path.join(
+          extractionPath,
+          `__fast_skin_stage_${championFileName}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+        );
+        if (fs.existsSync(stageBinsDir)) fs.rmSync(stageBinsDir, { recursive: true, force: true });
+        fs.mkdirSync(stageBinsDir, { recursive: true });
+        try {
+          const runSelectiveExtractToStage = async (wantedPathsLower) => {
+            if (!wantedPathsLower || wantedPathsLower.size === 0) return;
+            const nativeItems = [];
+            for (const rel of wantedPathsLower) {
+              const info = chunkByPath.get(rel);
+              if (!info) continue;
+              if (!/^[0-9a-f]{16}$/i.test(info.pathHashHex)) continue;
+              nativeItems.push({
+                wadPath: wadFilePath,
+                pathHash: info.pathHashHex,
+                relPath: info.relPath,
+              });
+            }
+            if (nativeItems.length === 0) return;
+            const stageResult = await nativeAddon.extractSelectedAsync(nativeItems, stageBinsDir, true, true);
+            if (stageResult?.error) throw new Error(stageResult.error);
+          };
+
+          sendProgress(0, 'Building linked BIN graph...');
+          const selectedBinPaths = new Set([mainBinPath]);
+          const parsedBinPaths = new Set();
+          const pendingQueue = [mainBinPath];
+          const resolveLinkedBinPath = (linkValue) => {
+            const directCandidates = normalizeLinkCandidate(linkValue);
+            for (const candidate of directCandidates) {
+              if (chunkByPath.has(candidate)) return candidate;
+            }
+            const rawNorm = normalizeRelPathLower(linkValue);
+            const hashLike = rawNorm.replace(/\.bin$/i, '');
+            if (/^[0-9a-f]{16}$/i.test(hashLike)) {
+              const fromHash = chunkByPathHashHex.get(hashLike);
+              if (fromHash) return fromHash;
+              const withExt = `${hashLike}.bin`;
+              if (chunkByPath.has(withExt)) return withExt;
+            }
+            return null;
+          };
+
+          while (pendingQueue.length > 0) {
+            const relPath = pendingQueue.shift();
+            if (parsedBinPaths.has(relPath)) continue;
+            await runSelectiveExtractToStage(new Set([relPath]));
+            parsedBinPaths.add(relPath);
+
+            const absBinPath = toAbsFromRel(stageBinsDir, relPath);
+            if (!fs.existsSync(absBinPath)) continue;
+            try {
+              const raw = await fs.promises.readFile(absBinPath);
+              const binObj = await new BIN().read(raw, binHashtables);
+              const links = Array.isArray(binObj?.links) ? binObj.links : [];
+              for (const link of links) {
+                const resolvedLinkPath = resolveLinkedBinPath(link);
+                if (!resolvedLinkPath || !resolvedLinkPath.endsWith('.bin')) continue;
+                if (selectedBinPaths.has(resolvedLinkPath)) continue;
+                selectedBinPaths.add(resolvedLinkPath);
+                pendingQueue.push(resolvedLinkPath);
+              }
+            } catch (_) { }
+          }
+
+          sendProgress(0, 'Combining selected skin BINs...');
+          if (replaceExisting && fs.existsSync(outputDir)) {
+            fs.rmSync(outputDir, { recursive: true, force: true });
+          }
+          fs.mkdirSync(outputDir, { recursive: true });
+
+          const bum = new BumpathCore();
+          if (typeof bum.setNativeAddon === 'function') bum.setNativeAddon(nativeAddon);
+          await bum.addSourceDirs([stageBinsDir]);
+
+          const binSelections = {};
+          for (const key of Object.keys(bum.sourceBins)) {
+            const rel = normalizeRelPathLower(bum.sourceFiles[key]?.relPath || '');
+            binSelections[key] = selectedBinPaths.has(rel);
+          }
+          bum.updateBinSelection(binSelections);
+          await bum.scan(hashPath);
+
+          const referencedAssetPaths = new Set();
+          for (const [entryHash, files] of Object.entries(bum.scannedTree || {})) {
+            if (entryHash === 'All_BINs') continue;
+            for (const fileInfo of Object.values(files || {})) {
+              const rel = normalizeRelPathLower(fileInfo?.path || '');
+              if (!rel || rel.endsWith('.bin')) continue;
+              if (chunkByPath.has(rel)) referencedAssetPaths.add(rel);
+            }
+          }
+          if (preserveHudIcons2D) {
+            const iconsPrefix = `assets/characters/${championFileName}/hud/icons2d/`;
+            for (const rel of chunkByPath.keys()) {
+              if (rel.startsWith(iconsPrefix)) referencedAssetPaths.add(rel);
+            }
+          }
+
+          bum.scannedTree = { All_BINs: bum.scannedTree?.All_BINs || {} };
+          await bum.process(outputDir, true, true, null, true, { copyAssets: false });
+
+          // Prune deadweight BIN files after combine:
+          // keep main skin BIN and any BINs still linked from the combined main BIN.
+          try {
+            const keepBinPaths = new Set([mainBinPath]);
+            const combinedMainBinAbs = toAbsFromRel(outputDir, mainBinPath);
+            if (fs.existsSync(combinedMainBinAbs)) {
+              const mainRaw = await fs.promises.readFile(combinedMainBinAbs);
+              const combinedMainBin = await new BIN().read(mainRaw, binHashtables);
+              const remainingLinks = Array.isArray(combinedMainBin?.links) ? combinedMainBin.links : [];
+              for (const link of remainingLinks) {
+                const linkedRel = resolveLinkedBinPath(link);
+                if (!linkedRel || !linkedRel.endsWith('.bin')) continue;
+                const linkedAbs = toAbsFromRel(outputDir, linkedRel);
+                if (fs.existsSync(linkedAbs)) {
+                  keepBinPaths.add(linkedRel);
+                }
+              }
+            }
+
+            const deleteDeadBins = async (dirAbs) => {
+              const entries = await fs.promises.readdir(dirAbs, { withFileTypes: true });
+              for (const entry of entries) {
+                const childAbs = path.join(dirAbs, entry.name);
+                if (entry.isDirectory()) {
+                  await deleteDeadBins(childAbs);
+                  continue;
+                }
+                if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.bin')) continue;
+                const rel = normalizeRelPathLower(path.relative(outputDir, childAbs));
+                if (!keepBinPaths.has(rel)) {
+                  await fs.promises.unlink(childAbs).catch(() => { });
+                }
+              }
+            };
+
+            await deleteDeadBins(outputDir);
+
+            // USER REQUEST: Delete base champion BIN (redundant after combine)
+            const baseBinCandidates = [
+              `data/characters/${championFileName}/${championFileName}.bin`,
+              `assets/characters/${championFileName}/${championFileName}.bin`,
+            ].map(normalizeRelPathLower);
+            for (const rel of baseBinCandidates) {
+              if (rel === normalizeRelPathLower(mainBinPath)) continue;
+              const abs = toAbsFromRel(outputDir, rel);
+              if (nodeFs.existsSync(abs)) {
+                await fs.promises.unlink(abs).catch(() => { });
+              }
+            }
+          } catch (pruneErr) {
+            console.warn('[wad:extractBundle] Fast BIN prune skipped:', pruneErr.message);
+          }
+
+          const assetResult = await runSelectiveExtract(referencedAssetPaths);
+
+          // Optional VO extraction preserved for parity.
+          let successfulVoiceovers = 0;
+          let failedVoiceovers = 0;
+          if (voiceoverWadFiles.length > 0 && extractVoiceover) {
+            sendProgress(0, `Extracting ${voiceoverWadFiles.length} voiceover WAD(s)...`);
+            for (const voFile of voiceoverWadFiles) {
+              try {
+                const voPath = path.join(leaguePath, voFile);
+                if (nativeAddon && typeof nativeAddon.extractWadAsync === 'function') {
+                  const nativeVo = await nativeAddon.extractWadAsync(voPath, outputDir, hashPath || null, replaceExisting);
+                  if (nativeVo?.error) throw new Error(nativeVo.error);
+                } else if (nativeAddon && typeof nativeAddon.extractWad === 'function') {
+                  const nativeVo = nativeAddon.extractWad(voPath, outputDir, hashPath || null, replaceExisting);
+                  if (nativeVo?.error) throw new Error(nativeVo.error);
+                }
+                successfulVoiceovers++;
+              } catch (err) {
+                console.warn(`[wad:extractBundle] Voiceover failed (${voFile}):`, err.message);
+                failedVoiceovers++;
+              }
+            }
+          }
+
+          const finalMessage = 'Skin files extracted successfully (fast selected mode).';
+          sendProgress(assetResult.extractedCount, finalMessage);
+          return {
+            success: true,
+            championFileName,
+            wadFilePath,
+            outputDir,
+            normalResult: {
+              success: true,
+              extractedCount: Number(selectedBinPaths.size + assetResult.extractedCount),
+              skippedCount: Number(assetResult.skippedCount || 0),
+              outputDir,
+              hashedFiles: {},
+              native: true,
+            },
+            voiceoverWadFiles,
+            successfulVoiceovers,
+            failedVoiceovers,
+            finalMessage,
+          };
+        } finally {
+          if (fs.existsSync(stageBinsDir)) fs.rmSync(stageBinsDir, { recursive: true, force: true });
+        }
+      }
+
+      const { unpackWAD } = await loadWadModule();
+      const progressCallback = (count, message) => sendProgress(count, message);
+      const { loadHashtables } = await loadJsRitoModule();
+      let hashtables = null;
+      if (hashPath && fs.existsSync(hashPath)) {
+        try {
+          hashtables = await loadHashtables(hashPath);
+        } catch (e) {
+          console.warn('[wad:extractBundle] Hashtable load failed:', e.message);
+        }
+      }
 
       // Extract main WAD
       sendProgress(0, 'Extracting WAD file...');
@@ -669,6 +1034,9 @@ function registerWadBumpathChannels({
       const preserveHudIcons2D = data.preserveHudIcons2D !== false;
       const skipSfxRepath = data.skipSfxRepath !== false;
       const skipVoiceoverRepath = data.skipVoiceoverRepath !== false;
+
+      // USER REQUEST: Auto-version if directory exists
+      data.outputDir = getUniqueOutputDir(fs, data.outputDir);
 
       const { BumpathCore } = await loadBumpathModule();
 
@@ -1483,6 +1851,7 @@ function registerWadBumpathChannels({
       return { materialTextureHints: {}, defaultTextureBySkn: {} };
     }
   });
+
 }
 
 module.exports = { registerWadBumpathChannels, tryLoadNativeWadIndexer };
