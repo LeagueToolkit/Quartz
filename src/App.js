@@ -37,7 +37,6 @@ import GlobalBackgroundEffect from './components/BackgroundEffects/GlobalBackgro
 import GlobalCursorEffect from './components/CursorEffects/GlobalCursorEffect';
 import GlobalUpdateNotification from './components/app-shell/GlobalUpdateNotification';
 import GlobalHashSyncNotification from './components/app-shell/GlobalHashSyncNotification';
-import AppModalWheel from './components/debug/AppModalWheel';
 
 import fontManager from './utils/theme/fontManager.js';
 import electronPrefs from './utils/core/electronPrefs.js';
@@ -102,9 +101,9 @@ const QuartzInteropBridge = () => {
       const mode = String(handoff.mode || 'paint').toLowerCase();
       const route =
         mode === 'port' ? '/port' :
-        mode === 'bineditor' ? '/bineditor' :
-        mode === 'vfxhub' ? '/vfx-hub' :
-        '/paint';
+          mode === 'bineditor' ? '/bineditor' :
+            mode === 'vfxhub' ? '/vfx-hub' :
+              '/paint';
       const currentHash = window.location.hash || '#/';
 
       if (currentHash !== `#${route}`) {
@@ -154,7 +153,7 @@ const QuartzInteropBridge = () => {
           (a, b) => Number(a?.created_at_unix || 0) - Number(b?.created_at_unix || 0)
         );
         for (const handoff of latestMessages) processHandoff(handoff);
-      } catch {}
+      } catch { }
     };
 
     let watcher = null;
@@ -171,8 +170,8 @@ const QuartzInteropBridge = () => {
             clearTimeout(watchDebounce);
             watchDebounce = setTimeout(consume, 80);
           });
-          watcher.on('error', () => {});
-        } catch {}
+          watcher.on('error', () => { });
+        } catch { }
       })
       .catch(() => {
         // Main process may not have interop channel registered yet.
@@ -192,7 +191,7 @@ const QuartzInteropBridge = () => {
       ipcRenderer.removeListener('interop:check-now', onCheckNow);
       try {
         watcher?.close();
-      } catch {}
+      } catch { }
     };
   }, [navigate]);
 
@@ -631,7 +630,7 @@ function App() {
           window.dispatchEvent(new CustomEvent(OPEN_INLINE_MODEL_INSPECT_EVENT, {
             detail: payload || {},
           }));
-        } catch (_) {}
+        } catch (_) { }
       });
     }
 
@@ -661,12 +660,12 @@ function App() {
             window.dispatchEvent(new CustomEvent(OPEN_INLINE_MODEL_INSPECT_EVENT, {
               detail: { path: inspectPath },
             }));
-          } catch (_) {}
+          } catch (_) { }
         }, 350);
       } else {
         console.log('[ModelInspectLaunch][Renderer] no inspect target in argv', argv);
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // Initialize fonts on app startup AFTER listeners are attached
     fontManager.init().then(async () => {

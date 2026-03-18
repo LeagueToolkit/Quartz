@@ -172,6 +172,15 @@ function findActualTexturePath(texturePath, targetBinPath = null, donorBinPath =
   candidates.push(path.join(process.cwd(), normalizedRel));
   candidates.push(path.join(process.cwd(), 'assets', relNoAssets));
 
+  // VFX Hub fallback cache (used when systems are downloaded without a loaded target bin)
+  if (os?.tmpdir) {
+    const tempVfxhubRoot = path.join(os.tmpdir(), 'quartz', 'vfxhub');
+    candidates.push(path.join(tempVfxhubRoot, normalizedRel));
+    candidates.push(path.join(tempVfxhubRoot, relNoAssets));
+    candidates.push(path.join(tempVfxhubRoot, 'assets', relNoAssets));
+    candidates.push(path.join(tempVfxhubRoot, 'assets', 'vfxhub', path.basename(relNoAssets)));
+  }
+
   for (const abs of candidates) {
     try {
       if (abs && fs.existsSync(abs)) return abs;

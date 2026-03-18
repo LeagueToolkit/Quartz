@@ -871,6 +871,9 @@ class GitHubAPI {
        
        // If we have required assets, filter the available assets to match
        let matchingAssets = assetFiles;
+       const requiredFilenames = requiredAssets
+         .map((requiredAsset) => requiredAsset.split('/').pop() || requiredAsset.split('\\').pop() || requiredAsset)
+         .filter(Boolean);
        if (requiredAssets.length > 0) {
          console.log(`🔍 Filtering assets to match VFX system requirements...`);
          
@@ -878,10 +881,27 @@ class GitHubAPI {
            const filename = file.name;
            
            // Check if this asset matches any of the required asset paths
-           const matches = requiredAssets.some(requiredAsset => {
-             // Extract just the filename from the asset path
-             const requiredFilename = requiredAsset.split('/').pop() || requiredAsset.split('\\').pop();
-             return filename.includes(requiredFilename);
+           const matches = requiredFilenames.some((requiredFilename) => {
+             const assetName = String(filename || '').toLowerCase();
+             const required = String(requiredFilename || '').toLowerCase();
+             if (!assetName || !required) return false;
+             if (assetName === required || assetName.includes(required)) return true;
+
+             // Handle hub names like: base.SUFFIX.ext -> base.ext
+             const parts = assetName.split('.');
+             if (parts.length >= 3) {
+               const collapsed = `${parts.slice(0, parts.length - 2).join('.')}.${parts[parts.length - 1]}`;
+               if (collapsed === required || collapsed.includes(required)) return true;
+             }
+
+             const requiredDot = required.lastIndexOf('.');
+             if (requiredDot > 0 && requiredDot < required.length - 1) {
+               const stem = required.slice(0, requiredDot);
+               const ext = required.slice(requiredDot + 1);
+               if (assetName.startsWith(`${stem}_`) && assetName.endsWith(`.${ext}`)) return true;
+               if (assetName.startsWith(`${stem}.`) && assetName.endsWith(`.${ext}`)) return true;
+             }
+             return false;
            });
            
            console.log(`  ${filename} ${matches ? '✅' : '❌'}`);
@@ -893,19 +913,47 @@ class GitHubAPI {
          console.log(`⚠️ No system content provided - returning all assets`);
        }
 
+      const resolveExpectedFilename = (assetName) => {
+        if (requiredFilenames.length === 0) return assetName;
+        const assetNameLower = String(assetName || '').toLowerCase();
+        const matched = requiredFilenames.find((requiredFilename) => {
+          const required = String(requiredFilename || '').toLowerCase();
+          if (!assetNameLower || !required) return false;
+          if (assetNameLower === required || assetNameLower.includes(required)) return true;
+
+          const parts = assetNameLower.split('.');
+          if (parts.length >= 3) {
+            const collapsed = `${parts.slice(0, parts.length - 2).join('.')}.${parts[parts.length - 1]}`;
+            if (collapsed === required || collapsed.includes(required)) return true;
+          }
+
+          const requiredDot = required.lastIndexOf('.');
+          if (requiredDot > 0 && requiredDot < required.length - 1) {
+            const stem = required.slice(0, requiredDot);
+            const ext = required.slice(requiredDot + 1);
+            if (assetNameLower.startsWith(`${stem}_`) && assetNameLower.endsWith(`.${ext}`)) return true;
+            if (assetNameLower.startsWith(`${stem}.`) && assetNameLower.endsWith(`.${ext}`)) return true;
+          }
+          return false;
+        });
+        return matched || assetName;
+      };
+
       // Download asset URLs with fallback to public access
       const assets = [];
       for (const asset of matchingAssets) {
         // Try authenticated first, fallback to public if authentication fails
         const downloadUrl = await this.getDownloadUrlWithFallback(asset.path);
+        const expectedName = resolveExpectedFilename(asset.name);
         
         assets.push({
-          name: asset.name,
+          name: expectedName,
+          sourceName: asset.name,
           path: asset.path,
           downloadUrl: downloadUrl || asset.download_url, // Fallback to original if needed
           size: asset.size
         });
-        console.log(`  📦 Asset: ${asset.name} (${asset.size} bytes) - URL: ${downloadUrl ? 'Available' : 'Fallback'}`);
+        console.log(`  📦 Asset: ${asset.name} -> ${expectedName} (${asset.size} bytes) - URL: ${downloadUrl ? 'Available' : 'Fallback'}`);
       }
 
       return assets;

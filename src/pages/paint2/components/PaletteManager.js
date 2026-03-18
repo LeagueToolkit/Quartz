@@ -502,7 +502,34 @@ const PaletteManager = ({
                                 }
                             }}
                             onClick={(event) => {
-                                CreatePicker(idx, event, palette, setPalette, mode, null, null, event.currentTarget);
+                                const commitPaletteHex = (hex) => {
+                                    if (!hex) return;
+                                    setPalette((prev) => {
+                                        if (!Array.isArray(prev) || !prev[idx]) return prev;
+                                        const current = prev[idx];
+                                        const next = [...prev];
+                                        const updated = new ColorHandler(current?.ToVec4?.() || current?.vec4 || [0.5, 0.5, 0.5, 1]);
+                                        updated.InputHex(hex);
+                                        updated.time = current?.time ?? (prev.length === 1 ? 0 : idx / (prev.length - 1));
+                                        next[idx] = updated;
+                                        return next;
+                                    });
+                                };
+
+                                CreatePicker(
+                                    idx,
+                                    event,
+                                    palette,
+                                    setPalette,
+                                    mode,
+                                    null,
+                                    null,
+                                    event.currentTarget,
+                                    {
+                                        onDragEndPreview: commitPaletteHex,
+                                        onCommit: commitPaletteHex
+                                    }
+                                );
                             }}
                         />
                     </Tooltip>

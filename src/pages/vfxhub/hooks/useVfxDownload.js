@@ -6,6 +6,7 @@ import { findProjectRoot } from '../utils/assetDetection.js';
 
 const fs = window.require ? window.require('fs') : null;
 const path = window.require ? window.require('path') : null;
+const os = window.require ? window.require('os') : null;
 
 const formatRateLimitMessage = (error) => {
   const resetTime = error.headers?.['x-ratelimit-reset'] || Date.now() + 3600000;
@@ -24,19 +25,28 @@ export default function useVfxDownload({
   setDonorPath,
   setShowDownloadModal,
 }) {
+  const resolveAssetsOutputDirectory = useCallback(() => {
+    if (targetPath && path) {
+      const projectRoot = findProjectRoot(path.dirname(targetPath));
+      if (projectRoot) {
+        return {
+          dir: path.join(projectRoot, 'assets', 'vfxhub'),
+          usedTempCache: false,
+        };
+      }
+    }
+
+    const tmpBase = os?.tmpdir ? os.tmpdir() : (process?.cwd ? process.cwd() : '.');
+    return {
+      dir: path.join(tmpBase, 'quartz', 'vfxhub', 'assets', 'vfxhub'),
+      usedTempCache: true,
+    };
+  }, [targetPath]);
+
   const downloadAndCopyAssets = useCallback(
     async (assets, systemName) => {
-      if (!targetPath) throw new Error('No target file loaded - cannot copy assets');
       if (!fs || !path) throw new Error('File system APIs are unavailable');
-
-      const projectRoot = findProjectRoot(path.dirname(targetPath));
-      if (!projectRoot) {
-        throw new Error('Could not find a valid project root (folder containing data). Open a target bin inside your mod project.');
-      }
-      const assetsDir = path.join(projectRoot, 'assets');
-      const vfxhubDir = path.join(assetsDir, 'vfxhub');
-
-      if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true });
+      const { dir: vfxhubDir, usedTempCache } = resolveAssetsOutputDirectory();
       if (!fs.existsSync(vfxhubDir)) fs.mkdirSync(vfxhubDir, { recursive: true });
 
       const copiedAssets = [];
@@ -53,12 +63,13 @@ export default function useVfxDownload({
             // Local Hub assets: copy directly from local filesystem to avoid remote fetch corruption.
             fs.copyFileSync(sourcePath, outputPath);
             const stat = fs.statSync(outputPath);
-            copiedAssets.push({
-              originalName: outputName,
-              path: outputPath,
-              size: stat.size,
-            });
-            continue;
+          copiedAssets.push({
+            originalName: outputName,
+            path: outputPath,
+            size: stat.size,
+            usedTempCache,
+          });
+          continue;
           }
 
           let assetBuffer;
@@ -77,6 +88,7 @@ export default function useVfxDownload({
             originalName: outputName,
             path: outputPath,
             size: assetBuffer.length,
+            usedTempCache,
           });
         } catch (error) {
           console.error(`Failed to copy asset ${asset?.name || 'unknown'} for ${systemName}:`, error);
@@ -85,7 +97,7 @@ export default function useVfxDownload({
 
       return copiedAssets;
     },
-    [targetPath]
+    [resolveAssetsOutputDirectory]
   );
 
   const downloadVFXSystem = useCallback(
@@ -102,7 +114,34 @@ export default function useVfxDownload({
 
         setStatusMessage('Parsing VFX system...');
         const parsedSystems = parseVfxEmitters(pythonContent);
+        let resolvedAssets = Array.isArray(assets) ? assets : [];
         const downloadedAt = Date.now();
+
+        if (Array.isArray(assets) && assets.length > 0) {
+          setStatusMessage(`Downloading ${assets.length} associated assets...`);
+          try {
+            const copiedAssets = await downloadAndCopyAssets(assets, system.name);
+            const copiedByName = new Map(
+              copiedAssets.map((copied) => [String(copied.originalName || '').toLowerCase(), copied])
+            );
+            resolvedAssets = assets.map((asset) => {
+              const key = String(asset?.name || '').toLowerCase();
+              const copied = copiedByName.get(key);
+              return copied
+                ? { ...asset, localPath: copied.path }
+                : asset;
+            });
+            const usedTempCache = copiedAssets.some((item) => item.usedTempCache);
+            setStatusMessage(
+              usedTempCache
+                ? `Downloaded ${copiedAssets.length} assets to temp cache for ${system.name}`
+                : `Downloaded ${copiedAssets.length} assets for ${system.name}`
+            );
+          } catch (assetError) {
+            setStatusMessage('Downloaded VFX system but failed to download assets');
+          }
+        }
+
         // Preserve GitHub asset metadata on downloaded donor entries so
         // emitter-level port actions can copy assets later too.
         const enrichedSystems = Object.fromEntries(
@@ -112,7 +151,7 @@ export default function useVfxDownload({
               ...value,
               downloaded: true,
               downloadedAt,
-              assets: Array.isArray(assets) ? assets : [],
+              assets: resolvedAssets,
               collection: system.collection,
             },
           ])
@@ -120,16 +159,6 @@ export default function useVfxDownload({
         setDonorSystems(enrichedSystems);
         setDonorPyContent(pythonContent);
         setDonorPath(`VFX Hub: ${system.displayName || system.name}`);
-
-        if (Array.isArray(assets) && assets.length > 0) {
-          setStatusMessage(`Downloading ${assets.length} associated assets...`);
-          try {
-            const copiedAssets = await downloadAndCopyAssets(assets, system.name);
-            setStatusMessage(`Downloaded ${copiedAssets.length} assets for ${system.name}`);
-          } catch (assetError) {
-            setStatusMessage('Downloaded VFX system but failed to download assets');
-          }
-        }
 
         setStatusMessage(
           `VFX system loaded: ${Object.keys(enrichedSystems).length} systems available for porting`
@@ -185,12 +214,23 @@ export default function useVfxDownload({
         }
 
         let assetMessage = '';
+        let resolvedAssets = Array.isArray(downloadedSystem.assets) ? downloadedSystem.assets : [];
         if (Array.isArray(downloadedSystem.assets) && downloadedSystem.assets.length > 0) {
           setStatusMessage(
             `Downloading ${downloadedSystem.assets.length} assets for ${system.name}...`
           );
           try {
             const copiedAssets = await downloadAndCopyAssets(downloadedSystem.assets, system.name);
+            const copiedByName = new Map(
+              copiedAssets.map((copied) => [String(copied.originalName || '').toLowerCase(), copied])
+            );
+            resolvedAssets = downloadedSystem.assets.map((asset) => {
+              const key = String(asset?.name || '').toLowerCase();
+              const copied = copiedByName.get(key);
+              return copied
+                ? { ...asset, localPath: copied.path }
+                : asset;
+            });
             assetMessage = ` and copied ${copiedAssets.length} assets`;
           } catch (assetError) {
             assetMessage = ' (asset copy failed)';
@@ -220,7 +260,7 @@ export default function useVfxDownload({
           downloadedAt: Date.now(),
           collection: system.collection,
           category: system.category,
-          assets: downloadedSystem.assets || [],
+          assets: resolvedAssets,
         };
 
         setDonorSystems(nextDonorSystems);

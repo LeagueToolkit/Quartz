@@ -23,7 +23,7 @@ import { reparseBinWithFreshPy } from '../../utils/io/reparseHelpers.js';
 import ColorHandler from '../../utils/colors/ColorHandler.js';
 import { savePalette, loadAllPalettes, deletePalette } from './utils/paletteManager.js';
 import { createColorFilter, getColorDescription } from '../../utils/colors/colorFilter.js';
-import { CreatePicker } from '../../utils/colors/colorUtils.js';
+import { CreatePicker, cleanupColorPickers } from '../../utils/colors/colorUtils.js';
 
 // Components
 import Toolbar from './components/Toolbar';
@@ -2055,6 +2055,7 @@ function Paint2() {
                         onTextureLeave={handleTextureLeave}
                         onTextureClick={handleTextureClick}
                         onColorClick={colors => {
+                            cleanupColorPickers();
                             const newPalette = colors.map(c => {
                                 const h = new ColorHandler(c.rgba);
                                 if (h.vec4) h.vec4[3] = 1;

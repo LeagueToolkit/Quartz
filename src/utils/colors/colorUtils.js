@@ -441,6 +441,14 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
     };
 
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const emitDragEndPreview = () => {
+      try {
+        if (options && typeof options.onDragEndPreview === 'function') {
+          const { r, g, b } = hsvToRgb(hsv.h, hsv.s, hsv.v);
+          options.onDragEndPreview(toHex(r, g, b));
+        }
+      } catch {}
+    };
 
     // pointer events for hue
     const onHue = (e) => {
@@ -454,7 +462,11 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
       e.preventDefault(); // Prevent text selection
       onHue(e);
       const mv = (ev)=> onHue(ev);
-      const up = ()=> { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); };
+      const up = ()=> {
+        window.removeEventListener('mousemove', mv);
+        window.removeEventListener('mouseup', up);
+        emitDragEndPreview();
+      };
       window.addEventListener('mousemove', mv);
       window.addEventListener('mouseup', up);
     });
@@ -473,7 +485,11 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
       e.preventDefault(); // Prevent text selection
       onSV(e);
       const mv = (ev)=> onSV(ev);
-      const up = ()=> { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); };
+      const up = ()=> {
+        window.removeEventListener('mousemove', mv);
+        window.removeEventListener('mouseup', up);
+        emitDragEndPreview();
+      };
       window.addEventListener('mousemove', mv);
       window.addEventListener('mouseup', up);
     });
@@ -685,6 +701,11 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
       if (p) commit(p.hex);
     });
     cancelBtn.addEventListener('click', () => {
+      try {
+        if (options && typeof options.onCancel === 'function') {
+          options.onCancel();
+        }
+      } catch {}
       clearClickedColorDotPreview();
       try { if (container.parentNode) container.parentNode.removeChild(container); } catch {}
     });
@@ -699,18 +720,31 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
     });
 
     // Close on click outside
+    let isClosing = false;
+    const removeContainerOnly = () => {
+      try {
+        if (isClosing) return;
+        isClosing = true;
+        document.removeEventListener('click', closeHandler);
+        if (container.parentNode) {
+          container.parentNode.removeChild(container);
+        }
+      } catch {}
+    };
+
     const closeHandler = (e) => {
       try {
+        if (isClosing) return;
+        if (!container.isConnected) {
+          document.removeEventListener('click', closeHandler);
+          return;
+        }
         if (!container.contains(e.target)) {
           // Commit current color on outside click
           const p = parseHex(hexInput.value);
           if (p) commit(p.hex);
           clearClickedColorDotPreview();
-          // Check if container is still in the DOM before removing
-          if (container.parentNode) {
-            container.parentNode.removeChild(container);
-          }
-          document.removeEventListener('click', closeHandler);
+          removeContainerOnly();
         }
       } catch (error) {
         console.error('Error closing color picker:', error);
@@ -720,6 +754,7 @@ const CreatePicker = (paletteIndex, event, Palette, setPalette, mode, savePalett
     };
 
     document.body.appendChild(container);
+    container.__pickerCleanup = removeContainerOnly;
     // Re-position after mount once dimensions are known.
     if (event && event.target) {
       positionContainerNearTarget(event.target);
@@ -743,7 +778,9 @@ const cleanupColorPickers = () => {
     const existingPickers = document.querySelectorAll('.color-picker-container');
     existingPickers.forEach(picker => {
       try {
-        if (picker.parentNode) {
+        if (typeof picker.__pickerCleanup === 'function') {
+          picker.__pickerCleanup();
+        } else if (picker.parentNode) {
           picker.parentNode.removeChild(picker);
         }
       } catch (error) {

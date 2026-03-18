@@ -219,6 +219,31 @@ function localFileState(filePath) {
   }
 }
 
+function isRemoteUnchanged(remote, previous = {}, local = null) {
+  if (!remote?.ok || !local) return false;
+  if (remote.notModified) return true;
+
+  const remoteEtag = String(remote.etag || '');
+  const prevEtag = String(previous.etag || '');
+  const remoteLastModified = String(remote.lastModified || '');
+  const prevLastModified = String(previous.lastModified || '');
+  const remoteLen = Number(remote.contentLength || 0);
+  const localSize = Number(local.size || 0);
+
+  // Some endpoints return 200 even when unchanged; stable ETag means unchanged.
+  if (remoteEtag && prevEtag && remoteEtag === prevEtag) {
+    if (remoteLen > 0 && localSize > 0 && remoteLen !== localSize) return false;
+    return true;
+  }
+
+  if (remoteLastModified && prevLastModified && remoteLastModified === prevLastModified) {
+    if (remoteLen > 0 && localSize > 0 && remoteLen !== localSize) return false;
+    return true;
+  }
+
+  return false;
+}
+
 function probeRemoteFile(url, previous = {}) {
   return new Promise((resolve) => {
     const protocol = url.startsWith('https:') ? https : http;
@@ -278,13 +303,7 @@ async function downloadHashes(progressCallback = null) {
 
       try {
         const remote = await probeRemoteFile(url, previous);
-        const shouldSkip =
-          remote?.ok &&
-          local &&
-          (
-            remote.notModified ||
-            (remote.lastModified && local.mtimeMs >= new Date(remote.lastModified).getTime())
-          );
+        const shouldSkip = isRemoteUnchanged(remote, previous, local);
 
         if (shouldSkip) {
           skipped.push(filename);
@@ -334,12 +353,8 @@ async function downloadHashes(progressCallback = null) {
       const p0Remote = await probeRemoteFile(GAME_HASH_PART_URLS[0], gameMeta.part0 || {});
       const p1Remote = await probeRemoteFile(GAME_HASH_PART_URLS[1], gameMeta.part1 || {});
       const gameShouldSkip =
-        gameLocal &&
-        p0Remote?.ok &&
-        p1Remote?.ok &&
-        (p0Remote.notModified || p1Remote.notModified ||
-          ((p0Remote.lastModified && gameLocal.mtimeMs >= new Date(p0Remote.lastModified).getTime()) &&
-            (p1Remote.lastModified && gameLocal.mtimeMs >= new Date(p1Remote.lastModified).getTime())));
+        isRemoteUnchanged(p0Remote, gameMeta.part0 || {}, gameLocal) &&
+        isRemoteUnchanged(p1Remote, gameMeta.part1 || {}, gameLocal);
 
       if (gameShouldSkip) {
         skipped.push('hashes.game.txt');

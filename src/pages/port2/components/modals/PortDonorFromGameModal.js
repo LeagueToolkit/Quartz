@@ -700,7 +700,7 @@ function PortDonorFromGameModal({
   const leftSkinSearchRowProps = useMemo(() => ({
     results: filteredLeftSkinResults,
     selectedChampionId: selectedChampion?.id || null,
-    selectedSkinId: selectedSkin?.id || null,
+    selectedSkinId: selectedSkin?.id ?? null,
     onSelect: handleLeftSkinResultSelect,
     onYouTubeSkin: handleYouTubeSkin,
   }), [filteredLeftSkinResults, selectedChampion, selectedSkin, handleLeftSkinResultSelect, handleYouTubeSkin]);
@@ -713,7 +713,7 @@ function PortDonorFromGameModal({
     skins: filteredSkins,
     alias: selectedChampion?.alias || '',
     championName: selectedChampion?.name || '',
-    selectedSkinId: selectedSkin?.id || null,
+    selectedSkinId: selectedSkin?.id ?? null,
     onSelect: setSelectedSkin,
     onYouTubeSkin: handleYouTubeSkin,
   }), [filteredSkins, selectedChampion, selectedSkin, handleYouTubeSkin]);
