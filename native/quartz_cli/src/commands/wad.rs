@@ -3,7 +3,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 
 use heed::types::{Bytes, Str};
 use heed::{Database, EnvOpenOptions};
@@ -52,109 +51,22 @@ fn load_extracted_hashes(hash_dir: &Path) -> HashMap<u64, String> {
     parse_hash_text_file(&hash_dir.join("hashes.extracted.txt"), 16)
 }
 
-fn parse_hash_entries(path: &Path, hash_len: usize) -> Vec<([u8; 8], String)> {
-    let mut out = Vec::new();
-    let Ok(content) = fs::read_to_string(path) else {
-        return out;
-    };
-    for line in content.lines() {
-        let l = line.trim();
-        if l.is_empty() || l.starts_with('#') || l.len() <= hash_len + 1 {
-            continue;
-        }
-        let h = &l[..hash_len];
-        let p = l[hash_len + 1..].trim_end_matches('\r');
-        if let Ok(v) = u64::from_str_radix(h, 16) {
-            out.push((v.to_be_bytes(), p.to_string()));
-        }
-    }
-    out
-}
-
 fn lmdb_dir(hash_dir: &Path) -> PathBuf {
-    hash_dir.join("hashes.lmdb")
-}
-
-fn build_hash_db(hash_dir: &Path) -> Result<(), String> {
-    let db_dir = lmdb_dir(hash_dir);
-    let sources: &[(&str, usize)] = &[
-        ("hashes.game.txt", 16),
-        ("hashes.lcu.txt", 16),
-        ("hashes.extracted.txt", 16),
-    ];
-
-    let db_mtime: Option<SystemTime> = fs::metadata(db_dir.join("data.mdb"))
-        .and_then(|m| m.modified())
-        .ok();
-
-    let needs_rebuild = !db_dir.exists()
-        || sources.iter().any(|(name, _)| {
-            let source_mtime = fs::metadata(hash_dir.join(name))
-                .and_then(|m| m.modified())
-                .ok();
-            match (db_mtime, source_mtime) {
-                (Some(db), Some(src)) => src > db,
-                (None, Some(_)) => true,
-                _ => false,
-            }
-        });
-
-    if !needs_rebuild {
-        return Ok(());
-    }
-
-    if db_dir.exists() {
-        fs::remove_dir_all(&db_dir)
-            .map_err(|e| format!("Failed to remove {}: {}", db_dir.display(), e))?;
-    }
-    fs::create_dir_all(&db_dir)
-        .map_err(|e| format!("Failed to create {}: {}", db_dir.display(), e))?;
-
-    let env = unsafe {
-        EnvOpenOptions::new()
-            .map_size(512 * 1024 * 1024)
-            .max_dbs(1)
-            .open(&db_dir)
-    }
-    .map_err(|e| format!("Failed to open LMDB {}: {}", db_dir.display(), e))?;
-
-    let mut wtxn = env
-        .write_txn()
-        .map_err(|e| format!("Failed to start LMDB write transaction: {}", e))?;
-    let db: Database<Bytes, Str> = env
-        .create_database(&mut wtxn, None)
-        .map_err(|e| format!("Failed to create LMDB database: {}", e))?;
-
-    let mut entries: Vec<([u8; 8], String)> = Vec::with_capacity(2_000_000);
-    for (name, hash_len) in sources {
-        entries.extend(parse_hash_entries(&hash_dir.join(name), *hash_len));
-    }
-    entries.sort_unstable_by_key(|(k, _)| *k);
-    entries.dedup_by_key(|(k, _)| *k);
-
-    for (key, value) in &entries {
-        db.put(&mut wtxn, key.as_slice(), value.as_str())
-            .map_err(|e| format!("Failed LMDB put: {}", e))?;
-    }
-
-    wtxn.commit()
-        .map_err(|e| format!("Failed LMDB commit: {}", e))?;
-    eprintln!("[WAD] LMDB rebuilt: {} entries", entries.len());
-    Ok(())
+    hash_dir.join("hashes-wad.lmdb")
 }
 
 fn open_hash_db(hash_dir: &Path) -> Result<heed::Env, String> {
     let db_dir = lmdb_dir(hash_dir);
     if !db_dir.exists() {
         return Err(format!(
-            "LMDB not found at {} (build failed or hash sources missing)",
+            "WAD LMDB not found at {} (run hash download first)",
             db_dir.display()
         ));
     }
     unsafe {
         EnvOpenOptions::new()
             .map_size(512 * 1024 * 1024)
-            .max_dbs(1)
+            .max_dbs(2)
             .open(&db_dir)
     }
     .map_err(|e| format!("Failed to open LMDB {}: {}", db_dir.display(), e))
@@ -426,22 +338,15 @@ pub fn unpack(wad_path: &Path, output_dir: Option<&Path>, hash_dir: Option<&Path
     let hash_dir = hash_dir.ok_or_else(|| {
         "Hash directory is required for LMDB unpack (expected %APPDATA%/FrogTools/hashes/)".to_string()
     })?;
-    let env = match open_hash_db(hash_dir) {
-        Ok(env) => env,
-        Err(_) => {
-            eprintln!("[WAD] LMDB missing; building initial DB...");
-            build_hash_db(hash_dir)?;
-            open_hash_db(hash_dir)?
-        }
-    };
+    let env = open_hash_db(hash_dir)?;
     let extracted_resolver = load_extracted_hashes(hash_dir);
     let rtxn = env
         .read_txn()
         .map_err(|e| format!("Failed to start LMDB read transaction: {}", e))?;
     let db: Database<Bytes, Str> = env
-        .open_database(&rtxn, None)
-        .map_err(|e| format!("Failed to open LMDB database: {}", e))?
-        .ok_or_else(|| "LMDB database missing".to_string())?;
+        .open_database(&rtxn, Some("wad"))
+        .map_err(|e| format!("Failed to open LMDB 'wad' database: {}", e))?
+        .ok_or_else(|| "LMDB 'wad' named database missing".to_string())?;
 
     let file = fs::File::open(wad_path)
         .map_err(|e| format!("Failed to open {}: {}", wad_path.display(), e))?;
