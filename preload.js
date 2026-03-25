@@ -56,6 +56,12 @@ window.electronAPI = {
     /** Read a .bin chunk from a WAD and return ritobin text (fake-python format). */
     readBinAsText: (params) => ipcRenderer.invoke('wad:readBinAsText', params),
 
+    /** Read a .troybin chunk from a WAD and return INI-like text. */
+    readTroybinAsText: (params) => ipcRenderer.invoke('wad:readTroybinAsText', params),
+
+    /** Read a .luabin/.luabin64 chunk from a WAD and return decompiled Lua text. */
+    readLuabinAsText: (params) => ipcRenderer.invoke('wad:readLuabinAsText', params),
+
     /** Prepare Port donor from champion/skin via TOC-first selective extraction. */
     preparePortDonorFromSkin: (params) => ipcRenderer.invoke('port:prepareDonorFromSkin', params),
     cleanupPortDonorTemp: (params) => ipcRenderer.invoke('port:cleanupDonorTemp', params),

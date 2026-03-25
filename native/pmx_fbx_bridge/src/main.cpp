@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "../../Pmx2Fbx-master/PmxLib/PmxReader.h"
@@ -24,14 +25,14 @@ void print_usage() {
     std::cerr << "  pmx_fbx_bridge --input <file.pmx> --output <file.fbx>\n";
 }
 
-bool parse_args(int argc, char** argv, CliArgs& out) {
-    std::vector<std::string> args(argv + 1, argv + argc);
+bool parse_args(int argc, wchar_t** argv, CliArgs& out) {
+    std::vector<std::wstring> args(argv + 1, argv + argc);
     for (size_t i = 0; i < args.size(); ++i) {
-        if (args[i] == "--input" && i + 1 < args.size()) {
+        if (args[i] == L"--input" && i + 1 < args.size()) {
             out.input = args[++i];
-        } else if (args[i] == "--output" && i + 1 < args.size()) {
+        } else if (args[i] == L"--output" && i + 1 < args.size()) {
             out.output = args[++i];
-        } else if (args[i] == "--help" || args[i] == "-h") {
+        } else if (args[i] == L"--help" || args[i] == L"-h") {
             print_usage();
             return false;
         }
@@ -77,63 +78,37 @@ FbxAMatrix to_fbx_matrix(const DirectX::XMMATRIX& xm) {
     return out;
 }
 
-bool build_scene_from_pmx(FbxManager* manager, FbxScene* scene, const PmxReader& pmx, std::string& error) {
+// Convert non-ASCII bytes to hex so FBX doesn't choke on Japanese names.
+static std::string to_latin(const std::string& name) {
+    std::string out;
+    for (unsigned char ch : name) {
+        if (ch > 0x7f) {
+            char buf[4];
+            snprintf(buf, sizeof(buf), "%02x", ch);
+            out.append(buf);
+        } else {
+            out.push_back(static_cast<char>(ch));
+        }
+    }
+    return out;
+}
+
+bool build_scene_from_pmx(FbxManager* manager, FbxScene* scene, const PmxReader& pmx,
+                           const std::filesystem::path& input_dir, std::string& error) {
     FbxNode* root = scene->GetRootNode();
     if (!root) {
         error = "FBX root node missing";
         return false;
     }
 
-    const std::string mesh_name = pmx.ModelName.empty() ? "pmx_model" : pmx.ModelName;
-    FbxMesh* mesh = FbxMesh::Create(scene, mesh_name.c_str());
-    FbxNode* mesh_node = FbxNode::Create(scene, mesh_name.c_str());
-    mesh_node->SetNodeAttribute(mesh);
-    root->AddChild(mesh_node);
+    const int global_vert_count = static_cast<int>(pmx.VertexList.size());
 
-    const int vertex_count = static_cast<int>(pmx.VertexList.size());
-    mesh->InitControlPoints(vertex_count);
-    FbxVector4* cps = mesh->GetControlPoints();
-    for (int i = 0; i < vertex_count; ++i) {
-        const auto& v = pmx.VertexList[static_cast<size_t>(i)];
-        cps[i] = FbxVector4(v.Position.X, v.Position.Y, v.Position.Z, 1.0);
-    }
-
-    auto* normals = mesh->CreateElementNormal();
-    normals->SetMappingMode(FbxGeometryElement::eByControlPoint);
-    normals->SetReferenceMode(FbxGeometryElement::eDirect);
-
-    auto* uvs = mesh->CreateElementUV("UVSet0");
-    uvs->SetMappingMode(FbxGeometryElement::eByControlPoint);
-    uvs->SetReferenceMode(FbxGeometryElement::eDirect);
-
-    for (const auto& v : pmx.VertexList) {
-        normals->GetDirectArray().Add(FbxVector4(v.Normal.X, v.Normal.Y, v.Normal.Z, 0.0));
-        uvs->GetDirectArray().Add(FbxVector2(v.UV.X, 1.0 - v.UV.Y));
-    }
-
-    for (size_t i = 0; i + 2 < pmx.FaceList.size(); i += 3) {
-        const int a = pmx.FaceList[i];
-        const int b = pmx.FaceList[i + 1];
-        const int c = pmx.FaceList[i + 2];
-        if (a < 0 || b < 0 || c < 0 || a >= vertex_count || b >= vertex_count || c >= vertex_count) {
-            continue;
-        }
-        mesh->BeginPolygon(-1, -1, false);
-        mesh->AddPolygon(a);
-        mesh->AddPolygon(b);
-        mesh->AddPolygon(c);
-        mesh->EndPolygon();
-    }
-
+    // ── Skeleton (shared across all material meshes) ─────────────────────
     std::vector<FbxNode*> bone_nodes(pmx.BoneList.size(), nullptr);
-    std::vector<FbxCluster*> clusters(pmx.BoneList.size(), nullptr);
-
-    FbxSkin* skin = FbxSkin::Create(scene, "pmx_skin");
-    mesh->AddDeformer(skin);
 
     for (size_t i = 0; i < pmx.BoneList.size(); ++i) {
         const auto& b = pmx.BoneList[i];
-        const std::string bone_name = b.Name.empty() ? ("bone_" + std::to_string(i)) : b.Name;
+        const std::string bone_name = to_latin(b.Name.empty() ? ("bone_" + std::to_string(i)) : b.Name);
 
         FbxSkeleton* skel = FbxSkeleton::Create(scene, bone_name.c_str());
         skel->SetSkeletonType(b.Parent < 0 ? FbxSkeleton::eRoot : FbxSkeleton::eLimbNode);
@@ -141,12 +116,6 @@ bool build_scene_from_pmx(FbxManager* manager, FbxScene* scene, const PmxReader&
         FbxNode* node = FbxNode::Create(scene, bone_name.c_str());
         node->SetNodeAttribute(skel);
         bone_nodes[i] = node;
-
-        FbxCluster* cluster = FbxCluster::Create(scene, ("cluster_" + std::to_string(i)).c_str());
-        cluster->SetLink(node);
-        cluster->SetLinkMode(FbxCluster::eTotalOne);
-        clusters[i] = cluster;
-        skin->AddCluster(cluster);
     }
 
     for (size_t i = 0; i < pmx.BoneList.size(); ++i) {
@@ -166,37 +135,153 @@ bool build_scene_from_pmx(FbxManager* manager, FbxScene* scene, const PmxReader&
         bone_nodes[i]->LclScaling.Set(FbxDouble3(local.GetS()));
     }
 
-    for (size_t vid = 0; vid < pmx.VertexList.size(); ++vid) {
-        const auto& v = pmx.VertexList[vid];
-        for (int wi = 0; wi < 4; ++wi) {
-            const auto& w = v.Weight[wi];
-            if (!w.IsValid()) {
-                continue;
+    // ── One mesh per material ────────────────────────────────────────────
+    std::vector<FbxNode*> mesh_nodes;
+    int curr_face = 0;
+
+    for (size_t matID = 0; matID < pmx.MaterialList.size(); ++matID) {
+        const auto& src = pmx.MaterialList[matID];
+        const int face_count = src.FaceCount;
+        const int end_face = curr_face + face_count;
+        const std::string mat_name = to_latin(src.Name.empty() ? ("mat_" + std::to_string(matID)) : src.Name);
+
+        // Collect unique global vertex indices used by this material
+        std::vector<int> global_indices;
+        std::unordered_map<int, int> global_to_local;
+        for (int fi = curr_face; fi < end_face && static_cast<size_t>(fi) < pmx.FaceList.size(); ++fi) {
+            const int gvi = pmx.FaceList[static_cast<size_t>(fi)];
+            if (gvi < 0 || gvi >= global_vert_count) continue;
+            if (global_to_local.find(gvi) == global_to_local.end()) {
+                global_to_local[gvi] = static_cast<int>(global_indices.size());
+                global_indices.push_back(gvi);
             }
-            if (w.Bone < 0 || static_cast<size_t>(w.Bone) >= clusters.size()) {
-                continue;
-            }
-            clusters[static_cast<size_t>(w.Bone)]->AddControlPointIndex(static_cast<int>(vid), w.Value);
         }
+
+        const int local_vert_count = static_cast<int>(global_indices.size());
+
+        // Create mesh
+        FbxMesh* mesh = FbxMesh::Create(scene, mat_name.c_str());
+        FbxNode* mesh_node = FbxNode::Create(scene, mat_name.c_str());
+        mesh_node->SetNodeAttribute(mesh);
+        root->AddChild(mesh_node);
+        mesh_nodes.push_back(mesh_node);
+
+        // Vertices
+        mesh->InitControlPoints(local_vert_count);
+        FbxVector4* cps = mesh->GetControlPoints();
+        auto* normals = mesh->CreateElementNormal();
+        normals->SetMappingMode(FbxGeometryElement::eByControlPoint);
+        normals->SetReferenceMode(FbxGeometryElement::eDirect);
+        auto* uvs = mesh->CreateElementUV("UVSet1");
+        uvs->SetMappingMode(FbxGeometryElement::eByControlPoint);
+        uvs->SetReferenceMode(FbxGeometryElement::eDirect);
+
+        for (int li = 0; li < local_vert_count; ++li) {
+            const auto& v = pmx.VertexList[static_cast<size_t>(global_indices[li])];
+            cps[li] = FbxVector4(v.Position.X, v.Position.Y, v.Position.Z, 1.0);
+            normals->GetDirectArray().Add(FbxVector4(v.Normal.X, v.Normal.Y, v.Normal.Z, 0.0));
+            uvs->GetDirectArray().Add(FbxVector2(v.UV.X, 1.0 - v.UV.Y));
+        }
+
+        // Material
+        FbxSurfacePhong* phong = FbxSurfacePhong::Create(scene, mat_name.c_str());
+        phong->Diffuse.Set(FbxDouble3(src.Diffuse.X, src.Diffuse.Y, src.Diffuse.Z));
+        phong->Ambient.Set(FbxDouble3(src.Ambient.X, src.Ambient.Y, src.Ambient.Z));
+        phong->Specular.Set(FbxDouble3(src.Specular.X, src.Specular.Y, src.Specular.Z));
+        phong->Shininess.Set(static_cast<double>(src.Power));
+        phong->TransparencyFactor.Set(1.0 - static_cast<double>(src.Diffuse.W));
+
+        if (!src.Tex.empty()) {
+            std::filesystem::path tex_abs = input_dir / src.Tex;
+            std::string tex_path = tex_abs.u8string();
+
+            FbxFileTexture* diff_tex = FbxFileTexture::Create(scene, (mat_name + "_diffuse").c_str());
+            diff_tex->SetFileName(tex_path.c_str());
+            diff_tex->SetTextureUse(FbxTexture::eStandard);
+            diff_tex->SetMappingType(FbxTexture::eUV);
+            diff_tex->SetMaterialUse(FbxFileTexture::eModelMaterial);
+            diff_tex->SetSwapUV(false);
+            diff_tex->SetTranslation(0.0, 0.0);
+            diff_tex->SetScale(1.0, 1.0);
+            diff_tex->SetRotation(0.0, 0.0);
+            diff_tex->UVSet.Set("UVSet1");
+            phong->Diffuse.ConnectSrcObject(diff_tex);
+
+            FbxFileTexture* opacity_tex = FbxFileTexture::Create(scene, (mat_name + "_opacity").c_str());
+            opacity_tex->SetFileName(tex_path.c_str());
+            opacity_tex->SetTextureUse(FbxTexture::eStandard);
+            opacity_tex->SetMappingType(FbxTexture::eUV);
+            opacity_tex->SetMaterialUse(FbxFileTexture::eModelMaterial);
+            opacity_tex->SetAlphaSource(FbxTexture::eBlack);
+            opacity_tex->SetSwapUV(false);
+            opacity_tex->SetTranslation(0.0, 0.0);
+            opacity_tex->SetScale(1.0, 1.0);
+            opacity_tex->SetRotation(0.0, 0.0);
+            opacity_tex->UVSet.Set("UVSet1");
+            phong->TransparentColor.ConnectSrcObject(opacity_tex);
+        }
+
+        mesh_node->AddMaterial(phong);
+
+        // Faces (remapped to local indices)
+        int tri_idx = 0;
+        for (int fi = curr_face; fi < end_face && static_cast<size_t>(fi) < pmx.FaceList.size(); ++fi) {
+            const int gvi = pmx.FaceList[static_cast<size_t>(fi)];
+            if (gvi < 0 || gvi >= global_vert_count) continue;
+            if (tri_idx == 0) {
+                mesh->BeginPolygon(0);
+            }
+            mesh->AddPolygon(global_to_local[gvi]);
+            if (tri_idx == 2) {
+                mesh->EndPolygon();
+                tri_idx = 0;
+            } else {
+                ++tri_idx;
+            }
+        }
+
+        // Skin deformer (per-mesh, referencing shared bone nodes)
+        if (!bone_nodes.empty()) {
+            FbxSkin* skin = FbxSkin::Create(scene, (mat_name + "_skin").c_str());
+            std::vector<FbxCluster*> clusters(bone_nodes.size(), nullptr);
+
+            for (int li = 0; li < local_vert_count; ++li) {
+                const auto& v = pmx.VertexList[static_cast<size_t>(global_indices[li])];
+                for (int wi = 0; wi < 4; ++wi) {
+                    const auto& w = v.Weight[wi];
+                    if (!w.IsValid() || w.Bone < 0 || static_cast<size_t>(w.Bone) >= bone_nodes.size()) continue;
+                    FbxCluster*& cluster = clusters[static_cast<size_t>(w.Bone)];
+                    if (!cluster) {
+                        cluster = FbxCluster::Create(scene, (mat_name + "_c" + std::to_string(w.Bone)).c_str());
+                        cluster->SetLink(bone_nodes[static_cast<size_t>(w.Bone)]);
+                        cluster->SetLinkMode(FbxCluster::eTotalOne);
+                        skin->AddCluster(cluster);
+                    }
+                    cluster->AddControlPointIndex(li, w.Value);
+                }
+            }
+
+            for (size_t bi = 0; bi < clusters.size(); ++bi) {
+                if (!clusters[bi]) continue;
+                clusters[bi]->SetTransformMatrix(mesh_node->EvaluateGlobalTransform());
+                clusters[bi]->SetTransformLinkMatrix(
+                    to_fbx_matrix(pmx.BoneList[bi].WorldMatrix));
+            }
+
+            mesh->AddDeformer(skin);
+        }
+
+        curr_face = end_face;
     }
 
-    for (size_t i = 0; i < clusters.size(); ++i) {
-        FbxCluster* cluster = clusters[i];
-        if (!cluster) {
-            continue;
-        }
-        cluster->SetTransformMatrix(mesh_node->EvaluateGlobalTransform());
-        const FbxAMatrix world = to_fbx_matrix(pmx.BoneList[i].WorldMatrix);
-        cluster->SetTransformLinkMatrix(world);
-    }
-
+    // ── Bind pose ────────────────────────────────────────────────────────
     FbxPose* bind_pose = FbxPose::Create(scene, "BindPose");
     bind_pose->SetIsBindPose(true);
-    bind_pose->Add(mesh_node, mesh_node->EvaluateGlobalTransform());
-    for (FbxNode* b : bone_nodes) {
-        if (b) {
-            bind_pose->Add(b, b->EvaluateGlobalTransform());
-        }
+    for (FbxNode* mn : mesh_nodes) {
+        bind_pose->Add(mn, mn->EvaluateGlobalTransform());
+    }
+    for (FbxNode* bn : bone_nodes) {
+        if (bn) bind_pose->Add(bn, bn->EvaluateGlobalTransform());
     }
     scene->AddPose(bind_pose);
 
@@ -206,7 +291,7 @@ bool build_scene_from_pmx(FbxManager* manager, FbxScene* scene, const PmxReader&
 
 int run_bridge(const CliArgs& args) {
     if (!std::filesystem::exists(args.input)) {
-        std::cerr << "Input file not found: " << args.input.string() << "\n";
+        std::cerr << "Input file not found: " << args.input.u8string() << "\n";
         return 2;
     }
 
@@ -251,7 +336,8 @@ int run_bridge(const CliArgs& args) {
         return 7;
     }
 
-    if (!build_scene_from_pmx(manager, scene, *pmx, error)) {
+    const auto input_dir = args.input.parent_path();
+    if (!build_scene_from_pmx(manager, scene, *pmx, input_dir, error)) {
         delete pmx;
         scene->Destroy();
         manager->Destroy();
@@ -274,7 +360,7 @@ int run_bridge(const CliArgs& args) {
 
     FbxExporter* exporter = FbxExporter::Create(manager, "Exporter");
     int writer_id = manager->GetIOPluginRegistry()->FindWriterIDByExtension("fbx");
-    if (!exporter->Initialize(args.output.string().c_str(), writer_id, manager->GetIOSettings())) {
+    if (!exporter->Initialize(args.output.u8string().c_str(), writer_id, manager->GetIOSettings())) {
         std::cerr << "Failed to initialize FBX exporter: " << exporter->GetStatus().GetErrorString() << "\n";
         exporter->Destroy();
         scene->Destroy();
@@ -293,14 +379,14 @@ int run_bridge(const CliArgs& args) {
     scene->Destroy();
     manager->Destroy();
 
-    std::cerr << "OK: " << args.input.string() << " -> " << args.output.string() << "\n";
+    std::cerr << "OK: " << args.input.u8string() << " -> " << args.output.u8string() << "\n";
     return 0;
 #endif
 }
 
 } // namespace
 
-int main(int argc, char** argv) {
+int wmain(int argc, wchar_t** argv) {
     CliArgs args;
     if (!parse_args(argc, argv, args)) {
         return 1;

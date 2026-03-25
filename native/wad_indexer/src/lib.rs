@@ -1,7 +1,10 @@
+mod troybin;
+mod luabin64;
+
 use napi_derive::napi;
 use rayon::prelude::*;
 use std::fs;
-use std::io::{Write, Cursor, Read};
+use std::io::{Write, Cursor};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -14,47 +17,84 @@ use heed::{Database, EnvOpenOptions};
 use heed::types::{Bytes, Str};
 use memmap2::Mmap;
 
-// ── Global LMDB env cache ───────────────────────────────────────────────────
-// Opened once per hash dir, reused for all reads.
-// OS memory-maps the file — only physically pages in what's actually touched.
-static LMDB_CACHE: OnceLock<Mutex<Option<(String, Arc<heed::Env>)>>> = OnceLock::new();
+// ── Global LMDB env caches ──────────────────────────────────────────────────
+// Two separate LMDB environments: WAD (u64 xxh64) and BIN (u32 FNV1a).
+// Each lives in its own directory with a named DB. OS memory-maps the file.
+// We cache only the Env — the Database handle is re-opened per read_txn
+// because heed 0.20 requires the DB opened within the same txn used for queries.
+struct LmdbEnvState {
+  key: String,
+  env: Arc<heed::Env>,
+}
+static WAD_LMDB_CACHE: OnceLock<Mutex<Option<LmdbEnvState>>> = OnceLock::new();
+static BIN_LMDB_CACHE: OnceLock<Mutex<Option<LmdbEnvState>>> = OnceLock::new();
 static EXTRACTED_HASH_CACHE: OnceLock<Mutex<Option<(String, u128, Arc<HashMap<u64, String>>)>>> = OnceLock::new();
 
-fn lmdb_mutex() -> &'static Mutex<Option<(String, Arc<heed::Env>)>> {
-  LMDB_CACHE.get_or_init(|| Mutex::new(None))
+fn wad_lmdb_mutex() -> &'static Mutex<Option<LmdbEnvState>> {
+  WAD_LMDB_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn bin_lmdb_mutex() -> &'static Mutex<Option<LmdbEnvState>> {
+  BIN_LMDB_CACHE.get_or_init(|| Mutex::new(None))
 }
 
 fn extracted_hash_mutex() -> &'static Mutex<Option<(String, u128, Arc<HashMap<u64, String>>)>> {
   EXTRACTED_HASH_CACHE.get_or_init(|| Mutex::new(None))
 }
 
-fn get_or_open_env(hash_dir: &str) -> Option<Arc<heed::Env>> {
-  let lmdb_dir = Path::new(hash_dir).join("hashes.lmdb");
+fn open_lmdb_env(lmdb_dir: &Path) -> Option<heed::Env> {
   if !lmdb_dir.exists() { return None; }
+  unsafe {
+    EnvOpenOptions::new()
+      .map_size(512 * 1024 * 1024)
+      .max_dbs(2)
+      .open(lmdb_dir)
+  }.ok()
+}
+
+/// Open a read txn + named DB handle in one shot. The returned txn and db
+/// share the same lifetime so heed 0.20 is happy.
+fn open_read_db<'a>(env: &'a heed::Env, db_name: Option<&str>)
+  -> Option<(heed::RoTxn<'a>, Database<Bytes, Str>)>
+{
+  let rtxn = env.read_txn().ok()?;
+  let db = env.open_database::<Bytes, Str>(&rtxn, db_name).ok().flatten()?;
+  Some((rtxn, db))
+}
+
+fn get_wad_env(hash_dir: &str) -> Option<Arc<heed::Env>> {
+  let lmdb_dir = Path::new(hash_dir).join("hashes-wad.lmdb");
   let key = lmdb_dir.to_string_lossy().into_owned();
 
-  let mut g = lmdb_mutex().lock().unwrap_or_else(|e| e.into_inner());
-  if let Some((ref k, ref env)) = *g {
-    if *k == key { return Some(Arc::clone(env)); }
+  let mut g = wad_lmdb_mutex().lock().unwrap_or_else(|e| e.into_inner());
+  if let Some(ref state) = *g {
+    if state.key == key { return Some(Arc::clone(&state.env)); }
   }
 
-  let env = match unsafe {
-    EnvOpenOptions::new()
-      .map_size(512 * 1024 * 1024) // 512MB virtual — OS pages in only accessed data
-      .max_dbs(1)
-      .open(&lmdb_dir)
-  } {
-    Ok(e) => e,
-    Err(_) => return None,
-  };
+  let env = open_lmdb_env(&lmdb_dir)?;
   let arc = Arc::new(env);
-  *g = Some((key, Arc::clone(&arc)));
+  *g = Some(LmdbEnvState { key, env: Arc::clone(&arc) });
+  Some(arc)
+}
+
+fn get_bin_env(hash_dir: &str) -> Option<Arc<heed::Env>> {
+  let lmdb_dir = Path::new(hash_dir).join("hashes-bin.lmdb");
+  let key = lmdb_dir.to_string_lossy().into_owned();
+
+  let mut g = bin_lmdb_mutex().lock().unwrap_or_else(|e| e.into_inner());
+  if let Some(ref state) = *g {
+    if state.key == key { return Some(Arc::clone(&state.env)); }
+  }
+
+  let env = open_lmdb_env(&lmdb_dir)?;
+  let arc = Arc::new(env);
+  *g = Some(LmdbEnvState { key, env: Arc::clone(&arc) });
   Some(arc)
 }
 
 fn drop_lmdb_cache() {
-  let mut g = lmdb_mutex().lock().unwrap_or_else(|e| e.into_inner());
-  *g = None;
+  { let mut g = wad_lmdb_mutex().lock().unwrap_or_else(|e| e.into_inner()); *g = None; }
+  { let mut g = bin_lmdb_mutex().lock().unwrap_or_else(|e| e.into_inner()); *g = None; }
 }
 
 fn get_file_mtime_ms(path: &Path) -> u128 {
@@ -104,11 +144,11 @@ fn get_or_load_extracted_hashes(hash_dir: &str) -> Arc<HashMap<u64, String>> {
 
 fn resolve_hashes_with_overlay(
   hashes: &[u64],
-  env_opt: Option<&heed::Env>,
+  hash_dir: &str,
   extracted: &HashMap<u64, String>,
 ) -> Vec<String> {
-  let mut base = match env_opt {
-    Some(env) => resolve_hashes_lmdb(hashes, env),
+  let mut base = match get_wad_env(hash_dir) {
+    Some(env) => resolve_hashes_lmdb(hashes, &env),
     None => hashes.iter().map(|h| format!("{:016x}", h)).collect(),
   };
   for (idx, h) in hashes.iter().enumerate() {
@@ -214,16 +254,11 @@ fn parse_hash_hex(s: &str) -> Option<u64> {
   u64::from_str_radix(raw, 16).ok()
 }
 
-/// Resolve u64 hashes to paths using a single LMDB read txn.
-/// Opens one txn per call — fast (microseconds per lookup after OS page warmup).
+/// Resolve u64 hashes to paths using the WAD LMDB named DB.
 fn resolve_hashes_lmdb(hashes: &[u64], env: &heed::Env) -> Vec<String> {
-  let rtxn = match env.read_txn() {
-    Ok(t) => t,
-    Err(_) => return hashes.iter().map(|h| format!("{:016x}", h)).collect(),
-  };
-  let db = match env.open_database::<Bytes, Str>(&rtxn, None) {
-    Ok(Some(d)) => d,
-    _ => return hashes.iter().map(|h| format!("{:016x}", h)).collect(),
+  let (rtxn, db) = match open_read_db(env, Some("wad")) {
+    Some(x) => x,
+    None => return hashes.iter().map(|h| format!("{:016x}", h)).collect(),
   };
   hashes.iter().map(|h| {
     let key = h.to_be_bytes();
@@ -245,133 +280,46 @@ fn parse_wad_toc(wad_path: &str) -> Result<(Vec<u64>, u32), String> {
   Ok((hashes, chunk_count))
 }
 
-fn fingerprint_file_path(hash_dir: &Path) -> std::path::PathBuf {
-  hash_dir.join("hashes.lmdb").join("sources.fingerprint")
-}
-
-fn compute_file_xxh64(path: &Path) -> Option<(u64, u64)> {
-  let mut file = fs::File::open(path).ok()?;
-  let mut buf = Vec::new();
-  if file.read_to_end(&mut buf).is_err() {
-    return None;
-  }
-  let size = buf.len() as u64;
-  let digest = xxh64(&buf, 0);
-  Some((size, digest))
-}
-
-fn build_sources_fingerprint(dir: &Path, sources: &[(&str, usize)]) -> String {
-  let mut out = String::new();
-  for (name, _sep) in sources {
-    let p = dir.join(name);
-    match compute_file_xxh64(&p) {
-      Some((size, digest)) => {
-        out.push_str(&format!("{}|{}|{:016x}\n", name, size, digest));
-      }
-      None => {
-        out.push_str(&format!("{}|missing\n", name));
-      }
-    }
-  }
-  out
-}
-
-fn read_sources_fingerprint(dir: &Path) -> Option<String> {
-  fs::read_to_string(fingerprint_file_path(dir)).ok()
-}
-
-fn write_sources_fingerprint(dir: &Path, content: &str) {
-  let p = fingerprint_file_path(dir);
-  let _ = fs::write(p, content.as_bytes());
-}
-
-// ── buildHashDb ──────────────────────────────────────────────────────────────
-
-/// Build (or update) hashes.lmdb from the text hash files.
-/// Only rebuilds when a source file is newer than the existing LMDB.
-/// Keys are u64 xxhash stored as 8-byte big-endian; values are path strings.
-#[napi(js_name = "buildHashDb")]
-pub fn build_hash_db(hash_dir: String) -> bool {
-  let dir = Path::new(&hash_dir);
-  let lmdb_dir = dir.join("hashes.lmdb");
-
-  let sources: &[(&str, usize)] = &[
-    ("hashes.game.txt", 16),
-    ("hashes.lcu.txt",  16),
-  ];
-
-  let current_fp = build_sources_fingerprint(dir, sources);
-  let stored_fp = read_sources_fingerprint(dir);
-  let data_exists = lmdb_dir.join("data.mdb").exists();
-  if lmdb_dir.exists() && data_exists && stored_fp.as_deref() == Some(current_fp.as_str()) {
-    return true;
-  }
-
-  // Close cached env before deleting the directory (Windows won't delete open files)
-  drop_lmdb_cache();
-
-  if lmdb_dir.exists() && fs::remove_dir_all(&lmdb_dir).is_err() { return false; }
-  if fs::create_dir_all(&lmdb_dir).is_err() { return false; }
-
-  let env = match unsafe {
-    EnvOpenOptions::new()
-      .map_size(512 * 1024 * 1024)
-      .max_dbs(1)
-      .open(&lmdb_dir)
-  } {
-    Ok(e) => e,
-    Err(_) => return false,
-  };
-
-  let mut wtxn = match env.write_txn() {
-    Ok(t) => t,
-    Err(_) => return false,
-  };
-  let db: Database<Bytes, Str> = match env.create_database(&mut wtxn, None) {
-    Ok(d) => d,
-    Err(_) => return false,
-  };
-
-  // Collect all entries across all sources, sort by key for fast MDB_APPEND-style insert
-  let mut entries: Vec<([u8; 8], String)> = Vec::with_capacity(2_000_000);
-  for (filename, sep) in sources {
-    let file_path = dir.join(filename);
-    let Ok(content) = fs::read_to_string(&file_path) else { continue };
-    for line in content.lines() {
-      if line.len() <= sep + 1 || line.starts_with('#') { continue; }
-      let hash_hex = &line[..*sep];
-      let path = line[*sep + 1..].trim_end_matches('\r');
-      let Ok(hash_u64) = u64::from_str_radix(hash_hex, 16) else { continue };
-      entries.push((hash_u64.to_be_bytes(), path.to_string()));
-    }
-  }
-
-  // Sort by key — LMDB B-tree is ordered so sorted inserts are ~2x faster
-  entries.sort_unstable_by_key(|(k, _)| *k);
-  entries.dedup_by_key(|(k, _)| *k);
-
-  for (key, path) in &entries {
-    if db.put(&mut wtxn, key.as_slice(), path.as_str()).is_err() {
-      return false;
-    }
-  }
-
-  let committed = wtxn.commit().is_ok();
-  if committed {
-    write_sources_fingerprint(dir, &current_fp);
-  }
-  committed
-}
-
+/// Verify the LMDB is present and openable. Returns true if ready.
 #[napi(js_name = "primeHashTables")]
 pub fn prime_hash_tables(hash_path: String) -> bool {
-  build_hash_db(hash_path)
+  get_wad_env(&hash_path).is_some()
 }
 
 /// Clear the cached LMDB env — drops it from memory. Frees any mmap'd pages.
 #[napi(js_name = "clearHashTables")]
 pub fn clear_hash_tables() {
   drop_lmdb_cache();
+}
+
+/// Resolve FNV1a bin hashes (u32) using the separate bin LMDB (hashes-bin.lmdb).
+/// Input: hex strings (8 chars each). Output: resolved names or original hex.
+#[napi(js_name = "resolveBinHashes")]
+pub fn resolve_bin_hashes(hex_hashes: Vec<String>, hash_dir: String) -> Vec<String> {
+  let env = match get_bin_env(&hash_dir) { Some(e) => e, None => return hex_hashes };
+  let (rtxn, db) = match open_read_db(&env, Some("bin")) {
+    Some(x) => x,
+    None => return hex_hashes,
+  };
+  hex_hashes.iter().map(|h| {
+    let Ok(hash_u32) = u32::from_str_radix(h.trim(), 16) else { return h.clone() };
+    let key = hash_u32.to_be_bytes();
+    db.get(&rtxn, &key[..])
+      .ok().flatten()
+      .map(|s| s.to_string())
+      .unwrap_or_else(|| h.clone())
+  }).collect()
+}
+
+/// Decompress a zstd-compressed file. Used by hash updater after downloading .zst release.
+#[napi(js_name = "decompressZstdFile")]
+pub fn decompress_zstd_file(src_path: String, dst_path: String) -> bool {
+  let Ok(compressed) = fs::read(&src_path) else { return false };
+  let Ok(decompressed) = zstd::decode_all(std::io::Cursor::new(&compressed)) else { return false };
+  if let Some(parent) = Path::new(&dst_path).parent() {
+    let _ = fs::create_dir_all(parent);
+  }
+  fs::write(&dst_path, &decompressed).is_ok()
 }
 
 // ── loadAllIndexes ───────────────────────────────────────────────────────────
@@ -406,11 +354,13 @@ pub fn load_all_indexes(
 
   // Phase 2: LMDB lookups — single open env, per-WAD read txns (cheap)
   // RAM stays near zero — OS only pages in what's touched (~5-20MB for typical use)
-  let env_opt = hash_path.as_deref().and_then(get_or_open_env);
-  let extracted_map = hash_path
-    .as_deref()
-    .map(get_or_load_extracted_hashes)
-    .unwrap_or_else(|| Arc::new(HashMap::new()));
+  let hash_dir = hash_path.as_deref().unwrap_or("");
+  if !hash_dir.is_empty() { let _ = get_wad_env(hash_dir); }
+  let extracted_map = if hash_dir.is_empty() {
+    Arc::new(HashMap::new())
+  } else {
+    get_or_load_extracted_hashes(hash_dir)
+  };
 
   toc_results.into_iter().map(|(path, result)| {
     match result {
@@ -421,7 +371,7 @@ pub fn load_all_indexes(
         chunk_count: 0,
       },
       Ok((hashes, chunk_count)) => {
-        let paths = resolve_hashes_with_overlay(&hashes, env_opt.as_deref(), &extracted_map);
+        let paths = resolve_hashes_with_overlay(&hashes, hash_dir, &extracted_map);
         WadIndexBatch {
           path: path.to_string(),
           error: None,
@@ -435,24 +385,19 @@ pub fn load_all_indexes(
 
 // ── resolveHashes ────────────────────────────────────────────────────────────
 
-/// Resolve hex hash strings to paths using LMDB point lookups.
-/// ~1-5ms for a typical WAD (~4000 hashes) vs 80-155ms with the old SQLite approach.
+/// Resolve hex hash strings (WAD xxh64) to paths using the WAD LMDB.
 #[napi(js_name = "resolveHashes")]
 pub fn resolve_hashes(hex_hashes: Vec<String>, hash_dir: String) -> Vec<String> {
-  let env_opt = get_or_open_env(&hash_dir);
   let extracted_map = get_or_load_extracted_hashes(&hash_dir);
-  let db_ctx = env_opt.as_deref().and_then(|env| {
-    let rtxn = env.read_txn().ok()?;
-    let db = env.open_database::<Bytes, Str>(&rtxn, None).ok()??;
-    Some((rtxn, db))
-  });
+  let wad_env = get_wad_env(&hash_dir);
+  let rtxn_and_db = wad_env.as_ref().and_then(|env| open_read_db(env, Some("wad")));
 
   hex_hashes.iter().map(|h| {
     let Ok(hash_u64) = u64::from_str_radix(h.trim(), 16) else { return h.clone(); };
     if let Some(v) = extracted_map.get(&hash_u64) {
       return v.clone();
     }
-    match db_ctx.as_ref() {
+    match rtxn_and_db.as_ref() {
       Some((rtxn, db)) => {
         let key = hash_u64.to_be_bytes();
         db.get(rtxn, &key[..])
@@ -500,7 +445,8 @@ pub fn extract_wad(
   }
 
   let replace = replace_existing.unwrap_or(true);
-  let env_opt = hash_path.as_deref().and_then(get_or_open_env);
+  let hash_dir = hash_path.as_deref().unwrap_or("");
+  if !hash_dir.is_empty() { let _ = get_wad_env(hash_dir); }
 
   let file = match fs::File::open(&wad_path) {
     Ok(f) => f,
@@ -533,11 +479,12 @@ pub fn extract_wad(
 
   let chunks: Vec<_> = wad.chunks().iter().map(|c| *c).collect();
   let hash_u64s: Vec<u64> = chunks.iter().map(|c| c.path_hash()).collect();
-  let extracted_map = hash_path
-    .as_deref()
-    .map(get_or_load_extracted_hashes)
-    .unwrap_or_else(|| Arc::new(HashMap::new()));
-  let resolved_paths: Vec<String> = resolve_hashes_with_overlay(&hash_u64s, env_opt.as_deref(), &extracted_map);
+  let extracted_map = if hash_dir.is_empty() {
+    Arc::new(HashMap::new())
+  } else {
+    get_or_load_extracted_hashes(hash_dir)
+  };
+  let resolved_paths: Vec<String> = resolve_hashes_with_overlay(&hash_u64s, hash_dir, &extracted_map);
 
   let mut extracted_count: u32 = 0;
   let mut skipped_count: u32 = 0;
@@ -599,7 +546,11 @@ pub fn extract_wad(
           Err(_) => { s += 1; continue; }
         };
         let mut final_path = out_path.clone();
-        if final_path.extension().is_none() {
+        // Only add guessed extension to unresolved hex-hash filenames, not real names
+        // (e.g. "globals" is intentionally extensionless, don't add .bin to it).
+        let stem = final_path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let is_hex_hash = stem.len() == 16 && stem.chars().all(|c| c.is_ascii_hexdigit());
+        if final_path.extension().is_none() && is_hex_hash {
           if let Some(ext) = LeagueFileKind::identify_from_bytes_with_offset(&data, 64).extension() {
             final_path.set_extension(ext);
           }
@@ -836,13 +787,9 @@ pub fn extract_selected(
             Ok(d) => d,
             Err(_) => { s += 1; continue; }
           };
-          let mut final_path = out_path.clone();
-          if final_path.extension().is_none() {
-            if let Some(ext) = LeagueFileKind::identify_from_bytes_with_offset(&data, 64).extension() {
-              final_path.set_extension(ext);
-            }
-          }
-          if fs::write(final_path, &data).is_ok() { e += 1; } else { s += 1; }
+          // extractSelected: write with the exact relPath the caller provided —
+          // no extension guessing, so the on-disk name matches the tree.
+          if fs::write(out_path, &data).is_ok() { e += 1; } else { s += 1; }
         }
         (e, s)
       })
@@ -1082,8 +1029,56 @@ pub fn extract_hashes_from_wad(wad_path: String, hash_dir: Option<String>) -> Ex
 // ── Ritobin Conversion ───────────────────────────────────────────────────────
 
 use ltk_meta::Bin;
-use ltk_ritobin::{parse, write_with_hashes, HashMapProvider};
+use ltk_ritobin::{parse, write_with_hashes, HashProvider};
 use std::io::{BufReader, BufWriter};
+
+/// LMDB-backed HashProvider for ritobin. The lmdb-hashes "bin" DB merges all
+/// four bin hash categories (entries, fields, hashes, types) into a single
+/// namespace with u32 BE keys, so we use the same lookup for every category.
+struct LmdbHashProvider {
+  /// Cached map loaded from LMDB — avoids holding a read txn across the
+  /// entire write phase (which can be slow for large bins).
+  map: HashMap<u32, String>,
+}
+
+impl LmdbHashProvider {
+  fn from_lmdb(hash_dir: &str) -> Self {
+    let mut map = HashMap::new();
+    if let Some(env) = get_bin_env(hash_dir) {
+      if let Some((rtxn, db)) = open_read_db(&env, Some("bin")) {
+        // Iterate the entire DB and collect into a HashMap.
+        // The bin DB is typically ~200k entries, ~15-30 MB in memory — fine.
+        if let Ok(iter) = db.iter(&rtxn) {
+          for result in iter {
+            if let Ok((key_bytes, val_str)) = result {
+              if key_bytes.len() == 4 {
+                let hash = u32::from_be_bytes([key_bytes[0], key_bytes[1], key_bytes[2], key_bytes[3]]);
+                map.insert(hash, val_str.to_string());
+              }
+            }
+          }
+        }
+      }
+    }
+    eprintln!("LmdbHashProvider: loaded {} bin hashes", map.len());
+    LmdbHashProvider { map }
+  }
+}
+
+impl HashProvider for LmdbHashProvider {
+  fn lookup_entry(&self, hash: u32) -> Option<&str> {
+    self.map.get(&hash).map(|s| s.as_str())
+  }
+  fn lookup_field(&self, hash: u32) -> Option<&str> {
+    self.map.get(&hash).map(|s| s.as_str())
+  }
+  fn lookup_hash(&self, hash: u32) -> Option<&str> {
+    self.map.get(&hash).map(|s| s.as_str())
+  }
+  fn lookup_type(&self, hash: u32) -> Option<&str> {
+    self.map.get(&hash).map(|s| s.as_str())
+  }
+}
 use ltk_texture::Texture;
 
 fn decode_dds_layer0_mip0_rgba(path: &str) -> Result<image::RgbaImage, String> {
@@ -1121,13 +1116,10 @@ pub fn bin_to_py(bin_path: String, py_path: String, hash_dir: Option<String>) ->
     }
   };
 
-  let mut hashes = HashMapProvider::new();
-  if let Some(dir) = hash_dir {
-    let p = Path::new(&dir);
-    if p.exists() {
-      hashes.load_from_directory(p);
-    }
-  }
+  let hashes = match hash_dir {
+    Some(ref dir) => LmdbHashProvider::from_lmdb(dir),
+    None => LmdbHashProvider { map: HashMap::new() },
+  };
 
   let text = match write_with_hashes(&tree, &hashes) {
     Ok(t) => t,
@@ -1234,4 +1226,20 @@ pub fn decode_texture_to_png(file_path: String) -> napi::Result<DecodedTexturePn
     encode_ms,
     total_ms,
   })
+}
+
+// ── Troybin Conversion ──────────────────────────────────────────────────────
+
+/// Convert a troybin binary buffer (from WAD chunk) to INI-like text.
+#[napi(js_name = "troybinToText")]
+pub fn troybin_to_text(data: Buffer) -> napi::Result<String> {
+    troybin::convert_troybin(&data)
+        .map_err(napi::Error::from_reason)
+}
+
+/// Convert a luabin/luabin64 bytecode buffer to readable Lua source text.
+#[napi(js_name = "luabinToText")]
+pub fn luabin_to_text(data: Buffer) -> napi::Result<String> {
+    luabin64::convert_luabin(&data)
+        .map_err(napi::Error::from_reason)
 }

@@ -3,7 +3,7 @@
  * Native JavaScript implementation using jsritofile
  */
 
-import { BIN, BINType, BINHasher, loadHashtables } from '../../jsritofile/index.js';
+import { BIN, BINType, BINHasher } from '../../jsritofile/index.js';
 import { unifyPath, bumPath, isCharacterBin, normalizePath } from './bumpathHelpers.js';
 import { scanBinForAssets, copyAsset } from './bumpathAssetScanner.js';
 
@@ -64,8 +64,7 @@ export class BumpathCore {
         this.entryPrefix = {}; // Map: entryHash -> prefix
         this.entryName = {}; // Map: entryHash -> name
         this.entryTypeName = {}; // Map: entryHash -> type name
-        this.hashtables = null; // Loaded hashtables for hash lookup
-        this.hashtablesPath = null; // Path to hashtables directory
+        this.hashtablesPath = null; // Path to hash directory for native LMDB resolution
         this.nativeAddon = null; // Native addon for hash resolution
         this.skipSfxRepath = false; // Optional: bypass SFX path repathing
         this.skipVoiceoverRepath = true; // Optional: bypass VO path repathing (default: true)
@@ -264,26 +263,10 @@ export class BumpathCore {
         this.entryTypeName = {};
         this.linkedBins = {};
 
-        // Load hashtables if path provided
+        // Store hash path for native LMDB resolution
         if (hashtablesPath && fs && fs.existsSync(hashtablesPath)) {
             this.hashtablesPath = hashtablesPath;
-            try {
-                // Only load small BIN hashtables into JS memory (~20MB total)
-                // mammoth tables (game.txt/lcu.txt) are handled by the native LMDB cache
-                this.hashtables = await loadHashtables(hashtablesPath, {
-                    tables: [
-                        'hashes.binentries.txt',
-                        'hashes.binhashes.txt',
-                        'hashes.bintypes.txt',
-                        'hashes.binfields.txt'
-                    ]
-                });
-            } catch (error) {
-                console.error(`Error loading hashtables from ${hashtablesPath}:`, error);
-                this.hashtables = null;
-            }
         } else {
-            this.hashtables = null;
             this.hashtablesPath = null;
         }
 
@@ -321,7 +304,7 @@ export class BumpathCore {
                 scannedBins.add(unifyPathKey);
 
                 // Read the BIN to get its links
-                const binObj = await new BIN().read(fs.readFileSync(fileInfo.fullPath), this.hashtables);
+                const binObj = await new BIN().read(fs.readFileSync(fileInfo.fullPath));
                 if (binObj && Array.isArray(binObj.links) && binObj.links.length > 0) {
                     // Find linked BINs and add them to the scan queue
                     for (const link of binObj.links) {
@@ -398,7 +381,7 @@ export class BumpathCore {
             if (!fs || !path) {
                 await initNodeModules();
             }
-            const binObj = await new BIN().read(fs.readFileSync(binPath), this.hashtables);
+            const binObj = await new BIN().read(fs.readFileSync(binPath));
 
             // Check if binObj is valid
             if (!binObj || !binObj.entries) {
@@ -431,18 +414,10 @@ export class BumpathCore {
                     // Unhash entry name using hashtables or native addon
                     this.entryName[entryHash] = await this._resolveHash(entryHash);
 
-                    if (this.hashtables && entry.type && entry.type !== '00000000') {
-                        const typeHash = entry.type.toLowerCase();
-                        this.entryTypeName[entryHash] = this.hashtables['hashes.bintypes.txt']?.[typeHash] || entry.type;
-                    } else if (entry.type === '00000000') {
-                        if (this.hashtables && this.hashtables['hashes.bintypes.txt']?.['00000000']) {
-                            this.entryTypeName[entryHash] = this.hashtables['hashes.bintypes.txt']['00000000'];
-                        } else {
-                            this.entryTypeName[entryHash] = '0x00000000';
-                        }
-                    } else {
-                        // Try native resolution for type as well if requested
+                    if (entry.type && entry.type !== '00000000') {
                         this.entryTypeName[entryHash] = await this._resolveHash(entry.type) || entry.type;
+                    } else {
+                        this.entryTypeName[entryHash] = '0x00000000';
                     }
                 }
 
@@ -456,32 +431,29 @@ export class BumpathCore {
     }
 
     /**
-     * Resolve a hash to name using JS hashtables or native addon
+     * Resolve a hash to name using native LMDB addon
      * @private
      */
     async _resolveHash(hex) {
         if (!hex) return hex;
         const hexLower = hex.toLowerCase();
 
-        // 1. Try JS hashtables (BIN tables)
-        if (this.hashtables) {
-            const resolved = BINHasher.hexToRaw(this.hashtables, hexLower);
-            if (resolved !== hexLower) return resolved;
-        }
-
-        // 2. Try native addon (WAD tables in LMDB)
         if (this.nativeAddon && this.hashtablesPath) {
             try {
-                // WAD hashes are 16 chars, BIN hashes are 8 chars. 
-                // Currently buildHashDb only indexes 16-char hashes.
-                if (hexLower.length === 16) {
+                // BIN hashes are 8 chars (u32), WAD hashes are 16 chars (u64)
+                if (hexLower.length === 8) {
+                    const results = this.nativeAddon.resolveBinHashes([hexLower], this.hashtablesPath);
+                    if (results && results[0] && results[0] !== hexLower) {
+                        return results[0];
+                    }
+                } else if (hexLower.length === 16) {
                     const results = this.nativeAddon.resolveHashes([hexLower], this.hashtablesPath);
                     if (results && results[0] && results[0] !== hexLower) {
                         return results[0];
                     }
                 }
             } catch (e) {
-                console.error(`[BumpathCore] Native resolveHashes failed for ${hexLower}:`, e);
+                console.error(`[BumpathCore] Native hash resolution failed for ${hexLower}:`, e);
             }
         }
 
@@ -917,7 +889,7 @@ export class BumpathCore {
         for (const [_, outputPath] of processedFiles.entries()) {
             if (outputPath.toLowerCase().endsWith('.bin') && fs.existsSync(outputPath)) {
                 try {
-                    const binObj = await new BIN().read(fs.readFileSync(outputPath), this.hashtables);
+                    const binObj = await new BIN().read(fs.readFileSync(outputPath));
                     binsToScan.push(binObj);
                 } catch (error) {
                     console.error(`Error reading BIN for asset scan: ${outputPath}`, error);
@@ -1192,7 +1164,7 @@ export class BumpathCore {
                 if (!fs || !path) {
                     await initNodeModules();
                 }
-                const mainBin = await new BIN().read(fs.readFileSync(outputPath), this.hashtables);
+                const mainBin = await new BIN().read(fs.readFileSync(outputPath));
                 console.log(`[BumpathCore] Main BIN has ${mainBin.links.length} links`);
 
                 const linkedUnifyFiles = this._flatListLinkedBins(unify);
@@ -1220,7 +1192,7 @@ export class BumpathCore {
                             continue;
                         }
 
-                        const linkedBin = await new BIN().read(fs.readFileSync(linkedBinPath), this.hashtables);
+                        const linkedBin = await new BIN().read(fs.readFileSync(linkedBinPath));
 
                         if (!linkedBin || !Array.isArray(linkedBin.entries)) {
                             console.error(`[BumpathCore] Invalid linked BIN at ${linkedBinPath}`);
@@ -1413,7 +1385,7 @@ export class BumpathCore {
                     // Recursively get links from this linked bin
                     // For nested links, prefer source files to avoid reading repathed files recursively
                     try {
-                        const linkedBin = await new BIN().read(fileBuffer, this.hashtables);
+                        const linkedBin = await new BIN().read(fileBuffer);
                         const nestedLinkedBins = await this._getAllLinkedBins(linkedBin, outputDir, processedFiles, processed);
                         linkedBins.push(...nestedLinkedBins);
                     } catch (error) {

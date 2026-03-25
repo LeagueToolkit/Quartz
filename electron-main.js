@@ -345,13 +345,9 @@ registerWadBumpathChannels({
   ipcMain,
   fs,
   getHashPath,
-  loadWadModule: async () => importLocalModule('./src/utils/wad/index.js'),
-  loadJsRitoModule: async () => importLocalModule('./src/jsritofile/bin.js'),
   loadBumpathModule: async () => importLocalModule('./src/utils/bumpath/bumpathCore.js'),
   loadWadClassModule: async () => importLocalModule('./src/jsritofile/wad.js'),
   loadBinModule: async () => importLocalModule('./src/jsritofile/bin.js'),
-  loadBinHasherModule: async () => importLocalModule('./src/jsritofile/binHasher.js'),
-  loadWadHasherModule: async () => importLocalModule('./src/jsritofile/wadHasher.js'),
 });
 
 registerPortDonorChannels({
@@ -361,7 +357,6 @@ registerPortDonorChannels({
   getNativeAddon: tryLoadNativeWadIndexer,
   loadWadClassModule: async () => importLocalModule('./src/jsritofile/wad.js'),
   loadBinModule: async () => importLocalModule('./src/jsritofile/bin.js'),
-  loadJsRitoModule: async () => importLocalModule('./src/jsritofile/bin.js'),
   loadBumpathModule: async () => importLocalModule('./src/utils/bumpath/bumpathCore.js'),
 });
 
@@ -380,10 +375,7 @@ registerModelInspectChannels({
   getHashPath,
   getNativeAddon: tryLoadNativeWadIndexer,
   loadWadModule: async () => importLocalModule('./src/utils/wad/index.js'),
-  loadJsRitoModule: async () => importLocalModule('./src/jsritofile/bin.js'),
   loadBinModule: async () => importLocalModule('./src/jsritofile/bin.js'),
-  loadBinHasherModule: async () => importLocalModule('./src/jsritofile/binHasher.js'),
-  loadWadHasherModule: async () => importLocalModule('./src/jsritofile/wadHasher.js'),
 });
 
 registerHashChannels({
@@ -393,9 +385,12 @@ registerHashChannels({
   processRef: process,
   path,
   fs,
-  clearBackendHashCache: async () => {
-    const { clearHashtablesCache } = await importLocalModule('./src/jsritofile/bin.js');
-    clearHashtablesCache();
+  clearBackendHashCache: () => {
+    // Clear native LMDB caches so updated data.mdb files are picked up
+    const addon = tryLoadNativeWadIndexer();
+    if (addon && typeof addon.clearHashTables === 'function') {
+      addon.clearHashTables();
+    }
   },
   getHomeDir: () => require('os').homedir(),
 });

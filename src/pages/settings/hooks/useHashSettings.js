@@ -16,12 +16,7 @@ const useHashSettings = () => {
           const statusResult = await ipcRenderer.invoke('hashes:check');
           setHashStatus(statusResult);
 
-          try {
-            const { clearHashtablesCache } = await import('../../../jsritofile/index.js');
-            clearHashtablesCache();
-          } catch (e) {
-            console.warn('Failed to clear hashtables cache:', e);
-          }
+          // Native LMDB caches are cleared by the main process after download
         } else {
           console.warn(`Download completed with ${result.errors.length} error(s): ${result.errors.join(', ')}`);
         }

@@ -49,6 +49,12 @@ function runStartupTasks({
   try { app.setAppUserModelId('com.github.ritoshark.quartz'); } catch (_) {}
   createWindow();
 
+  // Clean up old txt/v8cache hash files from previous versions
+  try {
+    const removed = hashManager.migrateLegacyHashes();
+    if (removed > 0) logToFile(`Cleaned up ${removed} legacy hash file(s)`, 'INFO');
+  } catch (_) {}
+
   setupAutoUpdater();
   ensureRitobinCli();
   ensureDefaultAssets();
@@ -126,7 +132,7 @@ function runStartupTasks({
     }
   }, 2500);
 
-  logToFile('APP: Backend service startup disabled - using JavaScript implementations', 'INFO');
+  logToFile('APP: Using native LMDB hash resolution', 'INFO');
 }
 
 module.exports = { registerLocalFileProtocol, runStartupTasks };

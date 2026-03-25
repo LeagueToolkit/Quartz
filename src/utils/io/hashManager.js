@@ -1,43 +1,73 @@
 /**
- * Hash Manager - Automatic hash download and management
- * Downloads hash files from CommunityDragon and stores them in AppData
+ * Hash Manager - Downloads pre-built LMDB hash databases from lmdb-hashes releases.
+ * Two separate DBs: hashes-wad.lmdb (WAD xxh64) and hashes-bin.lmdb (BIN FNV1a).
  */
 
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
-const http = require('http');
 
-// Hash files to download from CommunityDragon
-const HASH_FILES = [
-  'hashes.binentries.txt',
-  'hashes.binfields.txt',
-  'hashes.binhashes.txt',
-  'hashes.bintypes.txt',
-  'hashes.lcu.txt'
+const RELEASE_API_URL = 'https://api.github.com/repos/LeagueToolkit/lmdb-hashes/releases/latest';
+const ASSETS = [
+  { name: 'lol-hashes-wad.zst', lmdbDir: 'hashes-wad.lmdb', label: 'WAD hashes' },
+  { name: 'lol-hashes-bin.zst', lmdbDir: 'hashes-bin.lmdb', label: 'BIN hashes' },
 ];
-
-// hashes.game.txt is split into two parts
-const GAME_HASH_PART_URLS = [
-  'https://raw.githubusercontent.com/CommunityDragon/Data/master/hashes/lol/hashes.game.txt.0',
-  'https://raw.githubusercontent.com/CommunityDragon/Data/master/hashes/lol/hashes.game.txt.1'
-];
-
-const BASE_URL = 'https://raw.githubusercontent.com/CommunityDragon/Data/master/hashes/lol/';
 const META_FILE_NAME = 'hashes-meta.json';
 
-// Cache the hash directory path to avoid redundant checks and logging
 let cachedHashDir = null;
+let nativeAddon = null;
+let nativeLoadAttempted = false;
+
+function tryLoadNativeAddon() {
+  if (nativeLoadAttempted) return nativeAddon;
+  nativeLoadAttempted = true;
+
+  const candidates = [];
+  try {
+    const cwd = process.cwd();
+    const devDir = path.join(cwd, 'native', 'wad_indexer');
+    candidates.push(path.join(devDir, 'wad_indexer.node'));
+    candidates.push(path.join(devDir, 'index.node'));
+    if (fs.existsSync(devDir)) {
+      for (const file of fs.readdirSync(devDir)) {
+        if (file.endsWith('.node')) candidates.push(path.join(devDir, file));
+      }
+    }
+  } catch { }
+
+  try {
+    if (process.resourcesPath) {
+      const prodDirs = [
+        path.join(process.resourcesPath, 'native', 'wad_indexer'),
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'native', 'wad_indexer'),
+      ];
+      for (const dir of prodDirs) {
+        candidates.push(path.join(dir, 'wad_indexer.node'));
+        candidates.push(path.join(dir, 'index.node'));
+        if (fs.existsSync(dir)) {
+          for (const file of fs.readdirSync(dir)) {
+            if (file.endsWith('.node')) candidates.push(path.join(dir, file));
+          }
+        }
+      }
+    }
+  } catch { }
+
+  for (const p of [...new Set(candidates)]) {
+    try {
+      nativeAddon = require(p);
+      return nativeAddon;
+    } catch { }
+  }
+  return null;
+}
 
 /**
- * Get the integrated hash directory path (AppData/Roaming/FrogTools/hashes)
- * Creates the full directory structure: FrogTools/hashes/
- * @returns {string} Path to hash directory
+ * Get the hash directory path (AppData/Roaming/FrogTools/hashes)
+ * @returns {string}
  */
 function getHashDirectory() {
-  if (cachedHashDir) {
-    return cachedHashDir; // Return cached path immediately
-  }
+  if (cachedHashDir) return cachedHashDir;
 
   try {
     const appDataPath = process.env.APPDATA ||
@@ -47,63 +77,41 @@ function getHashDirectory() {
           ? path.join(process.env.HOME, '.local', 'share')
           : path.join(process.env.HOME, 'AppData', 'Roaming'));
 
-    console.log('[hashManager] Resolving hash directory...');
-    console.log(`[hashManager]   - APPDATA: ${process.env.APPDATA || 'undefined'}`);
-    console.log(`[hashManager]   - HOME: ${process.env.HOME || 'undefined'}`);
-    console.log(`[hashManager]   - platform: ${process.platform}`);
-    console.log(`[hashManager]   - Resolved appDataPath: ${appDataPath}`);
-
-    // Create FrogTools directory first
     const frogToolsDir = path.join(appDataPath, 'FrogTools');
     if (!fs.existsSync(frogToolsDir)) {
-      console.log(`[hashManager] Creating FrogTools directory: ${frogToolsDir}`);
       fs.mkdirSync(frogToolsDir, { recursive: true });
     }
 
-    // Create hashes subfolder inside FrogTools
     const hashDir = path.join(frogToolsDir, 'hashes');
     if (!fs.existsSync(hashDir)) {
-      console.log(`[hashManager] Creating hashes directory: ${hashDir}`);
       fs.mkdirSync(hashDir, { recursive: true });
     }
 
-    console.log(`[hashManager] ✓ Hash directory resolved: ${hashDir}`);
-    cachedHashDir = hashDir; // Cache the result
+    cachedHashDir = hashDir;
     return hashDir;
   } catch (error) {
-    console.error('[hashManager] ❌ Error getting hash directory:', error);
-    console.error('[hashManager]   - Error message:', error.message);
-    console.error('[hashManager]   - Error stack:', error.stack);
+    console.error('[hashManager] Error getting hash directory:', error);
     throw error;
   }
 }
 
 /**
- * Check if all required hash files exist
- * @returns {Object} { allPresent: boolean, missing: string[], hashDir: string }
+ * Check if LMDB hash databases exist.
+ * @returns {{ allPresent: boolean, missing: string[], hashDir: string }}
  */
 function checkHashes() {
   const hashDir = getHashDirectory();
-  const required = [...HASH_FILES, 'hashes.game.txt'];
   const missing = [];
-
-  for (const filename of required) {
-    const filePath = path.join(hashDir, filename);
-    if (!fs.existsSync(filePath)) {
-      missing.push(filename);
-    }
+  for (const asset of ASSETS) {
+    const dataMdb = path.join(hashDir, asset.lmdbDir, 'data.mdb');
+    if (!fs.existsSync(dataMdb)) missing.push(asset.name);
   }
-
-  return {
-    allPresent: missing.length === 0,
-    missing,
-    hashDir
-  };
+  return { allPresent: missing.length === 0, missing, hashDir };
 }
 
 /**
  * Fast-path gate for startup auto-sync.
- * Returns true when required files exist and metadata was updated recently.
+ * Returns true when LMDBs exist and metadata was updated recently.
  * @param {number} maxAgeMinutes
  * @returns {boolean}
  */
@@ -126,41 +134,65 @@ function isAutoSyncFresh(maxAgeMinutes = 30) {
   }
 }
 
-/**
- * Download a file from URL
- * @param {string} url - URL to download from
- * @param {string} filePath - Local file path to save to
- * @param {Function} progressCallback - Optional progress callback
- * @returns {Promise<void>}
- */
+// ── HTTP helpers ──────────────────────────────────────────────────────────────
+
+function fetchJSON(url) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      headers: {
+        'User-Agent': 'Quartz-HashManager/1.0',
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    };
+
+    https.get(url, options, (res) => {
+      if (res.statusCode === 301 || res.statusCode === 302) {
+        res.resume();
+        return fetchJSON(res.headers.location).then(resolve).catch(reject);
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(`GitHub API HTTP ${res.statusCode}`));
+      }
+
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(new Error('Invalid JSON from GitHub API')); }
+      });
+    }).on('error', reject);
+  });
+}
+
 function downloadFile(url, filePath, progressCallback = null) {
   return new Promise((resolve, reject) => {
-    const protocol = url.startsWith('https:') ? https : http;
-    const file = fs.createWriteStream(filePath);
+    const protocol = url.startsWith('https:') ? https : require('http');
+    const options = {
+      headers: { 'User-Agent': 'Quartz-HashManager/1.0' },
+    };
 
-    protocol.get(url, (response) => {
+    protocol.get(url, options, (response) => {
       if (response.statusCode === 301 || response.statusCode === 302) {
-        // Handle redirect
-        file.close();
-        fs.unlinkSync(filePath);
+        response.resume();
         return downloadFile(response.headers.location, filePath, progressCallback)
           .then(resolve)
           .catch(reject);
       }
 
       if (response.statusCode !== 200) {
-        file.close();
-        fs.unlinkSync(filePath);
+        response.resume();
         return reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
       }
 
+      const file = fs.createWriteStream(filePath);
       const totalSize = parseInt(response.headers['content-length'], 10);
       let downloadedSize = 0;
 
       response.on('data', (chunk) => {
         downloadedSize += chunk.length;
         if (progressCallback && totalSize) {
-          progressCallback(downloadedSize, totalSize, url);
+          progressCallback(downloadedSize, totalSize);
         }
       });
 
@@ -168,17 +200,22 @@ function downloadFile(url, filePath, progressCallback = null) {
 
       file.on('finish', () => {
         file.close();
-        resolve(response.headers || {});
+        resolve();
+      });
+
+      file.on('error', (err) => {
+        file.close();
+        try { fs.unlinkSync(filePath); } catch { }
+        reject(err);
       });
     }).on('error', (err) => {
-      file.close();
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+      try { fs.unlinkSync(filePath); } catch { }
       reject(err);
     });
   });
 }
+
+// ── Metadata persistence ─────────────────────────────────────────────────────
 
 function readHashesMeta(hashDir) {
   const metaPath = path.join(hashDir, META_FILE_NAME);
@@ -193,279 +230,175 @@ function readHashesMeta(hashDir) {
 
 function writeHashesMeta(hashDir, meta) {
   const metaPath = path.join(hashDir, META_FILE_NAME);
-  const payload = {
-    updatedAt: new Date().toISOString(),
-    files: meta,
-  };
-  fs.writeFileSync(metaPath, JSON.stringify(payload, null, 2));
+  fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 }
 
-function getMetaFilesMap(hashDir) {
-  const raw = readHashesMeta(hashDir);
-  if (raw?.files && typeof raw.files === 'object') return raw.files;
-  return raw && typeof raw === 'object' ? raw : {};
-}
-
-function localFileState(filePath) {
-  try {
-    if (!fs.existsSync(filePath)) return null;
-    const s = fs.statSync(filePath);
-    return {
-      mtimeMs: Number(s.mtimeMs || 0),
-      size: Number(s.size || 0),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function isRemoteUnchanged(remote, previous = {}, local = null) {
-  if (!remote?.ok || !local) return false;
-  if (remote.notModified) return true;
-
-  const remoteEtag = String(remote.etag || '');
-  const prevEtag = String(previous.etag || '');
-  const remoteLastModified = String(remote.lastModified || '');
-  const prevLastModified = String(previous.lastModified || '');
-  const remoteLen = Number(remote.contentLength || 0);
-  const localSize = Number(local.size || 0);
-
-  // Some endpoints return 200 even when unchanged; stable ETag means unchanged.
-  if (remoteEtag && prevEtag && remoteEtag === prevEtag) {
-    if (remoteLen > 0 && localSize > 0 && remoteLen !== localSize) return false;
-    return true;
-  }
-
-  if (remoteLastModified && prevLastModified && remoteLastModified === prevLastModified) {
-    if (remoteLen > 0 && localSize > 0 && remoteLen !== localSize) return false;
-    return true;
-  }
-
-  return false;
-}
-
-function probeRemoteFile(url, previous = {}) {
-  return new Promise((resolve) => {
-    const protocol = url.startsWith('https:') ? https : http;
-    const headers = {
-      'User-Agent': 'Quartz-HashManager/1.0',
-      'Accept': '*/*',
-    };
-    if (previous?.etag) headers['If-None-Match'] = previous.etag;
-    if (previous?.lastModified) headers['If-Modified-Since'] = previous.lastModified;
-
-    const req = protocol.request(url, { method: 'HEAD', headers }, (response) => {
-      if (response.statusCode === 301 || response.statusCode === 302) {
-        response.resume();
-        const location = response.headers.location;
-        if (!location) return resolve({ ok: false, error: 'Redirect without location' });
-        return resolve(probeRemoteFile(location, previous));
-      }
-
-      const status = Number(response.statusCode || 0);
-      const out = {
-        ok: status === 200 || status === 304,
-        status,
-        notModified: status === 304,
-        etag: response.headers?.etag || '',
-        lastModified: response.headers?.['last-modified'] || '',
-        contentLength: Number(response.headers?.['content-length'] || 0),
-        finalUrl: url,
-      };
-      response.resume();
-      resolve(out);
-    });
-    req.on('error', (error) => resolve({ ok: false, error: String(error?.message || error) }));
-    req.end();
-  });
-}
+// ── Main download logic ──────────────────────────────────────────────────────
 
 /**
- * Download all hash files
- * @param {Function} progressCallback - Optional progress callback (filename, current, total)
- * @returns {Promise<Object>} { success: boolean, downloaded: string[], errors: string[] }
+ * Download pre-built LMDB databases from lmdb-hashes releases.
+ * Downloads lol-hashes-wad.zst and lol-hashes-bin.zst separately.
+ * @param {Function} progressCallback - (message, current, total)
+ * @returns {Promise<{ success: boolean, downloaded: string[], skipped: string[], errors: string[], hashDir: string }>}
  */
 async function downloadHashes(progressCallback = null) {
   const hashDir = getHashDirectory();
   const downloaded = [];
   const skipped = [];
   const errors = [];
-  const meta = getMetaFilesMap(hashDir);
+  const totalSteps = ASSETS.length + 1; // +1 for API fetch
 
   try {
-    // Download simple hash files
-    for (let i = 0; i < HASH_FILES.length; i++) {
-      const filename = HASH_FILES[i];
-      const url = BASE_URL + filename;
-      const filePath = path.join(hashDir, filename);
-      const previous = meta[filename] || {};
-      const local = localFileState(filePath);
-
-      try {
-        const remote = await probeRemoteFile(url, previous);
-        const shouldSkip = isRemoteUnchanged(remote, previous, local);
-
-        if (shouldSkip) {
-          skipped.push(filename);
-          meta[filename] = {
-            url,
-            etag: remote.etag || previous.etag || '',
-            lastModified: remote.lastModified || previous.lastModified || '',
-            lastCheckedAt: new Date().toISOString(),
-            localMtimeMs: local.mtimeMs,
-            localSize: local.size,
-          };
-          if (progressCallback) {
-            progressCallback(`Up to date: ${filename}`, i + 1, HASH_FILES.length + 2);
-          }
-          continue;
-        }
-
-        if (progressCallback) {
-          progressCallback(`Downloading ${filename}...`, i + 1, HASH_FILES.length + 2);
-        }
-
-        const headers = await downloadFile(url, filePath);
-        const after = localFileState(filePath);
-        downloaded.push(filename);
-        meta[filename] = {
-          url,
-          etag: headers?.etag || remote?.etag || '',
-          lastModified: headers?.['last-modified'] || remote?.lastModified || '',
-          lastCheckedAt: new Date().toISOString(),
-          localMtimeMs: after?.mtimeMs || 0,
-          localSize: after?.size || 0,
-        };
-      } catch (error) {
-        console.error(`Failed to download ${filename}:`, error);
-        errors.push(`${filename}: ${error.message}`);
-      }
+    // 1. Fetch latest release info
+    if (progressCallback) progressCallback('Checking for hash updates...', 0, totalSteps);
+    const releaseInfo = await fetchJSON(RELEASE_API_URL);
+    if (!releaseInfo || !releaseInfo.tag_name) {
+      throw new Error('Failed to fetch release info from GitHub');
     }
 
-    // Download hashes.game.txt (split into two parts)
-    const gameHashPath = path.join(hashDir, 'hashes.game.txt');
-    const tempPart0 = path.join(hashDir, 'hashes.game.txt.part0');
-    const tempPart1 = path.join(hashDir, 'hashes.game.txt.part1');
-    const gameMeta = meta['hashes.game.txt'] || {};
-    const gameLocal = localFileState(gameHashPath);
+    const latestTag = releaseInfo.tag_name;
+    const meta = readHashesMeta(hashDir);
+    const storedTag = meta.releaseTag || '';
 
-    try {
-      const p0Remote = await probeRemoteFile(GAME_HASH_PART_URLS[0], gameMeta.part0 || {});
-      const p1Remote = await probeRemoteFile(GAME_HASH_PART_URLS[1], gameMeta.part1 || {});
-      const gameShouldSkip =
-        isRemoteUnchanged(p0Remote, gameMeta.part0 || {}, gameLocal) &&
-        isRemoteUnchanged(p1Remote, gameMeta.part1 || {}, gameLocal);
-
-      if (gameShouldSkip) {
-        skipped.push('hashes.game.txt');
-        meta['hashes.game.txt'] = {
-          ...gameMeta,
-          lastCheckedAt: new Date().toISOString(),
-          localMtimeMs: gameLocal.mtimeMs,
-          localSize: gameLocal.size,
-          part0: {
-            etag: p0Remote.etag || gameMeta?.part0?.etag || '',
-            lastModified: p0Remote.lastModified || gameMeta?.part0?.lastModified || '',
-          },
-          part1: {
-            etag: p1Remote.etag || gameMeta?.part1?.etag || '',
-            lastModified: p1Remote.lastModified || gameMeta?.part1?.lastModified || '',
-          },
-        };
-        if (progressCallback) {
-          progressCallback('Up to date: hashes.game.txt', HASH_FILES.length + 2, HASH_FILES.length + 2);
-        }
-        writeHashesMeta(hashDir, meta);
-        return {
-          success: errors.length === 0,
-          downloaded,
-          skipped,
-          errors,
-          hashDir
-        };
-      }
-
-      if (progressCallback) {
-        progressCallback('Downloading hashes.game.txt (part 1/2)...', HASH_FILES.length + 1, HASH_FILES.length + 2);
-      }
-      // Download part 0
-      const part0Headers = await downloadFile(GAME_HASH_PART_URLS[0], tempPart0);
-
-      if (progressCallback) {
-        progressCallback('Downloading hashes.game.txt (part 2/2)...', HASH_FILES.length + 2, HASH_FILES.length + 2);
-      }
-
-      // Download part 1
-      const part1Headers = await downloadFile(GAME_HASH_PART_URLS[1], tempPart1);
-
-      // Combine parts
-      const part0Data = fs.readFileSync(tempPart0);
-      const part1Data = fs.readFileSync(tempPart1);
-      fs.writeFileSync(gameHashPath, Buffer.concat([part0Data, part1Data]));
-
-      // Clean up temp files
-      fs.unlinkSync(tempPart0);
-      fs.unlinkSync(tempPart1);
-
-      downloaded.push('hashes.game.txt');
-      const gameAfter = localFileState(gameHashPath);
-      meta['hashes.game.txt'] = {
-        url: `${GAME_HASH_PART_URLS[0]} + ${GAME_HASH_PART_URLS[1]}`,
-        lastCheckedAt: new Date().toISOString(),
-        localMtimeMs: gameAfter?.mtimeMs || 0,
-        localSize: gameAfter?.size || 0,
-        part0: {
-          etag: part0Headers?.etag || p0Remote?.etag || '',
-          lastModified: part0Headers?.['last-modified'] || p0Remote?.lastModified || '',
-        },
-        part1: {
-          etag: part1Headers?.etag || p1Remote?.etag || '',
-          lastModified: part1Headers?.['last-modified'] || p1Remote?.lastModified || '',
-        },
-      };
-    } catch (error) {
-      console.error('Failed to download hashes.game.txt:', error);
-      errors.push(`hashes.game.txt: ${error.message}`);
-
-      // Clean up temp files if they exist
-      try {
-        if (fs.existsSync(tempPart0)) fs.unlinkSync(tempPart0);
-        if (fs.existsSync(tempPart1)) fs.unlinkSync(tempPart1);
-      } catch { }
+    // Check native addon availability
+    const addon = tryLoadNativeAddon();
+    if (!addon || typeof addon.decompressZstdFile !== 'function') {
+      throw new Error('Native addon not available for zstd decompression. Rebuild wad_indexer.');
     }
 
+    let anyUpdated = false;
+
+    // 2. Download each asset
+    for (let i = 0; i < ASSETS.length; i++) {
+      const asset = ASSETS[i];
+      const step = i + 1;
+      const lmdbDir = path.join(hashDir, asset.lmdbDir);
+      const dataMdb = path.join(lmdbDir, 'data.mdb');
+
+      // Find the asset in the release
+      const releaseAsset = (releaseInfo.assets || []).find(a => a.name === asset.name);
+      if (!releaseAsset) {
+        errors.push(`Asset ${asset.name} not found in release`);
+        continue;
+      }
+
+      // Skip if already up to date
+      if (latestTag === storedTag && fs.existsSync(dataMdb)) {
+        skipped.push(asset.name);
+        if (progressCallback) progressCallback(`${asset.label} up to date`, step, totalSteps);
+        continue;
+      }
+
+      // Download .zst
+      if (progressCallback) progressCallback(`Downloading ${asset.label}...`, step, totalSteps);
+      const zstPath = path.join(hashDir, asset.name);
+      await downloadFile(releaseAsset.browser_download_url, zstPath, (dlBytes, dlTotal) => {
+        if (progressCallback) {
+          const pct = dlTotal > 0 ? Math.round((dlBytes / dlTotal) * 100) : 0;
+          progressCallback(`Downloading ${asset.label}... ${pct}%`, step, totalSteps);
+        }
+      });
+
+      // Close LMDB before replacing data.mdb
+      if (typeof addon.clearHashTables === 'function') {
+        addon.clearHashTables();
+      }
+
+      // Ensure target dir exists
+      if (!fs.existsSync(lmdbDir)) fs.mkdirSync(lmdbDir, { recursive: true });
+
+      // Decompress .zst → data.mdb
+      if (progressCallback) progressCallback(`Decompressing ${asset.label}...`, step, totalSteps);
+      const ok = addon.decompressZstdFile(zstPath, dataMdb);
+      if (!ok) {
+        try { fs.unlinkSync(zstPath); } catch { }
+        errors.push(`Failed to decompress ${asset.name}`);
+        continue;
+      }
+
+      // Cleanup temp .zst
+      try { fs.unlinkSync(zstPath); } catch { }
+      downloaded.push(asset.name);
+      anyUpdated = true;
+    }
+
+    // 3. Update metadata
+    if (anyUpdated || skipped.length > 0) {
+      meta.releaseTag = latestTag;
+      meta.updatedAt = new Date().toISOString();
+    }
+    meta.lastCheckedAt = new Date().toISOString();
     writeHashesMeta(hashDir, meta);
 
-    return {
-      success: errors.length === 0,
-      downloaded,
-      skipped,
-      errors,
-      hashDir
-    };
+    if (progressCallback) {
+      const msg = anyUpdated
+        ? `Hash databases updated (${downloaded.length} file(s))`
+        : 'Hash databases are up to date';
+      progressCallback(msg, totalSteps, totalSteps);
+    }
+
+    return { success: errors.length === 0, downloaded, skipped, errors, hashDir };
   } catch (error) {
+    console.error('[hashManager] Download error:', error);
     return {
       success: false,
       downloaded,
       skipped,
-      errors: [...errors, `General error: ${error.message}`],
-      hashDir
+      errors: [...errors, error.message],
+      hashDir,
     };
   }
 }
 
+// ── Legacy hash migration ─────────────────────────────────────────────────────
+
+const LEGACY_FILES = [
+  'hashes.binentries.txt',
+  'hashes.binentries.txt.v8cache',
+  'hashes.binfields.txt',
+  'hashes.binfields.txt.v8cache',
+  'hashes.binhashes.txt',
+  'hashes.binhashes.txt.v8cache',
+  'hashes.bintypes.txt',
+  'hashes.bintypes.txt.v8cache',
+  'hashes.game.txt',
+  'hashes.game.txt.v8cache',
+  'hashes.lcu.txt',
+  'hashes.lcu.txt.v8cache',
+];
+const LEGACY_DIRS = [
+  'hashes.lmdb',
+];
+
 /**
- * Get hash directory path (for use in frontend)
+ * Remove old txt/v8cache hash files and old hashes.lmdb dir from a previous version.
+ * Never touches hashes.extracted.txt, hashes-wad.lmdb, hashes-bin.lmdb, or hashes-meta.json.
+ * @returns {number} number of items removed
  */
-function getHashDirPath() {
-  return getHashDirectory();
+function migrateLegacyHashes() {
+  try {
+    const hashDir = getHashDirectory();
+    let removed = 0;
+    for (const name of LEGACY_FILES) {
+      const p = path.join(hashDir, name);
+      if (fs.existsSync(p)) { fs.unlinkSync(p); removed++; }
+    }
+    for (const name of LEGACY_DIRS) {
+      const p = path.join(hashDir, name);
+      if (fs.existsSync(p)) { fs.rmSync(p, { recursive: true, force: true }); removed++; }
+    }
+    return removed;
+  } catch (err) {
+    console.error('[hashManager] Legacy migration error:', err.message);
+    return 0;
+  }
 }
 
 module.exports = {
   getHashDirectory,
-  getHashDirPath,
+  getHashDirPath: getHashDirectory,
   checkHashes,
   isAutoSyncFresh,
   downloadHashes,
-  HASH_FILES
+  migrateLegacyHashes,
 };

@@ -22,14 +22,14 @@ void print_usage() {
     std::cerr << "  xps_fbx_bridge --qmesh <file.qmesh> --output <file.fbx>\n";
 }
 
-bool parse_args(int argc, char** argv, CliArgs& out) {
-    std::vector<std::string> args(argv + 1, argv + argc);
+bool parse_args(int argc, wchar_t** argv, CliArgs& out) {
+    std::vector<std::wstring> args(argv + 1, argv + argc);
     for (size_t i = 0; i < args.size(); ++i) {
-        if (args[i] == "--output" && i + 1 < args.size()) {
+        if (args[i] == L"--output" && i + 1 < args.size()) {
             out.output = args[++i];
-        } else if (args[i] == "--qmesh" && i + 1 < args.size()) {
+        } else if (args[i] == L"--qmesh" && i + 1 < args.size()) {
             out.qmesh = args[++i];
-        } else if (args[i] == "--help" || args[i] == "-h") {
+        } else if (args[i] == L"--help" || args[i] == L"-h") {
             print_usage();
             return false;
         }
@@ -82,7 +82,7 @@ struct QModel {
 bool parse_qmesh(const std::filesystem::path& path, QModel& out, std::string& error) {
     std::ifstream in(path);
     if (!in) {
-        error = "Failed to open qmesh: " + path.string();
+        error = "Failed to open qmesh: " + path.u8string();
         return false;
     }
 
@@ -358,7 +358,7 @@ bool build_scene_from_qmesh(FbxManager* manager, FbxScene* scene, const QModel& 
 
 int run_bridge(const CliArgs& args) {
     if (!args.qmesh.empty() && !std::filesystem::exists(args.qmesh)) {
-        std::cerr << "QMesh file not found: " << args.qmesh.string() << "\n";
+        std::cerr << "QMesh file not found: " << args.qmesh.u8string() << "\n";
         return 2;
     }
 
@@ -407,7 +407,7 @@ int run_bridge(const CliArgs& args) {
         return 9;
     }
 
-    if (!export_scene(manager, scene, args.output.string(), error)) {
+    if (!export_scene(manager, scene, args.output.u8string(), error)) {
         std::cerr << error << "\n";
         scene->Destroy();
         manager->Destroy();
@@ -417,14 +417,14 @@ int run_bridge(const CliArgs& args) {
     scene->Destroy();
     manager->Destroy();
 
-    std::cerr << "OK: " << args.qmesh.string() << " -> " << args.output.string() << "\n";
+    std::cerr << "OK: " << args.qmesh.u8string() << " -> " << args.output.u8string() << "\n";
     return 0;
 #endif
 }
 
 }  // namespace
 
-int main(int argc, char** argv) {
+int wmain(int argc, wchar_t** argv) {
     CliArgs args;
     if (!parse_args(argc, argv, args)) {
         return 1;

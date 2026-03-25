@@ -509,6 +509,12 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
   const [binContent, setBinContent] = useState(null);
   const [binLoading, setBinLoading] = useState(false);
   const [binError, setBinError] = useState('');
+  const [troybinContent, setTroybinContent] = useState(null);
+  const [troybinLoading, setTroybinLoading] = useState(false);
+  const [troybinError, setTroybinError] = useState('');
+  const [luabinContent, setLuabinContent] = useState(null);
+  const [luabinLoading, setLuabinLoading] = useState(false);
+  const [luabinError, setLuabinError] = useState('');
 
   // Ref so loadManifest reads current wadData without being in its deps
   const wadDataRef = useRef(null);
@@ -586,7 +592,7 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
     return () => { cancelled = true; };
   }, [selectedNode, previewForceKey]);
 
-  // Bin preview for .bin files
+  // Bin preview for .bin files (and extensionless files that may be PROP bins)
   useEffect(() => {
     let cancelled = false;
     setBinContent(null);
@@ -597,7 +603,8 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
 
     const { node, wadPath } = selectedNode;
     const ext = String(node.extension || node.name?.split('.').pop() || '').toLowerCase();
-    if (ext !== 'bin') return () => { cancelled = true; };
+    const hasNoExtension = !node.extension && !node.name?.includes('.');
+    if (ext !== 'bin' && !hasNoExtension) return () => { cancelled = true; };
 
     const chunkId = Number(node.chunkId);
     if (!Number.isInteger(chunkId) || chunkId < 0) {
@@ -618,6 +625,80 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
       })
       ?.finally(() => {
         if (!cancelled) setBinLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedNode]);
+
+  // Troybin preview for .troybin files
+  useEffect(() => {
+    let cancelled = false;
+    setTroybinContent(null);
+    setTroybinError('');
+    setTroybinLoading(false);
+
+    if (!selectedNode || selectedNode.type !== 'file') return () => { cancelled = true; };
+
+    const { node, wadPath } = selectedNode;
+    const ext = String(node.extension || node.name?.split('.').pop() || '').toLowerCase();
+    if (ext !== 'troybin') return () => { cancelled = true; };
+
+    const chunkId = Number(node.chunkId);
+    if (!Number.isInteger(chunkId) || chunkId < 0) {
+      setTroybinError('Preview unavailable: open this WAD and select the file from the loaded tree.');
+      return () => { cancelled = true; };
+    }
+
+    setTroybinLoading(true);
+    window.electronAPI?.wad?.readTroybinAsText?.({ wadPath, chunkId })
+      ?.then((result) => {
+        if (cancelled) return;
+        if (!result || result.error) throw new Error(result?.error || 'Conversion failed');
+        setTroybinContent(result.text);
+      })
+      ?.catch((e) => {
+        if (cancelled) return;
+        setTroybinError(e?.message || 'Failed to convert troybin');
+      })
+      ?.finally(() => {
+        if (!cancelled) setTroybinLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedNode]);
+
+  // Luabin/luabin64 preview
+  useEffect(() => {
+    let cancelled = false;
+    setLuabinContent(null);
+    setLuabinError('');
+    setLuabinLoading(false);
+
+    if (!selectedNode || selectedNode.type !== 'file') return () => { cancelled = true; };
+
+    const { node, wadPath } = selectedNode;
+    const ext = String(node.extension || node.name?.split('.').pop() || '').toLowerCase();
+    if (ext !== 'luabin' && ext !== 'luabin64') return () => { cancelled = true; };
+
+    const chunkId = Number(node.chunkId);
+    if (!Number.isInteger(chunkId) || chunkId < 0) {
+      setLuabinError('Preview unavailable: open this WAD and select the file from the loaded tree.');
+      return () => { cancelled = true; };
+    }
+
+    setLuabinLoading(true);
+    window.electronAPI?.wad?.readLuabinAsText?.({ wadPath, chunkId })
+      ?.then((result) => {
+        if (cancelled) return;
+        if (!result || result.error) throw new Error(result?.error || 'Conversion failed');
+        setLuabinContent(result.text);
+      })
+      ?.catch((e) => {
+        if (cancelled) return;
+        setLuabinError(e?.message || 'Failed to convert luabin');
+      })
+      ?.finally(() => {
+        if (!cancelled) setLuabinLoading(false);
       });
 
     return () => { cancelled = true; };
@@ -790,14 +871,43 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
     );
   }
 
-  // .bin files: Monaco bin viewer
-  if (nodeExt === 'bin') {
+  // .bin files (and extensionless PROP bins): Monaco bin viewer
+  const nodeHasNoExt = !node?.extension && !node?.name?.includes('.');
+  if (nodeExt === 'bin' || (nodeHasNoExt && (binContent || binLoading))) {
     return (
       <div style={{ ...S.rightPanel, flexDirection: 'column', overflow: 'hidden' }}>
         <BinViewer
           content={binContent}
           loading={binLoading}
           error={binError}
+          fileName={node?.name}
+        />
+      </div>
+    );
+  }
+
+  // .troybin files: reuse BinViewer for INI text display
+  if (nodeExt === 'troybin') {
+    return (
+      <div style={{ ...S.rightPanel, flexDirection: 'column', overflow: 'hidden' }}>
+        <BinViewer
+          content={troybinContent}
+          loading={troybinLoading}
+          error={troybinError}
+          fileName={node?.name}
+        />
+      </div>
+    );
+  }
+
+  // .luabin / .luabin64 files: reuse BinViewer for Lua text display
+  if (nodeExt === 'luabin' || nodeExt === 'luabin64') {
+    return (
+      <div style={{ ...S.rightPanel, flexDirection: 'column', overflow: 'hidden' }}>
+        <BinViewer
+          content={luabinContent}
+          loading={luabinLoading}
+          error={luabinError}
           fileName={node?.name}
         />
       </div>

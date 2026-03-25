@@ -426,6 +426,14 @@ const FileThumbnail = ({ item }) => {
 
 const os = window.require ? window.require('os') : null;
 
+// Expand Windows environment variables like %USERPROFILE%, %APPDATA%, etc.
+const expandEnvVars = (inputPath) => {
+    if (!inputPath) return inputPath;
+    return inputPath.replace(/%([^%]+)%/g, (_, varName) => {
+        return process.env[varName] || process.env[varName.toUpperCase()] || `%${varName}%`;
+    });
+};
+
 // Helper to shorten path text for display "Windows style"
 const getShortPath = (fullPath) => {
     if (!fullPath) return '';
@@ -1087,14 +1095,15 @@ const CustomExplorer = () => {
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         e.preventDefault();
-                                        if (editPath && fs && fs.existsSync(editPath)) {
-                                            const stats = fs.statSync(editPath);
+                                        const resolved = expandEnvVars(editPath);
+                                        if (resolved && fs && fs.existsSync(resolved)) {
+                                            const stats = fs.statSync(resolved);
                                             if (stats.isDirectory()) {
-                                                handleNavigateRequest(editPath);
+                                                handleNavigateRequest(resolved);
                                             } else {
                                                 // It's a file - navigate to parent and select file
-                                                const dir = pathModule.dirname(editPath);
-                                                const file = pathModule.basename(editPath);
+                                                const dir = pathModule.dirname(resolved);
+                                                const file = pathModule.basename(resolved);
                                                 handleNavigateRequest(dir);
                                                 setTimeout(() => setSelectedItem(file), 100);
                                             }

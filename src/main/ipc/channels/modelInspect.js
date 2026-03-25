@@ -63,54 +63,21 @@ async function walkFiles(fs, rootDir) {
   return out;
 }
 
-// Loads only BIN-specific hash tables (FNV-1a field/type/entry names).
-// Much smaller than the full game hashtable load (~800MB). WAD chunk hashes
-// (xxh64) are resolved via the native LMDB addon instead.
-async function loadBinHashtablesSafe(loadJsRitoModule, hashPath) {
-  if (!hashPath) return null;
-  const { loadHashtables } = await loadJsRitoModule();
-  return loadHashtables(hashPath, {
-    tables: [
-      'hashes.binentries.txt',
-      'hashes.binhashes.txt',
-      'hashes.bintypes.txt',
-      'hashes.binfields.txt',
-    ],
-  });
-}
-
-// Fallback: full load when native addon is unavailable (old behaviour).
-async function loadFullHashtablesSafe(loadJsRitoModule, hashPath) {
-  if (!hashPath) return null;
-  const { loadHashtables } = await loadJsRitoModule();
-  return loadHashtables(hashPath, {
-    tables: [
-      'hashes.game.txt',
-      'hashes.lcu.txt',
-      'hashes.binentries.txt',
-      'hashes.binhashes.txt',
-      'hashes.bintypes.txt',
-      'hashes.binfields.txt',
-    ],
-  });
-}
 
 async function discoverMaterialTextureHints({
   fs,
   filesDir,
-  hashtables,
+  hashPath,
+  getNativeAddon,
   skinId,
   skinKey,
   characterFolder = '',
   exactBinName = '',
   allFiles: providedFiles = null,
   loadBinModule,
-  loadBinHasherModule,
-  loadWadHasherModule,
 }) {
   const { BIN } = await loadBinModule();
-  const { BINHasher } = await loadBinHasherModule();
-  const { WADHasher } = await loadWadHasherModule();
+  const nativeAddon = typeof getNativeAddon === 'function' ? getNativeAddon() : getNativeAddon;
 
   const allFiles = Array.isArray(providedFiles) ? providedFiles : await walkFiles(fs, filesDir);
   const isHexBasename = (filePath) => /^[0-9a-f]{16}$/i.test(path.basename(String(filePath || '')));
@@ -181,11 +148,21 @@ async function discoverMaterialTextureHints({
   const hints = {};
   const discoveredTextureRefs = new Set();
 
-  const resolveFieldName = (hex) => String(BINHasher.hexToRaw(hashtables, hex) || hex);
-  const resolveTypeName = (hex) => String(BINHasher.hexToRaw(hashtables, hex) || hex);
-  const resolveEntryName = (hex) => String(BINHasher.hexToRaw(hashtables, hex) || hex);
-  const resolveLinkName = (hex) => String(BINHasher.hexToRaw(hashtables, hex) || hex);
-  const resolveFileHash = (hex64) => String(WADHasher.hexToRaw(hashtables, hex64) || hex64);
+  const resolveBinHash = (hex) => {
+    if (!nativeAddon || !hashPath) return hex;
+    const [result] = nativeAddon.resolveBinHashes([hex], hashPath);
+    return result || hex;
+  };
+  const resolveWadHash = (hex64) => {
+    if (!nativeAddon || !hashPath) return hex64;
+    const [result] = nativeAddon.resolveHashes([hex64], hashPath);
+    return result || hex64;
+  };
+  const resolveFieldName = resolveBinHash;
+  const resolveTypeName = resolveBinHash;
+  const resolveEntryName = resolveBinHash;
+  const resolveLinkName = resolveBinHash;
+  const resolveFileHash = resolveWadHash;
 
   const normalizeKey = (value) => String(value || '').toLowerCase().replace(/\\/g, '/');
   const normalizeSimple = (value) => normalizeMaterialName(value);
@@ -368,7 +345,7 @@ async function discoverMaterialTextureHints({
       // Read bytes via Electron main fs first, then parse from Buffer.
       // This avoids environment-specific fs bootstrap issues inside jsritofile BIN.read(path).
       const raw = await fs.promises.readFile(binPath);
-      const bin = await new BIN().read(raw, hashtables);
+      const bin = await new BIN().read(raw);
       for (const entry of bin.entries || []) {
         const entryType = resolveTypeName(entry.type);
         const entryName = resolveEntryName(entry.hash);
@@ -480,10 +457,7 @@ function registerModelInspectChannels({
   getHashPath,
   getNativeAddon,
   loadWadModule,
-  loadJsRitoModule,
   loadBinModule,
-  loadBinHasherModule,
-  loadWadHasherModule,
 }) {
   // Clean up entire model-inspect cache directory.
   ipcMain.handle('modelInspect:cleanup', async () => {
@@ -528,29 +502,11 @@ function registerModelInspectChannels({
 
       const hashPath = getHashPath(rawHashPath);
 
-      // Use native LMDB addon for WAD hash resolution when available.
-      // Falls back to loading full JS hashtables (old behaviour) when not.
       const nativeAddon = getNativeAddon?.();
-      let hashtables = null;   // used only in fallback path + BIN parsing
-      let hashResolver = null; // native LMDB path
-
-      if (nativeAddon?.resolveHashes && hashPath) {
-        hashResolver = (hexHashes) => nativeAddon.resolveHashes(hexHashes, hashPath);
-        // BIN parsing still needs FNV-1a tables — load only the small bin files.
-        hashtables = hashPath && fs.existsSync(hashPath)
-          ? await loadBinHashtablesSafe(loadJsRitoModule, hashPath)
-          : null;
-        console.log('[modelInspect] Using native LMDB for WAD hashes + bin-only JS tables for BIN parsing');
-      } else {
-        // Native addon unavailable — load full hashtables as before.
-        hashtables = hashPath && fs.existsSync(hashPath)
-          ? await loadFullHashtablesSafe(loadJsRitoModule, hashPath)
-          : null;
-        if (!hashtables) {
-          return { error: 'Hash tables are required for Model Inspect path resolution. Download hashes first.' };
-        }
-        console.log('[modelInspect] Native addon unavailable — using full JS hashtables');
+      if (!nativeAddon || !nativeAddon.resolveHashes) {
+        return { error: 'Native addon (wad_indexer) is required for Model Inspect. Rebuild wad_indexer.' };
       }
+      const hashResolver = (hexHashes) => nativeAddon.resolveHashes(hexHashes, hashPath);
 
       const userDataPath = app?.getPath?.('userData') || path.join(os.homedir(), 'AppData', 'Roaming', 'Quartz');
       const cacheRoot = path.join(userDataPath, 'cache', 'model-inspect', championFileName, modelSkinKey);
@@ -600,13 +556,10 @@ function registerModelInspectChannels({
 
       sendProgress('Preparing model inspection assets...');
       const { unpackWAD } = await loadWadModule();
-      // Pass hashResolver (native LMDB) when available; null hashtables since chunks are
-      // resolved via hashResolver inside unpackWAD. Falls back to JS hashtables when native
-      // addon is not present (hashtables is populated in that path above).
       await unpackWAD(
         wadFilePath,
         filesDir,
-        hashResolver ? null : hashtables,
+        null, // hash resolution done via hashResolver
         (hash, chunk) => {
           const rel = toPosix(hash).toLowerCase();
           // Unresolved hashes can still contain required BINs; include them and rely on
@@ -655,7 +608,7 @@ function registerModelInspectChannels({
         (_count, message) => {
           if (message) sendProgress(message);
         },
-        hashResolver ? { hashResolver } : {}
+        { hashResolver }
       );
 
       sendProgress('Scanning extracted model subset...');
@@ -694,14 +647,13 @@ function registerModelInspectChannels({
         const result = await discoverMaterialTextureHints({
           fs,
           filesDir,
-          hashtables,
+          hashPath,
+          getNativeAddon,
           skinId: normalizedTextureSkinId,
           skinKey: textureSkinKey,
           characterFolder: folder,
           allFiles,
           loadBinModule,
-          loadBinHasherModule,
-          loadWadHasherModule,
         });
         materialTextureHintsByCharacterFolder[folder] = result.materialTextureHints || {};
         defaultTextureBySknByCharacterFolder[folder] = result.defaultTextureBySkn || {};
@@ -713,13 +665,12 @@ function registerModelInspectChannels({
       const fallbackHintResult = await discoverMaterialTextureHints({
         fs,
         filesDir,
-        hashtables,
+        hashPath,
+        getNativeAddon,
         skinId: normalizedTextureSkinId,
         skinKey: textureSkinKey,
         allFiles,
         loadBinModule,
-        loadBinHasherModule,
-        loadWadHasherModule,
       });
 
       const defaultFolderHints = materialTextureHintsByCharacterFolder[defaultCharacterFolder] || {};

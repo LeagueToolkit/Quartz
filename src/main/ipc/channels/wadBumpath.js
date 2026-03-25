@@ -230,17 +230,10 @@ function registerWadBumpathChannels({
   ipcMain,
   fs,
   getHashPath,
-  loadWadModule,
-  loadJsRitoModule,
   loadBumpathModule,
   loadWadClassModule,
   loadBinModule,
-  loadBinHasherModule,
-  loadWadHasherModule,
 }) {
-  let warmCacheInFlight = null;
-  let warmCacheCancelFlag = { cancelled: false };
-
   async function askReplaceExistingForOutput(webContents, outputDir, label = 'extraction') {
     try {
       if (!outputDir || !fs.existsSync(outputDir)) return true;
@@ -399,48 +392,10 @@ function registerWadBumpathChannels({
             native: true,
           };
         }
-        console.warn('[wad:extract] Native extractor failed, falling back:', nativeResult?.error);
+        return { error: `Native extractor failed: ${nativeResult?.error}` };
       }
 
-      const { unpackWAD } = await loadWadModule();
-      const { loadHashtables } = await loadJsRitoModule();
-
-      let hashtables = null;
-      if (hashPath && fs.existsSync(hashPath)) {
-        try {
-          hashtables = await loadHashtables(hashPath);
-          console.log('Hashtables loaded successfully');
-        } catch (e) {
-          console.warn('[wad:extract] Hashtable load failed:', e.message);
-        }
-      }
-
-      let lastProgress = 0;
-      const progressCallback = (count, message) => {
-        if (count > lastProgress + 50 || message) {
-          console.log(`[WAD Progress] ${message || `Extracted ${count} files...`}`);
-          lastProgress = count;
-        }
-      };
-
-      const replaceExisting = await askReplaceExistingForOutput(_event?.sender, data.outputDir, 'WAD');
-      const result = await unpackWAD(
-        data.wadPath,
-        data.outputDir,
-        hashtables,
-        null,
-        progressCallback,
-        { replaceExisting }
-      );
-      console.log('WAD extraction completed:', { extractedCount: result.extractedCount, outputDir: result.outputDir });
-      return {
-        success: true,
-        extractedCount: result.extractedCount,
-        skippedCount: result.skippedCount || 0,
-        outputDir: result.outputDir,
-        hashedFiles: result.hashedFiles || {},
-        native: false,
-      };
+      return { error: 'Native addon (wad_indexer) is required for WAD extraction. Rebuild wad_indexer.' };
     } catch (error) {
       console.error('[wad:extract] Error:', error);
       return { error: error.message, stack: error.stack };
@@ -558,14 +513,6 @@ function registerWadBumpathChannels({
         const { WAD } = await loadWadClassModule();
         const { BIN } = await loadBinModule();
         const { BumpathCore } = await loadBumpathModule();
-        const { loadHashtables } = await loadJsRitoModule();
-
-        let binHashtables = null;
-        try {
-          binHashtables = await loadHashtables(hashPath, {
-            tables: ['hashes.binentries.txt', 'hashes.binhashes.txt', 'hashes.bintypes.txt', 'hashes.binfields.txt'],
-          });
-        } catch (_) { }
 
         const fd = await fs.promises.open(wadFilePath, 'r');
         let wad;
@@ -604,15 +551,30 @@ function registerWadBumpathChannels({
         }
 
         const skinNum = Number(effectiveSkinId);
-        const candidateMainBins = [
-          `assets/characters/${championFileName}/skins/skin${skinNum}.bin`,
-          `assets/characters/${championFileName}/skins/skin${String(skinNum).padStart(2, '0')}.bin`,
-          `data/characters/${championFileName}/skins/skin${skinNum}.bin`,
-          `data/characters/${championFileName}/skins/skin${String(skinNum).padStart(2, '0')}.bin`,
-        ].map(normalizeRelPathLower);
-        const mainBinPath = candidateMainBins.find((p) => chunkByPath.has(p));
+        // Scan entire TOC for ALL character folders that have a matching skin BIN.
+        // A champion's WAD contains the main character + any subcharacters (e.g.
+        // annie + annietibbers), so every characters/*/skins/skinN.bin is relevant.
+        const skinBinPattern = new RegExp(
+          `^(?:assets|data)/characters/([^/]+)/skins/skin0*${skinNum}\\.bin$`
+        );
+        const allSeedBins = [];
+        let mainBinPath = null;
+        for (const relPath of chunkByPath.keys()) {
+          if (skinBinPattern.test(relPath)) {
+            allSeedBins.push(relPath);
+            // Prefer the main champion's BIN as the "main" one
+            const folder = relPath.match(skinBinPattern)[1];
+            if (folder === championFileName && !mainBinPath) {
+              mainBinPath = relPath;
+            }
+          }
+        }
+        if (!mainBinPath) mainBinPath = allSeedBins[0] || null;
         if (!mainBinPath) {
           return { error: `Could not locate skin BIN in WAD TOC for skin ${skinNum}` };
+        }
+        if (allSeedBins.length > 1) {
+          console.log(`[wad:extractBundle] Found ${allSeedBins.length} skin BINs (main + subcharacters):`, allSeedBins);
         }
 
         const runSelectiveExtract = async (wantedPathsLower) => {
@@ -663,9 +625,9 @@ function registerWadBumpathChannels({
           };
 
           sendProgress(0, 'Building linked BIN graph...');
-          const selectedBinPaths = new Set([mainBinPath]);
+          const selectedBinPaths = new Set(allSeedBins);
           const parsedBinPaths = new Set();
-          const pendingQueue = [mainBinPath];
+          const pendingQueue = [...allSeedBins];
           const resolveLinkedBinPath = (linkValue) => {
             const directCandidates = normalizeLinkCandidate(linkValue);
             for (const candidate of directCandidates) {
@@ -692,7 +654,7 @@ function registerWadBumpathChannels({
             if (!fs.existsSync(absBinPath)) continue;
             try {
               const raw = await fs.promises.readFile(absBinPath);
-              const binObj = await new BIN().read(raw, binHashtables);
+              const binObj = await new BIN().read(raw);
               const links = Array.isArray(binObj?.links) ? binObj.links : [];
               for (const link of links) {
                 const resolvedLinkPath = resolveLinkedBinPath(link);
@@ -744,11 +706,11 @@ function registerWadBumpathChannels({
           // Prune deadweight BIN files after combine:
           // keep main skin BIN and any BINs still linked from the combined main BIN.
           try {
-            const keepBinPaths = new Set([mainBinPath]);
+            const keepBinPaths = new Set(allSeedBins);
             const combinedMainBinAbs = toAbsFromRel(outputDir, mainBinPath);
             if (fs.existsSync(combinedMainBinAbs)) {
               const mainRaw = await fs.promises.readFile(combinedMainBinAbs);
-              const combinedMainBin = await new BIN().read(mainRaw, binHashtables);
+              const combinedMainBin = await new BIN().read(mainRaw);
               const remainingLinks = Array.isArray(combinedMainBin?.links) ? combinedMainBin.links : [];
               for (const link of remainingLinks) {
                 const linkedRel = resolveLinkedBinPath(link);
@@ -779,12 +741,17 @@ function registerWadBumpathChannels({
             await deleteDeadBins(outputDir);
 
             // USER REQUEST: Delete base champion BIN (redundant after combine)
-            const baseBinCandidates = [
-              `data/characters/${championFileName}/${championFileName}.bin`,
-              `assets/characters/${championFileName}/${championFileName}.bin`,
-            ].map(normalizeRelPathLower);
+            // Also covers subcharacter base BINs discovered from the seed scan.
+            const baseBinCandidates = new Set();
+            for (const seedBin of allSeedBins) {
+              const m = seedBin.match(/^((?:assets|data)\/characters\/([^/]+))\//);
+              if (m) {
+                baseBinCandidates.add(normalizeRelPathLower(`${m[1]}/${m[2]}.bin`));
+              }
+            }
             for (const rel of baseBinCandidates) {
-              if (rel === normalizeRelPathLower(mainBinPath)) continue;
+              // Always delete base champion BINs — the combined skin BIN keeps
+              // the link reference, repath handles it. The file itself is deadweight.
               const abs = toAbsFromRel(outputDir, rel);
               if (nodeFs.existsSync(abs)) {
                 await fs.promises.unlink(abs).catch(() => { });
@@ -844,44 +811,23 @@ function registerWadBumpathChannels({
         }
       }
 
-      const { unpackWAD } = await loadWadModule();
-      const progressCallback = (count, message) => sendProgress(count, message);
-      const { loadHashtables } = await loadJsRitoModule();
-      let hashtables = null;
-      if (hashPath && fs.existsSync(hashPath)) {
-        try {
-          hashtables = await loadHashtables(hashPath);
-        } catch (e) {
-          console.warn('[wad:extractBundle] Hashtable load failed:', e.message);
-        }
-      }
-
-      // Extract main WAD
+      // Extract main WAD (native only)
       sendProgress(0, 'Extracting WAD file...');
-      let normalResult;
-      if (nativeAddon && typeof nativeAddon.extractWadAsync === 'function') {
-        const nativeMain = await nativeAddon.extractWadAsync(wadFilePath, outputDir, hashPath || null, replaceExisting);
-        if (nativeMain?.error) {
-          throw new Error(nativeMain.error);
-        }
-        normalResult = {
-          success: true,
-          extractedCount: Number(nativeMain?.extractedCount || 0),
-          skippedCount: Number(nativeMain?.skippedCount || 0),
-          outputDir,
-          hashedFiles: {},
-          native: true,
-        };
-      } else {
-        normalResult = await unpackWAD(
-          wadFilePath,
-          outputDir,
-          hashtables,
-          null,
-          progressCallback,
-          { replaceExisting }
-        );
+      if (!nativeAddon || typeof nativeAddon.extractWadAsync !== 'function') {
+        throw new Error('Native addon (wad_indexer) is required for WAD extraction. Rebuild wad_indexer.');
       }
+      const nativeMain = await nativeAddon.extractWadAsync(wadFilePath, outputDir, hashPath || null, replaceExisting);
+      if (nativeMain?.error) {
+        throw new Error(nativeMain.error);
+      }
+      const normalResult = {
+        success: true,
+        extractedCount: Number(nativeMain?.extractedCount || 0),
+        skippedCount: Number(nativeMain?.skippedCount || 0),
+        outputDir,
+        hashedFiles: {},
+        native: true,
+      };
       sendProgress(normalResult.extractedCount, `Extracted ${normalResult.extractedCount} files successfully!`);
 
       // Extract voiceover WADs (different files, different namespaces — no collision risk)
@@ -893,22 +839,8 @@ function registerWadBumpathChannels({
         for (const voFile of voiceoverWadFiles) {
           try {
             const voPath = path.join(leaguePath, voFile);
-            if (nativeAddon && typeof nativeAddon.extractWadAsync === 'function') {
-              const nativeVo = await nativeAddon.extractWadAsync(voPath, outputDir, hashPath || null, replaceExisting);
-              if (nativeVo?.error) throw new Error(nativeVo.error);
-            } else if (nativeAddon && typeof nativeAddon.extractWad === 'function') {
-              const nativeVo = nativeAddon.extractWad(voPath, outputDir, hashPath || null, replaceExisting);
-              if (nativeVo?.error) throw new Error(nativeVo.error);
-            } else {
-              await unpackWAD(
-                voPath,
-                outputDir,
-                hashtables,
-                null,
-                progressCallback,
-                { replaceExisting }
-              );
-            }
+            const nativeVo = await nativeAddon.extractWadAsync(voPath, outputDir, hashPath || null, replaceExisting);
+            if (nativeVo?.error) throw new Error(nativeVo.error);
             successfulVoiceovers++;
           } catch (err) {
             console.warn(`[wad:extractBundle] Voiceover failed (${voFile}):`, err.message);
@@ -1307,6 +1239,23 @@ function registerWadBumpathChannels({
       if (result?.error) {
         return { error: result.error };
       }
+
+      // Guard: if native code guessed a .bin extension on an extensionless file,
+      // rename it back to match the original relPath the tree showed.
+      for (const item of nativeItems) {
+        const rel = item.relPath;
+        const lastSlash = rel.lastIndexOf('/');
+        const filename = lastSlash >= 0 ? rel.slice(lastSlash + 1) : rel;
+        if (filename.includes('.')) continue; // already has extension — skip
+        const expected = path.join(outputDir, rel);
+        const wrong = expected + '.bin';
+        try {
+          if (!fs.existsSync(expected) && fs.existsSync(wrong)) {
+            fs.renameSync(wrong, expected);
+          }
+        } catch (_) { /* best effort */ }
+      }
+
       return {
         success: true,
         extractedCount: Number(result?.extractedCount || 0),
@@ -1365,59 +1314,13 @@ function registerWadBumpathChannels({
             console.log(`[wad:loadAllIndexes] Native indexer completed ${normalized.length} WADs in ${Date.now() - nativeStart}ms`);
             return { results: normalized };
           }
-          console.warn('[wad:loadAllIndexes] Native indexer returned non-array, falling back');
+          console.warn('[wad:loadAllIndexes] Native indexer returned non-array');
         } catch (e) {
-          console.warn('[wad:loadAllIndexes] Native addon failed, falling back:', e.message);
-        }
-      }
-      console.log('[wad:loadAllIndexes] Using JS fallback');
-
-      // Load hash tables once for the whole batch (big speed win vs per-WAD load).
-      let preloadedTables = null;
-      if (resolvedHashPath && fs.existsSync(resolvedHashPath)) {
-        try {
-          const { loadHashtables } = await loadJsRitoModule();
-          preloadedTables = await loadHashtables(resolvedHashPath, {
-            tables: ['hashes.game.txt', 'hashes.lcu.txt', 'hashes.extracted.txt'],
-          });
-        } catch (e) {
-          console.warn('[wad:loadAllIndexes] Hashtable preload failed:', e.message);
+          console.warn('[wad:loadAllIndexes] Native addon failed:', e.message);
         }
       }
 
-      const results = new Array(wadPaths.length);
-      let idx = 0;
-
-      async function worker() {
-        while (true) {
-          const i = idx++;
-          if (i >= wadPaths.length) break;
-          const wadPath = wadPaths[i];
-          try {
-            const r = await readWadMetadata({
-              wadPath,
-              rawHashPath,
-              flatOnly: true,
-              preloadedTables,
-            });
-            if (r?.error) {
-              results[i] = { path: wadPath, error: r.error, paths: [], chunkCount: 0 };
-            } else {
-              results[i] = {
-                path: wadPath,
-                error: null,
-                paths: Array.isArray(r.paths) ? r.paths : [],
-                chunkCount: r.chunkCount || 0,
-              };
-            }
-          } catch (e) {
-            results[i] = { path: wadPath, error: e.message, paths: [], chunkCount: 0 };
-          }
-        }
-      }
-
-      await Promise.all(Array.from({ length: concurrency }, worker));
-      return { results };
+      return { error: 'Native addon (wad_indexer) is required for loadAllIndexes. Rebuild wad_indexer.', results: [] };
     } catch (error) {
       console.error('[wad:loadAllIndexes] Error:', error);
       return { error: error.message, results: [] };
@@ -1425,72 +1328,14 @@ function registerWadBumpathChannels({
   });
 
   // ---------------------------------------------------------------------------
-  // hashtable:warmCache — staged preload with progress events.
-  // Called from FrogChanger when user enables warm cache mode.
+  // hashtable:warmCache — no-op with LMDB (memory-mapped, always warm).
   // ---------------------------------------------------------------------------
-  ipcMain.handle('hashtable:warmCache', async (event, payload) => {
-    try {
-      const hashPathInput = typeof payload === 'string' ? payload : payload?.hashPath;
-      const hashPath = getHashPath(hashPathInput);
-      if (!hashPath || !fs.existsSync(hashPath)) {
-        return { success: false, error: 'Invalid hash path' };
-      }
-
-      if (USE_DB_HASHING) {
-        // SQLite doesn't need warming — lookups are indexed and instant.
-        return { success: true };
-      }
-
-      const { loadHashtables } = await loadJsRitoModule();
-      const sendStage = (stage, index, total) => {
-        try {
-          if (!event.sender.isDestroyed()) {
-            event.sender.send('hashtable:warmProgress', { stage, index, total });
-          }
-        } catch (_) { /* ignore */ }
-      };
-
-      if (warmCacheInFlight) {
-        await warmCacheInFlight;
-        return { success: true, reused: true };
-      }
-
-      const steps = [
-        { label: 'Loading bin fields', tables: ['hashes.binfields.txt'] },
-        { label: 'Loading bin types', tables: ['hashes.bintypes.txt'] },
-        { label: 'Loading bin hashes', tables: ['hashes.binhashes.txt'] },
-        { label: 'Loading bin entries', tables: ['hashes.binentries.txt'] },
-      ];
-
-      const cancelFlag = warmCacheCancelFlag;
-      warmCacheInFlight = (async () => {
-        const total = steps.length;
-        for (let i = 0; i < steps.length; i++) {
-          if (cancelFlag.cancelled) return;
-          const step = steps[i];
-          sendStage(step.label, i + 1, total);
-          // Yield to the event loop between each step so IPC calls remain responsive.
-          await new Promise(r => setImmediate(r));
-          if (cancelFlag.cancelled) return;
-          await loadHashtables(hashPath, { tables: step.tables });
-          await new Promise(r => setImmediate(r));
-        }
-        if (!cancelFlag.cancelled) sendStage('Hash preload complete', total, total);
-      })();
-
-      await warmCacheInFlight;
-      warmCacheInFlight = null;
-      return { success: true };
-    } catch (e) {
-      warmCacheInFlight = null;
-      console.warn('[hashtable:warmCache] Error:', e.message);
-      return { success: false, error: e.message };
-    }
+  ipcMain.handle('hashtable:warmCache', async () => {
+    return { success: true };
   });
 
   // ---------------------------------------------------------------------------
-  // hashtable:primeWad — lightweight preload for WAD explorer indexing.
-  // Loads only game/lcu tables, unlike warmCache which loads all hash sets.
+  // hashtable:primeWad — verify LMDB is openable.
   // ---------------------------------------------------------------------------
   ipcMain.handle('hashtable:primeWad', async (_event, payload) => {
     try {
@@ -1502,20 +1347,10 @@ function registerWadBumpathChannels({
 
       const nativeAddon = tryLoadNativeWadIndexer();
       if (nativeAddon && typeof nativeAddon.primeHashTables === 'function') {
-        try {
-          nativeAddon.primeHashTables(hashPath);
-          console.log('[hashtable:primeWad] Using native hashtable prime (buildHashDb)');
-          return { success: true, native: true };
-        } catch (e) {
-          console.warn('[hashtable:primeWad] Native prime failed, falling back:', e.message);
-        }
+        nativeAddon.primeHashTables(hashPath);
+        return { success: true, native: true };
       }
-
-
-      const { loadHashtables } = await loadJsRitoModule();
-      await loadHashtables(hashPath, { tables: ['hashes.game.txt', 'hashes.lcu.txt'] });
-      console.log('[hashtable:primeWad] Using JS hashtable prime');
-      return { success: true, native: false };
+      return { success: false, error: 'Native addon required' };
     } catch (e) {
       console.warn('[hashtable:primeWad] Error:', e.message);
       return { success: false, error: e.message };
@@ -1523,46 +1358,22 @@ function registerWadBumpathChannels({
   });
 
   // ---------------------------------------------------------------------------
-  // hashtable:setKeepAlive — enable/disable cache pinning (disables 30s TTL when enabled).
+  // hashtable:setKeepAlive — no-op with LMDB (memory-mapped, no TTL).
   // ---------------------------------------------------------------------------
-  ipcMain.handle('hashtable:setKeepAlive', async (_event, enabled) => {
-    try {
-      const { setHashtablesCachePinned } = await loadJsRitoModule();
-      setHashtablesCachePinned(enabled === true);
-      return { success: true };
-    } catch (e) {
-      console.warn('[hashtable:setKeepAlive] Error:', e.message);
-      return { success: false, error: e.message };
-    }
+  ipcMain.handle('hashtable:setKeepAlive', async () => {
+    return { success: true };
   });
 
   // ---------------------------------------------------------------------------
-  // hashtable:clearCache — called from renderer when user leaves FrogChanger.
-  // Clears the main-process hashtablesCache immediately and requests a GC.
+  // hashtable:clearCache — drops cached LMDB envs from memory.
   // ---------------------------------------------------------------------------
   ipcMain.handle('hashtable:clearCache', async () => {
     try {
-      // Cancel any in-flight warm cache loop so it doesn't reload tables after we clear
-      warmCacheCancelFlag.cancelled = true;
-      warmCacheCancelFlag = { cancelled: false };
-      warmCacheInFlight = null;
-
       const nativeAddon = tryLoadNativeWadIndexer();
       if (nativeAddon && typeof nativeAddon.clearHashTables === 'function') {
-        try {
-          nativeAddon.clearHashTables();
-        } catch (e) {
-          console.warn('[hashtable:clearCache] Native clear failed:', e.message);
-        }
+        nativeAddon.clearHashTables();
       }
-      const { clearHashtablesCache } = await loadJsRitoModule();
-      clearHashtablesCache();
-      if (typeof global.gc === 'function') {
-        global.gc();
-        console.log('[hashtable:clearCache] Cache cleared + GC triggered');
-      } else {
-        console.log('[hashtable:clearCache] Cache cleared');
-      }
+      if (typeof global.gc === 'function') global.gc();
       return { success: true };
     } catch (e) {
       console.warn('[hashtable:clearCache] Error:', e.message);
@@ -1598,16 +1409,6 @@ function registerWadBumpathChannels({
           console.log(`[wad:extractHashes] hashes.extracted.txt (${extractedPath}) first lines:`, lines);
         } catch (e) {
           console.log(`[wad:extractHashes] Could not read hashes.extracted.txt:`, e.message);
-        }
-      }
-
-      // Invalidate only hashes.extracted.txt — keeps hashes.game.txt/lcu.txt warm.
-      if (hashDir) {
-        try {
-          const { invalidateHashtableTable } = await loadJsRitoModule();
-          invalidateHashtableTable(hashDir, 'hashes.extracted.txt');
-        } catch (e) {
-          console.warn('[wad:extractHashes] Failed to invalidate cache:', e.message);
         }
       }
 
@@ -1700,6 +1501,107 @@ function registerWadBumpathChannels({
       if (fd) await fd.close().catch(() => {});
       try { if (tempBin && nodeFs.existsSync(tempBin)) nodeFs.unlinkSync(tempBin); } catch (_) {}
       try { if (tempPy  && nodeFs.existsSync(tempPy))  nodeFs.unlinkSync(tempPy);  } catch (_) {}
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // wad:readTroybinAsText — read a .troybin chunk from a WAD and return INI text.
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('wad:readTroybinAsText', async (_event, data) => {
+    let fd = null;
+    try {
+      const { wadPath, chunkId } = data || {};
+      if (!wadPath || !nodeFs.existsSync(wadPath)) {
+        return { error: `WAD file not found: ${wadPath || '(missing)'}` };
+      }
+      const chunkIdNum = Number(chunkId);
+      if (!Number.isInteger(chunkIdNum) || chunkIdNum < 0) {
+        return { error: 'Invalid chunkId' };
+      }
+
+      fd = await nodeFs.promises.open(wadPath, 'r');
+      const stat = await fd.stat();
+      const tocSize = Math.min(4 * 1024 * 1024, stat.size);
+      const tocBuffer = Buffer.alloc(tocSize);
+      const { bytesRead } = await fd.read(tocBuffer, 0, tocSize, 0);
+      const buf = bytesRead < tocSize ? tocBuffer.subarray(0, bytesRead) : tocBuffer;
+
+      const { WAD } = await loadWadClassModule();
+      const wad = await new WAD().read(buf);
+      const chunk = wad.chunks.find(c => c.id === chunkIdNum);
+      if (!chunk) return { error: `Chunk ${chunkIdNum} not found in WAD` };
+
+      await chunk.readData(fd);
+      await fd.close();
+      fd = null;
+
+      const payload = chunk.data instanceof ArrayBuffer
+        ? Buffer.from(chunk.data)
+        : Buffer.from(chunk.data.buffer, chunk.data.byteOffset, chunk.data.byteLength);
+
+      const nativeAddon = tryLoadNativeWadIndexer();
+      if (!nativeAddon || typeof nativeAddon.troybinToText !== 'function') {
+        return { error: 'Native addon unavailable — rebuild wad_indexer' };
+      }
+
+      const text = nativeAddon.troybinToText(payload);
+      return { text };
+    } catch (e) {
+      console.error('[wad:readTroybinAsText] Error:', e);
+      return { error: e.message };
+    } finally {
+      if (fd) await fd.close().catch(() => {});
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // wad:readLuabinAsText — read a .luabin/.luabin64 chunk from a WAD and
+  // return decompiled Lua source text.
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('wad:readLuabinAsText', async (_event, data) => {
+    let fd = null;
+    try {
+      const { wadPath, chunkId } = data || {};
+      if (!wadPath || !nodeFs.existsSync(wadPath)) {
+        return { error: `WAD file not found: ${wadPath || '(missing)'}` };
+      }
+      const chunkIdNum = Number(chunkId);
+      if (!Number.isInteger(chunkIdNum) || chunkIdNum < 0) {
+        return { error: 'Invalid chunkId' };
+      }
+
+      fd = await nodeFs.promises.open(wadPath, 'r');
+      const stat = await fd.stat();
+      const tocSize = Math.min(4 * 1024 * 1024, stat.size);
+      const tocBuffer = Buffer.alloc(tocSize);
+      const { bytesRead } = await fd.read(tocBuffer, 0, tocSize, 0);
+      const buf = bytesRead < tocSize ? tocBuffer.subarray(0, bytesRead) : tocBuffer;
+
+      const { WAD } = await loadWadClassModule();
+      const wad = await new WAD().read(buf);
+      const chunk = wad.chunks.find(c => c.id === chunkIdNum);
+      if (!chunk) return { error: `Chunk ${chunkIdNum} not found in WAD` };
+
+      await chunk.readData(fd);
+      await fd.close();
+      fd = null;
+
+      const payload = chunk.data instanceof ArrayBuffer
+        ? Buffer.from(chunk.data)
+        : Buffer.from(chunk.data.buffer, chunk.data.byteOffset, chunk.data.byteLength);
+
+      const nativeAddon = tryLoadNativeWadIndexer();
+      if (!nativeAddon || typeof nativeAddon.luabinToText !== 'function') {
+        return { error: 'Native addon unavailable — rebuild wad_indexer' };
+      }
+
+      const text = nativeAddon.luabinToText(payload);
+      return { text };
+    } catch (e) {
+      console.error('[wad:readLuabinAsText] Error:', e);
+      return { error: e.message };
+    } finally {
+      if (fd) await fd.close().catch(() => {});
     }
   });
 
@@ -1813,33 +1715,23 @@ function registerWadBumpathChannels({
     try {
       const { filesDir, skinKey = 'base', characterFolder = '', exactBinName = '', hashPath: rawHashPath } = data || {};
       if (!filesDir || !fs.existsSync(filesDir)) return { materialTextureHints: {}, defaultTextureBySkn: {} };
-      if (!loadBinModule || !loadBinHasherModule || !loadWadHasherModule) {
+      if (!loadBinModule) {
         return { materialTextureHints: {}, defaultTextureBySkn: {} };
       }
 
       const { discoverMaterialTextureHints } = require('./modelInspect');
       const hashPath = getHashPath(rawHashPath);
       const skinId = skinKey === 'base' ? 0 : (parseInt(skinKey.replace(/^skin0*/i, ''), 10) || 0);
-      let hashtables = null;
-      if (hashPath && fs.existsSync(hashPath)) {
-        try {
-          const { loadHashtables } = await loadJsRitoModule();
-          hashtables = await loadHashtables(hashPath, {
-            tables: ['hashes.binentries.txt', 'hashes.binhashes.txt', 'hashes.bintypes.txt', 'hashes.binfields.txt'],
-          });
-        } catch (_) { }
-      }
       const result = await discoverMaterialTextureHints({
         fs,
         filesDir,
-        hashtables,
+        hashPath,
+        getNativeAddon: tryLoadNativeWadIndexer,
         skinId,
         skinKey,
         characterFolder,
         exactBinName,
         loadBinModule,
-        loadBinHasherModule,
-        loadWadHasherModule,
       });
 
       return {

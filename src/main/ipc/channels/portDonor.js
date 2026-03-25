@@ -42,7 +42,6 @@ function registerPortDonorChannels({
   getNativeAddon,
   loadWadClassModule,
   loadBinModule,
-  loadJsRitoModule,
   loadBumpathModule,
 }) {
   const createdTempRoots = new Set();
@@ -140,16 +139,6 @@ function registerPortDonorChannels({
       const { WAD } = await loadWadClassModule();
       const { BIN } = await loadBinModule();
       const { BumpathCore } = await loadBumpathModule();
-      const { loadHashtables } = await loadJsRitoModule();
-
-      let binHashtables = null;
-      if (hashPath && fs.existsSync(hashPath)) {
-        try {
-          binHashtables = await loadHashtables(hashPath, {
-            tables: ['hashes.binentries.txt', 'hashes.binhashes.txt', 'hashes.bintypes.txt', 'hashes.binfields.txt'],
-          });
-        } catch (_) { }
-      }
 
       const hashResolver = (hexHashes) => nativeAddon.resolveHashes(hexHashes, hashPath);
 
@@ -317,7 +306,7 @@ function registerPortDonorChannels({
 
         try {
           const raw = await fs.promises.readFile(absBinPath);
-          const binObj = await new BIN().read(raw, binHashtables);
+          const binObj = await new BIN().read(raw);
           const links = Array.isArray(binObj?.links) ? binObj.links : [];
           for (const link of links) {
             const resolved = resolveLinkedBinPath(link);

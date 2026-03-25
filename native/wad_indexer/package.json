@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "npm exec --yes --package @napi-rs/cli -- napi build --platform --release"
+    "build": "npm exec --yes --package @napi-rs/cli -- napi build --platform --release && node -e \"const fs=require('fs'),p=require('path'),d=__dirname,f=fs.readdirSync(d).find(x=>x.endsWith('.node')&&x.includes('win32'));if(f){fs.copyFileSync(p.join(d,f),p.join(d,'wad_indexer.node'));console.log('Copied',f,'-> wad_indexer.node')}\""
   },
   "napi": {
     "name": "wad_indexer"
