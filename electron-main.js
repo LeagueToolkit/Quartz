@@ -346,6 +346,8 @@ registerWadBumpathChannels({
   fs,
   getHashPath,
   loadBumpathModule: async () => importLocalModule('./src/utils/bumpath/bumpathCore.js'),
+  loadBinSplitterModule: async () => importLocalModule('./src/utils/bumpath/binSplitter.js'),
+  loadAssetConsolidatorModule: async () => importLocalModule('./src/utils/bumpath/assetConsolidator.js'),
   loadWadClassModule: async () => importLocalModule('./src/jsritofile/wad.js'),
   loadBinModule: async () => importLocalModule('./src/jsritofile/bin.js'),
 });
@@ -358,6 +360,7 @@ registerPortDonorChannels({
   loadWadClassModule: async () => importLocalModule('./src/jsritofile/wad.js'),
   loadBinModule: async () => importLocalModule('./src/jsritofile/bin.js'),
   loadBumpathModule: async () => importLocalModule('./src/utils/bumpath/bumpathCore.js'),
+  loadAssetConsolidatorModule: async () => importLocalModule('./src/utils/bumpath/assetConsolidator.js'),
 });
 
 registerBnkGameBanksChannels({

@@ -27,7 +27,10 @@ fn print_usage() {
     eprintln!("  quartz_cli to-py         <file.bin>   Convert .bin to .py");
     eprintln!("  quartz_cli to-bin        <file.py>    Convert .py to .bin");
     eprintln!("  quartz_cli separate-vfx  <file.bin>   Extract VFX entries into a separate bin");
+    eprintln!("  quartz_cli separate-anm  <file.bin>   Extract AnimationGraphData entries into a separate bin");
     eprintln!("  quartz_cli combine-linked <file.bin>  Merge linked bins into main bin");
+    eprintln!("  quartz_cli combine-anm   <file.bin>   Merge AnimationGraphData entries from linked bins back into main bin");
+    eprintln!("  quartz_cli combine-vfx   <file.bin>   Merge VFX entries from split-vfx linked bins back into main bin");
     eprintln!("  quartz_cli noskinlite    <file.bin>   Clone skin0..99 with resolver fixes");
     eprintln!("  quartz_cli batch-split-vfx <file.bin> Split emitters for replay workflows");
     eprintln!("  quartz_cli tex2dds       <file.tex>   Convert .tex to .dds");
@@ -55,6 +58,8 @@ fn print_usage() {
     eprintln!("  quartz_cli xps2fbx       <file.mesh|file.xps|file.ascii> [output.fbx]  Convert XPS model to FBX (bridge)");
     eprintln!("  quartz_cli pmx2fbx       <file.pmx> [output.fbx]  Convert PMX model to FBX (bridge)");
     eprintln!("  quartz_cli pnx2fbx       <file.pmx> [output.fbx]  Alias for pmx2fbx");
+    eprintln!("  quartz_cli xps2fbxdir    <folder>     Convert all .xps/.mesh/.ascii to .fbx recursively");
+    eprintln!("  quartz_cli pmx2fbxdir    <folder>     Convert all .pmx to .fbx recursively");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  --hash-dir <dir>  Custom hash directory (default: %APPDATA%/FrogTools/hashes/)");
@@ -172,6 +177,57 @@ fn main() {
             }
 
             if let Err(e) = commands::combine_linked::run(path) {
+                eprintln!("Error: {}", e);
+                pause_and_exit(1);
+            }
+        }
+        "separate-anm" => {
+            if args.len() < 3 {
+                eprintln!("Error: missing .bin file path");
+                pause_and_exit(1);
+            }
+
+            let path = Path::new(&args[2]);
+            if !path.exists() {
+                eprintln!("Error: file not found: {}", path.display());
+                pause_and_exit(1);
+            }
+
+            if let Err(e) = commands::separate_anm::run(path) {
+                eprintln!("Error: {}", e);
+                pause_and_exit(1);
+            }
+        }
+        "combine-anm" => {
+            if args.len() < 3 {
+                eprintln!("Error: missing .bin file path");
+                pause_and_exit(1);
+            }
+
+            let path = Path::new(&args[2]);
+            if !path.exists() {
+                eprintln!("Error: file not found: {}", path.display());
+                pause_and_exit(1);
+            }
+
+            if let Err(e) = commands::combine_anm::run(path) {
+                eprintln!("Error: {}", e);
+                pause_and_exit(1);
+            }
+        }
+        "combine-vfx" => {
+            if args.len() < 3 {
+                eprintln!("Error: missing .bin file path");
+                pause_and_exit(1);
+            }
+
+            let path = Path::new(&args[2]);
+            if !path.exists() {
+                eprintln!("Error: file not found: {}", path.display());
+                pause_and_exit(1);
+            }
+
+            if let Err(e) = commands::combine_vfx::run(path) {
                 eprintln!("Error: {}", e);
                 pause_and_exit(1);
             }
@@ -637,6 +693,50 @@ fn main() {
             };
 
             if let Err(e) = commands::pmx::pmx2fbx(input, output) {
+                eprintln!("Error: {}", e);
+                pause_and_exit(1);
+            }
+        }
+        "xps2fbxdir" => {
+            if args.len() < 3 {
+                eprintln!("Error: missing folder or file path");
+                pause_and_exit(1);
+            }
+            let p = Path::new(&args[2]);
+            // Accept either a folder OR a file inside the folder (Windows
+            // right-click on a file passes the file itself via %1).
+            let dir_buf;
+            let dir: &Path = if p.is_dir() {
+                p
+            } else if p.is_file() {
+                dir_buf = p.parent().unwrap_or(Path::new(".")).to_path_buf();
+                Box::leak(Box::new(dir_buf)).as_path()
+            } else {
+                eprintln!("Error: path not found: {}", p.display());
+                pause_and_exit(1);
+            };
+            if let Err(e) = commands::model_dir::xps_to_fbx_dir(dir) {
+                eprintln!("Error: {}", e);
+                pause_and_exit(1);
+            }
+        }
+        "pmx2fbxdir" | "pnx2fbxdir" => {
+            if args.len() < 3 {
+                eprintln!("Error: missing folder or file path");
+                pause_and_exit(1);
+            }
+            let p = Path::new(&args[2]);
+            let dir_buf;
+            let dir: &Path = if p.is_dir() {
+                p
+            } else if p.is_file() {
+                dir_buf = p.parent().unwrap_or(Path::new(".")).to_path_buf();
+                Box::leak(Box::new(dir_buf)).as_path()
+            } else {
+                eprintln!("Error: path not found: {}", p.display());
+                pause_and_exit(1);
+            };
+            if let Err(e) = commands::model_dir::pmx_to_fbx_dir(dir) {
                 eprintln!("Error: {}", e);
                 pause_and_exit(1);
             }

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import ParticleSystemList from '../../port2/components/ParticleSystemList/ParticleSystemList';
 import { SearchInput } from '../../port2/components/common/Inputs';
+import { useBinFileDrop } from '../../port2/components/common/binFileDrop';
 import SearchIcon from '@mui/icons-material/Search';
 
 function VfxHubSystemPanels({
@@ -11,6 +12,7 @@ function VfxHubSystemPanels({
   onDonorFilterChange,
   handleDrop,
   handleDragOver,
+  processTargetBin,
   targetSystems,
   donorSystems,
   filteredTargetSystems,
@@ -110,6 +112,11 @@ function VfxHubSystemPanels({
     handleDrop(event);
   };
 
+  const handleTargetFileDrop = useCallback((filePath) => {
+    if (typeof processTargetBin === 'function') processTargetBin(filePath);
+  }, [processTargetBin]);
+  const targetFileDrop = useBinFileDrop(handleTargetFileDrop);
+
 
 
   return (
@@ -121,7 +128,30 @@ function VfxHubSystemPanels({
       overflow: 'hidden',
       minHeight: '0',
     }}>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px', minHeight: '0' }}>
+      <div
+        style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px', minHeight: '0', position: 'relative' }}
+        {...targetFileDrop.handlers}
+      >
+        {targetFileDrop.isOver && (
+          <div
+            style={{
+              position: 'absolute', inset: 0, zIndex: 30, pointerEvents: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+              border: '2px dashed var(--accent)', borderRadius: '8px',
+              transition: 'all 0.15s ease-out',
+            }}
+          >
+            <div style={{
+              padding: '10px 16px', borderRadius: '6px',
+              border: '1px dashed var(--accent)', color: 'var(--accent)',
+              fontFamily: 'JetBrains Mono, monospace', fontSize: '13px',
+              background: 'color-mix(in srgb, var(--accent), transparent 80%)',
+            }}>
+              Drop .bin or .py to load as Target
+            </div>
+          </div>
+        )}
         <div style={{ position: 'relative', width: '100%' }}>
           <SearchInput
             initialValue={targetFilter}
@@ -349,7 +379,7 @@ function VfxHubSystemPanels({
             </div>
           ) : (
             <div style={{
-              color: 'var(--accent)',
+              color: 'var(--accent2)',
               fontSize: '16px',
               fontFamily: 'JetBrains Mono, monospace',
               display: 'flex',

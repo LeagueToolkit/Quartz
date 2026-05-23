@@ -3,7 +3,7 @@
 // Nom-style parsers use elided lifetimes extensively
 #![allow(clippy::type_complexity)]
 
-use glam::{Vec2, Vec3, Vec4};
+use glam::{Mat4, Vec2, Vec3, Vec4};
 use indexmap::IndexMap;
 use ltk_hash::fnv1a::hash_lower;
 use ltk_meta::{
@@ -407,7 +407,7 @@ fn parse_vec4(input: Span) -> ParseResult<Vec4> {
 }
 
 /// Parse a mtx44: { 16 floats }
-fn parse_mtx44(input: Span) -> ParseResult<[f32; 16]> {
+fn parse_mtx44(input: Span) -> ParseResult<Mat4> {
     let (input, _) = preceded(ws, char('{'))(input)?;
 
     let mut values = [0.0f32; 16];
@@ -431,7 +431,9 @@ fn parse_mtx44(input: Span) -> ParseResult<[f32; 16]> {
 
     let (remaining, _) = preceded(ws, char('}'))(remaining)?;
 
-    Ok((remaining, values))
+    // text values are row-major but from_cols_array expects column-major,
+    // so transpose to get the correct internal layout.
+    Ok((remaining, Mat4::from_cols_array(&values).transpose()))
 }
 
 /// Parse rgba: { r, g, b, a }
@@ -785,17 +787,9 @@ fn parse_value_for_type<'a>(
             let (input, items) = parse_list_items(input, inner_kind)?;
             Ok((
                 input,
-                PropertyValueEnum::Container(if items.is_empty() {
-                    values::Container::empty_of_kind(inner_kind)
-                        .expect("ritobin list inner type must be a valid non-container kind")
-                } else {
-                    values::Container::try_from(items)
-                        .unwrap_or_else(|_| {
-                            values::Container::empty_of_kind(inner_kind).expect(
-                                "ritobin list inner type must be a valid non-container kind",
-                            )
-                        })
-                }),
+                PropertyValueEnum::Container(
+                    values::Container::try_from(items).unwrap_or_default(),
+                ), // TODO: handle error here
             ))
         }
         PropertyKind::UnorderedContainer => {
@@ -804,16 +798,7 @@ fn parse_value_for_type<'a>(
             Ok((
                 input,
                 PropertyValueEnum::UnorderedContainer(values::UnorderedContainer(
-                    if items.is_empty() {
-                        values::Container::empty_of_kind(inner_kind)
-                            .expect("ritobin list inner type must be a valid non-container kind")
-                    } else {
-                        values::Container::try_from(items).unwrap_or_else(|_| {
-                            values::Container::empty_of_kind(inner_kind).expect(
-                                "ritobin list inner type must be a valid non-container kind",
-                            )
-                        })
-                    },
+                    values::Container::try_from(items).unwrap_or_default(), // TODO: handle error here
                 )),
             ))
         }

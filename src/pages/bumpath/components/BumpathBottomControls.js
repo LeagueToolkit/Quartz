@@ -10,7 +10,7 @@ import {
   Settings as SettingsIcon,
 } from '@mui/icons-material';
 import DebouncedTextField from './DebouncedTextField';
-import { getActionButtonSx } from '../utils/styles';
+import { getActionButtonSx, inputSx } from '../utils/styles';
 
 const BumpathBottomControls = React.memo(function BumpathBottomControls({
   handleReset,
@@ -57,29 +57,13 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
         debounceMs={100}
         data-bumpath-prefix
         sx={{
-          width: '100px',
-          '& .MuiOutlinedInput-root': {
-            color: 'var(--text)',
-            fontSize: '0.8rem',
-            backgroundColor: 'var(--bg-2)',
-            borderRadius: '6px',
-            '& fieldset': {
-              borderColor: 'var(--glass-border)',
-              borderWidth: '1px'
-            },
-            '&:hover fieldset': {
-              borderColor: 'var(--accent-muted)',
-            },
-            '&.Mui-focused fieldset': {
-              borderColor: 'var(--accent)',
-            },
-          },
+          width: '110px',
+          ...inputSx,
           '& .MuiInputBase-input': {
-            fontSize: '0.8rem',
+            ...inputSx['& .MuiInputBase-input'],
             textAlign: 'center',
-            fontFamily: 'JetBrains Mono, monospace',
-            fontWeight: '600'
-          }
+            fontWeight: 600,
+          },
         }}
       />
 

@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { extractVFXSystem } from '../../../utils/vfx/vfxSystemParser.js';
 import {
     insertVFXSystemIntoFile,
@@ -51,6 +51,33 @@ export default function useVfxMutations(
     setShowNewSystemModal
 ) {
     const escapeRegExp = useCallback((str = '') => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), []);
+
+    // Deferred-write queue: handlers that move heavy text mutation off the
+    // paint frame push their finishing work here. flushPendingWrites drains
+    // synchronously when handleSave needs fresh state before reading.
+    const pendingWritesRef = useRef([]);
+    const queueDeferredWrite = useCallback((fn) => {
+        pendingWritesRef.current.push(fn);
+        if (pendingWritesRef.current.length === 1) {
+            // Schedule drain only on empty→nonempty transition; subsequent
+            // pushes ride the same timer, preserving order.
+            setTimeout(() => {
+                const queue = pendingWritesRef.current;
+                pendingWritesRef.current = [];
+                for (const cb of queue) {
+                    try { cb(); } catch (e) { console.warn('[port2] deferred write:', e?.message || e); }
+                }
+            }, 0);
+        }
+    }, []);
+    const flushPendingWrites = useCallback(() => {
+        if (pendingWritesRef.current.length === 0) return;
+        const queue = pendingWritesRef.current;
+        pendingWritesRef.current = [];
+        for (const cb of queue) {
+            try { cb(); } catch (e) { console.warn('[port2] flush:', e?.message || e); }
+        }
+    }, []);
 
     const stripVfxSystemsAndResolverEntries = useCallback((content) => {
         if (!content) return { content: '', removedSystems: 0, removedResolverEntries: 0 };
@@ -420,8 +447,22 @@ export default function useVfxMutations(
                 try {
                     const currentSys = systems[systemKey] || {};
                     const currentRaw = currentSys.rawContent || '';
-                    const newSystemRaw = removeEmitterBlockFromSystem(currentRaw, emitter.name);
-                    if (newSystemRaw) {
+                    // [port2-debug] log entry to spot races with handlePortEmitter
+                    console.log(`[port2.handleDeleteEmitter] t=${Date.now()} pyLen=${(targetPyContent || '').length} system=${systemKey} emitter=${emitter.name}`);
+
+                    // SYNC paint: fire setFileSaved + statusMessage now so the
+                    // UI reflects the action instantly. Heavy text mutation
+                    // defers below; the emitters list was already patched
+                    // by setSystems(updatedSystems) above this block.
+                    try { setFileSaved(false); } catch { }
+
+                    // DEFERRED via queue. Each callback reads `targetPyContentRef.current`
+                    // for the splice base instead of closure-captured `targetPyContent` —
+                    // sequential drain means callback N sees what N-1 just wrote, killing
+                    // the stale-closure race that produced the "extra brackets" corruption.
+                    queueDeferredWrite(() => {
+                        const newSystemRaw = removeEmitterBlockFromSystem(currentRaw, emitter.name);
+                        if (!newSystemRaw) return;
                         setTargetSystems(prev => ({
                             ...prev,
                             [systemKey]: {
@@ -432,9 +473,10 @@ export default function useVfxMutations(
 
                         try {
                             const sysKeyForReplace = (currentSys.key || systemKey);
-                            const newFileText = replaceSystemBlockInFile(targetPyContent || '', sysKeyForReplace, newSystemRaw);
+                            const baseText = (targetPyContentRef?.current) || targetPyContent || '';
+                            const newFileText = replaceSystemBlockInFile(baseText, sysKeyForReplace, newSystemRaw);
                             setTargetPyContent(newFileText);
-                            try { setFileSaved(false); } catch { }
+                            if (targetPyContentRef) targetPyContentRef.current = newFileText;
 
                             cancelPendingBackgroundSave();
                             backgroundSaveTimerRef.current = setTimeout(async () => {
@@ -465,7 +507,7 @@ export default function useVfxMutations(
                         } catch (e) {
                             console.warn('Fast content replace failed:', e?.message || e);
                         }
-                    }
+                    });
                 } catch (fastErr) { }
             }
 
@@ -819,42 +861,57 @@ export default function useVfxMutations(
             if (updatedTargetSystems[targetSystemKey]) {
                 const newEmitterList = [...(updatedTargetSystems[targetSystemKey].emitters || []), fullEmitterData];
                 updatedTargetSystems[targetSystemKey] = { ...updatedTargetSystems[targetSystemKey], emitters: newEmitterList };
+                // SYNC paint: update the emitters list so UI shows the new
+                // emitter immediately. Heavy text mutation defers below.
                 setTargetSystems(updatedTargetSystems);
-                try {
-                    const targetSys = updatedTargetSystems[targetSystemKey];
-                    const targetSysKeyForReplace = targetSys.key || targetSystemKey;
-                    const currentSystemContent = targetSys.rawContent || extractVFXSystem(targetPyContent, targetSysKeyForReplace)?.fullContent || '';
-                    const emitterBlocks = targetSys.emitters.map(e => {
-                        if (e.originalContent) return e.originalContent;
-                        // After save, emitters lose originalContent (re-parsed as {name, loaded:false}).
-                        // Extract full content from the system's rawContent instead of using a stub.
-                        const loaded = loadEmitterData(targetSys, e.name);
-                        if (loaded?.originalContent) return loaded.originalContent;
-                        return `VfxEmitterDefinitionData {\n    emitterName: string = "${e.name}"\n}`;
-                    });
-                    const newSystemText = replaceEmittersInSystem(currentSystemContent || '', emitterBlocks);
-                    const newFile = replaceSystemBlockInFile(targetPyContent || '', targetSysKeyForReplace, newSystemText);
-                    setTargetPyContent(newFile);
-                    try { setFileSaved(false); } catch { }
-                    setTargetSystems(prev => ({ ...prev, [targetSystemKey]: { ...prev[targetSystemKey], rawContent: newSystemText } }));
-                } catch (e) {
-                    console.warn('Port emitter content sync failed:', e?.message || e);
-                }
-                try {
-                    const assetFiles = findAssetFiles(fullEmitterData);
-                    if (assetFiles.length > 0) {
-                        const { copiedFiles, failedFiles, skippedFiles } = copyAssetFiles(donorPath, targetPath, assetFiles);
-                        const { ipcRenderer } = window.require('electron');
-                        showAssetCopyResults(copiedFiles, failedFiles, skippedFiles, (m) => ipcRenderer.send("Message", m));
-                    }
-                } catch (assetError) { }
+                try { setFileSaved(false); } catch { }
                 setStatusMessage(`Ported emitter "${finalEmitterName}"`);
+
+                // [port2-debug] log entry: timestamp + length of pyContent
+                // captured by this closure. Cross-reference with the same
+                // line in handleDeleteEmitter to spot stale-base races.
+                console.log(`[port2.handlePortEmitter] t=${Date.now()} pyLen=${(targetPyContent || '').length} target=${targetSystemKey} emitter=${finalEmitterName}`);
+
+                // DEFERRED via queue. The splice base reads from
+                // `targetPyContentRef.current` rather than closure-captured
+                // `targetPyContent` so sequential queued callbacks see the
+                // freshest text — fixes the stale-closure "extra brackets"
+                // race when multiple ports fire in the same render frame.
+                queueDeferredWrite(() => {
+                    try {
+                        const targetSys = updatedTargetSystems[targetSystemKey];
+                        const targetSysKeyForReplace = targetSys.key || targetSystemKey;
+                        const baseText = (targetPyContentRef?.current) || targetPyContent || '';
+                        const currentSystemContent = extractVFXSystem(baseText, targetSysKeyForReplace)?.fullContent || targetSys.rawContent || '';
+                        const emitterBlocks = targetSys.emitters.map(e => {
+                            if (e.originalContent) return e.originalContent;
+                            const loaded = loadEmitterData(targetSys, e.name);
+                            if (loaded?.originalContent) return loaded.originalContent;
+                            return `VfxEmitterDefinitionData {\n    emitterName: string = "${e.name}"\n}`;
+                        });
+                        const newSystemText = replaceEmittersInSystem(currentSystemContent || '', emitterBlocks);
+                        const newFile = replaceSystemBlockInFile(baseText, targetSysKeyForReplace, newSystemText);
+                        setTargetPyContent(newFile);
+                        if (targetPyContentRef) targetPyContentRef.current = newFile;
+                        setTargetSystems(prev => ({ ...prev, [targetSystemKey]: { ...prev[targetSystemKey], rawContent: newSystemText } }));
+                    } catch (e) {
+                        console.warn('[port2.handlePortEmitter] deferred sync failed:', e?.message || e);
+                    }
+                    try {
+                        const assetFiles = findAssetFiles(fullEmitterData);
+                        if (assetFiles.length > 0) {
+                            const { copiedFiles, failedFiles, skippedFiles } = copyAssetFiles(donorPath, targetPath, assetFiles);
+                            const { ipcRenderer } = window.require('electron');
+                            showAssetCopyResults(copiedFiles, failedFiles, skippedFiles, (m) => ipcRenderer.send("Message", m));
+                        }
+                    } catch (assetError) { /* non-fatal */ }
+                });
             }
         } catch (e) {
             console.error(e);
             setStatusMessage('Error porting emitter');
         }
-    }, [selectedTargetSystem, donorSystems, targetSystems, targetPyContent, donorPath, targetPath, saveStateToHistory, setTargetSystems, setTargetPyContent, setFileSaved, setStatusMessage, cancelPendingBackgroundSave]);
+    }, [selectedTargetSystem, donorSystems, targetSystems, targetPyContent, targetPyContentRef, donorPath, targetPath, saveStateToHistory, setTargetSystems, setTargetPyContent, setFileSaved, setStatusMessage, cancelPendingBackgroundSave]);
 
     const handlePortAllEmitters = useCallback(async (donorSystemKey) => {
         cancelPendingBackgroundSave();
@@ -974,6 +1031,7 @@ export default function useVfxMutations(
     }, [targetSystems, deletedEmitters, saveStateToHistory, setTargetSystems, setDeletedEmitters, setStatusMessage, targetPyContent, setTargetPyContent, setFileSaved, cancelPendingBackgroundSave]);
 
     return {
+        flushPendingWrites,
         handleCreateNewSystem,
         handlePortAllSystems,
         handleDeleteEmitter,

@@ -308,8 +308,13 @@ const Port2 = () => {
     setShowPortDonorModal(true);
   }, []);
 
-  const handleConfirmDonorFromGame = useCallback(async ({ champion, skin }) => {
+  const handleConfirmDonorFromGame = useCallback(async ({ champion, skin, portingPrefix }) => {
     if (!champion || !skin) return;
+    const cleanPortingPrefix = String(portingPrefix || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (!cleanPortingPrefix) {
+      setStatusMessage('A porting prefix is required.');
+      return;
+    }
 
     setIsPreparingPortDonor(true);
     setPortDonorProgress('Preparing donor...');
@@ -331,6 +336,7 @@ const Port2 = () => {
         skinId: skin.id,
         leaguePath,
         hashPath,
+        consolidatePrefix: cleanPortingPrefix,
       });
 
       if (!result?.success) {
@@ -636,6 +642,7 @@ const Port2 = () => {
   const targetColumnProps = {
     isProcessing,
     handleOpenTargetBin,
+    processTargetBin,
     targetFilterInput,
     enableTargetEmitterSearch,
     filterTargetParticles,
@@ -689,6 +696,7 @@ const Port2 = () => {
   const donorColumnProps = {
     isProcessing,
     handleOpenDonorBin,
+    processDonorBin,
     handleOpenDonorFromGame,
     donorFilterInput,
     enableDonorEmitterSearch,

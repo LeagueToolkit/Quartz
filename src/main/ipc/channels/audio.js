@@ -101,10 +101,13 @@ function registerAudioChannels({
       const worker = async () => {
         while (idx < filesToDownload.length) {
           const item = filesToDownload[idx++];
+          if (item.path.includes('..')) continue;
           const mapping = destMap.find(m => item.path.startsWith(m.prefix));
           if (!mapping) continue;
           const relPath = item.path.slice(mapping.prefix.length);
           const destPath = path.join(mapping.dest, ...relPath.split('/'));
+          const destRoot = path.resolve(mapping.dest);
+          if (!path.resolve(destPath).startsWith(destRoot + path.sep)) continue;
           await downloadFile(RAW_BASE + item.path, destPath);
           done++;
           sendProgress(`Installing audio tools (${done} / ${total} files)...`);
@@ -139,6 +142,7 @@ function registerAudioChannels({
       const baseName = path.basename(inputPath, ext);
       const uniqueId = Date.now();
       let wavPath = inputPath;
+      const tempFiles = [];
 
       // Step 1: If MP3/OGG, decode to PCM WAV via vgmstream
       if (ext === '.mp3' || ext === '.ogg') {
@@ -146,6 +150,7 @@ function registerAudioChannels({
           return { success: false, error: 'vgmstream decoder not installed' };
         }
         wavPath = path.join(WWISE_TEMP_DIR, `${baseName}_${uniqueId}.wav`);
+        tempFiles.push(wavPath);
         await new Promise((resolve, reject) => {
           const proc = spawn(VGMSTREAM_EXE, ['-o', wavPath, inputPath], {
             windowsHide: true,
@@ -154,6 +159,16 @@ function registerAudioChannels({
           proc.on('close', (code) => code === 0 ? resolve() : reject(new Error(`vgmstream exit ${code}`)));
           proc.on('error', reject);
         });
+      }
+
+      // Step 1.5: Normalize WAV to signed 16-bit PCM (8-bit unsigned WAV → silence in Wwise)
+      const rawWav = fs.readFileSync(wavPath);
+      const normWav = normalizeWavToS16(rawWav);
+      if (normWav !== rawWav) {
+        const normPath = path.join(WWISE_TEMP_DIR, `${baseName}_${uniqueId}_norm.wav`);
+        fs.writeFileSync(normPath, normWav);
+        tempFiles.push(normPath);
+        wavPath = normPath;
       }
 
       // Step 2: Generate .wsources XML
@@ -192,9 +207,7 @@ function registerAudioChannels({
 
       // Step 5: Cleanup intermediates
       try { fs.unlinkSync(wsourcesPath); } catch (_) { }
-      if (wavPath !== inputPath) {
-        try { fs.unlinkSync(wavPath); } catch (_) { }
-      }
+      for (const f of tempFiles) try { fs.unlinkSync(f); } catch (_) { }
 
       return { success: true, wemPath };
     } catch (err) {
@@ -249,6 +262,70 @@ function registerAudioChannels({
       }
     }
     return result;
+  }
+
+  // Normalize a WAV buffer to signed 16-bit PCM so WwiseConsole can always handle it.
+  // 8-bit WAV is unsigned by the spec; Wwise silently misreads it as signed → silence.
+  function normalizeWavToS16(buf) {
+    let pos = 12;
+    let audioFormat = 1, numChannels = 1, sampleRate = 44100, bitsPerSample = 16;
+    let dataStart = -1, dataSize = 0;
+    while (pos < buf.length - 8) {
+      const id = buf.toString('ascii', pos, pos + 4);
+      const size = buf.readUInt32LE(pos + 4);
+      if (id === 'fmt ') {
+        audioFormat = buf.readUInt16LE(pos + 8);
+        numChannels = buf.readUInt16LE(pos + 10);
+        sampleRate = buf.readUInt32LE(pos + 12);
+        bitsPerSample = buf.readUInt16LE(pos + 22);
+      } else if (id === 'data') {
+        dataStart = pos + 8;
+        dataSize = size;
+        break;
+      }
+      pos += 8 + (size % 2 !== 0 ? size + 1 : size);
+    }
+    if (dataStart === -1) return buf;
+    if (audioFormat === 1 && bitsPerSample === 16) return buf; // already correct
+
+    const dataEnd = Math.min(dataStart + dataSize, buf.length);
+    const dataBytes = buf.slice(dataStart, dataEnd);
+    let samples;
+
+    if (audioFormat === 1 && bitsPerSample === 8) {
+      // WAV 8-bit is unsigned (center=128); convert to signed 16-bit
+      samples = new Int16Array(dataBytes.length);
+      for (let i = 0; i < dataBytes.length; i++) samples[i] = (dataBytes[i] - 128) << 8;
+    } else if (audioFormat === 1 && bitsPerSample === 24) {
+      const n = Math.floor(dataBytes.length / 3);
+      samples = new Int16Array(n);
+      for (let i = 0; i < n; i++) {
+        let s = dataBytes[i * 3] | (dataBytes[i * 3 + 1] << 8) | (dataBytes[i * 3 + 2] << 16);
+        if (s & 0x800000) s |= ~0xFFFFFF;
+        samples[i] = s >> 8;
+      }
+    } else if (audioFormat === 1 && bitsPerSample === 32) {
+      const n = Math.floor(dataBytes.length / 4);
+      samples = new Int16Array(n);
+      for (let i = 0; i < n; i++) samples[i] = buf.readInt32LE(dataStart + i * 4) >> 16;
+    } else if (audioFormat === 3 && bitsPerSample === 32) {
+      const n = Math.floor(dataBytes.length / 4);
+      samples = new Int16Array(n);
+      for (let i = 0; i < n; i++) {
+        samples[i] = Math.round(Math.max(-1, Math.min(1, buf.readFloatLE(dataStart + i * 4))) * 32767);
+      }
+    } else {
+      return buf; // unsupported format, pass through unchanged
+    }
+
+    const newDataSize = samples.byteLength;
+    const header = Buffer.alloc(44);
+    header.write('RIFF', 0); header.writeUInt32LE(36 + newDataSize, 4); header.write('WAVE', 8);
+    header.write('fmt ', 12); header.writeUInt32LE(16, 16); header.writeUInt16LE(1, 20);
+    header.writeUInt16LE(numChannels, 22); header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(sampleRate * numChannels * 2, 28); header.writeUInt16LE(numChannels * 2, 32);
+    header.writeUInt16LE(16, 34); header.write('data', 36); header.writeUInt32LE(newDataSize, 40);
+    return Buffer.concat([header, Buffer.from(samples.buffer)]);
   }
 
   // audio:amplify-wem - decode WEM -> amplify WAV -> re-encode to WEM
@@ -323,9 +400,11 @@ function registerAudioChannels({
         const baseName = path.basename(inp.inputPath, ext);
         const dest = `${baseName}_${uid}_${i}`;
         let wavPath = inp.inputPath;
+        const tempWavPaths = [];
         if (ext === '.mp3' || ext === '.ogg') {
           if (!fs.existsSync(VGMSTREAM_EXE)) throw new Error('vgmstream decoder not installed');
           wavPath = path.join(WWISE_TEMP_DIR, `${dest}.wav`);
+          tempWavPaths.push(wavPath);
           await new Promise((resolve, reject) => {
             const proc = spawn(VGMSTREAM_EXE, ['-o', wavPath, inp.inputPath], {
               windowsHide: true, cwd: path.dirname(VGMSTREAM_EXE),
@@ -334,7 +413,16 @@ function registerAudioChannels({
             proc.on('error', reject);
           });
         }
-        return { wavPath, dest, originalPath: inp.inputPath };
+        // Normalize to signed 16-bit PCM (handles 8-bit unsigned, float, etc.)
+        const rawWav = fs.readFileSync(wavPath);
+        const normWav = normalizeWavToS16(rawWav);
+        if (normWav !== rawWav) {
+          const normPath = path.join(WWISE_TEMP_DIR, `${dest}_norm.wav`);
+          fs.writeFileSync(normPath, normWav);
+          tempWavPaths.push(normPath);
+          wavPath = normPath;
+        }
+        return { wavPath, dest, originalPath: inp.inputPath, tempWavPaths };
       }));
 
       // Step 2: Build a single .wsources file with all inputs
@@ -372,7 +460,7 @@ function registerAudioChannels({
       // Cleanup intermediates
       try { fs.unlinkSync(wsourcesPath); } catch (_) { }
       for (const p of prepared) {
-        if (p.wavPath !== p.originalPath) try { fs.unlinkSync(p.wavPath); } catch (_) { }
+        for (const f of p.tempWavPaths) try { fs.unlinkSync(f); } catch (_) { }
       }
 
       return { success: true, results };

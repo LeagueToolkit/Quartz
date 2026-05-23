@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { FolderOpen, Save, Dices, ChevronDown, ChevronRight, HelpCircle, Folder, Lock, CheckSquare, Square, Eye, ChevronsDown, ChevronsUp } from 'lucide-react';
 import electronPrefs from '../utils/core/electronPrefs.js';
 import { loadFileWithBackup, createBackup } from '../utils/io/backupManager.js';
 import { openAssetPreview } from '../utils/assets/assetPreviewEvent';
@@ -837,21 +838,10 @@ export default function ParticleRandomizer() {
         <div className="particle-randomizer">
             {isLoading && <GlowingSpinner text={loadingText} />}
 
-            {/* ── Header ── */}
-            <div className="pr-header">
-                <div className="pr-header-top">
-                    <h1>
-                        Particle Randomizer
-                        {binPath && <span>— {nodePath?.basename(binPath)}</span>}
-                    </h1>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        <button className="pr-btn pr-btn-green" onClick={loadBinFile}>
-                            📁 Load .bin
-                        </button>
-                    </div>
-                </div>
-                <div className={`pr-status ${statusType}`}>{statusMessage}</div>
-            </div>
+            {/* ── Floating top-right Load button ── */}
+            <button className="pr-btn pr-btn-small pr-btn-green pr-load-floating" onClick={loadBinFile}>
+                <FolderOpen size={13} /> Load .bin
+            </button>
 
             {/* ── Main Content ── */}
             <div className="pr-main">
@@ -865,7 +855,7 @@ export default function ParticleRandomizer() {
                                 <input
                                     className="pr-search-input"
                                     type="text"
-                                    placeholder="🔍 Search systems or emitters..."
+                                    placeholder="Search systems or emitters..."
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
                                 />
@@ -878,11 +868,11 @@ export default function ParticleRandomizer() {
 
                             {/* Selection controls */}
                             <div className="pr-selection-bar">
-                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={selectAll}>All</button>
-                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={deselectAll}>None</button>
-                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={selectVisible}>Visible</button>
-                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={expandAll}>Expand</button>
-                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={collapseAll}>Collapse</button>
+                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={selectAll}><CheckSquare size={11} />All</button>
+                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={deselectAll}><Square size={11} />None</button>
+                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={selectVisible}><Eye size={11} />Visible</button>
+                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={expandAll}><ChevronsDown size={11} />Expand</button>
+                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={collapseAll}><ChevronsUp size={11} />Collapse</button>
                                 <span className="pr-selection-count">
                                     {selected.size > 0 && selectedSystems.size > 0
                                         ? `${selected.size} emitters + ${selectedSystems.size} systems`
@@ -920,7 +910,7 @@ export default function ParticleRandomizer() {
                                                 onClick={() => toggleSystemExpand(systemKey)}
                                             >
                                                 <span className="pr-expand-icon">
-                                                    {isExpanded ? '▼' : '▶'}
+                                                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                                                 </span>
                                                 <input
                                                     type="checkbox"
@@ -997,7 +987,7 @@ export default function ParticleRandomizer() {
                         </>
                     ) : (
                         <div className="pr-empty-state">
-                            <div className="icon">🎲</div>
+                            <div className="icon"><Dices size={48} /></div>
                             <div>Load a .bin file to see VFX systems</div>
                         </div>
                     )}
@@ -1045,7 +1035,7 @@ export default function ParticleRandomizer() {
                                 <label htmlFor="pr-custom-prefix">
                                     Custom names instead of variant1, variant2…
                                 </label>
-                                <span className="pr-info-tip" title="Custom names used in system paths, e.g. _EmitterName_fire instead of _EmitterName_variant1">?</span>
+                                <span className="pr-info-tip" title="Custom names used in system paths, e.g. _EmitterName_fire instead of _EmitterName_variant1"><HelpCircle size={11} /></span>
                             </div>
 
                             {useCustomPrefix && (
@@ -1070,11 +1060,7 @@ export default function ParticleRandomizer() {
                         <div className="pr-section">
                             <div className="pr-section-title">
                                 Separate Assets
-                                <span className="badge" style={{
-                                    background: separateAssets ? 'rgba(34,197,94,0.15)' : undefined,
-                                    borderColor: separateAssets ? '#22c55e' : undefined,
-                                    color: separateAssets ? '#22c55e' : undefined
-                                }}>
+                                <span className={`badge ${separateAssets ? 'badge-active' : 'badge-off'}`}>
                                     {separateAssets ? 'Active' : 'Off'}
                                 </span>
                             </div>
@@ -1088,7 +1074,7 @@ export default function ParticleRandomizer() {
                                 <label htmlFor="pr-separate-assets">
                                     Give each variant its own particle folder
                                 </label>
-                                <span className="pr-info-tip" title="Each variant gets its own copy of textures/meshes so you can modify them independently.">?</span>
+                                <span className="pr-info-tip" title="Each variant gets its own copy of textures/meshes so you can modify them independently."><HelpCircle size={11} /></span>
                             </div>
 
                             {separateAssets && (
@@ -1116,21 +1102,22 @@ export default function ParticleRandomizer() {
 
                             {Object.keys(detectedAssets).length > 0 && (
                                 <div className="pr-assets-output">
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', marginBottom: 8 }}>
-                                        📁 Detected Assets
+                                    <div className="pr-assets-output-title">
+                                        <FolderOpen size={13} /> Detected Assets
                                     </div>
                                     {Object.entries(detectedAssets).map(([folder, assets]) => (
                                         <div key={folder} className="pr-assets-folder">
                                             <div className="pr-assets-folder-name">
-                                                {folder === '_backup' ? '🔒 _backup (originals)' : `📂 ${folder}`}
-                                                <span style={{ opacity: 0.6 }}> ({assets.length})</span>
+                                                {folder === '_backup' ? <Lock size={12} /> : <Folder size={12} />}
+                                                {folder === '_backup' ? '_backup (originals)' : folder}
+                                                <span style={{ opacity: 0.55 }}>({assets.length})</span>
                                             </div>
                                             <ul>
                                                 {assets.slice(0, 8).map((a, i) => (
                                                     <li key={i}>{a.filename}</li>
                                                 ))}
                                                 {assets.length > 8 && (
-                                                    <li style={{ color: '#666' }}>…and {assets.length - 8} more</li>
+                                                    <li style={{ color: 'rgba(255,255,255,0.32)' }}>…and {assets.length - 8} more</li>
                                                 )}
                                             </ul>
                                         </div>
@@ -1143,23 +1130,26 @@ export default function ParticleRandomizer() {
                     {/* ── Action Bar ── */}
                     <div className="pr-action-bar">
                         <button
-                            className="pr-btn pr-btn-green"
+                            className="pr-btn pr-btn-prominent pr-btn-green"
                             onClick={handleGenerate}
                             disabled={!pyContent || (selected.size === 0 && selectedSystems.size === 0)}
                         >
-                            🎲 Randomize!
+                            <Dices size={15} /> Randomize
                         </button>
                         <button
-                            className="pr-btn pr-btn-amber"
+                            className="pr-btn pr-btn-prominent pr-btn-amber"
                             onClick={handleSave}
                             disabled={!canSave}
                         >
-                            💾 Save
+                            <Save size={15} /> Save
                         </button>
                         {canCopyAssets && (
-                            <button className="pr-btn pr-btn-blue" onClick={handleCopyAssets}>
-                                📂 Copy Assets to Folders
+                            <button className="pr-btn pr-btn-prominent pr-btn-blue" onClick={handleCopyAssets}>
+                                <FolderOpen size={15} /> Copy Assets to Folders
                             </button>
+                        )}
+                        {statusMessage && (
+                            <span className={`pr-action-status ${statusType}`}>{statusMessage}</span>
                         )}
                     </div>
                 </div>

@@ -51,6 +51,7 @@ export const getChampionFileName = (championName) => {
     monkeyking: 'monkeyking',
     'nunu & willump': 'nunu',
     nunu: 'nunu',
+    'renata glasc': 'renata',
   };
 
   const lowerName = championName.toLowerCase();
@@ -147,7 +148,8 @@ const runSingleBumpathPass = async ({
 
   await bumInstance.scan(hashPath);
 
-  if (customPrefix !== 'bum') {
+  // Always apply the user's prefix — `bum` is no longer a magic default.
+  if (customPrefix) {
     const allEntryHashes = Object.keys(bumInstance.entryPrefix).filter(hash => hash !== 'All_BINs');
     bumInstance.applyPrefix(allEntryHashes, customPrefix);
   }
@@ -166,12 +168,15 @@ export const runBumpathRepath = async ({
   outputDir,
   selectedSkinIds,
   hashPath,
-  prefix = 'bum',
+  prefix = '',
   processTogether = false,
   preserveHudIcons2D = true,
   skipSfxRepath = true,
   skipVoiceoverRepath = true,
 }) => {
+  if (!prefix) {
+    throw new Error('runBumpathRepath: a prefix is required (no more `bum` default).');
+  }
   if (!window.electronAPI?.bumpath?.repath) {
     throw new Error('Bumpath IPC bridge not available — check preload.js.');
   }

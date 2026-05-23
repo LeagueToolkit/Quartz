@@ -32,6 +32,9 @@ body,
   height: 100%;
 }
 
+/* Windows 11 rounded corners are handled natively by DWM
+   (see src/main/window/windowsRoundedCorners.js). No CSS hack needed. */
+
 /* Wallpaper Overrides - Ultra Transparent */
 .has-wallpaper {
   --mui-background: transparent !important;

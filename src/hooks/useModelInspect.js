@@ -25,6 +25,9 @@ export default function useModelInspect() {
     skinName,
     leaguePath,
     hashPath,
+    isTftMode = false,
+    wadTheme = null,
+    wadTier = null,
   }) => {
     setOpen(true);
     setLoading(true);
@@ -37,6 +40,9 @@ export default function useModelInspect() {
       skinName,
       leaguePath,
       hashPath,
+      isTftMode,
+      wadTheme,
+      wadTier,
       chromaOptions: Array.isArray(chromaOptions) ? chromaOptions : [],
     };
 
@@ -48,6 +54,9 @@ export default function useModelInspect() {
         skinName,
         leaguePath,
         hashPath,
+        isTftMode,
+        wadTheme,
+        wadTier,
         onProgress: (message) => setProgressMessage(message),
       });
       setManifest({
@@ -76,6 +85,9 @@ export default function useModelInspect() {
         skinName: req.skinName,
         leaguePath: req.leaguePath,
         hashPath: req.hashPath,
+        isTftMode: req.isTftMode,
+        wadTheme: req.wadTheme,
+        wadTier: req.wadTier,
         onProgress: (message) => setProgressMessage(message),
       });
       setManifest({

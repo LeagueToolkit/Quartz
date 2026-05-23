@@ -498,29 +498,43 @@ const MainPage = () => {
                 </Box>
               )}
 
-              {/* Icon */}
+              {/* Icon + Title row — keeps the top of the card compact so the
+                  description has more vertical room. Subtle bottom border
+                  acts as a divider between the header and the description. */}
               <Box sx={{
-                color: 'var(--accent)',
-                mb: { xs: 0.75, sm: 1 },
                 display: 'flex',
-                '& .MuiSvgIcon-root': {
-                  fontSize: { xs: '1.1rem', sm: '1.3rem', md: '1.5rem' },
-                  filter: 'drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 40%, transparent))',
-                },
+                alignItems: 'center',
+                gap: { xs: 0.75, sm: 1 },
+                pb: { xs: 0.5, sm: 0.65 },
+                mb: { xs: 0.6, sm: 0.75 },
+                borderBottom: '1px solid rgba(255,255,255,0.08)',
               }}>
-                {tool.icon}
+                <Box sx={{
+                  color: 'var(--accent)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  flexShrink: 0,
+                  '& .MuiSvgIcon-root': {
+                    fontSize: { xs: '1.1rem', sm: '1.3rem', md: '1.5rem' },
+                    filter: 'drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 40%, transparent))',
+                  },
+                }}>
+                  {tool.icon}
+                </Box>
+                <Typography sx={{
+                  color: 'var(--text)',
+                  fontWeight: 700,
+                  fontSize: { xs: '0.75rem', sm: '0.82rem', md: '0.88rem' },
+                  lineHeight: 1.2,
+                  minWidth: 0,
+                  // Truncate long titles instead of wrapping under the icon.
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {tool.title}
+                </Typography>
               </Box>
-
-              {/* Title */}
-              <Typography sx={{
-                color: 'var(--text)',
-                fontWeight: 700,
-                fontSize: { xs: '0.75rem', sm: '0.82rem', md: '0.88rem' },
-                lineHeight: 1.2,
-                mb: { xs: 0.4, sm: 0.5 },
-              }}>
-                {tool.title}
-              </Typography>
 
               {/* Description */}
               <Typography sx={{

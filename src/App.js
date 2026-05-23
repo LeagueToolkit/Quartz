@@ -98,15 +98,53 @@ const QuartzInteropBridge = () => {
       if ((handoff.target_app || '').toLowerCase() !== 'quartz') return;
       if (!handoff.bin_path) return;
 
-      const mode = String(handoff.mode || 'paint').toLowerCase();
-      const route =
-        mode === 'port' ? '/port' :
-          mode === 'bineditor' ? '/bineditor' :
-            mode === 'vfxhub' ? '/vfx-hub' :
-              '/paint';
-      const currentHash = window.location.hash || '#/';
+      // Bin-aware routes: pages that actually consume a bin handoff. If the
+      // user is on one of these we navigate (or stay put if already there).
+      // If the user is on something else (e.g. /wad-explorer, /settings)
+      // and Jade didn't explicitly name a mode, DO NOT yank them to /paint —
+      // just drop the handoff so any active listener can pick it up.
+      const explicitMode = String(handoff.mode || '').toLowerCase();
+      const action = String(handoff.action || 'open-bin').toLowerCase();
+      const modeToRoute = {
+        port: '/port',
+        bineditor: '/bineditor',
+        vfxhub: '/vfx-hub',
+        paint: '/paint',
+      };
+      const binAwareRoutes = new Set(Object.values(modeToRoute));
 
-      if (currentHash !== `#${route}`) {
+      const currentHash = window.location.hash || '#/';
+      const currentPath = currentHash.startsWith('#') ? currentHash.slice(1) : currentHash;
+
+      let route;
+      // reload-bin = "Quartz, the bin you already have open changed on disk."
+      // It must NEVER navigate. Jade emits it with whatever mode last opened
+      // the bin (e.g. mode="port" because you originally clicked "Open in
+      // Port" months ago), but that's a session hint, not a navigation
+      // command. Only the listening page should react. If no page is
+      // listening with this bin path the handoff is dropped.
+      if (action === 'reload-bin') {
+        emitHandoff(handoff);
+        return;
+      }
+      // open-bin paths below: user clicked "Open in X" in Jade.
+      if (explicitMode && modeToRoute[explicitMode]) {
+        // Jade told us where to go — honor it.
+        route = modeToRoute[explicitMode];
+      } else if (binAwareRoutes.has(currentPath)) {
+        // No explicit mode, but the user is on a bin-aware page already —
+        // open in place.
+        route = currentPath;
+      } else {
+        // No explicit mode AND user is on an unrelated page (wad explorer,
+        // settings, frogchanger, etc.). Don't navigate. Drop the handoff in
+        // case anything listens; if nothing handles it the bin is just
+        // ignored — which is the correct behavior here.
+        emitHandoff(handoff);
+        return;
+      }
+
+      if (currentPath !== route) {
         navigate(route);
         setTimeout(() => emitHandoff(handoff), 220);
       } else {

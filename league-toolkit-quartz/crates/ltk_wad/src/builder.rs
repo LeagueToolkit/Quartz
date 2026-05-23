@@ -226,13 +226,13 @@ pub struct WadChunkBuilder {
 }
 
 impl WadChunkBuilder {
-    pub fn with_path(mut self, path: impl AsRef<str>) -> Self {
-        self.path = xxh64::xxh64(path.as_ref().to_lowercase().as_bytes(), 0);
+    pub fn with_path_hash(mut self, path_hash: u64) -> Self {
+        self.path = path_hash;
         self
     }
 
-    pub fn with_path_hash(mut self, path_hash: u64) -> Self {
-        self.path = path_hash;
+    pub fn with_path(mut self, path: impl AsRef<str>) -> Self {
+        self.path = xxh64::xxh64(path.as_ref().to_lowercase().as_bytes(), 0);
         self
     }
 

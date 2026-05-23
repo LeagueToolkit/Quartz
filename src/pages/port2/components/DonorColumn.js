@@ -1,13 +1,15 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Button, IconButton, Tooltip } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
 import { SearchInput } from './common/Inputs';
+import { useBinFileDrop } from './common/binFileDrop';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
 
 function DonorColumn({
   isProcessing,
   handleOpenDonorBin,
+  processDonorBin,
   handleOpenDonorFromGame,
   donorFilterInput,
   enableDonorEmitterSearch,
@@ -46,8 +48,36 @@ function DonorColumn({
 }) {
   const safeDonorSystems = donorSystems || {};
 
+  const handleFileDrop = useCallback((filePath) => {
+    if (typeof processDonorBin === 'function') processDonorBin(filePath);
+  }, [processDonorBin]);
+  const fileDrop = useBinFileDrop(handleFileDrop);
+
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div
+      style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }}
+      {...fileDrop.handlers}
+    >
+      {fileDrop.isOver && (
+        <div
+          style={{
+            position: 'absolute', inset: 0, zIndex: 30, pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'color-mix(in srgb, var(--accent2) 12%, transparent)',
+            border: '2px dashed var(--accent2)', borderRadius: '8px',
+            transition: 'all 0.15s ease-out',
+          }}
+        >
+          <div style={{
+            padding: '10px 16px', borderRadius: '6px',
+            border: '1px dashed var(--accent2)', color: 'var(--accent2)',
+            fontFamily: 'JetBrains Mono, monospace', fontSize: '13px',
+            background: 'color-mix(in srgb, var(--accent2), transparent 80%)',
+          }}>
+            Drop .bin or .py to load as Donor
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
         <Button
           onClick={handleOpenDonorBin}
@@ -210,7 +240,7 @@ function DonorColumn({
         ) : (
           <div
             style={{
-              color: 'var(--accent)',
+              color: 'var(--accent2)',
               fontSize: '16px',
               fontFamily: 'JetBrains Mono, monospace',
               display: 'flex',

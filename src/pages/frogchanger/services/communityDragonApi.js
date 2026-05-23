@@ -354,12 +354,12 @@ export const api = {
       const uncenteredSplashPathBySkinNum = new Map();
       const skinLineIdsBySkinNum = new Map();
 
-      if (Array.isArray(championSkinDetails?.skins)) {
-        const mapCdragonAssetPath = (assetPath) => {
-          if (!assetPath) return null;
-          return `${CDRAGON_BASE_URL}${assetPath.toLowerCase().replace('/lol-game-data/assets', '')}`;
-        };
+      const mapCdragonAssetPath = (assetPath) => {
+        if (!assetPath) return null;
+        return `${CDRAGON_BASE_URL}${assetPath.toLowerCase().replace('/lol-game-data/assets', '')}`;
+      };
 
+      if (Array.isArray(championSkinDetails?.skins)) {
         for (const skin of championSkinDetails.skins) {
           const rawSkinId = Number(skin?.id);
           if (!Number.isFinite(rawSkinId)) continue;
@@ -400,6 +400,48 @@ export const api = {
             uncenteredSplashPath: uncenteredSplashPathBySkinNum.get(skinNum) || null,
             skinLines: skinLineIdsBySkinNum.get(skinNum) || [],
           });
+        }
+      }
+
+      // Expand quest-skin tiers into separate cards (e.g. K/DA ALL OUT
+      // Seraphine has 3 in-game forms — Indie/Rising Star/Superstar — that
+      // map to skin1.bin/skin2.bin/skin3.bin but only the parent appears in
+      // skins.json). Stage 1 replaces the parent (cleaner name + splash);
+      // stage 2+ are appended as new cards with their own splash art.
+      if (Array.isArray(championSkinDetails?.skins)) {
+        for (const skin of championSkinDetails.skins) {
+          const tiers = skin?.questSkinInfo?.tiers;
+          if (!Array.isArray(tiers) || tiers.length === 0) continue;
+
+          const parentRawId = Number(skin?.id);
+          if (!Number.isFinite(parentRawId)) continue;
+          const parentSkinNum = parentRawId >= 1000 ? parentRawId % 1000 : parentRawId;
+          const parentSkinData = skinsData[String(parentRawId)] || null;
+
+          for (const tier of tiers) {
+            const tierRawId = Number(tier?.id);
+            if (!Number.isFinite(tierRawId)) continue;
+            const tierSkinNum = tierRawId >= 1000 ? tierRawId % 1000 : tierRawId;
+            const tierSkinData = skinsData[String(tierRawId)] || parentSkinData;
+
+            const tierEntry = {
+              id: tierSkinNum,
+              name: tier.name || parentSkinData?.name,
+              full_id: String(tierRawId),
+              rarity: tierSkinData?.rarity,
+              tilePath: mapCdragonAssetPath(tier.tilePath),
+              centeredSplashPath: mapCdragonAssetPath(tier.splashPath),
+              uncenteredSplashPath: mapCdragonAssetPath(tier.uncenteredSplashPath),
+              skinLines: skinLineIdsBySkinNum.get(parentSkinNum) || [],
+            };
+
+            const existingIdx = championSkins.findIndex((s) => s.id === tierSkinNum);
+            if (existingIdx >= 0) {
+              championSkins[existingIdx] = tierEntry;
+            } else {
+              championSkins.push(tierEntry);
+            }
+          }
         }
       }
 

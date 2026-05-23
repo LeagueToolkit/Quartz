@@ -131,7 +131,8 @@ const ModernSettings = () => {
     hashStatus,
     setHashStatus,
     downloadingHashes,
-    handleDownloadHashes
+    handleDownloadHashes,
+    hashSyncMessage,
   } = useHashSettings();
 
   const {
@@ -1864,6 +1865,7 @@ const ModernSettings = () => {
             hashStatus={hashStatus}
             downloadingHashes={downloadingHashes}
             handleDownloadHashes={handleDownloadHashes}
+            hashSyncMessage={hashSyncMessage}
             updateSectionRef={updateSectionRef}
             highlightUpdateSection={highlightUpdateSection}
             highlightJadePathSection={highlightJadePathSection}

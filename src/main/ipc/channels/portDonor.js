@@ -6,11 +6,38 @@ const CHAMPION_SPECIAL_CASES = {
   monkeyking: 'monkeyking',
   'nunu & willump': 'nunu',
   nunu: 'nunu',
+  'renata glasc': 'renata',
 };
 
 function getChampionFileName(championName) {
   const lower = String(championName || '').toLowerCase();
   return CHAMPION_SPECIAL_CASES[lower] || lower.replace(/[^a-z0-9]/g, '');
+}
+
+// Returns ordered list of WAD filename candidates to try (without extension).
+// Riot's filename conventions are inconsistent — some champs use the full
+// sanitized name (Kai'Sa → kaisa), others use just the first word (Renata
+// Glasc → Renata). Try the special-case mapping, then sanitized, then first
+// space-separated token, then the literal lowercased input.
+function getChampionFileNameCandidates(championName) {
+  const lower = String(championName || '').toLowerCase();
+  const candidates = [];
+  if (CHAMPION_SPECIAL_CASES[lower]) candidates.push(CHAMPION_SPECIAL_CASES[lower]);
+  const sanitized = lower.replace(/[^a-z0-9]/g, '');
+  if (sanitized) candidates.push(sanitized);
+  const firstWord = lower.split(/\s+/)[0]?.replace(/[^a-z0-9]/g, '');
+  if (firstWord) candidates.push(firstWord);
+  if (lower) candidates.push(lower);
+  return [...new Set(candidates)].filter(Boolean);
+}
+
+function findChampionWadPath(leaguePath, championName, fs) {
+  const candidates = getChampionFileNameCandidates(championName);
+  for (const name of candidates) {
+    const wadPath = path.join(leaguePath, `${name}.wad.client`);
+    if (fs.existsSync(wadPath)) return wadPath;
+  }
+  return null;
 }
 
 function normalizeSkinSelectionId(value) {
@@ -43,6 +70,7 @@ function registerPortDonorChannels({
   loadWadClassModule,
   loadBinModule,
   loadBumpathModule,
+  loadAssetConsolidatorModule,
 }) {
   const createdTempRoots = new Set();
   const cleanupQueue = new Set();
@@ -96,17 +124,37 @@ function registerPortDonorChannels({
         chromaId = null,
         leaguePath,
         hashPath: rawHashPath,
+        isTftMode = false,
       } = data || {};
 
       if (!championName || skinId == null || !leaguePath) {
         return { success: false, error: 'Missing required parameters: championName, skinId, leaguePath' };
       }
 
-      const championFileName = getChampionFileName(championName);
-      const wadFilePath = path.join(leaguePath, `${championFileName}.wad.client`);
-      if (!fs.existsSync(wadFilePath)) {
-        return { success: false, error: `WAD file not found: ${wadFilePath}` };
+      // TFT tacticians live in Game/DATA/FINAL/Companions.wad.client. The caller
+      // passes the per-skin tactician alias as championName so downstream BIN
+      // selection (data/characters/<alias>/skins/skin<N>.bin) still matches.
+      let wadFilePath;
+      if (isTftMode) {
+        const tftWadDir = path.dirname(leaguePath);
+        const candidate = path.join(tftWadDir, 'Companions.wad.client');
+        if (fs.existsSync(candidate)) wadFilePath = candidate;
+        if (!wadFilePath) {
+          return { success: false, error: `Companions.wad.client not found at ${candidate}` };
+        }
+      } else {
+        wadFilePath = findChampionWadPath(leaguePath, championName, fs);
+        if (!wadFilePath) {
+          const tried = getChampionFileNameCandidates(championName)
+            .map(n => `${n}.wad.client`).join(', ');
+          return { success: false, error: `WAD file not found in ${leaguePath} (tried: ${tried})` };
+        }
       }
+      // For TFT, championFileName is the tactician alias (e.g. petchibiahri),
+      // NOT the WAD filename ("companions") — needed for skin BIN path matching.
+      const championFileName = isTftMode
+        ? String(championName).toLowerCase()
+        : path.basename(wadFilePath, '.wad.client').toLowerCase();
 
       const normalizedSkinId = normalizeSkinSelectionId(chromaId != null ? chromaId : skinId);
       if (normalizedSkinId == null) {
@@ -213,15 +261,55 @@ function registerPortDonorChannels({
       );
       const wadStat = await fs.promises.stat(wadFilePath);
       const wadVersionTag = `w${Number(wadStat.size || 0)}_m${Math.floor(Number(wadStat.mtimeMs || 0))}`;
+      // ONE cache dir per (champ, skin, wadVersion). Target-specific
+      // suffixes live INSIDE the consolidated folder name within the bin,
+      // not in the cache path — so switching targets reuses the same
+      // extraction and just re-runs consolidate (fast) + binToPy.
       const tempRoot = path.join(cacheRoot, `${championFileName}_skin${skinNum}_${wadVersionTag}`);
       const stageBinsDir = path.join(tempRoot, 'bins');
       const combinedDir = path.join(tempRoot, 'combined');
       const combinedMainBinPath = toAbsFromRel(combinedDir, mainBinPath);
       const donorPyPath = combinedMainBinPath.replace(/\.bin$/i, '.py');
 
+      const requestedPrefix = String(data?.consolidatePrefix || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+
       if (fs.existsSync(combinedMainBinPath) && fs.existsSync(donorPyPath)) {
         sendProgress('Using cached donor from previous extraction...');
         createdTempRoots.add(tempRoot);
+
+        // Cache holds the combined bin + previously-consolidated assets.
+        // Re-run consolidate with the current prefix — if it matches what's
+        // already on disk, the consolidator is a no-op and the existing py
+        // is reused. If it differs (user switched porting prefix), the
+        // particles folder gets renamed and bin strings get rewritten.
+        let changed = false;
+        try {
+          if (typeof loadAssetConsolidatorModule === 'function' && requestedPrefix) {
+            const consolidator = await loadAssetConsolidatorModule();
+            const result = await consolidator.consolidateAssetsInDir(combinedDir, {
+              aggressive: true,
+              portingPrefix: requestedPrefix,
+            });
+            const moved = (result?.results || []).reduce((s, r) => s + (r.moved || 0), 0);
+            const rewritten = (result?.results || []).reduce((s, r) => s + (r.rewritten || 0), 0);
+            changed = moved > 0 || rewritten > 0;
+            if (changed) {
+              sendProgress(`Reconsolidated ${moved} asset(s) for new prefix.`);
+            }
+          }
+        } catch (e) {
+          console.warn('[port:prepareDonorFromSkin] cache-hit consolidate failed:', e?.message);
+        }
+
+        if (changed && nativeAddon && typeof nativeAddon.binToPy === 'function') {
+          sendProgress('Regenerating donor py...');
+          try {
+            nativeAddon.binToPy(combinedMainBinPath, donorPyPath, hashPath || null);
+          } catch (e) {
+            console.warn('[port:prepareDonorFromSkin] cache-hit binToPy failed:', e?.message);
+          }
+        }
+
         const donorPyContent = await fs.promises.readFile(donorPyPath, 'utf8');
         sendProgress('Donor is ready.');
         return {
@@ -392,6 +480,34 @@ function registerPortDonorChannels({
       if (referencedAssetPaths.size > 0) {
         sendProgress(`Extracting ${referencedAssetPaths.size} referenced assets...`);
         await runSelectiveExtract(combinedDir, referencedAssetPaths);
+      }
+
+      // Consolidate VFX assets into a single per-skin folder before generating
+      // the py. Runs by default (no toggle) — donors loaded from game always
+      // ship clean, predictable asset paths so emitters ported into the target
+      // bin reference `assets/skin<N>_<champ>_particles/<basename>` instead of
+      // the deep original directory structure.
+      //
+      // `aggressive: true` skips the shared-with-non-VFX safety because this
+      // bin is throwaway scaffolding — only the rewritten VFX strings get
+      // carried into the user's target bin when they port an emitter. The
+      // donor's SkinMeshDataProperties / gearskin entries here are never
+      // shipped, so we don't need to preserve their texture references.
+      try {
+        if (typeof loadAssetConsolidatorModule === 'function' && requestedPrefix) {
+          sendProgress('Consolidating VFX assets...');
+          const consolidator = await loadAssetConsolidatorModule();
+          const result = await consolidator.consolidateAssetsInDir(combinedDir, {
+            aggressive: true,
+            portingPrefix: requestedPrefix,
+          });
+          const moved = (result?.results || []).reduce((s, r) => s + (r.moved || 0), 0);
+          if (moved > 0) {
+            sendProgress(`Consolidated ${moved} VFX asset(s).`);
+          }
+        }
+      } catch (consolidateErr) {
+        console.warn('[port:prepareDonorFromSkin] consolidate failed:', consolidateErr?.message);
       }
 
       sendProgress('Converting donor BIN to py...');

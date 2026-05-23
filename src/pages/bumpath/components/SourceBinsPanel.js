@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Button, Checkbox, InputAdornment, List, ListItem, Typography } from '@mui/material';
 import { FormatListBulleted as FormatListBulletedIcon, Search as SearchIcon } from '@mui/icons-material';
 import DebouncedTextField from './DebouncedTextField';
+import { inputSx, countBadgeSx } from '../utils/styles';
 
 const SourceBinsPanel = React.memo(function SourceBinsPanel({
   binFilter,
@@ -29,21 +30,8 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                 Source BINs:
               </Typography>
             </Box>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                px: 1.5,
-                py: 0.5,
-                borderRadius: 1,
-                backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                border: '1px solid rgba(139, 92, 246, 0.2)'
-              }}
-            >
-              <Typography variant="body2" sx={{ color: '#8b5cf6', fontSize: '0.7rem', fontWeight: '600' }}>
-                {selectedBinCount} / {totalBinCount} selected
-              </Typography>
+            <Box sx={countBadgeSx}>
+              {selectedBinCount} / {totalBinCount} selected
             </Box>
           </Box>
 
@@ -56,47 +44,37 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon sx={{ color: 'var(--accent2)', fontSize: '1rem' }} />
+                    <SearchIcon sx={{ color: 'var(--accent)', fontSize: '1rem', opacity: 0.85 }} />
                   </InputAdornment>
                 ),
               }}
-              sx={{
-                flex: 1,
-                '& .MuiOutlinedInput-root': {
-                  color: 'var(--text)',
-                  fontSize: '0.8rem',
-                  backgroundColor: 'var(--bg-2)',
-                  borderRadius: '6px',
-                  '& fieldset': {
-                    borderColor: 'var(--glass-border)',
-                    borderWidth: '1px'
-                  },
-                  '&:hover fieldset': {
-                    borderColor: 'var(--accent-muted)',
-                  },
-                  '&.Mui-focused fieldset': {
-                    borderColor: 'var(--accent)',
-                  },
-                },
-                '& .MuiInputBase-input': {
-                  fontSize: '0.8rem',
-                  fontFamily: 'JetBrains Mono, monospace'
-                }
-              }}
+              sx={{ flex: 1, ...inputSx }}
             />
             {binFilter && (
               <Button
                 size="small"
                 onClick={() => setBinFilter('')}
                 sx={{
-                  minWidth: 'auto',
-                  px: 1,
-                  py: 0.5,
-                  color: 'var(--accent2)',
-                  '&:hover': { color: 'var(--accent)' }
+                  minWidth: '32px',
+                  height: '32px',
+                  px: 0,
+                  py: 0,
+                  borderRadius: '6px',
+                  color: 'rgba(255,255,255,0.5)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  background: 'rgba(255,255,255,0.025)',
+                  fontFamily: 'JetBrains Mono, monospace',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  transition: 'all 160ms ease',
+                  '&:hover': {
+                    color: '#ef4444',
+                    borderColor: 'color-mix(in srgb, #ef4444, transparent 50%)',
+                    background: 'color-mix(in srgb, #ef4444, transparent 90%)',
+                  },
                 }}
               >
-                x
+                ✕
               </Button>
             )}
           </Box>

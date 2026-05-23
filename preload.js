@@ -47,6 +47,10 @@ window.electronAPI = {
     /** Extract selected file entries (native rust backend). */
     extractSelected: (params) => ipcRenderer.invoke('wad:extractSelected', params),
 
+    /** Subscribe to per-file extraction progress: callback receives ({ done, total }). */
+    onExtractSelectedProgress: (callback) => ipcRenderer.on('wad:extractSelected:progress', callback),
+    offExtractSelectedProgress: (callback) => ipcRenderer.removeListener('wad:extractSelected:progress', callback),
+
     /** Parse already-extracted BIN files for accurate material→texture hints. */
     parseSknBins: (params) => ipcRenderer.invoke('wad:parseSknBins', params),
 
@@ -76,6 +80,13 @@ window.electronAPI = {
   bumpath: {
     /** Perform a Bumpath repath. Runs in main process for better folder management. */
     repath: (params) => ipcRenderer.invoke('bumpath:repath', params),
+  },
+
+  bin: {
+    /** Split VFX/AnimationGraphData out of skin*.bin files under a directory. */
+    splitSkinBins: (params) => ipcRenderer.invoke('bin:splitSkinBins', params),
+    /** Consolidate VFX-referenced assets into per-skin shared folders. */
+    consolidateAssets: (params) => ipcRenderer.invoke('bin:consolidateAssets', params),
   },
 
   hashtable: {

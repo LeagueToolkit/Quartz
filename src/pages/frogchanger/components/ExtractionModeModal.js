@@ -25,6 +25,9 @@ const ExtractionModeModal = ({
   const [decisions, setDecisions] = useState([]);
   const [extractVoiceover, setExtractVoiceover] = useState(false);
   const [preserveHudIcons2D, setPreserveHudIcons2D] = useState(true);
+  const [splitVfx, setSplitVfx] = useState(false);
+  const [splitAnm, setSplitAnm] = useState(false);
+  const [consolidateAssets, setConsolidateAssets] = useState(true);
   const [outputOverrideEnabled, setOutputOverrideEnabled] = useState(false);
   const [outputKeepForAll, setOutputKeepForAll] = useState(true);
   const [outputPath, setOutputPath] = useState('');
@@ -39,6 +42,9 @@ const ExtractionModeModal = ({
       setDecisions([]);
       setExtractVoiceover(false);
       setPreserveHudIcons2D(true);
+      setSplitVfx(false);
+      setSplitAnm(false);
+      setConsolidateAssets(true);
       setOutputOverrideEnabled(false);
       setOutputKeepForAll(true);
       setOutputPath(String(defaultOutputPath || ''));
@@ -60,6 +66,9 @@ const ExtractionModeModal = ({
     options: {
       extractVoiceover,
       preserveHudIcons2D,
+      splitVfx,
+      splitAnm,
+      consolidateAssets,
       outputOverride: {
         enabled: outputOverrideEnabled,
         keepForAll: outputKeepForAll,
@@ -96,6 +105,8 @@ const ExtractionModeModal = ({
         options: {
           extractVoiceover,
           preserveHudIcons2D,
+          splitVfx,
+          splitAnm,
           outputOverride: {
             enabled: outputOverrideEnabled,
             keepForAll: outputKeepForAll,
@@ -348,15 +359,77 @@ const ExtractionModeModal = ({
                 />
                 Preserve HUD Icons2D
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={outputOverrideEnabled}
-                  onChange={(e) => setOutputOverrideEnabled(e.target.checked)}
-                  style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
-                />
-                Override Output Path
-              </label>
+
+              {/* --- Bin Splitting (Skin Files Only) --- */}
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 4, paddingTop: 8 }}>
+                <div style={{ fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', marginBottom: 6 }}>
+                  Bin Splitting
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <label
+                    title="Splits VfxSystemDefinitionData entries from each skin*.bin into a sibling DATA/<champ>_vfx_<stem>.bin and links it. Skin Files Only mode."
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={splitVfx}
+                      onChange={(e) => setSplitVfx(e.target.checked)}
+                      style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                    />
+                    <span>Split VFX</span>
+                    <span
+                      title="Some Quartz tools (e.g. inline VFX inspection) may stop working on bins after they've been split. Use Combine VFX from the right-click menu to undo."
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: 16, height: 16, borderRadius: '50%',
+                        background: 'color-mix(in srgb, #ffaa33, transparent 80%)',
+                        color: '#ffaa33', fontSize: '0.7rem', fontWeight: 700,
+                        border: '1px solid color-mix(in srgb, #ffaa33, transparent 50%)',
+                      }}
+                    >!</span>
+                  </label>
+                  <label
+                    title="Splits AnimationGraphData entries from each skin*.bin into a sibling DATA/<champ>_anm_<stem>.bin and links it. Skin Files Only mode."
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={splitAnm}
+                      onChange={(e) => setSplitAnm(e.target.checked)}
+                      style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                    />
+                    Split Animations
+                  </label>
+                  <label
+                    title="Moves every asset referenced by VfxSystemDefinitionData entries into a shared assets/<prefix>/skin<N>_particles/ folder per skin. Conflicting basenames get a _2/_3 suffix."
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={consolidateAssets}
+                      onChange={(e) => setConsolidateAssets(e.target.checked)}
+                      style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                    />
+                    Consolidate Assets
+                  </label>
+                </div>
+              </div>
+
+              {/* --- Output --- */}
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 4, paddingTop: 8 }}>
+                <div style={{ fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', marginBottom: 6 }}>
+                  Output
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={outputOverrideEnabled}
+                    onChange={(e) => setOutputOverrideEnabled(e.target.checked)}
+                    style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                  />
+                  Override Output Path
+                </label>
+              </div>
               {outputOverrideEnabled && multiSkin && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', marginLeft: 20 }}>
                   <input

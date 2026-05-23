@@ -49,12 +49,6 @@ function runStartupTasks({
   try { app.setAppUserModelId('com.github.ritoshark.quartz'); } catch (_) {}
   createWindow();
 
-  // Clean up old txt/v8cache hash files from previous versions
-  try {
-    const removed = hashManager.migrateLegacyHashes();
-    if (removed > 0) logToFile(`Cleaned up ${removed} legacy hash file(s)`, 'INFO');
-  } catch (_) {}
-
   setupAutoUpdater();
   ensureRitobinCli();
   ensureDefaultAssets();
@@ -78,7 +72,12 @@ function runStartupTasks({
   // Uses metadata-aware skip logic, so unchanged files are not redownloaded.
   setTimeout(async () => {
     try {
-      if (typeof hashManager.isAutoSyncFresh === 'function' && hashManager.isAutoSyncFresh(30)) {
+      // Cooldown: skip the GitHub release-info fetch if we've already
+      // checked within the last 24 hours. Manual check (settings → "Check
+      // for hash updates" or HashReminderModal) bypasses this — it calls
+      // `hashes:download` directly which has no cooldown.
+      const HASH_AUTOSYNC_COOLDOWN_MIN = 60 * 24;
+      if (typeof hashManager.isAutoSyncFresh === 'function' && hashManager.isAutoSyncFresh(HASH_AUTOSYNC_COOLDOWN_MIN)) {
         logToFile('Hash auto-sync (startup): skipped, metadata is fresh', 'INFO');
         emitHashState({
           status: 'success',

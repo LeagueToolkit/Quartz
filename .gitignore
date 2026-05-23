@@ -114,6 +114,7 @@ repath tool test/
 # Rust native addon build artifacts
 native/wad_indexer/target/
 native/wad_indexer/*.node
+native/*.node
 native/quartz_cli/target/
 native/**/target/
 native/pmx_fbx_bridge/build_release/
@@ -146,4 +147,6 @@ Flint-main/
 Jade-League-Bin-Editor-main/
 reusable/
 ltk-manager/
-Leischii.github.io-master/
+luabin-collector-test/
+troybin2bin/
+luabin-collector-test/

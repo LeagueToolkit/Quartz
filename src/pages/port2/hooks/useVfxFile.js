@@ -172,6 +172,10 @@ export default function useVfxFile(
             const isReload = action === 'reload-bin';
             const isSameFile = targetPath && String(targetPath).toLowerCase() === String(handoff.bin_path).toLowerCase();
             const hasUnsaved = Boolean(window.__DL_unsavedBin);
+            // reload-bin is "the bin you have open changed on disk" — only
+            // refresh if we already have THIS bin open. Otherwise drop it,
+            // don't load a new bin out of nowhere.
+            if (isReload && !isSameFile) return;
             if (isReload && isSameFile && hasUnsaved) {
                 setExternalChangeModal({
                     open: true,

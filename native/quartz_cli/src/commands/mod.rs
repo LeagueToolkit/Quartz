@@ -1,7 +1,10 @@
 pub mod to_py;
 pub mod to_bin;
 pub mod separate_vfx;
+pub mod separate_anm;
 pub mod combine_linked;
+pub mod combine_anm;
+pub mod combine_vfx;
 pub mod noskinlite;
 pub mod batch_split_vfx;
 pub mod texture;
@@ -11,3 +14,4 @@ pub mod pyntex;
 pub mod bin_hashes;
 pub mod xps;
 pub mod pmx;
+pub mod model_dir;

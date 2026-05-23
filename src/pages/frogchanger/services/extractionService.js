@@ -19,6 +19,7 @@ export const extractSkinWadBundle = async ({
   fastSkinOnly = false,
   preserveHudIcons2D = true,
   isRepathExtract = false,
+  isTftMode = false,
   onProgress,
 }) => {
   if (!window.electronAPI?.wad?.extractBundle) {
@@ -47,6 +48,7 @@ export const extractSkinWadBundle = async ({
       fastSkinOnly,
       preserveHudIcons2D,
       isRepathExtract,
+      isTftMode,
     });
 
     if (result.error) {

@@ -1,12 +1,14 @@
-﻿import React from 'react';
+﻿import React, { useCallback } from 'react';
 import { Button } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import { SearchInput } from './common/Inputs';
+import { useBinFileDrop } from './common/binFileDrop';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
 
 export default function TargetColumn({
   isProcessing,
   handleOpenTargetBin,
+  processTargetBin,
   targetFilterInput,
   enableTargetEmitterSearch,
   filterTargetParticles,
@@ -58,8 +60,36 @@ export default function TargetColumn({
 }) {
   const safeTargetSystems = targetSystems || {};
 
+  const handleFileDrop = useCallback((filePath) => {
+    if (typeof processTargetBin === 'function') processTargetBin(filePath);
+  }, [processTargetBin]);
+  const fileDrop = useBinFileDrop(handleFileDrop);
+
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div
+      style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }}
+      {...fileDrop.handlers}
+    >
+      {fileDrop.isOver && (
+        <div
+          style={{
+            position: 'absolute', inset: 0, zIndex: 30, pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+            border: '2px dashed var(--accent)', borderRadius: '8px',
+            transition: 'all 0.15s ease-out',
+          }}
+        >
+          <div style={{
+            padding: '10px 16px', borderRadius: '6px',
+            border: '1px dashed var(--accent)', color: 'var(--accent)',
+            fontFamily: 'JetBrains Mono, monospace', fontSize: '13px',
+            background: 'color-mix(in srgb, var(--accent), transparent 80%)',
+          }}>
+            Drop .bin or .py to load as Target
+          </div>
+        </div>
+      )}
       <Button
         onClick={handleOpenTargetBin}
         disabled={isProcessing}

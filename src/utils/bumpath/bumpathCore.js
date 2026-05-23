@@ -67,7 +67,10 @@ export class BumpathCore {
         this.hashtablesPath = null; // Path to hash directory for native LMDB resolution
         this.nativeAddon = null; // Native addon for hash resolution
         this.skipSfxRepath = false; // Optional: bypass SFX path repathing
-        this.skipVoiceoverRepath = true; // Optional: bypass VO path repathing (default: true)
+        // Default OFF: standalone Bumpath should repath everything by default.
+        // FrogChanger and the bumpath:repath IPC handler set this explicitly
+        // (FrogChanger's safety opt-in lives in its CustomPrefixModal).
+        this.skipVoiceoverRepath = false;
         this.linkedBins = {}; // Map: unifyPath -> [linked unify paths]
     }
 
@@ -91,7 +94,7 @@ export class BumpathCore {
         this.entryName = {};
         this.entryTypeName = {};
         this.skipSfxRepath = false;
-        this.skipVoiceoverRepath = true;
+        this.skipVoiceoverRepath = false;
         this.linkedBins = {};
     }
 
@@ -581,6 +584,29 @@ export class BumpathCore {
     }
 
     /**
+     * Resolve the most-applied prefix to use as a fallback for assets/entries
+     * not present in entryPrefix. Picks the most common non-'Uneditable' value;
+     * falls back to 'bum' only if nothing has been applied yet.
+     * @private
+     */
+    _resolveFallbackPrefix() {
+        const counts = {};
+        for (const value of Object.values(this.entryPrefix)) {
+            if (!value || value === 'Uneditable') continue;
+            counts[value] = (counts[value] || 0) + 1;
+        }
+        let best = null;
+        let bestCount = 0;
+        for (const [value, count] of Object.entries(counts)) {
+            if (count > bestCount) {
+                best = value;
+                bestCount = count;
+            }
+        }
+        return best || 'bum';
+    }
+
+    /**
      * Process (bum) files - repath and copy
      * @param {string} outputDir - Output directory
      * @param {boolean} ignoreMissing - Ignore missing files
@@ -676,11 +702,13 @@ export class BumpathCore {
             return path.join(outputDir, normalizePath(`data/__longpath/${shortName}`)).replace(/\\/g, '/');
         };
 
+        const processFallbackPrefix = this._resolveFallbackPrefix();
+
         // Process all files from scanned_tree (like Python)
         for (const [entryHash, files] of Object.entries(this.scannedTree)) {
             if (entryHash === 'All_BINs') continue; // Skip All_BINs entry
 
-            const prefix = this.entryPrefix[entryHash] || 'bum';
+            const prefix = this.entryPrefix[entryHash] || processFallbackPrefix;
 
             for (const [unify, fileInfo] of Object.entries(files)) {
                 // Python: existed, short_file = self.scanned_tree[entry_hash][unify_file]
@@ -717,7 +745,8 @@ export class BumpathCore {
                 }
                 const outputDirPath = path.dirname(outputPath).replace(/\\/g, '/');
 
-                console.log(`[BumpathCore] Processing: ${shortFile} -> ${outputPath}`);
+                // Per-file processing log removed — emits 100s of lines per repath.
+                // Errors (mkdir / copy) still log explicitly below, so failures stay visible.
 
                 // Python: os.makedirs(os.path.dirname(output_file), exist_ok=True)
                 try {
@@ -757,8 +786,14 @@ export class BumpathCore {
                 processedFiles.set(unify, outputPath);
                 totalProcessed++;
 
+                // Tick the progress count every file, but only emit a textual
+                // milestone every 100 — anything more spams the console.
                 if (progressCallback) {
-                    progressCallback(totalProcessed, `Processed: ${shortFile}`);
+                    if (totalProcessed % 100 === 0) {
+                        progressCallback(totalProcessed, `Processed ${totalProcessed} files...`);
+                    } else {
+                        progressCallback(totalProcessed);
+                    }
                 }
             }
         }
@@ -882,6 +917,11 @@ export class BumpathCore {
             }
         }
 
+        // Derive a fallback prefix from applied entry prefixes — orphan assets
+        // (referenced by unselected entries) would otherwise leak into a hardcoded
+        // 'bum/' folder instead of using the user's chosen customPrefix.
+        const fallbackPrefix = this._resolveFallbackPrefix();
+
         // Collect all BIN files to scan for additional assets
         const binsToScan = [];
 
@@ -938,7 +978,7 @@ export class BumpathCore {
 
             // Determine prefix from entry that references this asset
             const entryHash = assetToEntryMap.get(assetPath.toLowerCase());
-            const prefix = entryHash ? (this.entryPrefix[entryHash] || 'bum') : 'bum';
+            const prefix = entryHash ? (this.entryPrefix[entryHash] || fallbackPrefix) : fallbackPrefix;
 
             const outputPath = await copyAsset(assetPath, outputDir, this._skipRepath ? null : prefix, this.sourceDirs, this.sourceFiles);
             if (outputPath) {
@@ -966,7 +1006,8 @@ export class BumpathCore {
             await initNodeModules();
         }
         const binObj = await new BIN().read(fs.readFileSync(binPath));
-        const defaultPrefix = this.entryPrefix[defaultEntryHash] || 'bum';
+        const repathFallbackPrefix = this._resolveFallbackPrefix();
+        const defaultPrefix = this.entryPrefix[defaultEntryHash] || repathFallbackPrefix;
 
         // Repath BIN links as well (mainBin.links is not part of entry fields).
         if (Array.isArray(binObj.links)) {
@@ -976,7 +1017,7 @@ export class BumpathCore {
         // Modify entries - use entry's own hash to get prefix
         for (const entry of binObj.entries) {
             const entryHash = entry.hash.toLowerCase();
-            const prefix = this.entryPrefix[entryHash] || this.entryPrefix[defaultEntryHash] || 'bum';
+            const prefix = this.entryPrefix[entryHash] || this.entryPrefix[defaultEntryHash] || repathFallbackPrefix;
 
             for (const field of entry.data) {
                 this._bumField(field, prefix, entryHash);

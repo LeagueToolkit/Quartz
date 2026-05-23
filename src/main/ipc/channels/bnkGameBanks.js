@@ -6,6 +6,7 @@ const CHAMPION_SPECIAL_CASES = {
   monkeyking: 'monkeyking',
   'nunu & willump': 'nunu',
   nunu: 'nunu',
+  'renata glasc': 'renata',
 };
 
 function logBnkGame(message, extra) {

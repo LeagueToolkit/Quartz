@@ -8,108 +8,84 @@
     color: var(--text);
     font-family: var(--app-font-family), -apple-system, sans-serif;
     overflow: hidden;
+    position: relative;
 }
 
-/* ── Header ─────────────────────────────────────────── */
-.pr-header {
-    padding: 16px 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(0, 0, 0, 0.2);
+.pr-load-floating {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    z-index: 10;
 }
 
-.pr-header-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-}
-
-.pr-header h1 {
-    margin: 0;
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--accent);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.pr-header h1 span {
-    font-size: 12px;
-    color: var(--text-2, #888);
-    font-weight: 400;
-}
-
-.pr-status {
-    font-size: 12px;
-    color: #888;
-}
-
-.pr-status.success {
-    color: #22c55e;
-}
-
-.pr-status.error {
-    color: #ef4444;
-}
-
-/* ── Buttons ────────────────────────────────────────── */
+/* ── Buttons (bumpath-style tone gradients) ─────────── */
 .pr-btn {
-    padding: 8px 14px;
-    border-radius: var(--border-radius, 6px);
-    font-family: inherit;
-    font-size: 13px;
+    --btn-tone: var(--accent);
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
     font-weight: 600;
+    letter-spacing: 0.02em;
     cursor: pointer;
-    transition: all 0.15s ease;
     outline: none;
     white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: 1px solid color-mix(in srgb, var(--btn-tone), transparent 70%);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--btn-tone), transparent 89%), color-mix(in srgb, var(--btn-tone), transparent 95%));
+    color: var(--btn-tone);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16), inset 0 1px 0 color-mix(in srgb, var(--btn-tone), transparent 82%);
+    transition: transform 140ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 180ms ease, background 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 
-.pr-btn:hover {
-    filter: brightness(1.2);
+.pr-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--btn-tone), transparent 30%);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--btn-tone), transparent 78%), color-mix(in srgb, var(--btn-tone), transparent 88%));
+    box-shadow: 0 5px 16px rgba(0, 0, 0, 0.28), 0 0 14px color-mix(in srgb, var(--btn-tone), transparent 65%), inset 0 1px 0 color-mix(in srgb, var(--btn-tone), transparent 65%);
 }
 
-.pr-btn-green {
-    background: rgba(34, 197, 94, 0.15);
-    border: 1px solid #22c55e;
-    color: #22c55e;
-}
-
-.pr-btn-accent {
-    background: rgba(139, 92, 246, 0.15);
-    border: 1px solid var(--accent);
-    color: var(--accent);
-}
-
-.pr-btn-amber {
-    background: rgba(236, 185, 106, 0.15);
-    border: 1px solid #ecb96a;
-    color: #ecb96a;
-}
-
-.pr-btn-blue {
-    background: rgba(59, 130, 246, 0.15);
-    border: 1px solid #3b82f6;
-    color: #3b82f6;
-}
-
-.pr-btn-red {
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid #ef4444;
-    color: #ef4444;
+.pr-btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.985);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.35), inset 0 0 0 1px color-mix(in srgb, var(--btn-tone), transparent 60%);
 }
 
 .pr-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
-    filter: none;
+    transform: none;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.32);
+    box-shadow: none;
 }
 
 .pr-btn-small {
-    padding: 4px 10px;
-    font-size: 11px;
+    height: 26px;
+    padding: 0 10px;
+    font-size: 0.7rem;
 }
+
+.pr-btn-prominent {
+    border-color: color-mix(in srgb, var(--btn-tone), transparent 55%);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--btn-tone), transparent 80%), color-mix(in srgb, var(--btn-tone), transparent 92%));
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22), inset 0 1px 0 color-mix(in srgb, var(--btn-tone), transparent 70%);
+}
+
+.pr-btn-prominent:hover:not(:disabled) {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--btn-tone), transparent 70%), color-mix(in srgb, var(--btn-tone), transparent 84%));
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.34), 0 0 22px color-mix(in srgb, var(--btn-tone), transparent 55%), inset 0 1px 0 color-mix(in srgb, var(--btn-tone), transparent 55%);
+}
+
+.pr-btn-green   { --btn-tone: #22c55e; }
+.pr-btn-accent  { --btn-tone: var(--accent); }
+.pr-btn-amber   { --btn-tone: #ecb96a; }
+.pr-btn-blue    { --btn-tone: #3b82f6; }
+.pr-btn-red     { --btn-tone: #ef4444; }
 
 /* ── Main Layout ────────────────────────────────────── */
 .pr-main {
@@ -121,15 +97,15 @@
 /* ── Left Panel (VFX list) ──────────────────────────── */
 .pr-left-panel {
     width: 50%;
-    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
     display: flex;
     flex-direction: column;
     overflow: hidden;
 }
 
 .pr-search-bar {
-    padding: 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -139,41 +115,62 @@
 .pr-search-input {
     flex: 1;
     min-width: 150px;
-    padding: 6px 12px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--border-radius, 4px);
-    color: #e8e6e3;
-    font-size: 12px;
-    font-family: inherit;
+    padding: 7px 12px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.008));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
     outline: none;
-    transition: border-color 0.2s;
+    transition: background 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.pr-search-input::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.pr-search-input:hover {
+    border-color: color-mix(in srgb, var(--accent), transparent 55%);
 }
 
 .pr-search-input:focus {
     border-color: var(--accent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 92%), color-mix(in srgb, var(--accent), transparent 97%));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%);
 }
 
 .pr-search-count {
-    font-size: 11px;
-    color: #888;
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.5);
     white-space: nowrap;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .pr-selection-bar {
     padding: 8px 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     display: flex;
     align-items: center;
     gap: 6px;
-    background: rgba(0, 0, 0, 0.1);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.012), rgba(255, 255, 255, 0));
 }
 
 .pr-selection-count {
     margin-left: auto;
-    font-size: 11px;
-    color: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 82%), color-mix(in srgb, var(--accent), transparent 92%));
+    border: 1px solid color-mix(in srgb, var(--accent), transparent 55%);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent), transparent 70%);
+    font-family: 'JetBrains Mono', monospace;
     font-weight: 600;
+    font-size: 0.68rem;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+    white-space: nowrap;
 }
 
 .pr-vfx-list {
@@ -188,64 +185,84 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: #666;
+    color: rgba(255, 255, 255, 0.32);
     gap: 12px;
+    font-size: 0.78rem;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .pr-empty-state .icon {
-    font-size: 48px;
+    color: color-mix(in srgb, var(--accent), transparent 40%);
+    opacity: 0.6;
 }
 
-/* ── VFX Entry Items ────────────────────────────────── */
-.pr-vfx-item {
-    padding: 8px 12px;
-    margin-bottom: 4px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    border-radius: var(--border-radius, 4px);
-    cursor: pointer;
-    transition: all 0.15s ease;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    user-select: none;
-}
-
-.pr-vfx-item:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.1);
-}
-
-.pr-vfx-item.selected {
-    background: rgba(236, 185, 106, 0.2);
-    border-color: rgba(236, 185, 106, 0.4);
-}
-
-.pr-vfx-item.hidden {
-    display: none;
-}
-
+/* ── Custom Checkbox ────────────────────────────────── */
 .pr-vfx-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
     width: 16px;
     height: 16px;
-    accent-color: var(--accent);
+    margin: 0;
+    border-radius: 4px;
+    border: 1.5px solid rgba(255, 255, 255, 0.22);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
     cursor: pointer;
     flex-shrink: 0;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
 }
 
+.pr-vfx-checkbox:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--accent), transparent 35%);
+    background: color-mix(in srgb, var(--accent), transparent 88%);
+}
+
+.pr-vfx-checkbox:checked {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 35%), color-mix(in srgb, var(--accent), transparent 60%));
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%);
+}
+
+.pr-vfx-checkbox:checked::after {
+    content: '';
+    width: 4px;
+    height: 8px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) translate(0, -1px);
+}
+
+.pr-vfx-checkbox:indeterminate {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 35%), color-mix(in srgb, var(--accent), transparent 60%));
+    border-color: var(--accent);
+}
+
+.pr-vfx-checkbox:indeterminate::after {
+    content: '';
+    width: 8px;
+    height: 2px;
+    background: #fff;
+    border-radius: 1px;
+}
+
+.pr-vfx-checkbox:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* ── VFX rows shared label ──────────────────────────── */
 .pr-vfx-label {
     flex: 1;
-    font-size: 12px;
+    font-size: 0.78rem;
     font-weight: 500;
-    color: #e8e6e3;
+    color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: 'JetBrains Mono', monospace;
-}
-
-.pr-vfx-item.selected .pr-vfx-label {
-    color: #ecb96a;
 }
 
 /* ── Right Panel (Config / Output) ──────────────────── */
@@ -259,31 +276,49 @@
 .pr-config-area {
     flex: 1;
     overflow-y: auto;
-    padding: 16px 20px;
+    padding: 14px 18px;
 }
 
 .pr-section {
-    margin-bottom: 20px;
+    margin-bottom: 18px;
 }
 
 .pr-section-title {
-    font-size: 13px;
+    font-size: 0.78rem;
     font-weight: 700;
     color: var(--accent);
     margin-bottom: 10px;
     display: flex;
     align-items: center;
     gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.02em;
 }
 
 .pr-section-title .badge {
-    font-size: 10px;
-    padding: 2px 8px;
-    background: rgba(139, 92, 246, 0.15);
-    border: 1px solid rgba(139, 92, 246, 0.3);
-    border-radius: 12px;
+    font-size: 0.66rem;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 82%), color-mix(in srgb, var(--accent), transparent 92%));
+    border: 1px solid color-mix(in srgb, var(--accent), transparent 55%);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent), transparent 70%);
     color: var(--accent);
     font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.pr-section-title .badge.badge-active {
+    background: linear-gradient(180deg, color-mix(in srgb, #22c55e, transparent 82%), color-mix(in srgb, #22c55e, transparent 92%));
+    border-color: color-mix(in srgb, #22c55e, transparent 55%);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, #22c55e, transparent 70%);
+    color: #22c55e;
+}
+
+.pr-section-title .badge.badge-off {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: none;
+    color: rgba(255, 255, 255, 0.45);
 }
 
 /* ── Number Input ───────────────────────────────────── */
@@ -291,59 +326,91 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .pr-number-row label {
-    font-size: 12px;
-    color: #aaa;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.65);
     white-space: nowrap;
 }
 
 .pr-number-input {
     width: 70px;
-    padding: 6px 10px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--border-radius, 4px);
-    color: #e8e6e3;
-    font-size: 13px;
+    padding: 7px 10px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.008));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.8rem;
     font-family: 'JetBrains Mono', monospace;
     text-align: center;
     outline: none;
+    transition: background 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.pr-number-input:hover {
+    border-color: color-mix(in srgb, var(--accent), transparent 55%);
 }
 
 .pr-number-input:focus {
     border-color: var(--accent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 92%), color-mix(in srgb, var(--accent), transparent 97%));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%);
 }
 
-/* ── Checkbox Options ───────────────────────────────── */
+/* ── Custom checkbox option rows ────────────────────── */
 .pr-option {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 10px;
+    gap: 10px;
+    margin-bottom: 8px;
     cursor: pointer;
 }
 
 .pr-option input[type="checkbox"] {
-    accent-color: var(--accent);
-    width: 14px;
-    height: 14px;
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    border-radius: 4px;
+    border: 1.5px solid rgba(255, 255, 255, 0.22);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
     cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.pr-option input[type="checkbox"]:hover {
+    border-color: color-mix(in srgb, var(--accent), transparent 35%);
+    background: color-mix(in srgb, var(--accent), transparent 88%);
+}
+
+.pr-option input[type="checkbox"]:checked {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 35%), color-mix(in srgb, var(--accent), transparent 60%));
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%);
+}
+
+.pr-option input[type="checkbox"]:checked::after {
+    content: '';
+    width: 4px;
+    height: 8px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) translate(0, -1px);
 }
 
 .pr-option label {
-    font-size: 12px;
-    color: #ccc;
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.78);
     cursor: pointer;
     user-select: none;
-}
-
-.pr-option .hint {
-    font-size: 10px;
-    color: #666;
-    margin-left: 4px;
 }
 
 /* ── Prefix Inputs ──────────────────────────────────── */
@@ -353,31 +420,43 @@
     gap: 6px 10px;
     align-items: center;
     margin-top: 8px;
-    padding: 10px;
-    background: rgba(0, 0, 0, 0.15);
+    padding: 12px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0.005));
     border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: var(--border-radius, 6px);
+    border-radius: 8px;
 }
 
 .pr-prefix-grid label {
-    font-size: 11px;
-    color: #888;
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.55);
     white-space: nowrap;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .pr-prefix-input {
-    padding: 5px 8px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--border-radius, 4px);
-    color: #e8e6e3;
-    font-size: 12px;
-    font-family: inherit;
+    padding: 6px 10px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.008));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.78rem;
+    font-family: 'JetBrains Mono', monospace;
     outline: none;
+    transition: background 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.pr-prefix-input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.pr-prefix-input:hover {
+    border-color: color-mix(in srgb, var(--accent), transparent 55%);
 }
 
 .pr-prefix-input:focus {
     border-color: var(--accent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 92%), color-mix(in srgb, var(--accent), transparent 97%));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%);
 }
 
 /* ── Asset Folder Inputs ────────────────────────────── */
@@ -387,15 +466,22 @@
     gap: 6px 10px;
     align-items: center;
     margin-top: 8px;
-    padding: 10px;
-    background: rgba(0, 0, 0, 0.15);
+    padding: 12px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0.005));
     border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: var(--border-radius, 6px);
+    border-radius: 8px;
+}
+
+.pr-asset-grid label {
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.55);
+    white-space: nowrap;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .pr-asset-grid .path-hint {
-    font-size: 10px;
-    color: #555;
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.35);
     font-family: 'JetBrains Mono', monospace;
 }
 
@@ -403,9 +489,20 @@
 .pr-assets-output {
     margin-top: 12px;
     padding: 12px;
-    background: rgba(0, 0, 0, 0.15);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0.005));
     border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: var(--border-radius, 6px);
+    border-radius: 8px;
+}
+
+.pr-assets-output-title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .pr-assets-folder {
@@ -413,17 +510,14 @@
 }
 
 .pr-assets-folder-name {
-    font-size: 12px;
+    font-size: 0.74rem;
     font-weight: 600;
     color: var(--accent);
     margin-bottom: 4px;
-}
-
-.pr-assets-folder-path {
-    font-size: 10px;
-    color: #555;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font-family: 'JetBrains Mono', monospace;
-    margin-bottom: 6px;
 }
 
 .pr-assets-folder ul {
@@ -435,22 +529,41 @@
 }
 
 .pr-assets-folder li {
-    font-size: 11px;
-    color: #999;
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.55);
     padding: 2px 0;
     font-family: 'JetBrains Mono', monospace;
 }
 
 /* ── Action Bar ─────────────────────────────────────── */
 .pr-action-bar {
-    padding: 12px 20px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(0, 0, 0, 0.2);
+    padding: 10px 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.012));
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
 }
+
+.pr-action-bar .pr-btn {
+    height: 36px;
+    font-size: 0.8rem;
+}
+
+.pr-action-status {
+    margin-left: auto;
+    font-size: 0.72rem;
+    color: rgba(255, 255, 255, 0.45);
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 50%;
+}
+
+.pr-action-status.success { color: #22c55e; }
+.pr-action-status.error   { color: #ef4444; }
 
 /* ── Scrollbar ──────────────────────────────────────── */
 .pr-vfx-list::-webkit-scrollbar,
@@ -471,7 +584,7 @@
 
 .pr-vfx-list::-webkit-scrollbar-thumb:hover,
 .pr-config-area::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.18);
 }
 
 /* ── Info tooltip ───────────────────────────────────── */
@@ -482,52 +595,63 @@
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
-    color: #888;
-    font-size: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.5);
     cursor: help;
     flex-shrink: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.pr-info-tip:hover {
+    background: color-mix(in srgb, var(--accent), transparent 80%);
+    color: var(--accent);
 }
 
 /* ── Badges (variant / randomizer indicators) ───────── */
 .pr-badge {
-    padding: 1px 7px;
-    border-radius: 12px;
-    font-size: 10px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 0.62rem;
     font-weight: 700;
     letter-spacing: 0.02em;
     white-space: nowrap;
     flex-shrink: 0;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 .pr-badge-variant {
-    background: rgba(157, 140, 217, 0.15);
-    border: 1px solid rgba(157, 140, 217, 0.35);
+    background: linear-gradient(180deg, color-mix(in srgb, #9d8cd9, transparent 82%), color-mix(in srgb, #9d8cd9, transparent 92%));
+    border: 1px solid color-mix(in srgb, #9d8cd9, transparent 55%);
     color: #9d8cd9;
 }
 
-.pr-badge-randomizer {
-    background: rgba(236, 185, 106, 0.15);
-    border: 1px solid rgba(236, 185, 106, 0.35);
-    color: #ecb96a;
-    font-size: 12px;
+.pr-badge-system-mode {
+    background: linear-gradient(180deg, color-mix(in srgb, #3b82f6, transparent 82%), color-mix(in srgb, #3b82f6, transparent 92%));
+    border: 1px solid color-mix(in srgb, #3b82f6, transparent 55%);
+    color: #60a5fa;
+}
+
+.pr-badge-done {
+    background: linear-gradient(180deg, color-mix(in srgb, #22c55e, transparent 82%), color-mix(in srgb, #22c55e, transparent 92%));
+    border: 1px solid color-mix(in srgb, #22c55e, transparent 55%);
+    color: #4ade80;
 }
 
 /* ── Asset hint text ────────────────────────────────── */
 .pr-asset-hint {
-    font-size: 11px;
-    color: #666;
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.4);
     margin-bottom: 8px;
     line-height: 1.5;
 }
 
 .pr-asset-hint code {
     background: rgba(255, 255, 255, 0.06);
-    padding: 1px 5px;
-    border-radius: 3px;
+    padding: 1px 6px;
+    border-radius: 4px;
     color: #ecb96a;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    font-size: 0.66rem;
 }
 
 /* ── Tree: System Groups ────────────────────────────── */
@@ -540,55 +664,52 @@
     align-items: center;
     gap: 8px;
     padding: 7px 10px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: var(--border-radius, 4px);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.012));
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
     cursor: pointer;
     user-select: none;
-    transition: background 0.12s ease;
+    transition: background 0.12s ease, border-color 0.12s ease;
 }
 
 .pr-system-header:hover {
-    background: rgba(255, 255, 255, 0.09);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
 .pr-system-header.has-selection {
-    background: rgba(236, 185, 106, 0.1);
-    border-color: rgba(236, 185, 106, 0.25);
+    background: linear-gradient(180deg, color-mix(in srgb, #ecb96a, transparent 86%), color-mix(in srgb, #ecb96a, transparent 94%));
+    border-color: color-mix(in srgb, #ecb96a, transparent 65%);
 }
 
 .pr-system-header.system-mode {
-    background: rgba(59, 130, 246, 0.12);
-    border-color: rgba(59, 130, 246, 0.35);
+    background: linear-gradient(180deg, color-mix(in srgb, #3b82f6, transparent 82%), color-mix(in srgb, #3b82f6, transparent 92%));
+    border-color: color-mix(in srgb, #3b82f6, transparent 55%);
 }
 
 .pr-system-header.is-randomized {
-    background: rgba(34, 197, 94, 0.08);
-    border-color: rgba(34, 197, 94, 0.3);
+    background: linear-gradient(180deg, color-mix(in srgb, #22c55e, transparent 88%), color-mix(in srgb, #22c55e, transparent 94%));
+    border-color: color-mix(in srgb, #22c55e, transparent 65%);
 }
 
 .pr-system-header.has-randomized {
-    background: rgba(34, 197, 94, 0.05);
-    border-color: rgba(34, 197, 94, 0.18);
-}
-
-.pr-badge-system-mode {
-    background: rgba(59, 130, 246, 0.15);
-    border: 1px solid rgba(59, 130, 246, 0.4);
-    color: #60a5fa;
-}
-
-.pr-badge-done {
-    background: rgba(34, 197, 94, 0.12);
-    border: 1px solid rgba(34, 197, 94, 0.35);
-    color: #4ade80;
+    background: linear-gradient(180deg, color-mix(in srgb, #22c55e, transparent 92%), color-mix(in srgb, #22c55e, transparent 96%));
+    border-color: color-mix(in srgb, #22c55e, transparent 80%);
 }
 
 .pr-expand-icon {
-    font-size: 9px;
-    color: #666;
-    width: 10px;
+    color: rgba(255, 255, 255, 0.4);
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.pr-system-header:hover .pr-expand-icon {
+    color: var(--accent);
 }
 
 .pr-system-name {
@@ -606,8 +727,8 @@
     margin-left: 8px;
     cursor: pointer;
     user-select: none;
-    transition: background 0.1s ease;
-    border-radius: 0 3px 3px 0;
+    transition: background 0.1s ease, border-color 0.1s ease;
+    border-radius: 0 4px 4px 0;
 }
 
 .pr-emitter-row:hover {
@@ -615,8 +736,8 @@
 }
 
 .pr-emitter-row.selected {
-    background: rgba(236, 185, 106, 0.12);
-    border-left-color: rgba(236, 185, 106, 0.5);
+    background: linear-gradient(180deg, color-mix(in srgb, #ecb96a, transparent 86%), color-mix(in srgb, #ecb96a, transparent 94%));
+    border-left-color: color-mix(in srgb, #ecb96a, transparent 50%);
 }
 
 .pr-emitter-row.selected .pr-vfx-label {
@@ -634,7 +755,7 @@
 
 .pr-emitter-row.randomized {
     cursor: default;
-    border-left-color: rgba(34, 197, 94, 0.35);
+    border-left-color: color-mix(in srgb, #22c55e, transparent 60%);
 }
 
 .pr-emitter-row.randomized:hover {

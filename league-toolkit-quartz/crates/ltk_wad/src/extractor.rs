@@ -296,7 +296,7 @@ impl<'a, R: PathResolver, F: PathFilter> WadExtractor<'a, R, F> {
         output_dir: &Utf8Path,
     ) -> Result<ExtractResult, WadError> {
         // Identify the file type
-        let chunk_kind = LeagueFileKind::identify_from_bytes_with_offset(chunk_data, 64);
+        let chunk_kind = LeagueFileKind::identify_from_bytes(chunk_data);
 
         // Check type filter
         if let Some(ref type_filter) = self.type_filter {
@@ -398,7 +398,7 @@ pub fn is_hex_chunk_path(path: &Utf8Path) -> bool {
 
 /// Build a filename with `.ltk` suffix and optional type extension.
 fn build_ltk_name(file_stem: impl AsRef<str>, chunk_data: &[u8]) -> String {
-    let kind = LeagueFileKind::identify_from_bytes_with_offset(chunk_data, 64);
+    let kind = LeagueFileKind::identify_from_bytes(chunk_data);
     match kind.extension() {
         Some(ext) => format!("{}.ltk.{}", file_stem.as_ref(), ext),
         None => format!("{}.ltk", file_stem.as_ref()),

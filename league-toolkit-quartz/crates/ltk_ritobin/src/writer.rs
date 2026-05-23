@@ -209,7 +209,9 @@ impl<'a, H: HashProvider> TextWriter<'a, H> {
             PropertyValueEnum::Matrix44(v) => {
                 self.write_raw("{\n");
                 self.indent();
-                let arr = v.value;
+                // ritobin text stores matrices row-major, glam::Mat4 is column-major.
+                // transpose so to_cols_array() yields values in row-major order.
+                let arr = v.value.transpose().to_cols_array();
                 for (i, val) in arr.iter().enumerate() {
                     if i % 4 == 0 {
                         self.pad();

@@ -5,6 +5,9 @@ export const prepareModelInspectAssets = async ({
   skinName,
   leaguePath,
   hashPath,
+  isTftMode = false,
+  wadTheme = null,
+  wadTier = null,
   onProgress,
 }) => {
   const getBridge = () => {
@@ -47,6 +50,9 @@ export const prepareModelInspectAssets = async ({
       skinName,
       leaguePath,
       hashPath,
+      isTftMode,
+      wadTheme,
+      wadTier,
     });
 
     if (result?.error) {

@@ -157,39 +157,6 @@ impl<M> Container<M> {
     }
 }
 
-impl<M: Default> Container<M> {
-    pub fn empty_of_kind(kind: Kind) -> Result<Self, Error> {
-        match kind {
-            Kind::None => Ok(Self::empty::<values::None<M>>()),
-            Kind::Bool => Ok(Self::empty::<values::Bool<M>>()),
-            Kind::I8 => Ok(Self::empty::<values::I8<M>>()),
-            Kind::U8 => Ok(Self::empty::<values::U8<M>>()),
-            Kind::I16 => Ok(Self::empty::<values::I16<M>>()),
-            Kind::U16 => Ok(Self::empty::<values::U16<M>>()),
-            Kind::I32 => Ok(Self::empty::<values::I32<M>>()),
-            Kind::U32 => Ok(Self::empty::<values::U32<M>>()),
-            Kind::I64 => Ok(Self::empty::<values::I64<M>>()),
-            Kind::U64 => Ok(Self::empty::<values::U64<M>>()),
-            Kind::F32 => Ok(Self::empty::<values::F32<M>>()),
-            Kind::Vector2 => Ok(Self::empty::<values::Vector2<M>>()),
-            Kind::Vector3 => Ok(Self::empty::<values::Vector3<M>>()),
-            Kind::Vector4 => Ok(Self::empty::<values::Vector4<M>>()),
-            Kind::Matrix44 => Ok(Self::empty::<values::Matrix44<M>>()),
-            Kind::Color => Ok(Self::empty::<values::Color<M>>()),
-            Kind::String => Ok(Self::empty::<values::String<M>>()),
-            Kind::Hash => Ok(Self::empty::<values::Hash<M>>()),
-            Kind::WadChunkLink => Ok(Self::empty::<values::WadChunkLink<M>>()),
-            Kind::Struct => Ok(Self::empty::<values::Struct<M>>()),
-            Kind::Embedded => Ok(Self::empty::<values::Embedded<M>>()),
-            Kind::ObjectLink => Ok(Self::empty::<values::ObjectLink<M>>()),
-            Kind::BitBool => Ok(Self::empty::<values::BitBool<M>>()),
-            Kind::Container | Kind::UnorderedContainer | Kind::Optional | Kind::Map => {
-                Err(Error::InvalidNesting(kind))
-            }
-        }
-    }
-}
-
 impl<M> Container<M> {
     #[inline(always)]
     #[must_use]

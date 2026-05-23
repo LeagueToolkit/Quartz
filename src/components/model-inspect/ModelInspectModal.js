@@ -412,7 +412,11 @@ export default function ModelInspectModal({
     if (!inline && !open) return;
     const candidates = filteredSknFiles;
     const keepCurrent = candidates.includes(selectedSkn);
-    setSelectedSkn(keepCurrent ? selectedSkn : (candidates[0] || ''));
+    // TFT: prefer the manifest's themes/<theme>/tier<N>/ SKN if it survived the
+    // character-folder filter, so we don't default to an unrelated theme/tier.
+    const preferred = manifest?.preferredSknRelativePath;
+    const preferredFromList = preferred && candidates.includes(preferred) ? preferred : null;
+    setSelectedSkn(keepCurrent ? selectedSkn : (preferredFromList || candidates[0] || ''));
     setSelectedAnm('');
     setAnmClip(null);
     setAnmError('');
@@ -464,7 +468,22 @@ export default function ModelInspectModal({
           ...data,
           submeshTextureMap,
         });
-        setVisibleSubmeshes(new Set((data.submeshes || []).map((s) => s.id)));
+        // Honor the skin BIN's SkinMeshDataProperties.initialSubmeshToHide —
+        // submesh names (e.g. "Cloud OpenMouth Teeth Tongue") that should
+        // start hidden. Look up by the selected SKN's normalized path; fall
+        // back to the per-character-folder map if there's no direct hit.
+        const sknKey = String(selectedSkn || '').toLowerCase().replace(/\\/g, '/');
+        const folderHideMap = (manifest?.submeshesToHideBySknByCharacterFolder || {})[selectedCharacterFolder] || {};
+        const flatHideMap = manifest?.submeshesToHideBySkn || {};
+        const rawHideList = folderHideMap[sknKey] || flatHideMap[sknKey] || [];
+        const hideNames = new Set(
+          (Array.isArray(rawHideList) ? rawHideList : [])
+            .map((s) => String(s || '').toLowerCase())
+        );
+        const initialVisible = (data.submeshes || [])
+          .filter((s) => !hideNames.has(String(s.name || '').toLowerCase()))
+          .map((s) => s.id);
+        setVisibleSubmeshes(new Set(initialVisible));
       } catch (err) {
         if (!alive) return;
         setModelError(err.message || 'Failed to load SKN model');

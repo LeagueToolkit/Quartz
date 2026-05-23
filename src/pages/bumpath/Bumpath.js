@@ -34,8 +34,8 @@ const Bumpath = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [selectedEntries, setSelectedEntries] = useState(new Set());
-  const [prefixText, setPrefixText] = useState('bum');
-  const [debouncedPrefixText, setDebouncedPrefixText] = useState('bum');
+  const [prefixText, setPrefixText] = useState('');
+  const [debouncedPrefixText, setDebouncedPrefixText] = useState('');
   const [appliedPrefixes, setAppliedPrefixes] = useState(new Map()); // Track applied prefixes per entry
   const [ignoreMissing, setIgnoreMissing] = useState(false);
   const [combineLinked, setCombineLinked] = useState(false);
@@ -58,7 +58,7 @@ const Bumpath = () => {
   const [quickRepathOpen, setQuickRepathOpen] = useState(false);
   const [quickRepathStep, setQuickRepathStep] = useState(0);
   const [quickMainBin, setQuickMainBin] = useState('');
-  const [quickPrefix, setQuickPrefix] = useState('bum');
+  const [quickPrefix, setQuickPrefix] = useState('');
   const [quickOutputPath, setQuickOutputPath] = useState('');
   const [isQuickRepathRunning, setIsQuickRepathRunning] = useState(false);
   const [sourceAddModeOpen, setSourceAddModeOpen] = useState(false);
@@ -820,7 +820,7 @@ const Bumpath = () => {
             },
             {
               title: "Prefix",
-              text: "The prefix is CRITICAL for preventing your mod from breaking. When you set a prefix (like 'bum'), all file paths will be moved to 'assets/bum/path/to/file' instead of 'assets/path/to/file'. This prevents conflicts with the original game files and ensures your mod files are loaded correctly. Without a prefix, your mod may break when the game updates or when other mods are installed. Always use a unique prefix for your mod!",
+              text: "The prefix is REQUIRED. Pick something unique to your mod (e.g. 'sera_kda', 'mymod_v2') — all file paths will move to 'assets/<your_prefix>/path/to/file' instead of 'assets/path/to/file'. This prevents conflicts with the original game and with other mods. Avoid generic words like 'bum', 'mod', or 'custom' — they're used everywhere and will collide.",
               targetSelector: "[data-bumpath-prefix]",
               padding: 15,
             },

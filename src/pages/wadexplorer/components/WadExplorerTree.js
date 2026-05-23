@@ -297,8 +297,28 @@ export default function WadExplorerTree({
   symbolSize = 12,
   selectionMode = false,
   onToggleSelectionMode = null,
+  // External imperative scroll target — { wadPath, dirPath? } string keys.
+  // Set this whenever you want the tree to scroll to a specific row.
+  scrollTargetKey = null,
 }) {
   const listRef = useRef();
+
+  // Scroll-into-view when scrollTargetKey changes AND the matching row exists.
+  // Re-runs on flatRows updates so we still scroll once the WAD's tree finishes
+  // loading and the rows materialise.
+  useEffect(() => {
+    if (!scrollTargetKey) return;
+    const idx = flatRows.findIndex((r) => {
+      if (r.type === 'wad' && r.entry) return r.entry.path === scrollTargetKey;
+      if ((r.type === 'file' || r.type === 'dir') && r.wadPath && r.node) {
+        return `${r.wadPath}||${r.node.path}` === scrollTargetKey;
+      }
+      return false;
+    });
+    if (idx >= 0) {
+      try { listRef.current?.scrollToItem(idx, 'center'); } catch (_) { /* noop */ }
+    }
+  }, [scrollTargetKey, flatRows]);
   const rowProps = { flatRows, toggleGroup, toggleWad, toggleDir, selectedNode, setSelectedNode, getExtractSelectionState, toggleExtractSelection, fontSize, symbolSize, selectionMode, onWadContextMenu };
 
   return (

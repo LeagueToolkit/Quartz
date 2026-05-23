@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { FolderOpen, RefreshCw, Zap, Download, Settings, Upload, Database, File } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { FolderOpen, RefreshCw, Zap, Download, Settings, Upload, Database, File, X, FileText, Clock, BookOpen } from 'lucide-react';
+import AssetPathCheatSheet from '../../components/modals/AssetPathCheatSheet.js';
 import electronPrefs from '../../utils/core/electronPrefs.js';
 import WadExplorerTree from './components/WadExplorerTree.js';
 import { useWadExplorer } from './hooks/useWadExplorer.js';
@@ -8,6 +10,7 @@ import WadExplorerDialog from '../../components/modals/WadExplorerDialog.js';
 import WadExplorerSettingsModal from '../../components/modals/WadExplorerSettingsModal.js';
 import ModelInspectModal from '../../components/model-inspect/ModelInspectModal.js';
 import BinViewer from '../../components/BinViewer/BinViewer.js';
+import { addRecentWad, addRecentBin, getRecentItems, removeRecent, subscribeRecentItems } from '../../utils/io/recentItems.js';
 import * as S from './styles.js';
 
 const { ipcRenderer } = window.require('electron');
@@ -497,7 +500,42 @@ function FolderTextureGallery({ selectedNode, hashPath }) {
   );
 }
 
-function FileDetailPanel({ selectedNode, hashPath, wadData }) {
+const CLOSE_BTN_STYLE = {
+  position: 'absolute',
+  top: 10,
+  right: 12,
+  zIndex: 5,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 28,
+  height: 28,
+  background: 'rgba(0,0,0,0.45)',
+  border: '1px solid rgba(255,255,255,0.12)',
+  borderRadius: 6,
+  color: 'var(--text)',
+  cursor: 'pointer',
+  padding: 0,
+  transition: 'background 0.12s, border-color 0.12s, color 0.12s',
+};
+
+function FileDetailCloseButton({ onClose }) {
+  if (!onClose) return null;
+  return (
+    <button
+      type="button"
+      title="Close preview"
+      onClick={onClose}
+      style={CLOSE_BTN_STYLE}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,90,90,0.18)'; e.currentTarget.style.borderColor = 'rgba(255,90,90,0.4)'; e.currentTarget.style.color = '#ff8585'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.45)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = 'var(--text)'; }}
+    >
+      <X size={15} />
+    </button>
+  );
+}
+
+function FileDetailPanel({ selectedNode, hashPath, wadData, onClose }) {
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewError, setPreviewError] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -515,6 +553,9 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
   const [luabinContent, setLuabinContent] = useState(null);
   const [luabinLoading, setLuabinLoading] = useState(false);
   const [luabinError, setLuabinError] = useState('');
+  const [textContent, setTextContent] = useState(null);
+  const [textLoading, setTextLoading] = useState(false);
+  const [textError, setTextError] = useState('');
 
   // Ref so loadManifest reads current wadData without being in its deps
   const wadDataRef = useRef(null);
@@ -662,6 +703,52 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
       })
       ?.finally(() => {
         if (!cancelled) setTroybinLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedNode]);
+
+  // Generic text preview — for files that don't have a specialized viewer
+  // (bin/troybin/luabin/skn/skl/anm/dds/tex). Decodes raw chunk bytes as UTF-8.
+  useEffect(() => {
+    let cancelled = false;
+    setTextContent(null);
+    setTextError('');
+    setTextLoading(false);
+
+    if (!selectedNode || selectedNode.type !== 'file') return () => { cancelled = true; };
+
+    const { node, wadPath } = selectedNode;
+    const ext = String(node.extension || node.name?.split('.').pop() || '').toLowerCase();
+    const hasNoExtension = !node.extension && !node.name?.includes('.');
+    const isSpecialized = ext === 'bin' || hasNoExtension
+      || ext === 'troybin' || ext === 'luabin' || ext === 'luabin64'
+      || ext === 'skn' || ext === 'skl' || ext === 'anm'
+      || ext === 'dds' || ext === 'tex';
+    if (isSpecialized) return () => { cancelled = true; };
+
+    const chunkId = Number(node.chunkId);
+    if (!Number.isInteger(chunkId) || chunkId < 0) return () => { cancelled = true; };
+
+    setTextLoading(true);
+    window.electronAPI?.wad?.readChunkData?.({ wadPath, chunkId })
+      ?.then((result) => {
+        if (cancelled) return;
+        if (!result || result.error) throw new Error(result?.error || 'Failed to read chunk');
+        const b64 = String(result.dataBase64 || '');
+        if (!b64) { setTextContent(''); return; }
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const decoded = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+        setTextContent(decoded);
+      })
+      ?.catch((e) => {
+        if (cancelled) return;
+        setTextError(e?.message || 'Failed to load file contents');
+      })
+      ?.finally(() => {
+        if (!cancelled) setTextLoading(false);
       });
 
     return () => { cancelled = true; };
@@ -850,13 +937,19 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
   }
 
   if (selectedNode.type === 'dir') {
-    return <FolderTextureGallery selectedNode={selectedNode} hashPath={hashPath} />;
+    return (
+      <div style={{ ...S.rightPanel, position: 'relative' }}>
+        <FileDetailCloseButton onClose={onClose} />
+        <FolderTextureGallery selectedNode={selectedNode} hashPath={hashPath} />
+      </div>
+    );
   }
 
   // SKN / SKL / ANM: show full inline model inspect
   if (canOpenModelInspect) {
     return (
-      <div style={{ ...S.rightPanel }}>
+      <div style={{ ...S.rightPanel, position: 'relative' }}>
+        <FileDetailCloseButton onClose={onClose} />
         <ModelInspectModal
           inline={true}
           open={true}
@@ -875,7 +968,8 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
   const nodeHasNoExt = !node?.extension && !node?.name?.includes('.');
   if (nodeExt === 'bin' || (nodeHasNoExt && (binContent || binLoading))) {
     return (
-      <div style={{ ...S.rightPanel, flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ ...S.rightPanel, flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+        <FileDetailCloseButton onClose={onClose} />
         <BinViewer
           content={binContent}
           loading={binLoading}
@@ -889,7 +983,8 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
   // .troybin files: reuse BinViewer for INI text display
   if (nodeExt === 'troybin') {
     return (
-      <div style={{ ...S.rightPanel, flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ ...S.rightPanel, flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+        <FileDetailCloseButton onClose={onClose} />
         <BinViewer
           content={troybinContent}
           loading={troybinLoading}
@@ -903,7 +998,8 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
   // .luabin / .luabin64 files: reuse BinViewer for Lua text display
   if (nodeExt === 'luabin' || nodeExt === 'luabin64') {
     return (
-      <div style={{ ...S.rightPanel, flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ ...S.rightPanel, flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+        <FileDetailCloseButton onClose={onClose} />
         <BinViewer
           content={luabinContent}
           loading={luabinLoading}
@@ -915,12 +1011,19 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
   }
 
   // Other files: detail panel with optional texture preview
+  // Guard: the upstream selection can be a non-file payload (e.g. when the URL
+  // jump targets a WAD row), in which case `node` is null and reading
+  // compressionType would crash the render tree.
+  if (!node || selectedNode?.type !== 'file') return null;
   const compLabel = COMP_LABELS[node.compressionType] ?? `t${node.compressionType}`;
   const compColor = COMP_COLORS[node.compressionType] ?? 'rgba(255,255,255,0.4)';
   const wadName = wadPath?.split(/[\\/]/).pop()?.replace(/\.wad\.client$/i, '') ?? '';
 
+  const isImageFile = nodeExt === 'dds' || nodeExt === 'tex';
+
   return (
-    <div style={{ ...S.rightPanel, flexDirection: 'column', padding: '22px 24px', gap: 4, overflowY: 'auto' }}>
+    <div style={{ ...S.rightPanel, flexDirection: 'column', padding: '22px 24px', gap: 4, overflowY: 'auto', position: 'relative' }}>
+      <FileDetailCloseButton onClose={onClose} />
       {(previewLoading || previewUrl || previewError || previewLarge) && (
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 11, color: 'var(--text-2)', opacity: 0.75, marginBottom: 6 }}>Preview</div>
@@ -970,6 +1073,34 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
       <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 12, wordBreak: 'break-all' }}>
         {node.name}
       </div>
+      {!isImageFile && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-2)', opacity: 0.75, marginBottom: 6 }}>Contents</div>
+          {textLoading ? (
+            <div style={{ fontSize: 12, color: 'var(--text-2)', opacity: 0.75 }}>Loading…</div>
+          ) : textError ? (
+            <div style={{ fontSize: 12, color: '#ef4444', opacity: 0.9 }}>{textError}</div>
+          ) : textContent != null ? (
+            <pre style={{
+              margin: 0,
+              padding: '10px 12px',
+              fontFamily: 'Consolas, "Cascadia Mono", "Courier New", monospace',
+              fontSize: 12,
+              lineHeight: 1.45,
+              color: 'var(--text)',
+              background: 'rgba(0,0,0,0.28)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 6,
+              maxHeight: 480,
+              overflow: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}>
+              {textContent.length > 200000 ? textContent.slice(0, 200000) + '\n\n… (truncated)' : textContent}
+            </pre>
+          ) : null}
+        </div>
+      )}
       <DetailRow label="Path" value={node.path} mono />
       <DetailRow label="WAD" value={wadName} />
       <DetailRow label="Compression" value={compLabel} valueColor={compColor} />
@@ -979,15 +1110,104 @@ function FileDetailPanel({ selectedNode, hashPath, wadData }) {
   );
 }
 
-function WadLandingPanel({ onOpenWad, onIndexGame, isDragOver, isLoading }) {
+function RecentItemRow({ item, kind, onOpen, onRemove }) {
+  const Icon = kind === 'wad' ? FolderOpen : FileText;
+  const accent = kind === 'wad' ? 'var(--accent)' : '#10b981';
+  const primary = item.name;
+  let secondary = '';
+  let tooltip = '';
+  if (kind === 'wad') {
+    secondary = item.path || '';
+    tooltip = item.path || '';
+  } else {
+    const wadName = String(item.wadPath || '').replace(/\\/g, '/').split('/').pop() || '';
+    secondary = wadName ? `${wadName} — ${item.internalPath || ''}` : (item.internalPath || '');
+    tooltip = `${item.wadPath}\n${item.internalPath}`;
+  }
+  return (
+    <div
+      onClick={() => onOpen(item)}
+      title={tooltip}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '7px 10px',
+        background: 'rgba(255,255,255,0.03)',
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderRadius: 6,
+        cursor: 'pointer',
+        transition: 'background 0.12s, border-color 0.12s',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; }}
+    >
+      <Icon size={14} style={{ color: accent, opacity: 0.85, flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{primary}</div>
+        <div style={{ fontSize: 10, color: 'var(--text-2)', opacity: 0.55, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{secondary}</div>
+      </div>
+      <button
+        type="button"
+        title="Remove from history"
+        onClick={(e) => { e.stopPropagation(); onRemove(item); }}
+        style={{
+          background: 'transparent', border: 'none', color: 'var(--text-2)', opacity: 0.5,
+          cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.opacity = 1; e.currentTarget.style.color = '#ff8585'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.opacity = 0.5; e.currentTarget.style.color = 'var(--text-2)'; }}
+      >
+        <X size={12} />
+      </button>
+    </div>
+  );
+}
+
+function RecentItemsSection({ recents, onOpenWad, onOpenBin, onRemove }) {
+  const wadList = recents?.wad || [];
+  const binList = recents?.bin || [];
+  if (wadList.length === 0 && binList.length === 0) return null;
+  return (
+    <div style={{ width: '100%', maxWidth: 540, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {wadList.length > 0 && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: 'var(--text-2)', opacity: 0.65, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+            <Clock size={12} /> Recent WADs
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {wadList.map((it) => (
+              <RecentItemRow key={`wad:${it.path}`} item={it} kind="wad" onOpen={onOpenWad} onRemove={(x) => onRemove('wad', x)} />
+            ))}
+          </div>
+        </div>
+      )}
+      {binList.length > 0 && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: 'var(--text-2)', opacity: 0.65, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+            <Clock size={12} /> Recent Bins
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {binList.map((it) => (
+              <RecentItemRow key={`bin:${it.wadPath}::${it.internalPath}`} item={it} kind="bin" onOpen={onOpenBin} onRemove={(x) => onRemove('bin', x)} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WadLandingPanel({ onOpenWad, onIndexGame, isDragOver, isLoading, recents, onOpenRecentWad, onOpenRecentBin, onRemoveRecent }) {
+  const hasRecents = (recents?.wad?.length || 0) + (recents?.bin?.length || 0) > 0;
   return (
     <div
       style={{
         ...S.rightPanel,
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: hasRecents ? 'flex-start' : 'center',
         flexDirection: 'column',
         gap: 32,
+        padding: hasRecents ? '32px 24px' : 0,
+        overflowY: hasRecents ? 'auto' : 'hidden',
         position: 'relative',
         outline: isDragOver ? '2px dashed var(--accent)' : '2px dashed transparent',
         outlineOffset: -8,
@@ -1050,6 +1270,13 @@ function WadLandingPanel({ onOpenWad, onIndexGame, isDragOver, isLoading }) {
               or drop a .wad.client here
             </span>
           </div>
+
+          <RecentItemsSection
+            recents={recents}
+            onOpenWad={onOpenRecentWad}
+            onOpenBin={onOpenRecentBin}
+            onRemove={onRemoveRecent}
+          />
         </>
       )}
     </div>
@@ -1071,6 +1298,8 @@ function RightPanelLoading({ indexingProgress, isHashPreloading }) {
 }
 
 export default function WadExplorer() {
+  const [recents, setRecents] = useState(() => getRecentItems());
+  useEffect(() => subscribeRecentItems(setRecents), []);
   const [gamePath, setGamePath] = useState('');
   const [hashPath, setHashPath] = useState('');
   const [indexHashReady, setIndexHashReady] = useState(false);
@@ -1096,7 +1325,8 @@ export default function WadExplorer() {
 
   const {
     scanLoading, scanError, total, scan, loadSingleWad,
-    toggleGroup, toggleWad, reloadWad, toggleDir,
+    groups,
+    toggleGroup, openGroup, openDir, openWads, toggleWad, reloadWad, toggleDir,
     selectedNode, setSelectedNode,
     search, setSearch,
     flatRows,
@@ -1111,6 +1341,8 @@ export default function WadExplorer() {
     getContextTargetInfo,
   } = useWadExplorer({ hashPath, indexReady: indexHashReady });
   const [extractBusy, setExtractBusy] = useState(false);
+  const [extractProgress, setExtractProgress] = useState({ done: 0, total: 0 });
+  const [cheatSheetOpen, setCheatSheetOpen] = useState(false);
 
   // ── Load saved settings on mount ─────────────────────────────────────────
   useEffect(() => {
@@ -1188,6 +1420,117 @@ export default function WadExplorer() {
     }
   }, [gamePath, scan, pickGamePath, hashPath]);
 
+  // Cheat-sheet → WAD Explorer deep-link.
+  // URL: /wad-explorer?wad=<filename>&path=<inner/asset/path>
+  //
+  // Flow:
+  //   1. Read URL → pendingJump state.
+  //   2. If the game isn't indexed yet → auto-trigger a scan; wait.
+  //   3. Once `groups` is populated → find the matching WAD entry, open its
+  //      group, force-load its TOC. Remember the entry path so subsequent
+  //      effect passes can drill the inner path once the TOC arrives.
+  //   4. When wadData[entry.path].status === 'loaded' → walk each segment of
+  //      the inner path with toggleDir(); set scrollTargetKey to the deepest
+  //      directory so the tree scrolls it into view.
+  //   5. Clear pendingJump + drop the ?wad=&path= query params.
+  const location = useLocation();
+  const navigate = useNavigate();
+  // pendingJump shape: { wadLower, path, foundPath? }
+  const [pendingJump, setPendingJump] = useState(null);
+  const [scrollTargetKey, setScrollTargetKey] = useState(null);
+
+  // ── Step 1: URL → state ──────────────────────────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const wad = params.get('wad');
+    if (wad) {
+      const innerPath = params.get('path') || '';
+      setPendingJump({
+        wadLower: wad.toLowerCase(),
+        path: innerPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''),
+        foundPath: null,
+      });
+    }
+  }, [location.search]);
+
+  // ── Steps 2 + 3: scan if needed, then locate + open the target WAD ──
+  useEffect(() => {
+    if (!pendingJump || !settingsLoaded) return;
+    if (pendingJump.foundPath) return; // already located; step 4 handles drilling
+
+    if (!groups) {
+      if (!scanLoading && gamePath) handleIndexGame();
+      return;
+    }
+
+    let foundEntry = null;
+    let foundGroupKey = null;
+    for (const [groupKey, entries] of Object.entries(groups)) {
+      for (const entry of entries) {
+        if (String(entry.name || '').toLowerCase() === pendingJump.wadLower) {
+          foundEntry = entry;
+          foundGroupKey = groupKey;
+          break;
+        }
+      }
+      if (foundEntry) break;
+    }
+
+    if (!foundEntry) {
+      // Target WAD doesn't exist in this install — clear and move on.
+      setPendingJump(null);
+      try { navigate(location.pathname, { replace: true }); } catch (_) { /* noop */ }
+      return;
+    }
+
+    try { openGroup(foundGroupKey); } catch (_) { /* noop */ }
+    // toggleWad with forceLoad: true triggers mountTree but does NOT add the
+    // WAD to openWads — so the row stays collapsed. Use the plain toggle
+    // only when the WAD is currently closed (idempotent open).
+    try {
+      if (!openWads?.has?.(foundEntry.path)) {
+        toggleWad(foundEntry);
+      }
+    } catch (_) { /* noop */ }
+    setPendingJump((prev) => prev && { ...prev, foundPath: foundEntry.path });
+    // Scroll to the WAD row right away — the user sees motion even while
+    // the TOC is still mounting in the background.
+    setScrollTargetKey(foundEntry.path);
+  }, [
+    pendingJump, groups, scanLoading, settingsLoaded, gamePath,
+    handleIndexGame, openGroup, toggleWad, openWads, navigate, location.pathname,
+  ]);
+
+  // ── Step 4: once the WAD TOC is loaded, drill the inner path ─────────
+  useEffect(() => {
+    if (!pendingJump?.foundPath) return;
+    const wadPath = pendingJump.foundPath;
+    const status = wadData?.get?.(wadPath)?.status;
+    if (status !== 'loaded') return;
+
+    const innerPath = pendingJump.path || '';
+    if (innerPath) {
+      // Walk each accumulated DIRECTORY segment and expand it. If the path
+      // ends in a filename (has a file extension), strip the last segment so
+      // we don't try to expand a file as a directory.
+      const segs = innerPath.split('/').filter(Boolean);
+      const lastHasExt = segs.length > 0 && /\.[a-z0-9]+$/i.test(segs[segs.length - 1]);
+      const dirSegs = lastHasExt ? segs.slice(0, -1) : segs;
+      let acc = '';
+      let deepest = '';
+      for (const seg of dirSegs) {
+        acc = acc ? `${acc}/${seg}` : seg;
+        try { openDir(wadPath, acc); } catch (_) { /* noop */ }
+        deepest = acc;
+      }
+      if (deepest) setScrollTargetKey(`${wadPath}||${deepest}`);
+    }
+
+    // Done — clear pending state + drop the query params.
+    setPendingJump(null);
+    try { navigate(location.pathname, { replace: true }); } catch (_) { /* noop */ }
+  }, [pendingJump, wadData, openDir, navigate, location.pathname]);
+
   const handleOpenSingleWad = useCallback(async () => {
     const nodePath = window.require?.('path');
     const defaultDir = gamePath && nodePath
@@ -1200,8 +1543,87 @@ export default function WadExplorer() {
       await window.electronAPI?.hashtable?.primeWad?.(hashPath)?.catch(() => { });
       setIsPrimeLoading(false);
     }
+    addRecentWad(filePath);
     loadSingleWad(filePath);
   }, [loadSingleWad, hashPath, gamePath]);
+
+  const handleOpenRecentWad = useCallback(async (item) => {
+    if (!item?.path) return;
+    const fs = window.require?.('fs');
+    if (fs && !fs.existsSync(item.path)) {
+      removeRecent('wad', item.path);
+      return;
+    }
+    if (hashPath) {
+      setIsPrimeLoading(true);
+      await window.electronAPI?.hashtable?.primeWad?.(hashPath)?.catch(() => { });
+      setIsPrimeLoading(false);
+    }
+    addRecentWad(item.path);
+    loadSingleWad(item.path);
+  }, [hashPath, loadSingleWad]);
+
+  const pendingBinSelectRef = useRef(null);
+
+  const handleOpenRecentBin = useCallback(async (item) => {
+    if (!item?.wadPath || !item?.internalPath) return;
+    const fs = window.require?.('fs');
+    if (fs && !fs.existsSync(item.wadPath)) {
+      removeRecent('bin', item);
+      return;
+    }
+    pendingBinSelectRef.current = { wadPath: item.wadPath, internalPath: item.internalPath };
+    if (hashPath) {
+      setIsPrimeLoading(true);
+      await window.electronAPI?.hashtable?.primeWad?.(hashPath)?.catch(() => { });
+      setIsPrimeLoading(false);
+    }
+    addRecentWad(item.wadPath);
+    loadSingleWad(item.wadPath);
+  }, [hashPath, loadSingleWad]);
+
+  const handleRemoveRecent = useCallback((kind, item) => {
+    removeRecent(kind, item);
+  }, []);
+
+  // Track recent bin opens — fires when user clicks a .bin in the WAD tree.
+  useEffect(() => {
+    if (!selectedNode || selectedNode.type !== 'file') return;
+    const node = selectedNode.node;
+    const ext = String(node?.extension || node?.name?.split('.').pop() || '').toLowerCase();
+    if (ext !== 'bin') return;
+    if (!selectedNode.wadPath || !node?.path) return;
+    addRecentBin({
+      wadPath: selectedNode.wadPath,
+      internalPath: node.path,
+      name: node.name || node.path,
+      chunkId: Number.isFinite(node.chunkId) ? node.chunkId : null,
+    });
+  }, [selectedNode]);
+
+  // Resolve a pending "open recent bin" once the WAD tree finishes loading.
+  useEffect(() => {
+    const pending = pendingBinSelectRef.current;
+    if (!pending) return;
+    const data = wadData?.get?.(pending.wadPath);
+    if (!data || data.status !== 'loaded' || !Array.isArray(data.tree)) return;
+    const findFile = (nodes, target) => {
+      for (const n of nodes) {
+        if (!n) continue;
+        if (n.type === 'file' && n.path === target) return n;
+        if (n.type === 'dir' && Array.isArray(n.children)) {
+          const found = findFile(n.children, target);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    const found = findFile(data.tree, pending.internalPath);
+    if (found) {
+      setSelectedNode({ type: 'file', node: found, wadPath: pending.wadPath });
+    }
+    pendingBinSelectRef.current = null;
+  }, [wadData, setSelectedNode]);
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
@@ -1234,6 +1656,7 @@ export default function WadExplorer() {
     } else {
       console.warn('[drop] no hashPath — skipping prime + extractHashes');
     }
+    addRecentWad(wadFile.path);
     loadSingleWad(wadFile.path);
   }, [loadSingleWad, hashPath]);
 
@@ -1366,6 +1789,14 @@ export default function WadExplorer() {
     failureTitle = 'Extract Selected Failed',
   }) => {
     setExtractBusy(true);
+    setExtractProgress({ done: 0, total: items.length });
+    const progressListener = (_, payload) => {
+      setExtractProgress({
+        done: Number(payload?.done || 0),
+        total: Number(payload?.total || items.length),
+      });
+    };
+    window.electronAPI?.wad?.onExtractSelectedProgress?.(progressListener);
     try {
       const result = await window.electronAPI?.wad?.extractSelected?.({
         items,
@@ -1399,7 +1830,9 @@ export default function WadExplorer() {
         detail: '',
       });
     } finally {
+      window.electronAPI?.wad?.offExtractSelectedProgress?.(progressListener);
       setExtractBusy(false);
+      setExtractProgress({ done: 0, total: 0 });
     }
   }, []);
 
@@ -1448,26 +1881,19 @@ export default function WadExplorer() {
 
   const handleExtractSelected = useCallback(async () => {
     if (extractSelectedCount === 0) return;
-    const wadPaths = Array.from(new Set(extractSelectedItems.map((item) => item?.wadPath).filter(Boolean)));
-    let outputSubdir = '';
-    if (wadPaths.length === 1) {
-      const onlyWadPath = wadPaths[0];
-      const wadTree = wadData.get(onlyWadPath)?.tree;
-      const totalInWad = Array.isArray(wadTree) ? buildExtractItemsFromTree(onlyWadPath, wadTree).length : 0;
-      const selectedInWad = extractSelectedItems.filter((item) => item?.wadPath === onlyWadPath).length;
-      if (totalInWad > 0 && selectedInWad === totalInWad) {
-        outputSubdir = getWadExportFolderName(onlyWadPath);
-      }
-    }
+    // "Extract Selected" always dumps straight into the chosen folder — no
+    // <wad-name>/ wrapper, even when every file in the WAD happens to be
+    // selected. Whole-WAD extract via right-click still wraps (that's a
+    // separate code path at the WAD row's context menu).
     await queueExtract({
       items: extractSelectedItems,
       preservePaths: true,
-      outputSubdir,
+      outputSubdir: '',
       onSuccess: clearExtractSelection,
       successTitle: 'Extract Selected Complete',
       failureTitle: 'Extract Selected Failed',
     });
-  }, [clearExtractSelection, extractSelectedCount, extractSelectedItems, queueExtract, wadData]);
+  }, [clearExtractSelection, extractSelectedCount, extractSelectedItems, queueExtract]);
 
   const runPendingExtract = useCallback(async (replaceExisting) => {
     const pending = pendingExtractRef.current;
@@ -1625,6 +2051,15 @@ export default function WadExplorer() {
 
         <button
           style={{ ...S.iconBtn, gap: 5 }}
+          onClick={() => setCheatSheetOpen(true)}
+          title="Asset Path Cheat Sheet (by Aropatnik)"
+        >
+          <BookOpen size={13} />
+          <span style={{ fontSize: 11 }}>Cheat Sheet</span>
+        </button>
+
+        <button
+          style={{ ...S.iconBtn, gap: 5 }}
           onClick={() => setSettingsOpen(true)}
           title="WAD Explorer Settings"
         >
@@ -1635,6 +2070,52 @@ export default function WadExplorer() {
 
 
       </div>
+
+      {/* Determinate extraction progress bar driven by the native addon's
+          per-file ThreadsafeFunction callback (wad:extractSelected:progress). */}
+      {extractBusy && (() => {
+        const total = Math.max(1, Number(extractProgress.total || 0));
+        const done = Math.min(total, Number(extractProgress.done || 0));
+        const pct = Math.round((done / total) * 100);
+        return (
+          <div
+            style={{
+              position: 'relative',
+              padding: '4px 14px 6px',
+              background: 'rgba(0,0,0,0.18)',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              flexShrink: 0,
+            }}
+          >
+            <div style={{
+              display: 'flex', justifyContent: 'space-between',
+              fontSize: 10, color: 'var(--text-2)', marginBottom: 3,
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              <span>Extracting {done.toLocaleString()} / {total.toLocaleString()}</span>
+              <span>{pct}%</span>
+            </div>
+            <div style={{
+              position: 'relative',
+              height: 4,
+              background: 'rgba(255,255,255,0.06)',
+              borderRadius: 2,
+              overflow: 'hidden',
+            }}>
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: '0 auto 0 0',
+                  width: `${pct}%`,
+                  background: 'linear-gradient(90deg, var(--accent), var(--accent2))',
+                  boxShadow: '0 0 8px color-mix(in srgb, var(--accent2), transparent 55%)',
+                  transition: 'width 0.15s linear',
+                }}
+              />
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Body */}
       <div ref={bodyRef} style={{ ...S.body }}>
@@ -1663,6 +2144,7 @@ export default function WadExplorer() {
             symbolSize={treeSymbolSize}
             selectionMode={selectionMode}
             onToggleSelectionMode={() => setSelectionMode(v => !v)}
+            scrollTargetKey={scrollTargetKey}
           />
         )}
 
@@ -1684,16 +2166,25 @@ export default function WadExplorer() {
         {/* Right: landing or file detail */}
         {(scanLoading || indexingActive || isHashPreloading) ? (
           <RightPanelLoading indexingProgress={indexingProgress} isHashPreloading={isHashPreloading} />
-        ) : total === 0 && !scanError ? (
+        ) : !selectedNode || (selectedNode.type === 'dir' && collectTextureFilesFromDir(selectedNode.node).length === 0) ? (
           <WadLandingPanel
             onOpenWad={handleOpenSingleWad}
             onIndexGame={handleIndexGame}
             isDragOver={isDragOver}
             isLoading={isHashPreloading}
+            recents={recents}
+            onOpenRecentWad={handleOpenRecentWad}
+            onOpenRecentBin={handleOpenRecentBin}
+            onRemoveRecent={handleRemoveRecent}
           />
         ) : (
           <>
-            <FileDetailPanel selectedNode={selectedNode} hashPath={hashPath} wadData={wadData} />
+            <FileDetailPanel
+              selectedNode={selectedNode}
+              hashPath={hashPath}
+              wadData={wadData}
+              onClose={() => setSelectedNode(null)}
+            />
             {isDragOver && (
               <div style={{
                 position: 'absolute',
@@ -1736,6 +2227,10 @@ export default function WadExplorer() {
           0% { transform: scale(0.985); opacity: 0.85; }
           50% { transform: scale(1.02); opacity: 1; }
           100% { transform: scale(0.985); opacity: 0.85; }
+        }
+        @keyframes wadProgressSlide {
+          0%   { left: -35%; }
+          100% { left: 100%; }
         }
       `}</style>
 
@@ -1786,6 +2281,11 @@ export default function WadExplorer() {
         onRowHeightChange={handleTreeRowHeightChange}
         onFontSizeChange={handleTreeFontSizeChange}
         onSymbolSizeChange={handleTreeSymbolSizeChange}
+      />
+
+      <AssetPathCheatSheet
+        open={cheatSheetOpen}
+        onClose={() => setCheatSheetOpen(false)}
       />
       {/* Wad Context Menu */}
       {wadContextMenu.open && (

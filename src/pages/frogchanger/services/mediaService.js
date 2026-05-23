@@ -30,8 +30,10 @@ export const downloadSplashArtToFile = async ({
   skinId,
   skinName,
   outputPath,
+  splashUrlOverride = null,
 }) => {
-  const splashUrl = `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${championAlias}_${skinId}.jpg`;
+  const splashUrl = splashUrlOverride
+    || `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${championAlias}_${skinId}.jpg`;
   const response = await fetch(splashUrl);
   if (!response.ok) {
     throw new Error(`Failed to fetch splash art: ${response.status}`);
@@ -42,7 +44,10 @@ export const downloadSplashArtToFile = async ({
   }
 
   const blob = await response.blob();
-  const fileName = `${championName}_${skinName.replace(/[^a-zA-Z0-9]/g, '_')}_splash.jpg`;
+  // Derive extension from the actual URL (TFT icons are .png, champions are .jpg).
+  const urlMatch = String(splashUrl).match(/\.([a-z0-9]{2,5})(?:\?|$)/i);
+  const ext = urlMatch ? urlMatch[1].toLowerCase() : 'jpg';
+  const fileName = `${championName}_${skinName.replace(/[^a-zA-Z0-9]/g, '_')}_splash.${ext}`;
   const filePath = `${outputPath}\\${fileName}`;
   const arrayBuffer = await blob.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);

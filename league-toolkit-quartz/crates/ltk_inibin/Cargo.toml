@@ -1,0 +1,18 @@
+[package]
+name = "ltk_inibin"
+version = "0.1.0"
+edition = "2021"
+description = "Inibin (INIBIN v1/v2) parser and writer for League Toolkit"
+license = "MIT OR Apache-2.0"
+readme = "../../README.md"
+
+[features]
+serde = ["dep:serde", "indexmap/serde"]
+
+[dependencies]
+thiserror = { workspace = true }
+byteorder = { workspace = true }
+num_enum = { workspace = true }
+miette = { workspace = true }
+indexmap = { workspace = true }
+serde = { workspace = true, optional = true }

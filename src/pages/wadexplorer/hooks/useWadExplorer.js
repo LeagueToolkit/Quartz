@@ -652,6 +652,24 @@ export function useWadExplorer({ hashPath, indexReady = true }) {
     setOpenGroups(prev => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
+  // Idempotent open — used by the URL-driven WAD jump so we never accidentally
+  // collapse a group that's already open.
+  const openGroup = useCallback((key) => {
+    setOpenGroups(prev => (prev[key] ? prev : { ...prev, [key]: true }));
+  }, []);
+
+  // Idempotent dir open — used by the URL-driven inner-path drill so each
+  // ancestor we walk past doesn't accidentally collapse.
+  const openDir = useCallback((wadPath, dirPath) => {
+    const key = wadPath + '||' + dirPath;
+    setExpandedDirs(prev => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  }, []);
+
 
 
   const toggleDir = useCallback((wadPath, dirPath, dirNode = null, options = null) => {
@@ -872,8 +890,12 @@ export function useWadExplorer({ hashPath, indexReady = true }) {
     total,
     scan,
     loadSingleWad,
+    groups,
     openGroups,
     toggleGroup,
+    openGroup,
+    openDir,
+    openWads,
     openWads,
     toggleWad,
     reloadWad,

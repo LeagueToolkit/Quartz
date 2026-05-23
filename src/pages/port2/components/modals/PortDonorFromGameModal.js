@@ -3,6 +3,7 @@ import { List } from 'react-window';
 import { Youtube } from 'lucide-react';
 import { api, fetchAllChromaData } from '../../../frogchanger/services/communityDragonApi.js';
 import { getChampionIconUrl } from '../../../frogchanger/services/mediaService.js';
+import ModPrefixInfoModal from '../../../../components/modals/ModPrefixInfoModal.js';
 
 const CHAMPION_ROW_HEIGHT = 42;
 const SKIN_ROW_HEIGHT = 52;
@@ -517,6 +518,16 @@ function PortDonorFromGameModal({
   const [skinSearch, setSkinSearch] = useState('');
   const [selectedChampion, setSelectedChampion] = useState(null);
   const [selectedSkin, setSelectedSkin] = useState(null);
+  // Stored in localStorage so the user doesn't retype it every load.
+  const [portingPrefix, setPortingPrefix] = useState(() => {
+    try { return String(window.localStorage.getItem('port_donor_porting_prefix') || ''); }
+    catch (_) { return ''; }
+  });
+  const [showPrefixInfo, setShowPrefixInfo] = useState(false);
+  useEffect(() => {
+    try { window.localStorage.setItem('port_donor_porting_prefix', String(portingPrefix || '')); }
+    catch (_) { }
+  }, [portingPrefix]);
   const [errorText, setErrorText] = useState('');
   const [isNarrow, setIsNarrow] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 980 : false));
   const pendingSkinSelectionIdRef = useRef(null);
@@ -718,7 +729,13 @@ function PortDonorFromGameModal({
     onYouTubeSkin: handleYouTubeSkin,
   }), [filteredSkins, selectedChampion, selectedSkin, handleYouTubeSkin]);
 
-  const canConfirm = Boolean(selectedChampion && selectedSkin && !loading && !loadingChampions && !loadingSkins);
+  // Sanitize to a filesystem-safe slug. Same rule as the rest of the app:
+  // lowercase, letters/digits/underscores only.
+  const sanitizedPortingPrefix = String(portingPrefix || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const canConfirm = Boolean(
+    selectedChampion && selectedSkin && sanitizedPortingPrefix
+    && !loading && !loadingChampions && !loadingSkins
+  );
 
   const handleSelectRecent = (recentItem) => {
     if (!recentItem) return;
@@ -837,6 +854,77 @@ function PortDonorFromGameModal({
           >
             {'\u2715'}
           </button>
+        </div>
+
+        {/* Required porting prefix \u2014 controls the shared folder name
+            (assets/<prefix>/portedparticles/) that consolidated assets land in. */}
+        <div
+          style={{
+            padding: '12px 20px',
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            background: 'rgba(255,255,255,0.02)',
+          }}
+        >
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '0.72rem',
+            color: 'rgba(255,255,255,0.7)',
+            letterSpacing: '0.04em',
+            whiteSpace: 'nowrap',
+          }}>
+            Porting prefix
+            <button
+              type="button"
+              onClick={() => setShowPrefixInfo(true)}
+              title="Why a prefix is required"
+              style={{
+                width: 18, height: 18, borderRadius: '50%',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                background: 'color-mix(in srgb, var(--accent2), transparent 80%)',
+                color: 'var(--accent2)',
+                border: '1px solid color-mix(in srgb, var(--accent2), transparent 50%)',
+                fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', padding: 0,
+              }}
+            >
+              i
+            </button>
+          </div>
+          <input
+            type="text"
+            value={portingPrefix}
+            onChange={(e) => setPortingPrefix(e.target.value)}
+            placeholder="e.g. mymod, sera_kda \u2014 folder will be assets/<prefix>/portedparticles/"
+            disabled={loading}
+            spellCheck={false}
+            style={{
+              flex: 1,
+              padding: '7px 10px',
+              background: 'color-mix(in srgb, var(--accent2) 8%, transparent)',
+              border: `1px solid ${sanitizedPortingPrefix
+                ? 'color-mix(in srgb, var(--accent2), transparent 55%)'
+                : 'color-mix(in srgb, #ff7766, transparent 50%)'}`,
+              borderRadius: 7,
+              color: 'var(--accent2)',
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '0.78rem',
+              outline: 'none',
+            }}
+          />
+          <div style={{
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '0.68rem',
+            color: sanitizedPortingPrefix ? 'rgba(255,255,255,0.45)' : '#ff7766',
+            minWidth: 160,
+            textAlign: 'right',
+          }}>
+            {sanitizedPortingPrefix
+              ? `assets/${sanitizedPortingPrefix}/portedparticles/`
+              : 'required'}
+          </div>
         </div>
 
         {Array.isArray(recentDonors) && recentDonors.length > 0 ? (
@@ -1079,7 +1167,7 @@ function PortDonorFromGameModal({
           </button>
           <button
             type="button"
-            onClick={() => onConfirm({ champion: selectedChampion, skin: selectedSkin })}
+            onClick={() => onConfirm({ champion: selectedChampion, skin: selectedSkin, portingPrefix: sanitizedPortingPrefix })}
             disabled={!canConfirm}
             style={{
               padding: '7px 12px',
@@ -1100,6 +1188,11 @@ function PortDonorFromGameModal({
           </button>
         </div>
       </div>
+      <ModPrefixInfoModal
+        open={showPrefixInfo}
+        onClose={() => setShowPrefixInfo(false)}
+        context="donor"
+      />
     </div>
   );
 }

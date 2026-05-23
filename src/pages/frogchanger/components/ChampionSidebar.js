@@ -124,9 +124,9 @@ const ChampionSidebar = ({
               />
             )}
 
-            {!offlineMode ? (
+            {champion.hideAvatar ? null : !offlineMode ? (
               <img
-                src={getChampionIconUrl(champion.id)}
+                src={champion.championIconUrl || getChampionIconUrl(champion.id)}
                 alt={champion.name}
                 className="w-8 h-8 rounded-full transition-all duration-200"
                 style={isActive
@@ -135,6 +135,11 @@ const ChampionSidebar = ({
                     boxShadow: '0 0 14px color-mix(in srgb, var(--accent), transparent 55%)',
                   }
                   : undefined}
+                onError={(e) => {
+                  // Hide the broken-image placeholder for synthetic rows like
+                  // the Generic emote bucket where no champion icon exists.
+                  e.currentTarget.style.visibility = 'hidden';
+                }}
               />
             ) : (
               <div className="w-8 h-8 rounded-full bg-gray-700 text-[9px] text-gray-300 flex items-center justify-center">

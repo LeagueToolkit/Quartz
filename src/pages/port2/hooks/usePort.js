@@ -280,17 +280,27 @@ export default function usePort() {
       setStatusMessage('Saving modified target file...');
       setFileSaved(false);
 
+      // Drain any pending deferred writes from port/delete handlers before
+      // we read targetPyContent — otherwise save could write stale text
+      // when the user clicks Save right after a port/delete.
+      try { mutations.flushPendingWrites?.(); } catch (e) { console.warn('flush before save:', e); }
+
+      // The flush updated targetPyContentRef synchronously, but the React
+      // state update is batched. The closure's `file.targetPyContent` is
+      // stale. Pull from the ref so save sees the freshest text.
+      const freshPyContent = targetPyContentRef.current || file.targetPyContent;
+
       await new Promise(r => setTimeout(r, 10));
 
-      if (!file.targetPyContent || Object.keys(file.targetSystems || {}).length === 0) {
+      if (!freshPyContent || Object.keys(file.targetSystems || {}).length === 0) {
         setStatusMessage('No target file loaded');
         setIsProcessing(false);
         setProcessingText('');
         return;
       }
 
-      const existingPersistent = extractExistingPersistentConditions(file.targetPyContent);
-      let modifiedContent = file.targetPyContent;
+      const existingPersistent = extractExistingPersistentConditions(freshPyContent);
+      let modifiedContent = freshPyContent;
       const preSaveSystems = file.targetSystems || {};
 
       const hasDeleted = deletedEmitters.size > 0;
@@ -307,7 +317,7 @@ export default function usePort() {
           const emitters = sys.emitters?.map(e => e.originalContent ? e : (loadEmitterData(sys, e.name) || e)) || [];
           systemsForSave[key] = { ...sys, emitters };
         }
-        modifiedContent = generateModifiedPythonFromSystems(file.targetPyContent, systemsForSave);
+        modifiedContent = generateModifiedPythonFromSystems(freshPyContent, systemsForSave);
       }
 
       let finalContent = modifiedContent;
@@ -781,6 +791,8 @@ export default function usePort() {
     hasChangesToSave: () => !fileSaved,
     handleOpenTargetBin: file.handleOpenTargetBin,
     handleOpenDonorBin: file.handleOpenDonorBin,
+    processTargetBin: file.processTargetBin,
+    processDonorBin: file.processDonorBin,
     handleOpenInJade: file.handleOpenInJade,
     handleOpenBackupViewer,
     handleOpenNewSystemModal,

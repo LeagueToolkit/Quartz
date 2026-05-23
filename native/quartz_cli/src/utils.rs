@@ -1,5 +1,5 @@
-use std::fs::File;
-use std::io::{BufReader, BufWriter};
+use std::fs::{self, File};
+use std::io::{BufReader, Cursor};
 use std::path::{Path, PathBuf};
 
 use ltk_meta::Bin;
@@ -37,10 +37,12 @@ pub fn read_bin(path: &Path) -> Result<Bin, String> {
         .map_err(|e| format!("Failed to parse {}: {}", path.display(), e))
 }
 
+/// Write a Bin to disk. Uses an in-memory buffer because Bin::to_writer
+/// seeks heavily (~336k lseeks); BufWriter<File> flushes on every seek.
 pub fn write_bin(path: &Path, bin: &Bin) -> Result<(), String> {
-    let file = File::create(path)
-        .map_err(|e| format!("Failed to create {}: {}", path.display(), e))?;
-    let mut writer = BufWriter::new(file);
+    let mut writer = Cursor::new(Vec::new());
     bin.to_writer(&mut writer)
+        .map_err(|e| format!("Failed to serialize bin: {}", e))?;
+    fs::write(path, writer.into_inner())
         .map_err(|e| format!("Failed to write {}: {}", path.display(), e))
 }

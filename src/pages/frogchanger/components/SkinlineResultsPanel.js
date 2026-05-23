@@ -76,11 +76,13 @@ const SkinlineResultsPanel = ({
               <div className="aspect-[3/4] relative overflow-hidden">
                 {!offlineMode ? (
                   <img
-                    src={`https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${skin.championAlias}_${skin.skinNumber}.jpg`}
+                    src={skin.splashUrl || `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${skin.championAlias}_${skin.skinNumber}.jpg`}
                     alt={skin.name}
                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                     draggable={false}
                     onError={(e) => {
+                      // For TFT (splashUrl set), there's no _0 fallback; just hide on error.
+                      if (skin.splashUrl) return;
                       e.target.src = `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${skin.championAlias}_0.jpg`;
                     }}
                   />

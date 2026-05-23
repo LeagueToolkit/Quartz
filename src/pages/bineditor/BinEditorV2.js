@@ -69,6 +69,7 @@ import {
     scheduleTextureHoverClose
 } from '../../components/modals/textureHoverPreview.js';
 import { SearchInput } from '../port2/components/common/Inputs';
+import { useBinFileDrop } from '../port2/components/common/binFileDrop';
 
 // Icons (using simple Unicode for now)
 const ICONS = {
@@ -594,6 +595,9 @@ export default function BinEditorV2() {
 
             const isReload = action === 'reload-bin';
             const isSameFile = binPath && String(binPath).toLowerCase() === String(handoff.bin_path).toLowerCase();
+            // reload-bin only refreshes what we already have open. Drop it
+            // otherwise — don't slurp in a new bin out of nowhere.
+            if (isReload && !isSameFile) return;
             if (isReload && isSameFile && hasUnsavedChanges) {
                 setExternalChangeModal({
                     open: true,
@@ -2070,16 +2074,45 @@ export default function BinEditorV2() {
 
     // ============ MAIN RENDER ============
 
+    // OS file drop → load through existing processBinFile pipeline.
+    const handleBinEditorFileDrop = useCallback((droppedPath) => {
+        if (typeof processBinFile === 'function') processBinFile(droppedPath);
+    }, [processBinFile]);
+    const binFileDrop = useBinFileDrop(handleBinEditorFileDrop);
+
     return (
-        <div className="bin-editor-container" style={{
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100%',
-            background: 'var(--bg)',
-            color: 'var(--text)',
-            fontFamily: 'var(--app-font-family), -apple-system, sans-serif',
-            overflow: 'hidden'
-        }}>
+        <div
+            className="bin-editor-container"
+            style={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                background: 'var(--bg)',
+                color: 'var(--text)',
+                fontFamily: 'var(--app-font-family), -apple-system, sans-serif',
+                overflow: 'hidden',
+                position: 'relative',
+            }}
+            {...binFileDrop.handlers}
+        >
+            {binFileDrop.isOver && (
+                <div style={{
+                    position: 'absolute', inset: 0, zIndex: 9999, pointerEvents: 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+                    border: '2px dashed var(--accent)', borderRadius: '8px',
+                    transition: 'all 0.15s ease-out',
+                }}>
+                    <div style={{
+                        padding: '10px 16px', borderRadius: '6px',
+                        border: '1px dashed var(--accent)', color: 'var(--accent)',
+                        fontFamily: 'JetBrains Mono, monospace', fontSize: '13px',
+                        background: 'color-mix(in srgb, var(--accent), transparent 80%)',
+                    }}>
+                        Drop .bin or .py to load
+                    </div>
+                </div>
+            )}
             {isLoading && <GlowingSpinner text={loadingText} />}
 
             {/* Top Action Bar */}

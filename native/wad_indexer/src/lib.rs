@@ -8,11 +8,15 @@ use std::io::{Write, Cursor};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::UNIX_EPOCH;
+use std::sync::atomic::{AtomicU32, AtomicBool, Ordering};
+use std::time::{Duration, UNIX_EPOCH};
 use ltk_wad::Wad;
 use ltk_file::LeagueFileKind;
 use xxhash_rust::xxh64::xxh64;
-use napi::{Env, Task, bindgen_prelude::{AsyncTask, Buffer}};
+use napi::{Env, JsFunction, Task, bindgen_prelude::{AsyncTask, Buffer}};
+use napi::threadsafe_function::{
+  ThreadsafeFunction, ThreadsafeFunctionCallMode, ErrorStrategy, ThreadSafeCallContext,
+};
 use heed::{Database, EnvOpenOptions};
 use heed::types::{Bytes, Str};
 use memmap2::Mmap;
@@ -551,7 +555,7 @@ pub fn extract_wad(
         let stem = final_path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let is_hex_hash = stem.len() == 16 && stem.chars().all(|c| c.is_ascii_hexdigit());
         if final_path.extension().is_none() && is_hex_hash {
-          if let Some(ext) = LeagueFileKind::identify_from_bytes_with_offset(&data, 64).extension() {
+          if let Some(ext) = LeagueFileKind::identify_from_bytes(&data).extension() {
             final_path.set_extension(ext);
           }
         }
@@ -676,12 +680,124 @@ pub fn extract_selected_async(
   })
 }
 
+// ── extractSelectedWithProgress ─────────────────────────────────────────────
+// Same as extractSelectedAsync, but bumps an atomic per file and forwards the
+// count to a JS callback via a threadsafe function. Used to power a real
+// progress bar in the renderer.
+
+#[napi(object)]
+pub struct ExtractProgressEvent {
+  pub done: u32,
+  pub total: u32,
+}
+
+pub struct ExtractSelectedProgressTask {
+  items: Vec<WadExtractItem>,
+  output_dir: String,
+  replace_existing: Option<bool>,
+  preserve_paths: Option<bool>,
+  progress_fn: ThreadsafeFunction<ExtractProgressEvent, ErrorStrategy::Fatal>,
+}
+
+#[napi]
+impl Task for ExtractSelectedProgressTask {
+  type Output = WadExtractResult;
+  type JsValue = WadExtractResult;
+
+  fn compute(&mut self) -> napi::Result<Self::Output> {
+    let total = self.items.len() as u32;
+    let counter = Arc::new(AtomicU32::new(0));
+
+    // Initial tick so the bar shows immediately.
+    self.progress_fn.call(
+      ExtractProgressEvent { done: 0, total },
+      ThreadsafeFunctionCallMode::NonBlocking,
+    );
+
+    // Ticker thread polls the atomic ~12x/s and forwards to JS.
+    let done_flag = Arc::new(AtomicBool::new(false));
+    let counter_c = counter.clone();
+    let done_flag_c = done_flag.clone();
+    let progress_fn_c = self.progress_fn.clone();
+    let ticker = std::thread::spawn(move || {
+      let mut last_reported: u32 = 0;
+      while !done_flag_c.load(Ordering::Relaxed) {
+        let cur = counter_c.load(Ordering::Relaxed);
+        if cur != last_reported {
+          last_reported = cur;
+          progress_fn_c.call(
+            ExtractProgressEvent { done: cur, total },
+            ThreadsafeFunctionCallMode::NonBlocking,
+          );
+        }
+        std::thread::sleep(Duration::from_millis(80));
+      }
+    });
+
+    let result = extract_selected_impl(
+      self.items.clone(),
+      self.output_dir.clone(),
+      self.replace_existing,
+      self.preserve_paths,
+      Some(counter.clone()),
+    );
+
+    done_flag.store(true, Ordering::Relaxed);
+    let _ = ticker.join();
+
+    // Final 100% tick.
+    self.progress_fn.call(
+      ExtractProgressEvent { done: total, total },
+      ThreadsafeFunctionCallMode::NonBlocking,
+    );
+
+    Ok(result)
+  }
+
+  fn resolve(&mut self, _env: Env, output: Self::Output) -> napi::Result<Self::JsValue> {
+    Ok(output)
+  }
+}
+
+#[napi(js_name = "extractSelectedWithProgress")]
+pub fn extract_selected_with_progress(
+  items: Vec<WadExtractItem>,
+  output_dir: String,
+  replace_existing: Option<bool>,
+  preserve_paths: Option<bool>,
+  #[napi(ts_arg_type = "(progress: { done: number, total: number }) => void")]
+  progress_callback: JsFunction,
+) -> napi::Result<AsyncTask<ExtractSelectedProgressTask>> {
+  let tsfn: ThreadsafeFunction<ExtractProgressEvent, ErrorStrategy::Fatal> = progress_callback
+    .create_threadsafe_function(0, |ctx: ThreadSafeCallContext<ExtractProgressEvent>| {
+      Ok(vec![ctx.value])
+    })?;
+
+  Ok(AsyncTask::new(ExtractSelectedProgressTask {
+    items,
+    output_dir,
+    replace_existing,
+    preserve_paths,
+    progress_fn: tsfn,
+  }))
+}
+
 #[napi(js_name = "extractSelected")]
 pub fn extract_selected(
   items: Vec<WadExtractItem>,
   output_dir: String,
   replace_existing: Option<bool>,
   preserve_paths: Option<bool>,
+) -> WadExtractResult {
+  extract_selected_impl(items, output_dir, replace_existing, preserve_paths, None)
+}
+
+fn extract_selected_impl(
+  items: Vec<WadExtractItem>,
+  output_dir: String,
+  replace_existing: Option<bool>,
+  preserve_paths: Option<bool>,
+  progress: Option<Arc<AtomicU32>>,
 ) -> WadExtractResult {
   if output_dir.is_empty() {
     return WadExtractResult {
@@ -773,6 +889,7 @@ pub fn extract_selected(
     for p in parents_to_create { let _ = fs::create_dir_all(p); }
 
     let mmap_ref = &mmap;
+    let progress_ref = progress.as_ref();
     let results: Vec<(u32, u32)> = extraction_plan
       .par_chunks((extraction_plan.len() / rayon::current_num_threads().max(1)).max(1))
       .map(|slice| {
@@ -780,16 +897,24 @@ pub fn extract_selected(
         let mut s = 0;
         let mut local_wad = match Wad::mount(Cursor::new(&mmap_ref[..])) {
           Ok(w) => w,
-          Err(_) => return (0, slice.len() as u32),
+          Err(_) => {
+            if let Some(c) = progress_ref { c.fetch_add(slice.len() as u32, Ordering::Relaxed); }
+            return (0, slice.len() as u32);
+          }
         };
         for (chunk, out_path) in slice {
           let data = match local_wad.load_chunk_decompressed(chunk) {
             Ok(d) => d,
-            Err(_) => { s += 1; continue; }
+            Err(_) => {
+              s += 1;
+              if let Some(c) = progress_ref { c.fetch_add(1, Ordering::Relaxed); }
+              continue;
+            }
           };
           // extractSelected: write with the exact relPath the caller provided —
           // no extension guessing, so the on-disk name matches the tree.
           if fs::write(out_path, &data).is_ok() { e += 1; } else { s += 1; }
+          if let Some(c) = progress_ref { c.fetch_add(1, Ordering::Relaxed); }
         }
         (e, s)
       })
@@ -837,6 +962,29 @@ const PATH_PREFIXES: &[&[u8]] = &[
   b"clientstates/", b"ux/", b"uiautoatlas/",
 ];
 
+/// Asset extensions used to recognise mod root-level paths that don't start
+/// with any of `PATH_PREFIXES`. Mods sometimes ship assets under a custom
+/// root namespace (e.g. `reddivinekinggaren/foo.dds`) — those paths live
+/// inside the mod's BIN strings and must be hashed for the unpacker to
+/// resolve them correctly. Mirrored from quartz_cli/src/commands/wad.rs.
+const ROOT_ASSET_EXTS: &[&[u8]] = &[
+  b".dds", b".tex", b".skn", b".skl", b".anm", b".bin", b".bnk", b".wpk",
+  b".wem", b".scb", b".sco", b".scn", b".troybin", b".luaobj", b".lua",
+  b".dat", b".png", b".jpg", b".webp", b".mapgeo",
+];
+
+fn looks_like_path(s: &[u8]) -> bool {
+  if PATH_PREFIXES.iter().any(|p| s.len() >= p.len() && s[..p.len()].eq_ignore_ascii_case(p)) {
+    return true;
+  }
+  if !s.contains(&b'/') { return false; }
+  ROOT_ASSET_EXTS.iter().any(|ext| {
+    if s.len() < ext.len() { return false; }
+    let tail = &s[s.len() - ext.len()..];
+    tail.eq_ignore_ascii_case(ext)
+  })
+}
+
 fn xxhash_path(s: &str) -> u64 { xxh64(s.as_bytes(), 0) }
 
 fn fnv1a_lower(s: &str) -> u32 {
@@ -859,8 +1007,7 @@ fn scan_bin_game_hashes(data: &[u8]) -> Vec<(u64, String)> {
       if let Some(slice) = data.get(i + 2..i + 2 + len) {
         if let Ok(s) = std::str::from_utf8(slice) {
           let lb = s.as_bytes();
-          let is_path = s.contains('/') && s.is_ascii()
-            && PATH_PREFIXES.iter().any(|p| lb.len() >= p.len() && lb[..p.len()].eq_ignore_ascii_case(p));
+          let is_path = s.contains('/') && s.is_ascii() && looks_like_path(lb);
           if is_path {
             let lower = s.to_ascii_lowercase();
             results.push((xxhash_path(&lower), lower.clone()));
@@ -1030,7 +1177,7 @@ pub fn extract_hashes_from_wad(wad_path: String, hash_dir: Option<String>) -> Ex
 
 use ltk_meta::Bin;
 use ltk_ritobin::{parse, write_with_hashes, HashProvider};
-use std::io::{BufReader, BufWriter};
+use std::io::BufReader;
 
 /// LMDB-backed HashProvider for ritobin. The lmdb-hashes "bin" DB merges all
 /// four bin hash categories (entries, fields, hashes, types) into a single
@@ -1157,16 +1304,15 @@ pub fn py_to_bin(py_path: String, bin_path: String) -> bool {
 
   let tree = file_ast.to_bin_tree();
 
-  let out_file = match fs::File::create(&bin_path) {
-    Ok(f) => f,
-    Err(e) => {
-      eprintln!("pyToBin: failed to create bin file {}: {}", bin_path, e);
-      return false;
-    }
-  };
-  let mut writer = BufWriter::new(out_file);
+  // Use in-memory buffer: Bin::to_writer seeks heavily (~336k lseeks),
+  // BufWriter<File> flushes on every seek. Cursor<Vec> makes seeks free.
+  let mut writer = Cursor::new(Vec::new());
   if let Err(e) = tree.to_writer(&mut writer) {
     eprintln!("pyToBin: failed to write bin stream: {}", e);
+    return false;
+  }
+  if let Err(e) = fs::write(&bin_path, writer.into_inner()) {
+    eprintln!("pyToBin: failed to write bin file {}: {}", bin_path, e);
     return false;
   }
 
@@ -1242,4 +1388,242 @@ pub fn troybin_to_text(data: Buffer) -> napi::Result<String> {
 pub fn luabin_to_text(data: Buffer) -> napi::Result<String> {
     luabin64::convert_luabin(&data)
         .map_err(napi::Error::from_reason)
+}
+
+// ── extractLuabins ──────────────────────────────────────────────────────────
+// Scan a directory for .wad.client files, resolve hashes via LMDB,
+// and extract only .luabin / .luabin64 chunks to output_dir.
+
+#[napi(object)]
+pub struct ExtractLuabinsResult {
+  pub success: bool,
+  pub error: Option<String>,
+  #[napi(js_name = "extractedCount")]
+  pub extracted_count: u32,
+  #[napi(js_name = "wadCount")]
+  pub wad_count: u32,
+}
+
+#[napi(js_name = "extractLuabins")]
+pub fn extract_luabins(
+  game_dir: String,
+  output_dir: String,
+  hash_path: String,
+) -> ExtractLuabinsResult {
+  // 1. Find all .wad.client files recursively
+  let wad_paths = find_wad_clients(&game_dir);
+  if wad_paths.is_empty() {
+    return ExtractLuabinsResult {
+      success: false,
+      error: Some(format!("No .wad.client files found in {}", game_dir)),
+      extracted_count: 0,
+      wad_count: 0,
+    };
+  }
+
+  if let Err(e) = fs::create_dir_all(&output_dir) {
+    return ExtractLuabinsResult {
+      success: false,
+      error: Some(format!("Failed to create output dir: {}", e)),
+      extracted_count: 0,
+      wad_count: 0,
+    };
+  }
+
+  // Prime LMDB
+  let hash_dir = hash_path.as_str();
+  if !hash_dir.is_empty() { let _ = get_wad_env(hash_dir); }
+  let extracted_map = if hash_dir.is_empty() {
+    Arc::new(HashMap::new())
+  } else {
+    get_or_load_extracted_hashes(hash_dir)
+  };
+
+  let output_root = Path::new(&output_dir);
+  let mut total_extracted: u32 = 0;
+  let mut wad_count: u32 = 0;
+
+  for wad_path in &wad_paths {
+    let file = match fs::File::open(wad_path) {
+      Ok(f) => f,
+      Err(_) => continue,
+    };
+    let mmap = match unsafe { Mmap::map(&file) } {
+      Ok(m) => m,
+      Err(_) => continue,
+    };
+    let mut wad = match Wad::mount(Cursor::new(&mmap[..])) {
+      Ok(w) => w,
+      Err(_) => continue,
+    };
+
+    let chunks: Vec<_> = wad.chunks().iter().copied().collect();
+    let hash_u64s: Vec<u64> = chunks.iter().map(|c| c.path_hash()).collect();
+    let resolved: Vec<String> = resolve_hashes_with_overlay(&hash_u64s, hash_dir, &extracted_map);
+
+    let mut found_any = false;
+    for (chunk, path_str) in chunks.iter().zip(resolved.iter()) {
+      let lower = path_str.to_lowercase();
+      if !lower.ends_with(".luabin") && !lower.ends_with(".luabin64") {
+        continue;
+      }
+
+      let data = match wad.load_chunk_decompressed(chunk) {
+        Ok(d) => d,
+        Err(_) => continue,
+      };
+
+      let rel = normalize_rel_path(path_str);
+      let out_path = output_root.join(&rel);
+      if let Some(parent) = out_path.parent() {
+        let _ = fs::create_dir_all(parent);
+      }
+      if fs::write(&out_path, &data).is_ok() {
+        total_extracted += 1;
+        found_any = true;
+      }
+    }
+    if found_any { wad_count += 1; }
+  }
+
+  ExtractLuabinsResult {
+    success: true,
+    error: None,
+    extracted_count: total_extracted,
+    wad_count,
+  }
+}
+
+// ── collectLuabinClasses ────────────────────────────────────────────────────
+// Scan all .wad.client files, decompress luabin chunks in memory,
+// parse bytecode, and collect every global variable name + count.
+
+#[napi(object)]
+pub struct LuabinClass {
+  pub name: String,
+  pub count: u32,
+}
+
+#[napi(object)]
+pub struct CollectLuabinClassesResult {
+  pub success: bool,
+  pub error: Option<String>,
+  pub classes: Vec<LuabinClass>,
+  #[napi(js_name = "totalFiles")]
+  pub total_files: u32,
+  #[napi(js_name = "emptyFiles")]
+  pub empty_files: u32,
+}
+
+#[napi(js_name = "collectLuabinClasses")]
+pub fn collect_luabin_classes(
+  game_dir: String,
+  hash_path: String,
+  output_path: Option<String>,
+) -> CollectLuabinClassesResult {
+  let wad_paths = find_wad_clients(&game_dir);
+  if wad_paths.is_empty() {
+    return CollectLuabinClassesResult {
+      success: false,
+      error: Some(format!("No .wad.client files found in {}", game_dir)),
+      classes: Vec::new(),
+      total_files: 0,
+      empty_files: 0,
+    };
+  }
+
+  let hash_dir = hash_path.as_str();
+  if !hash_dir.is_empty() { let _ = get_wad_env(hash_dir); }
+  let extracted_map = if hash_dir.is_empty() {
+    Arc::new(HashMap::new())
+  } else {
+    get_or_load_extracted_hashes(hash_dir)
+  };
+
+  let mut class_counts: HashMap<String, u32> = HashMap::new();
+  let mut total_files: u32 = 0;
+  let mut empty_files: u32 = 0;
+
+  for wad_path in &wad_paths {
+    let file = match fs::File::open(wad_path) { Ok(f) => f, Err(_) => continue };
+    let mmap = match unsafe { Mmap::map(&file) } { Ok(m) => m, Err(_) => continue };
+    let mut wad = match Wad::mount(Cursor::new(&mmap[..])) { Ok(w) => w, Err(_) => continue };
+
+    let chunks: Vec<_> = wad.chunks().iter().copied().collect();
+    let hash_u64s: Vec<u64> = chunks.iter().map(|c| c.path_hash()).collect();
+    let resolved: Vec<String> = resolve_hashes_with_overlay(&hash_u64s, hash_dir, &extracted_map);
+
+    for (chunk, path_str) in chunks.iter().zip(resolved.iter()) {
+      let lower = path_str.to_lowercase();
+      if !lower.ends_with(".luabin") && !lower.ends_with(".luabin64") {
+        continue;
+      }
+
+      let data = match wad.load_chunk_decompressed(chunk) { Ok(d) => d, Err(_) => continue };
+      total_files += 1;
+
+      let text = match luabin64::convert_luabin(&data) { Ok(t) => t, Err(_) => continue };
+      if text.trim().is_empty() { empty_files += 1; continue; }
+
+      for line in text.lines() {
+        // Match "GlobalName = ..." at the start of a line
+        if let Some(eq_pos) = line.find(" = ") {
+          let name = &line[..eq_pos];
+          if !name.is_empty()
+            && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            && name.as_bytes()[0].is_ascii_alphabetic() || name.as_bytes()[0] == b'_'
+          {
+            *class_counts.entry(name.to_string()).or_insert(0) += 1;
+          }
+        }
+      }
+    }
+  }
+
+  let mut classes: Vec<LuabinClass> = class_counts
+    .into_iter()
+    .map(|(name, count)| LuabinClass { name, count })
+    .collect();
+  classes.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.name.cmp(&b.name)));
+
+  // Write JSON if output_path provided
+  if let Some(ref out) = output_path {
+    if let Some(parent) = Path::new(out).parent() {
+      let _ = fs::create_dir_all(parent);
+    }
+    let mut json = String::from("[\n");
+    for (i, c) in classes.iter().enumerate() {
+      use std::fmt::Write as FmtWrite;
+      let _ = write!(json, "  {{ \"name\": \"{}\", \"count\": {} }}", c.name, c.count);
+      if i + 1 < classes.len() { json.push(','); }
+      json.push('\n');
+    }
+    json.push(']');
+    let _ = fs::write(out, json.as_bytes());
+  }
+
+  CollectLuabinClassesResult {
+    success: true,
+    error: None,
+    classes,
+    total_files,
+    empty_files,
+  }
+}
+
+fn find_wad_clients(dir: &str) -> Vec<String> {
+  let mut results = Vec::new();
+  fn walk(path: &Path, out: &mut Vec<String>) {
+    let Ok(entries) = fs::read_dir(path) else { return };
+    for entry in entries.flatten() {
+      let p = entry.path();
+      if p.is_dir() {
+        walk(&p, out);
+      } else if p.to_string_lossy().ends_with(".wad.client") {
+        out.push(p.to_string_lossy().into_owned());
+      }
+    }
+  }
+  walk(Path::new(dir), &mut results);
+  results
 }

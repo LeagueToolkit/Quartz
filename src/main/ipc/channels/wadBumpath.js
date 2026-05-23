@@ -159,6 +159,7 @@ const CHAMPION_SPECIAL_CASES = {
   monkeyking: 'monkeyking',
   'nunu & willump': 'nunu',
   nunu: 'nunu',
+  'renata glasc': 'renata',
 };
 
 function getChampionFileName(championName) {
@@ -231,6 +232,8 @@ function registerWadBumpathChannels({
   fs,
   getHashPath,
   loadBumpathModule,
+  loadBinSplitterModule,
+  loadAssetConsolidatorModule,
   loadWadClassModule,
   loadBinModule,
 }) {
@@ -423,6 +426,7 @@ function registerWadBumpathChannels({
         fastSkinOnly = false,
         preserveHudIcons2D = true,
         isRepathExtract = false, // USER REQUEST: Prefix folder if for repath
+        isTftMode = false,
       } = data || {};
 
       if (!championName || !leaguePath || !extractionPath) {
@@ -442,8 +446,9 @@ function registerWadBumpathChannels({
 
       // P1-13: path.join — no hardcoded backslash concatenation
       const championFileName = getChampionFileName(championName);
-      const wadFileName = `${championFileName}.wad.client`;
-      const wadFilePath = path.join(leaguePath, wadFileName);
+      const wadFileName = isTftMode ? 'Companions.wad.client' : `${championFileName}.wad.client`;
+      const actualLeaguePath = isTftMode ? path.dirname(leaguePath) : leaguePath;
+      const wadFilePath = path.join(actualLeaguePath, wadFileName);
 
       const skinNameSafe = skinName ? skinName.replace(/[^a-zA-Z0-9]/g, '_') : String(skinId);
       const effectiveSkinId = normalizeSkinSelectionId(chromaId != null ? chromaId : skinId);
@@ -467,20 +472,22 @@ function registerWadBumpathChannels({
       // USER REQUEST: Auto-version if directory exists
       outputDir = getUniqueOutputDir(fs, outputDir);
 
-      // Find voiceover WADs (sync readdir is fine in main process)
+      // Find voiceover WADs (sync readdir is fine in main process). TFT has none.
       let voiceoverWadFiles = [];
-      try {
-        const dirEntries = fs.readdirSync(leaguePath);
-        const wadFilenameLower = wadFileName.toLowerCase();
-        voiceoverWadFiles = dirEntries.filter(file => {
-          const lower = file.toLowerCase();
-          return lower.startsWith(championFileName) &&
-            lower.endsWith('.wad.client') &&
-            lower !== wadFilenameLower &&
-            (file[championFileName.length] === '.' || file[championFileName.length] === '_');
-        });
-      } catch (err) {
-        console.warn('[wad:extractBundle] Could not scan voiceover WADs:', err.message);
+      if (!isTftMode) {
+        try {
+          const dirEntries = fs.readdirSync(leaguePath);
+          const wadFilenameLower = wadFileName.toLowerCase();
+          voiceoverWadFiles = dirEntries.filter(file => {
+            const lower = file.toLowerCase();
+            return lower.startsWith(championFileName) &&
+              lower.endsWith('.wad.client') &&
+              lower !== wadFilenameLower &&
+              (file[championFileName.length] === '.' || file[championFileName.length] === '_');
+          });
+        } catch (err) {
+          console.warn('[wad:extractBundle] Could not scan voiceover WADs:', err.message);
+        }
       }
 
       // Validate main WAD exists
@@ -554,9 +561,11 @@ function registerWadBumpathChannels({
         // Scan entire TOC for ALL character folders that have a matching skin BIN.
         // A champion's WAD contains the main character + any subcharacters (e.g.
         // annie + annietibbers), so every characters/*/skins/skinN.bin is relevant.
-        const skinBinPattern = new RegExp(
-          `^(?:assets|data)/characters/([^/]+)/skins/skin0*${skinNum}\\.bin$`
-        );
+        // Companions.wad however contains every tactician — in TFT mode restrict to
+        // the single selected one so we don't bumpath ~80 unrelated pets.
+        const skinBinPattern = isTftMode
+          ? new RegExp(`^(?:assets|data)/characters/(${championFileName})/skins/skin0*${skinNum}\\.bin$`)
+          : new RegExp(`^(?:assets|data)/characters/([^/]+)/skins/skin0*${skinNum}\\.bin$`);
         const allSeedBins = [];
         let mainBinPath = null;
         for (const relPath of chunkByPath.keys()) {
@@ -961,11 +970,16 @@ function registerWadBumpathChannels({
       const hashPath = getHashPath(data.hashPath);
       const ignoreMissing = data.ignoreMissing !== false;
       const combineLinked = data.combineLinked !== false;
-      const customPrefix = data.customPrefix || 'bum';
+      const customPrefix = String(data.customPrefix || '').trim();
+      if (!customPrefix) {
+        return { error: 'bumpath:repath requires a customPrefix (no more `bum` default).' };
+      }
       const processTogether = data.processTogether || false;
       const preserveHudIcons2D = data.preserveHudIcons2D !== false;
-      const skipSfxRepath = data.skipSfxRepath !== false;
-      const skipVoiceoverRepath = data.skipVoiceoverRepath !== false;
+      // Default OFF: standalone Bumpath should repath everything the user gave it.
+      // FrogChanger always passes these flags explicitly (its safety opt-in lives there).
+      const skipSfxRepath = data.skipSfxRepath === true;
+      const skipVoiceoverRepath = data.skipVoiceoverRepath === true;
 
       // USER REQUEST: Auto-version if directory exists
       data.outputDir = getUniqueOutputDir(fs, data.outputDir);
@@ -1011,7 +1025,7 @@ function registerWadBumpathChannels({
         await bum.scan(hashPath);
         console.log(`Found ${Object.keys(bum.scannedTree).length} entries`);
 
-        if (customPrefix !== 'bum') {
+        if (customPrefix) {
           const hashes = Object.keys(bum.entryPrefix).filter(h => h !== 'All_BINs');
           bum.applyPrefix(hashes, customPrefix);
           console.log(`Applied prefix '${customPrefix}' to ${hashes.length} entries`);
@@ -1048,6 +1062,50 @@ function registerWadBumpathChannels({
       };
     } catch (error) {
       console.error('[bumpath:repath] Error:', error);
+      return { error: error.message, stack: error.stack };
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // bin:splitSkinBins — split VFX/ANM entries out of every skin*.bin under a dir
+  //
+  // Input: { dir: string, splitVfx?: bool, splitAnm?: bool }
+  // Used by FrogChanger right after extract/repath to optionally partition each
+  // skin bin into a sibling `data/<champ>_(vfx|anm)_<stem>.bin`.
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('bin:consolidateAssets', async (_event, data) => {
+    try {
+      const dir = data?.dir;
+      const prefix = data?.prefix || '';
+      if (!dir) return { error: 'Missing dir' };
+      if (!fs.existsSync(dir)) return { error: `Directory not found: ${dir}` };
+      if (typeof loadAssetConsolidatorModule !== 'function') {
+        return { error: 'Asset consolidator loader not configured' };
+      }
+      const mod = await loadAssetConsolidatorModule();
+      return await mod.consolidateAssetsInDir(dir, { prefix });
+    } catch (error) {
+      console.error('[bin:consolidateAssets] Error:', error);
+      return { error: error.message, stack: error.stack };
+    }
+  });
+
+  ipcMain.handle('bin:splitSkinBins', async (_event, data) => {
+    try {
+      const dir = data?.dir;
+      const splitVfx = data?.splitVfx === true;
+      const splitAnm = data?.splitAnm === true;
+      if (!dir) return { error: 'Missing dir' };
+      if (!splitVfx && !splitAnm) return { scanned: 0, results: [] };
+      if (!fs.existsSync(dir)) return { error: `Directory not found: ${dir}` };
+      if (typeof loadBinSplitterModule !== 'function') {
+        return { error: 'Bin splitter loader not configured' };
+      }
+
+      const splitterMod = await loadBinSplitterModule();
+      return await splitterMod.splitSkinBinsInDir(dir, { splitVfx, splitAnm });
+    } catch (error) {
+      console.error('[bin:splitSkinBins] Error:', error);
       return { error: error.message, stack: error.stack };
     }
   });
@@ -1235,7 +1293,32 @@ function registerWadBumpathChannels({
         return { success: true, extractedCount: 0, skippedCount: items.length };
       }
 
-      const result = await nativeAddon.extractSelectedAsync(nativeItems, outputDir, replaceExisting, preservePaths);
+      // Use the progress-aware native function when available so the renderer
+      // can draw a real determinate bar. Falls back to the original call when
+      // the addon is older or the renderer didn't ask for progress.
+      const wantsProgress = data?.emitProgress !== false
+        && typeof nativeAddon.extractSelectedWithProgress === 'function';
+
+      let result;
+      if (wantsProgress) {
+        const sendProgress = (progress) => {
+          try {
+            if (event?.sender && !event.sender.isDestroyed()) {
+              event.sender.send('wad:extractSelected:progress', {
+                done: Number(progress?.done || 0),
+                total: Number(progress?.total || 0),
+              });
+            }
+          } catch (_) { /* renderer may have navigated away */ }
+        };
+        result = await nativeAddon.extractSelectedWithProgress(
+          nativeItems, outputDir, replaceExisting, preservePaths, sendProgress
+        );
+      } else {
+        result = await nativeAddon.extractSelectedAsync(
+          nativeItems, outputDir, replaceExisting, preservePaths
+        );
+      }
       if (result?.error) {
         return { error: result.error };
       }
@@ -1657,53 +1740,175 @@ function registerWadBumpathChannels({
   });
 
   // ---------------------------------------------------------------------------
-  // ritobin:toPy — convert .bin to .py using native Rust addon or fallback exe
+  // RitoBin error helpers — surface specific causes instead of one catch-all.
+  // The native addon currently returns bool; until that signature is widened
+  // to carry the underlying Rust error text, the JS side does its own
+  // pre-flight (file exists / readable / writable / not held open) so the
+  // toast message points the user at the actual problem instead of
+  // "addon failed or is not available".
+  // ---------------------------------------------------------------------------
+  function ritobinAddonNotLoadedError() {
+    return [
+      'Native RitoBin addon could not be loaded.',
+      'Likely causes:',
+      ' • Missing Microsoft Visual C++ 2015-2022 redistributable',
+      '   (install: https://aka.ms/vs/17/release/vc_redist.x64.exe)',
+      ' • Antivirus quarantined wad_indexer.node',
+      '   (check %LOCALAPPDATA%\\Programs\\Quartz\\resources\\app.asar.unpacked\\native\\wad_indexer\\)',
+      ' • App installed under a path with non-ASCII characters in the username',
+    ].join('\n');
+  }
+
+  function preflightInputFile(filePath, kind) {
+    try {
+      const stat = nodeFs.statSync(filePath);
+      if (!stat.isFile()) {
+        return `Input ${kind} is not a regular file: ${filePath}`;
+      }
+      if (stat.size === 0) {
+        return `Input ${kind} is empty (0 bytes): ${filePath}`;
+      }
+    } catch (e) {
+      if (e && e.code === 'ENOENT') {
+        return `Input ${kind} does not exist: ${filePath}`;
+      }
+      if (e && e.code === 'EACCES') {
+        return `No permission to read ${kind}: ${filePath} (try moving it out of a protected folder)`;
+      }
+      return `Cannot stat input ${kind}: ${e.message}`;
+    }
+    // Also try to actually open for read so we catch sharing-violation
+    // when another app holds the file.
+    try {
+      const fd = nodeFs.openSync(filePath, 'r');
+      nodeFs.closeSync(fd);
+    } catch (e) {
+      if (e && (e.code === 'EBUSY' || e.code === 'EPERM')) {
+        return `Input ${kind} is locked by another process: ${filePath} (close any tool that has it open)`;
+      }
+      if (e && e.code === 'EACCES') {
+        return `No read access to ${kind}: ${filePath}`;
+      }
+      return `Cannot open ${kind} for reading: ${e.message}`;
+    }
+    return null;
+  }
+
+  function preflightOutputDir(outPath, kind) {
+    const parent = path.dirname(outPath);
+    try {
+      // W_OK = 2; works on Windows too via Node's translation.
+      nodeFs.accessSync(parent, nodeFs.constants.W_OK);
+    } catch (e) {
+      if (e && e.code === 'ENOENT') {
+        return `Output directory does not exist: ${parent}`;
+      }
+      if (e && e.code === 'EACCES') {
+        return `No permission to write ${kind} into ${parent} (move the file out of Program Files / a protected folder, or run Quartz as admin)`;
+      }
+      return `Cannot write ${kind} to ${parent}: ${e.message}`;
+    }
+    // If the destination already exists, make sure we can rewrite it (lock check).
+    if (nodeFs.existsSync(outPath)) {
+      try {
+        const fd = nodeFs.openSync(outPath, 'r+');
+        nodeFs.closeSync(fd);
+      } catch (e) {
+        if (e && (e.code === 'EBUSY' || e.code === 'EPERM')) {
+          return `Output ${kind} is locked by another process: ${outPath} (close any tool that has it open)`;
+        }
+      }
+    }
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // ritobin:toPy — convert .bin to .py using native Rust addon
   // ---------------------------------------------------------------------------
   ipcMain.handle('ritobin:toPy', async (_event, { filePath }) => {
     try {
-      const nativeAddon = tryLoadNativeWadIndexer();
       const pyFilePath = filePath.replace(/\.bin$/i, '.py');
 
-      if (nativeAddon && typeof nativeAddon.binToPy === 'function') {
-        let hashDir = null;
-        try {
-          // Attempt to get hash directory for unhashing
-          const appDataPath = process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Application Support' : process.env.HOME + '/.config');
-          const frogToolsDir = path.join(appDataPath, 'FrogTools');
-          const hashesDir = path.join(frogToolsDir, 'hashes');
-          if (nodeFs.existsSync(hashesDir)) {
-            hashDir = hashesDir;
-          }
-        } catch (_) { }
+      const inErr = preflightInputFile(filePath, 'bin');
+      if (inErr) return { success: false, error: inErr };
 
-        const success = nativeAddon.binToPy(filePath, pyFilePath, hashDir);
-        if (success) {
-          return { success: true, method: 'native', pyPath: pyFilePath };
-        }
+      const outErr = preflightOutputDir(pyFilePath, 'py');
+      if (outErr) return { success: false, error: outErr };
+
+      const nativeAddon = tryLoadNativeWadIndexer();
+      if (!nativeAddon) {
+        return { success: false, error: ritobinAddonNotLoadedError() };
+      }
+      if (typeof nativeAddon.binToPy !== 'function') {
+        return {
+          success: false,
+          error: 'Native addon loaded but binToPy export is missing — addon is out of date. Reinstall Quartz to refresh wad_indexer.node.',
+        };
       }
 
-      return { success: false, error: 'Native RitoBin addon failed or is not available' };
+      let hashDir = null;
+      try {
+        const appDataPath = process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Application Support' : process.env.HOME + '/.config');
+        const frogToolsDir = path.join(appDataPath, 'FrogTools');
+        const hashesDir = path.join(frogToolsDir, 'hashes');
+        if (nodeFs.existsSync(hashesDir)) {
+          hashDir = hashesDir;
+        }
+      } catch (_) { }
+
+      const success = nativeAddon.binToPy(filePath, pyFilePath, hashDir);
+      if (success) {
+        return { success: true, method: 'native', pyPath: pyFilePath };
+      }
+
+      // Pre-flight passed but addon still returned false. Most likely a parse
+      // failure inside the addon (corrupt or version-mismatched BIN). The
+      // exact reason is in the main-process console (look for `binToPy:` lines).
+      return {
+        success: false,
+        error: `BIN→PY conversion failed inside the addon (file: ${filePath}). The BIN may be corrupt, hand-edited, or use an unsupported format version. Check the Quartz main-process console for a "binToPy:" line with the precise Rust error.`,
+      };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: `BIN→PY: ${e.message}` };
     }
   });
 
   // ---------------------------------------------------------------------------
-  // ritobin:toBin — convert .py to .bin using native Rust addon or fallback exe
+  // ritobin:toBin — convert .py to .bin using native Rust addon
   // ---------------------------------------------------------------------------
   ipcMain.handle('ritobin:toBin', async (_event, { pyPath, binPath }) => {
     try {
+      const inErr = preflightInputFile(pyPath, 'py');
+      if (inErr) return { success: false, error: inErr };
+
+      const outErr = preflightOutputDir(binPath, 'bin');
+      if (outErr) return { success: false, error: outErr };
+
       const nativeAddon = tryLoadNativeWadIndexer();
-      if (nativeAddon && typeof nativeAddon.pyToBin === 'function') {
-        const success = nativeAddon.pyToBin(pyPath, binPath);
-        if (success) {
-          return { success: true, method: 'native', binPath };
-        }
+      if (!nativeAddon) {
+        return { success: false, error: ritobinAddonNotLoadedError() };
+      }
+      if (typeof nativeAddon.pyToBin !== 'function') {
+        return {
+          success: false,
+          error: 'Native addon loaded but pyToBin export is missing — addon is out of date. Reinstall Quartz to refresh wad_indexer.node.',
+        };
       }
 
-      return { success: false, error: 'Native RitoBin addon failed or is not available' };
+      const success = nativeAddon.pyToBin(pyPath, binPath);
+      if (success) {
+        return { success: true, method: 'native', binPath };
+      }
+
+      // Pre-flight passed but addon still returned false. Most likely a syntax
+      // error in the .py file (the ritobin parser). Exact reason is in the
+      // main-process console (look for `pyToBin:` lines).
+      return {
+        success: false,
+        error: `PY→BIN conversion failed inside the addon (file: ${pyPath}). The .py file likely has a syntax error or unsupported construct. Check the Quartz main-process console for a "pyToBin:" line with the precise Rust error.`,
+      };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: `PY→BIN: ${e.message}` };
     }
   });
 

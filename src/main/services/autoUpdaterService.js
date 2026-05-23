@@ -2,7 +2,7 @@ function createAutoUpdaterService({ autoUpdater, app, isDev, processRef, https, 
   let updateWindow = null;
   let cachedUpdateInfo = null;
   const UPDATE_REPOS = [
-    { owner: 'LeagueToolkit', repo: 'Quartz' },
+    { owner: 'RitoShark', repo: 'Quartz' },
   ];
 
   autoUpdater.autoDownload = false;
@@ -242,7 +242,7 @@ function createAutoUpdaterService({ autoUpdater, app, isDev, processRef, https, 
         if (enableInDev) {
           autoUpdater.setFeedURL({
             provider: 'github',
-            owner: 'LeagueToolkit',
+            owner: 'RitoShark',
             repo: 'Quartz',
           });
           autoUpdater.forceDevUpdateConfig = true;

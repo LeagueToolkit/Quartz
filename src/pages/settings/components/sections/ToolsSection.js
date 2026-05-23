@@ -10,6 +10,7 @@ const ToolsSection = ({
   hashStatus,
   downloadingHashes,
   handleDownloadHashes,
+  hashSyncMessage,
   updateSectionRef,
   highlightUpdateSection,
   highlightJadePathSection,
@@ -88,11 +89,19 @@ const ToolsSection = ({
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
               <StatusBadge
                 status={hashStatus.allPresent ? 'success' : 'warning'}
-                text={
-                  hashStatus.allPresent
-                    ? `All hash files present (${hashStatus.missing.length === 0 ? '6/6' : `${6 - hashStatus.missing.length}/6`})`
-                    : `Missing ${hashStatus.missing.length} file(s): ${hashStatus.missing.slice(0, 2).join(', ')}${hashStatus.missing.length > 2 ? '...' : ''}`
-                }
+                text={(() => {
+                  // checkHashes() now returns total/present so the count
+                  // tracks ASSETS (currently 2 LMDB databases — wad + bin).
+                  const total = typeof hashStatus.total === 'number'
+                    ? hashStatus.total
+                    : (hashStatus.missing?.length ?? 0) + (hashStatus.present ?? 0);
+                  const present = typeof hashStatus.present === 'number'
+                    ? hashStatus.present
+                    : Math.max(0, total - (hashStatus.missing?.length || 0));
+                  return hashStatus.allPresent
+                    ? `All hash databases present (${present}/${total})`
+                    : `Missing ${hashStatus.missing.length} of ${total}: ${hashStatus.missing.slice(0, 2).join(', ')}${hashStatus.missing.length > 2 ? '...' : ''}`;
+                })()}
               />
             </div>
           )}
@@ -105,6 +114,42 @@ const ToolsSection = ({
           >
             {downloadingHashes ? 'Downloading...' : 'Download / Update Hashes'}
           </Button>
+          {hashSyncMessage && (
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                marginTop: '10px',
+                padding: '8px 12px',
+                borderRadius: '6px',
+                fontSize: '0.78rem',
+                fontFamily: 'JetBrains Mono, monospace',
+                fontWeight: 600,
+                letterSpacing: '0.02em',
+                animation: 'fadeIn 0.18s ease',
+                background:
+                  hashSyncMessage.kind === 'success'
+                    ? 'color-mix(in srgb, #10b981, transparent 88%)'
+                    : hashSyncMessage.kind === 'error'
+                      ? 'color-mix(in srgb, #ef4444, transparent 88%)'
+                      : 'color-mix(in srgb, var(--accent), transparent 90%)',
+                border:
+                  hashSyncMessage.kind === 'success'
+                    ? '1px solid color-mix(in srgb, #10b981, transparent 60%)'
+                    : hashSyncMessage.kind === 'error'
+                      ? '1px solid color-mix(in srgb, #ef4444, transparent 60%)'
+                      : '1px solid color-mix(in srgb, var(--accent), transparent 65%)',
+                color:
+                  hashSyncMessage.kind === 'success'
+                    ? '#10b981'
+                    : hashSyncMessage.kind === 'error'
+                      ? '#ef4444'
+                      : 'var(--accent)',
+              }}
+            >
+              {hashSyncMessage.text}
+            </div>
+          )}
         </div>
       </FormGroup>
 

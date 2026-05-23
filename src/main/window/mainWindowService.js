@@ -13,15 +13,17 @@ function createMainWindowService({
 }) {
   function createWindow() {
     let mainWindow = new BrowserWindow({
-      width: 1200,
+      width: 1340,
       height: 800,
-      minWidth: 1280,
-      minHeight: 800,
+      minWidth: 500,
+      minHeight: 500,
       icon: path.join(baseDir, 'public', 'divinelab.ico'),
       frame: false,
       titleBarStyle: 'hidden',
-      transparent: true,
-      backgroundColor: '#00000000',
+      // transparent:true would suppress the OS-drawn background, which kills
+      // DWM rounded corners. Use an opaque dark background so native Win11
+      // corner rounding (applied below) actually has something to round.
+      backgroundColor: '#0b0b12',
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,
@@ -32,6 +34,13 @@ function createMainWindowService({
 
     if (processRef.platform === 'win32') {
       mainWindow.setMenuBarVisibility(false);
+      // Ask DWM for native Win11 rounded corners. Safe no-op on older Win10
+      // or non-Windows. Re-apply on show in case the HWND wasn't ready yet.
+      try {
+        const { applyRoundedCorners } = require('./windowsRoundedCorners.js');
+        applyRoundedCorners(mainWindow);
+        mainWindow.once('ready-to-show', () => applyRoundedCorners(mainWindow));
+      } catch (_) { /* helper missing — ignore */ }
     }
 
     setUpdateWindow(mainWindow);

@@ -25,6 +25,19 @@ import {
   getChromaDataForSkin,
   getDefaultChromaColor,
 } from './services/communityDragonApi.js';
+import {
+  getTacticians,
+  getTacticianSkins,
+  getTacticianIconUrl,
+  searchTacticianSkinline,
+} from './services/tftApi.js';
+import {
+  getWards,
+  getWardSkins,
+  getWardChampionIconUrl,
+  getEmotes,
+  getEmoteSkins,
+} from './services/wardEmoteApi.js';
 import { extractSkinWadBundle } from './services/extractionService.js';
 import {
   downloadSplashArtToFile,
@@ -40,6 +53,7 @@ import {
   loadFrogSettings,
   validateFrogSetup,
 } from './services/setupService.js';
+import { emitJadeMissingModal, isJadeMissingResult } from '../../utils/interop/jadeInterop.js';
 
 const FrogChanger = () => {
   const SIDEBAR_WIDTH_STORAGE_KEY = 'frogchanger-sidebar-width';
@@ -62,6 +76,14 @@ const FrogChanger = () => {
   const [consoleLogs, setConsoleLogs] = useState([]);
   const [selectedSkins, setSelectedSkins] = useState([]);
   const [showSearchInfo, setShowSearchInfo] = useState(false);
+  // viewMode picks the data source: champions, TFT tacticians, ward skins,
+  // or summoner emotes. Existing code paths reference `tftMode` so we keep
+  // that as a derived boolean to avoid a sweeping rename.
+  const [viewMode, setViewMode] = useState('champion'); // 'champion' | 'tft' | 'ward' | 'emote'
+  const tftMode = viewMode === 'tft';
+  const wardMode = viewMode === 'ward';
+  const emoteMode = viewMode === 'emote';
+  const setTftMode = (enabled) => setViewMode(enabled ? 'tft' : 'champion');
 
   // Add log to console
   const addConsoleLog = (message, type = 'info') => {
@@ -134,7 +156,10 @@ const FrogChanger = () => {
   const [showPrefixModal, setShowPrefixModal] = useState(false);
   const [showExtractionModeModal, setShowExtractionModeModal] = useState(false);
   const [pendingExtractionSkins, setPendingExtractionSkins] = useState([]);
-  const [customPrefix, setCustomPrefix] = useState('');
+  const [customPrefix, setCustomPrefix] = useState(() => {
+    try { return String(window.localStorage.getItem('frogchanger_repath_prefix') || ''); }
+    catch { return ''; }
+  });
   const [pendingRepathData, setPendingRepathData] = useState(null);
   const [currentSkinIndex, setCurrentSkinIndex] = useState(0);
   const [skinPrefixes, setSkinPrefixes] = useState({});
@@ -146,6 +171,9 @@ const FrogChanger = () => {
   const [skipSfxRepath, setSkipSfxRepath] = useState(true);
   const [repathExtractVoiceover, setRepathExtractVoiceover] = useState(false);
   const [repathPreserveHudIcons2D, setRepathPreserveHudIcons2D] = useState(true);
+  const [repathSplitVfx, setRepathSplitVfx] = useState(false);
+  const [repathSplitAnm, setRepathSplitAnm] = useState(false);
+  const [repathConsolidateAssets, setRepathConsolidateAssets] = useState(true);
   const [applyToAll, setApplyToAll] = useState(false);
   const [showLeaguePathTooltip, setShowLeaguePathTooltip] = useState(false);
   const [showExtractionPathTooltip, setShowExtractionPathTooltip] = useState(false);
@@ -214,12 +242,16 @@ const FrogChanger = () => {
     setRecentOutputPaths(next);
   };
 
-  // Load champions and settings on component mount
+  // Load settings on component mount
   useEffect(() => {
-    loadChampions();
     loadSettings();
     refreshRecentOutputPaths();
   }, []);
+
+  // Reload sidebar list when the view mode switches.
+  useEffect(() => {
+    loadChampions();
+  }, [viewMode]);
 
   useEffect(() => {
     const updateOfflineFromNavigator = () => {
@@ -304,13 +336,23 @@ const FrogChanger = () => {
     checkSetup();
   }, [leaguePath, extractionPath, settingsLoaded, warningDismissedThisSession]);
 
-  // Load prefix for current skin when modal opens or skin index changes
+  // Load prefix for current skin when modal opens or skin index changes.
+  // If this skin has no per-skin override, keep whatever prefix is already in the
+  // input (which itself is persisted across sessions via localStorage below) so
+  // batches of extractions don't force the user to retype the same prefix.
   useEffect(() => {
     if (showPrefixModal && pendingRepathData && pendingRepathData.allSkins[currentSkinIndex]) {
       const currentSkin = pendingRepathData.allSkins[currentSkinIndex];
-      setCustomPrefix(skinPrefixes[currentSkin.skinId] || '');
+      const override = skinPrefixes[currentSkin.skinId];
+      if (override) setCustomPrefix(override);
     }
   }, [showPrefixModal, currentSkinIndex, pendingRepathData, skinPrefixes]);
+
+  // Persist last-used prefix across sessions
+  useEffect(() => {
+    try { window.localStorage.setItem('frogchanger_repath_prefix', String(customPrefix || '')); }
+    catch { /* ignore */ }
+  }, [customPrefix]);
 
   const validateSetup = async () => {
     return validateFrogSetup({
@@ -356,6 +398,26 @@ const FrogChanger = () => {
 
     setLoading(true);
     addConsoleLog(`Searching for "${skinlineSearchTerm}" skins...`, 'info');
+
+    // TFT skinline search runs entirely against CDragon companions.json — the
+    // champion-skin id arithmetic (championId = skinId.slice(0,-3)) below does
+    // not apply to tactician itemIds. Skip chroma loading too.
+    if (tftMode) {
+      try {
+        const results = await searchTacticianSkinline(skinlineSearchTerm);
+        setSkinlineSearchResults(results);
+        setShowSkinlineSearch(true);
+        addConsoleLog(`Found ${results.length} tactician(s) with "${skinlineSearchTerm}" skins`, 'success');
+      } catch (error) {
+        console.error('TFT skinline search failed:', error);
+        addConsoleLog(`Search failed: ${error.message}`, 'error');
+        setSkinlineSearchResults([]);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
       const searchTermLower = skinlineSearchTerm.toLowerCase();
       console.log(`ðŸ” Searching for "${skinlineSearchTerm}" in Community Dragon skins data...`);
@@ -569,7 +631,7 @@ const FrogChanger = () => {
     const currentSkinKey = `${currentSkin.championName}_${currentSkin.skinId}`;
     const updatedPrefixes = {
       ...skinPrefixes,
-      [currentSkin.skinId]: customPrefix.trim() || 'bum',
+      [currentSkin.skinId]: customPrefix.trim(),
     };
     const updatedOutputPaths = { ...repathOutputPathsBySkin };
     if (repathOutputOverrideEnabled && !repathOutputKeepForAll) {
@@ -579,7 +641,10 @@ const FrogChanger = () => {
     setSkinPrefixes(updatedPrefixes);
     const prevIndex = currentSkinIndex - 1;
     setCurrentSkinIndex(prevIndex);
-    setCustomPrefix(updatedPrefixes[pendingRepathData.allSkins[prevIndex]?.skinId] || '');
+    {
+      const prevOverride = updatedPrefixes[pendingRepathData.allSkins[prevIndex]?.skinId];
+      if (prevOverride) setCustomPrefix(prevOverride);
+    }
     const prevSkin = pendingRepathData.allSkins[prevIndex];
     if (repathOutputOverrideEnabled) {
       if (repathOutputKeepForAll) {
@@ -597,7 +662,7 @@ const FrogChanger = () => {
     const currentSkinKey = `${currentSkin.championName}_${currentSkin.skinId}`;
     const newPrefixes = {
       ...skinPrefixes,
-      [currentSkin.skinId]: customPrefix.trim() || 'bum',
+      [currentSkin.skinId]: customPrefix.trim(),
     };
     const newOutputPaths = { ...repathOutputPathsBySkin };
     if (repathOutputOverrideEnabled && !repathOutputKeepForAll) {
@@ -607,7 +672,7 @@ const FrogChanger = () => {
     if (applyToAll) {
       const remainingSkins = pendingRepathData.allSkins.slice(currentSkinIndex + 1);
       remainingSkins.forEach(skin => {
-        newPrefixes[skin.skinId] = customPrefix.trim() || 'bum';
+        newPrefixes[skin.skinId] = customPrefix.trim();
         if (repathOutputOverrideEnabled && !repathOutputKeepForAll) {
           const key = `${skin.championName}_${skin.skinId}`;
           newOutputPaths[key] = normalizePathString(repathOutputPath) || extractionPath;
@@ -628,7 +693,10 @@ const FrogChanger = () => {
     } else {
       const nextIndex = currentSkinIndex + 1;
       setCurrentSkinIndex(nextIndex);
-      setCustomPrefix(newPrefixes[pendingRepathData.allSkins[nextIndex]?.skinId] || '');
+      {
+        const nextOverride = newPrefixes[pendingRepathData.allSkins[nextIndex]?.skinId];
+        if (nextOverride) setCustomPrefix(nextOverride);
+      }
       const nextSkin = pendingRepathData.allSkins[nextIndex];
       if (repathOutputOverrideEnabled) {
         if (repathOutputKeepForAll) {
@@ -709,7 +777,20 @@ const FrogChanger = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await api.getChampions();
+      // Pick the data source based on the current view mode. Wards/Emotes
+      // come from CDragon ward-skins.json and summoner-emotes.json
+      // respectively; emotes need the champions list to group by tag.
+      let data;
+      if (viewMode === 'tft') {
+        data = await getTacticians();
+      } else if (viewMode === 'ward') {
+        data = await getWards();
+      } else if (viewMode === 'emote') {
+        const champs = await api.getChampions();
+        data = await getEmotes(champs);
+      } else {
+        data = await api.getChampions();
+      }
       const status = getFrogDataStatus();
       const noInternetDetected = status.offlineDetected || (typeof navigator !== 'undefined' && navigator.onLine === false);
       const simulationEnabled = getFrogOfflineSimulationEnabled();
@@ -740,15 +821,30 @@ const FrogChanger = () => {
   const loadChampionSkins = async (championName) => {
     try {
       setLoadingSkins(prev => ({ ...prev, [championName]: true }));
-      const skins = await api.getChampionSkins(championName, champions);
+      let skins;
+      if (viewMode === 'tft') {
+        const champ = champions.find(c => c.name === championName);
+        skins = await getTacticianSkins(champ.id, champ.alias);
+      } else if (viewMode === 'ward') {
+        skins = await getWardSkins(championName);
+      } else if (viewMode === 'emote') {
+        skins = await getEmoteSkins(championName, champions);
+      } else {
+        skins = await api.getChampionSkins(championName, champions);
+      }
       setChampionSkins(skins);
 
-      // Load chroma data in the background (truly non-blocking)
-      setTimeout(() => {
-        loadChromaData(championName, skins).catch(err => {
-          console.warn('Chroma data loading failed (non-critical):', err);
-        });
-      }, 100); // Small delay to let UI update first
+      // Chroma data only applies to real champions. Skip for TFT, Ward and
+      // Emote modes — they don't have champion-style chromas, and TFT in
+      // particular has speciesId collisions with Riot champion IDs (e.g.
+      // Ao Shin speciesId=25 hits Morgana championId=25).
+      if (viewMode === 'champion') {
+        setTimeout(() => {
+          loadChromaData(championName, skins).catch(err => {
+            console.warn('Chroma data loading failed (non-critical):', err);
+          });
+        }, 100);
+      }
     } catch (err) {
       setError('Failed to load champion skins');
       console.error('Error loading skins:', err);
@@ -1030,14 +1126,37 @@ const FrogChanger = () => {
       addConsoleLog('Inspect Model currently uses the first selected skin.', 'warning');
     }
 
+    // In TFT mode, route to the tactician's per-skin WAD alias instead of the
+    // species display name (e.g. "Ahri" -> "petstyletwoahri" for K/DA Unbound).
+    let inspectChampionName = target.championName;
+    let inspectWadTheme = null;
+    let inspectWadTier = null;
+    if (tftMode) {
+      const matchSkin = championSkins.find(s =>
+        String(s.id) === String(inspectSkinId) &&
+        (!target.skinName || s.name === target.skinName)
+      );
+      if (matchSkin?.wadAlias) {
+        inspectChampionName = matchSkin.wadAlias;
+        inspectWadTheme = matchSkin.wadTheme || null;
+        inspectWadTier = matchSkin.wadTier || null;
+      } else {
+        const tac = champions.find(c => c.name === target.championName);
+        if (tac?.alias) inspectChampionName = tac.alias;
+      }
+    }
+
     await modelInspect.inspect({
-      championName: target.championName,
+      championName: inspectChampionName,
       skinId: inspectSkinId,
       chromaId: selectedChroma?.id ?? null,
       chromaOptions,
       skinName: inspectSkinName,
       leaguePath,
       hashPath,
+      isTftMode: tftMode,
+      wadTheme: inspectWadTheme,
+      wadTier: inspectWadTier,
     });
   };
 
@@ -1059,6 +1178,9 @@ const FrogChanger = () => {
     const extractOptions = payload?.options || {};
     const useExtractVoiceover = extractOptions.extractVoiceover === true;
     const usePreserveHudIcons2D = extractOptions.preserveHudIcons2D !== false;
+    const useSplitVfx = extractOptions.splitVfx === true;
+    const useSplitAnm = extractOptions.splitAnm === true;
+    const useConsolidateAssets = extractOptions.consolidateAssets !== false;
     const outputOverride = extractOptions.outputOverride || {};
     const useOutputOverride = outputOverride?.enabled === true;
     const outputOverrideDefault = normalizePathString(outputOverride?.path || '');
@@ -1094,16 +1216,17 @@ const FrogChanger = () => {
         }
 
         const selectedChroma = selectedChromas[skinKey];
+        let extractionResult;
         if (selectedChroma) {
           addConsoleLog(`${progress} Extracting with chroma ${selectedChroma.id}...`, 'info');
-          await extractWadFile(championName, skinId, skinName, selectedChroma.id, cleanAfterExtract, {
+          extractionResult = await extractWadFile(championName, skinId, skinName, selectedChroma.id, cleanAfterExtract, {
             extractVoiceover: useExtractVoiceover,
             fastSkinOnly: cleanAfterExtract === true,
             preserveHudIcons2D: usePreserveHudIcons2D,
             outputPathOverride: outputPathForSkin || null,
           });
         } else {
-          await extractWadFile(championName, skinId, skinName, null, cleanAfterExtract, {
+          extractionResult = await extractWadFile(championName, skinId, skinName, null, cleanAfterExtract, {
             extractVoiceover: useExtractVoiceover,
             fastSkinOnly: cleanAfterExtract === true,
             preserveHudIcons2D: usePreserveHudIcons2D,
@@ -1111,6 +1234,54 @@ const FrogChanger = () => {
           });
         }
         if (outputPathForSkin) addRecentOutputPath(outputPathForSkin);
+
+        // Split + consolidate run only on Skin Files Only mode (clean=true).
+        // Whole-WAD extraction keeps the original layout, so post-processing
+        // would just litter the output with stuff the user didn't ask for.
+        const splitDir = cleanAfterExtract
+          ? (extractionResult?.outputDir
+              || extractionResult?.cleanDir
+              || extractionResult?.cleanedDir
+              || null)
+          : null;
+
+        if (splitDir && (useSplitVfx || useSplitAnm) && window.electronAPI?.bin?.splitSkinBins) {
+          try {
+            const splitRes = await window.electronAPI.bin.splitSkinBins({
+              dir: splitDir,
+              splitVfx: useSplitVfx,
+              splitAnm: useSplitAnm,
+            });
+            if (splitRes?.error) {
+              addConsoleLog(`${progress} Bin split warning: ${splitRes.error}`, 'warning');
+            } else {
+              const splitCount = (splitRes?.results || []).filter((r) => r.status === 'split').length;
+              if (splitCount > 0) {
+                addConsoleLog(`${progress} Split ${splitCount} bin entry group(s)`, 'info');
+              }
+            }
+          } catch (splitErr) {
+            addConsoleLog(`${progress} Bin split error: ${splitErr.message}`, 'warning');
+          }
+        } else if (cleanAfterExtract && (useSplitVfx || useSplitAnm) && !splitDir) {
+          addConsoleLog(`${progress} Skipped bin split (no clean output dir reported)`, 'warning');
+        }
+
+        if (splitDir && useConsolidateAssets && window.electronAPI?.bin?.consolidateAssets) {
+          try {
+            const conRes = await window.electronAPI.bin.consolidateAssets({ dir: splitDir });
+            if (conRes?.error) {
+              addConsoleLog(`${progress} Asset consolidate warning: ${conRes.error}`, 'warning');
+            } else {
+              const moved = (conRes?.results || []).reduce((s, r) => s + (r.moved || 0), 0);
+              if (moved > 0) {
+                addConsoleLog(`${progress} Consolidated ${moved} asset(s) into per-skin folders`, 'info');
+              }
+            }
+          } catch (conErr) {
+            addConsoleLog(`${progress} Asset consolidate error: ${conErr.message}`, 'warning');
+          }
+        }
 
         addConsoleLog(`${progress} Successfully extracted ${skinName} (${championName})`, 'success');
       }
@@ -1160,6 +1331,9 @@ const FrogChanger = () => {
       setRepathOutputPathsBySkin({});
       setApplyToAll(false);
       setSkipSfxRepath(true);
+      setRepathSplitVfx(false);
+      setRepathSplitAnm(false);
+      setRepathConsolidateAssets(true);
       setShowPrefixModal(true);
     }
   };
@@ -1175,6 +1349,16 @@ const FrogChanger = () => {
       const championNames = Object.keys(skinsByChampion);
 
       const prefixesToUse = finalPrefixes || skinPrefixes;
+      // Hard-stop if any selected skin is missing a prefix — the UI gates
+      // against this, but defending here too so nothing falls back to bum.
+      for (const [skinId, p] of Object.entries(prefixesToUse)) {
+        if (!String(p || '').trim()) {
+          addConsoleLog(`Repath aborted: skin ${skinId} has no prefix set.`, 'error');
+          setIsRepathing(false);
+          setPendingRepathData(null);
+          return;
+        }
+      }
       console.log('[REPATH] Using prefixes:', prefixesToUse);
 
       for (let i = 0; i < championNames.length; i++) {
@@ -1199,7 +1383,7 @@ const FrogChanger = () => {
                 : (repathOutputPathsBySkin[skinKey] || repathOutputPath)
             ) || extractionPath
             : extractionPath;
-          const effectivePrefix = prefixesToUse[skin.skinId] || 'bum';
+          const effectivePrefix = prefixesToUse[skin.skinId] || '';
           return {
             ...skin,
             skinKey,
@@ -1299,6 +1483,50 @@ const FrogChanger = () => {
           if (repathResult.success) {
             addRecentOutputPath(run.outputBasePath);
             addConsoleLog(`${progress} Successfully repathed ${championName} (${repathSkinIds.length} skins) to: ${outputDir}`, 'success');
+
+            // Repath already merges all linked bin content into the output
+            // skin bin via combineLinked, so the splitter just operates on
+            // that one file.
+            if ((repathSplitVfx || repathSplitAnm) && window.electronAPI?.bin?.splitSkinBins) {
+              try {
+                const splitRes = await window.electronAPI.bin.splitSkinBins({
+                  dir: outputDir,
+                  splitVfx: repathSplitVfx,
+                  splitAnm: repathSplitAnm,
+                });
+                if (splitRes?.error) {
+                  addConsoleLog(`${progress} Bin split warning: ${splitRes.error}`, 'warning');
+                } else {
+                  const splitCount = (splitRes?.results || []).filter((r) => r.status === 'split').length;
+                  if (splitCount > 0) {
+                    addConsoleLog(`${progress} Split ${splitCount} bin entry group(s) for ${championName}`, 'info');
+                  }
+                }
+              } catch (splitErr) {
+                addConsoleLog(`${progress} Bin split error: ${splitErr.message}`, 'warning');
+              }
+            }
+
+            // Consolidate runs AFTER split so it sees VFX entries in whichever
+            // bin holds them (skin*.bin if split was off, <champ>_vfx_skin*.bin if on).
+            if (repathConsolidateAssets && window.electronAPI?.bin?.consolidateAssets) {
+              try {
+                const conRes = await window.electronAPI.bin.consolidateAssets({
+                  dir: outputDir,
+                  prefix: run.prefix || '',
+                });
+                if (conRes?.error) {
+                  addConsoleLog(`${progress} Asset consolidate warning: ${conRes.error}`, 'warning');
+                } else {
+                  const moved = (conRes?.results || []).reduce((s, r) => s + (r.moved || 0), 0);
+                  if (moved > 0) {
+                    addConsoleLog(`${progress} Consolidated ${moved} asset(s) into per-skin folders`, 'info');
+                  }
+                }
+              } catch (conErr) {
+                addConsoleLog(`${progress} Asset consolidate error: ${conErr.message}`, 'warning');
+              }
+            }
           } else if (repathResult.cancelled) {
             addConsoleLog(`${progress} Repath cancelled for ${championName}`, 'warning');
             break;
@@ -1307,6 +1535,8 @@ const FrogChanger = () => {
           }
         }
 
+        // Per-champion cleanup runs AFTER the inline split above so the
+        // source bins are still on disk when the splitter reads them.
         try {
           const fs = window.require?.('fs');
           if (fs) {
@@ -1338,7 +1568,7 @@ const FrogChanger = () => {
       setPendingRepathData(null);
     }
   };
-  const downloadSplashArt = async (championName, championAlias, skinId, skinName) => {
+  const downloadSplashArt = async (championName, championAlias, skinId, skinName, skin = null) => {
     if (!extractionPath) {
       alert('Please set the WAD extraction output path in settings first!');
       return;
@@ -1346,12 +1576,19 @@ const FrogChanger = () => {
 
     addConsoleLog(`Downloading splash art: ${skinName}`, 'info');
     try {
+      // ddragon only has splash art for real champions. For TFT tacticians,
+      // ward skins and emotes, fall back to the CDragon icon URL already
+      // attached as centeredSplashPath/tilePath.
+      const splashUrlOverride = (tftMode || wardMode || emoteMode)
+        ? (skin?.centeredSplashPath || skin?.tilePath || null)
+        : null;
       const filePath = await downloadSplashArtToFile({
         championName,
         championAlias,
         skinId,
         skinName,
         outputPath: extractionPath,
+        splashUrlOverride,
       });
       console.log(`Splash art downloaded: ${filePath}`);
       alert(`Splash art downloaded successfully!\nSaved to: ${filePath}`);
@@ -1381,9 +1618,29 @@ const FrogChanger = () => {
     setExtractingSkins(prev => ({ ...prev, [skinKey]: true }));
     setExtractionProgress(prev => ({ ...prev, [skinKey]: 'Starting extraction...' }));
 
+    // In TFT mode the Companions WAD layout is keyed by the tactician's alias
+    // (e.g. "petdsswordguy"), not the display name. Furthermore, sibling skins
+    // under one CDragon speciesId can live in DIFFERENT pet* folders — e.g.
+    // "Ahri" species mixes chibi variants (petchibiahri) with K/DA Ahri Unbound
+    // (petstyletwoahri). So prefer the per-skin wadAlias set by tftApi, falling
+    // back to the species-level alias only if no match is found.
+    let effectiveChampionName = championName;
+    if (tftMode) {
+      const matchSkin = championSkins.find(s =>
+        String(s.id) === String(skinId) &&
+        (!skinName || s.name === skinName)
+      );
+      if (matchSkin?.wadAlias) {
+        effectiveChampionName = matchSkin.wadAlias;
+      } else {
+        const tac = champions.find(c => c.name === championName);
+        if (tac?.alias) effectiveChampionName = tac.alias;
+      }
+    }
+
     try {
       const result = await extractSkinWadBundle({
-        championName,
+        championName: effectiveChampionName,
         skinId,
         skinName,
         chromaId,
@@ -1395,6 +1652,7 @@ const FrogChanger = () => {
         fastSkinOnly,
         preserveHudIcons2D,
         isRepathExtract,
+        isTftMode: tftMode,
         onProgress: (message) => {
           setExtractionProgress(prev => ({ ...prev, [skinKey]: message }));
         },
@@ -1416,6 +1674,163 @@ const FrogChanger = () => {
       return null;
     } finally {
       setExtractingSkins(prev => ({ ...prev, [skinKey]: false }));
+    }
+  };
+
+  // Open a skin's combined main BIN in Jade for fast lookup. Reuses the Port
+  // donor pipeline (extracts + combines linked bins from the WAD into a temp
+  // folder), then hands off the combined BIN to Jade via the existing interop.
+  const handleOpenSkinInJade = async (skin) => {
+    if (!leaguePath) {
+      alert('Please set the League of Legends Games folder path in settings first!');
+      return;
+    }
+    if (!window.require) return;
+    const { ipcRenderer } = window.require('electron');
+    const championName = selectedChampion?.name;
+    if (!championName) return;
+
+    const skinKey = `${championName}_${skin.id}`;
+    const setProgress = (msg) =>
+      setExtractionProgress(prev => ({ ...prev, [skinKey]: msg }));
+    const clearProgress = () =>
+      setExtractionProgress(prev => {
+        const next = { ...prev };
+        delete next[skinKey];
+        return next;
+      });
+
+    const progressHandler = (_e, payload) => setProgress(payload?.message || 'Working...');
+    ipcRenderer.on('port:donorProgress', progressHandler);
+
+    setExtractingSkins(prev => ({ ...prev, [skinKey]: true }));
+    setProgress('Preparing donor for Jade...');
+
+    // TFT: route to the per-skin tactician alias + Companions.wad.client.
+    const donorChampionName = tftMode && skin?.wadAlias ? skin.wadAlias : championName;
+
+    try {
+      const donor = await ipcRenderer.invoke('port:prepareDonorFromSkin', {
+        championName: donorChampionName,
+        skinId: skin.id,
+        leaguePath,
+        hashPath,
+        isTftMode: tftMode,
+      });
+      if (!donor?.success || !donor.combinedBinPath) {
+        clearProgress();
+        alert(`Failed to prepare bin for Jade: ${donor?.error || 'unknown error'}`);
+        return;
+      }
+
+      setProgress('Opening in Jade...');
+      const sendResult = await ipcRenderer.invoke('interop:sendToJade', {
+        binPath: donor.combinedBinPath,
+        sourceMode: null,
+      });
+      if (!sendResult?.success || isJadeMissingResult(sendResult)) {
+        clearProgress();
+        if (isJadeMissingResult(sendResult)) {
+          emitJadeMissingModal(sendResult?.error || sendResult?.warning || 'jade-not-installed');
+        } else {
+          alert(`Failed to open in Jade: ${sendResult?.error || 'unknown error'}`);
+        }
+        return;
+      }
+      clearProgress();
+    } catch (error) {
+      console.error('Open in Jade error:', error);
+      clearProgress();
+      alert(`Failed to open in Jade: ${error.message}`);
+    } finally {
+      setExtractingSkins(prev => ({ ...prev, [skinKey]: false }));
+      ipcRenderer.removeListener('port:donorProgress', progressHandler);
+    }
+  };
+
+  // Extract a skin's combined main BIN (with all linked bins merged) to the
+  // user's configured extraction folder. Independent of Jade — works whether
+  // Jade is installed or not. Output lands as <champ>_skin<id>_combined.bin.
+  const handleExtractSkinBin = async (skin) => {
+    if (!leaguePath) {
+      alert('Please set the League of Legends Games folder path in settings first!');
+      return;
+    }
+    if (!extractionPath) {
+      alert('Please set the WAD extraction output path in settings first!');
+      return;
+    }
+    if (!window.require) return;
+    const { ipcRenderer } = window.require('electron');
+    const fs = window.require('fs');
+    const path = window.require('path');
+    const championName = selectedChampion?.name;
+    if (!championName) return;
+
+    const skinKey = `${championName}_${skin.id}`;
+    const setProgress = (msg) =>
+      setExtractionProgress(prev => ({ ...prev, [skinKey]: msg }));
+    const clearProgress = () =>
+      setExtractionProgress(prev => {
+        const next = { ...prev };
+        delete next[skinKey];
+        return next;
+      });
+
+    const progressHandler = (_e, payload) => setProgress(payload?.message || 'Working...');
+    ipcRenderer.on('port:donorProgress', progressHandler);
+
+    setExtractingSkins(prev => ({ ...prev, [skinKey]: true }));
+    setProgress('Preparing combined BIN...');
+
+    // TFT: route to the per-skin tactician alias + Companions.wad.client.
+    const donorChampionName = tftMode && skin?.wadAlias ? skin.wadAlias : championName;
+
+    try {
+      const donor = await ipcRenderer.invoke('port:prepareDonorFromSkin', {
+        championName: donorChampionName,
+        skinId: skin.id,
+        leaguePath,
+        hashPath,
+        isTftMode: tftMode,
+      });
+      if (!donor?.success || !donor.combinedBinPath) {
+        clearProgress();
+        alert(`Failed to extract BIN: ${donor?.error || 'unknown error'}`);
+        return;
+      }
+
+      setProgress('Copying to extraction folder...');
+      const safeSkinName = (skin.name || `skin${skin.id}`)
+        .replace(/[\\/:*?"<>|]/g, '')
+        .replace(/\s+/g, '_');
+      const champFile = getChampionFileName(championName);
+      const baseName = `${champFile}_skin${donor.skinId ?? skin.id}_${safeSkinName}_combined`;
+      const destBin = path.join(extractionPath, `${baseName}.bin`);
+      const destPy = path.join(extractionPath, `${baseName}.py`);
+      try {
+        if (!fs.existsSync(extractionPath)) {
+          fs.mkdirSync(extractionPath, { recursive: true });
+        }
+        fs.copyFileSync(donor.combinedBinPath, destBin);
+        if (donor.donorPyPath && fs.existsSync(donor.donorPyPath)) {
+          fs.copyFileSync(donor.donorPyPath, destPy);
+        }
+      } catch (copyErr) {
+        clearProgress();
+        alert(`Failed to copy BIN to extraction folder: ${copyErr.message}`);
+        return;
+      }
+
+      clearProgress();
+      alert(`Combined BIN saved to:\n${destBin}`);
+    } catch (error) {
+      console.error('Extract skin BIN error:', error);
+      clearProgress();
+      alert(`Failed to extract BIN: ${error.message}`);
+    } finally {
+      setExtractingSkins(prev => ({ ...prev, [skinKey]: false }));
+      ipcRenderer.removeListener('port:donorProgress', progressHandler);
     }
   };
 
@@ -1451,7 +1866,11 @@ const FrogChanger = () => {
           selectedChampion={selectedChampion}
           onSelectChampion={handleChampionSelect}
           onYouTubeChampion={handleYouTubeChampion}
-          getChampionIconUrl={getChampionIconUrl}
+          getChampionIconUrl={
+            viewMode === 'tft' ? getTacticianIconUrl
+            : viewMode === 'ward' ? getWardChampionIconUrl
+            : getChampionIconUrl
+          }
           offlineMode={offlineMode}
           sidebarWidth={sidebarWidth}
         />
@@ -1489,6 +1908,16 @@ const FrogChanger = () => {
             isCancelling={isCancelling}
             onCancelOperations={cancelOperations}
             onOpenSettings={() => setShowSettings(true)}
+            viewMode={viewMode}
+            setViewMode={(next) => {
+              setViewMode(next);
+              setSearchTerm('');
+            }}
+            tftMode={tftMode}
+            setTftMode={(mode) => {
+              setViewMode(mode ? 'tft' : 'champion');
+              setSearchTerm('');
+            }}
           />
 
           {showSkinlineSearch ? (
@@ -1523,6 +1952,8 @@ const FrogChanger = () => {
               onChromaClick={handleChromaClick}
               onDownloadSplashArt={downloadSplashArt}
               onYouTubeSkin={handleYouTubeSkin}
+              onOpenInJade={wardMode || emoteMode ? null : handleOpenSkinInJade}
+              onExtractSkinBin={wardMode || emoteMode ? null : handleExtractSkinBin}
               offlineMode={offlineMode}
             />
           ) : (
@@ -1578,6 +2009,12 @@ const FrogChanger = () => {
         setExtractVoiceover={setRepathExtractVoiceover}
         preserveHudIcons2D={repathPreserveHudIcons2D}
         setPreserveHudIcons2D={setRepathPreserveHudIcons2D}
+        splitVfx={repathSplitVfx}
+        setSplitVfx={setRepathSplitVfx}
+        splitAnm={repathSplitAnm}
+        setSplitAnm={setRepathSplitAnm}
+        consolidateAssets={repathConsolidateAssets}
+        setConsolidateAssets={setRepathConsolidateAssets}
         outputOverrideEnabled={repathOutputOverrideEnabled}
         setOutputOverrideEnabled={setRepathOutputOverrideEnabled}
         outputKeepForAll={repathOutputKeepForAll}

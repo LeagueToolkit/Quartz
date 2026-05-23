@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ModPrefixInfoModal from '../../../components/modals/ModPrefixInfoModal.js';
 
 /**
  * CustomPrefixModal (Repath Modal)
@@ -20,6 +21,12 @@ const CustomPrefixModal = ({
   setExtractVoiceover,
   preserveHudIcons2D,
   setPreserveHudIcons2D,
+  splitVfx,
+  setSplitVfx,
+  splitAnm,
+  setSplitAnm,
+  consolidateAssets,
+  setConsolidateAssets,
   outputOverrideEnabled,
   setOutputOverrideEnabled,
   outputKeepForAll,
@@ -33,6 +40,11 @@ const CustomPrefixModal = ({
   onNextOrStart,
 }) => {
   const [infoOpen, setInfoOpen] = useState(false);
+  const [showPrefixInfo, setShowPrefixInfo] = useState(false);
+
+  // Sanitize and require — no more `bum` fallback.
+  const sanitizedPrefix = String(customPrefix || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const isPrefixValid = sanitizedPrefix.length > 0;
 
   if (!open || !pendingRepathData) {
     return null;
@@ -253,23 +265,54 @@ const CustomPrefixModal = ({
           </p>
 
           <div style={styles.section}>
-            <h3 style={styles.sectionTitle}>Entry Prefix</h3>
+            <h3 style={{ ...styles.sectionTitle, display: 'flex', alignItems: 'center', gap: 6 }}>
+              Entry Prefix
+              <span style={{ color: '#ff7766', fontSize: '0.7rem' }}>*</span>
+              <button
+                type="button"
+                onClick={() => setShowPrefixInfo(true)}
+                title="Why a prefix is required"
+                style={{
+                  width: 18, height: 18, borderRadius: '50%',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'color-mix(in srgb, var(--accent2), transparent 80%)',
+                  color: 'var(--accent2)',
+                  border: '1px solid color-mix(in srgb, var(--accent2), transparent 50%)',
+                  fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', padding: 0,
+                }}
+              >
+                i
+              </button>
+            </h3>
             <div>
               <input
                 type="text"
                 value={customPrefix}
                 onChange={(e) => setCustomPrefix(e.target.value)}
-                placeholder="Enter custom prefix (e.g., custom, mymod)"
-                style={styles.pathInput}
+                placeholder="Required — e.g. mymod, sera_kda, frog_v2"
+                style={{
+                  ...styles.pathInput,
+                  borderColor: isPrefixValid
+                    ? 'rgba(255,255,255,0.1)'
+                    : 'color-mix(in srgb, #ff7766, transparent 50%)',
+                }}
                 onFocus={focusInput}
                 onBlur={blurInput}
                 maxLength={20}
               />
               <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)', marginTop: 8 }}>
-                Current prefix:{' '}
-                <span style={{ color: 'var(--accent2)', fontFamily: 'monospace', fontWeight: 700 }}>
-                  {customPrefix || 'bum'}
-                </span>
+                {isPrefixValid ? (
+                  <>
+                    Sanitized:{' '}
+                    <span style={{ color: 'var(--accent2)', fontFamily: 'monospace', fontWeight: 700 }}>
+                      {sanitizedPrefix}
+                    </span>
+                  </>
+                ) : (
+                  <span style={{ color: '#ff7766' }}>
+                    A prefix is required (lowercase, letters/digits/underscores).
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -315,15 +358,77 @@ const CustomPrefixModal = ({
                 />
                 Preserve HUD Icons2D
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={outputOverrideEnabled}
-                  onChange={(e) => setOutputOverrideEnabled(e.target.checked)}
-                  style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
-                />
-                Override Output Path
-              </label>
+
+              {/* --- Bin Splitting --- */}
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 4, paddingTop: 8 }}>
+                <div style={{ fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', marginBottom: 6 }}>
+                  Bin Splitting
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <label
+                    title="Splits VfxSystemDefinitionData entries from each skin*.bin into a sibling DATA/<champ>_vfx_<stem>.bin and links it."
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={splitVfx === true}
+                      onChange={(e) => setSplitVfx?.(e.target.checked)}
+                      style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                    />
+                    <span>Split VFX</span>
+                    <span
+                      title="Some Quartz tools (e.g. inline VFX inspection) may stop working on bins after they've been split. Use Combine VFX from the right-click menu to undo."
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: 16, height: 16, borderRadius: '50%',
+                        background: 'color-mix(in srgb, #ffaa33, transparent 80%)',
+                        color: '#ffaa33', fontSize: '0.7rem', fontWeight: 700,
+                        border: '1px solid color-mix(in srgb, #ffaa33, transparent 50%)',
+                      }}
+                    >!</span>
+                  </label>
+                  <label
+                    title="Splits AnimationGraphData entries from each skin*.bin into a sibling DATA/<champ>_anm_<stem>.bin and links it."
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={splitAnm === true}
+                      onChange={(e) => setSplitAnm?.(e.target.checked)}
+                      style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                    />
+                    Split Animations
+                  </label>
+                  <label
+                    title="Moves every asset referenced by VfxSystemDefinitionData entries into a shared assets/<prefix>/skin<N>_particles/ folder per skin. Conflicting basenames get a _2/_3 suffix."
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={consolidateAssets !== false}
+                      onChange={(e) => setConsolidateAssets?.(e.target.checked)}
+                      style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                    />
+                    Consolidate Assets
+                  </label>
+                </div>
+              </div>
+
+              {/* --- Output --- */}
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 4, paddingTop: 8 }}>
+                <div style={{ fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', marginBottom: 6 }}>
+                  Output
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={outputOverrideEnabled}
+                    onChange={(e) => setOutputOverrideEnabled(e.target.checked)}
+                    style={{ width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' }}
+                  />
+                  Override Output Path
+                </label>
+              </div>
 
               {outputOverrideEnabled && total > 1 && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', marginLeft: 20 }}>
@@ -394,10 +499,16 @@ const CustomPrefixModal = ({
                 </button>
               )}
               <button
-                style={btnPrimary}
-                onMouseEnter={hoverPrimary}
-                onMouseLeave={leavePrimary}
-                onClick={onNextOrStart}
+                style={{
+                  ...btnPrimary,
+                  opacity: isPrefixValid ? 1 : 0.5,
+                  cursor: isPrefixValid ? 'pointer' : 'not-allowed',
+                }}
+                onMouseEnter={isPrefixValid ? hoverPrimary : undefined}
+                onMouseLeave={isPrefixValid ? leavePrimary : undefined}
+                onClick={isPrefixValid ? onNextOrStart : undefined}
+                disabled={!isPrefixValid}
+                title={isPrefixValid ? '' : 'Enter a prefix first'}
               >
                 {isLast ? 'Start Repath' : 'Next'}
               </button>
@@ -405,6 +516,11 @@ const CustomPrefixModal = ({
           </div>
         </div>
       </div>
+      <ModPrefixInfoModal
+        open={showPrefixInfo}
+        onClose={() => setShowPrefixInfo(false)}
+        context="mod"
+      />
     </div>
   );
 };

@@ -227,6 +227,77 @@ broken: unknowntype = 123
     }
 }
 
+/// Make sure mtx44 values don't get mangled during a text round-trip.
+/// uh the text format is row-major but glam stores column-major so we
+/// transpose on write and on parse, i guess this just makes sure that
+/// doesn't break anything and the values come out right.
+#[test]
+fn test_matrix44_roundtrip_ordering() {
+    use glam::Mat4;
+    use ltk_meta::property::PropertyValueEnum;
+
+    // non-symmetric so we'd notice if it got transposed wrong
+    // text layout (row-major):
+    //   1  2  3  4
+    //   5  6  7  8
+    //   9  10 11 12
+    //   13 14 15 16
+    //
+    // glam is column-major internally so:
+    let expected = Mat4::from_cols_array(&[
+        1.0, 5.0, 9.0, 13.0, // col0
+        2.0, 6.0, 10.0, 14.0, // col1
+        3.0, 7.0, 11.0, 15.0, // col2
+        4.0, 8.0, 12.0, 16.0, // col3
+    ]);
+
+    let input = r#"#PROP_text
+type: string = "PROP"
+version: u32 = 3
+entries: map[hash,embed] = {
+    "test/object" = TestClass {
+        transform: mtx44 = {
+            1, 2, 3, 4
+            5, 6, 7, 8
+            9, 10, 11, 12
+            13, 14, 15, 16
+        }
+    }
+}
+"#;
+
+    // 1) Parse and verify the Mat4 matches expected column-major layout
+    let file = parse(input).expect("Failed to parse matrix input");
+    let tree = file.to_bin_tree();
+    let obj = tree.objects.values().next().expect("Expected one object");
+    let parsed_mat = match &obj.properties.values().next().unwrap().value {
+        PropertyValueEnum::Matrix44(v) => v.value,
+        other => panic!("Expected Matrix44, got {:?}", other),
+    };
+    assert_eq!(
+        parsed_mat, expected,
+        "Parsed Mat4 should match expected column-major layout"
+    );
+
+    // 2) Write back to text, parse again, verify values survive the round-trip
+    let output = write(&tree).expect("Failed to write tree");
+    let file2 = parse(&output).expect("Failed to re-parse written output");
+    let tree2 = file2.to_bin_tree();
+    let obj2 = tree2
+        .objects
+        .values()
+        .next()
+        .expect("Expected one object after round-trip");
+    let roundtrip_mat = match &obj2.properties.values().next().unwrap().value {
+        PropertyValueEnum::Matrix44(v) => v.value,
+        other => panic!("Expected Matrix44 after round-trip, got {:?}", other),
+    };
+    assert_eq!(
+        roundtrip_mat, expected,
+        "Matrix44 should survive text round-trip unchanged"
+    );
+}
+
 #[test]
 fn test_error_is_miette_diagnostic() {
     use miette::Diagnostic;

@@ -28,6 +28,7 @@ import { CreatePicker, cleanupColorPickers } from '../../utils/colors/colorUtils
 // Components
 import Toolbar from './components/Toolbar';
 import SystemList from './components/SystemList';
+import { useBinFileDrop } from '../port2/components/common/binFileDrop';
 import PaletteManager from './components/PaletteManager';
 import BackupViewer from '../../components/modals/BackupViewer';
 import RitobinWarningModal, { detectHashedContent } from '../../components/modals/RitobinWarningModal';
@@ -542,6 +543,9 @@ function Paint2() {
 
             const isReload = action === 'reload-bin';
             const isSameFile = filePath && String(filePath).toLowerCase() === String(handoff.bin_path).toLowerCase();
+            // reload-bin only refreshes what we already have open. Drop it
+            // otherwise — don't slurp in a new bin out of nowhere.
+            if (isReload && !isSameFile) return;
             if (isReload && isSameFile && !fileSaved) {
                 setExternalChangeModal({
                     open: true,
@@ -978,6 +982,7 @@ function Paint2() {
         const parsed = parseVfxFile(lastContent);
         linesRef.current = parsed.lines;
         setParsedFile(parsed);
+        setFileSaved(false);
         setStatusMessage('Restored previous state');
     }, [undoStack]);
 
@@ -1534,15 +1539,44 @@ function Paint2() {
         [parsedFile]
     );
 
+    // OS file drop → load via existing loadBinFile pipeline.
+    const handlePaintFileDrop = useCallback((droppedPath) => {
+        if (typeof loadBinFile === 'function') loadBinFile(droppedPath);
+    }, [loadBinFile]);
+    const paintFileDrop = useBinFileDrop(handlePaintFileDrop);
+
     return (
-        <Box sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100%', // Use 100% to fit within parent (App.js TitleBar offset)
-            background: isMinecraftStyle ? '#2a2a2a' : 'var(--bg)',
-            color: 'var(--accent)',
-            overflow: 'hidden'
-        }} className="paint2-container">
+        <Box
+            sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%', // Use 100% to fit within parent (App.js TitleBar offset)
+                background: isMinecraftStyle ? '#2a2a2a' : 'var(--bg)',
+                color: 'var(--accent)',
+                overflow: 'hidden',
+                position: 'relative',
+            }}
+            className="paint2-container"
+            {...paintFileDrop.handlers}
+        >
+            {paintFileDrop.isOver && (
+                <Box sx={{
+                    position: 'absolute', inset: 0, zIndex: 9999, pointerEvents: 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+                    border: '2px dashed var(--accent)', borderRadius: '8px',
+                    transition: 'all 0.15s ease-out',
+                }}>
+                    <Box sx={{
+                        padding: '10px 16px', borderRadius: '6px',
+                        border: '1px dashed var(--accent)', color: 'var(--accent)',
+                        fontFamily: 'JetBrains Mono, monospace', fontSize: '13px',
+                        background: 'color-mix(in srgb, var(--accent), transparent 80%)',
+                    }}>
+                        Drop .bin or .py to load
+                    </Box>
+                </Box>
+            )}
             {/* Top Toolbar */}
             <Toolbar
                 filePath={filePath}

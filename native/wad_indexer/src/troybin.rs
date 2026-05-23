@@ -111,7 +111,15 @@ impl TroybinValue {
             }
             TroybinValue::Vec(vals) => {
                 vals.iter()
-                    .map(|v| format!("{:.1}", v))
+                    .map(|v| {
+                        let s = format!("{}", v);
+                        // Ensure float-like output so downstream parsers see "1.0" not "1"
+                        if !s.contains('.') && !s.contains('e') && !s.contains('E') && s != "NaN" {
+                            format!("{}.0", s)
+                        } else {
+                            s
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join(" ")
             }

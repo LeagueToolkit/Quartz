@@ -1,5 +1,5 @@
-use std::fs::{self, File};
-use std::io::BufWriter;
+use std::fs;
+use std::io::Cursor;
 use std::path::Path;
 use std::time::Instant;
 
@@ -16,13 +16,15 @@ pub fn run(py_path: &Path) -> Result<(), String> {
     let parse_time = start.elapsed();
 
     let bin_path = py_path.with_extension("bin");
-    let out_file = File::create(&bin_path)
-        .map_err(|e| format!("Failed to create {}: {}", bin_path.display(), e))?;
 
+    // Use in-memory buffer: Bin::to_writer seeks heavily (~336k lseeks),
+    // BufWriter<File> flushes on every seek. Cursor<Vec> makes seeks free.
     let start = Instant::now();
-    let mut writer = BufWriter::new(out_file);
+    let mut writer = Cursor::new(Vec::new());
     tree.to_writer(&mut writer)
         .map_err(|e| format!("Failed to write bin: {}", e))?;
+    fs::write(&bin_path, writer.into_inner())
+        .map_err(|e| format!("Failed to write {}: {}", bin_path.display(), e))?;
     let write_time = start.elapsed();
 
     eprintln!(

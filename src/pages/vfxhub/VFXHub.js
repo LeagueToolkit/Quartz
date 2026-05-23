@@ -251,6 +251,9 @@ const VFXHub = () => {
 
       const isReload = action === 'reload-bin';
       const isSameFile = targetPath && String(targetPath).toLowerCase() === String(handoff.bin_path).toLowerCase();
+      // reload-bin only refreshes what we already have open. Drop it
+      // otherwise — don't slurp in a new bin out of nowhere.
+      if (isReload && !isSameFile) return;
       if (isReload && isSameFile && !fileSaved) {
         setExternalChangeModal({
           open: true,
@@ -737,6 +740,7 @@ const VFXHub = () => {
         onDonorFilterChange={filterDonorParticles}
         handleDrop={handleDrop}
         handleDragOver={handleDragOver}
+        processTargetBin={processTargetBin}
         targetSystems={targetSystems}
         donorSystems={donorSystems}
         filteredTargetSystems={filteredTargetSystems}

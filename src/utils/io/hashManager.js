@@ -7,7 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 
-const RELEASE_API_URL = 'https://api.github.com/repos/LeagueToolkit/lmdb-hashes/releases/latest';
+const RELEASE_API_URL = 'https://api.github.com/repos/RitoShark/lmdb-hashes/releases/latest';
 const ASSETS = [
   { name: 'lol-hashes-wad.zst', lmdbDir: 'hashes-wad.lmdb', label: 'WAD hashes' },
   { name: 'lol-hashes-bin.zst', lmdbDir: 'hashes-bin.lmdb', label: 'BIN hashes' },
@@ -97,7 +97,7 @@ function getHashDirectory() {
 
 /**
  * Check if LMDB hash databases exist.
- * @returns {{ allPresent: boolean, missing: string[], hashDir: string }}
+ * @returns {{ allPresent: boolean, missing: string[], hashDir: string, total: number, present: number }}
  */
 function checkHashes() {
   const hashDir = getHashDirectory();
@@ -106,16 +106,20 @@ function checkHashes() {
     const dataMdb = path.join(hashDir, asset.lmdbDir, 'data.mdb');
     if (!fs.existsSync(dataMdb)) missing.push(asset.name);
   }
-  return { allPresent: missing.length === 0, missing, hashDir };
+  const total = ASSETS.length;
+  const present = total - missing.length;
+  return { allPresent: missing.length === 0, missing, hashDir, total, present };
 }
 
 /**
  * Fast-path gate for startup auto-sync.
  * Returns true when LMDBs exist and metadata was updated recently.
+ * Default cooldown is 24 hours — checks GitHub at most once per day per
+ * machine. Callers can pass a smaller value when they want a fresher check.
  * @param {number} maxAgeMinutes
  * @returns {boolean}
  */
-function isAutoSyncFresh(maxAgeMinutes = 30) {
+function isAutoSyncFresh(maxAgeMinutes = 60 * 24) {
   try {
     const status = checkHashes();
     if (!status.allPresent) return false;
@@ -136,8 +140,28 @@ function isAutoSyncFresh(maxAgeMinutes = 30) {
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
+const ALLOWED_HOST_SUFFIXES = [
+  'api.github.com',
+  'github.com',
+  'githubusercontent.com', // covers raw.* / objects.* / *-releases.*
+];
+
+function isAllowedUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') return false;
+    const host = u.hostname.toLowerCase();
+    return ALLOWED_HOST_SUFFIXES.some(s => host === s || host.endsWith('.' + s));
+  } catch {
+    return false;
+  }
+}
+
 function fetchJSON(url) {
   return new Promise((resolve, reject) => {
+    if (!isAllowedUrl(url)) {
+      return reject(new Error(`Refusing to fetch from disallowed URL: ${url}`));
+    }
     const options = {
       headers: {
         'User-Agent': 'Quartz-HashManager/1.0',
@@ -167,12 +191,14 @@ function fetchJSON(url) {
 
 function downloadFile(url, filePath, progressCallback = null) {
   return new Promise((resolve, reject) => {
-    const protocol = url.startsWith('https:') ? https : require('http');
+    if (!isAllowedUrl(url)) {
+      return reject(new Error(`Refusing to download from disallowed URL: ${url}`));
+    }
     const options = {
       headers: { 'User-Agent': 'Quartz-HashManager/1.0' },
     };
 
-    protocol.get(url, options, (response) => {
+    https.get(url, options, (response) => {
       if (response.statusCode === 301 || response.statusCode === 302) {
         response.resume();
         return downloadFile(response.headers.location, filePath, progressCallback)

@@ -59,13 +59,47 @@ const BumpathTopBar = React.memo(function BumpathTopBar({
             checked={showMissingOnly}
             onChange={(e) => setShowMissingOnly(e.target.checked)}
             sx={{
-              '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--accent)' },
-              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'var(--accent)' },
+              p: 0.5,
+              width: 38,
+              height: 22,
+              '& .MuiSwitch-switchBase': {
+                p: '3px',
+                '&.Mui-checked': {
+                  color: '#fff',
+                  transform: 'translateX(16px)',
+                  '& + .MuiSwitch-track': {
+                    backgroundColor: 'var(--accent)',
+                    opacity: 1,
+                    boxShadow: '0 0 10px color-mix(in srgb, var(--accent), transparent 65%)',
+                  },
+                },
+              },
+              '& .MuiSwitch-thumb': {
+                width: 14,
+                height: 14,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+              },
+              '& .MuiSwitch-track': {
+                borderRadius: 999,
+                background: 'rgba(255,255,255,0.12)',
+                opacity: 1,
+                transition: 'background 200ms ease, box-shadow 200ms ease',
+              },
             }}
           />
         }
         label={
-          <Typography variant="body2" sx={{ color: 'var(--accent2)', fontSize: '0.7rem', fontWeight: '500' }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: showMissingOnly ? 'var(--accent)' : 'rgba(255,255,255,0.6)',
+              fontSize: '0.72rem',
+              fontWeight: 600,
+              fontFamily: 'JetBrains Mono, monospace',
+              letterSpacing: '0.02em',
+              transition: 'color 180ms ease',
+            }}
+          >
             Show Missing Files Only
           </Typography>
         }

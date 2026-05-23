@@ -8,6 +8,13 @@ const TITLE_BAR_HEIGHT = 48;
 
 const CustomTitleBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
+
+  // Toggle a body class so global CSS can drop the window's rounded corners
+  // while maximized (rounding past the screen edge would be wrong).
+  useEffect(() => {
+    document.body.classList.toggle('window-maximized', isMaximized);
+    return () => { document.body.classList.remove('window-maximized'); };
+  }, [isMaximized]);
   const [iconSrc, setIconSrc] = useState(process.env.PUBLIC_URL + '/divinelab.ico');
   const [gifSrc, setGifSrc] = useState('');
   const [jadeInteropEnabled, setJadeInteropEnabled] = useState(true);

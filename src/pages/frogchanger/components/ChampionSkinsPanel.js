@@ -1,5 +1,5 @@
 import React from 'react';
-import { Youtube } from 'lucide-react';
+import { Youtube, FileDown } from 'lucide-react';
 
 const ChampionSkinsPanel = ({
   selectedChampion,
@@ -16,6 +16,8 @@ const ChampionSkinsPanel = ({
   onChromaClick,
   onDownloadSplashArt,
   onYouTubeSkin,
+  onOpenInJade,
+  onExtractSkinBin,
   offlineMode = false,
 }) => (
   <div>
@@ -41,24 +43,33 @@ const ChampionSkinsPanel = ({
 
           return (
             <div
-              key={`${selectedChampion?.name}-${skin.id}`}
+              key={`${selectedChampion?.name}-${skin.wadAlias || ''}-${skin.full_id || skin.id}`}
               onClick={() => onSkinClick(skin.name)}
               className={`group relative rounded-lg overflow-visible border cursor-pointer transition-all duration-150 ${isSelected
                 ? ''
                 : 'border-gray-700 bg-gray-900 hover:border-white/25 hover:shadow-lg'
                 }`}
-              style={isSelected
-                ? {
-                  borderColor: 'color-mix(in srgb, var(--accent), transparent 42%)',
-                  background: 'linear-gradient(160deg, color-mix(in srgb, var(--accent2), transparent 94%), color-mix(in srgb, var(--accent), transparent 95%))',
-                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px color-mix(in srgb, var(--accent), transparent 72%), 0 12px 28px rgba(0,0,0,0.35)',
-                  transform: 'scale(1.028)',
-                  zIndex: 3,
-                }
-                : {
-                  transform: 'scale(1)',
-                  zIndex: 1,
-                }}
+              style={{
+                // Off-screen cards skip layout/paint entirely — critical for
+                // large lists like the Generic emote bucket (~1097 cards).
+                // contentVisibility: 'auto' is a Chromium/Electron-supported
+                // native virtualization; containIntrinsicSize reserves a
+                // sensible placeholder so the scrollbar stays accurate.
+                contentVisibility: 'auto',
+                containIntrinsicSize: '0 380px',
+                ...(isSelected
+                  ? {
+                    borderColor: 'color-mix(in srgb, var(--accent), transparent 42%)',
+                    background: 'linear-gradient(160deg, color-mix(in srgb, var(--accent2), transparent 94%), color-mix(in srgb, var(--accent), transparent 95%))',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px color-mix(in srgb, var(--accent), transparent 72%), 0 12px 28px rgba(0,0,0,0.35)',
+                    transform: 'scale(1.028)',
+                    zIndex: 3,
+                  }
+                  : {
+                    transform: 'scale(1)',
+                    zIndex: 1,
+                  }),
+              }}
             >
             <div className="aspect-[3/4] relative overflow-hidden">
               {!offlineMode ? (
@@ -67,6 +78,8 @@ const ChampionSkinsPanel = ({
                   alt={skin.name}
                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                   draggable={false}
+                  loading="lazy"
+                  decoding="async"
                 />
               ) : (
                 <div className="w-full h-full bg-gray-800 text-gray-300 text-xs flex items-center justify-center px-2 text-center">
@@ -75,20 +88,22 @@ const ChampionSkinsPanel = ({
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-              <div className="absolute top-2 left-2">
-                {!offlineMode ? (
-                  <img
-                    src={getRarityIconUrl(skin)}
-                    alt={skin.rarity || 'No Rarity'}
-                    className="w-6 h-6 rounded"
-                    title={skin.rarity || 'No Rarity'}
-                  />
-                ) : (
-                  <div className="bg-gray-900/80 text-white px-2 py-1 rounded text-[10px] font-semibold" title={skin.rarity || 'No Rarity'}>
-                    {skin.rarity || 'Base'}
-                  </div>
-                )}
-              </div>
+              {!skin.hideRarityIcon && (
+                <div className="absolute top-2 left-2">
+                  {!offlineMode ? (
+                    <img
+                      src={getRarityIconUrl(skin)}
+                      alt={skin.rarity || 'No Rarity'}
+                      className="w-6 h-6 rounded"
+                      title={skin.rarity || 'No Rarity'}
+                    />
+                  ) : (
+                    <div className="bg-gray-900/80 text-white px-2 py-1 rounded text-[10px] font-semibold" title={skin.rarity || 'No Rarity'}>
+                      {skin.rarity || 'Base'}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {isSelected && (
                 <div
@@ -120,7 +135,7 @@ const ChampionSkinsPanel = ({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onDownloadSplashArt(selectedChampion.name, selectedChampion.alias, skin.id, skin.name);
+                    onDownloadSplashArt(selectedChampion.name, selectedChampion.alias, skin.id, skin.name, skin);
                   }}
                   className="absolute bottom-2 right-2 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-full transition-colors duration-200 opacity-0 group-hover:opacity-100"
                   title="Download Splash Art"
@@ -146,6 +161,49 @@ const ChampionSkinsPanel = ({
               >
                 <Youtube size={14} color="#ff2c2c" />
               </button>
+
+              {onOpenInJade && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenInJade(skin);
+                  }}
+                  className="absolute bottom-2 p-2 rounded-full transition-colors duration-200 opacity-0 group-hover:opacity-100"
+                  style={{
+                    right: '48px',
+                    border: '1px solid rgba(0, 200, 140, 0.55)',
+                    background: 'color-mix(in srgb, #00c88c, transparent 78%)',
+                    backdropFilter: 'blur(4px)',
+                  }}
+                  title="Open combined skin BIN in Jade (extracts to temp folder)"
+                >
+                  <img
+                    src={`${process.env.PUBLIC_URL}/jade.webp`}
+                    alt="Jade"
+                    style={{ width: 16, height: 16, display: 'block' }}
+                  />
+                </button>
+              )}
+
+              {onExtractSkinBin && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onExtractSkinBin(skin);
+                  }}
+                  className="absolute bottom-2 p-2 rounded-full transition-colors duration-200 opacity-0 group-hover:opacity-100"
+                  style={{
+                    right: '88px',
+                    border: '1px solid rgba(168, 85, 247, 0.55)',
+                    background: 'color-mix(in srgb, #a855f7, transparent 78%)',
+                    color: '#c4b5fd',
+                    backdropFilter: 'blur(4px)',
+                  }}
+                  title="Extract combined skin BIN to your extraction folder"
+                >
+                  <FileDown size={16} color="#c4b5fd" />
+                </button>
+              )}
             </div>
 
             <div className="p-3">

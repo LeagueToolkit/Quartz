@@ -1,7 +1,7 @@
 {
   "name": "quartz",
   "productName": "Quartz",
-  "version": "3.4.2",
+  "version": "3.5.3",
   "description": "Quartz - League of Legends Modding Suite",
   "homepage": "./",
   "main": "electron-main.js",
@@ -127,7 +127,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "LeagueToolkit",
+        "owner": "RitoShark",
         "repo": "Quartz",
         "releaseType": "release"
       }
@@ -180,6 +180,7 @@
     "electron-store": "^10.1.0",
     "electron-updater": "^6.1.7",
     "fraction.js": "^5.2.2",
+    "koffi": "^3.0.1",
     "lamejs": "^1.2.1",
     "lodash": "^4.17.21",
     "lucide-react": "^0.539.0",

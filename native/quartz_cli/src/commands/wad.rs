@@ -136,6 +136,38 @@ const PATH_PREFIXES: &[&[u8]] = &[
     b"uiautoatlas/",
 ];
 
+/// Asset extensions used to recognise mod root-level paths that don't start
+/// with any of `PATH_PREFIXES`. Mods sometimes ship assets under a custom
+/// root namespace (e.g. `reddivinekinggaren/foo.dds`) — those paths exist
+/// inside the mod's BIN strings and must be hashed for the unpacker to
+/// resolve them correctly.
+const ROOT_ASSET_EXTS: &[&[u8]] = &[
+    b".dds", b".tex", b".skn", b".skl", b".anm", b".bin", b".bnk", b".wpk",
+    b".wem", b".scb", b".sco", b".scn", b".troybin", b".luaobj", b".lua",
+    b".dat", b".png", b".jpg", b".webp", b".mapgeo",
+];
+
+fn looks_like_path(s: &[u8]) -> bool {
+    if PATH_PREFIXES
+        .iter()
+        .any(|p| s.len() >= p.len() && s[..p.len()].eq_ignore_ascii_case(p))
+    {
+        return true;
+    }
+    // Root-level shape: must contain a slash AND end with a known asset
+    // extension. Avoids hashing every random ASCII fragment in the BIN.
+    if !s.contains(&b'/') {
+        return false;
+    }
+    ROOT_ASSET_EXTS.iter().any(|ext| {
+        if s.len() < ext.len() {
+            return false;
+        }
+        let tail = &s[s.len() - ext.len()..];
+        tail.eq_ignore_ascii_case(ext)
+    })
+}
+
 fn xxhash_path(s: &str) -> u64 {
     xxhash_rust::xxh64::xxh64(s.as_bytes(), 0)
 }
@@ -164,11 +196,7 @@ fn scan_bin_game_hashes(data: &[u8]) -> Vec<(u64, String)> {
             if let Some(slice) = data.get(i + 2..i + 2 + len) {
                 if let Ok(s) = std::str::from_utf8(slice) {
                     let lb = s.as_bytes();
-                    let is_path = s.contains('/')
-                        && s.is_ascii()
-                        && PATH_PREFIXES
-                            .iter()
-                            .any(|p| lb.len() >= p.len() && lb[..p.len()].eq_ignore_ascii_case(p));
+                    let is_path = s.contains('/') && s.is_ascii() && looks_like_path(lb);
                     if is_path {
                         let lower = s.to_ascii_lowercase();
                         results.push((xxhash_path(&lower), lower.clone()));
@@ -415,7 +443,14 @@ pub fn unpack(wad_path: &Path, output_dir: Option<&Path>, hash_dir: Option<&Path
             Ok(data) => {
                 let mut final_path = out_path.clone();
                 if final_path.extension().is_none() {
-                    if let Some(ext) = LeagueFileKind::identify_from_bytes_with_offset(&data, 64).extension() {
+                    // `load_chunk_decompressed` returns the raw file bytes
+                    // (already past the WAD chunk wrapper). League file magic
+                    // is at offset 0 — `r3d2anmd`, `OEGM` (skn), `[TEX\x00`,
+                    // `BKHD` (bnk), `OggS`, `PROP` (bin), etc. The previous
+                    // `data.get(64..)` skipped past every magic byte and made
+                    // `identify_from_bytes` return Unknown for every file →
+                    // no extension assigned → hash-named files dumped at root.
+                    if let Some(ext) = LeagueFileKind::identify_from_bytes(&data).extension() {
                         final_path.set_extension(ext);
                         if let Some(old) = hashed_name {
                             let new_name = final_path

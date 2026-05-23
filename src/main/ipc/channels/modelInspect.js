@@ -11,6 +11,7 @@ const CHAMPION_SPECIAL_CASES = {
   monkeyking: 'monkeyking',
   'nunu & willump': 'nunu',
   nunu: 'nunu',
+  'renata glasc': 'renata',
 };
 
 function getChampionFileName(championName) {
@@ -290,14 +291,20 @@ async function discoverMaterialTextureHints({
         const simpleSkinField = getFieldByName(fields, 'simpleskin');
         const materialField = getFieldByName(fields, 'material');
         const textureField = getFieldByName(fields, 'texture');
+        const hideField = getFieldByName(fields, 'initialsubmeshtohide');
         const simpleSkinPath = readStringLike(simpleSkinField).replace(/\\/g, '/');
         const materialRef = readStringLike(materialField);
         const texturePath = readStringLike(textureField).replace(/\\/g, '/');
-        if (simpleSkinPath || materialRef || texturePath) {
+        const hideRaw = readStringLike(hideField);
+        const submeshesToHide = hideRaw
+          ? hideRaw.split(/\s+/).map((s) => s.trim()).filter(Boolean)
+          : [];
+        if (simpleSkinPath || materialRef || texturePath || submeshesToHide.length) {
           skinMeshDefaultCandidates.push({
             simpleSkinPath,
             materialRef,
             texturePath,
+            submeshesToHide,
           });
         }
       }
@@ -425,8 +432,21 @@ async function discoverMaterialTextureHints({
   // Fallback for submeshes without explicit materialOverride:
   // use the owning SkinMeshDataProperties entry (material has priority over texture path).
   const defaultTextureBySkn = {};
+  const submeshesToHideBySkn = {};
   let defaultTextureHint = '';
   for (const candidate of skinMeshDefaultCandidates) {
+    // initialSubmeshToHide is independent of texture resolution — capture it
+    // for the SKN even when no texture was attached to this SkinMeshDataProperties.
+    const simpleSkinKeyForHide = normalizeKey(candidate.simpleSkinPath || '');
+    if (
+      simpleSkinKeyForHide &&
+      Array.isArray(candidate.submeshesToHide) &&
+      candidate.submeshesToHide.length &&
+      !submeshesToHideBySkn[simpleSkinKeyForHide]
+    ) {
+      submeshesToHideBySkn[simpleSkinKeyForHide] = candidate.submeshesToHide;
+    }
+
     const fromMaterial = resolveTextureByMaterialRef(candidate.materialRef);
     const fromTexture = candidate.texturePath || '';
     const resolved = (fromMaterial && looksLikeTexturePath(fromMaterial)) ? fromMaterial : fromTexture;
@@ -446,6 +466,7 @@ async function discoverMaterialTextureHints({
   return {
     materialTextureHints: hints,
     defaultTextureBySkn,
+    submeshesToHideBySkn,
     discoveredTextureRefs: Array.from(discoveredTextureRefs),
   };
 }
@@ -482,6 +503,9 @@ function registerModelInspectChannels({
         skinName = '',
         leaguePath,
         hashPath: rawHashPath,
+        isTftMode = false,
+        wadTheme = null,
+        wadTier = null,
       } = data;
 
       if (!championName || skinId == null || !leaguePath) {
@@ -495,7 +519,11 @@ function registerModelInspectChannels({
         ? (Number(chromaId) >= 1000 ? Number(chromaId) % 1000 : Number(chromaId))
         : normalizedModelSkinId;
       const textureSkinKey = toSkinKey(normalizedTextureSkinId);
-      const wadFilePath = path.join(leaguePath, `${championFileName}.wad.client`);
+      // TFT tacticians all live in Companions.wad.client (one tier up from the
+      // per-champion DATA/FINAL/Champions/ folder the caller passes in).
+      const wadFileName = isTftMode ? 'Companions.wad.client' : `${championFileName}.wad.client`;
+      const wadDir = isTftMode ? path.dirname(leaguePath) : leaguePath;
+      const wadFilePath = path.join(wadDir, wadFileName);
       if (!fs.existsSync(wadFilePath)) {
         return { error: `WAD file not found: ${wadFilePath}` };
       }
@@ -544,6 +572,24 @@ function registerModelInspectChannels({
       ]);
       const allowedExt = new Set([...MODEL_EXTENSIONS, ...ANIMATION_EXTENSIONS, ...TEXTURE_EXTENSIONS, ...EXTRA_EXTENSIONS]);
 
+      // For TFT tacticians the actual mesh + textures live under
+      //   assets/characters/<alias>/themes/<theme>/tier<N>/
+      //   data/characters/<alias>/themes/<theme>/  (animation + theme BINs)
+      // not under skins/skin<N>/. Build optional theme/tier prefixes so the
+      // filter callbacks below can include the real character assets.
+      const useTftLayout = Boolean(isTftMode && wadTheme && wadTier);
+      const themeStr = useTftLayout ? String(wadTheme).toLowerCase() : '';
+      const tierStr = useTftLayout ? `tier${Number(wadTier)}` : '';
+      const tftThemePrefix = useTftLayout
+        ? `${championPrefix}/themes/${themeStr}/`
+        : '';
+      const tftDataThemePrefix = useTftLayout
+        ? `${dataChampionPrefix}/themes/${themeStr}/`
+        : '';
+      // Suppress unused-var warnings for tierStr; it's kept for future
+      // narrowing if the broad <alias>-subtree filter proves too noisy.
+      void tierStr;
+
       const sendProgress = (message) => {
         try {
           if (!event.sender.isDestroyed()) {
@@ -589,14 +635,32 @@ function registerModelInspectChannels({
             return false;
           }
           if (!allowedExt.has(effectiveExt)) return false;
+          // TFT tacticians: accept the entire assets/characters/<alias>/ and
+          // data/characters/<alias>/ subtrees. Per-skin theme filtering proved
+          // too fragile across the variety of Tooltip naming patterns CDragon
+          // ships — and we already know the WAD contains exactly the tactician
+          // catalog so there's nothing to "narrow" toward. Keeps the mesh
+          // (themes/<theme>/tier<N>/*.skn), textures, and animations all in.
+          const inTftAlias = isTftMode && (
+            rel.startsWith(`${championPrefix}/`) ||
+            rel.startsWith(`${dataChampionPrefix}/`)
+          );
+          const inTftTheme = useTftLayout && (
+            rel.startsWith(tftThemePrefix) ||
+            rel.startsWith(tftDataThemePrefix)
+          );
           const inModelSkin =
             rel.startsWith(modelSkinPrefix) ||
             rel.startsWith(dataModelSkinPrefix) ||
-            inAnySkinFolder(modelSkinKey);
+            inAnySkinFolder(modelSkinKey) ||
+            inTftTheme ||
+            inTftAlias;
           const inTextureSkin =
             rel.startsWith(textureSkinPrefix) ||
             rel.startsWith(dataTextureSkinPrefix) ||
-            inAnySkinFolder(textureSkinKey);
+            inAnySkinFolder(textureSkinKey) ||
+            inTftTheme ||
+            inTftAlias;
           if (MODEL_EXTENSIONS.has(effectiveExt) || ANIMATION_EXTENSIONS.has(effectiveExt)) {
             return inModelSkin;
           }
@@ -618,9 +682,28 @@ function registerModelInspectChannels({
       const relInModelSkin = (absPath) => {
         const rel = toPosix(path.relative(filesDir, absPath)).toLowerCase();
         if (rel.startsWith(modelSkinPrefix) || rel.startsWith(dataModelSkinPrefix)) return true;
+        // TFT: accept the whole tactician subtree (themes/<theme>/tier<N>/
+        // holds the mesh, themes/<theme>/animations/ holds the anms, and
+        // themes/<theme>/ holds shared textures).
+        if (isTftMode && (
+          rel.startsWith(`${championPrefix}/`) ||
+          rel.startsWith(`${dataChampionPrefix}/`)
+        )) return true;
         return new RegExp(`^(?:assets|data)/characters/[^/]+/skins/${String(modelSkinKey).toLowerCase()}/`).test(rel);
       };
       const sknFiles = allFiles.filter((f) => extOf(f) === '.skn' && relInModelSkin(f)).map(toRel);
+      // For TFT, prefer the mesh under themes/<theme>/tier<N>/ matching the
+      // clicked skin so auto-select doesn't grab a different tier's mesh.
+      // Falls back to undefined (modal then uses sknFiles[0]).
+      let preferredSknRelativePath;
+      if (useTftLayout) {
+        const themeSeg = `/themes/${themeStr}/`;
+        const tierSeg = `/tier${Number(wadTier)}/`;
+        preferredSknRelativePath = sknFiles.find((f) => {
+          const lower = String(f).toLowerCase();
+          return lower.includes(themeSeg) && lower.includes(tierSeg);
+        });
+      }
       const sklFiles = allFiles.filter((f) => extOf(f) === '.skl' && relInModelSkin(f)).map(toRel);
       const anmFiles = allFiles.filter((f) => ANIMATION_EXTENSIONS.has(extOf(f)) && relInModelSkin(f)).map(toRel);
       const textureFiles = allFiles.filter((f) => TEXTURE_EXTENSIONS.has(extOf(f))).map(toRel);
@@ -641,6 +724,7 @@ function registerModelInspectChannels({
         : (characterFolders[0] || '');
       const materialTextureHintsByCharacterFolder = {};
       const defaultTextureBySknByCharacterFolder = {};
+      const submeshesToHideBySknByCharacterFolder = {};
       const discoveredTextureRefSet = new Set();
 
       for (const folder of characterFolders) {
@@ -657,6 +741,7 @@ function registerModelInspectChannels({
         });
         materialTextureHintsByCharacterFolder[folder] = result.materialTextureHints || {};
         defaultTextureBySknByCharacterFolder[folder] = result.defaultTextureBySkn || {};
+        submeshesToHideBySknByCharacterFolder[folder] = result.submeshesToHideBySkn || {};
         for (const ref of (result.discoveredTextureRefs || [])) {
           discoveredTextureRefSet.add(ref);
         }
@@ -675,12 +760,16 @@ function registerModelInspectChannels({
 
       const defaultFolderHints = materialTextureHintsByCharacterFolder[defaultCharacterFolder] || {};
       const defaultFolderTextureBySkn = defaultTextureBySknByCharacterFolder[defaultCharacterFolder] || {};
+      const defaultFolderSubmeshHide = submeshesToHideBySknByCharacterFolder[defaultCharacterFolder] || {};
       const materialTextureHints = Object.keys(defaultFolderHints).length > 0
         ? defaultFolderHints
         : (fallbackHintResult.materialTextureHints || {});
       const defaultTextureBySkn = Object.keys(defaultFolderTextureBySkn).length > 0
         ? defaultFolderTextureBySkn
         : (fallbackHintResult.defaultTextureBySkn || {});
+      const submeshesToHideBySkn = Object.keys(defaultFolderSubmeshHide).length > 0
+        ? defaultFolderSubmeshHide
+        : (fallbackHintResult.submeshesToHideBySkn || {});
       for (const ref of (fallbackHintResult.discoveredTextureRefs || [])) {
         discoveredTextureRefSet.add(ref);
       }
@@ -708,6 +797,9 @@ function registerModelInspectChannels({
         materialTextureHintsByCharacterFolder,
         defaultTextureBySkn,
         defaultTextureBySknByCharacterFolder,
+        submeshesToHideBySkn,
+        submeshesToHideBySknByCharacterFolder,
+        preferredSknRelativePath: preferredSknRelativePath || null,
         discoveredTextureRefs: Array.from(discoveredTextureRefSet),
       };
 

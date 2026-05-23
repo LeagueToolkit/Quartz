@@ -12,9 +12,11 @@ export function FNV1a(s) {
     const lower = s.toLowerCase();
     for (let i = 0; i < lower.length; i++) {
         const b = lower.charCodeAt(i);
-        h = ((h ^ b) * 0x01000193) & 0xFFFFFFFF;
+        // Math.imul is required: `(h ^ b) * 0x01000193` overflows JS doubles
+        // (intermediate > 2^53) and corrupts the low bits before &-truncation.
+        h = Math.imul(h ^ b, 0x01000193) >>> 0;
     }
-    return h >>> 0; // Ensure unsigned 32-bit
+    return h >>> 0;
 }
 
 /**
