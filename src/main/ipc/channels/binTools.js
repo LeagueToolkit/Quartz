@@ -334,6 +334,86 @@ function registerBinToolsChannels({ ipcMain, fs, path, loadBinModule }) {
         }
     });
 
+    const loadFixVfxShape = async () => {
+        const mod = await import('../../../utils/vfx/fixVfxShape.js');
+        return mod.fixVfxShapeInBin || mod.default;
+    };
+
+    async function fixOneBinFile(filePath, createBackup) {
+        const BIN = await loadBinCtor();
+        const fixVfxShape = await loadFixVfxShape();
+        const bin = await new BIN().read(fs.readFileSync(filePath));
+        const stats = fixVfxShape(bin);
+        const totalShapes = stats.shapesRewrittenRadius + stats.shapesRewrittenVec3 + stats.shapesRewrittenEmpty;
+        if (totalShapes === 0 && stats.birthTranslationsLifted === 0) {
+            return { filePath, modified: false, ...stats };
+        }
+        if (createBackup) {
+            const bak = `${filePath}.bak`;
+            if (!fs.existsSync(bak)) fs.copyFileSync(filePath, bak);
+        }
+        await bin.write(filePath);
+        return { filePath, modified: true, ...stats };
+    }
+
+    function collectBinsRecursive(dir) {
+        const out = [];
+        const stack = [dir];
+        while (stack.length) {
+            const cur = stack.pop();
+            let names;
+            try { names = fs.readdirSync(cur, { withFileTypes: true }); } catch { continue; }
+            for (const ent of names) {
+                const full = path.join(cur, ent.name);
+                if (ent.isDirectory()) stack.push(full);
+                else if (ent.isFile() && ent.name.toLowerCase().endsWith('.bin')) out.push(full);
+            }
+        }
+        return out;
+    }
+
+    ipcMain.handle('bin:fixVfxShape', async (_, { filePath, folderPath, createBackup } = {}) => {
+        try {
+            const targets = [];
+            if (filePath) {
+                if (!fs.existsSync(filePath)) return { success: false, error: 'Bin not found' };
+                targets.push(filePath);
+            } else if (folderPath) {
+                if (!fs.existsSync(folderPath)) return { success: false, error: 'Folder not found' };
+                targets.push(...collectBinsRecursive(folderPath));
+            } else {
+                return { success: false, error: 'Provide filePath or folderPath' };
+            }
+
+            const results = [];
+            const totals = { filesProcessed: 0, filesModified: 0, filesFailed: 0,
+                shapesRewrittenRadius: 0, shapesRewrittenVec3: 0, shapesRewrittenEmpty: 0,
+                birthTranslationsLifted: 0 };
+
+            for (const t of targets) {
+                try {
+                    const r = await fixOneBinFile(t, !!createBackup);
+                    results.push(r);
+                    totals.filesProcessed++;
+                    if (r.modified) totals.filesModified++;
+                    totals.shapesRewrittenRadius += r.shapesRewrittenRadius || 0;
+                    totals.shapesRewrittenVec3   += r.shapesRewrittenVec3   || 0;
+                    totals.shapesRewrittenEmpty  += r.shapesRewrittenEmpty  || 0;
+                    totals.birthTranslationsLifted += r.birthTranslationsLifted || 0;
+                } catch (e) {
+                    totals.filesFailed++;
+                    results.push({ filePath: t, modified: false, error: e.message });
+                    console.error('[bin:fixVfxShape] failed for', t, e.message);
+                }
+            }
+
+            return { success: true, ...totals, results };
+        } catch (e) {
+            console.error('[bin:fixVfxShape]', e.message);
+            return { success: false, error: e.message };
+        }
+    });
+
     ipcMain.handle('bin:copyColors', async (_, { sourcePath, targetPath, outputPath, createBackup } = {}) => {
         try {
             if (!sourcePath || !fs.existsSync(sourcePath)) {

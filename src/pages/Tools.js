@@ -43,6 +43,7 @@ import {
   EmojiEmotions as EmojiIcon,
 } from '@mui/icons-material';
 import BinColorCopyCard from '../components/BinColorCopyCard';
+import FixVfxShapeCard from '../components/FixVfxShapeCard';
 
 // Import necessary Node.js modules for Electron
 const { ipcRenderer, shell } = window.require ? window.require('electron') : { ipcRenderer: null, shell: null };
@@ -805,6 +806,9 @@ const Tools = () => {
           Built-in Tools
         </Typography>
         <BinColorCopyCard
+          onNotify={({ message, severity }) => setSnackbar({ open: true, message, severity })}
+        />
+        <FixVfxShapeCard
           onNotify={({ message, severity }) => setSnackbar({ open: true, message, severity })}
         />
 

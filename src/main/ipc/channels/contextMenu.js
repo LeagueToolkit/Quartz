@@ -101,6 +101,10 @@ function registerContextMenuChannels({
       `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.bin\\shell\\Quartz\\shell\\32batchsplitvfx" /v "MUIVerb" /d "Batch Split VFX" /f`,
       `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.bin\\shell\\Quartz\\shell\\32batchsplitvfx" /v "Icon" /d "${iconPath}" /f`,
       `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.bin\\shell\\Quartz\\shell\\32batchsplitvfx\\command" /ve /d "\\"${quartzExe}\\" batch-split-vfx \\"%1\\"" /f`,
+      // Fix VFX Shape (ltmao FixVfxShape port — runs via Quartz app, not quartz_cli)
+      `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.bin\\shell\\Quartz\\shell\\33fixvfxshape" /v "MUIVerb" /d "Fix VFX Shape" /f`,
+      `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.bin\\shell\\Quartz\\shell\\33fixvfxshape" /v "Icon" /d "${iconPath}" /f`,
+      `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.bin\\shell\\Quartz\\shell\\33fixvfxshape\\command" /ve /d "${appLaunchPrefix} --fix-vfx-shape \\"%1\\"" /f`,
       // Extract BIN hashes (keep last; separator above)
       `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.bin\\shell\\Quartz\\shell\\99extracthashesbin" /v "MUIVerb" /d "Extract hashes" /f`,
       `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.bin\\shell\\Quartz\\shell\\99extracthashesbin" /v "CommandFlags" /t REG_DWORD /d 0x20 /f`,
@@ -246,6 +250,11 @@ function registerContextMenuChannels({
       `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00extracthashesbindir" /v "MUIVerb" /d "ritobin: Extract hashes from BIN folder" /f`,
       `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00extracthashesbindir" /v "Icon" /d "${iconPath}" /f`,
       `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00extracthashesbindir\\command" /ve /d "\\"${quartzExe}\\" extract-hashes-bin-dir \\"%1\\"" /f`,
+      // Fix VFX Shape — folder (recursive, runs via Quartz app)
+      `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00fixvfxshapedir" /v "MUIVerb" /d "Fix VFX Shape (all bins, recursive)" /f`,
+      `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00fixvfxshapedir" /v "CommandFlags" /t REG_DWORD /d 0x20 /f`,
+      `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00fixvfxshapedir" /v "Icon" /d "${iconPath}" /f`,
+      `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00fixvfxshapedir\\command" /ve /d "${appLaunchPrefix} --fix-vfx-shape \\"%1\\"" /f`,
       `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00pyntexmissing" /v "MUIVerb" /d "pyntex: Check missing files" /f`,
       `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00pyntexmissing" /v "CommandFlags" /t REG_DWORD /d 0x20 /f`,
       `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00pyntexmissing" /v "Icon" /d "${iconPath}" /f`,
@@ -306,6 +315,8 @@ function registerContextMenuChannels({
           { query: 'reg query "HKCU\\Software\\Classes\\SystemFileAssociations\\.bin\\shell\\Quartz\\shell\\30combinelinked\\command" /ve', expected: quartzExe },
           { query: 'reg query "HKCU\\Software\\Classes\\SystemFileAssociations\\.bin\\shell\\Quartz\\shell\\31noskinlite\\command" /ve', expected: quartzExe },
           { query: 'reg query "HKCU\\Software\\Classes\\SystemFileAssociations\\.bin\\shell\\Quartz\\shell\\32batchsplitvfx\\command" /ve', expected: quartzExe },
+          { query: 'reg query "HKCU\\Software\\Classes\\SystemFileAssociations\\.bin\\shell\\Quartz\\shell\\33fixvfxshape\\command" /ve', expected: appExe },
+          { query: 'reg query "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00fixvfxshapedir\\command" /ve', expected: appExe },
           { query: 'reg query "HKCU\\Software\\Classes\\SystemFileAssociations\\.mesh\\shell\\Quartz\\shell\\01xps2fbx\\command" /ve', expected: quartzExe },
           { query: 'reg query "HKCU\\Software\\Classes\\SystemFileAssociations\\.pmx\\shell\\Quartz\\shell\\01pmx2fbx\\command" /ve', expected: quartzExe },
           { query: 'reg query "HKCU\\Software\\Classes\\SystemFileAssociations\\.skn\\shell\\Quartz\\shell\\01inspectmodel\\command" /ve', expected: appExe },

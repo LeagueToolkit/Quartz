@@ -117,6 +117,7 @@ const { handleCommandLineArgs } = createCliArgsHandler({
   spawn,
   logToFile,
   baseDir: __dirname,
+  importLocalModule,
 });
 
 // Singleton check to handle multiple launches
