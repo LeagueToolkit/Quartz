@@ -1,5 +1,151 @@
 'use strict';
 
+// ─── BIN type constants (mirror src/jsritofile/binTypes.js) ─────────────────
+const T_NONE = 0, T_BOOL = 1, T_VEC4 = 13, T_RGBA = 15;
+const T_LIST = 128, T_LIST2 = 129, T_POINTER = 130, T_EMBED = 131;
+const T_OPTION = 133, T_MAP = 134;
+
+// FNV1a — matches src/jsritofile/helper.js so we can hash field names locally.
+function fnv1a(s) {
+    let h = 0x811c9dc5;
+    const lower = s.toLowerCase();
+    for (let i = 0; i < lower.length; i++) {
+        h = Math.imul(h ^ lower.charCodeAt(i), 0x01000193) >>> 0;
+    }
+    return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+// LoL VFX bin color field names. RGBA-typed fields are always copied; VEC4
+// fields are only copied if their field-name hash is in this set, since VEC4
+// is also used for positions, scales, etc.
+const VFX_COLOR_FIELD_NAMES = [
+    'color', 'startColor', 'endColor', 'peakColor', 'lingerColor',
+    'color0', 'color1', 'color2', 'color3', 'color4', 'color5', 'color6', 'color7',
+    'colorOverTime', 'colorOverLifetime',
+    'colorStart', 'colorMid', 'colorEnd',
+    'particleColor', 'tintColor', 'colorTint',
+    'reflectionColor', 'emissiveColor', 'diffuseColor', 'baseColor',
+    'edgeColor', 'fresnelColor', 'rimColor',
+    'mEmissiveColor', 'mDiffuseColor',
+    'colorMin', 'colorMax',
+];
+const VFX_COLOR_HASH_SET = new Set(VFX_COLOR_FIELD_NAMES.map(fnv1a));
+
+function isWhitelistedColorHash(hash) {
+    return !!hash && VFX_COLOR_HASH_SET.has(String(hash).toLowerCase());
+}
+
+function copy4(srcArr, dstArr) {
+    if (!Array.isArray(srcArr) || !Array.isArray(dstArr) || srcArr.length < 4 || dstArr.length < 4) return false;
+    for (let i = 0; i < 4; i++) dstArr[i] = srcArr[i];
+    return true;
+}
+
+// Recursively walk paired source/target BINFields and copy color values.
+// `containerHash` is the parent field's hash (used so the LIST<VEC4>
+// `colorOverTime` children — which have no hash of their own — inherit
+// their parent's name for the whitelist check).
+function walkAndCopyField(srcField, dstField, stats, containerHash) {
+    if (!srcField || !dstField) return;
+    if (srcField.type !== dstField.type) { stats.mismatches++; return; }
+    const t = srcField.type;
+    const hashForWhitelist = (srcField.hash || containerHash || '').toLowerCase();
+
+    if (t === T_RGBA) {
+        if (copy4(srcField.data, dstField.data)) stats.fieldsCopied++;
+        return;
+    }
+    if (t === T_VEC4) {
+        if (isWhitelistedColorHash(hashForWhitelist) && copy4(srcField.data, dstField.data)) {
+            stats.fieldsCopied++;
+        }
+        return;
+    }
+    if (t === T_LIST || t === T_LIST2) {
+        if (srcField.valueType !== dstField.valueType) { stats.mismatches++; return; }
+        const vt = srcField.valueType;
+        const sa = srcField.data, da = dstField.data;
+        if (!Array.isArray(sa) || !Array.isArray(da)) return;
+        const len = Math.min(sa.length, da.length);
+        if (vt === T_RGBA) {
+            for (let i = 0; i < len; i++) if (copy4(sa[i], da[i])) stats.fieldsCopied++;
+            return;
+        }
+        if (vt === T_VEC4) {
+            if (!isWhitelistedColorHash(hashForWhitelist)) return;
+            for (let i = 0; i < len; i++) if (copy4(sa[i], da[i])) stats.fieldsCopied++;
+            return;
+        }
+        if (vt === T_POINTER || vt === T_EMBED) {
+            for (let i = 0; i < len; i++) walkAndCopyContainer(sa[i], da[i], stats);
+            return;
+        }
+        // primitive non-color list — skip
+        return;
+    }
+    if (t === T_MAP) {
+        const vt = srcField.valueType;
+        const sm = srcField.data, dm = dstField.data;
+        if (!sm || !dm) return;
+        for (const k of Object.keys(sm)) {
+            if (!(k in dm)) continue;
+            if (vt === T_RGBA) { if (copy4(sm[k], dm[k])) stats.fieldsCopied++; }
+            else if (vt === T_POINTER || vt === T_EMBED) walkAndCopyContainer(sm[k], dm[k], stats);
+        }
+        return;
+    }
+    if (t === T_OPTION) {
+        if (srcField.data == null || dstField.data == null) return;
+        const vt = srcField.valueType;
+        if (vt === T_RGBA && copy4(srcField.data, dstField.data)) { stats.fieldsCopied++; return; }
+        if (vt === T_VEC4 && isWhitelistedColorHash(hashForWhitelist) && copy4(srcField.data, dstField.data)) {
+            stats.fieldsCopied++; return;
+        }
+        if (vt === T_POINTER || vt === T_EMBED) walkAndCopyContainer(srcField.data, dstField.data, stats);
+        return;
+    }
+    if (t === T_POINTER || t === T_EMBED) {
+        walkAndCopyContainer(srcField, dstField, stats);
+        return;
+    }
+    // Scalar/non-color types — nothing to do.
+}
+
+// `srcContainer` and `dstContainer` are objects with a `.data` array of
+// BINFields. Used for entries, POINTER/EMBED, and LIST items of those types.
+function walkAndCopyContainer(srcContainer, dstContainer, stats) {
+    if (!srcContainer || !dstContainer) return;
+    const sd = srcContainer.data, dd = dstContainer.data;
+    if (!Array.isArray(sd) || !Array.isArray(dd)) return;
+    const dstByHash = new Map();
+    for (const f of dd) {
+        if (f && f.hash) dstByHash.set(String(f.hash).toLowerCase(), f);
+    }
+    for (const sf of sd) {
+        if (!sf || !sf.hash) continue;
+        const df = dstByHash.get(String(sf.hash).toLowerCase());
+        if (df) walkAndCopyField(sf, df, stats);
+    }
+}
+
+function copyBinColors(srcBin, dstBin) {
+    const stats = { entriesMatched: 0, entriesSkipped: 0, fieldsCopied: 0, mismatches: 0 };
+    const srcByHash = new Map();
+    for (const e of srcBin.entries || []) {
+        if (e && e.hash) srcByHash.set(String(e.hash).toLowerCase(), e);
+    }
+    for (const dstEntry of dstBin.entries || []) {
+        if (!dstEntry || !dstEntry.hash) continue;
+        const key = String(dstEntry.hash).toLowerCase();
+        const srcEntry = srcByHash.get(key);
+        if (!srcEntry) { stats.entriesSkipped++; continue; }
+        if (srcEntry.type !== dstEntry.type) { stats.entriesSkipped++; continue; }
+        stats.entriesMatched++;
+        walkAndCopyContainer(srcEntry, dstEntry, stats);
+    }
+    return stats;
+}
+
 
 function findProjectRoot(startDir, fs, path) {
     let cur = startDir;
@@ -185,6 +331,115 @@ function registerBinToolsChannels({ ipcMain, fs, path, loadBinModule }) {
         } catch (e) {
             console.error('[bin:combineLinkedBins]', e.message);
             return { success: false, merged: 0, error: e.message };
+        }
+    });
+
+    const loadFixVfxShape = async () => {
+        const mod = await import('../../../utils/vfx/fixVfxShape.js');
+        return mod.fixVfxShapeInBin || mod.default;
+    };
+
+    async function fixOneBinFile(filePath, createBackup) {
+        const BIN = await loadBinCtor();
+        const fixVfxShape = await loadFixVfxShape();
+        const bin = await new BIN().read(fs.readFileSync(filePath));
+        const stats = fixVfxShape(bin);
+        const totalShapes = stats.shapesRewrittenRadius + stats.shapesRewrittenVec3 + stats.shapesRewrittenEmpty;
+        if (totalShapes === 0 && stats.birthTranslationsLifted === 0) {
+            return { filePath, modified: false, ...stats };
+        }
+        if (createBackup) {
+            const bak = `${filePath}.bak`;
+            if (!fs.existsSync(bak)) fs.copyFileSync(filePath, bak);
+        }
+        await bin.write(filePath);
+        return { filePath, modified: true, ...stats };
+    }
+
+    function collectBinsRecursive(dir) {
+        const out = [];
+        const stack = [dir];
+        while (stack.length) {
+            const cur = stack.pop();
+            let names;
+            try { names = fs.readdirSync(cur, { withFileTypes: true }); } catch { continue; }
+            for (const ent of names) {
+                const full = path.join(cur, ent.name);
+                if (ent.isDirectory()) stack.push(full);
+                else if (ent.isFile() && ent.name.toLowerCase().endsWith('.bin')) out.push(full);
+            }
+        }
+        return out;
+    }
+
+    ipcMain.handle('bin:fixVfxShape', async (_, { filePath, folderPath, createBackup } = {}) => {
+        try {
+            const targets = [];
+            if (filePath) {
+                if (!fs.existsSync(filePath)) return { success: false, error: 'Bin not found' };
+                targets.push(filePath);
+            } else if (folderPath) {
+                if (!fs.existsSync(folderPath)) return { success: false, error: 'Folder not found' };
+                targets.push(...collectBinsRecursive(folderPath));
+            } else {
+                return { success: false, error: 'Provide filePath or folderPath' };
+            }
+
+            const results = [];
+            const totals = { filesProcessed: 0, filesModified: 0, filesFailed: 0,
+                shapesRewrittenRadius: 0, shapesRewrittenVec3: 0, shapesRewrittenEmpty: 0,
+                birthTranslationsLifted: 0 };
+
+            for (const t of targets) {
+                try {
+                    const r = await fixOneBinFile(t, !!createBackup);
+                    results.push(r);
+                    totals.filesProcessed++;
+                    if (r.modified) totals.filesModified++;
+                    totals.shapesRewrittenRadius += r.shapesRewrittenRadius || 0;
+                    totals.shapesRewrittenVec3   += r.shapesRewrittenVec3   || 0;
+                    totals.shapesRewrittenEmpty  += r.shapesRewrittenEmpty  || 0;
+                    totals.birthTranslationsLifted += r.birthTranslationsLifted || 0;
+                } catch (e) {
+                    totals.filesFailed++;
+                    results.push({ filePath: t, modified: false, error: e.message });
+                    console.error('[bin:fixVfxShape] failed for', t, e.message);
+                }
+            }
+
+            return { success: true, ...totals, results };
+        } catch (e) {
+            console.error('[bin:fixVfxShape]', e.message);
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('bin:copyColors', async (_, { sourcePath, targetPath, outputPath, createBackup } = {}) => {
+        try {
+            if (!sourcePath || !fs.existsSync(sourcePath)) {
+                return { success: false, error: 'Source bin not found' };
+            }
+            if (!targetPath || !fs.existsSync(targetPath)) {
+                return { success: false, error: 'Target bin not found' };
+            }
+
+            const BIN = await loadBinCtor();
+            const srcBin = await new BIN().read(fs.readFileSync(sourcePath));
+            const dstBin = await new BIN().read(fs.readFileSync(targetPath));
+
+            const stats = copyBinColors(srcBin, dstBin);
+
+            const writePath = outputPath || targetPath;
+            if (writePath === targetPath && createBackup) {
+                const bak = `${targetPath}.bak`;
+                if (!fs.existsSync(bak)) fs.copyFileSync(targetPath, bak);
+            }
+            await dstBin.write(writePath);
+
+            return { success: true, outputPath: writePath, ...stats };
+        } catch (e) {
+            console.error('[bin:copyColors]', e.message);
+            return { success: false, error: e.message };
         }
     });
 }

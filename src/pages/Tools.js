@@ -42,6 +42,8 @@ import {
   Apps as AppsIcon,
   EmojiEmotions as EmojiIcon,
 } from '@mui/icons-material';
+import BinColorCopyCard from '../components/BinColorCopyCard';
+import FixVfxShapeCard from '../components/FixVfxShapeCard';
 
 // Import necessary Node.js modules for Electron
 const { ipcRenderer, shell } = window.require ? window.require('electron') : { ipcRenderer: null, shell: null };
@@ -796,6 +798,26 @@ const Tools = () => {
             </Typography>
           </Box>
         )}
+
+        <Typography sx={{
+          color: 'var(--accent)', fontSize: '0.62rem', fontWeight: 800,
+          textTransform: 'uppercase', letterSpacing: '0.1em', mb: 1, opacity: 0.8
+        }}>
+          Built-in Tools
+        </Typography>
+        <BinColorCopyCard
+          onNotify={({ message, severity }) => setSnackbar({ open: true, message, severity })}
+        />
+        <FixVfxShapeCard
+          onNotify={({ message, severity }) => setSnackbar({ open: true, message, severity })}
+        />
+
+        <Typography sx={{
+          color: 'var(--accent)', fontSize: '0.62rem', fontWeight: 800,
+          textTransform: 'uppercase', letterSpacing: '0.1em', mb: 1, mt: 2, opacity: 0.8
+        }}>
+          External Executables
+        </Typography>
 
         {exes.length === 0 ? (
           <Box sx={{
