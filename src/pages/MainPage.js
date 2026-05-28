@@ -106,7 +106,7 @@ const MainPage = () => {
     { title: 'VFX Hub', description: 'Community-powered VFX sharing exclusively for Divine members.', icon: <VFXHubIcon size={18} />, path: '/vfx-hub' },
     { title: 'WAD Explorer', description: 'Advanced explorer for WAD files with live 3D model and texture preview.', icon: <WadExplorerIcon size={18} />, path: '/wad-explorer', isNew: true },
     // Row 2 — file & image tools
-    { title: 'Img Recolor', description: 'Automatically batch recolor DDS or TEX files by simply selecting a folder and clicking "Batch Apply".', icon: <FrogImgIcon size={18} />, path: '/img-recolor' },
+    { title: 'Image Recolor', description: 'Automatically batch recolor DDS or TEX files by simply selecting a folder and clicking "Batch Apply".', icon: <FrogImgIcon size={18} />, path: '/img-recolor' },
     { title: 'Bin Editor', description: 'Primarily designed for editing parameters like birthscale directly within Quartz.', icon: <BinEditorIcon size={18} />, path: '/bineditor' },
     { title: 'Asset Extractor', description: 'Extract and decompose League of Legends game assets from WAD files.', icon: <AssetExtractorIcon size={18} />, path: '/frogchanger' },
     { title: 'Sound Banks', description: 'Extract, edit, and repack audio bank files for custom sound mods.', icon: <BnkExtractIcon size={18} />, path: '/bnk-extract' },

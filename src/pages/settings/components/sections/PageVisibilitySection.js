@@ -24,7 +24,7 @@ const PageVisibilitySection = ({ settings, updateSetting }) => {
           <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.06)', margin: '8px 0' }} />
           <ToggleSwitch label="Bin Editor" checked={settings.binEditorEnabled} onChange={(checked) => updateSetting('binEditorEnabled', checked)} compact />
           <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.06)', margin: '8px 0' }} />
-          <ToggleSwitch label="Img Recolor" checked={settings.imgRecolorEnabled} onChange={(checked) => updateSetting('imgRecolorEnabled', checked)} compact />
+          <ToggleSwitch label="Image Recolor" checked={settings.imgRecolorEnabled} onChange={(checked) => updateSetting('imgRecolorEnabled', checked)} compact />
           <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.06)', margin: '8px 0' }} />
           <ToggleSwitch label="Upscale" checked={settings.UpscaleEnabled} onChange={(checked) => updateSetting('UpscaleEnabled', checked)} compact />
           <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.06)', margin: '8px 0' }} />
