@@ -70,8 +70,24 @@ export function useBnkSplitterActions({
     pushToHistory();
     const setTreeFn = pane === 'left' ? setTreeData : setRightTreeData;
     setTreeFn((prev) => {
+      // Resolve the shared wem id behind the targeted node so the splitter's
+      // replacement propagates to every event that points at the same wem
+      // (node ids are unique per tree location, audioData.id is shared).
+      let targetAudioId = null;
+      const findAudioId = (nodes) => {
+        for (const n of nodes) {
+          if (n.id === nodeId && n.audioData) { targetAudioId = n.audioData.id; return true; }
+          if (n.children && findAudioId(n.children)) return true;
+        }
+        return false;
+      };
+      findAudioId(prev);
+
       const updateInTree = (nodes) => nodes.map((n) => {
-        if (n.id === nodeId) {
+        const isMatch = targetAudioId != null
+          ? (n.audioData && n.audioData.id === targetAudioId)
+          : (n.id === nodeId);
+        if (isMatch && n.audioData) {
           return {
             ...n,
             isModified: true,
