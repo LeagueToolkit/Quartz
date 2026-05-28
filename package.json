@@ -58,6 +58,10 @@
         "to": "quartz_cli.exe"
       },
       {
+        "from": "native/bc7_native/Bc7Native.dll",
+        "to": "Bc7Native.dll"
+      },
+      {
         "from": "native/fbx_runtime/xps_fbx_bridge.exe",
         "to": "xps_fbx_bridge.exe"
       },
@@ -150,7 +154,8 @@
     "dist:bundle-only": "npm run build:native:fbx-bridges && electron-builder --win --publish never",
     "dev:test-updates": "cross-env ENABLE_AUTO_UPDATER=true concurrently \"react-scripts start\" \"wait-on http://localhost:3000 && electron .\"",
     "build:native:wad-indexer": "npm exec --yes --package @napi-rs/cli -- napi build --platform --release --cwd native/wad_indexer",
-    "build:native:quartz-cli": "cargo build --release --manifest-path native/quartz_cli/Cargo.toml",
+    "build:native:quartz-cli": "cargo build --release --manifest-path native/quartz_cli/Cargo.toml && npm run prepare:bc7-native",
+    "prepare:bc7-native": "node scripts/prepare-bc7-native.js",
     "build:native:xps-fbx-bridge": "cmd /c \"native\\xps_fbx_bridge\\build_release.bat\"",
     "build:native:pmx-fbx-bridge": "cmd /c \"native\\pmx_fbx_bridge\\build_release.bat\"",
     "prepare:fbx-runtime": "node scripts/prepare-fbx-runtime.js",

@@ -121,6 +121,7 @@ native/pmx_fbx_bridge/build_release/
 native/xps_fbx_bridge/build_release/
 native/fbx_runtime/*.exe
 native/fbx_runtime/*.dll
+native/bc7_native/*.dll
 
 # Third-party tools and external projects
 League Mod Repather/

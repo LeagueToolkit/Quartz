@@ -9,6 +9,7 @@ export const TEXFormat = {
   ETC2_EAC: 2,
   ETC2: 3,
   DXT1: 10,
+  DXT3: 11, // BC2 — explicit 4-bit alpha
   DXT5: 12,
   BGRA8: 20
 };
@@ -43,17 +44,17 @@ export function readTEX(buffer) {
   // Read texture data with mipmap support
   const dataArray = [];
   
-  if (mipmaps && (format === TEXFormat.DXT1 || format === TEXFormat.DXT5 || format === TEXFormat.BGRA8)) {
+  if (mipmaps && (format === TEXFormat.DXT1 || format === TEXFormat.DXT3 || format === TEXFormat.DXT5 || format === TEXFormat.BGRA8)) {
     // Calculate mipmap count (number of times we can divide by 2 until we reach 1)
     const maxDim = Math.max(width, height);
     const mipmapCount = Math.floor(Math.log2(maxDim)) + 1;
-    
+
     // Determine block size and bytes per block
     let blockSize, bytesPerBlock;
     if (format === TEXFormat.DXT1) {
       blockSize = 4;
       bytesPerBlock = 8;
-    } else if (format === TEXFormat.DXT5) {
+    } else if (format === TEXFormat.DXT3 || format === TEXFormat.DXT5) {
       blockSize = 4;
       bytesPerBlock = 16;
     } else { // BGRA8
@@ -188,6 +189,59 @@ function decompressDXT1Block(blockData, x, y, width, height, pixels) {
 }
 
 /**
+ * Decompress DXT3 / BC2 block (4x4 pixels, 16 bytes):
+ *   bytes 0-7  = explicit 4-bit alpha per texel (row-major, low nibble first)
+ *   bytes 8-15 = DXT1-style color block (BC2 always uses the 4-color mode)
+ */
+function decompressDXT3Block(blockData, x, y, width, height, pixels) {
+  if (blockData.length < 16) return;
+
+  const view = new DataView(blockData.buffer, blockData.byteOffset, 16);
+
+  // Explicit alpha: 16 nibbles across bytes 0-7.
+  const alphaBytes = [];
+  for (let i = 0; i < 8; i++) alphaBytes.push(view.getUint8(i));
+
+  // Color endpoints (same layout as DXT1).
+  const color0 = view.getUint16(8, true);
+  const color1 = view.getUint16(10, true);
+  const colorBits = view.getUint32(12, true);
+
+  const r0 = ((color0 >> 11) & 0x1F) << 3;
+  const g0 = ((color0 >> 5) & 0x3F) << 2;
+  const b0 = (color0 & 0x1F) << 3;
+  const r1 = ((color1 >> 11) & 0x1F) << 3;
+  const g1 = ((color1 >> 5) & 0x3F) << 2;
+  const b1 = (color1 & 0x1F) << 3;
+
+  // BC2 color is always 4-color interpolation (no 1-bit transparent mode).
+  const colors = [
+    [r0, g0, b0],
+    [r1, g1, b1],
+    [Math.floor((r0 * 2 + r1) / 3), Math.floor((g0 * 2 + g1) / 3), Math.floor((b0 * 2 + b1) / 3)],
+    [Math.floor((r0 + r1 * 2) / 3), Math.floor((g0 + g1 * 2) / 3), Math.floor((b0 + b1 * 2) / 3)],
+  ];
+
+  for (let py = 0; py < 4; py++) {
+    for (let px = 0; px < 4; px++) {
+      if (x + px < width && y + py < height) {
+        const idx = py * 4 + px;
+        const aByte = alphaBytes[idx >> 1];
+        const aNibble = (idx & 1) ? (aByte >> 4) : (aByte & 0x0F);
+        const alpha = (aNibble << 4) | aNibble; // 4-bit -> 8-bit (0..255)
+        const colorIdx = (colorBits >> (idx * 2)) & 3;
+        const color = colors[colorIdx];
+        const pixelIdx = ((y + py) * width + (x + px)) * 4;
+        pixels[pixelIdx] = color[0];
+        pixels[pixelIdx + 1] = color[1];
+        pixels[pixelIdx + 2] = color[2];
+        pixels[pixelIdx + 3] = alpha;
+      }
+    }
+  }
+}
+
+/**
  * Decompress DXT5 block (4x4 pixels, 16 bytes)
  */
 function decompressDXT5Block(blockData, x, y, width, height, pixels) {
@@ -291,6 +345,21 @@ export function decompressTEX(tex) {
         if (blockIdx + blockSize <= textureData.length) {
           const blockData = textureData.subarray(blockIdx, blockIdx + blockSize);
           decompressDXT1Block(blockData, bx * 4, by * 4, width, height, pixels);
+        }
+      }
+    }
+  } else if (format === TEXFormat.DXT3) {
+    // DXT3 (BC2): 16 bytes per 4x4 block
+    const blockSize = 16;
+    const blockWidth = Math.floor((width + 3) / 4);
+    const blockHeight = Math.floor((height + 3) / 4);
+
+    for (let by = 0; by < blockHeight; by++) {
+      for (let bx = 0; bx < blockWidth; bx++) {
+        const blockIdx = (by * blockWidth + bx) * blockSize;
+        if (blockIdx + blockSize <= textureData.length) {
+          const blockData = textureData.subarray(blockIdx, blockIdx + blockSize);
+          decompressDXT3Block(blockData, bx * 4, by * 4, width, height, pixels);
         }
       }
     }

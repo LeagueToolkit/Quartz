@@ -6,6 +6,7 @@
 // DXGI Format constants
 export const DXGIFormat = {
   BC1_UNORM: 71,  // DXT1
+  BC2_UNORM: 74,  // DXT3
   BC3_UNORM: 77,  // DXT5
 };
 
@@ -80,6 +81,8 @@ export function readDDS(buffer) {
   // Determine format
   if (fourCC === 'DXT1') {
     format = 'DXT1';
+  } else if (fourCC === 'DXT2' || fourCC === 'DXT3') {
+    format = 'DXT3';
   } else if (fourCC === 'DXT5') {
     format = 'DXT5';
   } else if (fourCC === 'DX10') {
@@ -87,9 +90,11 @@ export function readDDS(buffer) {
     // Read DX10 header
     const dxgiFormat = view.getUint32(offset, true);
     offset += 4;
-    
+
     if (dxgiFormat === DXGIFormat.BC3_UNORM) {
       format = 'DXT5';
+    } else if (dxgiFormat === DXGIFormat.BC2_UNORM) {
+      format = 'DXT3';
     } else if (dxgiFormat === DXGIFormat.BC1_UNORM) {
       format = 'DXT1';
     } else {
@@ -167,13 +172,64 @@ function decompressDXT1Block(blockData, x, y, width, height, pixels) {
 }
 
 /**
+ * Decompress DXT3 / BC2 block (4x4 pixels, 16 bytes):
+ *   bytes 0-7  = explicit 4-bit alpha per texel (row-major, low nibble first)
+ *   bytes 8-15 = DXT1-style color block (BC2 always uses the 4-color mode)
+ */
+function decompressDXT3Block(blockData, x, y, width, height, pixels) {
+  if (blockData.length < 16) return;
+
+  const view = new DataView(blockData.buffer, blockData.byteOffset, 16);
+
+  const alphaBytes = [];
+  for (let i = 0; i < 8; i++) alphaBytes.push(view.getUint8(i));
+
+  const color0 = view.getUint16(8, true);
+  const color1 = view.getUint16(10, true);
+  const colorBits = view.getUint32(12, true);
+
+  const r0 = ((color0 >> 11) & 0x1F) << 3;
+  const g0 = ((color0 >> 5) & 0x3F) << 2;
+  const b0 = (color0 & 0x1F) << 3;
+  const r1 = ((color1 >> 11) & 0x1F) << 3;
+  const g1 = ((color1 >> 5) & 0x3F) << 2;
+  const b1 = (color1 & 0x1F) << 3;
+
+  // BC2 color is always 4-color interpolation (no 1-bit transparent mode).
+  const colors = [
+    [r0, g0, b0],
+    [r1, g1, b1],
+    [Math.floor((r0 * 2 + r1) / 3), Math.floor((g0 * 2 + g1) / 3), Math.floor((b0 * 2 + b1) / 3)],
+    [Math.floor((r0 + r1 * 2) / 3), Math.floor((g0 + g1 * 2) / 3), Math.floor((b0 + b1 * 2) / 3)],
+  ];
+
+  for (let py = 0; py < 4; py++) {
+    for (let px = 0; px < 4; px++) {
+      if (x + px < width && y + py < height) {
+        const idx = py * 4 + px;
+        const aByte = alphaBytes[idx >> 1];
+        const aNibble = (idx & 1) ? (aByte >> 4) : (aByte & 0x0F);
+        const alpha = (aNibble << 4) | aNibble; // 4-bit -> 8-bit
+        const colorIdx = (colorBits >> (idx * 2)) & 3;
+        const color = colors[colorIdx];
+        const pixelIdx = ((y + py) * width + (x + px)) * 4;
+        pixels[pixelIdx] = color[0];
+        pixels[pixelIdx + 1] = color[1];
+        pixels[pixelIdx + 2] = color[2];
+        pixels[pixelIdx + 3] = alpha;
+      }
+    }
+  }
+}
+
+/**
  * Decompress DXT5 block (4x4 pixels, 16 bytes)
  */
 function decompressDXT5Block(blockData, x, y, width, height, pixels) {
   if (blockData.length < 16) return;
 
   const view = new DataView(blockData.buffer, blockData.byteOffset, 16);
-  
+
   // Read alpha values
   const alpha0 = view.getUint8(0);
   const alpha1 = view.getUint8(1);
@@ -258,6 +314,21 @@ export function decompressDDS(dds) {
         if (blockIdx + blockSize <= data.length) {
           const blockData = data.subarray(blockIdx, blockIdx + blockSize);
           decompressDXT1Block(blockData, bx * 4, by * 4, width, height, pixels);
+        }
+      }
+    }
+  } else if (format === 'DXT3') {
+    // DXT3 (BC2): 16 bytes per 4x4 block
+    const blockSize = 16;
+    const blockWidth = Math.floor((width + 3) / 4);
+    const blockHeight = Math.floor((height + 3) / 4);
+
+    for (let by = 0; by < blockHeight; by++) {
+      for (let bx = 0; bx < blockWidth; bx++) {
+        const blockIdx = (by * blockWidth + bx) * blockSize;
+        if (blockIdx + blockSize <= data.length) {
+          const blockData = data.subarray(blockIdx, blockIdx + blockSize);
+          decompressDXT3Block(blockData, bx * 4, by * 4, width, height, pixels);
         }
       }
     }

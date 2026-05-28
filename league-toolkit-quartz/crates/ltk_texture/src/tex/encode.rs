@@ -1,7 +1,7 @@
 use super::Format;
 
 #[cfg(feature = "intel-tex")]
-use intel_tex_2::{bc1, bc3, RgbaSurface};
+use intel_tex_2::{bc1, bc3, bc5, bc7, RgSurface, RgbaSurface};
 
 #[cfg(any(feature = "intel-tex", test))]
 #[inline]
@@ -203,6 +203,8 @@ pub fn encode_rgba(
     match format {
         Format::Bc1 => encode_bc1(width, height, rgba_data),
         Format::Bc3 => encode_bc3(width, height, rgba_data),
+        Format::Bc5 => encode_bc5(width, height, rgba_data),
+        Format::Bc7 => encode_bc7(width, height, rgba_data),
         Format::Bgra8 => encode_bgra8(rgba_data),
         _ => Err(EncodeError::UnsupportedFormat(format)),
     }
@@ -310,6 +312,66 @@ fn encode_bc3(width: u32, height: u32, rgba_data: &[u8]) -> Result<Vec<u8>, Enco
         stride: 4 * width,
     };
     Ok(bc3::compress_blocks(&surface))
+}
+
+/// Encode RGBA8 data to BC7. Uses the max-quality `slow` preset (all BC7 mode
+/// groups evaluated) and auto-selects the alpha vs opaque variant based on
+/// whether any pixel has alpha < 255. CPU/ISPC — no GPU path exists.
+#[cfg(feature = "intel-tex")]
+fn encode_bc7(width: u32, height: u32, rgba_data: &[u8]) -> Result<Vec<u8>, EncodeError> {
+    let expected_len = width as usize * height as usize * 4;
+    if rgba_data.len() != expected_len {
+        return Err(EncodeError::InvalidPixelData);
+    }
+
+    let has_alpha = rgba_data.chunks_exact(4).any(|p| p[3] != 255);
+    let settings = if has_alpha {
+        bc7::alpha_slow_settings()
+    } else {
+        bc7::opaque_slow_settings()
+    };
+
+    let surface = RgbaSurface {
+        data: rgba_data,
+        width,
+        height,
+        stride: 4 * width,
+    };
+    Ok(bc7::compress_blocks(&settings, &surface))
+}
+
+#[cfg(not(feature = "intel-tex"))]
+fn encode_bc7(_width: u32, _height: u32, _rgba_data: &[u8]) -> Result<Vec<u8>, EncodeError> {
+    Err(EncodeError::UnsupportedFormat(Format::Bc7))
+}
+
+/// Encode the R and G channels of RGBA8 data to BC5 (two-channel, e.g. normal
+/// maps). intel_tex's BC5 takes a 2-channel interleaved RG surface.
+#[cfg(feature = "intel-tex")]
+fn encode_bc5(width: u32, height: u32, rgba_data: &[u8]) -> Result<Vec<u8>, EncodeError> {
+    let expected_len = width as usize * height as usize * 4;
+    if rgba_data.len() != expected_len {
+        return Err(EncodeError::InvalidPixelData);
+    }
+
+    let mut rg = vec![0u8; width as usize * height as usize * 2];
+    for (i, px) in rgba_data.chunks_exact(4).enumerate() {
+        rg[i * 2] = px[0];
+        rg[i * 2 + 1] = px[1];
+    }
+
+    let surface = RgSurface {
+        data: &rg,
+        width,
+        height,
+        stride: 2 * width,
+    };
+    Ok(bc5::compress_blocks(&surface))
+}
+
+#[cfg(not(feature = "intel-tex"))]
+fn encode_bc5(_width: u32, _height: u32, _rgba_data: &[u8]) -> Result<Vec<u8>, EncodeError> {
+    Err(EncodeError::UnsupportedFormat(Format::Bc5))
 }
 
 #[cfg(test)]

@@ -138,11 +138,14 @@ impl Tex {
                 // TODO: test me (this is likely wrong)
                 &self.data[off..off + (w * h * self.format.bytes_per_block())],
             ),
-            Format::Bc1 | Format::Bc3 => {
+            Format::Bc1 | Format::Bc2 | Format::Bc3 | Format::Bc5 | Format::Bc7 => {
                 let image_format = match self.format {
                     Format::Bc1 => image_dds::ImageFormat::BC1RgbaUnorm,
+                    Format::Bc2 => image_dds::ImageFormat::BC2RgbaUnorm,
                     Format::Bc3 => image_dds::ImageFormat::BC3RgbaUnorm,
-                    // Safety: outer match guarantees only Bc1/Bc3 reach here
+                    Format::Bc5 => image_dds::ImageFormat::BC5RgUnorm,
+                    Format::Bc7 => image_dds::ImageFormat::BC7RgbaUnorm,
+                    // Safety: outer match guarantees only Bc1/Bc2/Bc3/Bc5/Bc7 reach here
                     _ => unsafe { unreachable_unchecked() },
                 };
                 let surface = image_dds::Surface {
@@ -168,8 +171,8 @@ impl Tex {
                     Format::Etc2Eac => {
                         texture2ddecoder::decode_etc2_rgba8(i, w, h, o).map_err(DecodeErr::Etc2Eac)
                     }
-                    // Safety: Bgra8/Bc1/Bc3 are handled above
-                    Format::Bgra8 | Format::Bc1 | Format::Bc3 => unsafe { unreachable_unchecked() },
+                    // Safety: Bgra8/Bc1/Bc2/Bc3/Bc5/Bc7 are handled above
+                    Format::Bgra8 | Format::Bc1 | Format::Bc2 | Format::Bc3 | Format::Bc5 | Format::Bc7 => unsafe { unreachable_unchecked() },
                 }?;
                 TexSurfaceData::Bgra8Owned(data)
             }

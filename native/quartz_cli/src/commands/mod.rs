@@ -15,3 +15,4 @@ pub mod bin_hashes;
 pub mod xps;
 pub mod pmx;
 pub mod model_dir;
+pub mod bc7_gpu;
