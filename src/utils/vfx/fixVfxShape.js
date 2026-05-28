@@ -20,12 +20,16 @@ function h(name) {
     return H[name];
 }
 
-// Hex type-hashes the original script hardcodes (these are pre-computed,
-// presumably FNV1a hashes of unknown structure names — kept verbatim).
-const HASH_TYPE_RADIUS_SHAPE = '3dbe415d'; // shape with Radius (+ optional Height) + Flags
-const HASH_TYPE_VEC3_SHAPE   = 'ee39916f'; // shape with single vec3 EmitOffset
-const HASH_TYPE_EMPTY_SHAPE  = '4f4e2ed7'; // default empty shape (fallback)
-const HASH_TYPE_BIRTH_TRANSLATION = '68dc32b6'; // new BirthTranslation embed type
+// Struct-type hashes the original ltmao script hardcodes. Verified via FNV1a:
+//   3dbe415d = FNV1a("VfxShapeSphere")
+//   4f4e2ed7 = FNV1a("VfxShapeLegacy")  ← note: the "default" branch keeps the
+//                                          legacy struct type, only renaming
+//                                          the field. Not actually "empty".
+//   ee39916f and 68dc32b6 didn't match the names I tried; kept verbatim.
+const HASH_TYPE_RADIUS_SHAPE = '3dbe415d'; // VfxShapeSphere: Radius (+ optional Height) + Flags
+const HASH_TYPE_VEC3_SHAPE   = 'ee39916f'; // shape with single vec3 EmitOffset (unknown name)
+const HASH_TYPE_EMPTY_SHAPE  = '4f4e2ed7'; // VfxShapeLegacy (fallback retains original struct)
+const HASH_TYPE_BIRTH_TRANSLATION = '68dc32b6'; // BirthTranslation embed type (unknown name)
 
 function eq(a, b) {
     return String(a || '').toLowerCase() === String(b || '').toLowerCase();
@@ -66,7 +70,7 @@ function fixShapeAttribute(emitter, attribute, stats) {
                 if (!inner) continue;
                 if (eq(inner.hash, h('ConstantValue')) && inner.type === BINType.VEC3) {
                     const newField = new BINField();
-                    newField.hash = h('NewBirthTranslation');
+                    newField.hash = h('BirthTranslation');
                     newField.type = BINType.EMBED;
                     newField.hashType = HASH_TYPE_BIRTH_TRANSLATION;
                     newField.data = [inner]; // wrap the ConstantValue vec3 as the embed's sole sub-field
@@ -145,7 +149,7 @@ function fixShapeAttribute(emitter, attribute, stats) {
     const originalSole = attribute.data[0];
 
     if (!facts.KeepItAs4f4e2ed7 && facts.EmitRotationAnglesKeyValues && facts.EmitRotationAxesShit) {
-        attribute.hash = h('NewShapeHash');
+        attribute.hash = h('SpawnShape');
         attribute.type = BINType.POINTER;
         attribute.hashType = HASH_TYPE_RADIUS_SHAPE;
         attribute.data = [];
@@ -182,18 +186,20 @@ function fixShapeAttribute(emitter, attribute, stats) {
         eq(originalSole.hash, h('EmitOffset')) &&
         Array.isArray(originalSole.data) &&
         originalSole.data[0] &&
-        originalSole.data[0].type === BINType.EMBED && // ConstantValue wrapper is an embed
+        // Python: isinstance(attribute.data[0].data[0].data, Vector)
+        //   attribute.data[0]        = EmitOffset BINField
+        //   attribute.data[0].data[0] = ConstantValue BINField (first sub-field of EmitOffset)
+        //   attribute.data[0].data[0].data = the Vec3 itself
+        // In JS, ConstantValue's `.type` is VEC3 and `.data` is the [x,y,z] array.
+        originalSole.data[0].type === BINType.VEC3 &&
         Array.isArray(originalSole.data[0].data) &&
-        originalSole.data[0].data[0] &&
-        originalSole.data[0].data[0].type === BINType.VEC3
+        originalSole.data[0].data.length >= 3
     ) {
-        // Original: takes attribute.data[0].data[0] which is the ConstantValue field
-        // whose .data is the vec3 array.
-        attribute.hash = h('NewShapeHash');
+        attribute.hash = h('SpawnShape');
         attribute.type = BINType.POINTER;
         attribute.hashType = HASH_TYPE_VEC3_SHAPE;
 
-        const constantValueField = originalSole.data[0].data[0];
+        const constantValueField = originalSole.data[0]; // the ConstantValue BINField
         const emitoffset = new BINField();
         emitoffset.type = BINType.VEC3;
         emitoffset.hash = h('EmitOffset');
@@ -204,7 +210,7 @@ function fixShapeAttribute(emitter, attribute, stats) {
     }
 
     // Fallback: default empty shape.
-    attribute.hash = h('NewShapeHash');
+    attribute.hash = h('SpawnShape');
     attribute.type = BINType.POINTER;
     attribute.hashType = HASH_TYPE_EMPTY_SHAPE;
     stats.shapesRewrittenEmpty++;
