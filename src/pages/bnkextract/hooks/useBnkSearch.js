@@ -4,6 +4,7 @@ export function useBnkSearch({
     treeData,
     rightTreeData,
     rightSortMode,
+    leftSortMode,
     expandedNodes,
     setExpandedNodes,
     rightExpandedNodes,
@@ -45,10 +46,33 @@ export function useBnkSearch({
         }).filter(Boolean);
     }, []);
 
-    const filteredLeftTree = useMemo(
-        () => filterTree(treeData, leftSearchDebounced),
-        [treeData, leftSearchDebounced, filterTree],
-    );
+    const filteredLeftTree = useMemo(() => {
+        let data = treeData;
+
+        if (leftSortMode === 'name-asc' || leftSortMode === 'name-desc') {
+            // Recursively sort by name; natural (numeric) + case-insensitive so
+            // "Event2" sorts before "Event10". Selection is keyed by node id and
+            // sessions serialize the tree structure, so reordering is safe.
+            const sortNodes = (nodes) => {
+                return [...nodes].map((node) => {
+                    if (node.children && node.children.length > 0) {
+                        return { ...node, children: sortNodes(node.children) };
+                    }
+                    return node;
+                }).sort((a, b) => {
+                    const cmp = String(a.name || '').localeCompare(
+                        String(b.name || ''),
+                        undefined,
+                        { numeric: true, sensitivity: 'base' },
+                    );
+                    return leftSortMode === 'name-asc' ? cmp : -cmp;
+                });
+            };
+            data = sortNodes(data);
+        }
+
+        return filterTree(data, leftSearchDebounced);
+    }, [treeData, leftSearchDebounced, leftSortMode, filterTree]);
 
     const filteredRightTree = useMemo(() => {
         let data = [...rightTreeData];

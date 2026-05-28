@@ -4,6 +4,7 @@ import {
     Search,
     Close,
     Sort,
+    SortByAlpha,
     Undo,
     Redo,
     Download,
@@ -162,6 +163,8 @@ export default function BnkMainContent(props) {
         setRightSearchQuery,
         rightSortMode,
         setRightSortMode,
+        leftSortMode,
+        setLeftSortMode,
         filteredRightTree,
         rightSelectedNodes,
         setRightSelectedNodes,
@@ -283,6 +286,19 @@ export default function BnkMainContent(props) {
                             ),
                         }}
                     />
+                    <Tooltip title={`Sort alphabetically: ${leftSortMode === 'none' ? 'Off' : (leftSortMode === 'name-asc' ? 'A to Z' : 'Z to A')}`}>
+                        <IconButton
+                            size="small"
+                            onClick={() => setLeftSortMode((prev) => prev === 'none' ? 'name-asc' : (prev === 'name-asc' ? 'name-desc' : 'none'))}
+                            sx={{
+                                color: leftSortMode !== 'none' ? 'var(--accent)' : 'rgba(255,255,255,0.3)',
+                                background: leftSortMode !== 'none' ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
+                                p: '6px',
+                            }}
+                        >
+                            <SortByAlpha sx={{ fontSize: 16, transform: leftSortMode === 'name-desc' ? 'scaleY(-1)' : 'none' }} />
+                        </IconButton>
+                    </Tooltip>
                     {leftSearchQuery && (
                         <Typography sx={{ fontSize: '0.55rem', color: 'var(--accent)', opacity: 0.5, fontWeight: 800 }}>{filteredLeftTree.length}</Typography>
                     )}
