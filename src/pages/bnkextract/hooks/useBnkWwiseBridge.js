@@ -100,18 +100,22 @@ export function useBnkWwiseBridge({
             return;
         }
 
-        const collectAudioLeaves = (nodes, targetId, inside = false) => {
+        // Collect the distinct shared wem ids under the target. Node ids are
+        // unique per tree location, but multiple events can point at the same
+        // physical wem (audioData.id); assigning by wem id keeps every event
+        // that shares a wem in sync, mirroring the other replace paths.
+        const collectAudioIds = (nodes, targetId, inside = false) => {
             const ids = [];
             for (const n of nodes) {
                 const hit = inside || n.id === targetId;
-                if (hit && n.audioData) ids.push(n.id);
-                if (n.children?.length) ids.push(...collectAudioLeaves(n.children, targetId, hit));
+                if (hit && n.audioData) ids.push(n.audioData.id);
+                if (n.children?.length) ids.push(...collectAudioIds(n.children, targetId, hit));
             }
             return ids;
         };
         const sourceTree = pane === 'left' ? treeData : rightTreeData;
-        const audioNodeIds = collectAudioLeaves(sourceTree, targetNodeId);
-        if (audioNodeIds.length === 0) {
+        const audioIds = [...new Set(collectAudioIds(sourceTree, targetNodeId))];
+        if (audioIds.length === 0) {
             setStatusMessage('No audio entries found under target node');
             return;
         }
@@ -140,13 +144,13 @@ export function useBnkWwiseBridge({
                 [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
             }
 
-            const assignments = new Map(audioNodeIds.map((id, i) => [id, shuffled[i % shuffled.length]]));
+            const assignments = new Map(audioIds.map((aid, i) => [aid, shuffled[i % shuffled.length]]));
             const setTreeDataFn = pane === 'left' ? setTreeData : setRightTreeData;
             setTreeDataFn((prev) => {
                 const update = (nodes) => nodes.map((n) => {
-                    if (assignments.has(n.id)) {
-                        const wemData = assignments.get(n.id);
-                        return { ...n, audioData: { ...n.audioData, data: wemData, length: wemData.length } };
+                    if (n.audioData && assignments.has(n.audioData.id)) {
+                        const wemData = assignments.get(n.audioData.id);
+                        return { ...n, isModified: true, audioData: { ...n.audioData, data: wemData, length: wemData.length, isModified: true } };
                     }
                     if (n.children) return { ...n, children: update(n.children) };
                     return n;
@@ -154,7 +158,7 @@ export function useBnkWwiseBridge({
                 return update(prev);
             });
 
-            setStatusMessage(`Assigned ${files.length} file(s) randomly across ${audioNodeIds.length} audio slot(s)`);
+            setStatusMessage(`Assigned ${files.length} file(s) across ${audioIds.length} wem(s)`);
         } catch (err) {
             setStatusMessage(`Drop error: ${err.message}`);
         } finally {
