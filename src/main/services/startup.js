@@ -47,6 +47,24 @@ function runStartupTasks({
   };
 
   try { app.setAppUserModelId('com.github.ritoshark.quartz'); } catch (_) {}
+
+  // Apply any hash DB updates a previous sync decompressed but couldn't write
+  // live (data.mdb was memory-mapped). Must run before the renderer opens any
+  // LMDB for resolution, while nothing holds the files.
+  try {
+    if (typeof hashManager.applyPendingHashSwaps === 'function') {
+      const swap = hashManager.applyPendingHashSwaps();
+      if (swap.applied.length > 0) {
+        logToFile(`Applied ${swap.applied.length} pending hash update(s): ${swap.applied.join(', ')}`, 'INFO');
+      }
+      if (swap.failed.length > 0) {
+        logToFile(`Failed to apply pending hash update(s): ${swap.failed.join(', ')}`, 'WARN');
+      }
+    }
+  } catch (err) {
+    logToFile(`applyPendingHashSwaps error: ${err.message}`, 'WARN');
+  }
+
   createWindow();
 
   setupAutoUpdater();
@@ -100,25 +118,30 @@ function runStartupTasks({
         });
       });
       if (!result?.success) {
-        logToFile(`Hash auto-sync (startup): failed (${(result?.errors || []).length} errors)`, 'WARN');
+        const detail = (result?.errors || []).join('; ') || 'no error detail';
+        logToFile(`Hash auto-sync (startup): failed (${(result?.errors || []).length} errors) — ${detail}`, 'WARN');
         emitHashState({
           status: 'error',
           message: 'Hash auto-sync failed',
           errors: result?.errors || [],
         });
       } else {
+        const pending = (result.pendingSwap || []).length;
         logToFile(
-          `Hash auto-sync (startup): downloaded=${(result.downloaded || []).length}, skipped=${(result.skipped || []).length}, errors=${(result.errors || []).length}`,
+          `Hash auto-sync (startup): downloaded=${(result.downloaded || []).length}, skipped=${(result.skipped || []).length}, errors=${(result.errors || []).length}, pendingSwap=${pending}`,
           'INFO'
         );
         emitHashState({
           status: 'success',
-          message: (result.downloaded || []).length > 0
-            ? `Hash update complete - updated ${(result.downloaded || []).length} file(s)`
-            : 'Hashes are already up to date',
+          message: pending > 0
+            ? `Hash update downloaded - restart Quartz to apply (${pending} file(s))`
+            : (result.downloaded || []).length > 0
+              ? `Hash update complete - updated ${(result.downloaded || []).length} file(s)`
+              : 'Hashes are already up to date',
           downloaded: result.downloaded || [],
           skipped: result.skipped || [],
           errors: result.errors || [],
+          pendingSwap: result.pendingSwap || [],
         });
       }
     } catch (err) {
