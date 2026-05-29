@@ -13,6 +13,12 @@ const ASSETS = [
   { name: 'lol-hashes-bin.zst', lmdbDir: 'hashes-bin.lmdb', label: 'BIN hashes' },
 ];
 const META_FILE_NAME = 'hashes-meta.json';
+// Suffix for the decompressed-but-not-yet-applied LMDB file. The live data.mdb
+// is memory-mapped by the running app for hash resolution, and Windows refuses
+// to overwrite a mapped file — so a sync decompresses to data.mdb.new and the
+// swap happens either immediately (if the env can be released) or at the next
+// startup via applyPendingHashSwaps(), before any LMDB is opened.
+const STAGING_SUFFIX = '.new';
 
 let cachedHashDir = null;
 let nativeAddon = null;
@@ -259,6 +265,49 @@ function writeHashesMeta(hashDir, meta) {
   fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 }
 
+/**
+ * Atomically replace livePath with stagingPath. Returns true on success.
+ * Fails (returns false) when livePath is still memory-mapped by the running
+ * app — the staging file is then left in place for applyPendingHashSwaps().
+ */
+function trySwapStaging(stagingPath, livePath) {
+  try {
+    fs.renameSync(stagingPath, livePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Apply any `data.mdb.new` staging files left by a sync that couldn't overwrite
+ * the live (memory-mapped) data.mdb. MUST be called at startup BEFORE any LMDB
+ * is opened for resolution, while nothing holds the files. The stale lock.mdb
+ * is removed so LMDB rebuilds its reader table against the new data.
+ * @returns {{ applied: string[], failed: string[] }}
+ */
+function applyPendingHashSwaps() {
+  const applied = [];
+  const failed = [];
+  let hashDir;
+  try { hashDir = getHashDirectory(); } catch { return { applied, failed }; }
+
+  for (const asset of ASSETS) {
+    const lmdbDir = path.join(hashDir, asset.lmdbDir);
+    const dataMdb = path.join(lmdbDir, 'data.mdb');
+    const stagingMdb = `${dataMdb}${STAGING_SUFFIX}`;
+    if (!fs.existsSync(stagingMdb)) continue;
+    try {
+      fs.renameSync(stagingMdb, dataMdb);
+      try { fs.unlinkSync(path.join(lmdbDir, 'lock.mdb')); } catch { }
+      applied.push(asset.name);
+    } catch {
+      failed.push(asset.name);
+    }
+  }
+  return { applied, failed };
+}
+
 // ── Main download logic ──────────────────────────────────────────────────────
 
 /**
@@ -272,6 +321,7 @@ async function downloadHashes(progressCallback = null) {
   const downloaded = [];
   const skipped = [];
   const errors = [];
+  const pendingSwap = []; // decompressed but couldn't replace live file; applied next startup
   const totalSteps = ASSETS.length + 1; // +1 for API fetch
 
   try {
@@ -325,26 +375,35 @@ async function downloadHashes(progressCallback = null) {
         }
       });
 
-      // Close LMDB before replacing data.mdb
-      if (typeof addon.clearHashTables === 'function') {
-        addon.clearHashTables();
-      }
-
       // Ensure target dir exists
       if (!fs.existsSync(lmdbDir)) fs.mkdirSync(lmdbDir, { recursive: true });
 
-      // Decompress .zst → data.mdb
+      // Decompress to a staging file (never the live data.mdb directly — see
+      // STAGING_SUFFIX note). Clean up the .zst regardless of outcome.
       if (progressCallback) progressCallback(`Decompressing ${asset.label}...`, step, totalSteps);
-      const ok = addon.decompressZstdFile(zstPath, dataMdb);
+      const stagingMdb = `${dataMdb}${STAGING_SUFFIX}`;
+      const ok = addon.decompressZstdFile(zstPath, stagingMdb);
+      try { fs.unlinkSync(zstPath); } catch { }
       if (!ok) {
-        try { fs.unlinkSync(zstPath); } catch { }
+        try { fs.unlinkSync(stagingMdb); } catch { }
         errors.push(`Failed to decompress ${asset.name}`);
         continue;
       }
 
-      // Cleanup temp .zst
-      try { fs.unlinkSync(zstPath); } catch { }
-      downloaded.push(asset.name);
+      // Release any open LMDB env, then try to swap the staging file in now.
+      if (typeof addon.clearHashTables === 'function') {
+        addon.clearHashTables();
+      }
+      if (trySwapStaging(stagingMdb, dataMdb)) {
+        // Live file wasn't locked — applied immediately.
+        try { fs.unlinkSync(path.join(lmdbDir, 'lock.mdb')); } catch { }
+        downloaded.push(asset.name);
+      } else {
+        // Live file is mapped by the running app; leave data.mdb.new for the
+        // next-startup swap (applyPendingHashSwaps).
+        downloaded.push(asset.name);
+        pendingSwap.push(asset.name);
+      }
       anyUpdated = true;
     }
 
@@ -363,7 +422,7 @@ async function downloadHashes(progressCallback = null) {
       progressCallback(msg, totalSteps, totalSteps);
     }
 
-    return { success: errors.length === 0, downloaded, skipped, errors, hashDir };
+    return { success: errors.length === 0, downloaded, skipped, errors, pendingSwap, hashDir };
   } catch (error) {
     console.error('[hashManager] Download error:', error);
     return {
@@ -371,6 +430,7 @@ async function downloadHashes(progressCallback = null) {
       downloaded,
       skipped,
       errors: [...errors, error.message],
+      pendingSwap,
       hashDir,
     };
   }
@@ -426,5 +486,6 @@ module.exports = {
   checkHashes,
   isAutoSyncFresh,
   downloadHashes,
+  applyPendingHashSwaps,
   migrateLegacyHashes,
 };

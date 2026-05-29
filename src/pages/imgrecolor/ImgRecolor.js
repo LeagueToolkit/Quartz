@@ -667,6 +667,15 @@ const ImgRecolor = () => {
     });
   }, []);
 
+  // Select every image, or clear the selection if all are already selected.
+  const toggleSelectAll = useCallback(() => {
+    setSelectedImages(prev =>
+      prev.size === allImages.length
+        ? new Set()
+        : new Set(allImages.map(img => img.path))
+    );
+  }, [allImages]);
+
   // Confirm selection and load images
   const handleConfirmSelection = async () => {
     if (selectedImages.size === 0) return;
@@ -1068,6 +1077,12 @@ const ImgRecolor = () => {
                     sx={{ ...celestialButtonStyle, fontSize: '0.8rem', height: '34px', padding: '0 12px' }}
                   >
                     Filter Grayscale
+                  </Button>
+                  <Button
+                    onClick={toggleSelectAll}
+                    sx={{ ...celestialButtonStyle, fontSize: '0.8rem', height: '34px', padding: '0 12px' }}
+                  >
+                    {selectedImages.size === allImages.length ? 'Deselect All' : 'Select All'}
                   </Button>
                   {selectedImages.size > 0 && (
                     <Button

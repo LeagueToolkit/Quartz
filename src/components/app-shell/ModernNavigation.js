@@ -39,7 +39,7 @@ const ModernNavigation = () => {
         { text: 'Port', icon: ArrowLeftRight, path: '/port', key: 'port' },
         { text: 'VFX Hub', icon: Github, path: '/vfx-hub', key: 'vfxHub' },
         { text: 'Bin Editor', icon: Code, path: '/bineditor', key: 'binEditor' },
-        { text: 'Img Recolor', icon: Image, path: '/img-recolor', key: 'imgRecolor' },
+        { text: 'Image Recolor', icon: Image, path: '/img-recolor', key: 'imgRecolor' },
         { text: 'Asset Extractor', icon: FolderInput, path: '/frogchanger', key: 'frogchanger' },
         { text: 'WAD Explorer', icon: FolderSearch, path: '/wad-explorer', key: 'wadExplorer' },
         { text: 'Sound Banks', icon: Music, path: '/bnk-extract', key: 'bnkExtract' },

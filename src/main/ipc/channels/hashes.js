@@ -27,7 +27,12 @@ function registerHashChannels({
       });
 
       if (result.success) {
-        logToFile(`Hash download completed: ${result.downloaded.length} files, ${result.errors.length} errors`, 'INFO');
+        const pending = (result.pendingSwap || []).length;
+        logToFile(
+          `Hash download completed: ${result.downloaded.length} files, ${result.errors.length} errors` +
+          (pending ? ` — ${pending} update(s) staged, will apply on next restart` : ''),
+          'INFO'
+        );
         try {
           await clearBackendHashCache();
           logToFile('Backend hashtables cache cleared', 'INFO');
@@ -35,7 +40,8 @@ function registerHashChannels({
           logToFile(`Failed to clear backend hashtables cache: ${cacheError.message}`, 'WARN');
         }
       } else {
-        logToFile(`Hash download failed: ${result.errors.length} errors`, 'ERROR');
+        const detail = (result.errors || []).join('; ') || 'no error detail';
+        logToFile(`Hash download failed: ${(result.errors || []).length} errors — ${detail}`, 'ERROR');
       }
 
       return result;

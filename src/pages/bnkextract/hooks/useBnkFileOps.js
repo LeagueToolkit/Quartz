@@ -193,27 +193,47 @@ export function useBnkFileOps({
     }
 
     const replacementPaths = result.filePaths;
+
+    // Map each selected wem (by its shared audioData.id) to its replacement
+    // bytes, read once up front. Multiple events can point at the same physical
+    // wem; at save time there is a single wem, so replacing only the clicked
+    // node would leave the other events previewing stale audio. Propagating by
+    // audioData.id keeps the UI consistent with what actually gets written.
+    const updatesByAudioId = new Map();
+    selectedAudioNodes.forEach((an, i) => {
+      if (updatesByAudioId.has(an.audioData.id)) return;
+      try {
+        const srcPath = replacementPaths[i % replacementPaths.length];
+        updatesByAudioId.set(an.audioData.id, new Uint8Array(fs.readFileSync(srcPath)));
+      } catch (e) {
+        console.error(`[BnkExtract] Failed to read replacement for ${an.name}:`, e);
+      }
+    });
+
+    let replacedCount = 0;
+    const countMatches = (nodes) => {
+      for (const n of nodes) {
+        if (n.audioData && updatesByAudioId.has(n.audioData.id)) replacedCount++;
+        if (n.children) countMatches(n.children);
+      }
+    };
+    countMatches(targetTree);
+
     setTreeDataFn((prev) => {
       const updateInTree = (nodes) => nodes.map((n) => {
-        const match = selectedAudioNodes.find((an) => an.id === n.id);
-        if (match) {
-          try {
-            const fileIndex = selectedAudioNodes.indexOf(match) % replacementPaths.length;
-            const srcPath = replacementPaths[fileIndex];
-            const newData = fs.readFileSync(srcPath);
+        if (n.audioData) {
+          const newData = updatesByAudioId.get(n.audioData.id);
+          if (newData) {
             return {
               ...n,
               isModified: true,
               audioData: {
                 ...n.audioData,
-                data: new Uint8Array(newData),
+                data: newData,
                 length: newData.length,
                 isModified: true
               }
             };
-          } catch (e) {
-            console.error(`[BnkExtract] Failed to replace ${n.name}:`, e);
-            return n;
           }
         }
         if (n.children) return { ...n, children: updateInTree(n.children) };
@@ -222,7 +242,12 @@ export function useBnkFileOps({
       return updateInTree(prev);
     });
 
-    setStatusMessage(`Replaced ${selectedAudioNodes.length} file(s) successfully`);
+    const wemCount = updatesByAudioId.size;
+    setStatusMessage(
+      replacedCount > wemCount
+        ? `Replaced ${wemCount} wem(s) across ${replacedCount} shared event(s)`
+        : `Replaced ${replacedCount} file(s) successfully`
+    );
   }, [activePane, treeData, rightTreeData, selectedNodes, rightSelectedNodes, setTreeData, setRightTreeData, pushToHistory, setStatusMessage]);
 
   const handleMakeSilent = useCallback(async (options = {}) => {
@@ -292,10 +317,21 @@ export function useBnkFileOps({
           return;
         }
 
+        // Silence by shared wem id so every event pointing at the same wem is
+        // updated (see handleReplace for the rationale).
+        const selectedAudioIds = new Set(selectedAudioNodes.map((an) => an.audioData.id));
+        let silencedCount = 0;
+        const countMatches = (nodes) => {
+          for (const n of nodes) {
+            if (n.audioData && selectedAudioIds.has(n.audioData.id)) silencedCount++;
+            if (n.children) countMatches(n.children);
+          }
+        };
+        countMatches(targetTree);
+
         setTreeDataFn((prev) => {
           const updateInTree = (nodes) => nodes.map((n) => {
-            const match = selectedAudioNodes.find((an) => an.id === n.id);
-            if (match) {
+            if (n.audioData && selectedAudioIds.has(n.audioData.id)) {
               return {
                 ...n,
                 isModified: true,
@@ -313,7 +349,7 @@ export function useBnkFileOps({
           return updateInTree(prev);
         });
 
-        setStatusMessage(`Silenced ${selectedAudioNodes.length} file(s)`);
+        setStatusMessage(`Silenced ${silencedCount} event(s)`);
       }
     } catch (error) {
       console.error('[BnkExtract] Silence error:', error);

@@ -98,6 +98,7 @@ export default function BnkExtract() {
     const [rightTreeData, setRightTreeData] = useState([]);
     const [rightPaneDragOver, setRightPaneDragOver] = useState(false);
     const [rightSortMode, setRightSortMode] = useState('none'); // 'none', 'size-asc', 'size-desc'
+    const [leftSortMode, setLeftSortMode] = useState('name-asc'); // 'none', 'name-asc', 'name-desc' (default A-Z)
 
     // Wwise conversion state
     const [isWwiseInstalled, setIsWwiseInstalled] = useState(false);
@@ -165,6 +166,7 @@ export default function BnkExtract() {
         treeData,
         rightTreeData,
         rightSortMode,
+        leftSortMode,
         expandedNodes,
         setExpandedNodes,
         rightExpandedNodes,
@@ -862,6 +864,8 @@ export default function BnkExtract() {
                 setRightSearchQuery={setRightSearchQuery}
                 rightSortMode={rightSortMode}
                 setRightSortMode={setRightSortMode}
+                leftSortMode={leftSortMode}
+                setLeftSortMode={setLeftSortMode}
                 filteredRightTree={filteredRightTree}
                 rightSelectedNodes={rightSelectedNodes}
                 setRightSelectedNodes={setRightSelectedNodes}

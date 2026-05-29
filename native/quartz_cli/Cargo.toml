@@ -20,6 +20,7 @@ rayon = "1.10"
 byteorder = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 heed = "0.20"
+libloading = "0.8"
 
 
 [profile.release]
