@@ -28,12 +28,16 @@ const TopControls = ({
 
   return (
     <div
-      className="flex items-center gap-2 z-10 justify-end"
+      className="flex items-center gap-2 justify-end"
       style={{
         // Sticky to the top of the scrollable <main> so the mode picker stays
         // visible while the user scrolls the skin/ward/emote grid.
         position: 'sticky',
         top: 0,
+        // Must sit ABOVE hovered skin cards (which lift to z-index 60 so their
+        // chroma tooltip escapes sibling stacking) — otherwise a hovered card
+        // in the top row paints over this bar.
+        zIndex: 100,
         // Transparent — each child pill already has its own glassy background.
         background: 'transparent',
         paddingTop: 4,
@@ -41,9 +45,26 @@ const TopControls = ({
       }}
     >
 
-      {/* View Mode segmented control — champions / TFT / wards / emotes. */}
+      {/* Status console — leftmost. Auto-sizes to its content (capped) so the
+          short "Ready..." state isn't a big empty box; because it's the
+          leftmost item in a justify-end row, growth eats the left free space
+          and doesn't shift the segmented control. Long text scrolls inside. */}
+      <div className="mr-2 flex-shrink-0" style={{ maxWidth: 340 }}>
+        <div className="bg-gray-900 border border-gray-700 rounded-lg p-2 h-8 overflow-x-auto overflow-y-hidden">
+          <div className="text-xs text-gray-300 font-mono whitespace-nowrap">
+            {consoleLogs.length > 0 ? (
+              <div className="animate-pulse">{latestMessage}</div>
+            ) : (
+              latestMessage
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* View Mode segmented control — champions / TFT / wards / emotes.
+          To the right of the status so it stays put while work is running. */}
       <div
-        className="flex items-center bg-gray-900 border border-gray-700 rounded-lg p-0.5 mr-2"
+        className="flex items-center bg-gray-900 border border-gray-700 rounded-lg p-0.5 mr-2 flex-shrink-0"
         style={{ boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)' }}
         role="tablist"
         aria-label="Data source"
@@ -76,18 +97,6 @@ const TopControls = ({
             </button>
           );
         })}
-      </div>
-
-      <div className="min-w-0 mr-2">
-        <div className="bg-gray-900 border border-gray-700 rounded-lg p-2 h-8 overflow-x-auto overflow-y-hidden">
-          <div className="text-xs text-gray-300 font-mono whitespace-nowrap">
-            {consoleLogs.length > 0 ? (
-              <div className="animate-pulse">{latestMessage}</div>
-            ) : (
-              latestMessage
-            )}
-          </div>
-        </div>
       </div>
 
       <button

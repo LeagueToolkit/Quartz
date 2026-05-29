@@ -1954,6 +1954,7 @@ const FrogChanger = () => {
               onYouTubeSkin={handleYouTubeSkin}
               onOpenInJade={wardMode || emoteMode ? null : handleOpenSkinInJade}
               onExtractSkinBin={wardMode || emoteMode ? null : handleExtractSkinBin}
+              virtualizeCards={wardMode || emoteMode}
               offlineMode={offlineMode}
             />
           ) : (

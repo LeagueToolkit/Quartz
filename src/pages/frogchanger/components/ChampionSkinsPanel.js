@@ -19,6 +19,10 @@ const ChampionSkinsPanel = ({
   onOpenInJade,
   onExtractSkinBin,
   offlineMode = false,
+  // Enable card virtualization (content-visibility) only for huge lists
+  // (wards/emotes). It applies paint containment which would CLIP the chroma
+  // hover tooltip, so it must stay OFF in champion mode where chromas render.
+  virtualizeCards = false,
 }) => (
   <div>
     <div className="mb-6">
@@ -45,18 +49,19 @@ const ChampionSkinsPanel = ({
             <div
               key={`${selectedChampion?.name}-${skin.wadAlias || ''}-${skin.full_id || skin.id}`}
               onClick={() => onSkinClick(skin.name)}
-              className={`group relative rounded-lg overflow-visible border cursor-pointer transition-all duration-150 ${isSelected
+              className={`skin-card group relative rounded-lg overflow-visible border cursor-pointer transition-all duration-150 ${isSelected
                 ? ''
                 : 'border-gray-700 bg-gray-900 hover:border-white/25 hover:shadow-lg'
                 }`}
               style={{
                 // Off-screen cards skip layout/paint entirely — critical for
                 // large lists like the Generic emote bucket (~1097 cards).
-                // contentVisibility: 'auto' is a Chromium/Electron-supported
-                // native virtualization; containIntrinsicSize reserves a
-                // sensible placeholder so the scrollbar stays accurate.
-                contentVisibility: 'auto',
-                containIntrinsicSize: '0 380px',
+                // Only enabled for ward/emote modes: its paint containment
+                // would clip the chroma hover tooltip in champion mode.
+                ...(virtualizeCards ? {
+                  contentVisibility: 'auto',
+                  containIntrinsicSize: '0 380px',
+                } : {}),
                 ...(isSelected
                   ? {
                     borderColor: 'color-mix(in srgb, var(--accent), transparent 42%)',

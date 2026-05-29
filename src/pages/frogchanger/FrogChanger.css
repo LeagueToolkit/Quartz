@@ -1127,3 +1127,11 @@
 .chroma-dot:hover .chroma-tooltip {
   opacity: 1;
 }
+
+/* Lift the hovered skin card above its siblings so the chroma tooltip isn't
+   painted over by adjacent cards. The card's transform creates a stacking
+   context, so the tooltip's own z-index can't escape it — bump the card.
+   !important beats the inline zIndex set on the card. */
+.skin-card:hover {
+  z-index: 60 !important;
+}
