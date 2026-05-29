@@ -131,7 +131,9 @@ const SelectionSummaryBar = ({
         bottom: 14,
         left: 14,
         right: 14,
-        zIndex: 50,
+        // Above hovered skin cards (z-index 60) so they don't paint over the
+        // action bar; matches the top bar's z-index.
+        zIndex: 100,
         borderRadius: 14,
         border: '1px solid rgba(255,255,255,0.14)',
         background: 'rgba(12, 14, 24, 0.68)',
