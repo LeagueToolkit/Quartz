@@ -108,7 +108,7 @@ modelInspectLaunch.initFromStartupArgs(process.argv);
 
 let hashManager;
 
-const { handleCommandLineArgs } = createCliArgsHandler({
+const { handleCommandLineArgs, handleFixVfxShapeSecondInstance } = createCliArgsHandler({
   app,
   path,
   processRef: process,
@@ -128,15 +128,22 @@ if (!gotTheLock) {
   return;
 } else {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
-    // Focus window and handle file open
+    // Silent background actions (currently: context-menu --fix-vfx-shape)
+    // shouldn't steal focus from whatever the user is doing.
+    const isSilentBackgroundAction = Array.isArray(commandLine)
+      && commandLine.includes('--fix-vfx-shape');
+
     const updateCheckWindow = getUpdateWindow();
-    if (updateCheckWindow) {
+    if (updateCheckWindow && !isSilentBackgroundAction) {
       if (updateCheckWindow.isMinimized()) updateCheckWindow.restore();
       updateCheckWindow.focus();
-
     }
 
     modelInspectLaunch.handleSecondInstanceArgs(commandLine);
+
+    handleFixVfxShapeSecondInstance(commandLine).catch((err) => {
+      logToFile(`[ContextMenu] second-instance fix-vfx-shape error: ${err.message}`, 'ERROR');
+    });
 
     try {
       updateCheckWindow?.webContents?.send('interop:check-now');
