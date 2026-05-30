@@ -77,7 +77,7 @@ export function useBnkSearch({
     const filteredRightTree = useMemo(() => {
         let data = [...rightTreeData];
 
-        if (rightSortMode !== 'none') {
+        if (rightSortMode === 'name-asc' || rightSortMode === 'name-desc') {
             const sortNodes = (nodes) => {
                 return [...nodes].map((node) => {
                     if (node.children && node.children.length > 0) {
@@ -85,11 +85,12 @@ export function useBnkSearch({
                     }
                     return node;
                 }).sort((a, b) => {
-                    const sizeA = a.audioData?.length || 0;
-                    const sizeB = b.audioData?.length || 0;
-                    if (rightSortMode === 'size-asc') return sizeA - sizeB;
-                    if (rightSortMode === 'size-desc') return sizeB - sizeA;
-                    return 0;
+                    const cmp = String(a.name || '').localeCompare(
+                        String(b.name || ''),
+                        undefined,
+                        { numeric: true, sensitivity: 'base' },
+                    );
+                    return rightSortMode === 'name-asc' ? cmp : -cmp;
                 });
             };
             data = sortNodes(data);
