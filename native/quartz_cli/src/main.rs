@@ -60,6 +60,8 @@ fn print_usage() {
     eprintln!("  quartz_cli pnx2fbx       <file.pmx> [output.fbx]  Alias for pmx2fbx");
     eprintln!("  quartz_cli xps2fbxdir    <folder>     Convert all .xps/.mesh/.ascii to .fbx recursively");
     eprintln!("  quartz_cli pmx2fbxdir    <folder>     Convert all .pmx to .fbx recursively");
+    eprintln!("  quartz_cli sco2scb       <file.sco>   Convert legacy .sco to .scb (keeps the .sco)");
+    eprintln!("  quartz_cli sco2scbdir    <folder>     Convert every .sco to .scb recursively");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  --hash-dir <dir>  Custom hash directory (default: %APPDATA%/FrogTools/hashes/)");
@@ -737,6 +739,36 @@ fn main() {
                 pause_and_exit(1);
             };
             if let Err(e) = commands::model_dir::pmx_to_fbx_dir(dir) {
+                eprintln!("Error: {}", e);
+                pause_and_exit(1);
+            }
+        }
+        "sco2scb" => {
+            if args.len() < 3 {
+                eprintln!("Error: missing .sco file path");
+                pause_and_exit(1);
+            }
+            let path = Path::new(&args[2]);
+            if !path.exists() {
+                eprintln!("Error: file not found: {}", path.display());
+                pause_and_exit(1);
+            }
+            if let Err(e) = commands::sco_scb::run(path) {
+                eprintln!("Error: {}", e);
+                pause_and_exit(1);
+            }
+        }
+        "sco2scbdir" => {
+            if args.len() < 3 {
+                eprintln!("Error: missing folder path");
+                pause_and_exit(1);
+            }
+            let path = Path::new(&args[2]);
+            if !path.exists() {
+                eprintln!("Error: path not found: {}", path.display());
+                pause_and_exit(1);
+            }
+            if let Err(e) = commands::sco_scb::run_dir(path) {
                 eprintln!("Error: {}", e);
                 pause_and_exit(1);
             }

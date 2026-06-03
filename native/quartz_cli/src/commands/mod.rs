@@ -16,3 +16,4 @@ pub mod xps;
 pub mod pmx;
 pub mod model_dir;
 pub mod bc7_gpu;
+pub mod sco_scb;

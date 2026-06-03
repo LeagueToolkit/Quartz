@@ -55,6 +55,7 @@ function registerContextMenuChannels({
       'HKCU\\Software\\Classes\\SystemFileAssociations\\.wad\\shell\\Quartz',
       'HKCU\\Software\\Classes\\SystemFileAssociations\\.wad.client\\shell\\Quartz',
       'HKCU\\Software\\Classes\\SystemFileAssociations\\.client\\shell\\Quartz',
+      'HKCU\\Software\\Classes\\SystemFileAssociations\\.sco\\shell\\Quartz',
       'HKCU\\Software\\Classes\\Directory\\shell\\Quartz',
     ];
     for (const key of cleanupRoots) {
@@ -237,6 +238,13 @@ function registerContextMenuChannels({
       `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.client\\shell\\Quartz\\shell\\03extractunpack" /v "CommandFlags" /t REG_DWORD /d 0x20 /f`,
       `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.client\\shell\\Quartz\\shell\\03extractunpack" /v "Icon" /d "${iconPath}" /f`,
       `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.client\\shell\\Quartz\\shell\\03extractunpack\\command" /ve /d "\\"${quartzExe}\\" extract-unpack-wad \\"%1\\"" /f`,
+      // .sco — standalone right-click for single-file conversion
+      `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.sco\\shell\\Quartz" /v "MUIVerb" /d "Quartz" /f`,
+      `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.sco\\shell\\Quartz" /v "Icon" /d "${iconPath}" /f`,
+      `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.sco\\shell\\Quartz" /v "SubCommands" /d "" /f`,
+      `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.sco\\shell\\Quartz\\shell\\01scotoscb" /v "MUIVerb" /d "Convert .sco to .scb" /f`,
+      `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.sco\\shell\\Quartz\\shell\\01scotoscb" /v "Icon" /d "${iconPath}" /f`,
+      `reg add "HKCU\\Software\\Classes\\SystemFileAssociations\\.sco\\shell\\Quartz\\shell\\01scotoscb\\command" /ve /d "\\"${quartzExe}\\" sco2scb \\"%1\\"" /f`,
       // Folder-level batch texture conversions
       `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz" /v "MUIVerb" /d "Quartz" /f`,
       `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz" /v "Icon" /d "${iconPath}" /f`,
@@ -255,6 +263,10 @@ function registerContextMenuChannels({
       `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00fixvfxshapedir" /v "CommandFlags" /t REG_DWORD /d 0x20 /f`,
       `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00fixvfxshapedir" /v "Icon" /d "${iconPath}" /f`,
       `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00fixvfxshapedir\\command" /ve /d "${appLaunchPrefix} --fix-vfx-shape \\"%1\\"" /f`,
+      // Convert every .sco under this folder to .scb (recursive)
+      `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00scotoscbdir" /v "MUIVerb" /d "Convert .sco to .scb (recursive)" /f`,
+      `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00scotoscbdir" /v "Icon" /d "${iconPath}" /f`,
+      `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00scotoscbdir\\command" /ve /d "\\"${quartzExe}\\" sco2scbdir \\"%1\\"" /f`,
       `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00pyntexmissing" /v "MUIVerb" /d "pyntex: Check missing files" /f`,
       `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00pyntexmissing" /v "CommandFlags" /t REG_DWORD /d 0x20 /f`,
       `reg add "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00pyntexmissing" /v "Icon" /d "${iconPath}" /f`,
@@ -295,6 +307,19 @@ function registerContextMenuChannels({
 
   const refreshContextMenuIfStale = async () => {
     if (processRef.platform !== 'win32') return;
+    // Unconditionally remove roots that earlier Quartz versions registered
+    // but no longer want. Done outside the staleness/re-register flow because
+    // when everything else in the registry already matches, isStale never
+    // flips, doEnableContextMenu doesn't run, and obsolete roots would
+    // otherwise linger forever (or until the user clears them by hand).
+    const obsoleteRoots = [
+      // The abandoned Python-based sco-fixer attempt added this; the Rust
+      // port doesn't use .fantome at all.
+      'HKCU\\Software\\Classes\\SystemFileAssociations\\.fantome\\shell\\Quartz',
+    ];
+    for (const root of obsoleteRoots) {
+      try { await execRegistryCommand(`reg delete "${root}" /f`); } catch (_) { /* not present */ }
+    }
     try {
       await execRegistryCommand('reg query "HKCU\\Software\\Classes\\SystemFileAssociations\\.bin\\shell\\Quartz"');
 
@@ -331,6 +356,8 @@ function registerContextMenuChannels({
           { query: 'reg query "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00pyntexdeljunk\\command" /ve', expected: quartzExe },
           { query: 'reg query "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\01tex2ddsdir\\command" /ve', expected: quartzExe },
           { query: 'reg query "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\07packwadclient\\command" /ve', expected: quartzExe },
+          { query: 'reg query "HKCU\\Software\\Classes\\SystemFileAssociations\\.sco\\shell\\Quartz\\shell\\01scotoscb\\command" /ve', expected: quartzExe },
+          { query: 'reg query "HKCU\\Software\\Classes\\Directory\\shell\\Quartz\\shell\\00scotoscbdir\\command" /ve', expected: quartzExe },
         ];
         for (const check of checks) {
           const result = await execRegistryCommand(check.query);
