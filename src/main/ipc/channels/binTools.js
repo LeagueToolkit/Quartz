@@ -35,28 +35,49 @@ function isWhitelistedColorHash(hash) {
     return !!hash && VFX_COLOR_HASH_SET.has(String(hash).toLowerCase());
 }
 
-function copy4(srcArr, dstArr) {
-    if (!Array.isArray(srcArr) || !Array.isArray(dstArr) || srcArr.length < 4 || dstArr.length < 4) return false;
-    for (let i = 0; i < 4; i++) dstArr[i] = srcArr[i];
-    return true;
+// Copy a 4-component value in place. RGBA is parsed as a plain [r,g,b,a]
+// array (stream.readU8(4)), but VEC4 is parsed as a {x,y,z,w} object
+// (stream.readVec4()) — the old array-only check silently dropped every
+// VEC4 color and was the reason "Copy BIN Colors" appeared to do nothing
+// on VFX bins (which use VEC4 for color far more than RGBA).
+function copy4(src, dst) {
+    if (!src || !dst) return false;
+    if (Array.isArray(src) && Array.isArray(dst)) {
+        if (src.length < 4 || dst.length < 4) return false;
+        for (let i = 0; i < 4; i++) dst[i] = src[i];
+        return true;
+    }
+    if (typeof src === 'object' && typeof dst === 'object'
+        && 'x' in src && 'x' in dst) {
+        dst.x = src.x; dst.y = src.y; dst.z = src.z; dst.w = src.w;
+        return true;
+    }
+    return false;
 }
 
 // Recursively walk paired source/target BINFields and copy color values.
-// `containerHash` is the parent field's hash (used so the LIST<VEC4>
-// `colorOverTime` children — which have no hash of their own — inherit
+// `containerHash` is the parent field's hash (so LIST<VEC4> children inherit
 // their parent's name for the whitelist check).
-function walkAndCopyField(srcField, dstField, stats, containerHash) {
+// `inColorContext` is true once we've descended into an embed/pointer rooted
+// at a whitelisted color field name (e.g. `Color: embed = ValueColor`). Riot
+// wraps colors in `ValueColor` / `VfxAnimatedColorVariableData`, whose inner
+// fields (`constantValue`, `dynamics`, `values`) have structural names that
+// can't go on the whitelist — they'd over-match every non-color wrapper. So
+// once we know the subtree IS a color, every VEC4 inside it is treated as
+// color too.
+function walkAndCopyField(srcField, dstField, stats, containerHash, inColorContext) {
     if (!srcField || !dstField) return;
     if (srcField.type !== dstField.type) { stats.mismatches++; return; }
     const t = srcField.type;
     const hashForWhitelist = (srcField.hash || containerHash || '').toLowerCase();
+    const colorCtx = !!inColorContext || isWhitelistedColorHash(hashForWhitelist);
 
     if (t === T_RGBA) {
         if (copy4(srcField.data, dstField.data)) stats.fieldsCopied++;
         return;
     }
     if (t === T_VEC4) {
-        if (isWhitelistedColorHash(hashForWhitelist) && copy4(srcField.data, dstField.data)) {
+        if (colorCtx && copy4(srcField.data, dstField.data)) {
             stats.fieldsCopied++;
         }
         return;
@@ -72,12 +93,12 @@ function walkAndCopyField(srcField, dstField, stats, containerHash) {
             return;
         }
         if (vt === T_VEC4) {
-            if (!isWhitelistedColorHash(hashForWhitelist)) return;
+            if (!colorCtx) return;
             for (let i = 0; i < len; i++) if (copy4(sa[i], da[i])) stats.fieldsCopied++;
             return;
         }
         if (vt === T_POINTER || vt === T_EMBED) {
-            for (let i = 0; i < len; i++) walkAndCopyContainer(sa[i], da[i], stats);
+            for (let i = 0; i < len; i++) walkAndCopyContainer(sa[i], da[i], stats, colorCtx);
             return;
         }
         // primitive non-color list — skip
@@ -90,7 +111,7 @@ function walkAndCopyField(srcField, dstField, stats, containerHash) {
         for (const k of Object.keys(sm)) {
             if (!(k in dm)) continue;
             if (vt === T_RGBA) { if (copy4(sm[k], dm[k])) stats.fieldsCopied++; }
-            else if (vt === T_POINTER || vt === T_EMBED) walkAndCopyContainer(sm[k], dm[k], stats);
+            else if (vt === T_POINTER || vt === T_EMBED) walkAndCopyContainer(sm[k], dm[k], stats, colorCtx);
         }
         return;
     }
@@ -98,14 +119,14 @@ function walkAndCopyField(srcField, dstField, stats, containerHash) {
         if (srcField.data == null || dstField.data == null) return;
         const vt = srcField.valueType;
         if (vt === T_RGBA && copy4(srcField.data, dstField.data)) { stats.fieldsCopied++; return; }
-        if (vt === T_VEC4 && isWhitelistedColorHash(hashForWhitelist) && copy4(srcField.data, dstField.data)) {
+        if (vt === T_VEC4 && colorCtx && copy4(srcField.data, dstField.data)) {
             stats.fieldsCopied++; return;
         }
-        if (vt === T_POINTER || vt === T_EMBED) walkAndCopyContainer(srcField.data, dstField.data, stats);
+        if (vt === T_POINTER || vt === T_EMBED) walkAndCopyContainer(srcField.data, dstField.data, stats, colorCtx);
         return;
     }
     if (t === T_POINTER || t === T_EMBED) {
-        walkAndCopyContainer(srcField, dstField, stats);
+        walkAndCopyContainer(srcField, dstField, stats, colorCtx);
         return;
     }
     // Scalar/non-color types — nothing to do.
@@ -113,7 +134,7 @@ function walkAndCopyField(srcField, dstField, stats, containerHash) {
 
 // `srcContainer` and `dstContainer` are objects with a `.data` array of
 // BINFields. Used for entries, POINTER/EMBED, and LIST items of those types.
-function walkAndCopyContainer(srcContainer, dstContainer, stats) {
+function walkAndCopyContainer(srcContainer, dstContainer, stats, inColorContext) {
     if (!srcContainer || !dstContainer) return;
     const sd = srcContainer.data, dd = dstContainer.data;
     if (!Array.isArray(sd) || !Array.isArray(dd)) return;
@@ -124,7 +145,7 @@ function walkAndCopyContainer(srcContainer, dstContainer, stats) {
     for (const sf of sd) {
         if (!sf || !sf.hash) continue;
         const df = dstByHash.get(String(sf.hash).toLowerCase());
-        if (df) walkAndCopyField(sf, df, stats);
+        if (df) walkAndCopyField(sf, df, stats, undefined, !!inColorContext);
     }
 }
 

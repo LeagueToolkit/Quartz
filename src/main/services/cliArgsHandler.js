@@ -77,8 +77,8 @@ function createCliArgsHandler({ app, path, processRef, isDev, fs, spawn, logToFi
     if (typeof importLocalModule !== 'function') {
       throw new Error('importLocalModule not provided to cliArgsHandler');
     }
-    const { BIN } = await importLocalModule('./src/jsritofile/bin.js')();
-    const { fixVfxShapeInBin } = await importLocalModule('./src/utils/vfx/fixVfxShape.js')();
+    const { BIN } = await importLocalModule('./src/jsritofile/bin.js');
+    const { fixVfxShapeInBin } = await importLocalModule('./src/utils/vfx/fixVfxShape.js');
 
     function collectBins(dir) {
       const out = [];
@@ -130,6 +130,19 @@ function createCliArgsHandler({ app, path, processRef, isDev, fs, spawn, logToFi
     );
   }
 
+  // Electron injects Chromium switches between the registered flag and the
+  // %1 path, and a working-directory entry before the real target, so
+  // `argv[flagIdx + 1]` lands on a switch and never on the user's file.
+  // Walk back-to-front and take the last existing non-switch path.
+  function findFixVfxTarget(argv) {
+    for (let i = argv.length - 1; i >= 0; i--) {
+      const a = argv[i];
+      if (!a || typeof a !== 'string' || a.startsWith('--')) continue;
+      try { if (fs.existsSync(a)) return a; } catch { /* ignore */ }
+    }
+    return null;
+  }
+
   async function handleCommandLineArgs() {
     const args = processRef.argv;
     const startIndex = isDev ? 2 : 1;
@@ -144,9 +157,9 @@ function createCliArgsHandler({ app, path, processRef, isDev, fs, spawn, logToFi
     const fixVfxShapeIdx = filteredArgs.indexOf('--fix-vfx-shape');
 
     if (fixVfxShapeIdx !== -1) {
-      const targetPath = filteredArgs[fixVfxShapeIdx + 1];
-      if (!targetPath || !fs.existsSync(targetPath)) {
-        logToFile(`[CLI] --fix-vfx-shape target not found: ${targetPath || '(missing)'}`, 'ERROR');
+      const targetPath = findFixVfxTarget(filteredArgs.slice(fixVfxShapeIdx + 1));
+      if (!targetPath) {
+        logToFile('[CLI] --fix-vfx-shape target not found', 'ERROR');
         app.quit();
         return true;
       }
@@ -255,8 +268,31 @@ function createCliArgsHandler({ app, path, processRef, isDev, fs, spawn, logToFi
     return false;
   }
 
+  // Called from app.on('second-instance', ...) so the running Quartz can
+  // execute --fix-vfx-shape against the file the user right-clicked while
+  // it was already open. Runs in-place against the target on disk; the
+  // existing window is NOT quit.
+  async function handleFixVfxShapeSecondInstance(commandLine) {
+    if (!Array.isArray(commandLine) || commandLine.indexOf('--fix-vfx-shape') === -1) {
+      return false;
+    }
+    const target = findFixVfxTarget(commandLine.slice(1));
+    if (!target) {
+      logToFile('[CLI] second-instance --fix-vfx-shape target not found', 'ERROR');
+      return false;
+    }
+    logToFile(`[CLI] second-instance --fix-vfx-shape target: ${target}`, 'INFO');
+    try {
+      await runFixVfxShape(target);
+    } catch (e) {
+      logToFile(`[CLI] second-instance --fix-vfx-shape crashed: ${e.message}`, 'ERROR');
+    }
+    return true;
+  }
+
   return {
     handleCommandLineArgs,
+    handleFixVfxShapeSecondInstance,
   };
 }
 

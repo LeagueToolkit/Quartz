@@ -3,7 +3,6 @@ import { Box, Typography, TextField, IconButton, Tooltip, Button, Divider, Slide
 import {
     Search,
     Close,
-    Sort,
     SortByAlpha,
     Undo,
     Redo,
@@ -364,17 +363,17 @@ export default function BnkMainContent(props) {
                                 ),
                             }}
                         />
-                        <Tooltip title={`Sort by size: ${rightSortMode === 'none' ? 'None' : (rightSortMode === 'size-asc' ? 'Low to High' : 'High to Low')}`}>
+                        <Tooltip title={`Sort alphabetically: ${rightSortMode === 'none' ? 'Off' : (rightSortMode === 'name-asc' ? 'A to Z' : 'Z to A')}`}>
                             <IconButton
                                 size="small"
-                                onClick={() => setRightSortMode((prev) => prev === 'none' ? 'size-desc' : (prev === 'size-desc' ? 'size-asc' : 'none'))}
+                                onClick={() => setRightSortMode((prev) => prev === 'none' ? 'name-asc' : (prev === 'name-asc' ? 'name-desc' : 'none'))}
                                 sx={{
                                     color: rightSortMode !== 'none' ? 'var(--accent)' : 'rgba(255,255,255,0.3)',
                                     background: rightSortMode !== 'none' ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
                                     p: '6px',
                                 }}
                             >
-                                <Sort sx={{ fontSize: 16, transform: rightSortMode === 'size-asc' ? 'scaleY(-1)' : 'none' }} />
+                                <SortByAlpha sx={{ fontSize: 16, transform: rightSortMode === 'name-desc' ? 'scaleY(-1)' : 'none' }} />
                             </IconButton>
                         </Tooltip>
                         {rightSearchQuery && (

@@ -97,7 +97,7 @@ export default function BnkExtract() {
     const [contextMenu, setContextMenu] = useState(null);
     const [rightTreeData, setRightTreeData] = useState([]);
     const [rightPaneDragOver, setRightPaneDragOver] = useState(false);
-    const [rightSortMode, setRightSortMode] = useState('none'); // 'none', 'size-asc', 'size-desc'
+    const [rightSortMode, setRightSortMode] = useState('name-asc'); // 'none', 'name-asc', 'name-desc' (default A-Z)
     const [leftSortMode, setLeftSortMode] = useState('name-asc'); // 'none', 'name-asc', 'name-desc' (default A-Z)
 
     // Wwise conversion state
