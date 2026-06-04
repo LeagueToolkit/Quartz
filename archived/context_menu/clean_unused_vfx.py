@@ -4,8 +4,10 @@ import sys
 import re
 from pathlib import Path
 
-# Setup Project Paths
-project_root = Path(r'C:\Users\Frog\Desktop\Projects coding\Quartz-main')
+# Setup Project Paths — derived from this script's location so it works on
+# any clone (archived/context_menu/<this file>, so up two levels to the repo
+# root).
+project_root = Path(__file__).resolve().parent.parent.parent
 # Add both project root AND context_menu to path
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
