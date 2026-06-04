@@ -116,6 +116,7 @@ native/wad_indexer/target/
 native/wad_indexer/*.node
 native/*.node
 native/quartz_cli/target/
+native/quartz_cli/target_verify*/
 native/**/target/
 native/pmx_fbx_bridge/build_release/
 native/xps_fbx_bridge/build_release/
