@@ -19,7 +19,7 @@
       "endpoints": [
         "https://github.com/RitoShark/Quartz/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYwNzk3QjFGRkI5MUY4N0IKUldSNytKSDdIM3Q1WUNhOWwzVElha3VtdjZIQitOYmplWEpEYklVcGQ4OWVUTEU4YVZkYU96elMK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ3RDYxQzFBNjI2ODYwM0IKUldRN1lHaGlHaHpXMTNGU1lnWVBTN3VBYjFaRmZNSzN1UzFtS3NKMmh6V20xNzkrOFJmZ2xaVDYK",
       "windows": {
         "installMode": "passive"
       }
