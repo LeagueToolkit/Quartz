@@ -46,6 +46,30 @@ fn list_files_with_exts(dir: &Path, exts: &[&str]) -> Vec<AssetFile> {
     out
 }
 
+/* Copies bundled wallpapers/cursors (shipped as Tauri resources) into the app's
+   wallpapers/cursors dirs on first run, so themed presets have their images.
+   Existing files are never overwritten — user imports win. */
+pub fn seed_bundled_assets(resource_dir: &Path) {
+    for sub in ["wallpapers", "cursors"] {
+        // Tauri keeps the declared `resources/<sub>` path under resource_dir; some
+        // layouts flatten it. Try both.
+        let candidates = [resource_dir.join("resources").join(sub), resource_dir.join(sub)];
+        let Some(src) = candidates.into_iter().find(|p| p.is_dir()) else { continue };
+        let Ok(dest) = subdir(sub) else { continue };
+        let Ok(entries) = std::fs::read_dir(&src) else { continue };
+        for entry in entries.flatten() {
+            let from = entry.path();
+            if !from.is_file() { continue; }
+            let Some(name) = from.file_name() else { continue };
+            let to = dest.join(name);
+            if to.exists() { continue; }
+            if let Err(e) = std::fs::copy(&from, &to) {
+                tracing::warn!("Failed to seed {}: {}", to.display(), e);
+            }
+        }
+    }
+}
+
 /// Read any file as a base64 string (for cursor/wallpaper previews via data URI).
 #[tauri::command]
 pub fn read_file_base64(path: String) -> Result<String, String> {

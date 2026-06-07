@@ -7,20 +7,39 @@ export interface FontOption {
     fontFamily?: string;
 }
 
-// Common Windows families always offered, plus the system default.
+/* Curated common families (ported 1:1 from Quartz's fontManager) plus the system
+   default. User fonts dropped into the fonts folder are appended. */
 const COMMON_FONTS: FontOption[] = [
     { value: 'system', label: 'System Default' },
+    // Windows
     { value: 'Segoe UI', label: 'Segoe UI' },
+    { value: 'Consolas', label: 'Consolas (Mono)' },
+    { value: 'Cascadia Code', label: 'Cascadia Code (Mono)' },
     { value: 'Arial', label: 'Arial' },
+    { value: 'Verdana', label: 'Verdana' },
+    { value: 'Tahoma', label: 'Tahoma' },
+    { value: 'Trebuchet MS', label: 'Trebuchet MS' },
+    { value: 'Georgia', label: 'Georgia' },
     { value: 'Calibri', label: 'Calibri' },
     { value: 'Cambria', label: 'Cambria' },
-    { value: 'Consolas', label: 'Consolas' },
-    { value: 'Courier New', label: 'Courier New' },
-    { value: 'Georgia', label: 'Georgia' },
-    { value: 'Tahoma', label: 'Tahoma' },
+    { value: 'Lucida Console', label: 'Lucida Console (Mono)' },
+    { value: 'Courier New', label: 'Courier New (Mono)' },
     { value: 'Times New Roman', label: 'Times New Roman' },
-    { value: 'Trebuchet MS', label: 'Trebuchet MS' },
-    { value: 'Verdana', label: 'Verdana' },
+    // Mac
+    { value: 'SF Pro', label: 'SF Pro (Mac)' },
+    { value: 'SF Mono', label: 'SF Mono (Mac)' },
+    { value: 'Menlo', label: 'Menlo (Mac Mono)' },
+    { value: 'Monaco', label: 'Monaco (Mac Mono)' },
+    { value: 'Helvetica Neue', label: 'Helvetica Neue' },
+    // Linux
+    { value: 'Ubuntu', label: 'Ubuntu' },
+    { value: 'Ubuntu Mono', label: 'Ubuntu Mono' },
+    { value: 'DejaVu Sans', label: 'DejaVu Sans' },
+    { value: 'DejaVu Sans Mono', label: 'DejaVu Sans Mono' },
+    // Web-safe
+    { value: 'Comic Sans MS', label: 'Comic Sans MS' },
+    { value: 'Impact', label: 'Impact' },
+    { value: 'Palatino Linotype', label: 'Palatino' },
 ];
 
 const MIME: Record<string, string> = {
@@ -60,7 +79,9 @@ export async function refreshFonts(): Promise<FontOption[]> {
     }
     const seen = new Set(COMMON_FONTS.map((f) => f.value));
     userFonts = userFonts.filter((f) => !seen.has(f.value));
-    return [...COMMON_FONTS, ...userFonts];
+    // Preview each option in its own family in the dropdown.
+    const common = COMMON_FONTS.map((f) => f.value === 'system' ? f : { ...f, fontFamily: `"${f.value}"` });
+    return [...common, ...userFonts];
 }
 
 export function applyFont(name: string) {

@@ -6,6 +6,7 @@ mod core;
 mod state;
 
 use commands::settings::{get_quartz_home, initialize_app_home};
+use tauri::Manager;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 fn main() {
@@ -37,9 +38,13 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .setup(|_app| {
+        .setup(|app| {
             if let Err(e) = initialize_app_home() {
                 tracing::error!("Failed to initialize app home: {}", e);
+            }
+            // Seed bundled wallpapers/cursors so themed presets have their images.
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                commands::assets::seed_bundled_assets(&resource_dir);
             }
             Ok(())
         })
