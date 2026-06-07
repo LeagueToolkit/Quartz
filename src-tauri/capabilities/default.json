@@ -12,7 +12,6 @@
     "dialog:default",
     "process:default",
     "opener:default",
-    "shell:allow-execute",
-    "updater:default"
+    "shell:allow-execute"
   ]
 }
