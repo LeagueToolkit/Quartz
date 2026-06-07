@@ -1,0 +1,105 @@
+/* === Title bar === */
+.q-titlebar {
+    height: var(--titlebar-h);
+    display: flex;
+    align-items: center;
+    background: color-mix(in srgb, var(--surface) 85%, transparent);
+    border-bottom: 1px solid var(--glass-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    user-select: none;
+    z-index: 10;
+}
+
+.q-winbtn {
+    width: 46px;
+    height: var(--titlebar-h);
+    display: grid;
+    place-items: center;
+    color: color-mix(in srgb, #e9e9f0 65%, transparent);
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.q-winbtn:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.q-winbtn--close:hover { background: #e11d48; color: #fff; }
+
+/* === Nav rail === */
+.q-rail {
+    width: var(--rail-w);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    background: color-mix(in srgb, var(--surface) 60%, transparent);
+    border-right: 1px solid var(--glass-border);
+    z-index: 5;
+}
+
+.q-rail-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+}
+
+.q-navbtn {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    color: var(--text-2);
+    transition: color 0.2s ease, background-color 0.2s ease;
+}
+.q-navbtn svg {
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+}
+.q-navbtn:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.q-navbtn:hover svg {
+    color: var(--accent);
+    transform: scale(1.16);
+    filter: drop-shadow(0 0 8px var(--accent));
+}
+.q-navbtn.is-active { color: var(--accent); }
+.q-navbtn.is-active svg { color: var(--accent); filter: drop-shadow(0 0 5px var(--accent)); }
+.q-navbtn.is-active::before {
+    content: '';
+    position: absolute;
+    left: -8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 22px;
+    border-radius: 0 3px 3px 0;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+}
+
+/* Tooltip to the right on hover */
+.q-navbtn[data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 50px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--bg);
+    color: #f5f5f5;
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    padding: 7px 11px;
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1000;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Page enter animation */
+@keyframes q-page-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+}
+.q-page { animation: q-page-in 0.22s ease both; }

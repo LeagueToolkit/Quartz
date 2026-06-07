@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Fallback token values; themeStore overwrites these on boot. */
+/* Themeable primitives — themeStore overwrites these on boot. */
 :root {
     color-scheme: dark;
     --accent: #ecb96a;
@@ -15,11 +15,58 @@
     --text: #ecb96a;
     --text-2: #c084fc;
     --accent-green: #22c55e;
+
+    /* Derived — track the primitives above, so themes update them for free. */
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+    --accent-gradient: linear-gradient(135deg, var(--accent), var(--accent-muted));
+    --radius: 8px;
+    --titlebar-h: 40px;
+    --rail-w: 60px;
 }
 
 html, body, #app { height: 100%; margin: 0; }
+
 body {
     background: var(--bg);
-    color: var(--text);
-    font-family: system-ui, sans-serif;
+    color: #e9e9f0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+}
+
+/* Atmosphere: two faint accent washes anchored to the corners. */
+.q-atmosphere {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+        radial-gradient(60rem 60rem at 12% -10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 60%),
+        radial-gradient(50rem 50rem at 110% 110%, color-mix(in srgb, var(--accent-2) 9%, transparent), transparent 55%);
+}
+
+/* Refined scrollbars */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--text-2) 22%, transparent);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--accent) 45%, transparent);
+    background-clip: padding-box;
+}
+
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+
+/* Glass surface used by cards/panels */
+.q-glass {
+    background: color-mix(in srgb, var(--surface) 78%, transparent);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: var(--glass-shadow);
 }
