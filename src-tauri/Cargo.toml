@@ -1,0 +1,37 @@
+[workspace]
+members = [".", "crates/quartz-lib"]
+
+[package]
+name = "quartz"
+version = "4.0.0"
+edition = "2021"
+default-run = "quartz"
+
+[lib]
+name = "quartz"
+path = "src/lib.rs"
+
+[[bin]]
+name = "quartz"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+quartz-lib = { path = "crates/quartz-lib" }
+tauri = { version = "2.11", features = ["protocol-asset", "devtools"] }
+tauri-plugin-dialog = "2.0"
+tauri-plugin-process = "2.0"
+tauri-plugin-opener = "2"
+tauri-plugin-shell = "2.0"
+tauri-plugin-updater = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+anyhow = "1.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

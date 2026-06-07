@@ -1,0 +1,11 @@
+[package]
+name = "quartz-lib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+anyhow = "1.0"
+thiserror = "1.0"
+# Uncomment when the first LTK-backed command lands (match Flint's rev):
+# ritoshark = { git = "https://github.com/RitoShark/RitoShark-Crates", rev = "d6af5ac" }

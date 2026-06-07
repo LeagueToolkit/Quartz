@@ -1,0 +1,12 @@
+import React from 'react';
+
+export { useNavigationStore } from './navigationStore';
+export { useConfigStore } from './configStore';
+export { useNotificationStore } from './notificationStore';
+
+/* Stores are module-level singletons, so no Context is required. AppProvider
+   is the single mount-time seam for future boot logic (loading persisted
+   config, attaching event listeners). */
+export function AppProvider({ children }: { children: React.ReactNode }) {
+    return React.createElement(React.Fragment, null, children);
+}

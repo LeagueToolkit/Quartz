@@ -34,7 +34,8 @@ build
 /src-tauri/sidecars/*.dll
 
 # Internal Documents
-/docs/superpower/*
+/docs/
+CLAUDE.md
 
 # OS
 Thumbs.db
