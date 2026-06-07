@@ -1,20 +1,8 @@
 import { FormGroup, ToggleSwitch } from '../primitives';
 import { useUiPrefsStore } from '@/lib/stores';
-import type { Page } from '@/lib/stores';
+import { PAGE_LABELS, PAGE_DEFAULTS } from '@/lib/stores/uiPrefsStore';
 
-const PAGES: { id: Page; label: string }[] = [
-    { id: 'vfxhub', label: 'VFX Hub' },
-    { id: 'bineditor', label: 'Bin Editor' },
-    { id: 'imgrecolor', label: 'Image Recolor' },
-    { id: 'upscale', label: 'Upscale' },
-    { id: 'rgba', label: 'RGBA' },
-    { id: 'tools', label: 'Tools' },
-    { id: 'filehandler', label: 'File Handler' },
-    { id: 'bumpath', label: 'Bumpath' },
-    { id: 'aniport', label: 'AniPort' },
-    { id: 'extractor', label: 'Asset Extractor' },
-    { id: 'wadexplorer', label: 'WAD Explorer' },
-];
+const PAGES = PAGE_LABELS.map((p) => ({ id: p.page, label: p.label }));
 
 const Divider = () => <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '8px 0' }} />;
 
@@ -40,7 +28,7 @@ export function PageVisibilitySection() {
                             {i > 0 && <Divider />}
                             <ToggleSwitch
                                 label={p.label}
-                                checked={pageVisibility[p.id] !== false}
+                                checked={pageVisibility[p.id] ?? PAGE_DEFAULTS[p.id] ?? true}
                                 onChange={(c) => setPageVisible(p.id, c)}
                                 compact
                             />

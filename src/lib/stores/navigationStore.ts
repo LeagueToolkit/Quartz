@@ -16,7 +16,10 @@ export type Page =
     | 'aniport'
     | 'tools'
     | 'filehandler'
+    | 'soundbanks'
     | 'bumpath'
+    | 'fakegear'
+    | 'particlerandomizer'
     | 'settings';
 
 interface NavigationState {

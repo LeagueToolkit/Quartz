@@ -21,8 +21,11 @@ const TITLES: Record<Page, string> = {
     rgba: 'RGBA',
     aniport: 'AniPort',
     tools: 'Tools',
-    filehandler: 'File Handler',
+    filehandler: 'File Randomizer',
+    soundbanks: 'Sound Banks',
     bumpath: 'Bumpath',
+    fakegear: 'FakeGear',
+    particlerandomizer: 'Particle Randomizer',
     settings: 'Settings',
 };
 

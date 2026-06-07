@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 import { BUILTIN_THEMES, DEFAULT_THEME_ID } from '@/lib/theme/builtinThemes';
-import { applyTheme } from '@/lib/theme/applyTheme';
-import type { Theme } from '@/lib/theme/types';
+import { applyTheme, applyInterfaceStyle } from '@/lib/theme/applyTheme';
+import { getThemeBehavior } from '@/lib/theme/behaviors';
+import type { Theme, ThemeBehavior } from '@/lib/theme/types';
 import { listCustomThemes, saveCustomTheme, deleteCustomTheme } from '@/lib/api';
 import { useConfigStore } from './configStore';
+import { useUiPrefsStore } from './uiPrefsStore';
 import { log } from '@/lib/util/logger';
 
 interface ThemeState {
@@ -21,6 +23,47 @@ function resolve(themes: Theme[], id: string): Theme {
         ?? themes[0];
 }
 
+/* Applies a theme's side effects (preferred interface style + click/background
+   effect presets + wallpaper preset), mirroring Quartz's handleThemeChange.
+   Only runs on explicit user selection — not on startup. */
+function applyThemeBehavior(behavior: ThemeBehavior | null) {
+    if (!behavior) return;
+    const prefs = useUiPrefsStore.getState();
+
+    if (behavior.preferredStyle) {
+        prefs.set('interfaceStyle', behavior.preferredStyle);
+        applyInterfaceStyle(behavior.preferredStyle);
+    }
+
+    const click = behavior.effects?.click;
+    if (click) {
+        prefs.set('clickEffectEnabled', click.enabled === true);
+        if (click.type) prefs.set('clickEffectType', click.type);
+        window.dispatchEvent(new CustomEvent('clickEffectChanged', {
+            detail: { enabled: click.enabled === true, ...(click.type ? { type: click.type } : {}) },
+        }));
+    }
+
+    const bg = behavior.effects?.background;
+    if (bg) {
+        prefs.set('backgroundEffectEnabled', bg.enabled === true);
+        if (bg.type) prefs.set('backgroundEffectType', bg.type);
+        window.dispatchEvent(new CustomEvent('backgroundEffectChanged', {
+            detail: { enabled: bg.enabled === true, ...(bg.type ? { type: bg.type } : {}) },
+        }));
+    }
+
+    if (behavior.wallpaper) {
+        if (behavior.wallpaper.enabled === false) {
+            prefs.set('wallpaperEnabled', false);
+            window.dispatchEvent(new CustomEvent('wallpaperChanged', { detail: { path: '', opacity: prefs.wallpaperOpacity } }));
+        } else {
+            // The wallpaper subsystem resolves a preset by display name / filename.
+            window.dispatchEvent(new CustomEvent('themeWallpaperPreset', { detail: behavior.wallpaper }));
+        }
+    }
+}
+
 export const useThemeStore = create<ThemeState>((set, get) => ({
     themes: BUILTIN_THEMES,
     activeId: DEFAULT_THEME_ID,
@@ -36,13 +79,15 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
         const wanted = useConfigStore.getState().settings.selectedTheme ?? DEFAULT_THEME_ID;
         const active = resolve(themes, wanted);
         set({ themes, activeId: active.id });
-        applyTheme(active.tokens);
+        applyTheme(active.tokens, active.id);
+        applyInterfaceStyle(useUiPrefsStore.getState().interfaceStyle);
     },
 
     setActive: (id) => {
         const active = resolve(get().themes, id);
         set({ activeId: active.id });
-        applyTheme(active.tokens);
+        applyTheme(active.tokens, active.id);
+        applyThemeBehavior(active.behavior ?? getThemeBehavior(active.id));
         void useConfigStore.getState().update({ selectedTheme: active.id });
     },
 

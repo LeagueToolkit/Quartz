@@ -1,13 +1,32 @@
 import type { Theme } from './types';
 
-// Ported from the original Quartz themeManager.
+/* Ported 1:1 from the original Quartz themeManager THEMES map. Order here is the
+   order shown in the Appearance "Color Theme" grid. */
 export const BUILTIN_THEMES: Theme[] = [
+    {
+        id: 'onyx', name: 'Onyx', builtin: true,
+        tokens: {
+            accent: '#c3cedaff', accent2: '#cbd5e1', accentMuted: '#6b7280',
+            bg: '#0f1115', bg2: '#151821', surface: '#131722', surface2: '#1b2130',
+            text: '#e5e7eb', text2: '#cbd5e1',
+            glassBg: 'rgba(15,17,23,0.35)', glassBorder: 'rgba(255,255,255,0.10)', glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+            muiPrimary: '#9aa4ae', muiPrimaryLight: '#b6bec7', muiPrimaryDark: '#6b7280',
+            muiSecondary: '#64748b', muiSecondaryLight: '#cbd5e1', muiSecondaryDark: '#475569',
+            muiBackground: '#0f1115', muiPaper: '#151821', muiTextPrimary: '#e5e7eb', muiTextSecondary: '#cbd5e1', muiDivider: '#2b3340',
+            accentGreen: '#22c55e', accentGreenMuted: '#14532d',
+        },
+    },
     {
         id: 'amethyst', name: 'Amethyst', builtin: true,
         tokens: {
             accent: '#ecb96a', accent2: '#c084fc', accentMuted: '#ad7e34',
             bg: '#0b0a0f', bg2: '#2a2737', surface: '#0f0d14', surface2: '#2a2737',
-            text: '#ecb96a', text2: '#c084fc', accentGreen: '#22c55e',
+            text: '#ecb96a', text2: '#c084fc',
+            glassBg: 'rgba(16,14,22,0.35)', glassBorder: 'rgba(255,255,255,0.10)', glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+            muiPrimary: '#8b5cf6', muiPrimaryLight: '#a78bfa', muiPrimaryDark: '#6d28d9',
+            muiSecondary: '#c084fc', muiSecondaryLight: '#d8b4fe', muiSecondaryDark: '#7c3aed',
+            muiBackground: 'transparent', muiPaper: '#1a1a1a', muiTextPrimary: '#ffffff', muiTextSecondary: '#ad7e34', muiDivider: '#333',
+            accentGreen: '#22c55e', accentGreenMuted: '#166534',
         },
     },
     {
@@ -15,7 +34,25 @@ export const BUILTIN_THEMES: Theme[] = [
         tokens: {
             accent: '#0EC1F6', accent2: '#FFFFFF', accentMuted: '#FAFAFA',
             bg: '#06537A', bg2: '#054666', surface: '#012A40', surface2: '#012336',
-            text: '#FFFFFF', text2: '#FFFFFF', accentGreen: '#22c55e',
+            text: '#FFFFFF', text2: '#FFFFFF', navIconColor: '#FFFFFF',
+            glassBg: 'rgba(1, 42, 64, 0.36)', glassBorder: 'rgba(255,255,255,0.10)', glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+            muiPrimary: '#0EC1F6', muiPrimaryLight: '#53D6FB', muiPrimaryDark: '#0895BF',
+            muiSecondary: '#FFFFFF', muiSecondaryLight: '#FFFFFF', muiSecondaryDark: '#DDEAF0',
+            muiBackground: '#06537A', muiPaper: '#012A40', muiTextPrimary: '#FFFFFF', muiTextSecondary: '#FFFFFF', muiDivider: '#2B6E8D',
+            accentGreen: '#22c55e', accentGreenMuted: '#166534',
+        },
+    },
+    {
+        id: 'empress', name: 'Empress', builtin: true,
+        tokens: {
+            accent: '#FFFFFF', accent2: '#FFFFFF', accentMuted: '#FAFAFA',
+            bg: '#06537A', bg2: '#054666', surface: '#012A40', surface2: '#012336',
+            text: '#FFFFFF', text2: '#FFFFFF', navIconColor: '#FFFFFF',
+            glassBg: 'rgba(1, 42, 64, 0.36)', glassBorder: 'rgba(255,255,255,0.10)', glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+            muiPrimary: '#FFFFFF', muiPrimaryLight: '#FFFFFF', muiPrimaryDark: '#E0E0E0',
+            muiSecondary: '#FFFFFF', muiSecondaryLight: '#FFFFFF', muiSecondaryDark: '#DDEAF0',
+            muiBackground: '#06537A', muiPaper: '#012A40', muiTextPrimary: '#FFFFFF', muiTextSecondary: '#FFFFFF', muiDivider: '#2B6E8D',
+            accentGreen: '#22c55e', accentGreenMuted: '#166534',
         },
     },
     {
@@ -23,7 +60,12 @@ export const BUILTIN_THEMES: Theme[] = [
         tokens: {
             accent: '#9DD9C8', accent2: '#FFFFFF', accentMuted: '#FAFAFA',
             bg: '#2F4A40', bg2: '#4F7060', surface: '#29433A', surface2: '#32503A',
-            text: '#FFFFFF', text2: '#FFFFFF', accentGreen: '#7AC7A8',
+            text: '#FFFFFF', text2: '#FFFFFF', navIconColor: '#FFFFFF',
+            glassBg: 'rgba(1, 42, 64, 0.36)', glassBorder: 'rgba(255,255,255,0.10)', glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+            muiPrimary: '#9DD9C8', muiPrimaryLight: '#B7E6DA', muiPrimaryDark: '#6FB29D',
+            muiSecondary: '#FFFFFF', muiSecondaryLight: '#FFFFFF', muiSecondaryDark: '#DDEAF0',
+            muiBackground: '#2F4A40', muiPaper: '#29433A', muiTextPrimary: '#FFFFFF', muiTextSecondary: '#FFFFFF', muiDivider: '#4A6A60',
+            accentGreen: '#7AC7A8', accentGreenMuted: '#4A8F75',
         },
     },
     {
@@ -31,15 +73,25 @@ export const BUILTIN_THEMES: Theme[] = [
         tokens: {
             accent: '#83D0FF', accent2: '#FFFFFF', accentMuted: '#FFFFFF',
             bg: '#393939', bg2: '#4D4D4D', surface: '#363636', surface2: '#525252',
-            text: '#FFFFFF', text2: '#83D0FF', accentGreen: '#83D0FF',
+            text: '#FFFFFF', text2: '#83D0FF', navIconColor: '#FFFFFF',
+            glassBg: 'rgba(16,14,22,0.35)', glassBorder: 'rgba(255,255,255,0.10)', glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+            muiPrimary: '#83D0FF', muiPrimaryLight: '#B3E4FF', muiPrimaryDark: '#4AA7DD',
+            muiSecondary: '#FFFFFF', muiSecondaryLight: '#FFFFFF', muiSecondaryDark: '#D9D9D9',
+            muiBackground: '#393939', muiPaper: '#363636', muiTextPrimary: '#FFFFFF', muiTextSecondary: '#FFFFFF', muiDivider: '#5A5A5A',
+            accentGreen: '#83D0FF', accentGreenMuted: '#4AA7DD',
         },
     },
     {
-        id: 'city', name: 'City', builtin: true,
+        id: 'city', name: 'Neon City', builtin: true,
         tokens: {
             accent: '#00FFEB', accent2: '#FF40E6', accentMuted: '#FAFAFA',
             bg: '#71067A', bg2: '#5C0566', surface: '#3D0140', surface2: '#2B0136',
-            text: '#FFFFFF', text2: '#00FFFF', accentGreen: '#00FFEB',
+            text: '#FFFFFF', text2: '#00FFFF', navIconColor: '#2FFFE4',
+            glassBg: 'rgba(1, 42, 64, 0.36)', glassBorder: 'rgba(255,255,255,0.10)', glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+            muiPrimary: '#00FFEB', muiPrimaryLight: '#66FFF4', muiPrimaryDark: '#00BFB0',
+            muiSecondary: '#FF40E6', muiSecondaryLight: '#FF80EF', muiSecondaryDark: '#C020AE',
+            muiBackground: '#71067A', muiPaper: '#3D0140', muiTextPrimary: '#FFFFFF', muiTextSecondary: '#00FFFF', muiDivider: '#5C0566',
+            accentGreen: '#00FFEB', accentGreenMuted: '#00BFB0',
         },
     },
     {
@@ -47,7 +99,12 @@ export const BUILTIN_THEMES: Theme[] = [
         tokens: {
             accent: '#FA7E8F', accent2: '#A4C6FF', accentMuted: '#FA7E8F',
             bg: '#0B0A0F', bg2: '#2A2737', surface: '#0F0D14', surface2: '#2A2737',
-            text: '#FFFFFF', text2: '#A4C6FF', accentGreen: '#A4C6FF',
+            text: '#FFFFFF', text2: '#A4C6FF', navIconColor: '#FA7E8F',
+            glassBg: 'rgba(16,14,22,0.35)', glassBorder: 'rgba(255,255,255,0.10)', glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+            muiPrimary: '#FA7E8F', muiPrimaryLight: '#FF9DAC', muiPrimaryDark: '#D85F73',
+            muiSecondary: '#A4C6FF', muiSecondaryLight: '#C4DAFF', muiSecondaryDark: '#7FA7E6',
+            muiBackground: '#0B0A0F', muiPaper: '#0F0D14', muiTextPrimary: '#FFFFFF', muiTextSecondary: '#A4C6FF', muiDivider: '#2A2737',
+            accentGreen: '#A4C6FF', accentGreenMuted: '#7FA7E6',
         },
     },
     {
@@ -55,7 +112,77 @@ export const BUILTIN_THEMES: Theme[] = [
         tokens: {
             accent: '#FFC6D5', accent2: '#BCDDFF', accentMuted: '#FF8CAB',
             bg: '#0B0A0F', bg2: '#85338C', surface: '#0F0D14', surface2: '#8A227F',
-            text: '#FFFFFF', text2: '#BCDDFF', accentGreen: '#BCDDFF',
+            text: '#FFFFFF', text2: '#BCDDFF', navIconColor: '#FFC6D5',
+            glassBg: 'rgba(16,14,22,0.35)', glassBorder: 'rgba(255,255,255,0.10)', glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+            muiPrimary: '#FFC6D5', muiPrimaryLight: '#FFD9E2', muiPrimaryDark: '#EFA3B8',
+            muiSecondary: '#BCDDFF', muiSecondaryLight: '#D7E9FF', muiSecondaryDark: '#98BFE7',
+            muiBackground: '#0B0A0F', muiPaper: '#0F0D14', muiTextPrimary: '#FFFFFF', muiTextSecondary: '#BCDDFF', muiDivider: '#85338C',
+            accentGreen: '#BCDDFF', accentGreenMuted: '#98BFE7',
+        },
+    },
+    {
+        id: 'starSky', name: 'Star Sky', builtin: true,
+        tokens: {
+            accent: '#4681FF', accent2: '#1BDBFF', accentMuted: '#6FB5FC',
+            bg: '#0B0A0F', bg2: '#0E1220', surface: '#0F0D14', surface2: '#141B2B',
+            text: '#FFFFFF', text2: '#6FB5FC', navIconColor: '#6FB5FC',
+            glassBg: 'rgba(1, 42, 64, 0.36)', glassBorder: 'rgba(255,255,255,0.10)', glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+            muiPrimary: '#4681FF', muiPrimaryLight: '#77A3FF', muiPrimaryDark: '#2E5FD1',
+            muiSecondary: '#1BDBFF', muiSecondaryLight: '#67EBFF', muiSecondaryDark: '#10A7C2',
+            muiBackground: '#0B0A0F', muiPaper: '#0F0D14', muiTextPrimary: '#FFFFFF', muiTextSecondary: '#6FB5FC', muiDivider: '#1E2740',
+            accentGreen: '#1BDBFF', accentGreenMuted: '#10A7C2',
+        },
+    },
+    {
+        id: 'charcoalOlive', name: 'Charcoal Olive', builtin: true,
+        tokens: {
+            accent: '#b7bdbd', accent2: '#b2ad85', accentMuted: '#605C3C',
+            bg: '#0b0c0d', bg2: '#151617', surface: '#101112', surface2: '#181a1b',
+            text: '#e6e3d9', text2: '#cfc9b0',
+            glassBg: 'rgba(16,17,18,0.35)', glassBorder: 'rgba(255,255,255,0.10)', glassShadow: '0 12px 28px rgba(0,0,0,0.35)',
+            muiPrimary: '#b7bdbd', muiPrimaryLight: '#d2d6d6', muiPrimaryDark: '#8e9494',
+            muiSecondary: '#86836A', muiSecondaryLight: '#d0cba3', muiSecondaryDark: '#605C3C',
+            muiBackground: '#0b0c0d', muiPaper: '#151617', muiTextPrimary: '#f0ede3', muiTextSecondary: '#e6e3d9', muiDivider: '#2b2c2d',
+            accentGreen: '#22c55e', accentGreenMuted: '#14532d',
+        },
+    },
+    {
+        id: 'quartz', name: 'Quartz', builtin: true,
+        tokens: {
+            accent: '#f8fafc', accent2: '#c0c5ce', accentMuted: '#cbd5e1',
+            bg: '#020617', bg2: '#0f172a', surface: '#0f172a', surface2: '#1e293b',
+            text: '#f8fafc', text2: '#e2e8f0',
+            glassBg: 'rgba(15,23,42,0.35)', glassBorder: 'rgba(248,250,252,0.15)', glassShadow: '0 12px 28px rgba(248,250,252,0.10)',
+            muiPrimary: '#f8fafc', muiPrimaryLight: '#ffffff', muiPrimaryDark: '#e2e8f0',
+            muiSecondary: '#e2e8f0', muiSecondaryLight: '#f1f5f9', muiSecondaryDark: '#cbd5e1',
+            muiBackground: '#020617', muiPaper: '#0f172a', muiTextPrimary: '#f8fafc', muiTextSecondary: '#e2e8f0', muiDivider: '#1e293b',
+            accentGreen: '#10b981', accentGreenMuted: '#047857',
+        },
+    },
+    {
+        id: 'crystal', name: 'Crystal', builtin: true,
+        tokens: {
+            accent: '#ffffff', accent2: '#e5e7eb', accentMuted: '#d1d5db',
+            bg: '#0f0f0f', bg2: '#1a1a1a', surface: '#141414', surface2: '#1f1f1f',
+            text: '#ffffff', text2: '#e5e7eb',
+            glassBg: 'rgba(20,20,20,0.45)', glassBorder: 'rgba(255,255,255,0.15)', glassShadow: '0 12px 32px rgba(0,0,0,0.40)',
+            muiPrimary: '#ffffff', muiPrimaryLight: '#ffffff', muiPrimaryDark: '#d1d5db',
+            muiSecondary: '#e5e7eb', muiSecondaryLight: '#f3f4f6', muiSecondaryDark: '#d1d5db',
+            muiBackground: '#0f0f0f', muiPaper: '#141414', muiTextPrimary: '#ffffff', muiTextSecondary: '#e5e7eb', muiDivider: '#2a2a2a',
+            accentGreen: '#22c55e', accentGreenMuted: '#166534',
+        },
+    },
+    {
+        id: 'classicGray', name: 'Classic Gray', builtin: true,
+        tokens: {
+            accent: '#60cdff', accent2: '#a0a0a0', accentMuted: '#4cc2ff',
+            bg: '#202020', bg2: '#2b2b2b', surface: '#2b2b2b', surface2: '#323232',
+            text: '#ffffff', text2: '#d0d0d0',
+            glassBg: '#202020', glassBorder: '#404040', glassShadow: 'none',
+            muiPrimary: '#60cdff', muiPrimaryLight: '#8ad8ff', muiPrimaryDark: '#0094d8',
+            muiSecondary: '#a0a0a0', muiSecondaryLight: '#bfbfbf', muiSecondaryDark: '#707070',
+            muiBackground: '#202020', muiPaper: '#2b2b2b', muiTextPrimary: '#ffffff', muiTextSecondary: '#d0d0d0', muiDivider: '#454545',
+            accentGreen: '#6cc200', accentGreenMuted: '#529400',
         },
     },
 ];

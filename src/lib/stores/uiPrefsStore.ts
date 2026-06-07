@@ -4,28 +4,90 @@ import type { Page } from './navigationStore';
 
 export type InterfaceStyle = 'quartz' | 'winforms' | 'liquid' | 'minecraft';
 
-// Pages that can be toggled in Page Visibility (paint/port are always shown).
-export const TOGGLEABLE_PAGES: Page[] = [
-    'vfxhub', 'bineditor', 'imgrecolor', 'upscale', 'rgba', 'tools',
-    'filehandler', 'aniport', 'bumpath', 'extractor', 'wadexplorer',
+/* Pages that can be toggled in Page Visibility, mapped to their Quartz default.
+   Paint and Port are included (Quartz exposes them too). */
+export const PAGE_DEFAULTS: Partial<Record<Page, boolean>> = {
+    paint: true,
+    port: true,
+    vfxhub: true,
+    bineditor: true,
+    imgrecolor: true,
+    upscale: true,
+    rgba: false,
+    tools: false,
+    filehandler: false,
+    soundbanks: true,
+    bumpath: false,
+    aniport: false,
+    extractor: false,
+    wadexplorer: true,
+    fakegear: false,
+    particlerandomizer: false,
+};
+
+// Display labels + order for the Page Visibility list (matches Quartz).
+export const PAGE_LABELS: { page: Page; label: string }[] = [
+    { page: 'vfxhub', label: 'VFX Hub' },
+    { page: 'bineditor', label: 'Bin Editor' },
+    { page: 'imgrecolor', label: 'Image Recolor' },
+    { page: 'upscale', label: 'Upscale' },
+    { page: 'rgba', label: 'RGBA' },
+    { page: 'tools', label: 'Tools' },
+    { page: 'filehandler', label: 'File Randomizer' },
+    { page: 'soundbanks', label: 'Sound Banks' },
+    { page: 'bumpath', label: 'Bumpath' },
+    { page: 'aniport', label: 'AniPort' },
+    { page: 'extractor', label: 'Asset Extractor' },
+    { page: 'wadexplorer', label: 'WAD Explorer' },
+    { page: 'fakegear', label: 'FakeGear' },
+    { page: 'particlerandomizer', label: 'Particle Randomizer' },
+    { page: 'paint', label: 'Paint' },
+    { page: 'port', label: 'Port' },
 ];
 
+export const TOGGLEABLE_PAGES: Page[] = PAGE_LABELS.map((p) => p.page);
+
 interface UiPrefs {
+    // Appearance
     font: string;
     interfaceStyle: InterfaceStyle;
     glassBlur: number;
     performanceMode: boolean;
+    // Wallpaper
+    wallpaperEnabled: boolean;
+    wallpaperId: string;
+    wallpaperPath: string;
+    wallpaperOpacity: number;
+    wallpaperVignetteEnabled: boolean;
+    wallpaperVignetteStrength: number;
+    // Liquid-glass button tuning
+    liquidButtonTint: string;
+    liquidButtonHoverTint: string;
+    liquidButtonBlur: string;
+    // Effects
+    clickEffectEnabled: boolean;
+    clickEffectType: string;
+    backgroundEffectEnabled: boolean;
+    backgroundEffectType: string;
+    cursorEffectEnabled: boolean;
+    cursorEffectPath: string;
+    cursorEffectSize: number;
+    // Navigation / pages
     autoLoadEnabled: boolean;
     expandSystemsOnLoad: boolean;
+    pageVisibility: Partial<Record<Page, boolean>>;
+    // External tools
     useNativeFileBrowser: boolean;
     communicateWithJade: boolean;
     jadeExecutablePath: string;
+    // Windows integration
     contextMenuEnabled: boolean;
-    pageVisibility: Partial<Record<Page, boolean>>;
+    // GitHub
     githubUsername: string;
     githubToken: string;
     githubRepoUrl: string;
     showGithubToken: boolean;
+
     set: <K extends keyof UiPrefs>(key: K, value: UiPrefs[K]) => void;
     setPageVisible: (page: Page, visible: boolean) => void;
 }
@@ -33,17 +95,33 @@ interface UiPrefs {
 export const useUiPrefsStore = create<UiPrefs>()(
     persist(
         (set) => ({
-            font: 'system',
+            font: 'Segoe UI',
             interfaceStyle: 'quartz',
-            glassBlur: 12,
+            glassBlur: 6,
             performanceMode: false,
+            wallpaperEnabled: true,
+            wallpaperId: '',
+            wallpaperPath: '',
+            wallpaperOpacity: 0.15,
+            wallpaperVignetteEnabled: false,
+            wallpaperVignetteStrength: 0.35,
+            liquidButtonTint: '',
+            liquidButtonHoverTint: '',
+            liquidButtonBlur: '',
+            clickEffectEnabled: false,
+            clickEffectType: 'water',
+            backgroundEffectEnabled: false,
+            backgroundEffectType: 'fireflies',
+            cursorEffectEnabled: false,
+            cursorEffectPath: '',
+            cursorEffectSize: 32,
             autoLoadEnabled: false,
             expandSystemsOnLoad: false,
+            pageVisibility: {},
             useNativeFileBrowser: false,
             communicateWithJade: true,
             jadeExecutablePath: '',
             contextMenuEnabled: false,
-            pageVisibility: {},
             githubUsername: '',
             githubToken: '',
             githubRepoUrl: 'https://github.com/FrogCsLoL/VFXHub',
@@ -56,8 +134,19 @@ export const useUiPrefsStore = create<UiPrefs>()(
     ),
 );
 
-// Apply prefs that affect global CSS (glass blur).
+// Resolve a page's visibility, honoring the user override then the Quartz default.
+export function isPageVisible(page: Page): boolean {
+    const { pageVisibility } = useUiPrefsStore.getState();
+    return pageVisibility[page] ?? PAGE_DEFAULTS[page] ?? true;
+}
+
+// Apply prefs that affect global CSS (glass blur, performance mode, liquid tuning).
 export function applyUiPrefs() {
-    const { glassBlur } = useUiPrefsStore.getState();
-    document.documentElement.style.setProperty('--glass-blur', `${glassBlur}px`);
+    const s = useUiPrefsStore.getState();
+    const root = document.documentElement;
+    root.style.setProperty('--glass-blur', `${s.performanceMode ? Math.min(s.glassBlur, 2) : s.glassBlur}px`);
+    root.setAttribute('data-performance', s.performanceMode ? 'on' : 'off');
+    if (s.liquidButtonTint) root.style.setProperty('--liquid-button-bg', s.liquidButtonTint);
+    if (s.liquidButtonHoverTint) root.style.setProperty('--liquid-button-hover-bg', s.liquidButtonHoverTint);
+    if (s.liquidButtonBlur) root.style.setProperty('--liquid-button-blur', `${s.liquidButtonBlur}px`);
 }
