@@ -4,3 +4,4 @@ export { getAppHome, getSettings, saveSettings } from './settings';
 export { logMessage } from './logging';
 export { listCustomThemes, saveCustomTheme, deleteCustomTheme } from './theme';
 export { getHashStatus, downloadHashes, type HashStatus, type HashFileStatus, type DownloadResult } from './hashes';
+export { discoverChampions, extractChampionAssets, type Champion, type ExtractResult } from './extractor';

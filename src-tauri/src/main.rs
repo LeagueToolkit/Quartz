@@ -54,6 +54,8 @@ fn main() {
             commands::themes::delete_custom_theme,
             commands::hashes::get_hash_status,
             commands::hashes::download_hashes,
+            commands::extractor::discover_champions,
+            commands::extractor::extract_champion_assets,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Quartz");
