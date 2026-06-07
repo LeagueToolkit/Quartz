@@ -36,6 +36,7 @@ fn main() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|_app| {
             if let Err(e) = initialize_app_home() {
                 tracing::error!("Failed to initialize app home: {}", e);
@@ -48,6 +49,11 @@ fn main() {
             commands::settings::get_settings,
             commands::settings::save_settings,
             commands::logging::log_message,
+            commands::themes::list_custom_themes,
+            commands::themes::save_custom_theme,
+            commands::themes::delete_custom_theme,
+            commands::hashes::get_hash_status,
+            commands::hashes::download_hashes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Quartz");

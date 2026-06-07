@@ -15,9 +15,10 @@ export function TitleBar() {
     return (
         <div
             data-tauri-drag-region
-            className="flex items-center h-9 shrink-0 select-none border-b border-white/10 bg-[#15151c] pl-3"
+            className="flex items-center h-9 shrink-0 select-none border-b border-white/10 bg-[var(--surface)] pl-3"
         >
-            <span data-tauri-drag-region className="text-sm font-semibold tracking-wide text-white/80">
+            <img src="/quartz-logo.png" alt="" className="mr-2 h-5 w-5" data-tauri-drag-region />
+            <span data-tauri-drag-region className="text-sm font-semibold tracking-wide text-[var(--text)]">
                 Quartz
             </span>
 

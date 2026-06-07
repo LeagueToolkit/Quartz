@@ -1,3 +1,5 @@
+pub mod hashes;
 pub mod logging;
 pub mod settings;
 pub mod system;
+pub mod themes;

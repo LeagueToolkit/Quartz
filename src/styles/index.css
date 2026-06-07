@@ -2,6 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: dark; }
+/* Fallback token values; themeStore overwrites these on boot. */
+:root {
+    color-scheme: dark;
+    --accent: #ecb96a;
+    --accent-2: #c084fc;
+    --accent-muted: #ad7e34;
+    --bg: #0b0a0f;
+    --bg-2: #2a2737;
+    --surface: #0f0d14;
+    --surface-2: #2a2737;
+    --text: #ecb96a;
+    --text-2: #c084fc;
+    --accent-green: #22c55e;
+}
+
 html, body, #app { height: 100%; margin: 0; }
-body { background: #0d0d12; color: #e6e6ee; font-family: system-ui, sans-serif; }
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, sans-serif;
+}

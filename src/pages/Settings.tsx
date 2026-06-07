@@ -4,6 +4,9 @@ import { useConfigStore } from '@/lib/stores';
 import { getAppHome } from '@/lib/api';
 import { log } from '@/lib/util/logger';
 import type { QuartzSettings } from '@/lib/types';
+import { ThemeCreator } from '@/components/settings/ThemeCreator';
+import { HashManager } from '@/components/settings/HashManager';
+import { UpdateChecker } from '@/components/settings/UpdateChecker';
 
 function PathField({
     label, value, onPick, onClear,
@@ -93,17 +96,11 @@ export function Settings() {
                 />
             </section>
 
-            <section className="space-y-3">
-                <h2 className="text-sm font-medium text-white/70">Updates</h2>
-                <label className="flex items-center gap-2 text-sm text-white/80">
-                    <input
-                        type="checkbox"
-                        checked={settings.autoUpdateEnabled}
-                        onChange={(e) => update({ autoUpdateEnabled: e.target.checked })}
-                    />
-                    Check for updates automatically
-                </label>
-            </section>
+            <ThemeCreator />
+
+            <HashManager />
+
+            <UpdateChecker />
 
             <section className="space-y-2">
                 <button onClick={showHome} className="rounded bg-white/10 px-3 py-1.5 text-sm hover:bg-white/20">

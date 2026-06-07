@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigationStore, useConfigStore, type Page } from '@/lib/stores';
+import { useNavigationStore, useConfigStore, useThemeStore, type Page } from '@/lib/stores';
 import { TitleBar } from '@/components/layout/TitleBar';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Home } from '@/pages/Home';
@@ -38,17 +38,19 @@ function PageView({ page }: { page: Page }) {
 export function App() {
     const page = useNavigationStore((s) => s.page);
     const loadConfig = useConfigStore((s) => s.load);
+    const initThemes = useThemeStore((s) => s.init);
 
     useEffect(() => {
-        loadConfig();
-    }, [loadConfig]);
+        // Load settings first so the theme store can read the saved selection.
+        loadConfig().then(initThemes);
+    }, [loadConfig, initThemes]);
 
     return (
-        <div className="flex h-full flex-col">
+        <div className="flex h-full flex-col bg-[var(--bg)] text-[var(--text)]">
             <TitleBar />
             <div className="flex min-h-0 flex-1">
                 <Sidebar />
-                <main className="min-w-0 flex-1 overflow-y-auto p-6">
+                <main className="min-w-0 flex-1 overflow-y-auto bg-[var(--bg)] p-6">
                     <PageView page={page} />
                 </main>
             </div>
