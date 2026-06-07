@@ -34,7 +34,7 @@ export function ToolsSection() {
         setDownloading(true); setHashMessage(null);
         try {
             const r = await downloadHashes(false);
-            setHashMessage(`${r.downloaded} downloaded, ${r.skipped} up to date${r.errors.length ? `, ${r.errors.length} failed` : ''}.`);
+            setHashMessage(`${r.downloaded} downloaded, ${r.skipped} up to date${r.errors ? `, ${r.errors} failed` : ''}.`);
             await refreshHashes();
         } catch (e) { log.error('downloadHashes', e); setHashMessage('Download failed.'); }
         finally { setDownloading(false); }
@@ -50,8 +50,11 @@ export function ToolsSection() {
         finally { setChecking(false); }
     };
 
-    const present = hashStatus?.files.filter((f) => f.present).length ?? 0;
-    const total = hashStatus?.files.length ?? 0;
+    const hashCountLabel = hashStatus
+        ? hashStatus.present
+            ? `Hash databases present (~${hashStatus.loadedCount.toLocaleString()} entries)`
+            : 'Hash databases not downloaded yet'
+        : '';
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -87,9 +90,14 @@ export function ToolsSection() {
                     {hashStatus && (
                         <div style={{ marginBottom: '12px' }}>
                             <StatusBadge
-                                status={hashStatus.complete ? 'success' : 'warning'}
-                                text={hashStatus.complete ? `All hash files present (${present}/${total})` : `Missing ${total - present} of ${total} hash files`}
+                                status={hashStatus.present ? 'success' : 'warning'}
+                                text={hashCountLabel}
                             />
+                            {hashStatus.lastUpdated && (
+                                <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-2)', opacity: 0.7 }}>
+                                    Updated {new Date(hashStatus.lastUpdated).toLocaleString()}
+                                </div>
+                            )}
                         </div>
                     )}
                     <Button icon={<Download size={16} />} fullWidth variant="secondary" onClick={doDownloadHashes} disabled={downloading}>

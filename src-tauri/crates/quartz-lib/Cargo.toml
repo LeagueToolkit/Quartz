@@ -4,8 +4,35 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-anyhow = "1.0"
+# Error handling
 thiserror = "1.0"
-# Uncomment when the first LTK-backed command lands (match Flint's rev):
-# ritoshark = { git = "https://github.com/RitoShark/RitoShark-Crates", rev = "d6af5ac" }
+anyhow = "1.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async + HTTP
+tokio = { version = "1.0", features = ["rt-multi-thread", "fs", "io-util", "sync", "macros", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+
+# Concurrency / fast maps
+rayon = "1.10"
+parking_lot = "0.12"
+rustc-hash = "2"
+
+# LMDB via heed — memory-mapped hash lookups (matches Flint)
+heed = "0.20"
+
+# Compression for the prebuilt LMDB release assets
+zstd = "0.12"
+
+# Data
+indexmap = { version = "2.1", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging (macros only)
+tracing = "0.1"
+
+# RitoShark crates — BIN/format handling. Pinned to the same rev Flint uses.
+ritoshark = { git = "https://github.com/RitoShark/RitoShark-Crates", rev = "d6af5ac" }

@@ -1,3 +1,4 @@
+pub mod bins;
 pub mod extractor;
 pub mod hashes;
 pub mod logging;

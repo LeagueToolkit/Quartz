@@ -1,100 +1,95 @@
-use crate::commands::settings::get_quartz_home;
+/* Hash database management — ported from Flint. Hashes are prebuilt LMDB databases
+   pulled from the `RitoShark/lmdb-hashes` GitHub releases and stored in the shared
+   RitoShark hash dir (%APPDATA%/RitoShark/Requirements/Hashes). No ritobin, no
+   CommunityDragon text files. */
+
+use quartz_lib::hash::{
+    download_hashes as core_download_hashes, drop_lmdb_cache, get_hash_dir, get_wad_env,
+    DownloadStats,
+};
 use serde::Serialize;
-use std::path::PathBuf;
-
-// CommunityDragon CDTB hash lists — the canonical source consumed in Phase 2.
-const HASH_BASE_URL: &str = "https://raw.communitydragon.org/data/hashes/lol/";
-const HASH_FILES: &[&str] = &[
-    "hashes.game.txt",
-    "hashes.binentries.txt",
-    "hashes.binfields.txt",
-    "hashes.binhashes.txt",
-    "hashes.bintypes.txt",
-    "hashes.lcu.txt",
-];
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HashFileStatus {
-    pub name: String,
-    pub present: bool,
-    pub size: u64,
-}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HashStatus {
     pub dir: String,
-    pub files: Vec<HashFileStatus>,
-    pub complete: bool,
+    /// Whether both LMDBs are present on disk.
+    pub present: bool,
+    /// Approximate combined entry count (data.mdb size heuristic).
+    pub loaded_count: usize,
+    pub last_updated: Option<String>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadResult {
-    pub downloaded: u32,
-    pub skipped: u32,
-    pub errors: Vec<String>,
+    pub downloaded: usize,
+    pub skipped: usize,
+    pub errors: usize,
 }
 
-fn hashes_dir() -> Result<PathBuf, String> {
-    let dir = get_quartz_home()?.join("hashes");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create hashes dir: {}", e))?;
-    Ok(dir)
+impl From<DownloadStats> for DownloadResult {
+    fn from(s: DownloadStats) -> Self {
+        DownloadResult { downloaded: s.downloaded, skipped: s.skipped, errors: s.errors }
+    }
 }
 
 #[tauri::command]
 pub fn get_hash_status() -> Result<HashStatus, String> {
-    let dir = hashes_dir()?;
-    let files: Vec<HashFileStatus> = HASH_FILES
-        .iter()
-        .map(|name| {
-            let path = dir.join(name);
-            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-            HashFileStatus { name: (*name).to_string(), present: path.exists() && size > 0, size }
-        })
-        .collect();
-    let complete = files.iter().all(|f| f.present);
-    Ok(HashStatus { dir: dir.to_string_lossy().into_owned(), files, complete })
+    let hash_dir = get_hash_dir().map_err(|e| e.to_string())?;
+
+    let wad_mdb = hash_dir.join("hashes-wad.lmdb").join("data.mdb");
+    let bin_mdb = hash_dir.join("hashes-bin.lmdb").join("data.mdb");
+    let wad_bytes = std::fs::metadata(&wad_mdb).map(|m| m.len()).unwrap_or(0);
+    let bin_bytes = std::fs::metadata(&bin_mdb).map(|m| m.len()).unwrap_or(0);
+    let present = wad_mdb.exists() && bin_mdb.exists();
+    let loaded_count = ((wad_bytes + bin_bytes) / 40) as usize;
+
+    let last_updated = std::fs::metadata(hash_dir.join("hashes-meta.json"))
+        .or_else(|_| std::fs::metadata(&hash_dir))
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|time| {
+            time.duration_since(std::time::SystemTime::UNIX_EPOCH).ok().map(|d| {
+                chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
+                    .unwrap_or_default()
+                    .format("%Y-%m-%dT%H:%M:%SZ")
+                    .to_string()
+            })
+        });
+
+    Ok(HashStatus {
+        dir: hash_dir.to_string_lossy().into_owned(),
+        present,
+        loaded_count,
+        last_updated,
+    })
 }
 
-/* Downloads any missing hash files (all of them when `force`). Files are large
-   (tens of MB), so this is an explicit user action, not a startup step. */
+/* Download (or refresh) the prebuilt LMDB hash databases. `force` re-downloads
+   regardless of the cached release tag. Large (~50-80 MB each), so it's an
+   explicit user action. */
 #[tauri::command]
 pub async fn download_hashes(force: bool) -> Result<DownloadResult, String> {
-    let dir = hashes_dir()?;
-    let client = reqwest::Client::builder()
-        .user_agent("Quartz")
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let mut result = DownloadResult { downloaded: 0, skipped: 0, errors: Vec::new() };
-
-    for name in HASH_FILES {
-        let path = dir.join(name);
-        if !force && path.exists() && std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0) > 0 {
-            result.skipped += 1;
-            continue;
-        }
-        let url = format!("{}{}", HASH_BASE_URL, name);
-        tracing::info!("Downloading {}", url);
-        match download_one(&client, &url, &path).await {
-            Ok(()) => result.downloaded += 1,
-            Err(e) => {
-                tracing::warn!("Failed to download {}: {}", name, e);
-                result.errors.push(format!("{}: {}", name, e));
-            }
-        }
-    }
-    Ok(result)
+    let hash_dir = get_hash_dir().map_err(|e| e.to_string())?;
+    // Drop any open envs so Windows can replace the mmap'd data.mdb.
+    drop_lmdb_cache();
+    let stats = core_download_hashes(&hash_dir, force)
+        .await
+        .map_err(|e| format!("Failed to download hashes: {}", e))?;
+    // Warm the WAD env after a successful pull.
+    let _ = get_wad_env(&hash_dir.to_string_lossy());
+    Ok(stats.into())
 }
 
-async fn download_one(client: &reqwest::Client, url: &str, path: &PathBuf) -> Result<(), String> {
-    let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-    tokio::fs::write(path, &bytes).await.map_err(|e| e.to_string())?;
-    Ok(())
+/// Re-sync hashes from the latest release (no forced tag bypass).
+#[tauri::command]
+pub async fn reload_hashes() -> Result<DownloadResult, String> {
+    download_hashes(false).await
+}
+
+/// Force a full re-download regardless of the local release-tag cache.
+#[tauri::command]
+pub async fn force_rebuild_hashes() -> Result<DownloadResult, String> {
+    download_hashes(true).await
 }

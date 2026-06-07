@@ -54,6 +54,11 @@ fn main() {
             commands::themes::delete_custom_theme,
             commands::hashes::get_hash_status,
             commands::hashes::download_hashes,
+            commands::hashes::reload_hashes,
+            commands::hashes::force_rebuild_hashes,
+            commands::bins::read_bin,
+            commands::bins::write_bin,
+            commands::bins::text_to_bin_bytes,
             commands::extractor::discover_champions,
             commands::extractor::extract_champion_assets,
         ])
