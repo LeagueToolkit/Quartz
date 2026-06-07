@@ -33,5 +33,8 @@ build
 /src-tauri/sidecars/*.exe
 /src-tauri/sidecars/*.dll
 
+# Internal Documents
+/docs/superpower/*
+
 # OS
 Thumbs.db
