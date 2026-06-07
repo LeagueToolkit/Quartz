@@ -17,7 +17,9 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/RitoShark/Quartz/releases/latest/download/latest.json"
+        "https://github.com/RitoShark/Quartz/releases/latest/download/latest.json",
+        "https://github.com/FrogCsLoL/Quartz/releases/latest/download/latest.json",
+        "https://github.com/DexalGT/Quartz/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ3RDYxQzFBNjI2ODYwM0IKUldRN1lHaGlHaHpXMTNGU1lnWVBTN3VBYjFaRmZNSzN1UzFtS3NKMmh6V20xNzkrOFJmZ2xaVDYK",
       "windows": {
