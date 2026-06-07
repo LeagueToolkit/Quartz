@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Quartz ${{ github.ref_name }}'
+          releaseBody: ${{ steps.changelog.outputs.content }}
+          releaseDraft: false
+          prerelease: false
+          updaterJsonPreferNsis: true
+
+      - name: Inject changelog into latest.json
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          NOTES="${{ steps.changelog.outputs.content }}"
+          gh release download "$TAG" --pattern "latest.json" --dir . --clobber
+          jq --arg notes "$NOTES" '.notes = $notes' latest.json > latest.patched.json
+          mv latest.patched.json latest.json
+          gh release upload "$TAG" latest.json --clobber
+
+      # Mirror the signed installer + latest.json to the fallback repos so the
+      # updater's 2nd/3rd endpoints serve the same release. Needs MIRROR_TOKEN
+      # (a PAT with `contents:write` on both fallback repos). Skipped if unset.
+      - name: Mirror release to fallback repos
+        shell: bash
+        env:
+          MIRROR_TOKEN: ${{ secrets.MIRROR_TOKEN }}
+          SOURCE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$MIRROR_TOKEN" ]; then
+            echo "MIRROR_TOKEN not set — skipping fallback mirroring."
+            exit 0
+          fi
+          TAG="${{ github.ref_name }}"
+
+          GH_TOKEN="$SOURCE_TOKEN" gh release download "$TAG" \
+            --repo RitoShark/Quartz --dir mirror --clobber
+
+          for REPO in FrogCsLoL/Quartz DexalGT/Quartz; do
+            echo "Mirroring $TAG to $REPO"
+            if GH_TOKEN="$MIRROR_TOKEN" gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+              GH_TOKEN="$MIRROR_TOKEN" gh release upload "$TAG" mirror/* --repo "$REPO" --clobber
+            else
+              GH_TOKEN="$MIRROR_TOKEN" gh release create "$TAG" mirror/* \
+                --repo "$REPO" \
+                --title "Quartz $TAG" \
+                --notes "Mirror of RitoShark/Quartz $TAG for updater fallback."
+            fi
+          done

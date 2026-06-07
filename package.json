@@ -9,7 +9,11 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sync-version": "node scripts/sync-version.js",
+    "version:patch": "npm version patch --no-git-tag-version && npm run sync-version",
+    "version:minor": "npm version minor --no-git-tag-version && npm run sync-version",
+    "version:major": "npm version major --no-git-tag-version && npm run sync-version"
   },
   "dependencies": {
     "@emotion/react": "^11.11.1",
