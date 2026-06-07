@@ -1,6 +1,23 @@
 import { create } from 'zustand';
 
-export type Page = 'Home' | 'Settings';
+/* Page ids for the sidebar. Most are placeholders until their feature slice
+   lands in a later phase; Home and Settings are real in Phase 1. */
+export type Page =
+    | 'home'
+    | 'paint'
+    | 'port'
+    | 'vfxhub'
+    | 'extractor'
+    | 'wadexplorer'
+    | 'bineditor'
+    | 'imgrecolor'
+    | 'upscale'
+    | 'rgba'
+    | 'aniport'
+    | 'tools'
+    | 'filehandler'
+    | 'bumpath'
+    | 'settings';
 
 interface NavigationState {
     page: Page;
@@ -8,6 +25,6 @@ interface NavigationState {
 }
 
 export const useNavigationStore = create<NavigationState>((set) => ({
-    page: 'Home',
+    page: 'home',
     setPage: (page) => set({ page }),
 }));

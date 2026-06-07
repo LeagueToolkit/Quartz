@@ -1,6 +1,6 @@
 import React from 'react';
 
-export { useNavigationStore } from './navigationStore';
+export { useNavigationStore, type Page } from './navigationStore';
 export { useConfigStore } from './configStore';
 export { useNotificationStore } from './notificationStore';
 

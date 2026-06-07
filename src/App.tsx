@@ -1,41 +1,57 @@
-import { useNavigationStore } from '@/lib/stores';
-import { getAppInfo } from '@/lib/api';
-import { useEffect, useState } from 'react';
-import type { AppInfo } from '@/lib/types';
+import { useEffect } from 'react';
+import { useNavigationStore, useConfigStore, type Page } from '@/lib/stores';
+import { TitleBar } from '@/components/layout/TitleBar';
+import { Sidebar } from '@/components/layout/Sidebar';
+import { Home } from '@/pages/Home';
+import { Settings } from '@/pages/Settings';
+import { Placeholder } from '@/pages/Placeholder';
 
-const PAGES = ['Home', 'Settings'] as const;
+const TITLES: Record<Page, string> = {
+    home: 'Home',
+    paint: 'Paint',
+    port: 'Port',
+    vfxhub: 'VfxHub',
+    extractor: 'Asset Extractor',
+    wadexplorer: 'WAD Explorer',
+    bineditor: 'Bineditor',
+    imgrecolor: 'Image Recolor',
+    upscale: 'Upscale',
+    rgba: 'RGBA',
+    aniport: 'AniPort',
+    tools: 'Tools',
+    filehandler: 'File Handler',
+    bumpath: 'Bumpath',
+    settings: 'Settings',
+};
+
+function PageView({ page }: { page: Page }) {
+    switch (page) {
+        case 'home':
+            return <Home />;
+        case 'settings':
+            return <Settings />;
+        default:
+            return <Placeholder title={TITLES[page]} />;
+    }
+}
 
 export function App() {
     const page = useNavigationStore((s) => s.page);
-    const setPage = useNavigationStore((s) => s.setPage);
-    const [info, setInfo] = useState<AppInfo | null>(null);
+    const loadConfig = useConfigStore((s) => s.load);
 
     useEffect(() => {
-        getAppInfo().then(setInfo).catch((e) => console.error(e));
-    }, []);
+        loadConfig();
+    }, [loadConfig]);
 
     return (
-        <div className="flex h-full">
-            <nav className="w-48 shrink-0 border-r border-white/10 p-3 space-y-1">
-                {PAGES.map((p) => (
-                    <button
-                        key={p}
-                        onClick={() => setPage(p)}
-                        className={`block w-full text-left px-3 py-2 rounded ${
-                            page === p ? 'bg-white/15' : 'hover:bg-white/5'
-                        }`}
-                    >
-                        {p}
-                    </button>
-                ))}
-            </nav>
-            <main className="flex-1 p-6">
-                <h1 className="text-xl font-semibold">{page}</h1>
-                <p className="mt-2 text-sm text-white/60">
-                    Quartz-Rust scaffold. Backend says:{' '}
-                    {info ? `${info.name} v${info.version}` : '…'}
-                </p>
-            </main>
+        <div className="flex h-full flex-col">
+            <TitleBar />
+            <div className="flex min-h-0 flex-1">
+                <Sidebar />
+                <main className="min-w-0 flex-1 overflow-y-auto p-6">
+                    <PageView page={page} />
+                </main>
+            </div>
         </div>
     );
 }
