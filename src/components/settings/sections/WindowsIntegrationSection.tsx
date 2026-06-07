@@ -1,9 +1,27 @@
+import { useEffect, useState } from 'react';
 import { FormGroup, ToggleSwitch } from '../primitives';
 import { useUiPrefsStore } from '@/lib/stores';
+import { contextMenuIsEnabled, contextMenuEnable, contextMenuDisable } from '@/lib/api';
+import { log } from '@/lib/util/logger';
 
 export function WindowsIntegrationSection() {
     const enabled = useUiPrefsStore((s) => s.contextMenuEnabled);
     const set = useUiPrefsStore((s) => s.set);
+    const [busy, setBusy] = useState(false);
+
+    // Sync the toggle with the actual registry state on mount.
+    useEffect(() => {
+        contextMenuIsEnabled().then((on) => set('contextMenuEnabled', on)).catch((e) => log.error('contextMenuIsEnabled', e));
+    }, [set]);
+
+    const toggle = async (on: boolean) => {
+        setBusy(true);
+        try {
+            if (on) await contextMenuEnable(); else await contextMenuDisable();
+            set('contextMenuEnabled', on);
+        } catch (e) { log.error('toggle context menu', e); }
+        finally { setBusy(false); }
+    };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -16,10 +34,10 @@ export function WindowsIntegrationSection() {
                         <div style={{ flex: 1 }}>
                             <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 600, marginBottom: '4px' }}>Explorer Integration</div>
                             <div style={{ fontSize: '12px', color: 'var(--text-2)', opacity: 0.7 }}>
-                                {enabled ? 'Right-click menu is active' : 'Right-click menu is disabled'}
+                                {busy ? 'Updating registry…' : enabled ? 'Right-click menu is active' : 'Right-click menu is disabled'}
                             </div>
                         </div>
-                        <ToggleSwitch label="" checked={enabled} onChange={(c) => set('contextMenuEnabled', c)} />
+                        <ToggleSwitch label="" checked={enabled} onChange={(c) => { if (!busy) toggle(c); }} />
                     </div>
 
                     {enabled && (

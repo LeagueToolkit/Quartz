@@ -1,5 +1,6 @@
 pub mod assets;
 pub mod bins;
+pub mod context_menu;
 pub mod extractor;
 pub mod hashes;
 pub mod logging;

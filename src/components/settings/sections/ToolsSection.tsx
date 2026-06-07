@@ -4,7 +4,7 @@ import type { Update } from '@tauri-apps/plugin-updater';
 import { Download, RefreshCw, FolderOpen } from 'lucide-react';
 import { FormGroup, StatusBadge, Button, ToggleSwitch, InputWithButton } from '../primitives';
 import { useUiPrefsStore } from '@/lib/stores';
-import { getHashStatus, downloadHashes, type HashStatus } from '@/lib/api';
+import { getHashStatus, downloadHashes, getAppInfo, type HashStatus } from '@/lib/api';
 import { checkForUpdate, installUpdate } from '@/lib/api/updater';
 import { log } from '@/lib/util/logger';
 
@@ -22,8 +22,13 @@ export function ToolsSection() {
     const [pending, setPending] = useState<Update | null>(null);
     const [updateMessage, setUpdateMessage] = useState<string | null>(null);
 
+    const [version, setVersion] = useState('');
+
     const refreshHashes = () => getHashStatus().then(setHashStatus).catch((e) => log.error('getHashStatus', e));
-    useEffect(() => { refreshHashes(); }, []);
+    useEffect(() => {
+        refreshHashes();
+        getAppInfo().then((i) => setVersion(i.version)).catch(() => {});
+    }, []);
 
     const browseJade = async () => {
         const picked = await open({ multiple: false, filters: [{ name: 'Jade', extensions: ['exe'] }] });
@@ -109,6 +114,7 @@ export function ToolsSection() {
 
             <FormGroup label="Updates" description="Check for new Quartz versions">
                 <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {version && <div style={{ fontSize: '12px', color: 'var(--text-2)' }}>Current Version: {version}</div>}
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <Button icon={checking ? <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={16} />} variant="secondary" onClick={checkUpdate} disabled={checking}>
                             {checking ? 'Checking...' : 'Check for Updates'}

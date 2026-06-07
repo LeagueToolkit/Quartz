@@ -15,14 +15,40 @@ export function GitHubSection() {
     const [testing, setTesting] = useState(false);
     const [status, setStatus] = useState<Status>(null);
 
-    // STUB — Phase 5 (VfxHub) wires this to a real GitHub auth check.
-    const testConnection = () => {
+    // Verifies the token against the GitHub API, then optionally checks repo access.
+    const testConnection = async () => {
         setTesting(true);
         setStatus(null);
-        setTimeout(() => {
+        try {
+            const userRes = await fetch('https://api.github.com/user', {
+                headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github+json' },
+            });
+            if (!userRes.ok) {
+                setStatus({ type: 'error', message: `Connection failed: HTTP ${userRes.status}` });
+                return;
+            }
+            const userData = await userRes.json();
+            if (username && userData.login && userData.login.toLowerCase() !== username.toLowerCase()) {
+                setStatus({ type: 'warning', message: `Token belongs to '${userData.login}', not '${username}'.` });
+                return;
+            }
+
+            const match = repo.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i);
+            if (match) {
+                const repoRes = await fetch(`https://api.github.com/repos/${match[1]}/${match[2]}`, {
+                    headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github+json' },
+                });
+                if (!repoRes.ok) {
+                    setStatus({ type: 'warning', message: `Connected as '${userData.login}' but couldn't access the repository (HTTP ${repoRes.status}).` });
+                    return;
+                }
+            }
+            setStatus({ type: 'success', message: `Successfully connected to GitHub as '${userData.login}'.` });
+        } catch (e) {
+            setStatus({ type: 'error', message: `Connection failed: ${e instanceof Error ? e.message : String(e)}` });
+        } finally {
             setTesting(false);
-            setStatus({ type: 'success', message: `Connected as ${username} (stub)` });
-        }, 700);
+        }
     };
 
     return (

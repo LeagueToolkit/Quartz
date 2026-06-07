@@ -68,6 +68,9 @@ fn main() {
             commands::assets::list_wallpapers,
             commands::assets::import_wallpaper,
             commands::assets::delete_wallpaper,
+            commands::context_menu::context_menu_is_enabled,
+            commands::context_menu::context_menu_enable,
+            commands::context_menu::context_menu_disable,
             commands::extractor::discover_champions,
             commands::extractor::extract_champion_assets,
         ])
