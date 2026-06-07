@@ -4,6 +4,7 @@ export { useNavigationStore, type Page } from './navigationStore';
 export { useConfigStore } from './configStore';
 export { useNotificationStore } from './notificationStore';
 export { useThemeStore } from './themeStore';
+export { useUiPrefsStore, applyUiPrefs, TOGGLEABLE_PAGES, type InterfaceStyle } from './uiPrefsStore';
 
 /* Stores are module-level singletons, so no Context is required. AppProvider
    is the single mount-time seam for future boot logic (loading persisted

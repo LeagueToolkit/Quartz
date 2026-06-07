@@ -1,113 +1,73 @@
 import { useState } from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
-import { useConfigStore } from '@/lib/stores';
-import { getAppHome } from '@/lib/api';
-import { log } from '@/lib/util/logger';
-import type { QuartzSettings } from '@/lib/types';
-import { ThemeCreator } from '@/components/settings/ThemeCreator';
-import { HashManager } from '@/components/settings/HashManager';
-import { UpdateChecker } from '@/components/settings/UpdateChecker';
+import { Palette, Terminal, HardDrive, Eye, Github, type LucideIcon } from 'lucide-react';
+import { AppearanceSection } from '@/components/settings/sections/AppearanceSection';
+import { ToolsSection } from '@/components/settings/sections/ToolsSection';
+import { WindowsIntegrationSection } from '@/components/settings/sections/WindowsIntegrationSection';
+import { PageVisibilitySection } from '@/components/settings/sections/PageVisibilitySection';
+import { ThemeCreatorSection } from '@/components/settings/sections/ThemeCreatorSection';
+import { GitHubSection } from '@/components/settings/sections/GitHubSection';
 
-function PathField({
-    label, value, onPick, onClear,
-}: {
-    label: string;
-    value: string | null;
-    onPick: () => void;
-    onClear: () => void;
-}) {
-    return (
-        <div className="space-y-1">
-            <label className="text-xs uppercase tracking-wide text-white/40">{label}</label>
-            <div className="flex gap-2">
-                <input
-                    readOnly
-                    value={value ?? ''}
-                    placeholder="Not set"
-                    className="flex-1 rounded border border-white/10 bg-black/30 px-3 py-1.5 text-sm text-white/80"
-                />
-                <button onClick={onPick} className="rounded bg-white/10 px-3 py-1.5 text-sm hover:bg-white/20">
-                    Browse
-                </button>
-                {value && (
-                    <button onClick={onClear} className="rounded bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10">
-                        Clear
-                    </button>
-                )}
-            </div>
-        </div>
-    );
+type SectionId = 'appearance' | 'tools' | 'windowsIntegration' | 'pages' | 'themeCreator' | 'github';
+
+const SECTIONS: { id: SectionId; name: string; icon: LucideIcon }[] = [
+    { id: 'appearance', name: 'Appearance', icon: Palette },
+    { id: 'tools', name: 'External Tools', icon: Terminal },
+    { id: 'windowsIntegration', name: 'Windows Integration', icon: HardDrive },
+    { id: 'pages', name: 'Page Visibility', icon: Eye },
+    { id: 'themeCreator', name: 'Custom Theme Creator', icon: Palette },
+    { id: 'github', name: 'GitHub Integration', icon: Github },
+];
+
+function SectionContent({ id }: { id: SectionId }) {
+    switch (id) {
+        case 'appearance': return <AppearanceSection />;
+        case 'tools': return <ToolsSection />;
+        case 'windowsIntegration': return <WindowsIntegrationSection />;
+        case 'pages': return <PageVisibilitySection />;
+        case 'themeCreator': return <ThemeCreatorSection />;
+        case 'github': return <GitHubSection />;
+    }
 }
 
 export function Settings() {
-    const settings = useConfigStore((s) => s.settings);
-    const update = useConfigStore((s) => s.update);
-    const [home, setHome] = useState<string | null>(null);
-
-    const pickFolder = async (key: 'leaguePath' | 'championsPath' | 'wadOutputPath') => {
-        const picked = await open({ directory: true, multiple: false });
-        if (typeof picked === 'string') update({ [key]: picked } as Partial<QuartzSettings>);
-    };
-
-    const showHome = async () => {
-        try {
-            setHome(await getAppHome());
-        } catch (e) {
-            log.error('getAppHome failed', e);
-        }
-    };
+    const [selected, setSelected] = useState<SectionId>('appearance');
 
     return (
-        <div className="max-w-2xl space-y-6">
-            <h1 className="text-xl font-semibold">Settings</h1>
-
-            <section className="space-y-3">
-                <h2 className="text-sm font-medium text-white/70">Creator</h2>
-                <div className="space-y-1">
-                    <label className="text-xs uppercase tracking-wide text-white/40">Name</label>
-                    <input
-                        value={settings.creatorName ?? ''}
-                        onChange={(e) => update({ creatorName: e.target.value || null })}
-                        placeholder="Your name"
-                        className="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 text-sm text-white/80"
-                    />
+        <div style={{ width: '100%', minHeight: '100%', color: 'var(--text)', fontFamily: "'JetBrains Mono', monospace" }}>
+            <div style={{ display: 'flex', gap: '24px', maxWidth: '1400px', width: '100%', margin: '0 auto' }}>
+                {/* Section sidebar */}
+                <div style={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {SECTIONS.map(({ id, name, icon: Icon }) => {
+                        const active = selected === id;
+                        return (
+                            <button
+                                key={id}
+                                onClick={() => setSelected(id)}
+                                style={{
+                                    padding: '12px 16px',
+                                    background: active ? 'rgba(255,255,255,0.05)' : 'transparent',
+                                    border: active ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.08)',
+                                    borderRadius: '8px',
+                                    color: active ? 'var(--accent)' : 'var(--accent-2)',
+                                    fontSize: '14px', fontWeight: active ? 600 : 500, fontFamily: 'inherit',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px',
+                                    transition: 'all 0.2s ease', textAlign: 'left',
+                                }}
+                                onMouseEnter={(e) => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; } }}
+                                onMouseLeave={(e) => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; } }}
+                            >
+                                <Icon size={18} />
+                                <span>{name}</span>
+                            </button>
+                        );
+                    })}
                 </div>
-            </section>
 
-            <section className="space-y-3">
-                <h2 className="text-sm font-medium text-white/70">Paths</h2>
-                <PathField
-                    label="League of Legends"
-                    value={settings.leaguePath}
-                    onPick={() => pickFolder('leaguePath')}
-                    onClear={() => update({ leaguePath: null })}
-                />
-                <PathField
-                    label="Champions Folder"
-                    value={settings.championsPath}
-                    onPick={() => pickFolder('championsPath')}
-                    onClear={() => update({ championsPath: null })}
-                />
-                <PathField
-                    label="WAD Output"
-                    value={settings.wadOutputPath}
-                    onPick={() => pickFolder('wadOutputPath')}
-                    onClear={() => update({ wadOutputPath: null })}
-                />
-            </section>
-
-            <ThemeCreator />
-
-            <HashManager />
-
-            <UpdateChecker />
-
-            <section className="space-y-2">
-                <button onClick={showHome} className="rounded bg-white/10 px-3 py-1.5 text-sm hover:bg-white/20">
-                    Show app data folder
-                </button>
-                {home && <p className="break-all text-xs text-white/50">{home}</p>}
-            </section>
+                {/* Content */}
+                <div style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '24px' }}>
+                    <SectionContent id={selected} />
+                </div>
+            </div>
         </div>
     );
 }

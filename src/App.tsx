@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigationStore, useConfigStore, useThemeStore, type Page } from '@/lib/stores';
+import { useNavigationStore, useConfigStore, useThemeStore, applyUiPrefs, type Page } from '@/lib/stores';
 import { TitleBar } from '@/components/layout/TitleBar';
 import { NavRail } from '@/components/layout/NavRail';
 import { Home } from '@/pages/Home';
@@ -44,6 +44,7 @@ export function App() {
     useEffect(() => {
         // Load settings first so the theme store can read the saved selection.
         loadConfig().then(initThemes);
+        applyUiPrefs();
     }, [loadConfig, initThemes]);
 
     return (

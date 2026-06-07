@@ -3,7 +3,10 @@ import {
     Waypoints, Shuffle, Maximize, Pipette, FileDigit, Wrench,
     Settings as SettingsIcon, type LucideIcon,
 } from 'lucide-react';
-import { useNavigationStore, type Page } from '@/lib/stores';
+import { useNavigationStore, useUiPrefsStore, type Page } from '@/lib/stores';
+
+// Paint and Port always appear, like the original Quartz nav.
+const ALWAYS_VISIBLE: Page[] = ['paint', 'port'];
 
 interface NavItem {
     id: Page;
@@ -44,10 +47,13 @@ function NavBtn({ item }: { item: NavItem }) {
 }
 
 export function NavRail() {
+    const pageVisibility = useUiPrefsStore((s) => s.pageVisibility);
+    const visible = ITEMS.filter((i) => ALWAYS_VISIBLE.includes(i.id) || pageVisibility[i.id] !== false);
+
     return (
         <nav className="q-rail shrink-0 py-3">
             <div className="q-rail-group">
-                {ITEMS.map((item) => <NavBtn key={item.id} item={item} />)}
+                {visible.map((item) => <NavBtn key={item.id} item={item} />)}
             </div>
             <div className="q-rail-group">
                 <NavBtn item={{ id: 'settings', label: 'Settings', icon: SettingsIcon }} />
