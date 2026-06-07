@@ -3089,6 +3089,7 @@ name = "quartz"
 version = "4.0.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "quartz-lib",
  "reqwest 0.12.28",

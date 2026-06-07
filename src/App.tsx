@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { useNavigationStore, useConfigStore, useThemeStore, applyUiPrefs, type Page } from '@/lib/stores';
+import { useNavigationStore, useConfigStore, useThemeStore, useUiPrefsStore, applyUiPrefs, type Page } from '@/lib/stores';
+import { applyFont } from '@/lib/fonts/fontManager';
 import { TitleBar } from '@/components/layout/TitleBar';
 import { NavRail } from '@/components/layout/NavRail';
 import { Home } from '@/pages/Home';
@@ -7,6 +8,7 @@ import { Settings } from '@/pages/Settings';
 import { Rgba } from '@/pages/Rgba';
 import { AssetExtractor } from '@/pages/AssetExtractor';
 import { Placeholder } from '@/pages/Placeholder';
+import { EffectsLayer } from '@/components/effects/EffectsLayer';
 
 const TITLES: Record<Page, string> = {
     home: 'Home',
@@ -48,11 +50,13 @@ export function App() {
         // Load settings first so the theme store can read the saved selection.
         loadConfig().then(initThemes);
         applyUiPrefs();
+        applyFont(useUiPrefsStore.getState().font);
     }, [loadConfig, initThemes]);
 
     return (
         <div className="relative flex h-full flex-col">
             <div className="q-atmosphere" />
+            <EffectsLayer />
             <TitleBar />
             <div className="relative z-[1] flex min-h-0 flex-1">
                 <NavRail />

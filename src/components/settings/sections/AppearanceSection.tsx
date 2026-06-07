@@ -1,90 +1,258 @@
-import { Type } from 'lucide-react';
-import { FormGroup, CustomSelect, ThemeCard } from '../primitives';
-import { useThemeStore, useUiPrefsStore, applyUiPrefs, type InterfaceStyle } from '@/lib/stores';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Type, FolderOpen, RefreshCw, Plus, Trash2 } from 'lucide-react';
+import { open } from '@tauri-apps/plugin-dialog';
+import { openPath } from '@tauri-apps/plugin-opener';
+import { FormGroup, CustomSelect, ThemeCard, Button } from '../primitives';
+import { useThemeStore, useUiPrefsStore, applyUiPrefs } from '@/lib/stores';
+import { INTERFACE_STYLES, THEME_DESCRIPTIONS, CLICK_EFFECT_TYPES, BACKGROUND_EFFECT_TYPES } from '@/lib/theme/behaviors';
+import { applyInterfaceStyle } from '@/lib/theme/applyTheme';
+import { refreshFonts, applyFont, openFontsFolder, type FontOption } from '@/lib/fonts/fontManager';
+import {
+    listWallpapers, importWallpaper, deleteWallpaper, getCursorsDir, listCursors, readFileBase64,
+    type WallpaperItem, type AssetFile,
+} from '@/lib/api';
 
-const FONTS = [
-    { value: 'system', label: 'System Default' },
-    { value: 'Segoe UI', label: 'Segoe UI' },
-    { value: 'Consolas', label: 'Consolas' },
-    { value: 'JetBrains Mono', label: 'JetBrains Mono' },
-];
-
-const STYLES: { id: InterfaceStyle; name: string; desc: string }[] = [
-    { id: 'quartz', name: 'Quartz', desc: 'Modern Glassy UI' },
-    { id: 'winforms', name: 'WinForms', desc: 'Classic Flat UI' },
-    { id: 'liquid', name: 'Liquid Glass', desc: 'Refractive glass UI' },
-    { id: 'minecraft', name: 'Minecraft', desc: 'Pixel bevel depth' },
-];
-
-const THEME_DESC: Record<string, string> = {
-    amethyst: 'Purple + Gold', ocean: 'Liquid Blue', forest: 'Misty Green',
-    amogus: 'Space Gray + Blue', city: 'Neon Rain', cafe: 'Rose Neon Night', sakura: 'Blossom Sky',
+const card: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: '8px', padding: '16px',
 };
+
+function Range({ value, min, max, step, onChange }: { value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
+    return (
+        <input type="range" min={min} max={max} step={step ?? 1} value={value}
+            onChange={(e) => onChange(parseFloat(e.target.value))}
+            style={{ width: '100%', accentColor: 'var(--accent)' }} />
+    );
+}
+
+function Checkbox({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: ReactNode }) {
+    return (
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+            <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)}
+                style={{ width: '18px', height: '18px', accentColor: 'var(--accent)', cursor: 'pointer' }} />
+            <span style={{ fontSize: '13px', color: 'var(--text)' }}>{children}</span>
+        </label>
+    );
+}
+
+// hex + alpha (0..1) <-> "rgba(r,g,b,a)"
+function parseRgba(value: string): { hex: string; alpha: number } {
+    const m = String(value || '').match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
+    if (!m) return { hex: '#ffffff', alpha: 0.1 };
+    const to2 = (n: number) => n.toString(16).padStart(2, '0');
+    return { hex: `#${to2(+m[1])}${to2(+m[2])}${to2(+m[3])}`, alpha: m[4] === undefined ? 1 : parseFloat(m[4]) };
+}
+function toRgba(hex: string, alpha: number): string {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha)).toFixed(2)})`;
+}
+
+function RgbaControl({ label, value, fallback, onChange }: { label: string; value: string; fallback: string; onChange: (v: string) => void }) {
+    const { hex, alpha } = parseRgba(value || fallback);
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-2)', width: '110px' }}>{label}</span>
+            <input type="color" value={hex} onChange={(e) => onChange(toRgba(e.target.value, alpha))}
+                style={{ width: '36px', height: '28px', background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', cursor: 'pointer' }} />
+            <Range value={alpha} min={0} max={1} step={0.01} onChange={(a) => onChange(toRgba(hex, a))} />
+        </div>
+    );
+}
 
 export function AppearanceSection() {
     const themes = useThemeStore((s) => s.themes);
     const activeTheme = useThemeStore((s) => s.activeId);
     const setActive = useThemeStore((s) => s.setActive);
+    const prefs = useUiPrefsStore();
+    const set = prefs.set;
 
-    const font = useUiPrefsStore((s) => s.font);
-    const interfaceStyle = useUiPrefsStore((s) => s.interfaceStyle);
-    const performanceMode = useUiPrefsStore((s) => s.performanceMode);
-    const glassBlur = useUiPrefsStore((s) => s.glassBlur);
-    const set = useUiPrefsStore((s) => s.set);
+    const [fonts, setFonts] = useState<FontOption[]>([]);
+    const [wallpapers, setWallpapers] = useState<WallpaperItem[]>([]);
+    const [cursors, setCursors] = useState<AssetFile[]>([]);
+    const [cursorThumbs, setCursorThumbs] = useState<Record<string, string>>({});
+    const [wallThumbs, setWallThumbs] = useState<Record<string, string>>({});
 
-    const setBlur = (v: number) => { set('glassBlur', v); applyUiPrefs(); };
+    const loadFonts = () => refreshFonts().then(setFonts);
+    const loadWallpapers = () => listWallpapers().then(setWallpapers);
+    const loadCursors = () => listCursors().then(setCursors);
+
+    useEffect(() => { loadFonts(); loadWallpapers(); loadCursors(); }, []);
+
+    // Lazy-load image previews as data URIs.
+    useEffect(() => {
+        wallpapers.forEach((w) => {
+            if (wallThumbs[w.id]) return;
+            readFileBase64(w.filePath).then((b64) => {
+                const ext = (w.filePath.split('.').pop() || 'png').toLowerCase();
+                setWallThumbs((p) => ({ ...p, [w.id]: `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${b64}` }));
+            }).catch(() => {});
+        });
+    }, [wallpapers]);
+    useEffect(() => {
+        cursors.forEach((c) => {
+            if (cursorThumbs[c.path]) return;
+            readFileBase64(c.path).then((b64) => {
+                const ext = (c.name.split('.').pop() || 'png').toLowerCase();
+                const mime = ext === 'cur' ? 'image/vnd.microsoft.icon' : ext === 'gif' ? 'image/gif' : 'image/png';
+                setCursorThumbs((p) => ({ ...p, [c.path]: `data:${mime};base64,${b64}` }));
+            }).catch(() => {});
+        });
+    }, [cursors]);
+
+    const onFontChange = (v: string) => { set('font', v); applyFont(v); };
+    const onStyleChange = (id: typeof INTERFACE_STYLES[number]['id']) => { set('interfaceStyle', id); applyInterfaceStyle(id); };
+    const onBlur = (v: number) => { set('glassBlur', v); applyUiPrefs(); };
+    const onLiquid = (key: 'liquidButtonTint' | 'liquidButtonHoverTint' | 'liquidButtonBlur', v: string) => { set(key, v); applyUiPrefs(); };
+
+    const addWallpaper = async () => {
+        const picked = await open({ multiple: false, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }] });
+        if (typeof picked !== 'string') return;
+        const item = await importWallpaper(picked);
+        await loadWallpapers();
+        selectWallpaper(item);
+    };
+    const selectWallpaper = (w: WallpaperItem) => {
+        set('wallpaperId', w.id); set('wallpaperPath', w.filePath); set('wallpaperEnabled', true);
+    };
+    const removeWallpaper = async (id: string) => {
+        await deleteWallpaper(id);
+        if (prefs.wallpaperId === id) { set('wallpaperId', ''); set('wallpaperPath', ''); }
+        await loadWallpapers();
+    };
+    const openCursorsFolder = async () => { try { await openPath(await getCursorsDir()); } catch { /* ignore */ } };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <FormGroup label="Font Family" description="Select the interface font">
-                <CustomSelect
-                    value={font}
-                    onChange={(v) => set('font', v)}
-                    icon={<Type size={16} />}
-                    options={FONTS}
-                />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ flex: 1 }}>
+                        <CustomSelect value={prefs.font} onChange={onFontChange} icon={<Type size={16} />} options={fonts} />
+                    </div>
+                    <Button icon={<FolderOpen size={16} />} variant="secondary" onClick={() => openFontsFolder().catch(() => {})}>Folder</Button>
+                    <Button icon={<RefreshCw size={16} />} variant="secondary" onClick={loadFonts}>Refresh</Button>
+                </div>
             </FormGroup>
 
             <FormGroup label="Performance Mode" description="Reduce heavy visual effects on weaker hardware">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', userSelect: 'none' }}>
-                    <input
-                        type="checkbox"
-                        checked={performanceMode}
-                        onChange={(e) => set('performanceMode', e.target.checked)}
-                        style={{ width: '18px', height: '18px', accentColor: 'var(--accent)', cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '13px', color: 'var(--text)' }}>Reduce blur, glow, and animations</span>
-                </label>
+                <Checkbox checked={prefs.performanceMode} onChange={(c) => { set('performanceMode', c); applyUiPrefs(); }}>
+                    Reduce blur, glow, and animations
+                </Checkbox>
             </FormGroup>
 
-            <FormGroup label="Interface Style" description="Overall look and feel of controls">
+            <FormGroup label="Interface Style" description="Select the application's visual layout">
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
-                    {STYLES.map((s) => (
-                        <ThemeCard key={s.id} name={s.name} desc={s.desc} selected={interfaceStyle === s.id} onClick={() => set('interfaceStyle', s.id)} />
+                    {INTERFACE_STYLES.map((s) => (
+                        <ThemeCard key={s.id} name={s.name} desc={s.desc} selected={prefs.interfaceStyle === s.id} onClick={() => onStyleChange(s.id)} />
                     ))}
                 </div>
             </FormGroup>
+
+            {prefs.interfaceStyle === 'liquid' && (
+                <FormGroup label="Glass Button Tuning" description="Adjust tint and blur for Liquid button style">
+                    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <RgbaControl label="Tint" value={prefs.liquidButtonTint} fallback="rgba(255,255,255,0.1)" onChange={(v) => onLiquid('liquidButtonTint', v)} />
+                        <RgbaControl label="Hover Tint" value={prefs.liquidButtonHoverTint} fallback="rgba(255,255,255,0.16)" onChange={(v) => onLiquid('liquidButtonHoverTint', v)} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--text-2)', width: '110px' }}>Blur ({prefs.liquidButtonBlur || '14'}px)</span>
+                            <Range value={parseFloat(prefs.liquidButtonBlur || '14')} min={0} max={36} onChange={(v) => onLiquid('liquidButtonBlur', String(v))} />
+                        </div>
+                    </div>
+                </FormGroup>
+            )}
 
             <FormGroup label="Color Theme" description="Choose your preferred color scheme">
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
                     {themes.map((t) => (
-                        <ThemeCard
-                            key={t.id}
-                            name={t.name}
-                            desc={t.builtin ? (THEME_DESC[t.id] ?? 'Built-in') : 'Custom Theme'}
-                            selected={activeTheme === t.id}
-                            onClick={() => setActive(t.id)}
-                        />
+                        <ThemeCard key={t.id} name={t.name}
+                            desc={t.builtin ? (THEME_DESCRIPTIONS[t.id] ?? 'Built-in') : 'Custom Theme'}
+                            selected={activeTheme === t.id} onClick={() => setActive(t.id)} />
                     ))}
                 </div>
             </FormGroup>
 
-            <FormGroup label="Glass Blur" description={`Backdrop blur strength — ${glassBlur}px`}>
-                <input
-                    type="range" min={0} max={30} value={glassBlur}
-                    onChange={(e) => setBlur(parseInt(e.target.value, 10))}
-                    style={{ width: '100%', accentColor: 'var(--accent)' }}
-                />
+            <FormGroup label="Wallpaper" description="Set a background image that covers the entire app">
+                <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <Checkbox checked={prefs.wallpaperEnabled} onChange={(c) => set('wallpaperEnabled', c)}>Enable wallpaper</Checkbox>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <Button icon={<Plus size={16} />} variant="secondary" onClick={addWallpaper}>Add Wallpaper</Button>
+                        {prefs.wallpaperId && (
+                            <Button icon={<Trash2 size={16} />} variant="secondary" onClick={() => removeWallpaper(prefs.wallpaperId)}>Delete Active</Button>
+                        )}
+                    </div>
+                    {wallpapers.length > 0 && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: '8px', maxHeight: '220px', overflowY: 'auto' }}>
+                            {wallpapers.map((w) => (
+                                <button key={w.id} onClick={() => selectWallpaper(w)} title={w.displayName}
+                                    style={{ position: 'relative', padding: 0, height: '76px', borderRadius: '6px', overflow: 'hidden', cursor: 'pointer', border: `2px solid ${prefs.wallpaperId === w.id ? 'var(--accent)' : 'rgba(255,255,255,0.08)'}` }}>
+                                    {wallThumbs[w.id]
+                                        ? <img src={wallThumbs[w.id]} alt={w.displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        : <div style={{ width: '100%', height: '100%', background: 'rgba(255,255,255,0.04)' }} />}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    <div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' }}>Opacity ({Math.round(prefs.wallpaperOpacity * 100)}%)</div>
+                        <Range value={prefs.wallpaperOpacity} min={0} max={1} step={0.01} onChange={(v) => set('wallpaperOpacity', v)} />
+                    </div>
+                    <Checkbox checked={prefs.wallpaperVignetteEnabled} onChange={(c) => set('wallpaperVignetteEnabled', c)}>Enable vignette</Checkbox>
+                    {prefs.wallpaperVignetteEnabled && (
+                        <div>
+                            <div style={{ fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' }}>Vignette ({Math.round(prefs.wallpaperVignetteStrength * 100)}%)</div>
+                            <Range value={prefs.wallpaperVignetteStrength} min={0} max={1} step={0.01} onChange={(v) => set('wallpaperVignetteStrength', v)} />
+                        </div>
+                    )}
+                    <div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' }}>UI Blur ({prefs.glassBlur}px)</div>
+                        <Range value={prefs.glassBlur} min={0} max={24} onChange={onBlur} />
+                    </div>
+                </div>
+            </FormGroup>
+
+            <FormGroup label="Click Effect" description="Show interactive visual effects on click">
+                <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <Checkbox checked={prefs.clickEffectEnabled} onChange={(c) => set('clickEffectEnabled', c)}>Enable click effect</Checkbox>
+                    <CustomSelect value={prefs.clickEffectType} onChange={(v) => set('clickEffectType', v)}
+                        disabled={!prefs.clickEffectEnabled || prefs.performanceMode}
+                        options={CLICK_EFFECT_TYPES.map((t) => ({ value: t.id, label: t.name }))} />
+                </div>
+            </FormGroup>
+
+            <FormGroup label="Background Effect" description="Show animated background effects">
+                <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <Checkbox checked={prefs.backgroundEffectEnabled} onChange={(c) => set('backgroundEffectEnabled', c)}>Enable background effect</Checkbox>
+                    <CustomSelect value={prefs.backgroundEffectType} onChange={(v) => set('backgroundEffectType', v)}
+                        disabled={!prefs.backgroundEffectEnabled || prefs.performanceMode}
+                        options={BACKGROUND_EFFECT_TYPES.map((t) => ({ value: t.id, label: t.name }))} />
+                </div>
+            </FormGroup>
+
+            <FormGroup label="Cursor Effect" description="Replace the system cursor with a custom style">
+                <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <Checkbox checked={prefs.cursorEffectEnabled} onChange={(c) => set('cursorEffectEnabled', c)}>Enable cursor effect</Checkbox>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <Button icon={<FolderOpen size={16} />} variant="secondary" onClick={openCursorsFolder}>Open Folder</Button>
+                        <Button icon={<RefreshCw size={16} />} variant="secondary" onClick={loadCursors}>Refresh</Button>
+                    </div>
+                    {cursors.length > 0 ? (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', maxHeight: '260px', overflowY: 'auto' }}>
+                            {cursors.map((c) => (
+                                <button key={c.path} onClick={() => set('cursorEffectPath', c.path)} title={c.name}
+                                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '8px', borderRadius: '6px', cursor: 'pointer', border: `2px solid ${prefs.cursorEffectPath === c.path ? 'var(--accent)' : 'rgba(255,255,255,0.08)'}`, background: 'rgba(255,255,255,0.02)' }}>
+                                    {cursorThumbs[c.path] && <img src={cursorThumbs[c.path]} alt={c.name} style={{ maxWidth: '36px', maxHeight: '36px', objectFit: 'contain' }} />}
+                                    <span style={{ fontSize: '10px', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{c.name}</span>
+                                </button>
+                            ))}
+                        </div>
+                    ) : (
+                        <div style={{ fontSize: '12px', color: 'var(--text-2)', opacity: 0.7 }}>No cursors found — drop .cur, .png, or .gif files into the folder.</div>
+                    )}
+                    <div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' }}>Cursor Size ({prefs.cursorEffectSize}px)</div>
+                        <Range value={prefs.cursorEffectSize} min={16} max={128} step={4} onChange={(v) => set('cursorEffectSize', v)} />
+                    </div>
+                </div>
             </FormGroup>
         </div>
     );

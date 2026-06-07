@@ -8,3 +8,8 @@ export {
     type HashStatus, type DownloadResult,
 } from './hashes';
 export { discoverChampions, extractChampionAssets, type Champion, type ExtractResult } from './extractor';
+export {
+    readFileBase64, getFontsDir, listFonts, getCursorsDir, listCursors,
+    getWallpapersDir, listWallpapers, importWallpaper, deleteWallpaper,
+    type AssetFile, type WallpaperItem,
+} from './assets';

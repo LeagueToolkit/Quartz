@@ -12,6 +12,8 @@
     "dialog:default",
     "process:default",
     "opener:default",
+    "opener:allow-open-path",
+    "opener:allow-reveal-item-in-dir",
     "shell:allow-execute",
     "updater:default"
   ]
