@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useUiPrefsStore } from '@/lib/stores';
 import { readFileBase64 } from '@/lib/api';
+import { log } from '@/lib/util/logger';
 
 const MIME: Record<string, string> = {
     png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
@@ -13,31 +14,19 @@ function dataUriCache(): Map<string, string> {
     return w.__qWallpaperCache;
 }
 
-/* Full-screen wallpaper behind the app, with opacity + optional vignette. Reads
-   the active wallpaper from prefs and honors transient `wallpaperChanged` events
-   (Theme Creator live preview / theme presets). */
+/* Full-screen wallpaper behind the app, with opacity + optional vignette. Driven
+   purely by the prefs store — theme presets and the gallery both write the store,
+   so there's a single source of truth. */
 export function WallpaperLayer() {
     const enabled = useUiPrefsStore((s) => s.wallpaperEnabled);
     const path = useUiPrefsStore((s) => s.wallpaperPath);
-    const storeOpacity = useUiPrefsStore((s) => s.wallpaperOpacity);
+    const opacity = useUiPrefsStore((s) => s.wallpaperOpacity);
     const vignetteEnabled = useUiPrefsStore((s) => s.wallpaperVignetteEnabled);
     const vignetteStrength = useUiPrefsStore((s) => s.wallpaperVignetteStrength);
 
-    // Transient override from live-preview events; null means "use store".
-    const [override, setOverride] = useState<{ path: string; opacity: number } | null>(null);
     const [src, setSrc] = useState('');
 
-    useEffect(() => {
-        const onChange = (e: Event) => {
-            const detail = (e as CustomEvent).detail || {};
-            setOverride({ path: detail.path ?? '', opacity: detail.opacity ?? storeOpacity });
-        };
-        window.addEventListener('wallpaperChanged', onChange);
-        return () => window.removeEventListener('wallpaperChanged', onChange);
-    }, [storeOpacity]);
-
-    const activePath = override ? override.path : (enabled ? path : '');
-    const opacity = override ? override.opacity : storeOpacity;
+    const activePath = enabled ? path : '';
 
     useEffect(() => {
         let cancelled = false;
@@ -53,7 +42,7 @@ export function WallpaperLayer() {
                 cache.set(activePath, uri);
                 setSrc(uri);
             })
-            .catch(() => setSrc(''));
+            .catch((e) => { log.error('WallpaperLayer readFileBase64 failed', activePath, String(e)); setSrc(''); });
         return () => { cancelled = true; };
     }, [activePath]);
 

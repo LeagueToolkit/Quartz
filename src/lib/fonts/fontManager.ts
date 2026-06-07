@@ -86,14 +86,13 @@ export async function refreshFonts(): Promise<FontOption[]> {
 
 export function applyFont(name: string) {
     const root = document.documentElement;
-    if (!name || name === 'system') {
-        root.style.removeProperty('--app-font');
-        root.style.fontFamily = '';
-        return;
-    }
-    const stack = `"${name}", system-ui, sans-serif`;
+    // body and several panels declare their own font-family, so set it on body
+    // too (and expose --app-font for components that opt in).
+    const stack = !name || name === 'system'
+        ? "'Segoe UI', system-ui, -apple-system, sans-serif"
+        : `"${name}", 'Segoe UI', system-ui, sans-serif`;
     root.style.setProperty('--app-font', stack);
-    root.style.fontFamily = stack;
+    document.body.style.fontFamily = stack;
 }
 
 export async function openFontsFolder(): Promise<void> {

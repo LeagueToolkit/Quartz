@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useUiPrefsStore } from '@/lib/stores';
 import { findPreset } from '@/lib/wallpaper/wallpaperManager';
+import { log } from '@/lib/util/logger';
 import GlobalBackgroundEffect from './background/GlobalBackgroundEffect';
 import GlobalClickEffect from './click/GlobalClickEffect';
 import GlobalCursorEffect from './cursor/GlobalCursorEffect';
@@ -47,7 +48,7 @@ export function EffectsLayer() {
                 set('wallpaperEnabled', true);
                 set('wallpaperId', item.id);
                 set('wallpaperPath', item.filePath);
-            }).catch(() => {});
+            }).catch((err) => log.error('theme wallpaper preset resolve failed', String(err)));
         };
         window.addEventListener('themeWallpaperPreset', onPreset);
         return () => window.removeEventListener('themeWallpaperPreset', onPreset);

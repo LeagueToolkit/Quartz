@@ -33,7 +33,7 @@ export function Settings() {
     const [selected, setSelected] = useState<SectionId>('appearance');
 
     return (
-        <div style={{ width: '100%', minHeight: '100%', color: 'var(--text)', fontFamily: "'JetBrains Mono', monospace" }}>
+        <div style={{ width: '100%', minHeight: '100%', color: 'var(--text)', fontFamily: "var(--app-font, 'JetBrains Mono', monospace)" }}>
             <div style={{ display: 'flex', gap: '24px', maxWidth: '1400px', width: '100%', margin: '0 auto' }}>
                 {/* Section sidebar */}
                 <div style={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>

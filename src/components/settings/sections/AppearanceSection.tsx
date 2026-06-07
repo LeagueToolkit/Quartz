@@ -11,6 +11,7 @@ import {
     listWallpapers, importWallpaper, deleteWallpaper, getCursorsDir, listCursors, readFileBase64,
     type WallpaperItem, type AssetFile,
 } from '@/lib/api';
+import { log } from '@/lib/util/logger';
 
 const card: React.CSSProperties = {
     background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)',
@@ -73,9 +74,9 @@ export function AppearanceSection() {
     const [cursorThumbs, setCursorThumbs] = useState<Record<string, string>>({});
     const [wallThumbs, setWallThumbs] = useState<Record<string, string>>({});
 
-    const loadFonts = () => refreshFonts().then(setFonts);
-    const loadWallpapers = () => listWallpapers().then(setWallpapers);
-    const loadCursors = () => listCursors().then(setCursors);
+    const loadFonts = () => refreshFonts().then(setFonts).catch((e) => log.error('refreshFonts failed', String(e)));
+    const loadWallpapers = () => listWallpapers().then(setWallpapers).catch((e) => log.error('listWallpapers failed', String(e)));
+    const loadCursors = () => listCursors().then(setCursors).catch((e) => log.error('listCursors failed', String(e)));
 
     useEffect(() => { loadFonts(); loadWallpapers(); loadCursors(); }, []);
 
@@ -86,7 +87,7 @@ export function AppearanceSection() {
             readFileBase64(w.filePath).then((b64) => {
                 const ext = (w.filePath.split('.').pop() || 'png').toLowerCase();
                 setWallThumbs((p) => ({ ...p, [w.id]: `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${b64}` }));
-            }).catch(() => {});
+            }).catch((e) => log.error('wallpaper thumb failed', w.filePath, String(e)));
         });
     }, [wallpapers]);
     useEffect(() => {
@@ -96,7 +97,7 @@ export function AppearanceSection() {
                 const ext = (c.name.split('.').pop() || 'png').toLowerCase();
                 const mime = ext === 'cur' ? 'image/vnd.microsoft.icon' : ext === 'gif' ? 'image/gif' : 'image/png';
                 setCursorThumbs((p) => ({ ...p, [c.path]: `data:${mime};base64,${b64}` }));
-            }).catch(() => {});
+            }).catch((e) => log.error('cursor thumb failed', c.path, String(e)));
         });
     }, [cursors]);
 
@@ -120,7 +121,7 @@ export function AppearanceSection() {
         if (prefs.wallpaperId === id) { set('wallpaperId', ''); set('wallpaperPath', ''); }
         await loadWallpapers();
     };
-    const openCursorsFolder = async () => { try { await openPath(await getCursorsDir()); } catch { /* ignore */ } };
+    const openCursorsFolder = async () => { try { await openPath(await getCursorsDir()); } catch (e) { log.error('openCursorsFolder failed', String(e)); } };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -129,7 +130,7 @@ export function AppearanceSection() {
                     <div style={{ flex: 1 }}>
                         <CustomSelect value={prefs.font} onChange={onFontChange} icon={<Type size={16} />} options={fonts} />
                     </div>
-                    <Button icon={<FolderOpen size={16} />} variant="secondary" onClick={() => openFontsFolder().catch(() => {})}>Folder</Button>
+                    <Button icon={<FolderOpen size={16} />} variant="secondary" onClick={() => openFontsFolder().catch((e) => log.error('openFontsFolder failed', String(e)))}>Folder</Button>
                     <Button icon={<RefreshCw size={16} />} variant="secondary" onClick={loadFonts}>Refresh</Button>
                 </div>
             </FormGroup>

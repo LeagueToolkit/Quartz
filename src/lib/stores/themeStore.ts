@@ -55,8 +55,8 @@ function applyThemeBehavior(behavior: ThemeBehavior | null) {
 
     if (behavior.wallpaper) {
         if (behavior.wallpaper.enabled === false) {
+            // Themes that opt out of a wallpaper just disable it; the layer is store-driven.
             prefs.set('wallpaperEnabled', false);
-            window.dispatchEvent(new CustomEvent('wallpaperChanged', { detail: { path: '', opacity: prefs.wallpaperOpacity } }));
         } else {
             // The wallpaper subsystem resolves a preset by display name / filename.
             window.dispatchEvent(new CustomEvent('themeWallpaperPreset', { detail: behavior.wallpaper }));
