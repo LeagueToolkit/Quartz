@@ -4,13 +4,19 @@
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420"
+    "devUrl": "http://localhost:3169"
   },
   "bundle": {
     "active": true,
     "targets": "nsis",
     "icon": ["icons/icon.ico", "icons/icon.png"],
-    "resources": ["resources/wallpapers/*", "resources/cursors/*"]
+    "resources": [
+      "resources/wallpapers/*",
+      "resources/cursors/*",
+      "resources/textures/*",
+      "resources/audio/*",
+      "resources/UxYW2KY_x2.png"
+    ]
   },
   "productName": "Quartz",
   "version": "4.0.0",

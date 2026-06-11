@@ -20,7 +20,7 @@ function tauriCSSFix(): Plugin {
 export default defineConfig({
     plugins: [react(), tauriCSSFix()],
     clearScreen: false,
-    server: { port: 1420, strictPort: true },
+    server: { port: 3169, strictPort: true },
     envPrefix: ['VITE_', 'TAURI_'],
     build: {
         target: ['es2021', 'chrome100', 'safari13'],
