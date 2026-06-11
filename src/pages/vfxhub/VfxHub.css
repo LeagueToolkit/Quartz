@@ -1,0 +1,167 @@
+/* VFX Hub styles, ported from the Electron Quartz (port2/Port.css + vfxhub
+   inline styles). Class names kept so the markup reads the same; the heavy
+   per-element styling stays inline to stay visually identical to the original. */
+
+.vfx-hub-container {
+    min-height: 100%;
+    height: 100%;
+    background: var(--bg);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.vfx-hub-panels {
+    display: flex;
+    flex: 1;
+    gap: 20px;
+    padding: 0 12px 12px;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.vfx-hub-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    position: relative;
+}
+
+.vfx-hub-search-wrap {
+    position: relative;
+    width: 100%;
+}
+
+.vfx-hub-search {
+    width: 100%;
+    box-sizing: border-box;
+    height: 38px;
+    padding: 0 40px 0 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.vfx-hub-search:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent), transparent 70%);
+}
+
+.vfx-hub-search.right:focus {
+    border-color: var(--accent2);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent2), transparent 70%);
+}
+
+.vfx-hub-section {
+    flex: 1;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+    position: relative;
+}
+
+.vfx-hub-empty {
+    font-size: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    text-align: center;
+}
+
+.with-scrollbars {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.with-scrollbars::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.with-scrollbars::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--accent), transparent 70%);
+    border-radius: 4px;
+}
+
+.with-scrollbars::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* System / emitter tree rows */
+.vfx-sys-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    cursor: grab;
+    user-select: none;
+    transition: background 0.12s ease;
+}
+
+.vfx-sys-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.vfx-sys-row .name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: var(--text);
+}
+
+.vfx-emitter-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px 5px 34px;
+    font-size: 12px;
+    color: var(--text-2);
+    cursor: grab;
+    transition: background 0.12s ease;
+}
+
+.vfx-emitter-row:hover {
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text);
+}
+
+/* Collection browser preview cards */
+.vfx-preview-container {
+    height: 120px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.5rem;
+    overflow: hidden;
+    position: relative;
+}
+
+@keyframes shimmer {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+}

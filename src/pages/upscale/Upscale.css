@@ -1,0 +1,31 @@
+/* Ported from the Electron Upscale page. The original injected these keyframes at
+   runtime via a <style> tag in a useEffect; we keep that behavior for parity and
+   also declare them here so the animations exist before the component mounts. */
+
+@keyframes pulse {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.5;
+        transform: scale(1.05);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.upscale-root {
+    --accent-bright: color-mix(in srgb, var(--accent) 70%, white);
+}

@@ -1,0 +1,106 @@
+import { useState } from 'react';
+
+interface PortDonorFromGameModalProps {
+    open: boolean;
+    loading: boolean;
+    progressText: string;
+    onClose: () => void;
+    onConfirm: (args: { champion: { id: string; name: string }; skin: { id: number; name: string }; portingPrefix: string }) => void;
+}
+
+/* "Load donor from game" prep step. Extracting + consolidating a donor from a
+   live skin WAD is a native operation. The core in-app bin -> bin porting works
+   without this; the WAD extraction pipeline is deferred to the backend. */
+export default function PortDonorFromGameModal({ open, loading, progressText, onClose, onConfirm }: PortDonorFromGameModalProps) {
+    const [championName, setChampionName] = useState('');
+    const [skinId, setSkinId] = useState('0');
+    const [portingPrefix, setPortingPrefix] = useState('');
+
+    if (!open) return null;
+
+    const inputStyle: React.CSSProperties = {
+        width: '100%',
+        boxSizing: 'border-box',
+        padding: '10px 14px',
+        background: 'rgba(0,0,0,0.3)',
+        color: 'var(--accent2)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: 8,
+        fontSize: '0.85rem',
+        fontFamily: 'JetBrains Mono, monospace',
+        outline: 'none',
+    };
+
+    return (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 5300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} onClick={() => !loading && onClose()} />
+            <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                    position: 'relative',
+                    width: '100%',
+                    maxWidth: 480,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    background: 'var(--glass-bg)',
+                    border: '1px solid var(--glass-border)',
+                    backdropFilter: 'saturate(180%) blur(16px)',
+                    WebkitBackdropFilter: 'saturate(180%) blur(16px)',
+                    borderRadius: 16,
+                    boxShadow: '0 30px 70px rgba(0,0,0,0.55), 0 0 30px color-mix(in srgb, var(--accent2), transparent 82%)',
+                    overflow: 'hidden',
+                }}
+            >
+                <div style={{ height: 3, flexShrink: 0, background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' }} />
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h2 style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)' }}>Load Donor From Game</h2>
+                    <button
+                        onClick={() => !loading && onClose()}
+                        style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', cursor: 'pointer', outline: 'none' }}
+                    >
+                        {'✕'}
+                    </button>
+                </div>
+                <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: 'var(--accent2)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Champion</span>
+                        <input value={championName} onChange={(e) => setChampionName(e.target.value)} placeholder="e.g., Ahri" style={inputStyle} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: 'var(--accent2)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Skin ID</span>
+                        <input value={skinId} onChange={(e) => setSkinId(e.target.value)} placeholder="0" style={inputStyle} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: 'var(--accent2)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Porting Prefix</span>
+                        <input value={portingPrefix} onChange={(e) => setPortingPrefix(e.target.value)} placeholder="prefix" style={inputStyle} />
+                    </div>
+                    <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)', fontStyle: 'italic', lineHeight: 1.5 }}>
+                        Preparing a donor from a live skin WAD requires native extraction. {/* TODO(backend) */}
+                    </div>
+                    {progressText && <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', color: 'var(--accent)' }}>{progressText}</div>}
+                </div>
+                <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <button
+                        disabled={loading || !championName.trim() || !portingPrefix.trim()}
+                        onClick={() => onConfirm({ champion: { id: championName, name: championName }, skin: { id: Number(skinId) || 0, name: `Skin${skinId}` }, portingPrefix })}
+                        style={{
+                            padding: '8px 18px',
+                            borderRadius: 8,
+                            border: '1px solid color-mix(in srgb, var(--accent2), transparent 55%)',
+                            background: 'color-mix(in srgb, var(--accent2), transparent 88%)',
+                            color: 'var(--accent2)',
+                            fontFamily: 'JetBrains Mono, monospace',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            cursor: loading || !championName.trim() || !portingPrefix.trim() ? 'not-allowed' : 'pointer',
+                            opacity: loading || !championName.trim() || !portingPrefix.trim() ? 0.5 : 1,
+                            outline: 'none',
+                        }}
+                    >
+                        {loading ? 'Preparing…' : 'Prepare Donor'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}

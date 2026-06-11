@@ -1,0 +1,124 @@
+/* BinEditor - ported from Electron Quartz (index.css + GlowingSpinner.css). */
+
+/* Top action bar buttons (HTML buttons, no MUI). */
+.bin-editor-topbar .bin-editor-action-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    height: 36px;
+    padding: 0 16px;
+    box-sizing: border-box;
+    border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--bin-btn-color, var(--accent)), transparent 70%);
+    background: color-mix(in srgb, var(--bin-btn-color, var(--accent)) 14%, transparent);
+    color: var(--bin-btn-color, var(--accent));
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: none;
+    line-height: 1;
+    box-shadow: none;
+    outline: none;
+    position: relative;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+}
+
+.bin-editor-topbar .bin-editor-action-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--bin-btn-color, var(--accent)) 22%, transparent);
+    border-color: var(--bin-btn-color, var(--accent));
+    text-shadow: 0 0 8px color-mix(in srgb, var(--bin-btn-color, var(--accent)), transparent 50%);
+}
+
+.bin-editor-topbar .bin-editor-action-btn.is-load {
+    --bin-btn-color: var(--accent);
+}
+
+.bin-editor-topbar .bin-editor-action-btn.is-undo {
+    --bin-btn-color: #9ca3af;
+}
+
+.bin-editor-topbar .bin-editor-action-btn.is-restore {
+    --bin-btn-color: var(--accent2);
+}
+
+.bin-editor-topbar .bin-editor-action-btn.is-save {
+    --bin-btn-color: #22c55e;
+}
+
+.bin-editor-topbar .bin-editor-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    border-color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.3);
+}
+
+/* Search input inside the toolbar. */
+.bin-editor-search {
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(18, 20, 28, 0.55);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    padding: 6px 12px;
+    outline: none;
+    transition: all 160ms ease;
+}
+
+.bin-editor-search::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.bin-editor-search:hover {
+    background: rgba(34, 38, 52, 0.62);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.bin-editor-search:focus {
+    border-color: color-mix(in srgb, var(--accent2), transparent 35%);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent2), transparent 75%);
+}
+
+/* Glowing spinner overlay. */
+.glow-spinner-overlay {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10001;
+    backdrop-filter: blur(2px);
+}
+
+.glow-spinner-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.glow-spinner-ring {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: 3px solid color-mix(in srgb, var(--accent) 20%, transparent);
+    border-top-color: var(--accent);
+    animation: binEditorSpin 0.85s linear infinite;
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.glow-spinner-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    text-shadow: 0 0 4px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+@keyframes binEditorSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}

@@ -1,0 +1,453 @@
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { Box, Typography, TextField, IconButton, Tooltip, Button, Divider, Slider } from '@mui/material';
+import {
+    Search, Close, SortByAlpha, Undo, Redo, Download, Upload, VolumeOff, Save, PlayArrow, Stop, VolumeUp, Settings, AutoFixHigh,
+} from '@mui/icons-material';
+import type { SxProps, Theme } from '@mui/material';
+import TreeNode from './TreeNode';
+import { inputStyle } from '../styles';
+import type { BnkNode, DroppedFile, HistoryEntry, LastSelected, Pane, SortMode, ViewMode } from '../types';
+
+const ROW_HEIGHT = 30;
+const OVERSCAN = 6;
+
+interface FlatRow { node: BnkNode; level: number; rowKey: string }
+
+function flattenVisibleTree(nodes: BnkNode[], expandedNodes: Set<string>, level = 0, out: FlatRow[] = [], trail = 'root'): FlatRow[] {
+    nodes.forEach((node, index) => {
+        const rowKey = `${trail}/${node.id || node.name || 'node'}#${index}`;
+        out.push({ node, level, rowKey });
+        if (node.children?.length && expandedNodes.has(node.id)) {
+            flattenVisibleTree(node.children, expandedNodes, level + 1, out, rowKey);
+        }
+    });
+    return out;
+}
+
+interface VirtualTreeListProps {
+    rows: FlatRow[];
+    expandedNodes: Set<string>;
+    selectedNodes: Set<string>;
+    setSelectedNodes: React.Dispatch<React.SetStateAction<Set<string>>>;
+    setLastSelectedId: (v: LastSelected) => void;
+    handleNodeSelect: (node: BnkNode, ctrl: boolean, shift: boolean, pane: Pane) => void;
+    playAudio: (node: BnkNode) => void;
+    handleContextMenu: (e: React.MouseEvent, node: BnkNode, pane: Pane) => void;
+    handleToggleExpand: (id: string, shift: boolean, pane: Pane) => void;
+    onDropReplace: (ids: string[], targetId: string) => void;
+    onExternalFileDrop: (files: DroppedFile[], targetId: string, pane: Pane) => void;
+    pane: Pane;
+    emptyText: string;
+}
+
+function VirtualTreeList({
+    rows, expandedNodes, selectedNodes, setSelectedNodes, setLastSelectedId,
+    handleNodeSelect, playAudio, handleContextMenu, handleToggleExpand,
+    onDropReplace, onExternalFileDrop, pane, emptyText,
+}: VirtualTreeListProps) {
+    const [scrollTop, setScrollTop] = useState(0);
+    const [viewportHeight, setViewportHeight] = useState(500);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const rafRef = useRef<number | null>(null);
+
+    const onScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+        const nextTop = e.currentTarget.scrollTop;
+        if (rafRef.current) return;
+        rafRef.current = requestAnimationFrame(() => {
+            setScrollTop(nextTop);
+            rafRef.current = null;
+        });
+    }, []);
+
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') return undefined;
+        const observer = new ResizeObserver(() => {
+            setViewportHeight(el.clientHeight || 500);
+        });
+        observer.observe(el);
+        setViewportHeight(el.clientHeight || 500);
+        return () => observer.disconnect();
+    }, []);
+
+    useEffect(() => () => {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    }, []);
+
+    const totalHeight = rows.length * ROW_HEIGHT;
+    const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+    const endIndex = Math.min(rows.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN);
+    const visibleRows = useMemo(() => rows.slice(startIndex, endIndex), [rows, startIndex, endIndex]);
+
+    return (
+        <Box
+            ref={containerRef}
+            sx={{ flex: 1, overflowY: 'auto', p: 1 }}
+            onScroll={onScroll}
+            onClick={() => {
+                setSelectedNodes(new Set());
+                setLastSelectedId({ id: null, pane });
+            }}
+        >
+            {rows.length === 0 ? (
+                <Typography sx={{ textAlign: 'center', marginTop: '3rem', fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.6)', fontWeight: 500, whiteSpace: 'pre-line' }}>
+                    {emptyText}
+                </Typography>
+            ) : (
+                <Box sx={{ position: 'relative', height: `${totalHeight}px` }}>
+                    <Box sx={{ position: 'absolute', top: `${startIndex * ROW_HEIGHT}px`, left: 0, right: 0 }}>
+                        {visibleRows.map(({ node, level, rowKey }) => (
+                            <TreeNode
+                                key={`${rowKey}-${pane}`}
+                                node={node}
+                                level={level}
+                                selectedNodes={selectedNodes}
+                                isSelected={selectedNodes.has(node.id)}
+                                isExpanded={expandedNodes.has(node.id)}
+                                onSelect={handleNodeSelect}
+                                onPlay={playAudio}
+                                onContextMenu={handleContextMenu}
+                                onToggleExpand={handleToggleExpand}
+                                pane={pane}
+                                onDropReplace={onDropReplace}
+                                onExternalFileDrop={onExternalFileDrop}
+                                renderChildren={false}
+                            />
+                        ))}
+                    </Box>
+                </Box>
+            )}
+        </Box>
+    );
+}
+
+interface Props {
+    mainContentStyle: SxProps<Theme>;
+    treeViewStyle: Record<string, unknown>;
+    sidebarStyle: SxProps<Theme>;
+    compactButtonStyle: Record<string, unknown>;
+    buttonStyle: Record<string, unknown>;
+    viewMode: ViewMode;
+    activePane: Pane;
+    leftSearchQuery: string;
+    setLeftSearchQuery: (v: string) => void;
+    filteredLeftTree: BnkNode[];
+    selectedNodes: Set<string>;
+    setSelectedNodes: React.Dispatch<React.SetStateAction<Set<string>>>;
+    setLastSelectedId: (v: LastSelected) => void;
+    handleNodeSelect: (node: BnkNode, ctrl: boolean, shift: boolean, pane: Pane) => void;
+    playAudio: (node: BnkNode) => void;
+    handleContextMenu: (e: React.MouseEvent, node: BnkNode, pane: Pane) => void;
+    expandedNodes: Set<string>;
+    handleToggleExpand: (id: string, shift: boolean, pane: Pane) => void;
+    handleDropReplace: (ids: string[], targetId: string) => void;
+    handleAutoMatchByEventName: () => void;
+    handleExternalFileDrop: (files: DroppedFile[], targetId: string, pane: Pane) => void;
+    rightPaneDragOver: boolean;
+    handleRightPaneDragOver: (e: React.DragEvent) => void;
+    handleRightPaneDragLeave: (e: React.DragEvent) => void;
+    handleRightPaneFileDrop: (e: React.DragEvent) => void;
+    rightSearchQuery: string;
+    setRightSearchQuery: (v: string) => void;
+    rightSortMode: SortMode;
+    setRightSortMode: React.Dispatch<React.SetStateAction<SortMode>>;
+    leftSortMode: SortMode;
+    setLeftSortMode: React.Dispatch<React.SetStateAction<SortMode>>;
+    filteredRightTree: BnkNode[];
+    rightSelectedNodes: Set<string>;
+    setRightSelectedNodes: React.Dispatch<React.SetStateAction<Set<string>>>;
+    rightExpandedNodes: Set<string>;
+    handleUndo: () => void;
+    undoStack: HistoryEntry[];
+    handleRedo: () => void;
+    redoStack: HistoryEntry[];
+    handleExtract: () => void;
+    handleReplace: () => void;
+    hasAudioSelection: () => boolean;
+    handleMakeSilent: () => void;
+    handleSave: () => void;
+    hasRootSelection: () => boolean;
+    handlePlaySelected: () => void;
+    stopAudio: () => void;
+    volume: number;
+    setVolume: (v: number) => void;
+    treeData: BnkNode[];
+    rightTreeData: BnkNode[];
+    setShowSettingsModal: (v: boolean) => void;
+    onLeftPaneFolderDrop: (folderPath: string) => void;
+}
+
+export default function BnkMainContent(props: Props) {
+    const {
+        mainContentStyle, treeViewStyle, sidebarStyle, compactButtonStyle, buttonStyle,
+        viewMode, activePane,
+        leftSearchQuery, setLeftSearchQuery, filteredLeftTree,
+        selectedNodes, setSelectedNodes, setLastSelectedId, handleNodeSelect, playAudio,
+        handleContextMenu, expandedNodes, handleToggleExpand, handleDropReplace,
+        handleAutoMatchByEventName, handleExternalFileDrop,
+        rightPaneDragOver, handleRightPaneDragOver, handleRightPaneDragLeave, handleRightPaneFileDrop,
+        rightSearchQuery, setRightSearchQuery, rightSortMode, setRightSortMode, leftSortMode, setLeftSortMode,
+        filteredRightTree, rightSelectedNodes, setRightSelectedNodes, rightExpandedNodes,
+        handleUndo, undoStack, handleRedo, redoStack,
+        handleExtract, handleReplace, hasAudioSelection, handleMakeSilent, handleSave, hasRootSelection,
+        handlePlaySelected, stopAudio, volume, setVolume, treeData, rightTreeData,
+        setShowSettingsModal,
+    } = props;
+
+    const treeBorder = treeViewStyle.border as string;
+    const treeBackground = treeViewStyle.background as string;
+    const [leftDragOver, setLeftDragOver] = useState(false);
+
+    const handleLeftDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer?.types?.includes('Files')) setLeftDragOver(true);
+    }, []);
+
+    const handleLeftDragLeave = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setLeftDragOver(false);
+    }, []);
+
+    // TODO(backend): Tauri does not expose dropped directory paths via the DOM
+    // drag event. Folder-drop auto-extract wires to the webview file-drop bridge
+    // once the soundbank scan command exists; the pane still highlights on drag.
+    const handleLeftDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setLeftDragOver(false);
+    }, []);
+
+    const handleRightDrop = useCallback((e: React.DragEvent) => {
+        handleRightPaneFileDrop?.(e);
+    }, [handleRightPaneFileDrop]);
+
+    const leftRows = useMemo(() => flattenVisibleTree(filteredLeftTree, expandedNodes), [filteredLeftTree, expandedNodes]);
+    const rightRows = useMemo(() => flattenVisibleTree(filteredRightTree, rightExpandedNodes), [filteredRightTree, rightExpandedNodes]);
+
+    return (
+        <Box className="bnk-extract-main" sx={mainContentStyle}>
+            <Box
+                className="bnk-extract-tree"
+                onDragOver={handleLeftDragOver}
+                onDragLeave={handleLeftDragLeave}
+                onDrop={handleLeftDrop}
+                sx={{
+                    ...treeViewStyle,
+                    border: leftDragOver
+                        ? '2px dashed var(--accent)'
+                        : (viewMode === 'split' && activePane === 'left' ? '1px solid var(--accent)' : treeBorder),
+                    background: leftDragOver ? 'rgba(var(--accent-rgb), 0.06)' : treeBackground,
+                    position: 'relative',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    transition: 'border-color 0.15s, background 0.15s',
+                }}
+            >
+                <Box sx={{ p: 1.25, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 1, minHeight: 56 }}>
+                    <TextField
+                        value={leftSearchQuery}
+                        onChange={(e) => setLeftSearchQuery(e.target.value)}
+                        placeholder="Filter left..."
+                        size="small"
+                        sx={{ ...inputStyle, flex: 1 }}
+                        InputProps={{
+                            startAdornment: <Search sx={{ fontSize: 18, mr: 0.75, color: 'var(--accent)', opacity: 0.8 }} />,
+                            endAdornment: leftSearchQuery ? (
+                                <IconButton size="small" onClick={() => setLeftSearchQuery('')} sx={{ p: 0.25, ml: 0.5 }}>
+                                    <Close sx={{ fontSize: 14, opacity: 0.7 }} />
+                                </IconButton>
+                            ) : undefined,
+                        }}
+                    />
+                    <Tooltip title={`Sort alphabetically: ${leftSortMode === 'none' ? 'Off' : (leftSortMode === 'name-asc' ? 'A to Z' : 'Z to A')}`}>
+                        <IconButton
+                            size="small"
+                            onClick={() => setLeftSortMode((prev) => prev === 'none' ? 'name-asc' : (prev === 'name-asc' ? 'name-desc' : 'none'))}
+                            sx={{ color: leftSortMode !== 'none' ? 'var(--accent)' : 'rgba(255,255,255,0.3)', background: leftSortMode !== 'none' ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent', p: '6px' }}
+                        >
+                            <SortByAlpha sx={{ fontSize: 16, transform: leftSortMode === 'name-desc' ? 'scaleY(-1)' : 'none' }} />
+                        </IconButton>
+                    </Tooltip>
+                    {leftSearchQuery && (
+                        <Typography sx={{ fontSize: '0.55rem', color: 'var(--accent)', opacity: 0.5, fontWeight: 800 }}>{filteredLeftTree.length}</Typography>
+                    )}
+                </Box>
+
+                <VirtualTreeList
+                    rows={leftRows}
+                    expandedNodes={expandedNodes}
+                    selectedNodes={selectedNodes}
+                    setSelectedNodes={setSelectedNodes}
+                    setLastSelectedId={setLastSelectedId}
+                    handleNodeSelect={handleNodeSelect}
+                    playAudio={playAudio}
+                    handleContextMenu={handleContextMenu}
+                    handleToggleExpand={handleToggleExpand}
+                    onDropReplace={handleDropReplace}
+                    onExternalFileDrop={handleExternalFileDrop}
+                    pane="left"
+                    emptyText={leftSearchQuery ? 'No matches' : 'Select a .bnk or .wpk file and click "Parse"\nor drag & drop a mod folder here'}
+                />
+
+                {viewMode === 'split' && (
+                    <Box sx={{ position: 'absolute', top: 4, right: 8, zIndex: 5, pointerEvents: 'none' }}>
+                        <Typography sx={{ fontSize: '0.6rem', color: 'var(--accent)', fontWeight: 800, opacity: 0.6 }}>MAIN BANK</Typography>
+                    </Box>
+                )}
+            </Box>
+
+            {viewMode === 'split' && (
+                <Box
+                    className="bnk-extract-tree-right"
+                    onDragOver={handleRightPaneDragOver}
+                    onDragLeave={handleRightPaneDragLeave}
+                    onDrop={handleRightDrop}
+                    sx={{
+                        ...treeViewStyle,
+                        marginLeft: 0,
+                        border: rightPaneDragOver
+                            ? '2px dashed var(--accent)'
+                            : (activePane === 'right' ? '1px solid var(--accent)' : treeBorder),
+                        position: 'relative',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        background: rightPaneDragOver ? 'rgba(var(--accent-rgb), 0.1)' : treeBackground,
+                        transition: 'all 0.2s ease',
+                    }}
+                >
+                    <Box sx={{ p: 1.25, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 1, minHeight: 56 }}>
+                        <TextField
+                            value={rightSearchQuery}
+                            onChange={(e) => setRightSearchQuery(e.target.value)}
+                            placeholder="Filter right..."
+                            size="small"
+                            sx={{ ...inputStyle, flex: 1 }}
+                            InputProps={{
+                                startAdornment: <Search sx={{ fontSize: 18, mr: 0.75, color: 'var(--accent)', opacity: 0.8 }} />,
+                                endAdornment: rightSearchQuery ? (
+                                    <IconButton size="small" onClick={() => setRightSearchQuery('')} sx={{ p: 0.25, ml: 0.5 }}>
+                                        <Close sx={{ fontSize: 14, opacity: 0.7 }} />
+                                    </IconButton>
+                                ) : undefined,
+                            }}
+                        />
+                        <Tooltip title={`Sort alphabetically: ${rightSortMode === 'none' ? 'Off' : (rightSortMode === 'name-asc' ? 'A to Z' : 'Z to A')}`}>
+                            <IconButton
+                                size="small"
+                                onClick={() => setRightSortMode((prev) => prev === 'none' ? 'name-asc' : (prev === 'name-asc' ? 'name-desc' : 'none'))}
+                                sx={{ color: rightSortMode !== 'none' ? 'var(--accent)' : 'rgba(255,255,255,0.3)', background: rightSortMode !== 'none' ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent', p: '6px' }}
+                            >
+                                <SortByAlpha sx={{ fontSize: 16, transform: rightSortMode === 'name-desc' ? 'scaleY(-1)' : 'none' }} />
+                            </IconButton>
+                        </Tooltip>
+                        {rightSearchQuery && (
+                            <Typography sx={{ fontSize: '0.55rem', color: 'var(--accent)', opacity: 0.5, fontWeight: 800 }}>{filteredRightTree.length}</Typography>
+                        )}
+                    </Box>
+
+                    <VirtualTreeList
+                        rows={rightRows}
+                        expandedNodes={rightExpandedNodes}
+                        selectedNodes={rightSelectedNodes}
+                        setSelectedNodes={setRightSelectedNodes}
+                        setLastSelectedId={setLastSelectedId}
+                        handleNodeSelect={handleNodeSelect}
+                        playAudio={playAudio}
+                        handleContextMenu={handleContextMenu}
+                        handleToggleExpand={handleToggleExpand}
+                        onDropReplace={handleDropReplace}
+                        onExternalFileDrop={handleExternalFileDrop}
+                        pane="right"
+                        emptyText={rightSearchQuery ? 'No matches' : 'Drop .wem .wav .mp3 files here, autoconvert or load banks to drag replacement audio'}
+                    />
+
+                    <Box sx={{ position: 'absolute', top: 4, right: 8, zIndex: 5, pointerEvents: 'none' }}>
+                        <Typography sx={{ fontSize: '0.6rem', color: 'var(--accent)', fontWeight: 800, opacity: 0.6 }}>REFERENCE BANKS</Typography>
+                    </Box>
+                </Box>
+            )}
+
+            <Box className="bnk-extract-sidebar" sx={sidebarStyle}>
+                <Box sx={{ display: 'flex', gap: 0.5, mb: 1 }}>
+                    <Tooltip title="Undo (Ctrl+Z)">
+                        <Button fullWidth variant="contained" onClick={handleUndo} disabled={undoStack.length === 0} sx={{ ...compactButtonStyle, flex: 1, justifyContent: 'center', opacity: undoStack.length > 0 ? 1 : 0.3 }}>
+                            <Undo sx={{ fontSize: 16 }} />
+                        </Button>
+                    </Tooltip>
+                    <Tooltip title="Redo (Ctrl+Y)">
+                        <Button fullWidth variant="contained" onClick={handleRedo} disabled={redoStack.length === 0} sx={{ ...compactButtonStyle, flex: 1, justifyContent: 'center', opacity: redoStack.length > 0 ? 1 : 0.3 }}>
+                            <Redo sx={{ fontSize: 16 }} />
+                        </Button>
+                    </Tooltip>
+                </Box>
+
+                <Button variant="contained" onClick={handleExtract} disabled={selectedNodes.size === 0} startIcon={<Download sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.9)' }}>
+                    Extract
+                </Button>
+                <Button variant="contained" onClick={handleReplace} disabled={!hasAudioSelection()} startIcon={<Upload sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.9)' }}>
+                    Replace
+                </Button>
+                <Button
+                    variant="contained"
+                    onClick={handleAutoMatchByEventName}
+                    disabled={!treeData.length || !rightTreeData.length}
+                    startIcon={<AutoFixHigh sx={{ fontSize: 12 }} />}
+                    sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.9)', opacity: (!treeData.length || !rightTreeData.length) ? 0.35 : 1 }}
+                >
+                    Auto Match Names
+                </Button>
+                <Button variant="contained" onClick={handleMakeSilent} disabled={!hasAudioSelection()} startIcon={<VolumeOff sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.9)' }}>
+                    Make Silent
+                </Button>
+
+                <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)', margin: '0.25rem 0' }} />
+
+                <Button variant="contained" onClick={handleSave} disabled={!hasRootSelection()} startIcon={<Save sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.9)' }}>
+                    Save as BNK/WPK
+                </Button>
+
+                <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)', margin: '0.25rem 0' }} />
+
+                <Button variant="contained" onClick={handlePlaySelected} disabled={!hasAudioSelection()} startIcon={<PlayArrow sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--accent)' }}>
+                    Play
+                </Button>
+                <Button variant="contained" onClick={stopAudio} startIcon={<Stop sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.7)' }}>
+                    Stop
+                </Button>
+
+                <Box sx={{ mt: 'auto', pt: 2 }}>
+                    <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)', mb: 1.5 }} />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: '0.75rem', px: 0.5 }}>
+                        <VolumeUp sx={{ fontSize: 16, opacity: 0.6 }} />
+                        <Slider
+                            size="small"
+                            value={volume}
+                            onChange={(_, newValue) => setVolume(newValue as number)}
+                            aria-label="Volume"
+                            sx={{
+                                color: 'var(--accent)',
+                                '& .MuiSlider-thumb': {
+                                    width: 12,
+                                    height: 12,
+                                    backgroundColor: 'var(--accent)',
+                                    '&:hover, &.Mui-focusVisible': { boxShadow: '0 0 0 8px rgba(var(--accent-rgb), 0.16)' },
+                                },
+                                '& .MuiSlider-rail': { opacity: 0.2 },
+                            }}
+                        />
+                    </Box>
+                    <Typography sx={{ fontSize: '0.6rem', opacity: 0.4, textAlign: 'center', mt: 0.5 }}>
+                        Volume: {volume}%
+                    </Typography>
+                </Box>
+
+                <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)', margin: '0.25rem 0' }} />
+                <Button variant="contained" onClick={() => setShowSettingsModal(true)} startIcon={<Settings sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.6)' }}>
+                    Settings
+                </Button>
+            </Box>
+        </Box>
+    );
+}

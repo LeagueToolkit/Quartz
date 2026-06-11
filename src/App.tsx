@@ -7,6 +7,20 @@ import { Home } from '@/pages/Home';
 import { Settings } from '@/pages/Settings';
 import { Rgba } from '@/pages/Rgba';
 import { AssetExtractor } from '@/pages/AssetExtractor';
+import BinEditor from '@/pages/BinEditor';
+import FileRandomizer from '@/pages/FileRandomizer';
+import Paint from '@/pages/Paint';
+import Port from '@/pages/Port';
+import VfxHub from '@/pages/VfxHub';
+import ImgRecolor from '@/pages/ImgRecolor';
+import ParticleRandomizer from '@/pages/ParticleRandomizer';
+import FakeGear from '@/pages/FakeGear';
+import AniPort from '@/pages/AniPort';
+import WadExplorer from '@/pages/WadExplorer';
+import BnkExtract from '@/pages/BnkExtract';
+import Bumpath from '@/pages/Bumpath';
+import Tools from '@/pages/Tools';
+import Upscale from '@/pages/Upscale';
 import { Placeholder } from '@/pages/Placeholder';
 import { EffectsLayer } from '@/components/effects/EffectsLayer';
 
@@ -37,6 +51,20 @@ function PageView({ page }: { page: Page }) {
         case 'settings': return <Settings />;
         case 'rgba': return <Rgba />;
         case 'extractor': return <AssetExtractor />;
+        case 'bineditor': return <BinEditor />;
+        case 'filehandler': return <FileRandomizer />;
+        case 'paint': return <Paint />;
+        case 'port': return <Port />;
+        case 'vfxhub': return <VfxHub />;
+        case 'imgrecolor': return <ImgRecolor />;
+        case 'particlerandomizer': return <ParticleRandomizer />;
+        case 'fakegear': return <FakeGear />;
+        case 'aniport': return <AniPort />;
+        case 'wadexplorer': return <WadExplorer />;
+        case 'soundbanks': return <BnkExtract />;
+        case 'bumpath': return <Bumpath />;
+        case 'tools': return <Tools />;
+        case 'upscale': return <Upscale />;
         default: return <Placeholder title={TITLES[page]} />;
     }
 }
