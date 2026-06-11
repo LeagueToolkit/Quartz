@@ -1,0 +1,525 @@
+/* Theme utility classes + interface-style overrides, ported 1:1 from the old
+   Electron Quartz (src/styles/theme-variables.css + minecraft-theme.css). The
+   color tokens themselves live in JS (lib/theme/builtinThemes.ts) and are written
+   to :root by applyTheme(); this file only carries the shared classes, the
+   per-theme cosmic effects, and the data-style structural overrides that make the
+   interface-style switch visually real. */
+
+/* ── Global layout fallbacks (themes overwrite the color tokens) ─────────── */
+:root {
+    --nav-icon-color: var(--text-2);
+    --glass-bg: rgba(16, 14, 22, 0.35);
+    --accent-gradient-subtle: linear-gradient(135deg, rgba(236, 185, 106, 0.2), rgba(173, 126, 52, 0.2));
+    --surface-gradient: linear-gradient(135deg, var(--surface-2) 0%, var(--bg) 100%);
+    --border-radius: 6px;
+}
+
+/* ── Common theme-aware utility classes ──────────────────────────────────── */
+.theme-surface {
+    background: var(--surface);
+    border: 1px solid var(--bg);
+    color: var(--text);
+}
+
+.theme-surface-2 {
+    background: var(--surface-2);
+    border: 1px solid var(--bg);
+    color: var(--text);
+}
+
+.theme-glass {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: saturate(180%) blur(16px);
+    -webkit-backdrop-filter: saturate(180%) blur(16px);
+    box-shadow: var(--glass-shadow);
+}
+
+.theme-button-primary {
+    background: var(--accent-gradient);
+    color: var(--surface);
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.theme-button-secondary {
+    background: var(--surface-2);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.theme-input {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--accent);
+    padding: 8px;
+    border-radius: 4px;
+}
+
+.theme-text-primary { color: var(--text); }
+.theme-text-secondary { color: var(--text-2); }
+.theme-text-accent { color: var(--accent); }
+
+.theme-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent2) var(--surface-2);
+}
+.theme-scrollbar::-webkit-scrollbar { width: 8px; }
+.theme-scrollbar::-webkit-scrollbar-track { background: var(--surface-2); }
+.theme-scrollbar::-webkit-scrollbar-thumb { background: var(--accent2); border-radius: 6px; }
+.theme-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ── Galaxy theme cosmic effects ─────────────────────────────────────────── */
+[data-theme="galaxy"] {
+    --cosmic-glow: 0 0 20px rgba(139, 92, 246, 0.3);
+    --nebula-gradient: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.1) 50%, rgba(99, 102, 241, 0.1) 100%);
+    --stardust-bg:
+        radial-gradient(circle at 20% 80%, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(59, 130, 246, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(99, 102, 241, 0.03) 0%, transparent 50%);
+}
+
+[data-theme="galaxy"] body {
+    background: var(--stardust-bg);
+    animation: cosmic-drift 60s ease-in-out infinite;
+}
+
+[data-theme="galaxy"] .theme-glass {
+    box-shadow: var(--cosmic-glow), var(--glass-shadow);
+    background: var(--nebula-gradient), var(--glass-bg);
+}
+
+[data-theme="galaxy"] .theme-button-primary {
+    box-shadow: var(--cosmic-glow);
+    animation: cosmic-pulse 3s ease-in-out infinite;
+}
+
+@keyframes cosmic-drift {
+    0%, 100% { background-position: 0% 0%, 100% 100%, 50% 50%; }
+    50% { background-position: 10% 10%, 90% 90%, 60% 60%; }
+}
+@keyframes cosmic-pulse {
+    0%, 100% { box-shadow: var(--cosmic-glow); }
+    50% { box-shadow: 0 0 30px rgba(139, 92, 246, 0.5); }
+}
+
+/* ── Quartz theme laboratory effects ─────────────────────────────────────── */
+[data-theme="quartz"] {
+    --lab-glow: 0 0 20px rgba(248, 250, 252, 0.2);
+    --flask-gradient: linear-gradient(135deg, rgba(248, 250, 252, 0.1) 0%, rgba(226, 232, 240, 0.1) 50%, rgba(203, 213, 225, 0.1) 100%);
+    --cosmic-lab-bg:
+        radial-gradient(circle at 20% 80%, rgba(248, 250, 252, 0.03) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(226, 232, 240, 0.03) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(203, 213, 225, 0.02) 0%, transparent 50%);
+}
+
+[data-theme="quartz"] body {
+    background: var(--cosmic-lab-bg);
+    animation: lab-drift 80s ease-in-out infinite;
+}
+
+[data-theme="quartz"] .theme-glass {
+    box-shadow: var(--lab-glow), var(--glass-shadow);
+    background: var(--flask-gradient), var(--glass-bg);
+    border: 1px solid var(--glass-border);
+}
+
+[data-theme="quartz"] .theme-button-primary {
+    box-shadow: var(--lab-glow);
+    animation: lab-pulse 4s ease-in-out infinite;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: var(--bg);
+    font-weight: 600;
+}
+
+[data-theme="quartz"] .theme-surface {
+    border: 1px solid var(--accent-muted);
+    box-shadow: inset 0 1px 3px rgba(248, 250, 252, 0.1);
+}
+
+@keyframes lab-drift {
+    0%, 100% { background-position: 0% 0%, 100% 100%, 50% 50%; }
+    50% { background-position: 5% 5%, 95% 95%, 55% 55%; }
+}
+@keyframes lab-pulse {
+    0%, 100% { box-shadow: var(--lab-glow); }
+    50% { box-shadow: 0 0 25px rgba(248, 250, 252, 0.4); }
+}
+
+/* ── Crystal theme iridescent effects ────────────────────────────────────── */
+[data-theme="crystal"] {
+    --crystal-glow: 0 0 20px rgba(255, 255, 255, 0.15), 0 0 40px rgba(255, 255, 255, 0.08);
+    --iridescent-gradient: linear-gradient(135deg,
+            rgba(255, 255, 255, 0.1) 0%,
+            rgba(229, 231, 235, 0.08) 25%,
+            rgba(209, 213, 219, 0.1) 50%,
+            rgba(229, 231, 235, 0.08) 75%,
+            rgba(255, 255, 255, 0.1) 100%);
+    --crystal-bg:
+        radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.03) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(229, 231, 235, 0.03) 0%, transparent 50%),
+        radial-gradient(circle at 50% 50%, rgba(209, 213, 219, 0.02) 0%, transparent 50%);
+}
+
+[data-theme="crystal"] body {
+    background: var(--crystal-bg);
+    animation: crystal-shimmer 100s ease-in-out infinite;
+}
+
+[data-theme="crystal"] .theme-glass {
+    box-shadow: var(--crystal-glow), var(--glass-shadow);
+    background: var(--iridescent-gradient), var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+[data-theme="crystal"] .theme-button-primary {
+    box-shadow: var(--crystal-glow);
+    animation: crystal-pulse 4s ease-in-out infinite;
+    background: linear-gradient(135deg, var(--accent), var(--accent-muted));
+    color: var(--bg);
+    font-weight: 600;
+    border: 1px solid var(--accent-muted);
+}
+
+[data-theme="crystal"] .theme-surface {
+    border: 1px solid rgba(209, 213, 219, 0.2);
+    box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="crystal"] .theme-text-accent {
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+}
+
+@keyframes crystal-shimmer {
+    0%, 100% { background-position: 0% 0%, 100% 100%, 50% 50%; }
+    33% { background-position: 5% 5%, 95% 95%, 55% 55%; }
+    66% { background-position: -5% -5%, 105% 105%, 45% 45%; }
+}
+@keyframes crystal-pulse {
+    0%, 100% { box-shadow: var(--crystal-glow); }
+    50% { box-shadow: 0 0 25px rgba(255, 255, 255, 0.25), 0 0 50px rgba(255, 255, 255, 0.12); }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   INTERFACE STYLE: WinForms (flat, square, no glass)
+   ════════════════════════════════════════════════════════════════════════ */
+[data-style="winforms"] {
+    --glass-shadow: none;
+    --glass-border: var(--mui-divider, rgba(255, 255, 255, 0.12));
+    --backdrop-filter: none;
+    --border-radius: 0px;
+}
+
+[data-style="winforms"] .theme-glass,
+[data-style="winforms"] .q-glass {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 0 !important;
+    background-color: var(--surface) !important;
+}
+
+[data-style="winforms"] * {
+    border-radius: 0 !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+}
+
+/* Shell pieces go flat too */
+[data-style="winforms"] .q-titlebar {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--surface) !important;
+}
+[data-style="winforms"] .q-rail {
+    background: var(--surface) !important;
+}
+[data-style="winforms"] .q-navbtn,
+[data-style="winforms"] .q-navbtn::before { border-radius: 0 !important; }
+[data-style="winforms"] .q-navbtn svg { filter: none !important; }
+
+[data-style="winforms"] .theme-button-primary {
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--glass-border);
+}
+[data-style="winforms"] .theme-button-primary:hover {
+    background: var(--surface);
+    border: 1px solid var(--accent);
+}
+
+[data-style="winforms"] .MuiButton-root,
+[data-style="winforms"] .MuiIconButton-root,
+[data-style="winforms"] .MuiButtonBase-root,
+[data-style="winforms"] .MuiTouchRipple-root,
+[data-style="winforms"] .MuiTouchRipple-child,
+[data-style="winforms"] .MuiOutlinedInput-root,
+[data-style="winforms"] .Mui-selected {
+    border-radius: 0 !important;
+}
+
+/* Square scrollbars */
+[data-style="winforms"] ::-webkit-scrollbar { width: 16px; }
+[data-style="winforms"] ::-webkit-scrollbar-track { background: var(--surface); border-radius: 0 !important; }
+[data-style="winforms"] ::-webkit-scrollbar-thumb {
+    background: var(--surface-2);
+    border: 1px solid var(--glass-border);
+    border-radius: 0 !important;
+}
+[data-style="winforms"] ::-webkit-scrollbar-thumb:hover { background: var(--accent-muted); }
+[data-style="winforms"] ::-webkit-scrollbar-corner { background: var(--surface); }
+
+[data-style="winforms"] input,
+[data-style="winforms"] .MuiInputBase-root,
+[data-style="winforms"] .MuiTextField-root {
+    box-sizing: border-box !important;
+    max-width: 100% !important;
+}
+
+[data-style="winforms"] input[type="number"] {
+    background-color: var(--surface) !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 0 !important;
+    color: var(--text) !important;
+    padding: 4px 8px !important;
+}
+[data-style="winforms"] input[type="number"]:focus {
+    outline: 1px solid var(--accent) !important;
+    outline-offset: -1px !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   INTERFACE STYLE: Liquid Glass (refractive, frosted)
+   ════════════════════════════════════════════════════════════════════════ */
+[data-style="liquid"] {
+    --liquid-surface: rgba(255, 255, 255, 0.08);
+    --liquid-surface-strong: rgba(255, 255, 255, 0.13);
+    --liquid-button-bg: rgba(255, 255, 255, 0.1);
+    --liquid-button-hover-bg: rgba(255, 255, 255, 0.16);
+    --liquid-button-blur: 14px;
+    --liquid-input-bg: rgba(255, 255, 255, 0.06);
+    --liquid-border: rgba(255, 255, 255, 0.22);
+    --liquid-border-strong: rgba(255, 255, 255, 0.32);
+    --liquid-highlight: rgba(255, 255, 255, 0.38);
+}
+
+[data-style="liquid"] .theme-glass,
+[data-style="liquid"] .q-glass,
+[data-style="liquid"] .main-page-card,
+[data-style="liquid"] .settings-card,
+[data-style="liquid"] .MuiPaper-root,
+[data-style="liquid"] .MuiCard-root {
+    background: linear-gradient(180deg, var(--liquid-surface), color-mix(in srgb, var(--liquid-surface), transparent 20%)) !important;
+    border: 1px solid var(--liquid-border) !important;
+    box-shadow: inset 0 1px 0 var(--liquid-highlight), 0 12px 30px rgba(0, 0, 0, 0.26) !important;
+    backdrop-filter: blur(18px) saturate(132%) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(132%) !important;
+}
+
+/* Main page draws many cards at once; lighter glass pass avoids compositor spikes. */
+[data-style="liquid"] .main-page-card {
+    backdrop-filter: blur(8px) saturate(116%) !important;
+    -webkit-backdrop-filter: blur(8px) saturate(116%) !important;
+}
+
+/* Shell title bar + rail pick up the frosted liquid pass */
+[data-style="liquid"] .q-titlebar {
+    background: linear-gradient(180deg, var(--liquid-surface), color-mix(in srgb, var(--liquid-surface), transparent 25%)) !important;
+    border-bottom: 1px solid var(--liquid-border) !important;
+    backdrop-filter: blur(18px) saturate(132%) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(132%) !important;
+}
+[data-style="liquid"] .q-rail {
+    background: linear-gradient(180deg, var(--liquid-surface), color-mix(in srgb, var(--liquid-surface), transparent 25%)) !important;
+    border-right: 1px solid var(--liquid-border) !important;
+    backdrop-filter: blur(18px) saturate(132%) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(132%) !important;
+}
+
+[data-style="liquid"] button:not(.q-navbtn):not(.q-winbtn):not(.settings-style-card):not(.bin-editor-action-btn),
+[data-style="liquid"] .MuiButton-root,
+[data-style="liquid"] .MuiIconButton-root,
+[data-style="liquid"] .MuiButtonBase-root:not(.q-navbtn):not(.q-winbtn):not(.settings-style-card) {
+    background: linear-gradient(180deg, var(--liquid-button-bg), color-mix(in srgb, var(--liquid-button-bg), transparent 25%)) !important;
+    border: 1px solid var(--liquid-border-strong) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), 0 8px 20px rgba(0, 0, 0, 0.22) !important;
+    backdrop-filter: blur(var(--liquid-button-blur, 14px)) saturate(130%) !important;
+    -webkit-backdrop-filter: blur(var(--liquid-button-blur, 14px)) saturate(130%) !important;
+}
+
+[data-style="liquid"] button:not(.q-navbtn):not(.q-winbtn):not(.settings-style-card):not(.bin-editor-action-btn):hover,
+[data-style="liquid"] .MuiButton-root:hover,
+[data-style="liquid"] .MuiIconButton-root:hover,
+[data-style="liquid"] .MuiButtonBase-root:not(.q-navbtn):not(.q-winbtn):not(.settings-style-card):hover {
+    background: linear-gradient(180deg, var(--liquid-button-hover-bg), color-mix(in srgb, var(--liquid-button-hover-bg), transparent 20%)) !important;
+    border-color: rgba(255, 255, 255, 0.46) !important;
+}
+
+[data-style="liquid"] input,
+[data-style="liquid"] textarea,
+[data-style="liquid"] select,
+[data-style="liquid"] .MuiInputBase-root,
+[data-style="liquid"] .MuiOutlinedInput-root {
+    background: linear-gradient(180deg, var(--liquid-input-bg), color-mix(in srgb, var(--liquid-input-bg), transparent 18%)) !important;
+    border-color: rgba(255, 255, 255, 0.24) !important;
+    backdrop-filter: blur(12px) saturate(126%) !important;
+    -webkit-backdrop-filter: blur(12px) saturate(126%) !important;
+}
+
+[data-style="liquid"] .MuiOutlinedInput-notchedOutline { border-color: rgba(255, 255, 255, 0.28) !important; }
+[data-style="liquid"] .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline { border-color: rgba(255, 255, 255, 0.42) !important; }
+[data-style="liquid"] .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline { border-color: var(--accent) !important; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   INTERFACE STYLE: Minecraft (pixel bevels, flat depth, no glass)
+   ════════════════════════════════════════════════════════════════════════ */
+[data-style="minecraft"] {
+    --mc-btn-bg: linear-gradient(180deg, #848484 0%, #757575 45%, #6e6e6e 100%);
+    --mc-btn-bg-hover: linear-gradient(180deg, #949494 0%, #848484 45%, #787878 100%);
+    --mc-btn-bg-active: linear-gradient(180deg, #6d6d6d 0%, #646464 45%, #5a5a5a 100%);
+    --mc-btn-text: #f1f1f1;
+    --mc-btn-text-hover: #ffff55;
+    --mc-btn-shadow-text: #3a3a3a;
+    --mc-btn-bevel-light: #b8b8b8;
+    --mc-btn-bevel-dark: #4f4f4f;
+    --mc-btn-outer: #000000;
+    /* Bridge glass tokens to opaque Minecraft surfaces */
+    --glass-bg: #6f6f6f;
+    --glass-border: #000000;
+    --glass-shadow: inset 2px 2px 0 rgba(210, 210, 210, 0.28), inset -2px -2px 0 rgba(45, 45, 45, 0.78), 0 6px 0 #000000;
+    --glass-blur: 0px;
+    --mc-modal-bg: #c6c6c6;
+    --mc-modal-text: #111111;
+}
+
+/* Kill all glass/refraction in Minecraft mode */
+[data-style="minecraft"] *,
+[data-style="minecraft"] *::before,
+[data-style="minecraft"] *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Shell: flat dark panels with pixel bevels */
+[data-style="minecraft"] .q-titlebar {
+    background: #2f2f2f !important;
+    border-bottom: 2px solid #000000 !important;
+    box-shadow: inset 2px 2px 0 #8f8f8f, inset -2px -2px 0 #1f1f1f !important;
+}
+[data-style="minecraft"] .q-rail {
+    background: #2f2f2f !important;
+    border-right: 2px solid #000000 !important;
+    box-shadow: inset 2px 2px 0 #8f8f8f, inset -2px -2px 0 #1f1f1f !important;
+}
+[data-style="minecraft"] .q-navbtn,
+[data-style="minecraft"] .q-navbtn::before,
+[data-style="minecraft"] .q-winbtn { border-radius: 0 !important; }
+[data-style="minecraft"] .q-navbtn svg { filter: none !important; }
+
+[data-style="minecraft"] .theme-glass,
+[data-style="minecraft"] .q-glass {
+    background: #6f6f6f !important;
+    border: 2px solid #000000 !important;
+    border-radius: 0 !important;
+    box-shadow: var(--glass-shadow) !important;
+}
+
+[data-style="minecraft"] .MuiButton-root,
+[data-style="minecraft"] .MuiButton-contained,
+[data-style="minecraft"] .MuiButton-outlined,
+[data-style="minecraft"] .MuiButton-text,
+[data-style="minecraft"] .theme-button-primary {
+    background: var(--mc-btn-bg) !important;
+    color: var(--mc-btn-text) !important;
+    border: 2px solid var(--mc-btn-outer) !important;
+    border-radius: 0 !important;
+    text-transform: none !important;
+    font-family: "Minecraft", "Press Start 2P", "VT323", "Courier New", monospace !important;
+    text-shadow: 2px 2px 0 var(--mc-btn-shadow-text) !important;
+    box-shadow: inset 2px 2px 0 var(--mc-btn-bevel-light), inset -2px -2px 0 var(--mc-btn-bevel-dark), 0 3px 0 var(--mc-btn-outer) !important;
+    transition: none !important;
+}
+
+[data-style="minecraft"] .MuiButton-root:hover,
+[data-style="minecraft"] .MuiButton-contained:hover,
+[data-style="minecraft"] .MuiButton-outlined:hover,
+[data-style="minecraft"] .MuiButton-text:hover,
+[data-style="minecraft"] .theme-button-primary:hover {
+    background: var(--mc-btn-bg-hover) !important;
+    color: var(--mc-btn-text-hover) !important;
+}
+
+[data-style="minecraft"] .MuiButton-root:active,
+[data-style="minecraft"] .MuiButton-contained:active,
+[data-style="minecraft"] .MuiButton-outlined:active,
+[data-style="minecraft"] .MuiButton-text:active,
+[data-style="minecraft"] .theme-button-primary:active {
+    background: var(--mc-btn-bg-active) !important;
+    transform: translateY(2px) !important;
+    box-shadow: inset 2px 2px 0 var(--mc-btn-bevel-dark), inset -2px -2px 0 var(--mc-btn-bevel-light), 0 1px 0 var(--mc-btn-outer) !important;
+}
+
+[data-style="minecraft"] .MuiPaper-root,
+[data-style="minecraft"] .MuiCard-root,
+[data-style="minecraft"] .MuiDialog-paper {
+    background: var(--mc-modal-bg) !important;
+    border: 2px solid #000000 !important;
+    border-radius: 0 !important;
+    color: var(--mc-modal-text) !important;
+    box-shadow: inset 2px 2px 0 #f0f0f0, inset -2px -2px 0 #5a5a5a, 0 6px 0 #000000 !important;
+}
+
+[data-style="minecraft"] input,
+[data-style="minecraft"] textarea,
+[data-style="minecraft"] select,
+[data-style="minecraft"] .MuiOutlinedInput-root {
+    border-radius: 0 !important;
+    border: 2px solid #000000 !important;
+    background: linear-gradient(180deg, rgba(30, 30, 30, 0.92), rgba(18, 18, 18, 0.95)) !important;
+    color: #f1f1f1 !important;
+    box-shadow: inset 1px 1px 0 rgba(180, 180, 180, 0.2), inset -1px -1px 0 rgba(24, 24, 24, 0.85) !important;
+}
+
+/* Pixel scrollbars */
+[data-style="minecraft"] * {
+    scrollbar-width: thin;
+    scrollbar-color: #9a9a9a #2f2f2f;
+}
+[data-style="minecraft"] ::-webkit-scrollbar { width: 12px; height: 12px; background: #2f2f2f; }
+[data-style="minecraft"] ::-webkit-scrollbar-track {
+    background: #2f2f2f;
+    border: 1px solid #000000;
+    border-radius: 0 !important;
+    box-shadow: inset 1px 1px 0 #5a5a5a, inset -1px -1px 0 #1e1e1e;
+}
+[data-style="minecraft"] ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #b3b3b3 0%, #9a9a9a 45%, #848484 100%);
+    border: 1px solid #000000;
+    border-radius: 0 !important;
+    box-shadow: inset 1px 1px 0 #dedede, inset -1px -1px 0 #5c5c5c;
+}
+[data-style="minecraft"] ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #c1c1c1 0%, #ababab 45%, #939393 100%);
+}
+[data-style="minecraft"] ::-webkit-scrollbar-corner { background: #2f2f2f; border: 1px solid #000000; }
+
+/* ── Minecraft custom font: widen glyph spacing (matches old Quartz) ──────── */
+html[data-current-font*="minecraft" i],
+body[data-current-font*="minecraft" i] {
+    --minecraft-letter-spacing: 0.13em;
+}
+
+html[data-current-font*="minecraft" i] :is(h1, h2, h3, h4, h5, h6,
+    p, span, div, label, a, li, td, th,
+    button, input, textarea, select, option,
+    .MuiTypography-root, .MuiButton-root, .MuiMenuItem-root, .MuiInputBase-input) {
+    letter-spacing: var(--minecraft-letter-spacing) !important;
+}
