@@ -21,7 +21,7 @@
     --glass-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
     --accent-gradient: linear-gradient(135deg, var(--accent), var(--accent-muted));
     --radius: 8px;
-    --titlebar-h: 40px;
+    --titlebar-h: 48px;
     --rail-w: 60px;
 }
 

@@ -18,16 +18,18 @@ export function TitleBar() {
                     src="/quartz-logo.png"
                     alt=""
                     onClick={() => setPage('home')}
-                    className="h-5 w-5 cursor-pointer rounded transition-transform hover:scale-110"
+                    className="q-titlebar-logo h-8 w-8 cursor-pointer rounded transition-transform hover:scale-[1.15]"
                     title="Home"
                 />
-                <span data-tauri-drag-region className="text-[13px] font-semibold tracking-[0.18em] text-white/85">
-                    QUARTZ
+                <span data-tauri-drag-region className="q-titlebar-title text-[14px] font-semibold">
+                    Quartz
                 </span>
             </div>
-            <button onClick={minimize} title="Minimize" className="q-winbtn"><Minus size={15} /></button>
-            <button onClick={maximize} title="Maximize" className="q-winbtn"><Square size={12} /></button>
-            <button onClick={close} title="Close" className="q-winbtn q-winbtn--close"><X size={16} /></button>
+            <div className="q-winbtns">
+                <button onClick={minimize} title="Minimize" className="q-winbtn"><Minus size={18} strokeWidth={2} /></button>
+                <button onClick={maximize} title="Maximize" className="q-winbtn"><Square size={14} strokeWidth={2} /></button>
+                <button onClick={close} title="Close" className="q-winbtn q-winbtn--close"><X size={18} strokeWidth={2} /></button>
+            </div>
         </header>
     );
 }

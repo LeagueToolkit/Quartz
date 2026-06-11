@@ -93,6 +93,11 @@ export function applyFont(name: string) {
         : `"${name}", 'Segoe UI', system-ui, sans-serif`;
     root.style.setProperty('--app-font', stack);
     document.body.style.fontFamily = stack;
+    // Expose the active family name so font-aware CSS (e.g. Minecraft letter
+    // spacing) can key off it, matching old Quartz's data-current-font attribute.
+    const active = !name || name === 'system' ? 'Segoe UI' : name;
+    root.setAttribute('data-current-font', active);
+    document.body.setAttribute('data-current-font', active);
 }
 
 export async function openFontsFolder(): Promise<void> {
