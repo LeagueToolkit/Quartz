@@ -5,6 +5,7 @@ pub mod converter;
 pub mod bin_json;
 pub mod concat;
 pub mod split;
+pub mod bin_editor;
 
 // Re-export ltk-based functions from bridge
 pub use ltk_bridge::{

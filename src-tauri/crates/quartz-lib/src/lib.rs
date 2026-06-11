@@ -7,6 +7,9 @@
 pub mod error;
 pub mod hash;
 pub mod bin;
+pub mod wad_explorer;
+pub mod bumpath;
+pub mod extractor;
 
 // Re-export heed so callers can hold Arc<heed::Env> if needed.
 pub use heed;

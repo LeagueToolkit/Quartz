@@ -1,9 +1,13 @@
 pub mod assets;
+pub mod bin_editor;
 pub mod bins;
+pub mod bumpath;
 pub mod context_menu;
 pub mod extractor;
+pub mod file_ops;
 pub mod hashes;
 pub mod logging;
 pub mod settings;
 pub mod system;
 pub mod themes;
+pub mod wad_explorer;

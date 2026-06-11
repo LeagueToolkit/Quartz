@@ -78,6 +78,20 @@ fn main() {
             commands::context_menu::context_menu_disable,
             commands::extractor::discover_champions,
             commands::extractor::extract_champion_assets,
+            commands::extractor::get_league_path,
+            commands::wad_explorer::wad_mount,
+            commands::wad_explorer::wad_unmount,
+            commands::wad_explorer::wad_list_mounted,
+            commands::wad_explorer::wad_list,
+            commands::wad_explorer::wad_read_chunk,
+            commands::wad_explorer::wad_extract_selected,
+            commands::bin_editor::bin_scale_params,
+            commands::bin_editor::bin_split_skin,
+            commands::bin_editor::bin_consolidate_assets,
+            commands::bumpath::bumpath_repath,
+            commands::file_ops::file_randomize,
+            commands::file_ops::file_rename,
+            commands::file_ops::tools_execute,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Quartz");
