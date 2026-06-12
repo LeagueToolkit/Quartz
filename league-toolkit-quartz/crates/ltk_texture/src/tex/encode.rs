@@ -181,6 +181,34 @@ impl Default for EncodeOptions {
     }
 }
 
+/// Edge-replicate an RGBA8 buffer to the next multiple of 4 in both
+/// dimensions. BC1/3/5/7 are 4x4 block formats, intel_tex expects aligned
+/// surfaces, and the .tex decoder reads `div_ceil(dim, 4)` blocks per mip —
+/// so encoding non-aligned mips needs padding to match what the decoder
+/// (and the game) will read back. Real-world callers hit this on deep mips
+/// of textures whose dimensions aren't powers of two (e.g. 3840x2160 mip 4
+/// is 240x135).
+#[cfg(feature = "intel-tex")]
+fn pad_rgba_to_block_aligned(
+    width: u32,
+    height: u32,
+    rgba: &[u8],
+) -> (u32, u32, Vec<u8>) {
+    let pw = (width + 3) & !3;
+    let ph = (height + 3) & !3;
+    let mut out = vec![0u8; (pw as usize) * (ph as usize) * 4];
+    for y in 0..ph {
+        let src_y = y.min(height.saturating_sub(1));
+        for x in 0..pw {
+            let src_x = x.min(width.saturating_sub(1));
+            let src = ((src_y * width + src_x) * 4) as usize;
+            let dst = ((y * pw + x) * 4) as usize;
+            out[dst..dst + 4].copy_from_slice(&rgba[src..src + 4]);
+        }
+    }
+    (pw, ph, out)
+}
+
 /// Encode an RGBA8 image into the specified format
 ///
 /// # Example
@@ -275,15 +303,20 @@ fn encode_bc1(width: u32, height: u32, rgba_data: &[u8]) -> Result<Vec<u8>, Enco
         return Err(EncodeError::InvalidPixelData);
     }
 
+    // Pad non-aligned mips; see encode_bc7 for the rationale.
+    let (use_w, use_h, mut rgba) = if width % 4 != 0 || height % 4 != 0 {
+        pad_rgba_to_block_aligned(width, height, rgba_data)
+    } else {
+        (width, height, rgba_data.to_vec())
+    };
     // Pre-dither toward RGB565 to reduce visible block artifacts in BC1.
-    let mut rgba = rgba_data.to_vec();
-    floyd_steinberg_dither_rgb565_in_place(width, height, &mut rgba);
+    floyd_steinberg_dither_rgb565_in_place(use_w, use_h, &mut rgba);
 
     let surface = RgbaSurface {
         data: &rgba,
-        width,
-        height,
-        stride: 4 * width,
+        width: use_w,
+        height: use_h,
+        stride: 4 * use_w,
     };
     Ok(bc1::compress_blocks(&surface))
 }
@@ -301,15 +334,20 @@ fn encode_bc3(width: u32, height: u32, rgba_data: &[u8]) -> Result<Vec<u8>, Enco
         return Err(EncodeError::InvalidPixelData);
     }
 
+    // Pad non-aligned mips; see encode_bc7 for the rationale.
+    let (use_w, use_h, mut rgba) = if width % 4 != 0 || height % 4 != 0 {
+        pad_rgba_to_block_aligned(width, height, rgba_data)
+    } else {
+        (width, height, rgba_data.to_vec())
+    };
     // Pre-dither toward RGB565 to reduce visible block artifacts in BC3 (color endpoints).
-    let mut rgba = rgba_data.to_vec();
-    floyd_steinberg_dither_rgb565_in_place(width, height, &mut rgba);
+    floyd_steinberg_dither_rgb565_in_place(use_w, use_h, &mut rgba);
 
     let surface = RgbaSurface {
         data: &rgba,
-        width,
-        height,
-        stride: 4 * width,
+        width: use_w,
+        height: use_h,
+        stride: 4 * use_w,
     };
     Ok(bc3::compress_blocks(&surface))
 }
@@ -324,7 +362,18 @@ fn encode_bc7(width: u32, height: u32, rgba_data: &[u8]) -> Result<Vec<u8>, Enco
         return Err(EncodeError::InvalidPixelData);
     }
 
-    let has_alpha = rgba_data.chunks_exact(4).any(|p| p[3] != 255);
+    // Pad non-aligned mips to multiples of 4 so intel_tex produces the
+    // div_ceil block count the .tex decoder reads back.
+    let padded;
+    let (use_w, use_h, use_data): (u32, u32, &[u8]) = if width % 4 != 0 || height % 4 != 0 {
+        let p = pad_rgba_to_block_aligned(width, height, rgba_data);
+        padded = p.2;
+        (p.0, p.1, padded.as_slice())
+    } else {
+        (width, height, rgba_data)
+    };
+
+    let has_alpha = use_data.chunks_exact(4).any(|p| p[3] != 255);
     let settings = if has_alpha {
         bc7::alpha_slow_settings()
     } else {
@@ -332,10 +381,10 @@ fn encode_bc7(width: u32, height: u32, rgba_data: &[u8]) -> Result<Vec<u8>, Enco
     };
 
     let surface = RgbaSurface {
-        data: rgba_data,
-        width,
-        height,
-        stride: 4 * width,
+        data: use_data,
+        width: use_w,
+        height: use_h,
+        stride: 4 * use_w,
     };
     Ok(bc7::compress_blocks(&settings, &surface))
 }
@@ -354,17 +403,27 @@ fn encode_bc5(width: u32, height: u32, rgba_data: &[u8]) -> Result<Vec<u8>, Enco
         return Err(EncodeError::InvalidPixelData);
     }
 
-    let mut rg = vec![0u8; width as usize * height as usize * 2];
-    for (i, px) in rgba_data.chunks_exact(4).enumerate() {
+    // Pad non-aligned mips; see encode_bc7 for the rationale.
+    let padded;
+    let (use_w, use_h, use_rgba): (u32, u32, &[u8]) = if width % 4 != 0 || height % 4 != 0 {
+        let p = pad_rgba_to_block_aligned(width, height, rgba_data);
+        padded = p.2;
+        (p.0, p.1, padded.as_slice())
+    } else {
+        (width, height, rgba_data)
+    };
+
+    let mut rg = vec![0u8; use_w as usize * use_h as usize * 2];
+    for (i, px) in use_rgba.chunks_exact(4).enumerate() {
         rg[i * 2] = px[0];
         rg[i * 2 + 1] = px[1];
     }
 
     let surface = RgSurface {
         data: &rg,
-        width,
-        height,
-        stride: 2 * width,
+        width: use_w,
+        height: use_h,
+        stride: 2 * use_w,
     };
     Ok(bc5::compress_blocks(&surface))
 }
