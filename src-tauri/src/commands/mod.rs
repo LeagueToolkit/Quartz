@@ -7,6 +7,7 @@ pub mod extractor;
 pub mod file_ops;
 pub mod hashes;
 pub mod logging;
+pub mod paint;
 pub mod settings;
 pub mod system;
 pub mod themes;

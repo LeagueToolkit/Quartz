@@ -7,7 +7,7 @@
  */
 
 import ColorHandler from './ColorHandler';
-import type { RecolorMode } from './colorOps';
+import type { RecolorModeId as RecolorMode } from '@/lib/api';
 
 const STORAGE_KEY = 'Paint2SavedPalettes';
 

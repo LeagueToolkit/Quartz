@@ -6,7 +6,8 @@ import {
     FolderOpen, RefreshCw, Zap, Download, Settings as SettingsIcon, Upload, Database,
     File as FileIcon, X, FileText, Clock,
 } from 'lucide-react';
-import { wadReadChunk, wadExtractSelected } from '@/lib/api/wad';
+import { wadReadChunk, wadDecodeTexture, wadExtractSelected } from '@/lib/api/wad';
+import { useConfigStore } from '@/lib/stores';
 import { log } from '@/lib/util/logger';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
@@ -75,9 +76,10 @@ function writeSettings(patch: Partial<WadSettings>) {
 const COMP_LABELS = ['Raw', 'Gzip', 'Sat', 'Zstd', 'ZstdC'];
 const COMP_COLORS = ['rgba(255,255,255,0.4)', '#f59e0b', '#8b5cf6', '#06b6d4', '#10b981'];
 
-// File extensions the browser can render directly from raw chunk bytes. DDS/TEX
-// need a decoder that the Rust backend doesn't expose yet (see TODO below).
+// File extensions the browser can render directly from raw chunk bytes.
 const BROWSER_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp']);
+// League texture formats — decoded to PNG by the backend (wad_decode_texture).
+const TEXTURE_EXTS = new Set(['dds', 'tex']);
 const IMAGE_MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp' };
 const TEXTURE_PREVIEW_LIMIT_BYTES = 20 * 1024 * 1024;
 
@@ -163,7 +165,10 @@ function FolderTextureGallery({ selectedNode }: { selectedNode: SelectedNode }) 
         if (selectedNode.type !== 'dir') return () => { cancelled = true; };
 
         const { node, wadPath } = selectedNode;
-        const files = collectTextureFilesFromDir(node).filter((f) => BROWSER_IMAGE_EXTS.has(extOf(f.extension || f.name)));
+        const files = collectTextureFilesFromDir(node).filter((f) => {
+            const ext = extOf(f.extension || f.name);
+            return BROWSER_IMAGE_EXTS.has(ext) || TEXTURE_EXTS.has(ext);
+        });
         if (files.length === 0) return () => { cancelled = true; };
 
         const totalPreviewBytes = files.reduce((sum, f) => sum + (Number(f.decompressedSize) || 0), 0);
@@ -183,9 +188,10 @@ function FolderTextureGallery({ selectedNode }: { selectedNode: SelectedNode }) 
                     const file = files[i];
                     const ext = extOf(file.extension || file.name);
                     try {
-                        const b64 = await wadReadChunk(wadPath, file.pathHash);
+                        const url = TEXTURE_EXTS.has(ext)
+                            ? `data:image/png;base64,${await wadDecodeTexture(wadPath, file.pathHash)}`
+                            : `data:${IMAGE_MIME[ext] || 'image/png'};base64,${await wadReadChunk(wadPath, file.pathHash)}`;
                         if (cancelled) return;
-                        const url = `data:${IMAGE_MIME[ext] || 'image/png'};base64,${b64}`;
                         setItems((prev) => [...prev, { path: file.path, name: file.name, url }]);
                     } catch {
                         // Ignore per-file preview failures.
@@ -238,12 +244,10 @@ function FolderTextureGallery({ selectedNode }: { selectedNode: SelectedNode }) 
 }
 
 /* ── File detail / preview panel ──────────────────────────────────────────── */
-// TODO(backend): DDS/TEX texture decoding, .bin/.troybin/.luabin text
-// conversion and the SKN/SKL/ANM model inspector all relied on Electron-only
-// IPC (wad.readBinAsText, wad.readTroybinAsText, wad.parseSknBins, ModelInspect).
-// The Tauri backend exposes raw chunk bytes only, so those previews fall back to
-// a notice until matching commands land. Browser-native images + UTF-8 text
-// previews work today.
+// Browser-native images, DDS/TEX textures (decoded to PNG by the backend) and
+// UTF-8 text preview inline. .bin/.troybin/.luabin text conversion and the
+// SKN/SKL/ANM model inspector relied on Electron-only IPC; those still fall back
+// to an "extract to inspect" notice until matching Tauri commands land.
 function FileDetailPanel({ selectedNode, onClose }: { selectedNode: SelectedNode | null; onClose: () => void }) {
     const [previewUrl, setPreviewUrl] = useState('');
     const [previewError, setPreviewError] = useState('');
@@ -260,12 +264,14 @@ function FileDetailPanel({ selectedNode, onClose }: { selectedNode: SelectedNode
     const wadPath = selectedNode?.wadPath || '';
     const nodeExt = extOf(node?.extension || node?.name);
 
-    // Browser-decodable image preview (png/jpg/...). DDS/TEX are flagged below.
+    // Image preview: browser-native formats decode in the webview; DDS/TEX go
+    // through the backend texture decoder, which returns PNG.
     useEffect(() => {
         let cancelled = false;
         setPreviewUrl(''); setPreviewError(''); setPreviewLoading(false); setPreviewLarge(null);
         if (!node) return () => { cancelled = true; };
-        if (!BROWSER_IMAGE_EXTS.has(nodeExt)) return () => { cancelled = true; };
+        const isTexture = TEXTURE_EXTS.has(nodeExt);
+        if (!BROWSER_IMAGE_EXTS.has(nodeExt) && !isTexture) return () => { cancelled = true; };
 
         const key = `${wadPath}:${node.pathHash}`;
         const decompressedSize = Number(node.decompressedSize) || 0;
@@ -275,12 +281,14 @@ function FileDetailPanel({ selectedNode, onClose }: { selectedNode: SelectedNode
         }
 
         setPreviewLoading(true);
-        wadReadChunk(wadPath, node.pathHash)
-            .then((b64) => {
-                if (cancelled) return;
+        const load = isTexture
+            ? wadDecodeTexture(wadPath, node.pathHash).then((b64) => `data:image/png;base64,${b64}`)
+            : wadReadChunk(wadPath, node.pathHash).then((b64) => {
                 if (!b64) throw new Error('Empty chunk payload');
-                setPreviewUrl(`data:${IMAGE_MIME[nodeExt] || 'image/png'};base64,${b64}`);
-            })
+                return `data:${IMAGE_MIME[nodeExt] || 'image/png'};base64,${b64}`;
+            });
+        load
+            .then((url) => { if (!cancelled) setPreviewUrl(url); })
             .catch((e) => { if (!cancelled) setPreviewError((e as Error)?.message || 'Failed to render preview'); })
             .finally(() => { if (!cancelled) setPreviewLoading(false); });
         return () => { cancelled = true; };
@@ -338,9 +346,8 @@ function FileDetailPanel({ selectedNode, onClose }: { selectedNode: SelectedNode
     const compLabel = COMP_LABELS[node.compressionType ?? 0] ?? `t${node.compressionType}`;
     const compColor = COMP_COLORS[node.compressionType ?? 0] ?? 'rgba(255,255,255,0.4)';
     const wadName = toPosix(wadPath).split('/').pop()?.replace(/\.wad\.client$/i, '') ?? '';
-    const isImageFile = BROWSER_IMAGE_EXTS.has(nodeExt);
-    const needsDecoder = nodeExt === 'dds' || nodeExt === 'tex'
-        || nodeExt === 'bin' || nodeExt === 'troybin' || nodeExt === 'luabin' || nodeExt === 'luabin64'
+    const isImageFile = BROWSER_IMAGE_EXTS.has(nodeExt) || TEXTURE_EXTS.has(nodeExt);
+    const needsDecoder = nodeExt === 'bin' || nodeExt === 'troybin' || nodeExt === 'luabin' || nodeExt === 'luabin64'
         || nodeExt === 'skn' || nodeExt === 'skl' || nodeExt === 'anm';
 
     return (
@@ -586,6 +593,7 @@ export function WadExplorer() {
     const [recents, setRecents] = useState<Recents>(() => readRecents());
     const [settings, setSettings] = useState<WadSettings>(() => readSettings());
     const [gamePath, setGamePath] = useState(settings.gamePath);
+    const configLeaguePath = useConfigStore((s) => s.settings.leaguePath);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [selectionMode, setSelectionMode] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
@@ -698,6 +706,20 @@ export function WadExplorer() {
 
     const handleGamePathBlur = useCallback(() => { setSettings(writeSettings({ gamePath })); }, [gamePath]);
     const handleGamePathKey = useCallback((e: React.KeyboardEvent) => { if (e.key === 'Enter' && gamePath) scan(gamePath); }, [gamePath, scan]);
+
+    /* Default the game path from the centralized League install setting when the
+       explorer has none of its own. League WADs live under <install>/Game, so we
+       append it unless the configured path already points at a Game folder. */
+    const didDeriveGamePath = useRef(false);
+    useEffect(() => {
+        if (didDeriveGamePath.current || gamePath || !configLeaguePath) return;
+        didDeriveGamePath.current = true;
+        const root = configLeaguePath.replace(/[\\/]+$/, '');
+        const derived = /[\\/]game$/i.test(root) ? root : `${root}\\Game`;
+        setGamePath(derived);
+        setSettings(writeSettings({ gamePath: derived }));
+        scan(derived);
+    }, [configLeaguePath, gamePath, scan]);
 
     /* ── Context menu ─────────────────────────────────────────────────────── */
     const handleWadContextMenu = useCallback((e: ReactMouseEvent, row: FlatRow) => {

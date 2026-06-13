@@ -10,7 +10,7 @@ import {
     type Champion,
     type ExtractProgress,
 } from '@/lib/api';
-import { useConfigStore } from '@/lib/stores';
+import { useConfigStore, useNavigationStore } from '@/lib/stores';
 import { log } from '@/lib/util/logger';
 
 import {
@@ -37,7 +37,6 @@ import { TopControls } from './assetextractor/components/TopControls';
 import { ChampionSkinsPanel } from './assetextractor/components/ChampionSkinsPanel';
 import { SkinlineResultsPanel } from './assetextractor/components/SkinlineResultsPanel';
 import { SelectionSummaryBar } from './assetextractor/components/SelectionSummaryBar';
-import { SettingsModal } from './assetextractor/components/SettingsModal';
 import { WarningModal } from './assetextractor/components/WarningModal';
 import { SearchHelpModal } from './assetextractor/components/SearchHelpModal';
 import { ExtractionModeModal, type ExtractionPayload } from './assetextractor/components/ExtractionModeModal';
@@ -73,7 +72,7 @@ interface NormalizedSelection {
 
 export function AssetExtractor() {
     const wadOutputPath = useConfigStore((s) => s.settings.wadOutputPath);
-    const updateConfig = useConfigStore((s) => s.update);
+    const goToSettings = useNavigationStore((s) => s.setPage);
 
     const [champions, setChampions] = useState<ExtractorChampion[]>([]);
     const [filteredChampions, setFilteredChampions] = useState<ExtractorChampion[]>([]);
@@ -90,8 +89,6 @@ export function AssetExtractor() {
     const [consoleLogs, setConsoleLogs] = useState<ConsoleLog[]>([]);
     const [selectedSkins, setSelectedSkins] = useState<SelectedSkin[]>([]);
     const [showSearchInfo, setShowSearchInfo] = useState(false);
-    const [showSettings, setShowSettings] = useState(false);
-
     const [loadingSkins, setLoadingSkins] = useState<Record<string, boolean>>({});
     const [extractingSkins, setExtractingSkins] = useState<Record<string, boolean>>({});
     const [extractionProgress, setExtractionProgress] = useState<Record<string, string>>({});
@@ -101,7 +98,6 @@ export function AssetExtractor() {
     const chromaCacheRef = useRef<Set<string>>(new Set());
 
     const [leaguePath, setLeaguePath] = useState('');
-    const [hashPath] = useState('');
     const extractionPath = normalizePathString(wadOutputPath);
 
     const [isExtracting, setIsExtracting] = useState(false);
@@ -111,9 +107,6 @@ export function AssetExtractor() {
     const [showExtractionModeModal, setShowExtractionModeModal] = useState(false);
     const [pendingExtractionSkins, setPendingExtractionSkins] = useState<NormalizedSelection[]>([]);
     const [recentOutputPaths, setRecentOutputPaths] = useState<string[]>(() => loadRecentOutputPaths());
-
-    const [showLeaguePathTooltip, setShowLeaguePathTooltip] = useState(false);
-    const [showExtractionPathTooltip, setShowExtractionPathTooltip] = useState(false);
 
     const [showWarningModal, setShowWarningModal] = useState(false);
     const [warningDismissedThisSession, setWarningDismissedThisSession] = useState(false);
@@ -529,38 +522,6 @@ export function AssetExtractor() {
         return typeof dir === 'string' ? dir : '';
     };
 
-    const handleAutoDetectLeaguePath = async () => {
-        try {
-            const detected = await getLeaguePath();
-            if (detected) {
-                setLeaguePath(detected);
-                await updateConfig({ leaguePath: detected });
-                addConsoleLog(`Auto-detected League folder: ${detected}`, 'success');
-                return { success: true, path: detected };
-            }
-            return { success: false, error: 'Could not find League folder' };
-        } catch (e) {
-            log.error('autoDetectLeaguePath', e);
-            return { success: false, error: 'Detection failed' };
-        }
-    };
-
-    const handleBrowseLeaguePath = async () => {
-        const result = await pickDirectory();
-        if (result) {
-            setLeaguePath(result);
-            await updateConfig({ leaguePath: result });
-        }
-    };
-
-    const handleBrowseExtractionPath = async () => {
-        const result = await pickDirectory();
-        if (result) {
-            await updateConfig({ wadOutputPath: result });
-            addRecentOutputPath(result);
-        }
-    };
-
     const handleBrowseOverrideOutputPath = async (): Promise<string> => {
         const result = await pickDirectory();
         if (result) addRecentOutputPath(result);
@@ -709,7 +670,7 @@ export function AssetExtractor() {
     const handleWarningOpenSettings = () => {
         setShowWarningModal(false);
         setWarningDismissedThisSession(true);
-        setShowSettings(true);
+        goToSettings('settings');
     };
 
     /* ── Sidebar resize ───────────────────────────────────────────────────── */
@@ -778,7 +739,7 @@ export function AssetExtractor() {
                         isExtracting={isExtracting}
                         isCancelling={isCancelling}
                         onCancelOperations={cancelOperations}
-                        onOpenSettings={() => setShowSettings(true)}
+                        onOpenSettings={() => goToSettings('settings')}
                     />
 
                     {showSkinlineSearch ? (
@@ -823,27 +784,6 @@ export function AssetExtractor() {
                 isSetupValid={isSetupValid}
                 onExtract={handleExtractWad}
                 onClearAll={() => setSelectedSkins([])}
-            />
-
-            <SettingsModal
-                open={showSettings}
-                onClose={() => {
-                    setShowSettings(false);
-                    setShowLeaguePathTooltip(false);
-                    setShowExtractionPathTooltip(false);
-                }}
-                leaguePath={leaguePath}
-                extractionPath={extractionPath}
-                hashPath={hashPath}
-                showLeaguePathTooltip={showLeaguePathTooltip}
-                setShowLeaguePathTooltip={setShowLeaguePathTooltip}
-                showExtractionPathTooltip={showExtractionPathTooltip}
-                setShowExtractionPathTooltip={setShowExtractionPathTooltip}
-                onAutoDetectLeaguePath={handleAutoDetectLeaguePath}
-                onBrowseLeaguePath={handleBrowseLeaguePath}
-                onBrowseExtractionPath={handleBrowseExtractionPath}
-                onLeaguePathChange={(v) => { setLeaguePath(v); updateConfig({ leaguePath: v }); }}
-                onExtractionPathChange={(v) => { updateConfig({ wadOutputPath: v }); }}
             />
 
             <ExtractionModeModal

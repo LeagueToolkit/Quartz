@@ -19,18 +19,17 @@ import TuneIcon from '@mui/icons-material/Tune';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 import { open } from '@tauri-apps/plugin-dialog';
-import { readBin, writeBin } from '@/lib/api';
+import {
+    paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintUndo, paintSave,
+    type VfxModel, type VfxEmitter, type ColorTargetId,
+    type RecolorModeId, type PaletteStopInput, type RecolorOptionsInput,
+} from '@/lib/api';
 import { useNotificationStore } from '@/lib/stores';
 
 import './paint/Paint.css';
-import { parseVfxFile, type ParsedFile, type ColorKeyframe, type ColorType } from './paint/utils/parser';
-import {
-    applyPaletteToEmitters, applyPaletteToMaterials,
-    type RecolorMode, type PaletteStop, type ColorFilterFn,
-} from './paint/utils/colorOps';
 import ColorHandler from './paint/utils/ColorHandler';
 import { savePalette, loadAllPalettes, deletePalette } from './paint/utils/paletteManager';
-import { createColorFilter, getColorDescription } from './paint/utils/colorFilter';
+import { getColorDescription } from './paint/utils/colorFilter';
 
 import Toolbar from './paint/components/Toolbar';
 import SystemList from './paint/components/SystemList';
@@ -40,7 +39,6 @@ import {
     cancelTextureHoverClose, removeTextureHoverPreview, scheduleTextureHoverClose, showTextureHoverPreview,
 } from './paint/components/textureHoverPreview';
 import { useMinecraftStyle } from './paint/useMinecraftStyle';
-import type { Emitter } from './paint/utils/parser';
 
 const controlLabelStyle = {
     fontFamily: 'JetBrains Mono, monospace',
@@ -135,10 +133,10 @@ function Paint() {
     const [isLoading, setIsLoading] = useState(false);
     const [statusMessage, setStatusMessage] = useState('Ready');
 
-    // === PARSED DATA ===
-    const [parsedFile, setParsedFile] = useState<ParsedFile | null>(null);
-    const linesRef = useRef<string[] | null>(null);
-    const [undoStack, setUndoStack] = useState<string[]>([]);
+    // === RESIDENT MODEL ===
+    const [model, setModel] = useState<VfxModel | null>(null);
+    const [sessionId, setSessionId] = useState<number | null>(null);
+    const [canUndo, setCanUndo] = useState(false);
     const [paletteNameDialogOpen, setPaletteNameDialogOpen] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [paletteToDelete, setPaletteToDelete] = useState<number | null>(null);
@@ -160,7 +158,7 @@ function Paint() {
     const [searchByTexture, setSearchByTexture] = useState(false);
 
     // === MODE & VALUES ===
-    const [mode, setMode] = useState<RecolorMode>('random');
+    const [mode, setMode] = useState<RecolorModeId>('random');
 
     const [palette, setPalette] = useState<ColorHandler[]>(() => {
         const def = new ColorHandler();
@@ -194,35 +192,43 @@ function Paint() {
     // FILE OPERATIONS
     // ============================================================
 
+    const sessionRef = useRef<number | null>(null);
+
     const loadBinFile = useCallback(async (selectedPath: string) => {
         if (!selectedPath) return;
         setIsLoading(true);
         setStatusMessage('Loading...');
         try {
             const baseName = (selectedPath.split(/[\\/]/).pop() || selectedPath).replace(/\.(bin|py)$/i, '');
-            setStatusMessage('Reading bin...');
-            const content = await readBin(selectedPath);
+            setStatusMessage('Opening bin...');
 
-            setStatusMessage('Parsing...');
-            const parsed = parseVfxFile(content);
-            linesRef.current = parsed.lines;
-            setParsedFile(parsed);
+            // Free the previous resident tree before opening a new one.
+            if (sessionRef.current !== null) {
+                const prev = sessionRef.current;
+                sessionRef.current = null;
+                void paintClose(prev).catch(() => undefined);
+            }
+
+            const { sessionId: newSession, model: newModel } = await paintOpen(selectedPath);
+            sessionRef.current = newSession;
+            setSessionId(newSession);
+            setModel(newModel);
 
             setFilePath(selectedPath);
             setFileName(baseName);
             setFileSaved(true);
             setSelection(new Set());
-            setUndoStack([]);
+            setCanUndo(false);
 
             if (autoExpandRef.current) {
-                setExpandedSystems(new Set(parsed.systemOrder));
-                setExpandedMaterials(new Set(parsed.materialOrder || []));
+                setExpandedSystems(new Set(newModel.systemOrder));
+                setExpandedMaterials(new Set(newModel.materialOrder || []));
             } else {
                 setExpandedSystems(new Set());
                 setExpandedMaterials(new Set());
             }
 
-            setStatusMessage(`Loaded ${parsed.stats.systemCount} systems and ${parsed.stats.emitterCount} emitters`);
+            setStatusMessage(`Loaded ${newModel.stats.systemCount} systems and ${newModel.stats.emitterCount} emitters`);
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             setStatusMessage(`Error: ${msg}`);
@@ -244,15 +250,14 @@ function Paint() {
     }, [loadBinFile]);
 
     const handleSave = useCallback(async () => {
-        if (!filePath || !linesRef.current) return;
+        if (sessionId === null) return;
         setIsLoading(true);
         setStatusMessage('Saving...');
         try {
-            const content = linesRef.current.join('\n');
-            await writeBin(content, filePath);
+            const savedPath = await paintSave(sessionId);
             setFileSaved(true);
             setStatusMessage('Saved successfully');
-            notify('success', `Saved ${filePath.split(/[\\/]/).pop()}`);
+            notify('success', `Saved ${savedPath.split(/[\\/]/).pop()}`);
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             setStatusMessage(`Save error: ${msg}`);
@@ -260,49 +265,73 @@ function Paint() {
         } finally {
             setIsLoading(false);
         }
-    }, [filePath, notify]);
+    }, [sessionId, notify]);
 
     // ============================================================
-    // COLOR FILTER
+    // MODEL LOOKUPS
     // ============================================================
 
-    const getColorFilterPredicate = useCallback((): ColorFilterFn | null => {
-        if (!colorFilterEnabled || targetColors.length === 0) return null;
-        return createColorFilter(targetColors, colorTolerance);
-    }, [colorFilterEnabled, targetColors, colorTolerance]);
+    const systemMap = useMemo(() => new Map((model?.systems ?? []).map(s => [s.key, s])), [model]);
+    const emitterMap = useMemo(() => new Map((model?.emitters ?? []).map(e => [e.key, e])), [model]);
 
     // ============================================================
     // RECOLOR
     // ============================================================
 
     const visibleSelectionCount = useMemo(() => {
-        if (!parsedFile || selection.size === 0) return 0;
+        if (!model || selection.size === 0) return 0;
         if (!searchQuery && variantFilter === 'all') return selection.size;
 
         const searchLower = searchQuery.toLowerCase();
         let count = 0;
         for (const emitterKey of selection) {
-            const emitter = parsedFile.emitters.get(emitterKey);
+            const emitter = emitterMap.get(emitterKey);
             if (!emitter) continue;
             if (variantFilter === 'v1' && !emitter.name.toLowerCase().endsWith('_variant1')) continue;
             if (variantFilter === 'v2' && !emitter.name.toLowerCase().endsWith('_variant2')) continue;
             if (searchQuery) {
-                const system = parsedFile.systems.get(emitter.systemKey);
+                const system = systemMap.get(emitter.systemKey);
                 const systemMatches = (system?.name || '').toLowerCase().includes(searchLower) || (emitter.systemKey || '').toLowerCase().includes(searchLower);
                 if (!systemMatches) {
                     const emitterMatches = (emitter.name || '').toLowerCase().includes(searchLower) ||
-                        (searchByTexture && ((emitter.texturePath && emitter.texturePath.toLowerCase().includes(searchLower)) ||
-                            (emitter.textures && emitter.textures.some(t => t.path.toLowerCase().includes(searchLower)))));
+                        (searchByTexture && emitter.textures.some(t => t.path.toLowerCase().includes(searchLower)));
                     if (!emitterMatches) continue;
                 }
             }
             count++;
         }
         return count;
-    }, [parsedFile, selection, searchQuery, variantFilter, searchByTexture]);
+    }, [model, emitterMap, systemMap, selection, searchQuery, variantFilter, searchByTexture]);
 
-    const handleRecolor = useCallback(() => {
-        if (!parsedFile || selection.size === 0) {
+    // Compute the replacement color for one material param the way the old
+    // applyPaletteToMaterials did, given the param's current value.
+    const computeMaterialColor = useCallback((current: number[], paletteData: PaletteStopInput[]): [number, number, number, number] => {
+        switch (mode) {
+            case 'shift':
+            case 'shift-hue': {
+                const handler = new ColorHandler(current);
+                if (mode === 'shift') {
+                    handler.HSLShift(hslValues.h, hslValues.s, hslValues.l);
+                } else if (hueTarget !== null) {
+                    const [, s, l] = handler.ToHSL();
+                    handler.InputHSL([hueTarget / 360, s, l]);
+                }
+                return handler.vec4;
+            }
+            case 'random':
+            case 'random-keyframe':
+            case 'materials': {
+                const pick = paletteData[Math.floor(Math.random() * paletteData.length)];
+                return pick.vec4;
+            }
+            case 'linear':
+            default:
+                return paletteData[0].vec4;
+        }
+    }, [mode, hslValues, hueTarget]);
+
+    const handleRecolor = useCallback(async () => {
+        if (!model || sessionId === null || selection.size === 0) {
             setStatusMessage('Select emitters first');
             return;
         }
@@ -312,7 +341,7 @@ function Paint() {
             effectiveSelection = new Set();
             const searchLower = searchQuery.toLowerCase();
             for (const emitterKey of selection) {
-                const emitter = parsedFile.emitters.get(emitterKey);
+                const emitter = emitterMap.get(emitterKey);
                 if (!emitter) {
                     // material keys (mat::...) survive search/variant filtering
                     if (emitterKey.startsWith('mat::')) effectiveSelection.add(emitterKey);
@@ -323,12 +352,11 @@ function Paint() {
 
                 let isVisible = true;
                 if (searchQuery) {
-                    const system = parsedFile.systems.get(emitter.systemKey);
+                    const system = systemMap.get(emitter.systemKey);
                     const systemMatches = (system?.name || '').toLowerCase().includes(searchLower) || (emitter.systemKey || '').toLowerCase().includes(searchLower);
                     if (!systemMatches) {
                         const emitterMatches = (emitter.name || '').toLowerCase().includes(searchLower) ||
-                            (searchByTexture && ((emitter.texturePath && emitter.texturePath.toLowerCase().includes(searchLower)) ||
-                                (emitter.textures && emitter.textures.some(t => t.path.toLowerCase().includes(searchLower)))));
+                            (searchByTexture && emitter.textures.some(t => t.path.toLowerCase().includes(searchLower)));
                         if (!emitterMatches) isVisible = false;
                     }
                 }
@@ -340,63 +368,111 @@ function Paint() {
             }
         }
 
-        if (linesRef.current) {
-            const content = linesRef.current.join('\n');
-            setUndoStack(prev => {
-                const next = [...prev, content];
-                if (next.length > 20) return next.slice(1);
-                return next;
-            });
-        }
-
-        const paletteData: PaletteStop[] = palette.map(c => ({
+        const paletteData: PaletteStopInput[] = palette.map(c => ({
             vec4: c.vec4 ? [c.vec4[0], c.vec4[1], c.vec4[2], 1] : [0, 0, 0, 1],
             time: c.time || 0,
         }));
 
-        const targets: ColorType[] = [];
-        if (targetBaseColor) targets.push('color');
-        if (targetBC) targets.push('birthColor');
-        if (targetOC) targets.push('fresnelColor');
-        if (targetLC) targets.push('lingerColor');
+        const colorTargets: ColorTargetId[] = [];
+        if (targetBaseColor) colorTargets.push('color');
+        if (targetBC) colorTargets.push('birthColor');
+        if (targetOC) colorTargets.push('fresnelColor');
+        if (targetLC) colorTargets.push('lingerColor');
 
-        if (targets.length === 0) {
+        if (colorTargets.length === 0) {
             setStatusMessage('Error: No color targets selected (BC, OC, etc)');
             return;
         }
 
-        const emitterKeys = new Set<string>();
-        const materialKeys = new Set<string>();
+        const emitterKeys: string[] = [];
+        const materialSelectionKeys: string[] = [];
         for (const key of effectiveSelection) {
-            if (key.startsWith('mat::')) materialKeys.add(key);
-            else emitterKeys.add(key);
+            if (key.startsWith('mat::')) materialSelectionKeys.push(key);
+            else emitterKeys.push(key);
         }
 
-        let modifiedCount = 0;
-        const opts = { mode, ignoreBlackWhite, hslShift: hslValues, hueTarget, colorFilter: getColorFilterPredicate() };
+        const options: RecolorOptionsInput = {
+            mode,
+            ignoreBlackWhite,
+            hslShift: [hslValues.h, hslValues.s, hslValues.l],
+            hueTarget,
+            seed: Date.now() >>> 0,
+        };
 
-        if (emitterKeys.size > 0) {
-            modifiedCount += applyPaletteToEmitters(parsedFile, emitterKeys, targets, paletteData, opts);
+        try {
+            let changed = 0;
+            let nextModel = model;
+
+            if (emitterKeys.length > 0) {
+                const result = await paintRecolor(sessionId, emitterKeys, colorTargets, paletteData, options);
+                changed += result.changed;
+                nextModel = result.model;
+            }
+
+            // Materials have no model-refetch command; patch the local model optimistically.
+            if (materialSelectionKeys.length > 0) {
+                const matEdits: { materialKey: string; paramName: string; color: [number, number, number, number] }[] = [];
+                for (const selectionKey of materialSelectionKeys) {
+                    const parts = selectionKey.split('::');
+                    if (parts.length !== 3 || parts[0] !== 'mat') continue;
+                    const [, materialKey, paramName] = parts;
+                    const material = nextModel.materials.find(m => m.key === materialKey);
+                    const param = material?.colorParams.find(p => p.name === paramName);
+                    if (!material || !param || !param.isColor) continue;
+                    const color = computeMaterialColor(param.values, paletteData);
+                    await paintSetMaterialParam(sessionId, selectionKey, color, true);
+                    matEdits.push({ materialKey, paramName, color });
+                    changed += 1;
+                }
+
+                if (matEdits.length > 0) {
+                    nextModel = {
+                        ...nextModel,
+                        materials: nextModel.materials.map(m => {
+                            const edits = matEdits.filter(e => e.materialKey === m.key);
+                            if (edits.length === 0) return m;
+                            return {
+                                ...m,
+                                colorParams: m.colorParams.map(p => {
+                                    const edit = edits.find(e => e.paramName === p.name);
+                                    if (!edit) return p;
+                                    // Preserve alpha — paintSetMaterialParam was called with preserveAlpha.
+                                    return { ...p, values: [edit.color[0], edit.color[1], edit.color[2], p.values[3]] as [number, number, number, number] };
+                                }),
+                            };
+                        }),
+                    };
+                }
+            }
+
+            setModel(nextModel);
+            setCanUndo(true);
+            setFileSaved(false);
+            setStatusMessage(`Recolored ${changed} properties`);
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            setStatusMessage(`Recolor error: ${msg}`);
+            notify('error', `Recolor failed: ${msg}`);
         }
-        if (materialKeys.size > 0) {
-            modifiedCount += applyPaletteToMaterials(parsedFile, materialKeys, paletteData, opts);
+    }, [model, sessionId, emitterMap, systemMap, selection, palette, mode, ignoreBlackWhite, hslValues, hueTarget, searchQuery, variantFilter, searchByTexture, targetBaseColor, targetBC, targetOC, targetLC, computeMaterialColor, notify]);
+
+    const handleUndo = useCallback(async () => {
+        if (sessionId === null) return;
+        try {
+            const restored = await paintUndo(sessionId);
+            if (restored) {
+                setModel(restored);
+                setFileSaved(false);
+                setStatusMessage('Restored previous state');
+            } else {
+                setCanUndo(false);
+                setStatusMessage('Nothing to undo');
+            }
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            setStatusMessage(`Undo error: ${msg}`);
         }
-
-        setParsedFile({ ...parsedFile });
-        setFileSaved(false);
-        setStatusMessage(`Recolored ${modifiedCount} properties`);
-    }, [parsedFile, selection, palette, mode, ignoreBlackWhite, hslValues, hueTarget, searchQuery, variantFilter, searchByTexture, targetBaseColor, targetBC, targetOC, targetLC, getColorFilterPredicate]);
-
-    const handleUndo = useCallback(() => {
-        if (undoStack.length === 0) return;
-        const lastContent = undoStack[undoStack.length - 1];
-        setUndoStack(prev => prev.slice(0, -1));
-        const parsed = parseVfxFile(lastContent);
-        linesRef.current = parsed.lines;
-        setParsedFile(parsed);
-        setFileSaved(false);
-        setStatusMessage('Restored previous state');
-    }, [undoStack]);
+    }, [sessionId]);
 
     // ============================================================
     // PALETTE MANAGEMENT
@@ -413,6 +489,14 @@ function Paint() {
     }, []);
 
     useEffect(() => { refreshSavedPalettes(); }, [refreshSavedPalettes]);
+
+    // Free the resident tree when leaving the page.
+    useEffect(() => () => {
+        if (sessionRef.current !== null) {
+            void paintClose(sessionRef.current).catch(() => undefined);
+            sessionRef.current = null;
+        }
+    }, []);
 
     const confirmSavePalette = useCallback(() => {
         if (!newPaletteName.trim()) return;
@@ -459,20 +543,20 @@ function Paint() {
     // ============================================================
 
     const selectAllVisible = useCallback(() => {
-        if (!parsedFile) return;
+        if (!model) return;
         const newSelection = new Set<string>();
-        for (const [key, emitter] of parsedFile.emitters) {
+        for (const emitter of model.emitters) {
             if (lockedSystems.has(emitter.systemKey)) continue;
             if (searchQuery) {
-                const system = parsedFile.systems.get(emitter.systemKey);
+                const system = systemMap.get(emitter.systemKey);
                 const searchLower = searchQuery.toLowerCase();
                 if (!emitter.name.toLowerCase().includes(searchLower) && !system?.name.toLowerCase().includes(searchLower)) continue;
             }
-            newSelection.add(key);
+            newSelection.add(emitter.key);
         }
         setSelection(newSelection);
         setStatusMessage(`Selected ${newSelection.size} emitters`);
-    }, [parsedFile, lockedSystems, searchQuery]);
+    }, [model, systemMap, lockedSystems, searchQuery]);
 
     const selectNone = useCallback(() => setSelection(new Set()), []);
 
@@ -503,27 +587,32 @@ function Paint() {
         });
     }, []);
 
-    const handleMaterialParamValueChange = useCallback((materialKey: string, paramName: string, newValues: number[]) => {
-        if (!parsedFile || !linesRef.current) return;
-        const material = parsedFile.materials?.get(materialKey);
-        if (!material || !material.colorParams) return;
-        const param = material.colorParams.find(p => p.name === paramName);
-        if (!param || typeof param.valueLine !== 'number') return;
-        const lineIdx = param.valueLine;
-        const oldLine = linesRef.current[lineIdx];
-        const [r, g, b, a] = newValues;
-        const newLine = oldLine.replace(/[Vv]alue:\s*vec4\s*=\s*\{[^}]+\}/, `value: vec4 = { ${r}, ${g}, ${b}, ${a} }`);
-        if (newLine !== oldLine) {
-            linesRef.current[lineIdx] = newLine;
-            param.values = newValues;
+    const handleMaterialParamValueChange = useCallback(async (materialKey: string, paramName: string, newValues: number[]) => {
+        if (!model || sessionId === null) return;
+        const material = model.materials.find(m => m.key === materialKey);
+        const param = material?.colorParams.find(p => p.name === paramName);
+        if (!material || !param) return;
+        const values: [number, number, number, number] = [newValues[0], newValues[1], newValues[2], newValues[3]];
+        try {
+            await paintSetMaterialParam(sessionId, `mat::${materialKey}::${paramName}`, values, true);
+            // Optimistic local patch — Rust owns the source of truth on save.
+            setModel(prev => prev && ({
+                ...prev,
+                materials: prev.materials.map(m => m.key !== materialKey ? m : ({
+                    ...m,
+                    colorParams: m.colorParams.map(p => p.name === paramName ? { ...p, values } : p),
+                })),
+            }));
+            setCanUndo(true);
             setFileSaved(false);
             setStatusMessage(`Updated ${paramName}`);
+        } catch (error) {
+            setStatusMessage(`Error: ${error instanceof Error ? error.message : String(error)}`);
         }
-    }, [parsedFile]);
+    }, [model, sessionId]);
 
     const selectSystem = useCallback((systemKey: string, selected: boolean) => {
-        if (!parsedFile) return;
-        const system = parsedFile.systems.get(systemKey);
+        const system = systemMap.get(systemKey);
         if (!system || lockedSystems.has(systemKey)) return;
         setSelection(prev => {
             const next = new Set(prev);
@@ -533,59 +622,64 @@ function Paint() {
             }
             return next;
         });
-    }, [parsedFile, lockedSystems]);
+    }, [systemMap, lockedSystems]);
 
     // ============================================================
     // BLEND MODE LOGIC
     // ============================================================
 
     const handleSelectByBlendMode = useCallback(() => {
-        if (!parsedFile) return;
+        if (!model) return;
         const newSelection = new Set<string>();
         let addedCount = 0;
-        for (const [key, emitter] of parsedFile.emitters) {
+        for (const emitter of model.emitters) {
             if (lockedSystems.has(emitter.systemKey)) continue;
             if (searchQuery) {
-                const system = parsedFile.systems.get(emitter.systemKey);
+                const system = systemMap.get(emitter.systemKey);
                 const searchLower = searchQuery.toLowerCase();
                 if (!emitter.name.toLowerCase().includes(searchLower) && !system?.name.toLowerCase().includes(searchLower)) continue;
             }
             if (emitter.blendMode === blendModeSelect) {
                 if (blendModeChance >= 100 || Math.random() * 100 < blendModeChance) {
-                    newSelection.add(key);
+                    newSelection.add(emitter.key);
                     addedCount++;
                 }
             }
         }
         setSelection(newSelection);
         setStatusMessage(`Selected ${addedCount} emitters with BM ${blendModeSelect}`);
-    }, [parsedFile, blendModeSelect, blendModeChance, lockedSystems, searchQuery]);
+    }, [model, systemMap, blendModeSelect, blendModeChance, lockedSystems, searchQuery]);
 
-    const handleSingleBlendModeChange = useCallback((emitterKey: string, newMode: number) => {
-        if (!parsedFile || !linesRef.current) return;
-        const emitter = parsedFile.emitters.get(emitterKey);
-        if (!emitter || typeof emitter.blendModeLine !== 'number') return;
-        const lineIdx = emitter.blendModeLine;
-        const oldLine = linesRef.current[lineIdx];
-        const newLine = oldLine.replace(/blendMode:\s*u8\s*=\s*\d+/, `blendMode: u8 = ${newMode}`);
-        linesRef.current[lineIdx] = newLine;
-        emitter.blendMode = newMode;
-        setParsedFile({ ...parsedFile });
-        setFileSaved(false);
-        setStatusMessage(`Updated ${emitter.name} to BlendMode ${newMode}`);
-    }, [parsedFile]);
+    const handleSingleBlendModeChange = useCallback(async (emitterKey: string, newMode: number) => {
+        if (!model || sessionId === null) return;
+        const emitter = emitterMap.get(emitterKey);
+        if (!emitter) return;
+        try {
+            await paintSetBlendMode(sessionId, emitterKey, newMode);
+            // Optimistic local patch.
+            setModel(prev => prev && ({
+                ...prev,
+                emitters: prev.emitters.map(e => e.key === emitterKey ? { ...e, blendMode: newMode } : e),
+            }));
+            setCanUndo(true);
+            setFileSaved(false);
+            setStatusMessage(`Updated ${emitter.name} to BlendMode ${newMode}`);
+        } catch (error) {
+            setStatusMessage(`Error: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }, [model, sessionId, emitterMap]);
 
     const toggleLockAll = useCallback(() => {
-        if (!parsedFile) return;
+        if (!model) return;
         const visibleSystems: string[] = [];
-        for (const sysKey of parsedFile.systemOrder) {
-            const system = parsedFile.systems.get(sysKey);
+        for (const sysKey of model.systemOrder) {
+            const system = systemMap.get(sysKey);
             if (!system) continue;
             if (searchQuery) {
                 const searchLower = searchQuery.toLowerCase();
                 const sysMatch = system.name.toLowerCase().includes(searchLower);
                 const emitterMatch = system.emitterKeys.some(ek => {
-                    const em = parsedFile.emitters.get(ek);
+                    const em = emitterMap.get(ek);
                     return em && em.name.toLowerCase().includes(searchLower);
                 });
                 if (!sysMatch && !emitterMatch) continue;
@@ -603,7 +697,7 @@ function Paint() {
             setStatusMessage(`Locked ${visibleSystems.length} systems`);
         }
         setLockedSystems(newLocked);
-    }, [parsedFile, lockedSystems, searchQuery]);
+    }, [model, systemMap, emitterMap, lockedSystems, searchQuery]);
 
     // ============================================================
     // TEXTURE PREVIEW
@@ -611,15 +705,14 @@ function Paint() {
 
     const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const handleTextureHover = useCallback((event: React.MouseEvent, emitter: Emitter) => {
+    const handleTextureHover = useCallback((event: React.MouseEvent, emitter: VfxEmitter) => {
         const buttonElement = event.currentTarget as HTMLElement;
         if (!buttonElement) return;
         cancelTextureHoverClose();
         if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
         hoverTimerRef.current = setTimeout(() => {
             const textures = (emitter.textures || []).map(t => ({ label: t.label, path: t.path }));
-            const meshes = (emitter.meshes || []).map(m => ({ label: m.label, path: m.path }));
-            void showTextureHoverPreview(textures, meshes, buttonElement, filePath);
+            void showTextureHoverPreview(textures, [], buttonElement, filePath);
         }, 200);
     }, [filePath]);
 
@@ -632,7 +725,7 @@ function Paint() {
         removeTextureHoverPreview();
     }, []);
 
-    const importColorsToPalette = useCallback((colors: ColorKeyframe[]) => {
+    const importColorsToPalette = useCallback((colors: { rgba: number[]; time: number }[]) => {
         cleanupColorPickers();
         const newPalette = colors.map(c => {
             const h = new ColorHandler(c.rgba);
@@ -645,18 +738,18 @@ function Paint() {
     }, []);
 
     const applyAutoExpand = useCallback((next: boolean) => {
-        if (!parsedFile) return;
+        if (!model) return;
         if (next) {
-            setExpandedSystems(new Set(parsedFile.systemOrder));
-            setExpandedMaterials(new Set(parsedFile.materialOrder || []));
+            setExpandedSystems(new Set(model.systemOrder));
+            setExpandedMaterials(new Set(model.materialOrder || []));
         } else {
             setExpandedSystems(new Set());
             setExpandedMaterials(new Set());
         }
-    }, [parsedFile]);
+    }, [model]);
 
-    const allSelected = !!(parsedFile && selection.size > 0 && selection.size === parsedFile.emitters.size);
-    const isIndeterminate = !!(parsedFile && selection.size > 0 && selection.size < parsedFile.emitters.size);
+    const allSelected = !!(model && selection.size > 0 && selection.size === model.emitters.length);
+    const isIndeterminate = !!(model && selection.size > 0 && selection.size < model.emitters.length);
 
     return (
         <Box
@@ -930,7 +1023,7 @@ function Paint() {
                         <Typography sx={{ fontSize: '0.7rem', color: 'var(--text-2)', opacity: 0.4 }}>VIEW</Typography>
                     </Box>
                     <MenuItem onClick={() => {
-                        if (parsedFile) { setExpandedSystems(new Set(parsedFile.systemOrder)); setExpandedMaterials(new Set(parsedFile.materialOrder || [])); }
+                        if (model) { setExpandedSystems(new Set(model.systemOrder)); setExpandedMaterials(new Set(model.materialOrder || [])); }
                         setFilterAnchor(null);
                     }}>
                         Expand All
@@ -943,9 +1036,9 @@ function Paint() {
 
             {/* Main List */}
             <Box className="paint2-main-list-wrap" sx={{ flex: 1, overflow: 'hidden' }}>
-                {parsedFile ? (
+                {model ? (
                     <SystemList
-                        parsedFile={parsedFile}
+                        model={model}
                         selection={selection}
                         lockedSystems={lockedSystems}
                         expandedSystems={expandedSystems}
@@ -986,8 +1079,8 @@ function Paint() {
             }}>
                 <Typography sx={{ fontSize: '0.75rem', color: 'var(--accent-muted)', opacity: 0.8 }}>{statusMessage}</Typography>
                 <Box sx={{ display: 'flex', gap: 2 }}>
-                    <button onClick={handleUndo} disabled={undoStack.length === 0} className="paint2-footer-btn is-undo">
-                        Undo ({undoStack.length})
+                    <button onClick={handleUndo} disabled={!canUndo} className="paint2-footer-btn is-undo">
+                        Undo
                     </button>
                     <button onClick={handleRecolor} disabled={selection.size === 0} className="paint2-footer-btn is-recolor">
                         Recolor Selected ({visibleSelectionCount})

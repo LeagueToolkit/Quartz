@@ -5,7 +5,8 @@
  */
 
 import ColorHandler from './ColorHandler';
-import type { ColorFilterFn } from './colorOps';
+
+export type ColorFilterFn = (rgba: number[]) => boolean;
 
 const calculateColorDistance = (color1: number[], color2: number[]): number => {
     const [r1, g1, b1] = color1;

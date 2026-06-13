@@ -27,6 +27,11 @@
     background: color-mix(in srgb, #9ca3af 22%, transparent);
     border-color: #9ca3af;
     text-shadow: 0 0 8px color-mix(in srgb, #9ca3af, transparent 50%);
+    transform: translateY(-1px);
+}
+
+.paint2-footer .paint2-footer-btn:active:not(:disabled) {
+    transform: translateY(0);
 }
 
 .paint2-footer .paint2-footer-btn.is-recolor {
@@ -63,7 +68,7 @@
    wallpaper / liquid themes tint the paint panels consistently. */
 .has-wallpaper .paint2-container .paint-emitter-row.is-selected,
 [data-style="liquid"] .paint2-container .paint-emitter-row.is-selected {
-    background: color-mix(in srgb, var(--accent), transparent 88%) !important;
+    background: color-mix(in srgb, var(--accent), transparent 82%) !important;
 }
 
 .paint2-container .react-window-list {

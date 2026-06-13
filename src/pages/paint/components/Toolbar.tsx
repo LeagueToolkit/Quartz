@@ -7,7 +7,7 @@
 import React from 'react';
 import { Box, Typography, Button, Select, MenuItem, Tooltip, type SelectChangeEvent } from '@mui/material';
 import { useMinecraftStyle } from '../useMinecraftStyle';
-import type { RecolorMode } from '../utils/colorOps';
+import type { RecolorModeId as RecolorMode } from '@/lib/api';
 
 const buttonStyle = {
     background: 'color-mix(in srgb, var(--accent), transparent 95%)',

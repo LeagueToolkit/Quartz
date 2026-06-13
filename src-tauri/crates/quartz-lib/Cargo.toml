@@ -31,8 +31,11 @@ zstd = "0.12"
 indexmap = { version = "2.1", features = ["serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
+# Texture decode for WAD preview (DDS/TEX → RGBA → PNG). Matches rs_tex's image rev.
+image = { version = "0.25", default-features = false, features = ["png"] }
+
 # Logging (macros only)
 tracing = "0.1"
 
-# RitoShark crates — BIN/format handling. Pinned to the same rev Flint uses.
-ritoshark = { git = "https://github.com/RitoShark/RitoShark-Crates", rev = "d6af5ac" }
+# RitoShark crates — BIN/format handling + TEX decode. Pinned to the same rev Flint uses.
+ritoshark = { git = "https://github.com/RitoShark/RitoShark-Crates", rev = "d6af5ac", features = ["tex"] }

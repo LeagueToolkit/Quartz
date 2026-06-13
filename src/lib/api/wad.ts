@@ -37,6 +37,23 @@ export interface WadExtractResult {
     outputDir: string;
 }
 
+/** One WAD found by a game-folder scan. */
+export interface ScannedWad {
+    name: string;
+    path: string;
+    /** Path relative to FINAL, POSIX-separated. */
+    relPath: string;
+    size: number;
+    isVoiceover: boolean;
+}
+
+/** Result of {@link wadScan}: WADs grouped by their top-level FINAL folder. */
+export interface WadScanResult {
+    groups: Record<string, ScannedWad[]>;
+    finalDir: string;
+    total: number;
+}
+
 /** Progress payload emitted on the `wad-extract-progress` event. */
 export interface WadExtractProgress {
     current: number;
@@ -63,9 +80,19 @@ export function wadList(mountId: number): Promise<WadEntry[]> {
     return invokeCommand<WadEntry[]>('wad_list', { mountId });
 }
 
+/** Scan a League install's DATA/FINAL for all WADs, grouped by folder. */
+export function wadScan(gamePath: string): Promise<WadScanResult> {
+    return invokeCommand<WadScanResult>('wad_scan', { gamePath });
+}
+
 /** Read + decompress a single chunk, returned as base64. */
 export function wadReadChunk(path: string, pathHash: string): Promise<string> {
     return invokeCommand<string>('wad_read_chunk', { path, pathHash });
+}
+
+/** Decode a DDS/TEX chunk to a PNG, returned as base64. */
+export function wadDecodeTexture(path: string, pathHash: string): Promise<string> {
+    return invokeCommand<string>('wad_decode_texture', { path, pathHash });
 }
 
 /**

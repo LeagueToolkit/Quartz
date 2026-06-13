@@ -1,16 +1,18 @@
 import { useState } from 'react';
-import { Palette, Terminal, HardDrive, Eye, Github, type LucideIcon } from 'lucide-react';
+import { Palette, Terminal, HardDrive, Eye, Github, FolderTree, type LucideIcon } from 'lucide-react';
 import { AppearanceSection } from '@/components/settings/sections/AppearanceSection';
+import { AssetExtractorSection } from '@/components/settings/sections/AssetExtractorSection';
 import { ToolsSection } from '@/components/settings/sections/ToolsSection';
 import { WindowsIntegrationSection } from '@/components/settings/sections/WindowsIntegrationSection';
 import { PageVisibilitySection } from '@/components/settings/sections/PageVisibilitySection';
 import { ThemeCreatorSection } from '@/components/settings/sections/ThemeCreatorSection';
 import { GitHubSection } from '@/components/settings/sections/GitHubSection';
 
-type SectionId = 'appearance' | 'tools' | 'windowsIntegration' | 'pages' | 'themeCreator' | 'github';
+type SectionId = 'appearance' | 'paths' | 'tools' | 'windowsIntegration' | 'pages' | 'themeCreator' | 'github';
 
 const SECTIONS: { id: SectionId; name: string; icon: LucideIcon }[] = [
     { id: 'appearance', name: 'Appearance', icon: Palette },
+    { id: 'paths', name: 'League & Extraction', icon: FolderTree },
     { id: 'tools', name: 'External Tools', icon: Terminal },
     { id: 'windowsIntegration', name: 'Windows Integration', icon: HardDrive },
     { id: 'pages', name: 'Page Visibility', icon: Eye },
@@ -21,6 +23,7 @@ const SECTIONS: { id: SectionId; name: string; icon: LucideIcon }[] = [
 function SectionContent({ id }: { id: SectionId }) {
     switch (id) {
         case 'appearance': return <AppearanceSection />;
+        case 'paths': return <AssetExtractorSection />;
         case 'tools': return <ToolsSection />;
         case 'windowsIntegration': return <WindowsIntegrationSection />;
         case 'pages': return <PageVisibilitySection />;

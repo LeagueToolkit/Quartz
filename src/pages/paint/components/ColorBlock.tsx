@@ -7,7 +7,11 @@
 
 import React from 'react';
 import { Box, Tooltip } from '@mui/material';
-import type { ColorKeyframe } from '../utils/parser';
+
+interface ColorKeyframe {
+    rgba: number[];
+    time: number;
+}
 
 interface ColorBlockProps {
     colors?: ColorKeyframe[];

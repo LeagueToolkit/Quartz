@@ -7,6 +7,7 @@
 pub mod error;
 pub mod hash;
 pub mod bin;
+pub mod paint;
 pub mod wad_explorer;
 pub mod bumpath;
 pub mod extractor;

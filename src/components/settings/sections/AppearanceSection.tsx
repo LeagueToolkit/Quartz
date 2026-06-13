@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Type, FolderOpen, RefreshCw, Plus, Trash2 } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { openPath } from '@tauri-apps/plugin-opener';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { FormGroup, CustomSelect, ThemeCard, Button } from '../primitives';
 import { useThemeStore, useUiPrefsStore, applyUiPrefs } from '@/lib/stores';
 import { INTERFACE_STYLES, THEME_DESCRIPTIONS, CLICK_EFFECT_TYPES, BACKGROUND_EFFECT_TYPES } from '@/lib/theme/behaviors';
@@ -80,15 +81,11 @@ export function AppearanceSection() {
 
     useEffect(() => { loadFonts(); loadWallpapers(); loadCursors(); }, []);
 
-    // Lazy-load image previews as data URIs.
+    // Wallpaper thumbnails stream off disk through the asset protocol — the
+    // webview decodes + GPU-caches them, so a large gallery doesn't pile up
+    // base64 strings in JS memory.
     useEffect(() => {
-        wallpapers.forEach((w) => {
-            if (wallThumbs[w.id]) return;
-            readFileBase64(w.filePath).then((b64) => {
-                const ext = (w.filePath.split('.').pop() || 'png').toLowerCase();
-                setWallThumbs((p) => ({ ...p, [w.id]: `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${b64}` }));
-            }).catch((e) => log.error('wallpaper thumb failed', w.filePath, String(e)));
-        });
+        setWallThumbs(Object.fromEntries(wallpapers.map((w) => [w.id, convertFileSrc(w.filePath)])));
     }, [wallpapers]);
     useEffect(() => {
         cursors.forEach((c) => {

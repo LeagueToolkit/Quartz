@@ -21,7 +21,7 @@ import ColorHandler from '../utils/ColorHandler';
 import { savePalette, deletePalette } from '../utils/paletteManager';
 import { openColorPicker } from './ColorPicker';
 import { useMinecraftStyle } from '../useMinecraftStyle';
-import type { RecolorMode } from '../utils/colorOps';
+import type { RecolorModeId as RecolorMode } from '@/lib/api';
 
 export interface SavedPaletteItem {
     name: string;

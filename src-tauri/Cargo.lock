@@ -3117,6 +3117,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "heed",
+ "image",
  "indexmap 2.14.0",
  "parking_lot",
  "rayon",

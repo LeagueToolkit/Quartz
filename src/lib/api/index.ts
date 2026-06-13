@@ -17,14 +17,22 @@ export {
     type AssetFile, type WallpaperItem,
 } from './assets';
 export {
-    wadMount, wadUnmount, wadListMounted, wadList, wadReadChunk, wadExtractSelected,
+    wadMount, wadUnmount, wadScan, wadListMounted, wadList, wadReadChunk, wadDecodeTexture, wadExtractSelected,
     type WadOpenResult, type WadMountInfo, type WadEntry,
     type WadExtractResult, type WadExtractProgress,
+    type ScannedWad, type WadScanResult,
 } from './wad';
 export {
     binScaleParams, binSplitSkin, binConsolidateAssets,
     type ScaleParamsResult, type SplitFile, type ConsolidateResult,
 } from './binEditor';
+export {
+    paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintUndo, paintSave,
+    type VfxModel, type VfxSystem, type VfxEmitter, type VfxMaterial, type MaterialParam,
+    type ColorData, type ColorKeyframe, type EmitterColors, type EmitterTexture,
+    type PaintOpenResult, type RecolorResult, type RecolorModeId, type ColorTargetId,
+    type PaletteStopInput, type RecolorOptionsInput,
+} from './paint';
 export { bumpathRepath, type BumpathOptions, type BumpathResult } from './bumpath';
 export {
     fileRandomize, fileRename, toolsExecute,

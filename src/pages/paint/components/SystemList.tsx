@@ -1,12 +1,13 @@
 /*
  * SystemList Component
  * Scrollable list of VFX systems / emitters / static materials.
- * Ported from the Electron Quartz paint2 SystemList. The original wrapped rows
- * in react-window for virtualization; that dependency is not present here, so
- * rows render in a plain scroll container with identical markup and classes.
+ * Ported from the Electron Quartz paint2 SystemList. Rows are virtualized (only
+ * the visible window mounts) and each Row receives plain per-row booleans rather
+ * than the shared selection/lock/expand Sets — so toggling one block re-renders
+ * only the rows whose own state changed, not the whole list.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useState, useEffect, type CSSProperties } from 'react';
 import { Box, Typography, Checkbox, IconButton, Tooltip } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
@@ -15,19 +16,43 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PaletteIcon from '@mui/icons-material/Palette';
 import ColorBlock from './ColorBlock';
-import { getEmitterColors, type ParsedFile, type Emitter, type ColorKeyframe } from '../utils/parser';
-import type { Material, MaterialColorParam } from '../utils/staticMaterialParser';
+import type { VfxModel, VfxSystem, VfxEmitter, VfxMaterial, MaterialParam } from '@/lib/api';
 
 const ROW_HEIGHT = 42;
 
-type SystemRow = { type: 'system'; key: string; system: import('../utils/parser').VfxSystem; matchingCount: number };
-type EmitterRow = { type: 'emitter'; key: string; emitter: Emitter; systemKey: string; indexInSystem: number };
-type MaterialRow = { type: 'material'; key: string; material: Material };
-type MaterialParamRow = { type: 'materialParam'; key: string; selectionKey: string; param: MaterialColorParam; materialKey: string };
+// Keyframe shape consumed by ColorBlock / the palette import (no line numbers).
+interface ColorKeyframe {
+    rgba: number[];
+    time: number;
+}
+
+type EmitterColorArrays = {
+    color: ColorKeyframe[];
+    birthColor: ColorKeyframe[];
+    fresnelColor: ColorKeyframe[];
+    lingerColor: ColorKeyframe[];
+};
+
+// Flatten the resident-model color slots (ColorData | null) to plain keyframe arrays.
+function emitterColorArrays(emitter: VfxEmitter): EmitterColorArrays {
+    const slot = (c: VfxEmitter['colors']['color']): ColorKeyframe[] =>
+        (c?.keyframes ?? []).map(kf => ({ rgba: kf.rgba, time: kf.time }));
+    return {
+        color: slot(emitter.colors.color),
+        birthColor: slot(emitter.colors.birthColor),
+        fresnelColor: slot(emitter.colors.fresnelColor),
+        lingerColor: slot(emitter.colors.lingerColor),
+    };
+}
+
+type SystemRow = { type: 'system'; key: string; system: VfxSystem; matchingCount: number };
+type EmitterRow = { type: 'emitter'; key: string; emitter: VfxEmitter; systemKey: string; indexInSystem: number };
+type MaterialRow = { type: 'material'; key: string; material: VfxMaterial };
+type MaterialParamRow = { type: 'materialParam'; key: string; selectionKey: string; param: MaterialParam; materialKey: string };
 type ListRow = SystemRow | EmitterRow | MaterialRow | MaterialParamRow;
 
 interface SystemListProps {
-    parsedFile: ParsedFile;
+    model: VfxModel;
     selection: Set<string>;
     lockedSystems: Set<string>;
     expandedSystems: Set<string>;
@@ -49,30 +74,46 @@ interface SystemListProps {
     onMaterialParamValueChange: (materialKey: string, paramName: string, newValues: number[]) => void;
     onColorClick: (colors: ColorKeyframe[]) => void;
     onSetBlendMode: (emitterKey: string, mode: number) => void;
-    onTextureHover: (e: React.MouseEvent, emitter: Emitter) => void;
+    onTextureHover: (e: React.MouseEvent, emitter: VfxEmitter) => void;
     onTextureLeave: () => void;
-    onTextureClick: (emitter: Emitter) => void;
+    onTextureClick: (emitter: VfxEmitter) => void;
 }
 
-const Row = React.memo(function Row(props: { row: ListRow } & Omit<SystemListProps, 'parsedFile' | 'searchQuery' | 'searchByTexture' | 'variantFilter' | 'viewMode'>) {
+/* Per-row state the parent derives once per render, so Row receives only plain
+   booleans (memo-stable) instead of the shared Sets. */
+interface RowState {
+    selected: boolean;      // emitter / material-param selected, or system all-selected
+    someSelected: boolean;  // system/material: some-but-not-all children selected
+    locked: boolean;        // system locked, or emitter's system locked
+    expanded: boolean;      // system / material expanded
+}
+
+type RowHandlers = Pick<SystemListProps,
+    'showBirthColor' | 'showOC' | 'showLingerColor' | 'showBaseColor' |
+    'onToggleEmitter' | 'onToggleSystem' | 'onToggleLock' | 'onToggleExpand' |
+    'onToggleMaterialExpand' | 'onToggleMaterialParam' | 'onMaterialParamValueChange' |
+    'onColorClick' | 'onSetBlendMode' | 'onTextureHover' | 'onTextureLeave' | 'onTextureClick'
+>;
+
+const Row = React.memo(function Row(props: { row: ListRow; state: RowState; style: CSSProperties } & RowHandlers) {
     const {
-        row, selection, lockedSystems, expandedSystems, expandedMaterials,
+        row, state,
         showBirthColor, showOC, showLingerColor, showBaseColor,
         onToggleEmitter, onToggleSystem, onToggleLock, onToggleExpand,
         onToggleMaterialExpand, onToggleMaterialParam, onMaterialParamValueChange,
         onColorClick, onSetBlendMode, onTextureHover, onTextureLeave, onTextureClick,
     } = props;
 
-    const style: React.CSSProperties = { height: ROW_HEIGHT };
+    const style: React.CSSProperties = { ...props.style, height: ROW_HEIGHT };
 
     // === MATERIAL HEADER ROW ===
     if (row.type === 'material') {
-        const isExpanded = expandedMaterials.has(row.key);
+        const isExpanded = state.expanded;
         const allParams = row.material?.colorParams || [];
         const colorParams = allParams.filter(p => p.isColor !== false);
         const paramKeys = colorParams.map(p => `mat::${row.key}::${p.name}`);
-        const allSelected = paramKeys.length > 0 && paramKeys.every(k => selection.has(k));
-        const someSelected = paramKeys.some(k => selection.has(k));
+        const allSelected = state.selected;
+        const someSelected = state.someSelected;
 
         return (
             <Box
@@ -101,7 +142,7 @@ const Row = React.memo(function Row(props: { row: ListRow } & Omit<SystemListPro
                     {isExpanded ? <ExpandMoreIcon sx={{ fontSize: '1.4rem' }} /> : <ChevronRightIcon sx={{ fontSize: '1.4rem' }} />}
                 </Box>
                 <PaletteIcon sx={{ fontSize: 22, color: 'var(--accent)', opacity: 0.8 }} />
-                <Tooltip title={row.material?.displayName || row.material?.name}>
+                <Tooltip title={row.material?.name}>
                     <Typography sx={{ flex: 1, fontFamily: 'JetBrains Mono, monospace', fontSize: '1rem', fontWeight: 700, color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {row.material?.name || 'Material'}
                     </Typography>
@@ -115,7 +156,7 @@ const Row = React.memo(function Row(props: { row: ListRow } & Omit<SystemListPro
 
     // === MATERIAL PARAM ROW ===
     if (row.type === 'materialParam') {
-        const isSelected = selection.has(row.selectionKey);
+        const isSelected = state.selected;
         const rgba = row.param?.values || [0.5, 0.5, 0.5, 1];
         const isColor = row.param?.isColor !== false;
         const isNonColor = !isColor;
@@ -148,7 +189,7 @@ const Row = React.memo(function Row(props: { row: ListRow } & Omit<SystemListPro
                 </Typography>
                 {isColor ? (
                     <Box
-                        onClick={(e) => { e.stopPropagation(); onColorClick([{ rgba, time: 0, lineNum: row.param.valueLine }]); }}
+                        onClick={(e) => { e.stopPropagation(); onColorClick([{ rgba, time: 0 }]); }}
                         sx={{
                             width: 80, height: 26, borderRadius: '6px',
                             background: `rgb(${Math.round(rgba[0] * 255)}, ${Math.round(rgba[1] * 255)}, ${Math.round(rgba[2] * 255)})`,
@@ -190,11 +231,10 @@ const Row = React.memo(function Row(props: { row: ListRow } & Omit<SystemListPro
     }
 
     if (row.type === 'system') {
-        const isExpanded = expandedSystems.has(row.key);
-        const isLocked = lockedSystems.has(row.key);
-        const emitterKeys = row.system?.emitterKeys || [];
-        const allSelected = emitterKeys.length > 0 && emitterKeys.every(k => selection.has(k));
-        const someSelected = emitterKeys.some(k => selection.has(k));
+        const isExpanded = state.expanded;
+        const isLocked = state.locked;
+        const allSelected = state.selected;
+        const someSelected = state.someSelected;
 
         const systemName = row.system?.name || 'Unnamed System';
         const displaySystemName = systemName.includes('/') ? systemName.split('/').pop() : systemName;
@@ -242,9 +282,9 @@ const Row = React.memo(function Row(props: { row: ListRow } & Omit<SystemListPro
     }
 
     // === EMITTER ROW ===
-    const isSelected = selection.has(row.key);
-    const isLocked = lockedSystems.has(row.systemKey);
-    const colors = getEmitterColors(row.emitter);
+    const isSelected = state.selected;
+    const isLocked = state.locked;
+    const colors = emitterColorArrays(row.emitter);
     const currentBlendMode = row.emitter.blendMode !== undefined ? row.emitter.blendMode : 0;
 
     return (
@@ -254,10 +294,13 @@ const Row = React.memo(function Row(props: { row: ListRow } & Omit<SystemListPro
             onClick={() => { if (!isLocked) onToggleEmitter(row.key); }}
             sx={{
                 display: 'flex', alignItems: 'center', gap: 1.5, padding: '0 16px 0 32px',
-                background: isSelected ? 'color-mix(in srgb, var(--accent), transparent 95%)' : 'transparent',
+                background: isSelected ? 'color-mix(in srgb, var(--accent), transparent 88%)' : 'transparent',
                 borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
+                // Inset left accent bar marks the selected row at a glance.
+                boxShadow: isSelected ? 'inset 3px 0 0 0 var(--accent)' : 'none',
                 opacity: isLocked ? 0.5 : 1, cursor: isLocked ? 'not-allowed' : 'pointer',
-                '&:hover': { background: isLocked ? 'transparent' : 'rgba(255,255,255,0.02)' },
+                transition: 'background 0.12s ease, box-shadow 0.12s ease',
+                '&:hover': { background: isLocked ? 'transparent' : isSelected ? 'color-mix(in srgb, var(--accent), transparent 84%)' : 'rgba(255,255,255,0.035)' },
             }}
         >
             <Checkbox
@@ -313,41 +356,44 @@ const Row = React.memo(function Row(props: { row: ListRow } & Omit<SystemListPro
 
 function SystemList(props: SystemListProps) {
     const {
-        parsedFile, searchQuery, searchByTexture, variantFilter, viewMode,
+        model, searchQuery, searchByTexture, variantFilter, viewMode,
         expandedSystems, expandedMaterials, showBaseColor = true,
     } = props;
 
+    // The model is array-shaped; build key lookups once per model change.
+    const systemMap = useMemo(() => new Map(model.systems.map(s => [s.key, s])), [model]);
+    const emitterMap = useMemo(() => new Map(model.emitters.map(e => [e.key, e])), [model]);
+    const materialMap = useMemo(() => new Map(model.materials.map(m => [m.key, m])), [model]);
+
     const rows = useMemo<ListRow[]>(() => {
-        if (!parsedFile) return [];
         const result: ListRow[] = [];
         const searchLower = (searchQuery || '').toLowerCase();
         const showVfx = viewMode !== 'materials';
 
         if (showVfx) {
-            for (const systemKey of (parsedFile.systemOrder || [])) {
-                const system = parsedFile.systems.get(systemKey);
+            for (const systemKey of (model.systemOrder || [])) {
+                const system = systemMap.get(systemKey);
                 if (!system) continue;
 
                 let matchingEmitters = (system.emitterKeys || [])
                     .map((k, idx) => {
-                        const em = parsedFile.emitters.get(k);
-                        return em ? { ...em, indexInSystem: idx + 1 } : null;
+                        const em = emitterMap.get(k);
+                        return em ? { emitter: em, indexInSystem: idx + 1 } : null;
                     })
-                    .filter((e): e is Emitter & { indexInSystem: number } => !!e);
+                    .filter((e): e is { emitter: VfxEmitter; indexInSystem: number } => !!e);
 
                 if (variantFilter === 'v1') {
-                    matchingEmitters = matchingEmitters.filter(e => (e.name || '').toLowerCase().endsWith('_variant1'));
+                    matchingEmitters = matchingEmitters.filter(e => (e.emitter.name || '').toLowerCase().endsWith('_variant1'));
                 } else if (variantFilter === 'v2') {
-                    matchingEmitters = matchingEmitters.filter(e => (e.name || '').toLowerCase().endsWith('_variant2'));
+                    matchingEmitters = matchingEmitters.filter(e => (e.emitter.name || '').toLowerCase().endsWith('_variant2'));
                 }
 
                 if (searchQuery) {
                     const systemMatches = (system.name || '').toLowerCase().includes(searchLower) || (systemKey || '').toLowerCase().includes(searchLower);
                     if (!systemMatches) {
                         matchingEmitters = matchingEmitters.filter(e =>
-                            (e.name || '').toLowerCase().includes(searchLower) ||
-                            (searchByTexture && ((e.texturePath && e.texturePath.toLowerCase().includes(searchLower)) ||
-                                (e.textures && e.textures.some(t => t.path.toLowerCase().includes(searchLower)))))
+                            (e.emitter.name || '').toLowerCase().includes(searchLower) ||
+                            (searchByTexture && e.emitter.textures.some(t => t.path.toLowerCase().includes(searchLower)))
                         );
                     }
                 }
@@ -357,20 +403,19 @@ function SystemList(props: SystemListProps) {
                 result.push({ type: 'system', key: systemKey, system, matchingCount: matchingEmitters.length });
 
                 if (expandedSystems.has(systemKey)) {
-                    for (const emitter of matchingEmitters) {
-                        result.push({ type: 'emitter', key: emitter.key, emitter, systemKey, indexInSystem: emitter.indexInSystem });
+                    for (const { emitter, indexInSystem } of matchingEmitters) {
+                        result.push({ type: 'emitter', key: emitter.key, emitter, systemKey, indexInSystem });
                     }
                 }
             }
         }
 
-        for (const materialKey of (parsedFile.materialOrder || [])) {
-            const material = parsedFile.materials.get(materialKey);
+        for (const materialKey of (model.materialOrder || [])) {
+            const material = materialMap.get(materialKey);
             if (!material || !material.colorParams || material.colorParams.length === 0) continue;
 
             if (searchQuery) {
                 const materialMatches = (material.name || '').toLowerCase().includes(searchLower) ||
-                    (material.displayName || '').toLowerCase().includes(searchLower) ||
                     (materialKey || '').toLowerCase().includes(searchLower) ||
                     material.colorParams.some(p => (p.name || '').toLowerCase().includes(searchLower));
                 if (!materialMatches) continue;
@@ -387,37 +432,116 @@ function SystemList(props: SystemListProps) {
         }
 
         return result;
-    }, [parsedFile, searchQuery, searchByTexture, expandedSystems, expandedMaterials, variantFilter, viewMode]);
+    }, [model, systemMap, emitterMap, materialMap, searchQuery, searchByTexture, expandedSystems, expandedMaterials, variantFilter, viewMode]);
+
+    const { selection, lockedSystems } = props;
+
+    /* Derive each row's plain-boolean state once per render. This is the cheap
+       O(rows) pass that lets Row stay memoized: a selection toggle changes only
+       the booleans of the affected rows, so only those Rows re-render. */
+    const rowStates = useMemo<RowState[]>(() => {
+        return rows.map((row): RowState => {
+            switch (row.type) {
+                case 'emitter':
+                    return { selected: selection.has(row.key), someSelected: false, locked: lockedSystems.has(row.systemKey), expanded: false };
+                case 'system': {
+                    const keys = row.system?.emitterKeys || [];
+                    const all = keys.length > 0 && keys.every(k => selection.has(k));
+                    const some = !all && keys.some(k => selection.has(k));
+                    return { selected: all, someSelected: some, locked: lockedSystems.has(row.key), expanded: expandedSystems.has(row.key) };
+                }
+                case 'material': {
+                    const paramKeys = (row.material?.colorParams || []).filter(p => p.isColor !== false).map(p => `mat::${row.key}::${p.name}`);
+                    const all = paramKeys.length > 0 && paramKeys.every(k => selection.has(k));
+                    const some = !all && paramKeys.some(k => selection.has(k));
+                    return { selected: all, someSelected: some, locked: false, expanded: expandedMaterials.has(row.key) };
+                }
+                case 'materialParam':
+                    return { selected: selection.has(row.selectionKey), someSelected: false, locked: false, expanded: false };
+            }
+        });
+    }, [rows, selection, lockedSystems, expandedSystems, expandedMaterials]);
 
     return (
-        <Box className="paint2-system-scroll" sx={{ width: '100%', height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
-            {rows.map((row) => (
-                <Row
-                    key={row.key}
-                    row={row}
-                    selection={props.selection}
-                    lockedSystems={props.lockedSystems}
-                    expandedSystems={props.expandedSystems}
-                    expandedMaterials={props.expandedMaterials}
-                    showBirthColor={props.showBirthColor}
-                    showOC={props.showOC}
-                    showLingerColor={props.showLingerColor}
-                    showBaseColor={showBaseColor}
-                    onToggleEmitter={props.onToggleEmitter}
-                    onToggleSystem={props.onToggleSystem}
-                    onToggleLock={props.onToggleLock}
-                    onToggleExpand={props.onToggleExpand}
-                    onToggleMaterialExpand={props.onToggleMaterialExpand}
-                    onToggleMaterialParam={props.onToggleMaterialParam}
-                    onMaterialParamValueChange={props.onMaterialParamValueChange}
-                    onColorClick={props.onColorClick}
-                    onSetBlendMode={props.onSetBlendMode}
-                    onTextureHover={props.onTextureHover}
-                    onTextureLeave={props.onTextureLeave}
-                    onTextureClick={props.onTextureClick}
-                />
-            ))}
-        </Box>
+        <VirtualList
+            className="paint2-system-scroll"
+            rowCount={rows.length}
+            rowHeight={ROW_HEIGHT}
+            renderRow={(index, style) => {
+                const row = rows[index];
+                return (
+                    <Row
+                        key={row.key}
+                        row={row}
+                        state={rowStates[index]}
+                        style={style}
+                        showBirthColor={props.showBirthColor}
+                        showOC={props.showOC}
+                        showLingerColor={props.showLingerColor}
+                        showBaseColor={showBaseColor}
+                        onToggleEmitter={props.onToggleEmitter}
+                        onToggleSystem={props.onToggleSystem}
+                        onToggleLock={props.onToggleLock}
+                        onToggleExpand={props.onToggleExpand}
+                        onToggleMaterialExpand={props.onToggleMaterialExpand}
+                        onToggleMaterialParam={props.onToggleMaterialParam}
+                        onMaterialParamValueChange={props.onMaterialParamValueChange}
+                        onColorClick={props.onColorClick}
+                        onSetBlendMode={props.onSetBlendMode}
+                        onTextureHover={props.onTextureHover}
+                        onTextureLeave={props.onTextureLeave}
+                        onTextureClick={props.onTextureClick}
+                    />
+                );
+            }}
+        />
+    );
+}
+
+/* Fixed-height row virtualizer — only the visible window (plus overscan) mounts.
+   Same pattern as the WAD explorer's VirtualList. */
+interface VirtualListProps {
+    rowCount: number;
+    rowHeight: number;
+    className?: string;
+    renderRow: (index: number, style: CSSProperties) => React.ReactNode;
+}
+
+function VirtualList({ rowCount, rowHeight, className, renderRow }: VirtualListProps) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [scrollTop, setScrollTop] = useState(0);
+    const [height, setHeight] = useState(0);
+
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const obs = new ResizeObserver((entries) => {
+            const e = entries[0];
+            if (e) setHeight(e.contentRect.height);
+        });
+        obs.observe(el);
+        return () => obs.disconnect();
+    }, []);
+
+    const overscan = 8;
+    const start = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
+    const visibleCount = Math.ceil((height || 0) / rowHeight) + overscan * 2;
+    const end = Math.min(rowCount, start + visibleCount);
+
+    const out: React.ReactNode[] = [];
+    for (let i = start; i < end; i++) {
+        out.push(renderRow(i, { position: 'absolute', top: i * rowHeight, left: 0, right: 0, height: rowHeight }));
+    }
+
+    return (
+        <div
+            ref={containerRef}
+            className={className}
+            onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
+            style={{ width: '100%', height: '100%', overflowY: 'auto', overflowX: 'hidden', position: 'relative' }}
+        >
+            <div style={{ height: rowCount * rowHeight, position: 'relative' }}>{out}</div>
+        </div>
     );
 }
 

@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { wadMount, wadList, type WadEntry } from '@/lib/api';
+import { wadMount, wadList, wadScan, type WadEntry } from '@/lib/api';
 import { log } from '@/lib/util/logger';
 import type {
     WadTreeNode, WadDirNode, WadFileNode, SelectedNode, WadGroups, WadScanEntry,
@@ -295,18 +295,34 @@ export function useWadExplorer({ indexReady = true }: { hashPath?: string; index
         return { done, total: all, active: done < all };
     }, [groups, wadData]);
 
-    // Full-game folder scan. The backend has no multi-WAD scan command yet, so
-    // this path stays inert until that lands.
+    /* Full-game folder scan: enumerate every WAD under DATA/FINAL via the
+       backend `wad_scan` command and group them (Champions/Maps/etc.). Each
+       WAD's tree is still lazy-loaded on expand. Any open Custom group is
+       preserved so single-file opens survive a rescan. */
     const scan = useCallback(async (gamePath: string) => {
         if (!gamePath) return;
         setScanLoading(true);
         setScanError(null);
-        // TODO(backend): a `wad_scan_all(gamePath)` command must enumerate the
-        // WADs under DATA/FINAL and group them (Champions/Maps/etc.) the way the
-        // Electron `wad.scanAll` IPC did. Until then a full game index is a no-op.
         try {
-            setScanError('Full game indexing requires a backend scan command (not yet available). Open a single WAD instead.');
-            setGroups(null);
+            const result = await wadScan(gamePath);
+            const next: WadGroups = {};
+            for (const [groupKey, wads] of Object.entries(result.groups || {})) {
+                next[groupKey] = (wads || []).map((w): WadScanEntry => ({
+                    name: w.name,
+                    path: w.path,
+                    size: w.size,
+                    isVoiceover: w.isVoiceover,
+                }));
+            }
+            setGroups((prev) => {
+                if (prev?.Custom?.length) next.Custom = prev.Custom;
+                return next;
+            });
+            setTotal(result.total);
+        } catch (e) {
+            log.error('WAD scan failed', e);
+            setScanError(e instanceof Error ? e.message : String(e));
+            setGroups((prev) => (prev?.Custom?.length ? { Custom: prev.Custom } : null));
         } finally {
             setScanLoading(false);
         }

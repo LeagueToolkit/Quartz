@@ -43,6 +43,34 @@ pub async fn wad_unmount(mount_id: u64) -> Result<bool, String> {
     Ok(core::unmount(mount_id))
 }
 
+/// Scan a League install's `DATA/FINAL` for every `.wad.client`, grouped by
+/// top-level folder (Champions/Maps/Global/Levels/…). Feeds the explorer's
+/// full-game tree. Runs on the blocking pool — the walk hits hundreds of files.
+#[tauri::command]
+pub async fn wad_scan(game_path: String) -> Result<core::ScanResult, String> {
+    tokio::task::spawn_blocking(move || core::scan_game_wads(&game_path))
+        .await
+        .map_err(|e| format!("Scan task failed to join: {}", e))?
+        .map_err(|e| e.to_string())
+}
+
+/// Decode a DDS/TEX chunk to a PNG, returned as base64 for the preview pane.
+/// `path` is the WAD file; `path_hash` the chunk's hex hash. Reuses an open
+/// mount's in-memory data section when one exists. Blocking pool — BC decode
+/// of multi-MB textures shouldn't stall the runtime.
+#[tauri::command]
+pub async fn wad_decode_texture(path: String, path_hash: String) -> Result<String, String> {
+    let hash = core::parse_path_hash(&path_hash).map_err(|e| e.to_string())?;
+    let png = tokio::task::spawn_blocking(move || {
+        let bytes = core::read_chunk(&path, hash)?;
+        core::decode_texture_to_png(&bytes)
+    })
+    .await
+    .map_err(|e| format!("Decode task failed to join: {}", e))?
+    .map_err(|e| e.to_string())?;
+    Ok(B64.encode(&png))
+}
+
 /// Snapshot of every currently-mounted WAD.
 #[tauri::command]
 pub async fn wad_list_mounted() -> Vec<core::MountInfo> {

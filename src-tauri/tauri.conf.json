@@ -52,7 +52,7 @@
         "default-src": "'self'",
         "style-src": "'self' 'unsafe-inline'",
         "script-src": "'self' blob: 'unsafe-eval'",
-        "img-src": "'self' data: https: blob:",
+        "img-src": "'self' data: https: blob: asset: https://asset.localhost",
         "connect-src": "'self' http://ipc.localhost https://github.com https://api.github.com asset: https://asset.localhost",
         "worker-src": "'self' blob:",
         "media-src": "'self' blob: asset: https://asset.localhost"

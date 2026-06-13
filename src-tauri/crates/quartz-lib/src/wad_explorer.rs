@@ -72,6 +72,134 @@ fn resolve_all(chunks: &[WadChunk]) -> crate::hash::ResolvedHashes {
     }
 }
 
+// ── Game-folder scan ──────────────────────────────────────────────────────────
+
+/// One WAD discovered under a game's `DATA/FINAL`, serialized to the frontend.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScannedWad {
+    pub name: String,
+    pub path: String,
+    /// Path relative to `FINAL`, POSIX-separated (e.g. `Champions/Aatrox.wad.client`).
+    pub rel_path: String,
+    pub size: u64,
+    /// A language-suffixed voiceover WAD (e.g. `aatrox.en_US.wad.client`).
+    pub is_voiceover: bool,
+}
+
+/// Result of [`scan_game_wads`]: WADs grouped by their top-level FINAL folder.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanResult {
+    /// `Champions` / `Maps` / `Global` / `Levels` / … → its WADs.
+    pub groups: indexmap::IndexMap<String, Vec<ScannedWad>>,
+    pub final_dir: String,
+    pub total: usize,
+}
+
+/// Language-code suffixes that mark a voiceover WAD (mirrors the Electron list).
+const LANG_CODES: &[&str] = &[
+    "en_us", "en_gb", "de_de", "es_es", "fr_fr", "it_it", "pt_br", "ro_ro", "el_gr", "hu_hu",
+    "cs_cz", "pl_pl", "ru_ru", "tr_tr", "zh_tw", "zh_cn", "ko_kr", "ja_jp", "ar_ae", "en_au",
+    "es_mx", "vi_vn", "id_id", "th_th", "ms_my", "en_sg",
+];
+
+fn is_voiceover_name(file_name: &str) -> bool {
+    let lower = file_name.to_ascii_lowercase();
+    let stem = lower.strip_suffix(".wad.client").unwrap_or(&lower);
+    let dot_suffix = stem.rsplit_once('.').map(|(_, s)| s);
+    let under_suffix = stem.rsplit_once('_').map(|(_, s)| s);
+    let matched = [dot_suffix, under_suffix]
+        .into_iter()
+        .flatten()
+        .any(|s| LANG_CODES.contains(&s));
+    matched
+}
+
+/// Recursively scan `<game_path>/DATA/FINAL` for `*.wad.client` files, grouping
+/// each by the top-level FINAL subfolder (Champions/Maps/Global/Levels/Other).
+/// Voiceover WADs are flagged and sorted last within their group. Mirrors the
+/// Electron `wad:scanAll` IPC so the existing frontend tree renders unchanged.
+pub fn scan_game_wads(game_path: &str) -> Result<ScanResult> {
+    let game = Path::new(game_path);
+    if !game.is_dir() {
+        return Err(Error::InvalidInput(format!(
+            "Game path does not exist: {}",
+            game_path
+        )));
+    }
+    let final_dir = game.join("DATA").join("FINAL");
+    if !final_dir.is_dir() {
+        return Err(Error::InvalidInput(format!(
+            "DATA/FINAL not found inside: {}",
+            game_path
+        )));
+    }
+
+    let mut groups: indexmap::IndexMap<String, Vec<ScannedWad>> = indexmap::IndexMap::new();
+    let mut total = 0usize;
+    collect_wads(&final_dir, &final_dir, &mut groups, &mut total);
+
+    // Alphabetical within each group; voiceovers last.
+    for arr in groups.values_mut() {
+        arr.sort_by(|a, b| match a.is_voiceover.cmp(&b.is_voiceover) {
+            std::cmp::Ordering::Equal => a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()),
+            other => other,
+        });
+    }
+
+    Ok(ScanResult {
+        groups,
+        final_dir: final_dir.to_string_lossy().into_owned(),
+        total,
+    })
+}
+
+/// Recursive `.wad.client` collector. `final_dir` is the scan root (for the
+/// relative path); `dir` is the directory currently being walked. Unreadable
+/// directories are skipped silently — a partial install shouldn't abort the scan.
+fn collect_wads(
+    final_dir: &Path,
+    dir: &Path,
+    groups: &mut indexmap::IndexMap<String, Vec<ScannedWad>>,
+    total: &mut usize,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_dir() {
+            collect_wads(final_dir, &path, groups, total);
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.to_ascii_lowercase().ends_with(".wad.client") {
+            continue;
+        }
+
+        let rel = path.strip_prefix(final_dir).unwrap_or(&path);
+        let rel_posix = rel.to_string_lossy().replace('\\', "/");
+        // Top-level FINAL subfolder names the group; a WAD directly in FINAL → "Root".
+        let group = if rel_posix.contains('/') {
+            rel_posix.split('/').next().unwrap_or("Root").to_string()
+        } else {
+            "Root".to_string()
+        };
+
+        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+        groups.entry(group).or_default().push(ScannedWad {
+            name: name.clone(),
+            path: path.to_string_lossy().into_owned(),
+            rel_path: rel_posix,
+            size,
+            is_voiceover: is_voiceover_name(&name),
+        });
+        *total += 1;
+    }
+}
+
 // ── Mount / unmount ───────────────────────────────────────────────────────────
 
 /// Open a WAD, parse its header + chunk table + data section, bulk-resolve
@@ -482,4 +610,65 @@ pub fn sniff_extension(data: &[u8]) -> Option<&'static str> {
         return Some(".json");
     }
     None
+}
+
+// ── Texture preview ───────────────────────────────────────────────────────────
+
+/// Decode raw DDS or TEX bytes to a PNG buffer for the preview pane. Branches
+/// on the 4-byte magic (`DDS ` vs. `TEX\0`/other) to pick the right RitoShark
+/// constructor, decodes the top mipmap to RGBA, and re-encodes as PNG. The
+/// frontend feeds this whatever `read_chunk` returned for a `.dds`/`.tex` entry.
+pub fn decode_texture_to_png(data: &[u8]) -> Result<Vec<u8>> {
+    use ritoshark::prelude::Parse as _;
+    use ritoshark::tex::Texture;
+
+    if data.len() < 4 {
+        return Err(Error::InvalidInput(
+            "File too small to be a texture".to_string(),
+        ));
+    }
+
+    let texture = if &data[0..4] == b"DDS " {
+        Texture::from_dds_bytes(data)
+            .map_err(|e| Error::InvalidInput(format!("Failed to parse DDS: {:?}", e)))?
+    } else {
+        Texture::from_bytes(data)
+            .map_err(|e| Error::InvalidInput(format!("Failed to parse TEX: {:?}", e)))?
+    };
+
+    let rgba = texture
+        .decode_rgba()
+        .map_err(|e| Error::InvalidInput(format!("Failed to decode texture: {:?}", e)))?;
+
+    let mut png = Vec::new();
+    {
+        use image::ImageEncoder;
+        image::codecs::png::PngEncoder::new(&mut png)
+            .write_image(
+                rgba.as_raw(),
+                rgba.width(),
+                rgba.height(),
+                image::ExtendedColorType::Rgba8,
+            )
+            .map_err(|e| Error::InvalidInput(format!("Failed to encode PNG: {}", e)))?;
+    }
+    Ok(png)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn voiceover_detection_matches_language_suffixes() {
+        // VO archives are named `<ChampFile>.<lang>.wad.client` — the language
+        // code is the dot-delimited suffix (it carries its own underscore).
+        assert!(is_voiceover_name("aatrox.en_US.wad.client"));
+        assert!(is_voiceover_name("Aatrox.ko_KR.wad.client"));
+        assert!(is_voiceover_name("Map11.zh_CN.wad.client"));
+        // Plain skin/data WADs are not voiceovers.
+        assert!(!is_voiceover_name("Aatrox.wad.client"));
+        assert!(!is_voiceover_name("Map11.wad.client"));
+        assert!(!is_voiceover_name("Global.wad.client"));
+    }
 }
