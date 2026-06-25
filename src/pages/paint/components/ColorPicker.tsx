@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import './ColorPicker.css';
 
 interface PickerState {
     anchor: { left: number; top: number; bottom: number; right: number };

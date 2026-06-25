@@ -1,74 +1,29 @@
-/* Paint (paint2) — ported footer actions + container glass hooks.
-   Class names preserved from the Electron Quartz build so the look matches 1:1. */
+/* Paint (paint2) — footer actions use the shared .dl-btn primitives. The two
+   extras below give the Recolor button its grow behaviour and the Save button
+   a success-green tone (a .dl-btn variant that isn't in the base set). */
 
-.paint2-footer .paint2-footer-btn {
-    appearance: none;
-    -webkit-appearance: none;
-    height: 36px;
-    padding: 0 16px;
-    border-radius: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    background: color-mix(in srgb, #9ca3af 14%, transparent);
-    color: #9ca3af;
-    font-family: JetBrains Mono, monospace;
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    text-transform: none;
-    line-height: 1;
-    box-shadow: none;
-    outline: none;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    cursor: pointer;
-    flex: 1;
+.paint2-recolor-btn { min-width: 200px; }
+
+.paint2-save-btn {
+    --_bg: color-mix(in oklab, var(--color-success) 14%, var(--bg-secondary));
+    --_fg: var(--color-success);
+    --_border: color-mix(in oklab, var(--color-success) 40%, var(--border));
 }
-
-.paint2-footer .paint2-footer-btn:hover:not(:disabled) {
-    background: color-mix(in srgb, #9ca3af 22%, transparent);
-    border-color: #9ca3af;
-    text-shadow: 0 0 8px color-mix(in srgb, #9ca3af, transparent 50%);
-    transform: translateY(-1px);
+.paint2-save-btn:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--color-success) 24%, var(--bg-secondary));
+    border-color: color-mix(in oklab, var(--color-success) 70%, var(--border));
 }
-
-.paint2-footer .paint2-footer-btn:active:not(:disabled) {
-    transform: translateY(0);
-}
-
-.paint2-footer .paint2-footer-btn.is-recolor {
-    flex: 3;
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    border-color: color-mix(in srgb, var(--accent), transparent 70%);
-    color: var(--accent);
-}
-
-.paint2-footer .paint2-footer-btn.is-recolor:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 22%, transparent);
-    border-color: var(--accent);
-    text-shadow: 0 0 8px color-mix(in srgb, var(--accent), transparent 50%);
-}
-
-.paint2-footer .paint2-footer-btn.is-save {
-    background: color-mix(in srgb, #22c55e 14%, transparent);
-    border-color: rgba(34, 197, 94, 0.3);
-    color: #22c55e;
-}
-
-.paint2-footer .paint2-footer-btn.is-save:hover:not(:disabled) {
-    background: color-mix(in srgb, #22c55e 22%, transparent);
-    border-color: #22c55e;
-    text-shadow: 0 0 8px color-mix(in srgb, #22c55e, transparent 50%);
-}
-
-.paint2-footer .paint2-footer-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+.paint2-save-btn::after {
+    background: radial-gradient(160px circle at var(--mx, 50%) var(--my, 50%),
+        color-mix(in oklab, var(--color-success) 30%, transparent) 0%,
+        transparent 60%);
 }
 
 /* Glass-mode hooks: keep the same selectors the Electron index.css used so
    wallpaper / liquid themes tint the paint panels consistently. */
 .has-wallpaper .paint2-container .paint-emitter-row.is-selected,
 [data-style="liquid"] .paint2-container .paint-emitter-row.is-selected {
-    background: color-mix(in srgb, var(--accent), transparent 82%) !important;
+    background: color-mix(in oklab, var(--accent-primary) 18%, transparent) !important;
 }
 
 .paint2-container .react-window-list {
@@ -78,108 +33,24 @@
 /* Scrollbar for the system list — mirrors the inline rules from SystemList. */
 .paint2-system-scroll::-webkit-scrollbar {
     width: 16px;
-    background: var(--bg);
+    background: var(--bg-primary);
 }
 
 .paint2-system-scroll::-webkit-scrollbar-track {
-    background: var(--surface);
+    background: var(--bg-secondary);
     border-radius: 8px;
     margin: 4px 0;
 }
 
 .paint2-system-scroll::-webkit-scrollbar-thumb {
-    background: var(--accent);
+    background: var(--accent-primary);
     border-radius: 8px;
-    border: 3px solid var(--surface);
+    border: 3px solid var(--bg-secondary);
     min-height: 60px;
 }
 
 .paint2-system-scroll::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, var(--accent), white 20%);
+    background: var(--accent-hover);
 }
 
-/* Self-contained color picker popover (replaces the Electron CreatePicker DOM). */
-.paint-color-picker {
-    position: fixed;
-    z-index: 9999;
-    width: 240px;
-    padding: 12px;
-    border-radius: 12px;
-    background: var(--glass-bg, rgba(20, 20, 24, 0.96));
-    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
-    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
-    backdrop-filter: saturate(180%) blur(12px);
-    -webkit-backdrop-filter: saturate(180%) blur(12px);
-    font-family: JetBrains Mono, monospace;
-}
-
-.paint-color-picker .pcp-sv {
-    position: relative;
-    width: 100%;
-    height: 150px;
-    border-radius: 8px;
-    cursor: crosshair;
-    overflow: hidden;
-    margin-bottom: 10px;
-}
-
-.paint-color-picker .pcp-sv-thumb {
-    position: absolute;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    border: 2px solid #fff;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-}
-
-.paint-color-picker .pcp-hue {
-    position: relative;
-    width: 100%;
-    height: 14px;
-    border-radius: 7px;
-    cursor: pointer;
-    background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
-    margin-bottom: 10px;
-}
-
-.paint-color-picker .pcp-hue-thumb {
-    position: absolute;
-    top: 50%;
-    width: 8px;
-    height: 18px;
-    border-radius: 4px;
-    border: 2px solid #fff;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-}
-
-.paint-color-picker .pcp-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-}
-
-.paint-color-picker .pcp-swatch {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    flex-shrink: 0;
-}
-
-.paint-color-picker .pcp-hex {
-    flex: 1;
-    min-width: 0;
-    height: 28px;
-    border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--text, #fff);
-    font-family: JetBrains Mono, monospace;
-    font-size: 12px;
-    text-align: center;
-    outline: none;
-}
+/* Color picker popover styles now live in components/ColorPicker.css. */

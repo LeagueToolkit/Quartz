@@ -1,0 +1,85 @@
+/* Self-contained color picker popover (replaces the Electron CreatePicker DOM). */
+.paint-color-picker {
+    position: fixed;
+    z-index: 9999;
+    width: 240px;
+    padding: 12px;
+    border-radius: var(--radius-lg);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    box-shadow: var(--dl-shadow-md);
+    font-family: var(--font-mono);
+}
+
+.paint-color-picker .pcp-sv {
+    position: relative;
+    width: 100%;
+    height: 150px;
+    border-radius: var(--radius-sm);
+    cursor: crosshair;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+/* White thumb rings sit over arbitrary picked colors — kept neutral on purpose. */
+.paint-color-picker .pcp-sv-thumb {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+/* Rainbow hue track is picker data, not theme chrome. */
+.paint-color-picker .pcp-hue {
+    position: relative;
+    width: 100%;
+    height: 14px;
+    border-radius: 7px;
+    cursor: pointer;
+    background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+    margin-bottom: 10px;
+}
+
+.paint-color-picker .pcp-hue-thumb {
+    position: absolute;
+    top: 50%;
+    width: 8px;
+    height: 18px;
+    border-radius: 4px;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.paint-color-picker .pcp-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.paint-color-picker .pcp-swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.paint-color-picker .pcp-hex {
+    flex: 1;
+    min-width: 0;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-align: center;
+    outline: none;
+}

@@ -122,10 +122,10 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                 onClick={() => onToggleMaterialExpand(row.key)}
                 sx={{
                     display: 'flex', alignItems: 'center', gap: 2, padding: '0 20px',
-                    background: 'linear-gradient(90deg, color-mix(in srgb, var(--accent), transparent 90%), color-mix(in srgb, var(--accent), transparent 97%))',
-                    borderBottom: '1px solid color-mix(in srgb, var(--accent), transparent 80%)',
+                    background: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)',
+                    borderBottom: '1px solid color-mix(in oklab, var(--accent-primary) 20%, transparent)',
                     cursor: 'pointer',
-                    '&:hover': { background: 'linear-gradient(90deg, color-mix(in srgb, var(--accent), transparent 85%), color-mix(in srgb, var(--accent), transparent 95%))' },
+                    '&:hover': { background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)' },
                 }}
             >
                 <Checkbox
@@ -136,18 +136,18 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                         e.stopPropagation();
                         paramKeys.forEach(k => onToggleMaterialParam(k, !allSelected));
                     }}
-                    sx={{ padding: '4px', color: 'color-mix(in srgb, var(--accent), transparent 40%)', '&.Mui-checked': { color: 'var(--accent)' }, '& .MuiSvgIcon-root': { fontSize: '1.4rem' } }}
+                    sx={{ padding: '4px', color: 'color-mix(in oklab, var(--accent-primary) 60%, var(--text-muted))', '&.Mui-checked': { color: 'var(--accent-primary)' }, '& .MuiSvgIcon-root': { fontSize: '1.4rem' } }}
                 />
-                <Box sx={{ display: 'flex', alignItems: 'center', color: 'color-mix(in srgb, var(--accent), transparent 30%)', mr: -0.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', color: 'var(--accent-primary)', mr: -0.5 }}>
                     {isExpanded ? <ExpandMoreIcon sx={{ fontSize: '1.4rem' }} /> : <ChevronRightIcon sx={{ fontSize: '1.4rem' }} />}
                 </Box>
-                <PaletteIcon sx={{ fontSize: 22, color: 'var(--accent)', opacity: 0.8 }} />
+                <PaletteIcon sx={{ fontSize: 22, color: 'var(--accent-primary)', opacity: 0.8 }} />
                 <Tooltip title={row.material?.name}>
-                    <Typography sx={{ flex: 1, fontFamily: 'JetBrains Mono, monospace', fontSize: '1rem', fontWeight: 700, color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <Typography sx={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: '1rem', fontWeight: 700, color: 'var(--accent-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {row.material?.name || 'Material'}
                     </Typography>
                 </Tooltip>
-                <Typography sx={{ fontSize: '0.85rem', color: 'color-mix(in srgb, var(--accent), transparent 40%)', fontFamily: 'JetBrains Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
+                <Typography sx={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                     {colorParams.length} colors{allParams.length > colorParams.length && ` / ${allParams.length} total`}
                 </Typography>
             </Box>
@@ -168,11 +168,11 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                 onClick={() => { if (isColor) onToggleMaterialParam(row.selectionKey, !isSelected); }}
                 sx={{
                     display: 'flex', alignItems: 'center', gap: 2, padding: '0 20px 0 52px',
-                    background: isNonColor ? 'rgba(100, 100, 100, 0.05)' : isSelected ? 'color-mix(in srgb, var(--accent), transparent 90%)' : 'transparent',
-                    borderBottom: '1px solid color-mix(in srgb, var(--accent), transparent 95%)',
+                    background: isNonColor ? 'var(--bg-tertiary)' : isSelected ? 'color-mix(in oklab, var(--accent-primary) 12%, transparent)' : 'transparent',
+                    borderBottom: '1px solid var(--border)',
                     cursor: isColor ? 'pointer' : 'default',
                     opacity: isNonColor ? 0.6 : 1,
-                    '&:hover': { background: isColor ? 'color-mix(in srgb, var(--accent), transparent 94%)' : 'rgba(100, 100, 100, 0.08)' },
+                    '&:hover': { background: isColor ? 'color-mix(in oklab, var(--accent-primary) 8%, transparent)' : 'var(--bg-hover)' },
                 }}
             >
                 <Checkbox
@@ -181,9 +181,9 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                     disabled={isNonColor}
                     onClick={(e) => e.stopPropagation()}
                     onChange={() => isColor && onToggleMaterialParam(row.selectionKey, !isSelected)}
-                    sx={{ padding: '4px', color: isNonColor ? 'rgba(100, 100, 100, 0.3)' : 'color-mix(in srgb, var(--accent), transparent 50%)', '&.Mui-checked': { color: 'var(--accent)' }, '&.Mui-disabled': { color: 'rgba(100, 100, 100, 0.2)' }, '& .MuiSvgIcon-root': { fontSize: '1.3rem' } }}
+                    sx={{ padding: '4px', color: isNonColor ? 'var(--text-muted)' : 'color-mix(in oklab, var(--accent-primary) 50%, var(--text-muted))', '&.Mui-checked': { color: 'var(--accent-primary)' }, '&.Mui-disabled': { color: 'var(--text-muted)' }, '& .MuiSvgIcon-root': { fontSize: '1.3rem' } }}
                 />
-                <Typography sx={{ flex: 1, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.95rem', color: isNonColor ? 'rgba(180, 180, 180, 0.7)' : isSelected ? 'var(--accent)' : 'rgba(255,255,255,0.85)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: isNonColor ? 'italic' : 'normal' }}>
+                <Typography sx={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: '0.95rem', color: isNonColor ? 'var(--text-muted)' : isSelected ? 'var(--accent-primary)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: isNonColor ? 'italic' : 'normal' }}>
                     {row.param?.name || 'Param'}
                     {isNonColor && <span style={{ marginLeft: 10, fontSize: '0.75rem', opacity: 0.5 }}>(control)</span>}
                 </Typography>
@@ -191,10 +191,11 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                     <Box
                         onClick={(e) => { e.stopPropagation(); onColorClick([{ rgba, time: 0 }]); }}
                         sx={{
-                            width: 80, height: 26, borderRadius: '6px',
+                            width: 80, height: 26, borderRadius: 'var(--radius-sm)',
+                            // Data swatch — actual material param color.
                             background: `rgb(${Math.round(rgba[0] * 255)}, ${Math.round(rgba[1] * 255)}, ${Math.round(rgba[2] * 255)})`,
-                            border: '2px solid rgba(255,255,255,0.2)', cursor: 'pointer',
-                            '&:hover': { borderColor: 'var(--accent)', boxShadow: '0 0 8px color-mix(in srgb, var(--accent), transparent 60%)' },
+                            border: '2px solid var(--border)', cursor: 'pointer',
+                            '&:hover': { borderColor: 'var(--accent-primary)' },
                         }}
                     />
                 ) : (
@@ -205,15 +206,15 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                                 type="text"
                                 defaultValue={val.toFixed(2)}
                                 style={{
-                                    width: '52px', height: '26px', background: 'rgba(0,0,0,0.3)',
-                                    border: '1px solid rgba(150, 150, 150, 0.3)', borderRadius: '4px',
-                                    color: 'rgba(200, 200, 200, 0.8)', fontFamily: 'JetBrains Mono, monospace',
+                                    width: '52px', height: '26px', background: 'var(--bg-primary)',
+                                    border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                                    color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)',
                                     fontSize: '0.8rem', textAlign: 'center', outline: 'none', padding: '2px 4px',
                                 }}
-                                onFocus={(e) => { e.target.style.borderColor = 'var(--accent)'; e.target.style.background = 'color-mix(in srgb, var(--accent), transparent 90%)'; }}
+                                onFocus={(e) => { e.target.style.borderColor = 'var(--accent-primary)'; e.target.style.background = 'var(--bg-secondary)'; }}
                                 onBlur={(e) => {
-                                    e.target.style.borderColor = 'rgba(150, 150, 150, 0.3)';
-                                    e.target.style.background = 'rgba(0,0,0,0.3)';
+                                    e.target.style.borderColor = 'var(--border)';
+                                    e.target.style.background = 'var(--bg-primary)';
                                     const newVal = parseFloat(e.target.value);
                                     if (!isNaN(newVal) && newVal !== val) {
                                         const newValues = [...rgba];
@@ -246,9 +247,9 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                 onClick={() => onToggleExpand(row.key)}
                 sx={{
                     display: 'flex', alignItems: 'center', gap: 1.5, padding: '0 16px',
-                    background: isLocked ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.02)',
-                    borderBottom: '1px solid rgba(255, 255, 255, 0.05)', cursor: 'pointer',
-                    '&:hover': { background: 'rgba(255, 255, 255, 0.04)' },
+                    background: isLocked ? 'var(--bg-primary)' : 'var(--bg-tertiary)',
+                    borderBottom: '1px solid var(--border)', cursor: 'pointer',
+                    '&:hover': { background: 'var(--bg-hover)' },
                 }}
             >
                 <Checkbox
@@ -257,23 +258,23 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                     indeterminate={someSelected && !allSelected}
                     disabled={isLocked}
                     onClick={(e) => { e.stopPropagation(); onToggleSystem(row.key, !allSelected); }}
-                    sx={{ padding: '2px', color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent)' } }}
+                    sx={{ padding: '2px', color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent-primary)' } }}
                 />
                 <Box sx={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)', mr: -0.5 }}>
                     {isExpanded ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
                 </Box>
                 <Tooltip title={systemName}>
-                    <Typography sx={{ flex: 1, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem', fontWeight: 600, color: isLocked ? 'color-mix(in srgb, var(--accent), transparent 60%)' : 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <Typography sx={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: '0.9rem', fontWeight: 600, color: isLocked ? 'var(--text-muted)' : 'var(--accent-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {displaySystemName}
                     </Typography>
                 </Tooltip>
-                <Typography sx={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', mr: 2 }}>
+                <Typography sx={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', mr: 2 }}>
                     {row.matchingCount} emitters
                 </Typography>
                 <IconButton
                     size="small"
                     onClick={(e) => { e.stopPropagation(); onToggleLock(row.key); }}
-                    sx={{ opacity: isLocked ? 1 : 0.3, color: isLocked ? 'var(--error-color)' : 'var(--text-2)' }}
+                    sx={{ opacity: isLocked ? 1 : 0.3, color: isLocked ? 'var(--color-danger)' : 'var(--text-secondary)' }}
                 >
                     {isLocked ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}
                 </IconButton>
@@ -294,13 +295,13 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
             onClick={() => { if (!isLocked) onToggleEmitter(row.key); }}
             sx={{
                 display: 'flex', alignItems: 'center', gap: 1.5, padding: '0 16px 0 32px',
-                background: isSelected ? 'color-mix(in srgb, var(--accent), transparent 88%)' : 'transparent',
-                borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
+                background: isSelected ? 'color-mix(in oklab, var(--accent-primary) 14%, transparent)' : 'transparent',
+                borderBottom: '1px solid var(--border)',
                 // Inset left accent bar marks the selected row at a glance.
-                boxShadow: isSelected ? 'inset 3px 0 0 0 var(--accent)' : 'none',
+                boxShadow: isSelected ? 'inset 3px 0 0 0 var(--accent-primary)' : 'none',
                 opacity: isLocked ? 0.5 : 1, cursor: isLocked ? 'not-allowed' : 'pointer',
                 transition: 'background 0.12s ease, box-shadow 0.12s ease',
-                '&:hover': { background: isLocked ? 'transparent' : isSelected ? 'color-mix(in srgb, var(--accent), transparent 84%)' : 'rgba(255,255,255,0.035)' },
+                '&:hover': { background: isLocked ? 'transparent' : isSelected ? 'color-mix(in oklab, var(--accent-primary) 20%, transparent)' : 'var(--bg-hover)' },
             }}
         >
             <Checkbox
@@ -309,9 +310,9 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                 disabled={isLocked}
                 onClick={(e) => e.stopPropagation()}
                 onChange={() => { if (!isLocked) onToggleEmitter(row.key); }}
-                sx={{ padding: '2px', color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent)' } }}
+                sx={{ padding: '2px', color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent-primary)' } }}
             />
-            <Typography sx={{ flex: 1, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.82rem', color: isSelected ? 'var(--accent)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <Typography sx={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: isSelected ? 'var(--accent-primary)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {row.emitter?.name || 'Unnamed Emitter'}
             </Typography>
             <Box sx={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -319,7 +320,7 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                     onMouseEnter={(e) => onTextureHover(e, row.emitter)}
                     onMouseLeave={onTextureLeave}
                     onClick={(e) => { e.stopPropagation(); onTextureClick(row.emitter); }}
-                    sx={{ width: 24, height: 24, borderRadius: '4px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)', cursor: 'pointer', '&:hover': { color: 'var(--accent)', borderColor: 'var(--accent)' } }}
+                    sx={{ width: 24, height: 24, borderRadius: 'var(--radius-sm)', background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer', '&:hover': { color: 'var(--accent-primary)', borderColor: 'var(--accent-primary)' } }}
                 >
                     <ImageOutlinedIcon sx={{ fontSize: 14 }} />
                 </Box>
@@ -330,16 +331,16 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                 {showBaseColor && <ColorBlock variant="wide" colors={colors.color} title="Base Color" onClick={(e) => { e.stopPropagation(); if (colors.color.length > 0) onColorClick(colors.color); }} />}
 
                 <Box
-                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'color-mix(in srgb, var(--accent), transparent 95%)', borderRadius: '4px', padding: '0 2px', ml: 0.5, height: '24px', border: '1px solid transparent', '&:hover': { border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)' } }}
+                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)', borderRadius: 'var(--radius-sm)', padding: '0 2px', ml: 0.5, height: '24px', border: '1px solid transparent', '&:hover': { border: '1px solid color-mix(in oklab, var(--accent-primary) 35%, transparent)' } }}
                     onClick={(e) => e.stopPropagation()}
                 >
-                    <Typography sx={{ fontSize: '0.65rem', color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', mr: 0.25, opacity: 0.5 }}>BM:</Typography>
+                    <Typography sx={{ fontSize: '0.65rem', color: 'var(--accent-primary)', fontFamily: 'var(--font-mono)', mr: 0.25, opacity: 0.5 }}>BM:</Typography>
                     <input
                         key={row.key}
                         type="text"
                         defaultValue={currentBlendMode}
                         disabled={isLocked}
-                        style={{ width: '12px', background: 'transparent', border: 'none', color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', textAlign: 'center', outline: 'none', padding: 0 }}
+                        style={{ width: '12px', background: 'transparent', border: 'none', color: 'var(--accent-primary)', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', textAlign: 'center', outline: 'none', padding: 0 }}
                         onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
                         onBlur={(e) => {
                             if (!isLocked) {

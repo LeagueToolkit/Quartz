@@ -32,9 +32,9 @@ function ColorBlock({ colors, title, variant = 'standard', onClick }: ColorBlock
             <Box
                 sx={{
                     ...dimensions,
-                    borderRadius: '4px',
-                    border: '1px solid rgba(255,255,255,0.05)',
-                    background: 'rgba(255,255,255,0.02)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg-tertiary)',
                     opacity: 0.5,
                     flexShrink: 0,
                 }}
@@ -77,9 +77,10 @@ function ColorBlock({ colors, title, variant = 'standard', onClick }: ColorBlock
                 onClick={onClick}
                 sx={{
                     ...dimensions,
-                    borderRadius: '4px',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    backgroundColor: '#000',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border)',
+                    // Solid backing behind the data-color swatch so alpha doesn't bleed.
+                    backgroundColor: 'var(--bg-primary)',
                     cursor: 'pointer',
                     flexShrink: 0,
                     overflow: 'hidden',
@@ -87,7 +88,7 @@ function ColorBlock({ colors, title, variant = 'standard', onClick }: ColorBlock
                     transition: 'transform 0.1s, border-color 0.1s',
                     '&:hover': {
                         transform: 'translateY(-1px)',
-                        borderColor: 'var(--accent)',
+                        borderColor: 'var(--accent-primary)',
                     },
                 }}
             >

@@ -11,27 +11,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Box, Typography, Button, TextField, Checkbox, Slider, IconButton,
-    Select, MenuItem, Menu, Dialog, DialogTitle, DialogContent, DialogActions,
+    Select, MenuItem, Menu, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
     type SelectChangeEvent,
 } from '@mui/material';
 import PaletteIcon from '@mui/icons-material/Palette';
 import TuneIcon from '@mui/icons-material/Tune';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
+import { FolderOpen as FolderOpenIcon, Undo2 as UndoIcon, Redo2 as RedoIcon } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
-    paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintUndo, paintSave,
-    type VfxModel, type VfxEmitter, type ColorTargetId,
-    type RecolorModeId, type PaletteStopInput, type RecolorOptionsInput,
+    paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintUndo, paintRedo, paintSave,
+    type VfxEmitter, type ColorTargetId,
+    type PaletteStopInput, type RecolorOptionsInput,
 } from '@/lib/api';
-import { useNotificationStore } from '@/lib/stores';
+import { useNotificationStore, usePaintStore, type HslValues, type PaintState as PaintStoreState } from '@/lib/stores';
+import { useFileDrop } from '@/lib/util/useFileDrop';
 
 import './paint/Paint.css';
 import ColorHandler from './paint/utils/ColorHandler';
 import { savePalette, loadAllPalettes, deletePalette } from './paint/utils/paletteManager';
 import { getColorDescription } from './paint/utils/colorFilter';
 
-import Toolbar from './paint/components/Toolbar';
 import SystemList from './paint/components/SystemList';
 import PaletteManager, { type SavedPaletteItem } from './paint/components/PaletteManager';
 import { ColorPickerHost, openColorPicker, cleanupColorPickers } from './paint/components/ColorPicker';
@@ -41,13 +42,69 @@ import {
 import { useMinecraftStyle } from './paint/useMinecraftStyle';
 
 const controlLabelStyle = {
-    fontFamily: 'JetBrains Mono, monospace',
+    fontFamily: 'var(--font-mono)',
     fontSize: '0.75rem',
-    color: 'var(--accent-muted)',
+    color: 'var(--text-secondary)',
     display: 'flex',
     alignItems: 'center',
     gap: '4px',
 } as const;
+
+/* Dark dropdown-menu paper shared by every Paint <Select> so the popup matches
+   the Design Lab surface instead of the default light MUI menu. */
+const ddMenuPaperSx = {
+    mt: 0.6,
+    background: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    boxShadow: 'var(--dl-shadow-md)',
+    overflow: 'hidden',
+    '& .MuiMenu-list': { py: 0.5 },
+    '& .MuiMenuItem-root': {
+        fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)',
+        mx: 0.6, borderRadius: 'var(--radius-sm)', minHeight: '32px', transition: 'all var(--motion-fast)',
+        '&:hover': { background: 'var(--bg-hover)', color: 'var(--text-primary)' },
+        '&.Mui-selected': { background: 'color-mix(in oklab, var(--accent-primary) 16%, transparent)', color: 'var(--accent-primary)', fontWeight: 700 },
+        '&.Mui-selected:hover': { background: 'color-mix(in oklab, var(--accent-primary) 22%, transparent)' },
+    },
+} as const;
+
+/* Shared trigger styling for the small Paint selects (BM / variant). */
+const ddTriggerSx = {
+    fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: 'var(--text-primary)', height: '28px', borderRadius: 'var(--radius-sm)',
+    background: 'var(--bg-tertiary)', border: '1px solid var(--border)', transition: 'all var(--motion-fast)',
+    '& .MuiSelect-select': { padding: '4px 10px', paddingRight: '28px !important', display: 'flex', alignItems: 'center' },
+    '& .MuiSelect-icon': { color: 'var(--text-secondary)', fontSize: '1rem' },
+    '&:hover': { background: 'var(--bg-hover)', borderColor: 'color-mix(in oklab, var(--accent-primary) 35%, var(--border))' },
+    '&.Mui-focused': { borderColor: 'var(--accent-primary)', boxShadow: '0 0 0 2px color-mix(in oklab, var(--accent-primary) 55%, transparent)' },
+    '& fieldset': { border: 'none' }, '&:hover fieldset': { border: 'none' }, '&.Mui-focused fieldset': { border: 'none' },
+} as const;
+
+/* Mode picker — lives in the sub-toolbar so it's reachable from every mode
+   (it used to sit inside PaletteManager, which unmounts in HSL/Shift modes and
+   trapped the user there). */
+function ModeSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+    return (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
+            <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Mode</Typography>
+            <Select
+                value={value}
+                onChange={(e: SelectChangeEvent) => onChange(e.target.value)}
+                size="small"
+                className="paint2-mode-select"
+                sx={{ ...ddTriggerSx, minWidth: '148px' }}
+                MenuProps={{ PaperProps: { sx: ddMenuPaperSx } }}
+            >
+                <MenuItem value="random">Normal</MenuItem>
+                <MenuItem value="random-keyframe">Random Gradient</MenuItem>
+                <MenuItem value="linear">Linear Gradient</MenuItem>
+                <MenuItem value="shift">HSL Shift</MenuItem>
+                <MenuItem value="shift-hue">Shift Hue</MenuItem>
+                <MenuItem value="materials">Materials Only</MenuItem>
+            </Select>
+        </Box>
+    );
+}
 
 /* ── Hue / HSL / blend-chance sub-controls (committed sliders) ──────────── */
 
@@ -55,7 +112,7 @@ function ShiftHueControl({ value, onCommit, onStatus }: { value: number; onCommi
     const [draft, setDraft] = useState(value);
     useEffect(() => { setDraft(value); }, [value]);
     return (
-        <Box sx={{ padding: '8px 40px', background: 'var(--glass-bg, rgba(18, 18, 24, 0.55))', borderBottom: '1px solid var(--glass-border, rgba(255,255,255,0.1))', flexShrink: 0 }}>
+        <Box sx={{ padding: '8px 40px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Typography sx={{ ...controlLabelStyle, width: 80 }}>Target: {draft}°</Typography>
                 <Slider
@@ -65,8 +122,9 @@ function ShiftHueControl({ value, onCommit, onStatus }: { value: number; onCommi
                     min={0} max={360} size="small"
                     sx={{
                         '& .MuiSlider-track': { background: 'transparent', border: 'none' },
+                        // Rainbow rail is the hue spectrum (data), not theme chrome.
                         '& .MuiSlider-rail': { height: '5px', opacity: 1, background: 'linear-gradient(90deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)' },
-                        '& .MuiSlider-thumb': { width: 14, height: 14, background: 'var(--accent)', border: '2px solid rgba(255,255,255,0.75)', boxShadow: '0 2px 10px rgba(0,0,0,0.35)', transition: 'all 0.16s ease', '&:hover': { boxShadow: '0 0 0 6px color-mix(in srgb, var(--accent), transparent 84%)' }, '&.Mui-active': { boxShadow: '0 0 0 8px color-mix(in srgb, var(--accent), transparent 80%)' } },
+                        '& .MuiSlider-thumb': { width: 14, height: 14, background: 'var(--accent-primary)', border: '2px solid var(--text-primary)', boxShadow: '0 2px 8px rgba(0,0,0,.3)', transition: 'all 0.16s ease', '&:hover': { boxShadow: '0 0 0 6px color-mix(in oklab, var(--accent-primary) 22%, transparent)' }, '&.Mui-active': { boxShadow: '0 0 0 8px color-mix(in oklab, var(--accent-primary) 28%, transparent)' } },
                     }}
                 />
             </Box>
@@ -74,7 +132,6 @@ function ShiftHueControl({ value, onCommit, onStatus }: { value: number; onCommi
     );
 }
 
-interface HslValues { h: number; s: number; l: number }
 function HslShiftControls({ values, onCommit, onStatus }: { values: HslValues; onCommit: (v: HslValues) => void; onStatus: (s: string) => void }) {
     const [draft, setDraft] = useState(values);
     useEffect(() => { setDraft(values); }, [values.h, values.s, values.l]);
@@ -86,7 +143,7 @@ function HslShiftControls({ values, onCommit, onStatus }: { values: HslValues; o
         onStatus(`HSL Shift Ready: H:${next.h}° S:${next.s}% L:${next.l}%`);
     };
     return (
-        <Box sx={{ padding: '8px 40px', background: 'var(--glass-bg, rgba(18, 18, 24, 0.55))', borderBottom: '1px solid var(--glass-border, rgba(255,255,255,0.1))', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <Box sx={{ padding: '8px 40px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Typography sx={{ ...controlLabelStyle, width: 80 }}>Hue: {draft.h}°</Typography>
                 <Slider value={draft.h} onChange={(_, v) => setDraft(p => ({ ...p, h: Array.isArray(v) ? v[0] : v }))} onChangeCommitted={(_, v) => commitPart('h', v)} min={-180} max={180} size="small" />
@@ -113,7 +170,7 @@ function BlendModeChanceSlider({ value, onCommit }: { value: number; onCommit: (
                 value={draft}
                 onChange={(_, v) => setDraft(Array.isArray(v) ? v[0] : v)}
                 onChangeCommitted={(_, v) => { const next = Array.isArray(v) ? v[0] : v; setDraft(next); onCommit(next); }}
-                sx={{ width: 80, color: 'var(--accent)' }}
+                sx={{ width: 80, color: 'var(--accent-primary)' }}
             />
             <Typography sx={{ ...controlLabelStyle, opacity: 0.5, minWidth: '35px' }}>{draft}%</Typography>
         </Box>
@@ -122,77 +179,107 @@ function BlendModeChanceSlider({ value, onCommit }: { value: number; onCommit: (
 
 /* ── page ───────────────────────────────────────────────────────────────── */
 
+/* Build a setX shim over the store that accepts both a value and a functional
+   updater, matching React's setState signature so the existing handlers below
+   don't have to change. */
+type Updater<T> = T | ((prev: T) => T);
+function makeSetter<K extends keyof PaintStoreState>(key: K) {
+    return (value: Updater<PaintStoreState[K]>) => {
+        const s = usePaintStore.getState();
+        const next = typeof value === 'function'
+            ? (value as (prev: PaintStoreState[K]) => PaintStoreState[K])(s[key])
+            : value;
+        s.set(key, next);
+    };
+}
+
 function Paint() {
     const notify = useNotificationStore((s) => s.push);
     const isMinecraftStyle = useMinecraftStyle();
 
-    // === FILE STATE ===
-    const [filePath, setFilePath] = useState('');
-    const [, setFileName] = useState('');
-    const [fileSaved, setFileSaved] = useState(true);
-    const [isLoading, setIsLoading] = useState(false);
-    const [statusMessage, setStatusMessage] = useState('Ready');
+    // === RESIDENT STATE (persists across page swaps via the store) ===
+    const filePath = usePaintStore((s) => s.filePath);
+    const fileSaved = usePaintStore((s) => s.fileSaved);
+    const statusMessage = usePaintStore((s) => s.statusMessage);
+    const model = usePaintStore((s) => s.model);
+    const sessionId = usePaintStore((s) => s.sessionId);
+    const canUndo = usePaintStore((s) => s.canUndo);
+    const canRedo = usePaintStore((s) => s.canRedo);
+    const selection = usePaintStore((s) => s.selection);
+    const lockedSystems = usePaintStore((s) => s.lockedSystems);
+    const searchQuery = usePaintStore((s) => s.searchQuery);
+    const expandedSystems = usePaintStore((s) => s.expandedSystems);
+    const expandedMaterials = usePaintStore((s) => s.expandedMaterials);
+    const autoExpand = usePaintStore((s) => s.autoExpand);
+    const variantFilter = usePaintStore((s) => s.variantFilter);
+    const searchByTexture = usePaintStore((s) => s.searchByTexture);
+    const mode = usePaintStore((s) => s.mode);
+    const palette = usePaintStore((s) => s.palette);
+    const colorCount = usePaintStore((s) => s.colorCount);
+    const ignoreBlackWhite = usePaintStore((s) => s.ignoreBlackWhite);
+    const hslValues = usePaintStore((s) => s.hslValues);
+    const hueTarget = usePaintStore((s) => s.hueTarget);
+    const colorFilterEnabled = usePaintStore((s) => s.colorFilterEnabled);
+    const targetColors = usePaintStore((s) => s.targetColors);
+    const colorTolerance = usePaintStore((s) => s.colorTolerance);
+    const targetBC = usePaintStore((s) => s.targetBC);
+    const targetOC = usePaintStore((s) => s.targetOC);
+    const targetLC = usePaintStore((s) => s.targetLC);
+    const targetBaseColor = usePaintStore((s) => s.targetBaseColor);
+    const blendModeSelect = usePaintStore((s) => s.blendModeSelect);
+    const blendModeChance = usePaintStore((s) => s.blendModeChance);
 
-    // === RESIDENT MODEL ===
-    const [model, setModel] = useState<VfxModel | null>(null);
-    const [sessionId, setSessionId] = useState<number | null>(null);
-    const [canUndo, setCanUndo] = useState(false);
+    const setFilePath = useMemo(() => makeSetter('filePath'), []);
+    const setFileName = useMemo(() => makeSetter('fileName'), []);
+    const setFileSaved = useMemo(() => makeSetter('fileSaved'), []);
+    const setStatusMessage = useMemo(() => makeSetter('statusMessage'), []);
+    const setModel = useMemo(() => makeSetter('model'), []);
+    const setSessionId = useMemo(() => makeSetter('sessionId'), []);
+    const setCanUndo = useMemo(() => makeSetter('canUndo'), []);
+    const setCanRedo = useMemo(() => makeSetter('canRedo'), []);
+    const setSelection = useMemo(() => makeSetter('selection'), []);
+    const setLockedSystems = useMemo(() => makeSetter('lockedSystems'), []);
+    const setSearchQuery = useMemo(() => makeSetter('searchQuery'), []);
+    const setExpandedSystems = useMemo(() => makeSetter('expandedSystems'), []);
+    const setExpandedMaterials = useMemo(() => makeSetter('expandedMaterials'), []);
+    const setAutoExpand = useMemo(() => makeSetter('autoExpand'), []);
+    const setVariantFilter = useMemo(() => makeSetter('variantFilter'), []);
+    const setSearchByTexture = useMemo(() => makeSetter('searchByTexture'), []);
+    const setMode = useMemo(() => makeSetter('mode'), []);
+    const setPalette = useMemo(() => makeSetter('palette'), []);
+    const setColorCount = useMemo(() => makeSetter('colorCount'), []);
+    const setIgnoreBlackWhite = useMemo(() => makeSetter('ignoreBlackWhite'), []);
+    const setHslValues = useMemo(() => makeSetter('hslValues'), []);
+    const setHueTarget = useMemo(() => makeSetter('hueTarget'), []);
+    const setColorFilterEnabled = useMemo(() => makeSetter('colorFilterEnabled'), []);
+    const setTargetColors = useMemo(() => makeSetter('targetColors'), []);
+    const setColorTolerance = useMemo(() => makeSetter('colorTolerance'), []);
+    const setTargetBC = useMemo(() => makeSetter('targetBC'), []);
+    const setTargetOC = useMemo(() => makeSetter('targetOC'), []);
+    const setTargetLC = useMemo(() => makeSetter('targetLC'), []);
+    const setTargetBaseColor = useMemo(() => makeSetter('targetBaseColor'), []);
+    const setBlendModeSelect = useMemo(() => makeSetter('blendModeSelect'), []);
+    const setBlendModeChance = useMemo(() => makeSetter('blendModeChance'), []);
+
+    // autoExpand mirrors into a ref for use inside the load callback.
+    const autoExpandRef = useRef(autoExpand);
+    autoExpandRef.current = autoExpand;
+    const setAutoExpandWithRef = (val: boolean) => { setAutoExpand(val); autoExpandRef.current = val; };
+
+    // === TRANSIENT UI STATE (fine to reset on remount) ===
+    const [isLoading, setIsLoading] = useState(false);
+    const [isDragOver, setIsDragOver] = useState(false);
     const [paletteNameDialogOpen, setPaletteNameDialogOpen] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [paletteToDelete, setPaletteToDelete] = useState<number | null>(null);
     const [newPaletteName, setNewPaletteName] = useState('');
-
-    // === SELECTION ===
-    const [selection, setSelection] = useState<Set<string>>(new Set());
-    const [lockedSystems, setLockedSystems] = useState<Set<string>>(new Set());
-
-    // === SEARCH/FILTER ===
-    const [searchQuery, setSearchQuery] = useState('');
-    const [expandedSystems, setExpandedSystems] = useState<Set<string>>(new Set());
-    const [expandedMaterials, setExpandedMaterials] = useState<Set<string>>(new Set());
-    const [autoExpand, setAutoExpand] = useState(true);
-    const autoExpandRef = useRef(true);
-    const setAutoExpandWithRef = (val: boolean) => { setAutoExpand(val); autoExpandRef.current = val; };
-    const [filterAnchor, setFilterAnchor] = useState<null | HTMLElement>(null);
-    const [variantFilter, setVariantFilter] = useState<'all' | 'v1' | 'v2'>('all');
-    const [searchByTexture, setSearchByTexture] = useState(false);
-
-    // === MODE & VALUES ===
-    const [mode, setMode] = useState<RecolorModeId>('random');
-
-    const [palette, setPalette] = useState<ColorHandler[]>(() => {
-        const def = new ColorHandler();
-        def.InputHex('#ecb96a');
-        def.time = 0;
-        return [def];
-    });
-    const [colorCount, setColorCount] = useState(1);
     const [savedPalettesList, setSavedPalettesList] = useState<SavedPaletteItem[]>([]);
-    const [ignoreBlackWhite, setIgnoreBlackWhite] = useState(true);
-    const [hslValues, setHslValues] = useState<HslValues>({ h: 0, s: 0, l: 0 });
-    const [hueTarget, setHueTarget] = useState(60);
-
-    // === COLOR FILTER STATE ===
-    const [colorFilterEnabled, setColorFilterEnabled] = useState(false);
-    const [targetColors, setTargetColors] = useState<number[][]>([]);
-    const [colorTolerance, setColorTolerance] = useState(30);
+    const [filterAnchor, setFilterAnchor] = useState<null | HTMLElement>(null);
     const [deleteTargetIndex, setDeleteTargetIndex] = useState<number | null>(null);
-
-    // === UI OPTIONS ===
-    const [targetBC, setTargetBC] = useState(true);
-    const [targetOC, setTargetOC] = useState(false);
-    const [targetLC, setTargetLC] = useState(false);
-    const [targetBaseColor, setTargetBaseColor] = useState(true);
-
-    // === BLEND MODE SELECT ===
-    const [blendModeSelect, setBlendModeSelect] = useState(0);
-    const [blendModeChance, setBlendModeChance] = useState(100);
 
     // ============================================================
     // FILE OPERATIONS
     // ============================================================
-
-    const sessionRef = useRef<number | null>(null);
 
     const loadBinFile = useCallback(async (selectedPath: string) => {
         if (!selectedPath) return;
@@ -202,15 +289,15 @@ function Paint() {
             const baseName = (selectedPath.split(/[\\/]/).pop() || selectedPath).replace(/\.(bin|py)$/i, '');
             setStatusMessage('Opening bin...');
 
-            // Free the previous resident tree before opening a new one.
-            if (sessionRef.current !== null) {
-                const prev = sessionRef.current;
-                sessionRef.current = null;
+            // Free the previous resident tree before opening a new one. Read the
+            // live session from the store (the ref is per-mount and resets on a
+            // page swap, but the session persists in the store).
+            const prev = usePaintStore.getState().sessionId;
+            if (prev !== null) {
                 void paintClose(prev).catch(() => undefined);
             }
 
             const { sessionId: newSession, model: newModel } = await paintOpen(selectedPath);
-            sessionRef.current = newSession;
             setSessionId(newSession);
             setModel(newModel);
 
@@ -219,6 +306,7 @@ function Paint() {
             setFileSaved(true);
             setSelection(new Set());
             setCanUndo(false);
+            setCanRedo(false);
 
             if (autoExpandRef.current) {
                 setExpandedSystems(new Set(newModel.systemOrder));
@@ -248,6 +336,18 @@ function Paint() {
             setStatusMessage(`Error: ${error instanceof Error ? error.message : String(error)}`);
         }
     }, [loadBinFile]);
+
+    /* OS drag-and-drop: accept a dropped .bin/.py and load it. */
+    useFileDrop({
+        onEnter: () => setIsDragOver(true),
+        onOver: () => setIsDragOver(true),
+        onLeave: () => setIsDragOver(false),
+        onDrop: (paths) => {
+            setIsDragOver(false);
+            const file = paths.find(p => /\.(bin|py)$/i.test(p));
+            if (file) void loadBinFile(file);
+        },
+    });
 
     const handleSave = useCallback(async () => {
         if (sessionId === null) return;
@@ -447,6 +547,7 @@ function Paint() {
 
             setModel(nextModel);
             setCanUndo(true);
+            setCanRedo(false);
             setFileSaved(false);
             setStatusMessage(`Recolored ${changed} properties`);
         } catch (error) {
@@ -462,6 +563,8 @@ function Paint() {
             const restored = await paintUndo(sessionId);
             if (restored) {
                 setModel(restored);
+                setSelection(new Set());
+                setCanRedo(true);
                 setFileSaved(false);
                 setStatusMessage('Restored previous state');
             } else {
@@ -471,6 +574,26 @@ function Paint() {
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             setStatusMessage(`Undo error: ${msg}`);
+        }
+    }, [sessionId]);
+
+    const handleRedo = useCallback(async () => {
+        if (sessionId === null) return;
+        try {
+            const restored = await paintRedo(sessionId);
+            if (restored) {
+                setModel(restored);
+                setSelection(new Set());
+                setCanUndo(true);
+                setFileSaved(false);
+                setStatusMessage('Redid last edit');
+            } else {
+                setCanRedo(false);
+                setStatusMessage('Nothing to redo');
+            }
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            setStatusMessage(`Redo error: ${msg}`);
         }
     }, [sessionId]);
 
@@ -490,13 +613,30 @@ function Paint() {
 
     useEffect(() => { refreshSavedPalettes(); }, [refreshSavedPalettes]);
 
-    // Free the resident tree when leaving the page.
-    useEffect(() => () => {
-        if (sessionRef.current !== null) {
-            void paintClose(sessionRef.current).catch(() => undefined);
-            sessionRef.current = null;
-        }
-    }, []);
+    /* Ctrl+Z undo, Ctrl+Alt+Z (or Ctrl+Shift+Z / Ctrl+Y) redo. Skip while typing
+       in an input/textarea so text fields keep their native undo. */
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (!(e.ctrlKey || e.metaKey)) return;
+            const target = e.target as HTMLElement | null;
+            if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+            const key = e.key.toLowerCase();
+            if (key === 'z') {
+                e.preventDefault();
+                if (e.altKey || e.shiftKey) void handleRedo();
+                else void handleUndo();
+            } else if (key === 'y') {
+                e.preventDefault();
+                void handleRedo();
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [handleUndo, handleRedo]);
+
+    /* The resident session deliberately outlives this component — swapping pages
+       must not nuke the loaded bin. It's freed only when a different bin is
+       opened (loadBinFile closes the previous one) or when the app exits. */
 
     const confirmSavePalette = useCallback(() => {
         if (!newPaletteName.trim()) return;
@@ -604,6 +744,7 @@ function Paint() {
                 })),
             }));
             setCanUndo(true);
+            setCanRedo(false);
             setFileSaved(false);
             setStatusMessage(`Updated ${paramName}`);
         } catch (error) {
@@ -662,6 +803,7 @@ function Paint() {
                 emitters: prev.emitters.map(e => e.key === emitterKey ? { ...e, blendMode: newMode } : e),
             }));
             setCanUndo(true);
+            setCanRedo(false);
             setFileSaved(false);
             setStatusMessage(`Updated ${emitter.name} to BlendMode ${newMode}`);
         } catch (error) {
@@ -758,16 +900,17 @@ function Paint() {
                 display: 'flex',
                 flexDirection: 'column',
                 height: '100%',
-                background: isMinecraftStyle ? '#2a2a2a' : 'var(--bg)',
-                color: 'var(--accent)',
+                background: isMinecraftStyle ? '#2a2a2a' : 'var(--bg-primary)',
+                color: 'var(--text-primary)',
                 overflow: 'hidden',
                 position: 'relative',
             }}
         >
             <ColorPickerHost />
 
-            <Toolbar filePath={filePath} isLoading={isLoading} onFileOpen={handleFileOpen} mode={mode} onModeChange={setMode} />
-
+            {/* All recolor chrome only matters once a bin is loaded — hide it
+               otherwise so the empty state isn't buried under toolbar rows. */}
+            {model && (<>
             {mode === 'shift-hue' && (
                 <ShiftHueControl value={hueTarget} onCommit={setHueTarget} onStatus={setStatusMessage} />
             )}
@@ -791,8 +934,8 @@ function Paint() {
             {mode !== 'materials' && (
                 <Box className="paint2-subtoolbar-main" sx={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 16px', gap: 2,
-                    borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid rgba(255,255,255,0.03)',
-                    background: isMinecraftStyle ? '#353535' : 'var(--surface)', flexShrink: 0,
+                    borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)',
+                    background: isMinecraftStyle ? '#353535' : 'var(--bg-secondary)', flexShrink: 0,
                 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -802,49 +945,36 @@ function Paint() {
                                 onChange={(e: SelectChangeEvent<number>) => setBlendModeSelect(Number(e.target.value))}
                                 size="small"
                                 className="paint2-bm-select"
-                                sx={{
-                                    fontFamily: 'JetBrains Mono, monospace', fontSize: '0.82rem', color: 'var(--text)', height: '26px', minWidth: '60px', borderRadius: '8px',
-                                    background: 'rgba(18, 20, 28, 0.55)', border: '1px solid rgba(255, 255, 255, 0.24)', transition: 'all 160ms ease',
-                                    '& .MuiSelect-select': { padding: '3px 10px', paddingRight: '28px !important' },
-                                    '& .MuiSelect-icon': { color: 'rgba(255,255,255,0.78)', fontSize: '1rem' },
-                                    '&:hover': { background: 'rgba(34, 38, 52, 0.62)', borderColor: 'rgba(255,255,255,0.52)', boxShadow: '0 8px 18px rgba(0,0,0,0.28)' },
-                                    '&.Mui-focused': { borderColor: 'color-mix(in srgb, var(--accent2), transparent 35%)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent2), transparent 75%)' },
-                                    '& fieldset': { border: 'none' }, '&:hover fieldset': { border: 'none' }, '&.Mui-focused fieldset': { border: 'none' },
-                                }}
+                                sx={{ ...ddTriggerSx, minWidth: '60px' }}
+                                MenuProps={{ PaperProps: { sx: ddMenuPaperSx } }}
                             >
                                 {[0, 1, 2, 3, 4].map(n => <MenuItem key={n} value={n}>{n}</MenuItem>)}
                             </Select>
                         </Box>
 
-                        <Button
-                            size="small"
-                            onClick={handleSelectByBlendMode}
-                            sx={{
-                                background: 'color-mix(in srgb, var(--accent), transparent 95%)', border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)',
-                                color: 'var(--accent)', borderRadius: '4px', textTransform: 'none', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem',
-                                padding: '1px 10px', minWidth: 'auto', height: '26px',
-                                '&:hover': { background: 'color-mix(in srgb, var(--accent), transparent 90%)', borderColor: 'var(--accent)' },
-                            }}
-                        >
+                        <button onClick={handleSelectByBlendMode} className="dl-btn dl-btn--primary dl-btn--sm">
                             Select BM{blendModeSelect}
-                        </Button>
+                        </button>
 
                         <BlendModeChanceSlider value={blendModeChance} onCommit={setBlendModeChance} />
                     </Box>
 
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                         <Box sx={{ ...controlLabelStyle }}>
-                            <Checkbox size="small" checked={targetLC} onChange={e => setTargetLC(e.target.checked)} sx={{ color: 'var(--accent-muted)', padding: '2px' }} /> LC
+                            <Checkbox size="small" checked={targetLC} onChange={e => setTargetLC(e.target.checked)} sx={{ color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent-primary)' }, padding: '2px' }} /> LC
                         </Box>
                         <Box sx={{ ...controlLabelStyle }}>
-                            <Checkbox size="small" checked={targetOC} onChange={e => setTargetOC(e.target.checked)} sx={{ color: 'var(--accent-muted)', padding: '2px' }} /> OC
+                            <Checkbox size="small" checked={targetOC} onChange={e => setTargetOC(e.target.checked)} sx={{ color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent-primary)' }, padding: '2px' }} /> OC
                         </Box>
                         <Box sx={{ ...controlLabelStyle }}>
-                            <Checkbox size="small" checked={targetBC} onChange={e => setTargetBC(e.target.checked)} sx={{ color: 'var(--accent-muted)', padding: '2px' }} /> BC
+                            <Checkbox size="small" checked={targetBC} onChange={e => setTargetBC(e.target.checked)} sx={{ color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent-primary)' }, padding: '2px' }} /> BC
                         </Box>
                         <Box sx={{ ...controlLabelStyle }}>
-                            <Checkbox size="small" checked={targetBaseColor} onChange={e => setTargetBaseColor(e.target.checked)} sx={{ color: 'var(--accent-muted)', padding: '2px' }} /> Color
+                            <Checkbox size="small" checked={targetBaseColor} onChange={e => setTargetBaseColor(e.target.checked)} sx={{ color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent-primary)' }, padding: '2px' }} /> Color
                         </Box>
+
+                        <Box sx={{ width: '1px', height: '20px', background: 'var(--border)', mx: 0.5 }} />
+                        <ModeSelect value={mode} onChange={(v) => setMode(v as typeof mode)} />
                     </Box>
                 </Box>
             )}
@@ -853,13 +983,16 @@ function Paint() {
             {mode === 'materials' && (
                 <Box className="paint2-materials-info" sx={{
                     display: 'flex', alignItems: 'center', padding: '8px 16px', gap: 2,
-                    borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid color-mix(in srgb, var(--accent), transparent 85%)',
-                    background: isMinecraftStyle ? '#353535' : 'linear-gradient(90deg, color-mix(in srgb, var(--accent), transparent 92%), transparent)', flexShrink: 0,
+                    borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid color-mix(in oklab, var(--accent-primary) 20%, var(--border))',
+                    background: isMinecraftStyle ? '#353535' : 'color-mix(in oklab, var(--accent-primary) 8%, var(--bg-secondary))', flexShrink: 0,
                 }}>
-                    <PaletteIcon sx={{ color: 'var(--accent)', fontSize: 18 }} />
-                    <Typography sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 500 }}>
+                    <PaletteIcon sx={{ color: 'var(--accent-primary)', fontSize: 18 }} />
+                    <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--accent-primary)', fontWeight: 500 }}>
                         Materials Only Mode — VFX systems hidden
                     </Typography>
+                    <Box sx={{ ml: 'auto' }}>
+                        <ModeSelect value={mode} onChange={(v) => setMode(v as typeof mode)} />
+                    </Box>
                 </Box>
             )}
 
@@ -867,8 +1000,8 @@ function Paint() {
             {colorFilterEnabled && (
                 <Box className="paint2-color-filter" sx={{
                     display: 'flex', alignItems: 'center', padding: '8px 16px', gap: 1.5,
-                    borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid rgba(255,255,255,0.05)',
-                    background: isMinecraftStyle ? '#353535' : 'color-mix(in srgb, var(--surface-2), black 10%)', flexShrink: 0,
+                    borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)',
+                    background: isMinecraftStyle ? '#353535' : 'var(--bg-tertiary)', flexShrink: 0,
                 }}>
                     <Typography sx={{ ...controlLabelStyle, minWidth: '80px' }}>Filter ({targetColors.length}):</Typography>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, flex: 1, alignItems: 'center' }}>
@@ -879,10 +1012,11 @@ function Paint() {
                                     key={index}
                                     sx={{
                                         width: '24px', height: '24px',
-                                        backgroundColor: isDelete ? '#ff4444' : `rgb(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)})`,
-                                        border: `1px solid ${isDelete ? '#ff6666' : '#333'}`, borderRadius: '4px', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', color: 'white',
-                                        textShadow: '1px 1px 2px rgba(0,0,0,0.8)', '&:hover': { border: '1px solid var(--accent)' },
+                                        // Swatch shows the user's actual target color; flips to a danger tint when marked for delete.
+                                        backgroundColor: isDelete ? 'var(--color-danger)' : `rgb(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)})`,
+                                        border: `1px solid ${isDelete ? 'color-mix(in oklab, var(--color-danger) 60%, transparent)' : 'var(--border)'}`, borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-primary)',
+                                        textShadow: '1px 1px 2px rgba(0,0,0,0.8)', '&:hover': { border: '1px solid var(--accent-primary)' },
                                     }}
                                     onClick={(e) => {
                                         e.stopPropagation();
@@ -914,9 +1048,9 @@ function Paint() {
                         })}
                         <Box
                             sx={{
-                                width: '24px', height: '24px', border: '2px dashed var(--accent)', borderRadius: '4px',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--accent)', fontSize: '14px', fontWeight: 'bold',
-                                '&:hover': { border: '2px solid var(--accent)', backgroundColor: 'rgba(139, 92, 246, 0.1)' },
+                                width: '24px', height: '24px', border: '2px dashed var(--accent-primary)', borderRadius: 'var(--radius-sm)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--accent-primary)', fontSize: '14px', fontWeight: 'bold',
+                                '&:hover': { border: '2px solid var(--accent-primary)', backgroundColor: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)' },
                             }}
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -942,8 +1076,8 @@ function Paint() {
             {/* Sub-Toolbar Row 2: Search */}
             <Box className="paint2-subtoolbar-search" sx={{
                 display: 'flex', alignItems: 'center', padding: '4px 16px', gap: 1.5,
-                borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid rgba(255,255,255,0.05)',
-                background: isMinecraftStyle ? '#353535' : 'color-mix(in srgb, var(--bg), black 15%)', flexShrink: 0,
+                borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)',
+                background: isMinecraftStyle ? '#353535' : 'var(--bg-primary)', flexShrink: 0,
             }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     <Checkbox
@@ -951,7 +1085,7 @@ function Paint() {
                         indeterminate={isIndeterminate}
                         checked={allSelected}
                         onChange={() => { if (allSelected || isIndeterminate) selectNone(); else selectAllVisible(); }}
-                        sx={{ color: 'rgba(255,255,255,0.3)', '&.Mui-checked': { color: 'var(--accent)' }, padding: '2px' }}
+                        sx={{ color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent-primary)' }, '&.MuiCheckbox-indeterminate': { color: 'var(--accent-primary)' }, padding: '2px' }}
                     />
                 </Box>
 
@@ -962,7 +1096,7 @@ function Paint() {
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     variant="standard"
-                    InputProps={{ disableUnderline: true, sx: { fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem', color: 'var(--text-2)', opacity: 0.8, padding: '0 8px', flex: 1 } }}
+                    InputProps={{ disableUnderline: true, sx: { fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-secondary)', padding: '0 8px', flex: 1 } }}
                     sx={{ flex: 1 }}
                 />
 
@@ -973,24 +1107,20 @@ function Paint() {
                         size="small"
                         variant="outlined"
                         className="paint2-variant-select"
-                        sx={{
-                            fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem',
-                            color: variantFilter === 'all' ? 'rgba(255,255,255,0.4)' : 'var(--accent)', minWidth: '85px',
-                            '& .MuiSelect-select': { py: 0, display: 'flex', alignItems: 'center' },
-                            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.2)', fontSize: '1rem' },
-                        }}
+                        sx={{ ...ddTriggerSx, minWidth: '100px', fontSize: '0.75rem', color: variantFilter === 'all' ? 'var(--text-secondary)' : 'var(--accent-primary)' }}
+                        MenuProps={{ PaperProps: { sx: ddMenuPaperSx } }}
                     >
-                        <MenuItem value="all" sx={{ fontSize: '0.75rem' }}>All Vars</MenuItem>
-                        <MenuItem value="v1" sx={{ fontSize: '0.75rem' }}>Variant 1</MenuItem>
-                        <MenuItem value="v2" sx={{ fontSize: '0.75rem' }}>Variant 2</MenuItem>
+                        <MenuItem value="all">All Vars</MenuItem>
+                        <MenuItem value="v1">Variant 1</MenuItem>
+                        <MenuItem value="v2">Variant 2</MenuItem>
                     </Select>
                 </Box>
 
-                <IconButton size="small" onClick={toggleLockAll} sx={{ color: 'var(--text-2)', opacity: 0.6, mr: 0.5 }}>
+                <IconButton size="small" onClick={toggleLockAll} sx={{ color: 'var(--text-secondary)', opacity: 0.6, mr: 0.5 }}>
                     {lockedSystems.size > 0 ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}
                 </IconButton>
 
-                <IconButton size="small" onClick={(e) => setFilterAnchor(e.currentTarget)} sx={{ color: 'var(--text-2)', opacity: 0.6 }}>
+                <IconButton size="small" onClick={(e) => setFilterAnchor(e.currentTarget)} sx={{ color: 'var(--text-secondary)', opacity: 0.6 }}>
                     <TuneIcon fontSize="small" />
                 </IconButton>
 
@@ -998,29 +1128,33 @@ function Paint() {
                     anchorEl={filterAnchor}
                     open={Boolean(filterAnchor)}
                     onClose={() => setFilterAnchor(null)}
-                    PaperProps={{ className: 'paint2-filter-menu', sx: { minWidth: '200px' } }}
+                    PaperProps={{ className: 'paint2-filter-menu', sx: {
+                        minWidth: '200px', background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius)', boxShadow: 'var(--dl-shadow-md)',
+                        '& .MuiMenuItem-root': { fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: 'var(--text-secondary)', '&:hover': { background: 'var(--bg-hover)', color: 'var(--text-primary)' } },
+                    } }}
                 >
-                    <Box className="paint2-filter-section-title" sx={{ px: 2, py: 1, borderBottom: '1px solid rgba(255,255,255,0.05)', mb: 1 }}>
-                        <Typography sx={{ fontSize: '0.7rem', color: 'var(--accent)', fontWeight: 700, opacity: 0.6 }}>SETTINGS</Typography>
+                    <Box className="paint2-filter-section-title" sx={{ px: 2, py: 1, borderBottom: '1px solid var(--border)', mb: 1 }}>
+                        <Typography sx={{ fontSize: '0.7rem', color: 'var(--accent-primary)', fontWeight: 700, opacity: 0.6 }}>SETTINGS</Typography>
                     </Box>
                     <MenuItem onClick={() => { const next = !autoExpand; setAutoExpandWithRef(next); applyAutoExpand(next); }}>
-                        <Checkbox size="small" checked={autoExpand} sx={{ color: 'var(--accent)', p: 0, mr: 1, '&.Mui-checked': { color: 'var(--accent)' } }} />
+                        <Checkbox size="small" checked={autoExpand} sx={{ color: 'var(--text-muted)', p: 0, mr: 1, '&.Mui-checked': { color: 'var(--accent-primary)' } }} />
                         Auto-expand on load
                     </MenuItem>
                     <MenuItem onClick={() => setIgnoreBlackWhite(!ignoreBlackWhite)}>
-                        <Checkbox size="small" checked={ignoreBlackWhite} sx={{ color: 'var(--accent)', p: 0, mr: 1, '&.Mui-checked': { color: 'var(--accent)' } }} />
+                        <Checkbox size="small" checked={ignoreBlackWhite} sx={{ color: 'var(--text-muted)', p: 0, mr: 1, '&.Mui-checked': { color: 'var(--accent-primary)' } }} />
                         Ignore B/W
                     </MenuItem>
                     <MenuItem onClick={() => setColorFilterEnabled(!colorFilterEnabled)}>
-                        <Checkbox size="small" checked={colorFilterEnabled} sx={{ color: 'var(--accent)', p: 0, mr: 1, '&.Mui-checked': { color: 'var(--accent)' } }} />
+                        <Checkbox size="small" checked={colorFilterEnabled} sx={{ color: 'var(--text-muted)', p: 0, mr: 1, '&.Mui-checked': { color: 'var(--accent-primary)' } }} />
                         Color Filter
                     </MenuItem>
                     <MenuItem onClick={() => setSearchByTexture(!searchByTexture)}>
-                        <Checkbox size="small" checked={searchByTexture} sx={{ color: 'var(--accent)', p: 0, mr: 1, '&.Mui-checked': { color: 'var(--accent)' } }} />
+                        <Checkbox size="small" checked={searchByTexture} sx={{ color: 'var(--text-muted)', p: 0, mr: 1, '&.Mui-checked': { color: 'var(--accent-primary)' } }} />
                         Search Textures
                     </MenuItem>
-                    <Box className="paint2-filter-section-title" sx={{ px: 2, py: 1, mt: 1, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                        <Typography sx={{ fontSize: '0.7rem', color: 'var(--text-2)', opacity: 0.4 }}>VIEW</Typography>
+                    <Box className="paint2-filter-section-title" sx={{ px: 2, py: 1, mt: 1, borderTop: '1px solid var(--border)' }}>
+                        <Typography sx={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>VIEW</Typography>
                     </Box>
                     <MenuItem onClick={() => {
                         if (model) { setExpandedSystems(new Set(model.systemOrder)); setExpandedMaterials(new Set(model.materialOrder || [])); }
@@ -1033,6 +1167,7 @@ function Paint() {
                     </MenuItem>
                 </Menu>
             </Box>
+            </>)}
 
             {/* Main List */}
             <Box className="paint2-main-list-wrap" sx={{ flex: 1, overflow: 'hidden' }}>
@@ -1065,39 +1200,92 @@ function Paint() {
                         onColorClick={importColorsToPalette}
                     />
                 ) : (
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', opacity: 0.4 }}>
-                        <Typography variant="h6">Open a .bin file to start</Typography>
+                    /* Empty state: nothing but a drop zone + open button. */
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 4 }}>
+                        <Box
+                            onClick={handleFileOpen}
+                            sx={{
+                                width: 'min(560px, 90%)',
+                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2.5,
+                                padding: '52px 40px',
+                                borderRadius: 'var(--radius-lg)',
+                                border: `2px dashed ${isDragOver ? 'var(--accent-primary)' : 'var(--border-strong)'}`,
+                                background: isDragOver ? 'color-mix(in oklab, var(--accent-primary) 10%, transparent)' : 'transparent',
+                                cursor: 'pointer', transition: 'all var(--motion-base)',
+                                '&:hover': { borderColor: 'var(--accent-primary)', background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' },
+                            }}
+                        >
+                            <FolderOpenIcon size={40} color="var(--accent-primary)" strokeWidth={1.5} />
+                            <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.92rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
+                                Drag a <b style={{ color: 'var(--text-primary)' }}>.bin</b> here
+                            </Typography>
+                            <button onClick={(e) => { e.stopPropagation(); handleFileOpen(); }} disabled={isLoading} className="dl-btn dl-btn--primary">
+                                <span className="dl-icon"><FolderOpenIcon size={14} /></span>
+                                <span>Open Bin</span>
+                            </button>
+                        </Box>
                     </Box>
                 )}
             </Box>
 
-            {/* Footer */}
+            {/* Footer — bottom action bar. Only shown once a bin is loaded; the
+               empty state is just the drop zone. */}
+            {model && (
             <Box className="paint2-footer" sx={{
-                padding: '12px 24px', background: isMinecraftStyle ? '#2f2f2f' : 'var(--bg)',
-                borderTop: isMinecraftStyle ? '1px solid #000000' : '1px solid rgba(255,255,255,0.05)',
-                display: 'flex', flexDirection: 'column', gap: 1, flexShrink: 0,
+                padding: '8px 16px', background: isMinecraftStyle ? '#2f2f2f' : 'var(--bg-primary)',
+                borderTop: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)',
+                display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0,
             }}>
-                <Typography sx={{ fontSize: '0.75rem', color: 'var(--accent-muted)', opacity: 0.8 }}>{statusMessage}</Typography>
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                    <button onClick={handleUndo} disabled={!canUndo} className="paint2-footer-btn is-undo">
-                        Undo
+                {/* Left: open a different bin + current file */}
+                <button onClick={handleFileOpen} disabled={isLoading} className="dl-btn dl-btn--primary dl-btn--sm dl-btn--icon" title="Open Bin">
+                    <span className="dl-icon"><FolderOpenIcon size={15} /></span>
+                </button>
+
+                <Tooltip title={filePath || 'No file loaded'}>
+                    <Typography sx={{
+                        fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'default',
+                        maxWidth: '240px', flexShrink: 0,
+                    }}>
+                        {filePath ? filePath.split(/[\\/]/).pop() : 'No file loaded'}
+                    </Typography>
+                </Tooltip>
+
+                {/* Compact status readout */}
+                {statusMessage && (
+                    <Typography sx={{
+                        fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '0 1 auto', minWidth: 0,
+                    }}>
+                        {statusMessage}
+                    </Typography>
+                )}
+
+                {/* Right: edit actions */}
+                <Box sx={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, justifyContent: 'flex-end' }}>
+                    <button onClick={handleUndo} disabled={!canUndo} className="dl-btn dl-btn--secondary dl-btn--sm dl-btn--icon" title="Undo (Ctrl+Z)">
+                        <span className="dl-icon"><UndoIcon size={15} /></span>
                     </button>
-                    <button onClick={handleRecolor} disabled={selection.size === 0} className="paint2-footer-btn is-recolor">
+                    <button onClick={handleRedo} disabled={!canRedo} className="dl-btn dl-btn--secondary dl-btn--sm dl-btn--icon" title="Redo (Ctrl+Alt+Z)">
+                        <span className="dl-icon"><RedoIcon size={15} /></span>
+                    </button>
+                    <button onClick={handleRecolor} disabled={selection.size === 0} className="dl-btn dl-btn--primary dl-btn--sm paint2-recolor-btn">
                         Recolor Selected ({visibleSelectionCount})
                     </button>
-                    <button onClick={handleSave} disabled={isLoading || fileSaved} className="paint2-footer-btn is-save">
+                    <button onClick={handleSave} disabled={isLoading || fileSaved} className="dl-btn dl-btn--sm paint2-save-btn">
                         Save Bin
                     </button>
                 </Box>
             </Box>
+            )}
 
             {/* Save Palette Dialog */}
             <Dialog
                 open={paletteNameDialogOpen}
                 onClose={() => setPaletteNameDialogOpen(false)}
-                PaperProps={{ sx: { background: 'var(--surface-2)', border: '1px solid color-mix(in srgb, var(--accent), transparent 80%)', minWidth: '320px' } }}
+                PaperProps={{ sx: { background: 'var(--bg-secondary)', border: '1px solid var(--border)', minWidth: '320px' } }}
             >
-                <DialogTitle sx={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '1rem' }}>Save Palette</DialogTitle>
+                <DialogTitle sx={{ color: 'var(--accent-primary)', fontFamily: 'var(--font-mono)', fontSize: '1rem' }}>Save Palette</DialogTitle>
                 <DialogContent>
                     <TextField
                         autoFocus fullWidth size="small" label="Palette Name"
@@ -1106,14 +1294,14 @@ function Paint() {
                         onKeyPress={(e) => e.key === 'Enter' && confirmSavePalette()}
                         sx={{
                             mt: 1,
-                            '& .MuiOutlinedInput-root': { color: 'white', fontFamily: 'JetBrains Mono, monospace', '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' }, '&:hover fieldset': { borderColor: 'var(--accent)' }, '&.Mui-focused fieldset': { borderColor: 'var(--accent)' } },
-                            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.4)' }, '& .MuiInputLabel-root.Mui-focused': { color: 'var(--accent)' },
+                            '& .MuiOutlinedInput-root': { color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', '& fieldset': { borderColor: 'var(--border)' }, '&:hover fieldset': { borderColor: 'var(--accent-primary)' }, '&.Mui-focused fieldset': { borderColor: 'var(--accent-primary)' } },
+                            '& .MuiInputLabel-root': { color: 'var(--text-muted)' }, '& .MuiInputLabel-root.Mui-focused': { color: 'var(--accent-primary)' },
                         }}
                     />
                 </DialogContent>
                 <DialogActions sx={{ padding: '16px 24px' }}>
-                    <Button onClick={() => setPaletteNameDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.4)', textTransform: 'none' }}>Cancel</Button>
-                    <Button onClick={confirmSavePalette} variant="contained" sx={{ background: 'var(--accent)', color: '#0b0a0f', fontWeight: 700, textTransform: 'none', '&:hover': { background: '#d4a35d' } }}>Save Palette</Button>
+                    <Button onClick={() => setPaletteNameDialogOpen(false)} sx={{ color: 'var(--text-muted)', textTransform: 'none' }}>Cancel</Button>
+                    <Button onClick={confirmSavePalette} variant="contained" sx={{ background: 'var(--accent-primary)', color: 'var(--text-primary)', fontWeight: 700, textTransform: 'none', '&:hover': { background: 'var(--accent-hover)' } }}>Save Palette</Button>
                 </DialogActions>
             </Dialog>
 
@@ -1121,17 +1309,17 @@ function Paint() {
             <Dialog
                 open={deleteConfirmOpen}
                 onClose={() => setDeleteConfirmOpen(false)}
-                PaperProps={{ sx: { background: 'var(--surface-2)', border: '1px solid rgba(239, 68, 68, 0.2)', minWidth: '300px' } }}
+                PaperProps={{ sx: { background: 'var(--bg-secondary)', border: '1px solid color-mix(in oklab, var(--color-danger) 30%, var(--border))', minWidth: '300px' } }}
             >
-                <DialogTitle sx={{ color: '#ef4444', fontFamily: 'JetBrains Mono, monospace', fontSize: '1rem' }}>Delete Palette?</DialogTitle>
+                <DialogTitle sx={{ color: 'var(--color-danger)', fontFamily: 'var(--font-mono)', fontSize: '1rem' }}>Delete Palette?</DialogTitle>
                 <DialogContent>
-                    <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem' }}>
+                    <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                         Are you sure you want to delete "{paletteToDelete !== null && savedPalettesList[paletteToDelete]?.name}"? This cannot be undone.
                     </Typography>
                 </DialogContent>
                 <DialogActions sx={{ padding: '16px 24px' }}>
-                    <Button onClick={() => setDeleteConfirmOpen(false)} sx={{ color: 'rgba(255,255,255,0.4)', textTransform: 'none' }}>Cancel</Button>
-                    <Button onClick={confirmDeletePalette} variant="contained" sx={{ background: '#ef4444', color: 'white', fontWeight: 700, textTransform: 'none', '&:hover': { background: '#dc2626' } }}>Delete</Button>
+                    <Button onClick={() => setDeleteConfirmOpen(false)} sx={{ color: 'var(--text-muted)', textTransform: 'none' }}>Cancel</Button>
+                    <Button onClick={confirmDeletePalette} variant="contained" sx={{ background: 'var(--color-danger)', color: '#fff', fontWeight: 700, textTransform: 'none', '&:hover': { background: 'color-mix(in oklab, var(--color-danger) 85%, black)' } }}>Delete</Button>
                 </DialogActions>
             </Dialog>
         </Box>

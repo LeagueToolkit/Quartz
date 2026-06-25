@@ -8,7 +8,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Typography, Slider, Tooltip, Button } from '@mui/material';
+import { Box, Typography, Slider, Tooltip } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
 import FileOpenIcon from '@mui/icons-material/FileOpen';
@@ -76,22 +76,19 @@ const parseImportedPalette = (raw: ImportedPalette) => {
 /* ── shared styles ──────────────────────────────────────────────────────── */
 const modalStyles: Record<string, React.CSSProperties> = {
     overlay: { position: 'fixed', inset: 0, zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px' },
-    backdrop: { position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' },
-    modal: { position: 'relative', width: '100%', maxWidth: 860, height: 720, display: 'flex', flexDirection: 'column', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'saturate(180%) blur(16px)', WebkitBackdropFilter: 'saturate(180%) blur(16px)', borderRadius: 16, boxShadow: '0 30px 70px rgba(0,0,0,0.55), 0 0 30px color-mix(in srgb, var(--accent2), transparent 82%)', overflow: 'hidden' },
-    accentBar: { height: 3, background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))', backgroundSize: '200% 100%' },
+    backdrop: { position: 'absolute', inset: 0, background: 'color-mix(in oklab, black 60%, transparent)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' },
+    modal: { position: 'relative', width: '100%', maxWidth: 860, height: 720, display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: 'var(--dl-shadow-lg)', overflow: 'hidden' },
+    accentBar: { height: 3, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%' },
     body: { padding: 20, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: 0 },
     header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
-    title: { fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)', margin: 0, fontFamily: 'JetBrains Mono, monospace' },
-    closeBtn: { width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', cursor: 'pointer', transition: 'all 0.25s ease', outline: 'none' },
-    section: { borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', padding: 14, marginBottom: 12 },
-    sectionTitle: { color: 'var(--accent2)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: 0, marginBottom: 10, fontFamily: 'JetBrains Mono, monospace' },
-    input: { width: '100%', boxSizing: 'border-box', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', padding: '8px 12px', fontSize: '0.82rem', color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace', outline: 'none', transition: 'all 0.2s ease' },
-    footer: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.08)' },
+    title: { fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)', margin: 0, fontFamily: 'var(--font-mono)' },
+    closeBtn: { width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--text-muted)', border: '1px solid var(--border)', background: 'var(--bg-tertiary)', cursor: 'pointer', transition: 'all var(--motion-fast)', outline: 'none' },
+    section: { borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: 14, marginBottom: 12 },
+    sectionTitle: { color: 'var(--accent-primary)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: 0, marginBottom: 10, fontFamily: 'var(--font-mono)' },
+    input: { width: '100%', boxSizing: 'border-box', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', padding: '8px 12px', fontSize: '0.82rem', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', outline: 'none', transition: 'all var(--motion-fast)' },
+    footer: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' },
 };
 
-const btnBase: React.CSSProperties = { padding: '6px 14px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', background: 'color-mix(in srgb, var(--accent2), transparent 90%)', color: 'var(--accent2)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.25s ease', display: 'inline-flex', alignItems: 'center', gap: 5, outline: 'none' };
-const btnGhost: React.CSSProperties = { ...btnBase, background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.18)' };
-const btnDanger: React.CSSProperties = { ...btnBase, padding: '6px 12px', minWidth: 36, justifyContent: 'center', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)' };
 
 interface PaletteCountSliderProps { value: number; onCommit: (v: number) => void }
 const PaletteCountSlider = React.memo(function PaletteCountSlider({ value, onCommit }: PaletteCountSliderProps) {
@@ -99,16 +96,24 @@ const PaletteCountSlider = React.memo(function PaletteCountSlider({ value, onCom
     useEffect(() => { setDraft(value); }, [value]);
     return (
         <>
-            <Typography sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem', color: 'var(--accent)', minWidth: '94px', fontWeight: 600 }}>
+            <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--accent-primary)', minWidth: '94px', fontWeight: 600 }}>
                 Colors: {draft}
             </Typography>
             <Slider
                 value={draft}
-                onChange={(_, v) => { const next = Array.isArray(v) ? v[0] : v; setDraft(next); onCommit(next); }}
+                /* Update the thumb position immediately, then regenerate the
+                   palette in a microtask so a fast drag never blocks the thumb
+                   (it used to only catch up on release). */
+                onChange={(_, v) => {
+                    const next = Array.isArray(v) ? v[0] : v;
+                    if (next === draft) return;
+                    setDraft(next);
+                    queueMicrotask(() => onCommit(next));
+                }}
                 min={1}
                 max={20}
                 size="small"
-                sx={{ flex: 1, '& .MuiSlider-track': { background: 'var(--accent)' }, '& .MuiSlider-thumb': { background: 'var(--accent)', border: '2px solid var(--bg)' }, '& .MuiSlider-rail': { background: 'var(--border)' } }}
+                sx={{ flex: 1, '& .MuiSlider-track': { background: 'var(--accent-primary)' }, '& .MuiSlider-thumb': { background: 'var(--accent-primary)', border: '2px solid var(--bg-primary)' }, '& .MuiSlider-rail': { background: 'var(--border)' } }}
             />
         </>
     );
@@ -150,20 +155,22 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
     const handleColorCountChange = useCallback((count: number) => {
         setColorCount(count);
         setPalette(prev => {
-            const next = [...prev];
+            // Deterministic growth: each new stop steps a fixed hue offset from the
+            // previous one. No Math.random, so dragging the slider shows stable,
+            // live-updating stops instead of flickering different colors per step.
+            const next = prev.map(c => {
+                const copy = new ColorHandler(c.vec4 ? [...c.vec4] : [0.5, 0.5, 0.5, 1]);
+                copy.time = c.time;
+                return copy;
+            });
             if (next.length < count) {
                 for (let i = next.length; i < count; i++) {
-                    let newColor: ColorHandler;
+                    const newColor = new ColorHandler();
                     if (next.length > 0) {
                         const base = next[next.length - 1];
                         const [h, s, l] = base.ToHSL();
-                        newColor = new ColorHandler();
-                        const newH = (h + 0.1 + Math.random() * 0.1) % 1;
-                        const newS = Math.max(0.4, Math.min(1, s + (Math.random() - 0.5) * 0.2));
-                        const newL = Math.max(0.3, Math.min(0.8, l + (Math.random() - 0.5) * 0.1));
-                        newColor.InputHSL([newH, newS, newL]);
+                        newColor.InputHSL([(h + 0.12) % 1, Math.max(0.4, Math.min(1, s)), Math.max(0.3, Math.min(0.8, l))]);
                     } else {
-                        newColor = new ColorHandler();
                         newColor.InputHex('#ecb96a');
                     }
                     next.push(newColor);
@@ -252,16 +259,16 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
     return (
         <Box
             className="paint-palette-manager"
-            sx={{ background: isMinecraftStyle ? '#2f2f2f' : 'var(--surface)', borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)' }}
+            sx={{ background: isMinecraftStyle ? '#2f2f2f' : 'var(--bg-secondary)', borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)' }}
         >
-            <Box className="paint-palette-strip" sx={{ padding: '8px 16px', display: 'flex', gap: 1, height: '42px', alignItems: 'stretch', background: isMinecraftStyle ? '#353535' : 'transparent' }}>
+            <Box className="paint-palette-strip" sx={{ padding: '6px 16px 2px 16px', display: 'flex', gap: 1, height: '30px', alignItems: 'stretch', background: isMinecraftStyle ? '#353535' : 'transparent' }}>
                 {palette.map((color, idx) => (
                     <Tooltip key={idx} title={`Stop: ${Math.round(color.time * 100)}%`}>
                         <Box
                             sx={{
-                                flex: 1, background: color.ToHEX(), border: '1px solid var(--border)', borderRadius: '12px',
-                                cursor: 'pointer', transition: 'all 0.2s', boxShadow: 'inset 0 1px 3px rgba(255,255,255,0.05)',
-                                '&:hover': { border: '1px solid var(--accent)', transform: 'translateY(-1px)', boxShadow: `0 4px 12px ${color.ToHEX()}44` },
+                                flex: 1, background: color.ToHEX(), border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                                cursor: 'pointer', transition: 'all 0.2s',
+                                '&:hover': { border: '1px solid var(--accent-primary)', transform: 'translateY(-1px)', boxShadow: '0 2px 8px rgba(0,0,0,.3)' },
                             }}
                             onClick={(event) => {
                                 openColorPicker(event, color.ToHEX(), (hex) => {
@@ -282,23 +289,14 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
                 ))}
             </Box>
 
-            <Box className="paint-palette-controls" sx={{ padding: '4px 16px 8px 16px', display: 'flex', alignItems: 'center', gap: 3, background: isMinecraftStyle ? '#353535' : 'transparent' }}>
+            <Box className="paint-palette-controls" sx={{ padding: '2px 16px 6px 16px', display: 'flex', alignItems: 'center', gap: 3, background: isMinecraftStyle ? '#353535' : 'transparent' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
                     <PaletteCountSlider value={colorCount} onCommit={handleColorCountChange} />
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1, ml: 'auto' }}>
-                    <Button
-                        size="small"
-                        onClick={() => setManagerOpen(true)}
-                        sx={{
-                            background: 'color-mix(in srgb, var(--accent), transparent 95%)', border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)',
-                            color: 'var(--accent)', borderRadius: '4px', textTransform: 'none', fontFamily: 'JetBrains Mono, monospace',
-                            fontSize: '0.78rem', padding: '1px 10px', minWidth: 'auto', height: '26px',
-                            '&:hover': { background: 'color-mix(in srgb, var(--accent), transparent 90%)', borderColor: 'var(--accent)' },
-                        }}
-                    >
+                    <button onClick={() => setManagerOpen(true)} className="dl-btn dl-btn--primary dl-btn--sm">
                         Palette Manager
-                    </Button>
+                    </button>
                 </Box>
             </Box>
 
@@ -317,8 +315,8 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
                                 <h3 style={modalStyles.sectionTitle}>Save Current</h3>
                                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                                     <input type="text" value={paletteName} onChange={(e) => setPaletteName(e.target.value)} placeholder="Palette name…" style={modalStyles.input} />
-                                    <button onClick={handleSaveCurrent} style={{ ...btnBase, whiteSpace: 'nowrap' }}>
-                                        <SaveIcon style={{ fontSize: 15 }} /> Save Current
+                                    <button onClick={handleSaveCurrent} className="dl-btn dl-btn--primary dl-btn--sm" style={{ whiteSpace: 'nowrap' }}>
+                                        <span className="dl-icon"><SaveIcon style={{ fontSize: 14 }} /></span> Save Current
                                     </button>
                                 </div>
                             </div>
@@ -326,38 +324,38 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
                             <div style={modalStyles.section}>
                                 <h3 style={modalStyles.sectionTitle}>Library Actions</h3>
                                 <div style={{ display: 'flex', gap: 8 }}>
-                                    <button onClick={handleImportJson} style={btnBase}>
-                                        <UploadFileIcon style={{ fontSize: 15 }} /> Import JSON
+                                    <button onClick={handleImportJson} className="dl-btn dl-btn--primary dl-btn--sm">
+                                        <span className="dl-icon"><UploadFileIcon style={{ fontSize: 14 }} /></span> Import JSON
                                     </button>
                                 </div>
                             </div>
 
                             <div style={{ ...modalStyles.section, marginBottom: 0, padding: 0, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                                <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.12) transparent' }}>
+                                <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: 'var(--border-strong) transparent' }}>
                                     {savedPalettesList.length === 0 && (
                                         <div style={{ padding: '18px 16px' }}>
-                                            <span style={{ color: 'var(--text-2)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.82rem' }}>No saved palettes found.</span>
+                                            <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>No saved palettes found.</span>
                                         </div>
                                     )}
                                     {savedPalettesList.map((item, idx) => (
-                                        <div key={`${item.filename || item.name}-${idx}`} style={{ padding: '10px 14px', borderBottom: idx < savedPalettesList.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
-                                            <BookmarkIcon style={{ fontSize: 16, color: 'var(--accent-muted)', flexShrink: 0 }} />
+                                        <div key={`${item.filename || item.name}-${idx}`} style={{ padding: '10px 14px', borderBottom: idx < savedPalettesList.length - 1 ? '1px solid var(--border)' : 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
+                                            <BookmarkIcon style={{ fontSize: 16, color: 'var(--accent-primary)', flexShrink: 0 }} />
                                             <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ color: 'var(--text)', fontSize: '0.84rem', fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
+                                                <div style={{ color: 'var(--text-primary)', fontSize: '0.84rem', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
                                                 <div style={{ display: 'flex', gap: 2, height: 5, marginTop: 5 }}>
                                                     {item.palette.slice(0, 12).map((c, i) => (
                                                         <div key={i} style={{ flex: 1, background: `rgba(${c.rgba[0] * 255}, ${c.rgba[1] * 255}, ${c.rgba[2] * 255}, 1)`, borderRadius: 2 }} />
                                                     ))}
                                                 </div>
                                             </div>
-                                            <button onClick={() => onLoadPalette(item)} style={{ ...btnBase, minWidth: 66 }}>
-                                                <FileOpenIcon style={{ fontSize: 14 }} /> Load
+                                            <button onClick={() => onLoadPalette(item)} className="dl-btn dl-btn--primary dl-btn--sm">
+                                                <span className="dl-icon"><FileOpenIcon style={{ fontSize: 14 }} /></span> Load
                                             </button>
-                                            <button onClick={() => handleExportSavedPalette(item)} style={{ ...btnGhost, minWidth: 74 }}>
-                                                <DownloadIcon style={{ fontSize: 14 }} /> Export
+                                            <button onClick={() => handleExportSavedPalette(item)} className="dl-btn dl-btn--secondary dl-btn--sm">
+                                                <span className="dl-icon"><DownloadIcon style={{ fontSize: 14 }} /></span> Export
                                             </button>
-                                            <button onClick={() => handleDeletePalette(item)} style={btnDanger}>
-                                                <DeleteIcon style={{ fontSize: 14 }} />
+                                            <button onClick={() => handleDeletePalette(item)} className="dl-btn dl-btn--danger dl-btn--sm dl-btn--icon">
+                                                <span className="dl-icon"><DeleteIcon style={{ fontSize: 14 }} /></span>
                                             </button>
                                         </div>
                                     ))}
@@ -365,7 +363,7 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
                             </div>
 
                             <div style={modalStyles.footer}>
-                                <button onClick={() => setManagerOpen(false)} style={btnGhost}>Close</button>
+                                <button onClick={() => setManagerOpen(false)} className="dl-btn dl-btn--secondary dl-btn--sm">Close</button>
                             </div>
                         </div>
                     </div>
