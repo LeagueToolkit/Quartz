@@ -1,0 +1,86 @@
+/* ==========================================================================
+   Quartz — canonical theme tokens (single source of truth)
+   --------------------------------------------------------------------------
+   Every color/surface/border in the app should reference one of these CSS
+   variables — no hardcoded hex in components. The polished "Design Lab" token
+   vocabulary is canonical here; the older Quartz names (--accent, --bg,
+   --surface, --text-2, …) are kept as ALIASES that point at the new tokens so
+   existing code keeps working while the UI is ported over.
+
+   Base theme: dark surfaces + blue accent. Change the values here (or override
+   per-theme on :root) and the whole UI follows.
+   ========================================================================== */
+
+:root {
+    /* ── Accent (blue) ──────────────────────────────────────────────────── */
+    --accent-primary:   #3f75f4;
+    --accent-hover:     #5e8dfb;
+    --accent-secondary: #1d58e1;
+    --accent-muted:     #1d3a7f;
+
+    /* ── Surfaces (dark) ────────────────────────────────────────────────── */
+    --bg-primary:   #0d0d0f;
+    --bg-secondary: #141417;
+    --bg-tertiary:  #1b1b1f;
+    --bg-hover:     #232328;
+
+    /* ── Text ───────────────────────────────────────────────────────────── */
+    --text-primary:   #ededf0;
+    --text-secondary: #b4b4bb;
+    --text-muted:     #75757e;
+
+    /* ── Lines ──────────────────────────────────────────────────────────── */
+    --border:        #2a2a30;
+    --border-strong: #3a3a42;
+
+    /* ── Status ─────────────────────────────────────────────────────────── */
+    --color-success: #3FB950;
+    --color-warning: #D29922;
+    --color-danger:  #F85149;
+    --color-info:    #58a6ff;
+
+    /* ── Glass / overlay surfaces ───────────────────────────────────────── */
+    --glass-bg:     rgba(20, 20, 24, 0.55);
+    --glass-border: rgba(255, 255, 255, 0.10);
+    --glass-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+
+    /* ── Typography ─────────────────────────────────────────────────────── */
+    --font-sans: 'JetBrains Mono', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* ── Radii ──────────────────────────────────────────────────────────── */
+    --radius-sm: 7px;
+    --radius:    10px;
+    --radius-lg: 14px;
+
+    /* ── Motion ─────────────────────────────────────────────────────────── */
+    --ease-out:    cubic-bezier(.22, 1, .36, 1);
+    --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+    --motion-fast: 140ms var(--ease-out);
+    --motion-base: 220ms var(--ease-out);
+    --motion-slow: 360ms var(--ease-out);
+
+    /* ── Gradients ──────────────────────────────────────────────────────── */
+    --accent-gradient:        linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    --accent-gradient-subtle: linear-gradient(135deg, color-mix(in oklab, var(--accent-primary) 22%, transparent), color-mix(in oklab, var(--accent-secondary) 22%, transparent));
+    --surface-gradient:       linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-primary) 100%);
+
+    /* ======================================================================
+       Legacy aliases — the original Quartz token names, mapped onto the new
+       canonical tokens. Lets existing components keep rendering during the
+       port. New/ported code should use the canonical names above.
+       ====================================================================== */
+    --accent:          var(--accent-primary);
+    --accent2:         var(--accent-secondary);
+    --accent-2:        var(--accent-secondary);
+    --accent-green:       var(--color-success);
+    --accent-green-muted: color-mix(in oklab, var(--color-success) 50%, var(--bg-primary));
+    --bg:        var(--bg-primary);
+    --bg-2:      var(--bg-secondary);
+    --surface:   var(--bg-secondary);
+    --surface-2: var(--bg-tertiary);
+    --text:      var(--text-primary);
+    --text-2:    var(--text-secondary);
+    --nav-icon-color: var(--text-secondary);
+    --border-radius: var(--radius-sm);
+}

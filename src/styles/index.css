@@ -2,25 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Themeable primitives — themeStore overwrites these on boot. */
+/* Color tokens live in styles/theme.css (canonical) and are theme-driven by
+   applyTheme(). Only non-color layout primitives are kept here. */
 :root {
     color-scheme: dark;
-    --accent: #ecb96a;
-    --accent-2: #c084fc;
-    --accent-muted: #ad7e34;
-    --bg: #0b0a0f;
-    --bg-2: #2a2737;
-    --surface: #0f0d14;
-    --surface-2: #2a2737;
-    --text: #ecb96a;
-    --text-2: #c084fc;
-    --accent-green: #22c55e;
-
-    /* Derived — track the primitives above, so themes update them for free. */
-    --glass-border: rgba(255, 255, 255, 0.08);
-    --glass-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
-    --accent-gradient: linear-gradient(135deg, var(--accent), var(--accent-muted));
-    --radius: 8px;
     --titlebar-h: 48px;
     --rail-w: 60px;
 }
@@ -29,20 +14,26 @@ html, body, #app { height: 100%; margin: 0; }
 
 body {
     background: var(--bg);
-    color: #e9e9f0;
-    font-family: var(--app-font, 'Segoe UI', system-ui, -apple-system, sans-serif);
+    color: var(--text);
+    font-family: var(--app-font, var(--font-sans, 'Segoe UI', system-ui, -apple-system, sans-serif));
     overflow: hidden;
 }
 
-/* Atmosphere: two faint accent washes anchored to the corners. */
+/* Global icon centering — keep SVGs middle-aligned next to text everywhere so
+   icons don't ride slightly high off the baseline. */
+svg { vertical-align: middle; }
+
+/* Atmosphere: soft blue washes that give the background gentle depth. Kept
+   low-opacity so it reads as ambient lift, not a glowing field. */
 .q-atmosphere {
     position: fixed;
     inset: 0;
     pointer-events: none;
     z-index: 0;
     background:
-        radial-gradient(60rem 60rem at 12% -10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 60%),
-        radial-gradient(50rem 50rem at 110% 110%, color-mix(in srgb, var(--accent-2) 9%, transparent), transparent 55%);
+        radial-gradient(60rem 36rem at 30% -12%, color-mix(in oklab, var(--accent-primary) 8%, transparent), transparent 60%),
+        radial-gradient(55rem 50rem at 108% 18%, color-mix(in oklab, var(--accent-primary) 6%, transparent), transparent 58%),
+        radial-gradient(50rem 45rem at 88% 112%, color-mix(in oklab, var(--accent-secondary) 5%, transparent), transparent 60%);
 }
 
 /* Refined scrollbars */
@@ -63,10 +54,8 @@ body {
 
 /* Glass surface used by cards/panels */
 .q-glass {
-    background: color-mix(in srgb, var(--surface) 78%, transparent);
-    border: 1px solid var(--glass-border);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
     border-radius: var(--radius);
-    backdrop-filter: blur(var(--glass-blur, 12px));
-    -webkit-backdrop-filter: blur(var(--glass-blur, 12px));
-    box-shadow: var(--glass-shadow);
+    box-shadow: var(--dl-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.35));
 }

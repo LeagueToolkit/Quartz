@@ -1,0 +1,1081 @@
+/* ==========================================================================
+   Design Lab — reads the canonical app tokens from styles/theme.css
+   (--accent-primary, --bg-*, --text-*, --border, --color-*). No palette is
+   defined here, so the lab shows the real, current theme.
+   ========================================================================== */
+
+/* ==========================================================================
+   Flint — Design Lab (NEW polished primitives, theme-aware)
+   --------------------------------------------------------------------------
+   All selectors are prefixed with `.dl-` so they don't collide with the
+   existing UI. Everything reads from the canonical CSS variables in
+   index.css, so any theme override (--accent-primary, --bg-*, etc.) flows
+   through automatically.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Global dl tokens — hoisted to :root so portal-rendered .dl-* surfaces
+   (e.g. the modal backdrop, which is appended to <body> outside .dl-root)
+   can still resolve animation timings, radii, and shadows. The local
+   `.dl-root` block below redeclares them so non-portal lab content stays
+   self-contained.
+   -------------------------------------------------------------------------- */
+:root {
+    --dl-radius:       10px;
+    --dl-radius-sm:    7px;
+    --dl-radius-lg:    14px;
+    --dl-border:       1px solid color-mix(in oklab, var(--border) 100%, transparent);
+    --dl-border-soft:  1px solid color-mix(in oklab, var(--border) 50%, transparent);
+    --dl-shadow-sm:    0 1px 2px rgba(0,0,0,.35), 0 0 0 1px color-mix(in oklab, var(--border) 60%, transparent);
+    --dl-shadow-md:    0 8px 24px -8px rgba(0,0,0,.5), 0 2px 4px rgba(0,0,0,.25);
+    --dl-shadow-lg:    0 24px 48px -16px rgba(0,0,0,.6), 0 4px 12px rgba(0,0,0,.3);
+    --dl-glow:         0 0 0 4px color-mix(in oklab, var(--accent-primary) 18%, transparent);
+    --dl-ring:         0 0 0 2px color-mix(in oklab, var(--accent-primary) 60%, transparent);
+
+    --dl-ease-out:     cubic-bezier(.22,1,.36,1);
+    --dl-ease-spring:  cubic-bezier(.34,1.56,.64,1);
+    --dl-fast:         140ms var(--dl-ease-out);
+    --dl-base:         220ms var(--dl-ease-out);
+    --dl-slow:         360ms var(--dl-ease-out);
+}
+
+/* --------------------------------------------------------------------------
+   Local lab tokens (built on top of the global ones)
+   -------------------------------------------------------------------------- */
+.dl-root {
+    --dl-radius:       10px;
+    --dl-radius-sm:    7px;
+    --dl-radius-lg:    14px;
+    --dl-border:       1px solid color-mix(in oklab, var(--border) 100%, transparent);
+    --dl-border-soft:  1px solid color-mix(in oklab, var(--border) 50%, transparent);
+    --dl-shadow-sm:    0 1px 2px rgba(0,0,0,.35), 0 0 0 1px color-mix(in oklab, var(--border) 60%, transparent);
+    --dl-shadow-md:    0 8px 24px -8px rgba(0,0,0,.5), 0 2px 4px rgba(0,0,0,.25);
+    --dl-shadow-lg:    0 24px 48px -16px rgba(0,0,0,.6), 0 4px 12px rgba(0,0,0,.3);
+    --dl-glow:         0 0 0 4px color-mix(in oklab, var(--accent-primary) 18%, transparent);
+    --dl-ring:         0 0 0 2px color-mix(in oklab, var(--accent-primary) 60%, transparent);
+
+    --dl-ease-out:     cubic-bezier(.22,1,.36,1);
+    --dl-ease-spring:  cubic-bezier(.34,1.56,.64,1);
+    --dl-fast:         140ms var(--dl-ease-out);
+    --dl-base:         220ms var(--dl-ease-out);
+    --dl-slow:         360ms var(--dl-ease-out);
+
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    font-family: var(--font-sans);
+    /* Own the scroll so the long showcase is reachable in the lab window. */
+    height: 100vh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-hover) transparent;
+}
+.dl-root::-webkit-scrollbar { width: 10px; }
+.dl-root::-webkit-scrollbar-thumb {
+    background: var(--bg-hover);
+    border-radius: 6px;
+    border: 2px solid var(--bg-primary);
+}
+.dl-root::-webkit-scrollbar-thumb:hover { background: #2f2f36; }
+
+/* --------------------------------------------------------------------------
+   Page chrome
+   -------------------------------------------------------------------------- */
+.dl-shell {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 48px 32px 96px;
+}
+
+.dl-page-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: var(--dl-border-soft);
+}
+.dl-page-head h1 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    background: linear-gradient(135deg,
+        var(--text-primary) 0%,
+        color-mix(in oklab, var(--accent-primary) 60%, var(--text-primary)) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+.dl-page-head p {
+    margin: 6px 0 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+.dl-page-head__meta {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+/* Section card */
+.dl-section {
+    margin-bottom: 28px;
+    background: var(--bg-secondary);
+    border: var(--dl-border-soft);
+    border-radius: var(--dl-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--dl-shadow-sm);
+}
+.dl-section__head {
+    padding: 18px 24px 14px;
+    border-bottom: var(--dl-border-soft);
+    background: linear-gradient(180deg,
+        color-mix(in oklab, var(--bg-tertiary) 80%, transparent) 0%,
+        transparent 100%);
+}
+.dl-section__head h2 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.dl-section__head h2::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 14px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, var(--accent-primary), var(--accent-secondary));
+}
+.dl-section__head p {
+    margin: 4px 0 0 14px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.dl-section__body {
+    padding: 24px;
+    display: grid;
+    gap: 20px;
+}
+
+.dl-row {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 16px;
+    align-items: center;
+}
+.dl-row--start { align-items: flex-start; }
+.dl-row__label {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.dl-row__items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
+/* --------------------------------------------------------------------------
+   BUTTON — refined variants with sheen, scale, glow
+   -------------------------------------------------------------------------- */
+.dl-btn {
+    --_bg:        var(--bg-tertiary);
+    --_fg:        var(--text-primary);
+    --_border:    var(--border);
+    --_shadow:    0 1px 0 rgba(255,255,255,0.03) inset, 0 1px 2px rgba(0,0,0,.25);
+
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 16px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--_fg);
+    background: var(--_bg);
+    border: 1px solid var(--_border);
+    border-radius: var(--dl-radius-sm);
+    box-shadow: var(--_shadow);
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+    transition:
+        transform var(--dl-fast),
+        background var(--dl-fast),
+        border-color var(--dl-fast),
+        box-shadow var(--dl-fast),
+        color var(--dl-fast);
+}
+.dl-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--_shadow), var(--dl-ring);
+}
+.dl-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Cursor-following radial glow (uses --mx, --my set via JS) */
+.dl-btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+        160px circle at var(--mx, 50%) var(--my, 50%),
+        color-mix(in oklab, var(--accent-primary) 35%, transparent) 0%,
+        color-mix(in oklab, var(--accent-primary) 12%, transparent) 30%,
+        transparent 60%);
+    opacity: 0;
+    transition: opacity var(--dl-base);
+    z-index: 0;
+    border-radius: inherit;
+}
+.dl-btn > * { position: relative; z-index: 2; }
+.dl-btn:hover:not(:disabled)::after { opacity: 1; }
+
+.dl-btn:hover:not(:disabled) {
+    border-color: color-mix(in oklab, var(--accent-primary) 45%, var(--border));
+}
+.dl-btn:active:not(:disabled) {
+    transform: scale(0.985);
+    transition-duration: 60ms;
+}
+
+/* Variants — clean accent-tinted fill (mixed into the surface, not transparent,
+   so it reads crisp instead of a muddy wash). */
+.dl-btn--primary {
+    --_bg: color-mix(in oklab, var(--accent-primary) 16%, var(--bg-secondary));
+    --_fg: var(--text-primary);
+    --_border: color-mix(in oklab, var(--accent-primary) 45%, var(--border));
+    --_shadow: 0 1px 2px rgba(0,0,0,0.25);
+}
+.dl-btn--primary:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--accent-primary) 26%, var(--bg-secondary));
+    border-color: color-mix(in oklab, var(--accent-primary) 70%, var(--border));
+}
+.dl-btn--primary svg { color: var(--accent-primary); }
+
+.dl-btn--secondary {
+    --_bg: color-mix(in oklab, var(--bg-tertiary) 70%, transparent);
+    --_fg: var(--text-secondary);
+    --_border: var(--border);
+}
+.dl-btn--secondary:hover:not(:disabled) {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.dl-btn--ghost {
+    --_bg: transparent;
+    --_border: transparent;
+    --_shadow: none;
+}
+.dl-btn--ghost:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--accent-primary) 10%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 25%, transparent);
+}
+
+/* Danger — serious. Strong red border, tinted bg, fills on hover. */
+.dl-btn--danger {
+    --_bg: color-mix(in oklab, var(--color-danger) 10%, transparent);
+    --_fg: var(--color-danger);
+    --_border: color-mix(in oklab, var(--color-danger) 45%, transparent);
+    --_shadow: 0 0 0 1px color-mix(in oklab, var(--color-danger) 15%, transparent);
+}
+.dl-btn--danger::after {
+    background: radial-gradient(
+        160px circle at var(--mx, 50%) var(--my, 50%),
+        color-mix(in oklab, var(--color-danger) 40%, transparent) 0%,
+        color-mix(in oklab, var(--color-danger) 15%, transparent) 30%,
+        transparent 60%);
+}
+.dl-btn--danger:hover:not(:disabled) {
+    background: var(--color-danger);
+    color: #fff;
+    border-color: var(--color-danger);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-danger) 25%, transparent);
+}
+.dl-btn--danger:focus-visible {
+    box-shadow: 0 0 0 2px var(--color-danger), 0 0 0 4px color-mix(in oklab, var(--color-danger) 30%, transparent);
+}
+
+/* Sizes */
+.dl-btn--sm { height: 28px; padding: 0 12px; font-size: 12px; gap: 6px; border-radius: 6px; }
+.dl-btn--lg { height: 44px; padding: 0 22px; font-size: 14px; gap: 10px; border-radius: 8px; }
+
+/* Icon-only */
+.dl-btn--icon {
+    width: 36px;
+    padding: 0;
+}
+.dl-btn--sm.dl-btn--icon { width: 28px; }
+.dl-btn--lg.dl-btn--icon { width: 44px; }
+
+/* Active / pressed state (toggle look) */
+.dl-btn--active {
+    background: color-mix(in oklab, var(--accent-primary) 18%, var(--bg-tertiary));
+    border-color: color-mix(in oklab, var(--accent-primary) 50%, var(--border));
+    color: color-mix(in oklab, var(--accent-primary) 30%, var(--text-primary));
+    box-shadow:
+        inset 0 1px 2px rgba(0,0,0,0.25),
+        0 0 0 1px color-mix(in oklab, var(--accent-primary) 30%, transparent);
+}
+
+/* Loading */
+.dl-btn--loading { color: transparent !important; pointer-events: none; }
+.dl-btn--loading::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid color-mix(in oklab, currentColor 30%, transparent);
+    border-top-color: var(--text-primary);
+    animation: dl-spin 720ms linear infinite;
+    color: var(--text-primary);
+}
+.dl-btn--primary.dl-btn--loading::after,
+.dl-btn--danger.dl-btn--loading::after { color: white; border-top-color: white; }
+
+@keyframes dl-spin { to { transform: rotate(360deg); } }
+
+/* Icon glyph (used for inline svg/emoji placeholder). line-height:0 + block svg
+   kills the baseline gap that otherwise nudges icons slightly up. */
+.dl-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px; height: 14px;
+    flex: none;
+    line-height: 0;
+    vertical-align: middle;
+    color: currentColor;
+}
+.dl-icon svg { width: 100%; height: 100%; display: block; }
+
+/* --------------------------------------------------------------------------
+   TOGGLE — sliding pill with crisp spring
+   -------------------------------------------------------------------------- */
+.dl-toggle {
+    --_w: 36px;
+    --_h: 20px;
+    --_pad: 2px;
+    position: relative;
+    display: inline-block;
+    width: var(--_w);
+    height: var(--_h);
+    flex: none;
+}
+.dl-toggle input {
+    position: absolute; inset: 0;
+    opacity: 0; cursor: pointer;
+    margin: 0;
+}
+.dl-toggle__track {
+    position: absolute; inset: 0;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    transition: background var(--dl-base), border-color var(--dl-base), box-shadow var(--dl-base);
+}
+.dl-toggle__thumb {
+    position: absolute;
+    top: var(--_pad);
+    left: var(--_pad);
+    width: calc(var(--_h) - var(--_pad) * 2);
+    height: calc(var(--_h) - var(--_pad) * 2);
+    background: var(--text-secondary);
+    border-radius: 50%;
+    box-shadow: 0 1px 2px rgba(0,0,0,.35);
+    transition: transform 320ms var(--dl-ease-spring), background var(--dl-base);
+}
+.dl-toggle input:checked ~ .dl-toggle__track {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent-primary) 30%, transparent);
+}
+.dl-toggle input:checked ~ .dl-toggle__thumb {
+    background: white;
+    transform: translateX(calc(var(--_w) - var(--_h)));
+}
+.dl-toggle input:focus-visible ~ .dl-toggle__track { box-shadow: var(--dl-ring); }
+.dl-toggle input:disabled ~ .dl-toggle__track,
+.dl-toggle input:disabled ~ .dl-toggle__thumb { opacity: 0.4; }
+
+.dl-toggle-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--dl-radius-sm);
+    transition: border-color var(--dl-fast), background var(--dl-fast);
+}
+.dl-toggle-row:hover { border-color: color-mix(in oklab, var(--accent-primary) 30%, var(--border)); }
+.dl-toggle-row__text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.dl-toggle-row__label { font-size: 13px; color: var(--text-primary); font-weight: 500; }
+.dl-toggle-row__desc  { font-size: 11px; color: var(--text-muted); }
+
+/* --------------------------------------------------------------------------
+   CHECKBOX — animated tick
+   -------------------------------------------------------------------------- */
+.dl-check {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+.dl-check input { position: absolute; opacity: 0; pointer-events: none; }
+.dl-check__box {
+    width: 18px; height: 18px;
+    border: 1.5px solid var(--border);
+    background: var(--bg-tertiary);
+    border-radius: 5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    position: relative;
+    transition: background var(--dl-fast), border-color var(--dl-fast), transform var(--dl-fast);
+}
+.dl-check:hover .dl-check__box {
+    border-color: color-mix(in oklab, var(--accent-primary) 55%, var(--border));
+}
+/* Checked: stays dark, accent border tightens, accent tick appears */
+.dl-check input:checked ~ .dl-check__box {
+    background: var(--bg-primary);
+    border-color: var(--accent-primary);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent-primary) 30%, transparent);
+    animation: dl-check-pop 220ms var(--dl-ease-spring);
+}
+@keyframes dl-check-pop {
+    0%   { transform: scale(1); }
+    45%  { transform: scale(0.9); }
+    100% { transform: scale(1); }
+}
+.dl-check__tick,
+.dl-check__cross {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: opacity 120ms var(--dl-ease-out), transform 220ms var(--dl-ease-spring);
+    pointer-events: none;
+}
+.dl-check__tick  { color: var(--accent-primary); }
+.dl-check__cross { color: var(--text-muted); }
+.dl-check__tick .dl-icon,
+.dl-check__cross .dl-icon { width: 12px; height: 12px; }
+.dl-check__tick svg,
+.dl-check__cross svg { width: 100%; height: 100%; display: block; }
+.dl-check input:checked ~ .dl-check__box .dl-check__tick { opacity: 1; transform: scale(1); }
+.dl-check input:focus-visible ~ .dl-check__box { box-shadow: var(--dl-ring); }
+
+/* Disabled: 80% opacity, hatched bg, ALWAYS show cross (regardless of checked) */
+.dl-check--disabled,
+.dl-check input:disabled ~ * {
+    opacity: 0.8;
+    cursor: not-allowed;
+}
+.dl-check--disabled .dl-check__box,
+.dl-check input:disabled ~ .dl-check__box {
+    background:
+        repeating-linear-gradient(135deg,
+            color-mix(in oklab, var(--text-muted) 15%, transparent) 0 4px,
+            transparent 4px 8px),
+        var(--bg-tertiary);
+    border-color: color-mix(in oklab, var(--text-muted) 35%, var(--border));
+    box-shadow: none;
+}
+.dl-check--disabled .dl-check__tick,
+.dl-check input:disabled ~ .dl-check__box .dl-check__tick { opacity: 0 !important; }
+.dl-check--disabled .dl-check__cross,
+.dl-check input:disabled ~ .dl-check__box .dl-check__cross {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+}
+
+/* --------------------------------------------------------------------------
+   INPUT
+   -------------------------------------------------------------------------- */
+.dl-input,
+.dl-textarea,
+.dl-select {
+    width: 100%;
+    height: 36px;
+    padding: 0 12px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--dl-radius-sm);
+    font-family: inherit;
+    font-size: 13px;
+    transition: border-color var(--dl-fast), background var(--dl-fast), box-shadow var(--dl-fast);
+}
+.dl-textarea { padding: 10px 12px; height: auto; min-height: 80px; resize: vertical; line-height: 1.5; }
+
+.dl-input:hover, .dl-textarea:hover, .dl-select:hover {
+    border-color: color-mix(in oklab, var(--accent-primary) 30%, var(--border));
+}
+.dl-input:focus, .dl-textarea:focus, .dl-select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: var(--dl-ring);
+    background: var(--bg-secondary);
+}
+.dl-input::placeholder, .dl-textarea::placeholder { color: var(--text-muted); }
+
+.dl-input--error { border-color: var(--color-danger); }
+.dl-input--error:focus { box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-danger) 60%, transparent); }
+
+/* Floating-label input */
+.dl-float {
+    position: relative;
+    display: block;
+}
+.dl-float .dl-input {
+    padding-top: 18px;
+    padding-bottom: 4px;
+    height: 48px;
+}
+.dl-float__label {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 13px;
+    pointer-events: none;
+    transition: transform var(--dl-fast), font-size var(--dl-fast), color var(--dl-fast);
+}
+.dl-float .dl-input:focus + .dl-float__label,
+.dl-float .dl-input:not(:placeholder-shown) + .dl-float__label {
+    transform: translateY(-145%);
+    font-size: 11px;
+    color: color-mix(in oklab, var(--accent-primary) 70%, var(--text-secondary));
+}
+
+/* Search input with leading icon */
+.dl-search {
+    position: relative;
+}
+.dl-search .dl-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+.dl-search .dl-input { padding-left: 32px; }
+
+/* --------------------------------------------------------------------------
+   SLIDER — gradient track with value bubble
+   -------------------------------------------------------------------------- */
+.dl-slider {
+    position: relative;
+    display: block;
+    width: 100%;
+    --_value: 0%;
+    --_thumb: 16px;
+}
+.dl-slider input[type=range] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    height: 26px;
+    background: transparent;
+    margin: 0;
+    cursor: pointer;
+}
+.dl-slider input[type=range]::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 999px;
+    background:
+        linear-gradient(90deg,
+            var(--accent-primary) 0%,
+            color-mix(in oklab, var(--accent-primary) 70%, var(--accent-secondary)) var(--_value),
+            transparent var(--_value)),
+        var(--bg-tertiary);
+    border: 1px solid var(--border);
+}
+.dl-slider input[type=range]::-moz-range-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+}
+.dl-slider input[type=range]::-moz-range-progress {
+    height: 6px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent-primary), color-mix(in oklab, var(--accent-primary) 70%, var(--accent-secondary)));
+}
+.dl-slider input[type=range]::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    margin-top: -6px;
+    width: var(--_thumb);
+    height: var(--_thumb);
+    border-radius: 50%;
+    background: white;
+    border: 2px solid var(--accent-primary);
+    box-shadow: 0 2px 6px rgba(0,0,0,.35), 0 0 0 0 color-mix(in oklab, var(--accent-primary) 30%, transparent);
+    transition: transform var(--dl-fast), box-shadow var(--dl-fast);
+}
+.dl-slider input[type=range]::-moz-range-thumb {
+    width: var(--_thumb);
+    height: var(--_thumb);
+    border-radius: 50%;
+    background: white;
+    border: 2px solid var(--accent-primary);
+    box-shadow: 0 2px 6px rgba(0,0,0,.35);
+    transition: transform var(--dl-fast);
+}
+.dl-slider input[type=range]:hover::-webkit-slider-thumb {
+    transform: scale(1.18);
+    box-shadow: 0 2px 6px rgba(0,0,0,.35), 0 0 0 6px color-mix(in oklab, var(--accent-primary) 22%, transparent);
+}
+.dl-slider input[type=range]:active::-webkit-slider-thumb {
+    transform: scale(1.05);
+}
+.dl-slider input[type=range]:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent-primary) 40%, transparent);
+}
+
+.dl-slider__bubble {
+    position: absolute;
+    top: -28px;
+    left: var(--_value);
+    transform: translateX(-50%);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    box-shadow: var(--dl-shadow-sm);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--dl-fast), transform var(--dl-fast);
+}
+.dl-slider:hover .dl-slider__bubble,
+.dl-slider:focus-within .dl-slider__bubble {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-2px);
+}
+
+/* Hue slider variant */
+.dl-slider--hue input[type=range]::-webkit-slider-runnable-track {
+    background: linear-gradient(90deg,
+        hsl(0 80% 55%), hsl(60 80% 55%), hsl(120 80% 55%),
+        hsl(180 80% 55%), hsl(240 80% 55%), hsl(300 80% 55%), hsl(360 80% 55%));
+}
+.dl-slider--hue input[type=range]::-moz-range-track {
+    background: linear-gradient(90deg,
+        hsl(0 80% 55%), hsl(60 80% 55%), hsl(120 80% 55%),
+        hsl(180 80% 55%), hsl(240 80% 55%), hsl(300 80% 55%), hsl(360 80% 55%));
+}
+
+/* --------------------------------------------------------------------------
+   SELECT TRIGGER (custom; native <select> not used)
+   -------------------------------------------------------------------------- */
+.dl-select-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    height: 36px;
+    padding: 0 14px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color var(--dl-fast), background var(--dl-fast), box-shadow var(--dl-fast);
+}
+.dl-select-trigger:hover {
+    border-color: color-mix(in oklab, var(--accent-primary) 35%, var(--border));
+    background: var(--bg-hover);
+}
+.dl-select-trigger--open,
+.dl-select-trigger:focus-visible {
+    border-color: var(--accent-primary);
+    box-shadow: var(--dl-ring);
+    outline: none;
+}
+.dl-select-trigger__placeholder { color: var(--text-muted); }
+.dl-select-trigger__value       { color: var(--text-primary); }
+.dl-select-trigger .dl-icon     { color: var(--text-muted); flex: none; }
+
+/* --------------------------------------------------------------------------
+   DROPDOWN — portal menu (escapes modal overflow:auto clipping)
+   -------------------------------------------------------------------------- */
+
+/* Portal menu (rendered into <body>) — must declare its own surface tokens
+   since it lives outside .dl-root and would otherwise inherit the modal's
+   neutral surface. */
+.dl-dd-portal {
+    z-index: 1200;
+    min-width: 220px;
+    padding: 8px;
+    background: color-mix(in oklab, var(--bg-secondary) 95%, transparent);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 24px 48px -16px rgba(0,0,0,.6), 0 4px 12px rgba(0,0,0,.3);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    transform-origin: top right;
+    animation: dl-pop-in 240ms cubic-bezier(.34,1.56,.64,1);
+}
+.dl-dd-portal.dl-dd--left { transform-origin: top left; }
+@keyframes dl-pop-in {
+    from { opacity: 0; transform: translateY(-4px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+.dl-dd {
+    position: relative;
+    display: inline-block;
+}
+.dl-dd__menu {
+    position: absolute;
+    z-index: 60;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 220px;
+    padding: 8px;
+    background: color-mix(in oklab, var(--bg-secondary) 92%, transparent);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--dl-shadow-lg);
+    transform-origin: top right;
+    transform: translateY(-4px) scale(0.96);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+        opacity var(--dl-base),
+        transform 280ms var(--dl-ease-spring);
+}
+.dl-dd--open .dl-dd__menu {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+.dl-dd--left .dl-dd__menu { right: auto; left: 0; transform-origin: top left; }
+
+.dl-dd__item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    font-size: 13px;
+    color: var(--text-primary);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    transition: background var(--dl-fast), color var(--dl-fast), border-color var(--dl-fast), transform var(--dl-fast);
+}
+/* Accent-themed selection — "this is the focused row" cue. */
+.dl-dd__item:hover,
+.dl-dd__item:focus-visible {
+    background: color-mix(in oklab, var(--accent-primary) 16%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 38%, transparent);
+    color: color-mix(in oklab, var(--accent-primary) 12%, var(--text-primary));
+    outline: none;
+}
+.dl-dd__item:hover .dl-icon,
+.dl-dd__item:hover .dl-dd__shortcut { color: var(--accent-primary); }
+.dl-dd__item:active { transform: scale(0.985); }
+.dl-dd__item--danger { color: var(--color-danger); }
+.dl-dd__item--danger:hover {
+    background: var(--color-danger);
+    color: #fff;
+    border-color: var(--color-danger);
+}
+.dl-dd__item--danger:hover .dl-icon,
+.dl-dd__item--danger:hover .dl-dd__shortcut { color: #fff; }
+
+/* Selected option (custom Select) */
+.dl-dd__item--selected {
+    background: color-mix(in oklab, var(--accent-primary) 12%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 32%, transparent);
+    color: color-mix(in oklab, var(--accent-primary) 14%, var(--text-primary));
+}
+
+/* Inline icon shape — re-declared for portal context (sits outside .dl-root) */
+.dl-dd-portal .dl-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px; height: 14px;
+    flex: none;
+    color: currentColor;
+}
+.dl-dd-portal .dl-icon svg { width: 100%; height: 100%; }
+.dl-dd__divider {
+    height: 1px;
+    margin: 6px 6px;
+    background: var(--border);
+}
+.dl-dd__shortcut {
+    margin-left: auto;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+/* --------------------------------------------------------------------------
+   MODAL
+   -------------------------------------------------------------------------- */
+.dl-modal-backdrop {
+    position: fixed; inset: 0;
+    z-index: 1100;
+    background: color-mix(in oklab, black 60%, transparent);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    animation: dl-fade-in var(--dl-base) var(--dl-ease-out);
+    /* Portal sits outside .dl-root — re-declare base so children inherit. */
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+}
+.dl-modal {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 480px;
+    max-height: calc(100vh - 48px);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: 0 24px 48px -16px rgba(0,0,0,.6), 0 4px 12px rgba(0,0,0,.3);
+    overflow: hidden;
+    transform-origin: center;
+    animation: dl-modal-in 360ms var(--dl-ease-spring);
+    /* nuke any inherited radii from parent .modal__body that bleeds through */
+    isolation: isolate;
+}
+.dl-modal--wide  { max-width: 720px; }
+.dl-modal--large { max-width: 960px; }
+.dl-modal__head  { flex: none; border-top-left-radius: inherit; border-top-right-radius: inherit; }
+.dl-modal__body  { overflow: auto; flex: 1; }
+.dl-modal__foot  { flex: none; border-bottom-left-radius: inherit; border-bottom-right-radius: inherit; }
+
+.dl-modal__head {
+    display: flex; align-items: center; gap: 12px;
+    padding: 18px 22px 14px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, color-mix(in oklab, var(--bg-tertiary) 60%, transparent), transparent);
+}
+.dl-modal__title { margin: 0; font-size: 15px; font-weight: 600; flex: 1; }
+.dl-modal__close {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    cursor: pointer;
+    transition: background var(--dl-fast), color var(--dl-fast), transform var(--dl-fast);
+}
+.dl-modal__close:hover { background: var(--bg-hover); color: var(--text-primary); transform: rotate(90deg); }
+
+.dl-modal__body {
+    padding: 22px;
+    display: grid;
+    gap: 14px;
+}
+.dl-modal__foot {
+    display: flex; justify-content: flex-end; gap: 8px;
+    padding: 14px 22px;
+    background: color-mix(in oklab, var(--bg-tertiary) 50%, transparent);
+    border-top: 1px solid var(--border);
+}
+
+@keyframes dl-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@keyframes dl-modal-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0)  scale(1); }
+}
+
+/* --------------------------------------------------------------------------
+   PROGRESS — animated stripes optional
+   -------------------------------------------------------------------------- */
+.dl-progress {
+    position: relative;
+    height: 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.dl-progress__fill {
+    height: 100%;
+    background: linear-gradient(90deg,
+        var(--accent-primary),
+        color-mix(in oklab, var(--accent-primary) 60%, var(--accent-secondary)));
+    border-radius: inherit;
+    transition: width var(--dl-base);
+    position: relative;
+    overflow: hidden;
+}
+.dl-progress__fill::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg,
+        transparent,
+        color-mix(in oklab, white 18%, transparent),
+        transparent);
+    transform: translateX(-100%);
+    animation: dl-shimmer 1.6s infinite;
+}
+@keyframes dl-shimmer { to { transform: translateX(100%); } }
+
+.dl-progress--indet .dl-progress__fill {
+    width: 35% !important;
+    animation: dl-indet 1.4s var(--dl-ease-out) infinite;
+}
+@keyframes dl-indet {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(300%); }
+}
+
+/* --------------------------------------------------------------------------
+   BADGE / CHIP
+   -------------------------------------------------------------------------- */
+.dl-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    height: 20px;
+    background: color-mix(in oklab, var(--accent-primary) 15%, var(--bg-tertiary));
+    color: color-mix(in oklab, var(--accent-primary) 50%, var(--text-primary));
+    border: 1px solid color-mix(in oklab, var(--accent-primary) 30%, var(--border));
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 500;
+}
+.dl-badge--success { background: color-mix(in oklab, var(--color-success) 15%, var(--bg-tertiary)); color: var(--color-success); border-color: color-mix(in oklab, var(--color-success) 30%, var(--border)); }
+.dl-badge--warn    { background: color-mix(in oklab, var(--color-warning) 15%, var(--bg-tertiary)); color: var(--color-warning); border-color: color-mix(in oklab, var(--color-warning) 30%, var(--border)); }
+.dl-badge--danger  { background: color-mix(in oklab, var(--color-danger) 15%, var(--bg-tertiary));  color: var(--color-danger);  border-color: color-mix(in oklab, var(--color-danger) 30%, var(--border)); }
+.dl-badge__dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+}
+
+/* --------------------------------------------------------------------------
+   TABS — sliding indicator
+   -------------------------------------------------------------------------- */
+.dl-tabs {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--dl-radius);
+}
+.dl-tab {
+    position: relative;
+    padding: 6px 14px;
+    height: 30px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color var(--dl-fast);
+}
+.dl-tab:hover { color: var(--text-primary); }
+.dl-tab--active {
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 0 0 1px var(--border);
+}
+
+/* --------------------------------------------------------------------------
+   THEME SWITCHER (lab-only convenience)
+   -------------------------------------------------------------------------- */
+.dl-theme-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+}
+.dl-theme-swatch {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform var(--dl-fast), border-color var(--dl-fast);
+}
+.dl-theme-swatch:hover { transform: scale(1.1); }
+.dl-theme-swatch--active { border-color: white; box-shadow: 0 0 0 2px var(--accent-primary); }
+
+/* --------------------------------------------------------------------------
+   CARD (showcase wrapper)
+   -------------------------------------------------------------------------- */
+.dl-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--dl-radius);
+    padding: 16px;
+    transition: border-color var(--dl-fast), transform var(--dl-fast), box-shadow var(--dl-fast);
+}
+.dl-card--interactive { cursor: pointer; }
+.dl-card--interactive:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in oklab, var(--accent-primary) 35%, var(--border));
+    box-shadow: var(--dl-shadow-md);
+}

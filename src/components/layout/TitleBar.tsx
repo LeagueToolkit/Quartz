@@ -13,22 +13,20 @@ export function TitleBar() {
 
     return (
         <header className="q-titlebar shrink-0">
-            <div data-tauri-drag-region className="flex h-full flex-1 items-center gap-2 pl-3">
+            <div data-tauri-drag-region className="q-titlebar-brand">
                 <img
                     src="/quartz-logo.png"
                     alt=""
                     onClick={() => setPage('home')}
-                    className="q-titlebar-logo h-8 w-8 cursor-pointer rounded transition-transform hover:scale-[1.15]"
+                    className="q-titlebar-logo"
                     title="Home"
                 />
-                <span data-tauri-drag-region className="q-titlebar-title text-[14px] font-semibold">
-                    Quartz
-                </span>
+                <span data-tauri-drag-region className="q-titlebar-title">Quartz</span>
             </div>
             <div className="q-winbtns">
-                <button onClick={minimize} title="Minimize" className="q-winbtn"><Minus size={18} strokeWidth={2} /></button>
-                <button onClick={maximize} title="Maximize" className="q-winbtn"><Square size={14} strokeWidth={2} /></button>
-                <button onClick={close} title="Close" className="q-winbtn q-winbtn--close"><X size={18} strokeWidth={2} /></button>
+                <button onClick={minimize} title="Minimize" className="q-winbtn"><Minus size={17} strokeWidth={2} /></button>
+                <button onClick={maximize} title="Maximize" className="q-winbtn"><Square size={13} strokeWidth={2} /></button>
+                <button onClick={close} title="Close" className="q-winbtn q-winbtn--close"><X size={17} strokeWidth={2} /></button>
             </div>
         </header>
     );

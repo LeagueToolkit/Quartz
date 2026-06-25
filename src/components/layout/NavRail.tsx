@@ -1,5 +1,5 @@
 import {
-    Brush, ArrowLeftRight, Github, Code, Image, FolderInput, FolderSearch,
+    Brush, ArrowLeftRight, Github, Code, Image,
     Waypoints, Shuffle, Maximize, Pipette, FileDigit, Wrench, Music, Sparkles, Dices,
     Settings as SettingsIcon, type LucideIcon,
 } from 'lucide-react';
@@ -21,8 +21,6 @@ const ITEMS: NavItem[] = [
     { id: 'vfxhub', label: 'VFX Hub', icon: Github },
     { id: 'bineditor', label: 'Bin Editor', icon: Code },
     { id: 'imgrecolor', label: 'Image Recolor', icon: Image },
-    { id: 'extractor', label: 'Asset Extractor', icon: FolderInput },
-    { id: 'wadexplorer', label: 'WAD Explorer', icon: FolderSearch },
     { id: 'soundbanks', label: 'Sound Banks', icon: Music },
     { id: 'bumpath', label: 'Bumpath', icon: Waypoints },
     { id: 'aniport', label: 'AniPort', icon: Shuffle },

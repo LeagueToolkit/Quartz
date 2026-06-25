@@ -24,31 +24,10 @@ export const FormGroup = ({ label, description, children }: {
 
 type InputProps = React.InputHTMLAttributes<HTMLInputElement> & { icon?: ReactNode; wrapperStyle?: CSSProperties };
 
-export const Input = ({ icon, wrapperStyle, style, ...props }: InputProps) => (
-    <div style={{ position: 'relative', ...wrapperStyle }}>
-        {icon && (
-            <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--accent-2)', pointerEvents: 'none' }}>
-                {icon}
-            </div>
-        )}
-        <input
-            {...props}
-            style={{
-                width: '100%',
-                padding: icon ? '10px 12px 10px 36px' : '10px 12px',
-                background: 'var(--settings-control-bg, rgba(255, 255, 255, 0.03))',
-                border: '1px solid var(--settings-control-border, rgba(255, 255, 255, 0.1))',
-                borderRadius: '6px',
-                color: 'var(--settings-ink, var(--accent))',
-                fontSize: '13px',
-                fontFamily: 'inherit',
-                outline: 'none',
-                transition: 'all 0.2s ease',
-                ...style,
-            }}
-            onFocus={(e) => { e.target.style.borderColor = 'var(--accent)'; }}
-            onBlur={(e) => { e.target.style.borderColor = 'var(--settings-control-border, rgba(255, 255, 255, 0.1))'; }}
-        />
+export const Input = ({ icon, wrapperStyle, className, style, ...props }: InputProps) => (
+    <div className={icon ? 'dl-search' : undefined} style={{ position: 'relative', width: '100%', ...wrapperStyle }}>
+        {icon && <span className="dl-icon">{icon}</span>}
+        <input {...props} className={`dl-input ${className ?? ''}`} style={style} />
     </div>
 );
 
@@ -128,30 +107,15 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
     icon?: ReactNode; variant?: 'primary' | 'secondary'; fullWidth?: boolean;
 };
 
-export const Button = ({ icon, children, variant = 'primary', fullWidth, style, disabled, ...props }: ButtonProps) => (
+export const Button = ({ icon, children, variant = 'primary', fullWidth, className, style, disabled, ...props }: ButtonProps) => (
     <button
         {...props}
         disabled={disabled}
-        style={{
-            padding: '10px 16px',
-            background: variant === 'primary' ? 'var(--accent)' : 'rgba(255,255,255,0.03)',
-            color: variant === 'primary' ? 'var(--bg)' : 'var(--settings-subtle-ink, var(--accent-2))',
-            border: variant === 'primary' ? 'none' : '1px solid rgba(255,255,255,0.15)',
-            borderRadius: '6px', fontSize: '13px', fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-            transition: 'all 0.2s ease', width: fullWidth ? '100%' : 'auto', whiteSpace: 'nowrap',
-            opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto', ...style,
-        }}
-        onMouseEnter={(e) => {
-            if (variant === 'primary') e.currentTarget.style.background = 'color-mix(in srgb, var(--accent) 90%, black)';
-            else { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'var(--accent)'; }
-        }}
-        onMouseLeave={(e) => {
-            if (variant === 'primary') e.currentTarget.style.background = 'var(--accent)';
-            else { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; }
-        }}
+        className={`dl-btn ${variant === 'primary' ? 'dl-btn--primary' : 'dl-btn--secondary'} ${className ?? ''}`}
+        style={{ width: fullWidth ? '100%' : undefined, ...style }}
     >
-        {icon}{children}
+        {icon && <span className="dl-icon">{icon}</span>}
+        {children && <span>{children}</span>}
     </button>
 );
 
@@ -180,21 +144,12 @@ export const ToggleSwitch = ({ label, checked, onChange, compact }: {
     label: string; checked: boolean; onChange: (v: boolean) => void; compact?: boolean;
 }) => (
     <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', cursor: 'pointer', padding: compact ? '6px 0' : '10px 0', userSelect: 'none' }}>
-        {label && <span style={{ fontSize: compact ? '12px' : '13px', color: 'var(--text)', flex: 1 }}>{label}</span>}
-        <div
-            onClick={(e) => { e.stopPropagation(); onChange(!checked); }}
-            style={{
-                width: '44px', height: '24px',
-                background: checked ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
-                borderRadius: '12px', position: 'relative', flexShrink: 0,
-                transition: 'all 0.25s cubic-bezier(0.4,0,0.2,1)',
-                border: checked ? 'none' : '1px solid rgba(255,255,255,0.15)',
-                boxShadow: checked ? '0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent)' : 'inset 0 2px 4px rgba(0,0,0,0.1)',
-                cursor: 'pointer',
-            }}
-        >
-            <div style={{ width: '18px', height: '18px', background: checked ? '#fff' : 'rgba(255,255,255,0.7)', borderRadius: '50%', position: 'absolute', top: '3px', left: checked ? '23px' : '3px', transition: 'all 0.25s cubic-bezier(0.4,0,0.2,1)', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
-        </div>
+        {label && <span style={{ fontSize: compact ? '12px' : '13px', color: 'var(--text-secondary)', flex: 1 }}>{label}</span>}
+        <span className="dl-toggle">
+            <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+            <span className="dl-toggle__track" />
+            <span className="dl-toggle__thumb" />
+        </span>
     </label>
 );
 

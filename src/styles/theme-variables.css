@@ -5,14 +5,9 @@
    per-theme cosmic effects, and the data-style structural overrides that make the
    interface-style switch visually real. */
 
-/* ── Global layout fallbacks (themes overwrite the color tokens) ─────────── */
-:root {
-    --nav-icon-color: var(--text-2);
-    --glass-bg: rgba(16, 14, 22, 0.35);
-    --accent-gradient-subtle: linear-gradient(135deg, rgba(236, 185, 106, 0.2), rgba(173, 126, 52, 0.2));
-    --surface-gradient: linear-gradient(135deg, var(--surface-2) 0%, var(--bg) 100%);
-    --border-radius: 6px;
-}
+/* Color tokens + global fallbacks now live in styles/theme.css (canonical) and
+   are theme-driven by applyTheme(). This file keeps only the shared utility
+   classes and the per-interface-style structural overrides. */
 
 /* ── Common theme-aware utility classes ──────────────────────────────────── */
 .theme-surface {

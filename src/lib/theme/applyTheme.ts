@@ -69,7 +69,11 @@ export function normalizeTokens(input: Partial<ThemeTokens>): ThemeTokens {
 export function applyTheme(rawTokens: Partial<ThemeTokens>, id?: string) {
     const t = normalizeTokens(rawTokens);
     const root = document.documentElement;
-    if (id) root.setAttribute('data-theme', id);
+    if (id) {
+        root.setAttribute('data-theme', id);
+        // Mirror the active theme id so the Design Lab window can match it.
+        try { localStorage.setItem('quartz-active-theme', id); } catch { /* ignore */ }
+    }
 
     // Core. Quartz exposes both --accent2 and --accent-2 for compatibility.
     root.style.setProperty('--accent', t.accent);
@@ -111,6 +115,24 @@ export function applyTheme(rawTokens: Partial<ThemeTokens>, id?: string) {
     root.style.setProperty('--accent-gradient', `linear-gradient(135deg, ${t.accent}, ${t.accentMuted})`);
     root.style.setProperty('--accent-gradient-subtle', `linear-gradient(135deg, ${t.accent}33, ${t.accentMuted}33)`);
     root.style.setProperty('--surface-gradient', `linear-gradient(135deg, ${t.surface2} 0%, ${t.bg} 100%)`);
+
+    /* Canonical "Design Lab" tokens — the source-of-truth vocabulary the ported
+       UI uses. Driven by the same theme object so a theme edits everything.
+       (styles/theme.css provides the static defaults + the legacy aliases.) */
+    root.style.setProperty('--accent-primary', t.accent);
+    root.style.setProperty('--accent-hover', t.muiPrimaryLight || t.accent2 || t.accent);
+    root.style.setProperty('--accent-secondary', t.accent2);
+    // --accent-muted already set above (legacy name == canonical name).
+    root.style.setProperty('--bg-primary', t.bg);
+    root.style.setProperty('--bg-secondary', t.surface);
+    root.style.setProperty('--bg-tertiary', t.surface2);
+    root.style.setProperty('--bg-hover', t.muiDivider || t.surface2);
+    root.style.setProperty('--text-primary', t.text);
+    root.style.setProperty('--text-secondary', t.text2);
+    root.style.setProperty('--text-muted', t.muiTextSecondary ? withAlpha(t.text2, 0.6) : t.text2);
+    root.style.setProperty('--border', t.muiDivider || t.glassBorder!);
+    root.style.setProperty('--color-success', t.accentGreen || '#3FB950');
+    // Status warning/danger/info stay theme-independent (defined in theme.css).
 }
 
 // Sets the interface style attribute consumed by style-specific CSS.
