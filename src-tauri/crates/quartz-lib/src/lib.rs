@@ -8,9 +8,15 @@ pub mod error;
 pub mod hash;
 pub mod bin;
 pub mod paint;
-pub mod wad_explorer;
 pub mod bumpath;
+pub mod port_donor;
 pub mod extractor;
+pub mod tex;
+pub mod audio;
+pub mod skeleton;
+pub mod vfx_tools;
+pub mod mesh;
+pub mod wad;
 
 // Re-export heed so callers can hold Arc<heed::Env> if needed.
 pub use heed;

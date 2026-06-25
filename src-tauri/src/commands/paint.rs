@@ -152,6 +152,13 @@ pub async fn paint_undo(session_id: u64) -> Result<Option<VfxModel>, String> {
     session::undo(session_id).map_err(|e| e.to_string())
 }
 
+/// Redo the last undone edit. Returns the refreshed model, or null if nothing
+/// to redo.
+#[tauri::command]
+pub async fn paint_redo(session_id: u64) -> Result<Option<VfxModel>, String> {
+    session::redo(session_id).map_err(|e| e.to_string())
+}
+
 /// Serialize the resident tree to disk in its original format. `outPath`
 /// overrides the source path (Save As).
 #[tauri::command]

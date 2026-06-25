@@ -2,8 +2,11 @@
    into every asset/data reference, copying assets, and optionally combining
    linked BINs. Ported from Quartz's bumpath:repath IPC + bumpathCore.js. */
 
-use quartz_lib::bumpath::{repath, RepathOptions, RepathResult};
+use quartz_lib::bumpath::{
+    enumerate_source_bins, repath, scan_entries, RepathOptions, RepathResult,
+};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Deserialize)]
@@ -73,4 +76,121 @@ pub async fn bumpath_repath(
     })
     .await
     .map_err(|e| format!("repath task panicked: {}", e))?
+}
+
+/// A discovered source BIN, keyed in `source_bins` by its absolute path.
+#[derive(Serialize)]
+pub struct SourceBinInfo {
+    pub path: String,
+    pub rel_path: String,
+    pub selected: bool,
+}
+
+/// Result of `bumpath_enumerate_sources` — mirrors the Electron addSourceDirs
+/// shape (`source_files` is unused under Tauri but kept for frontend parity).
+#[derive(Serialize)]
+pub struct EnumerateSourcesResult {
+    pub source_files: HashMap<String, ()>,
+    pub source_bins: HashMap<String, SourceBinInfo>,
+}
+
+/// List every `.bin` under the given source `folders`, keyed by absolute path.
+#[tauri::command]
+pub async fn bumpath_enumerate_sources(
+    folders: Vec<String>,
+) -> Result<EnumerateSourcesResult, String> {
+    tokio::task::spawn_blocking(move || {
+        let paths: Vec<PathBuf> = folders.into_iter().map(PathBuf::from).collect();
+        let bins = enumerate_source_bins(&paths);
+
+        let mut source_bins = HashMap::new();
+        for bin in bins {
+            let key = bin.path.to_string_lossy().into_owned();
+            source_bins.insert(
+                key.clone(),
+                SourceBinInfo {
+                    path: key,
+                    rel_path: bin.rel_path,
+                    selected: false,
+                },
+            );
+        }
+
+        EnumerateSourcesResult {
+            source_files: HashMap::new(),
+            source_bins,
+        }
+    })
+    .await
+    .map_err(|e| format!("enumerate task panicked: {}", e))
+}
+
+#[derive(Serialize)]
+pub struct ScannedReferenceDto {
+    pub path: String,
+    pub exists: bool,
+    pub unify_file: String,
+}
+
+#[derive(Serialize)]
+pub struct ScannedEntryDto {
+    pub name: String,
+    pub type_name: Option<String>,
+    pub prefix: String,
+    pub referenced_files: Vec<ScannedReferenceDto>,
+}
+
+/// Result of `bumpath_scan_entries` — `entries` keyed by entry hash.
+#[derive(Serialize)]
+pub struct ScanEntriesResult {
+    pub entries: HashMap<String, ScannedEntryDto>,
+    pub all_bins: HashMap<String, ()>,
+}
+
+/// Open the selected BINs, returning their entries + referenced asset paths
+/// (with `exists` flags) so the panel can preview what repathing will touch.
+#[tauri::command]
+pub async fn bumpath_scan_entries(
+    folders: Vec<String>,
+    bin_paths: Vec<String>,
+    hashes_path: Option<String>,
+) -> Result<ScanEntriesResult, String> {
+    let _ = hashes_path; // resolved via the shared LMDB, kept for parity
+
+    tokio::task::spawn_blocking(move || {
+        let folder_paths: Vec<PathBuf> = folders.into_iter().map(PathBuf::from).collect();
+        let bins: Vec<PathBuf> = bin_paths.into_iter().map(PathBuf::from).collect();
+
+        let scan = scan_entries(&folder_paths, &bins).map_err(|e| e.to_string())?;
+
+        let mut entries = HashMap::new();
+        for entry in scan.entries {
+            entries.insert(
+                entry.hash,
+                ScannedEntryDto {
+                    name: entry.name,
+                    type_name: entry.type_name,
+                    // The repath prefix is applied at process time; surface the
+                    // default so the panel renders an editable prefix.
+                    prefix: "bum".to_string(),
+                    referenced_files: entry
+                        .referenced_files
+                        .into_iter()
+                        .map(|r| ScannedReferenceDto {
+                            path: r.path,
+                            exists: r.exists,
+                            unify_file: r.unify_file,
+                        })
+                        .collect(),
+                },
+            );
+        }
+
+        Ok(ScanEntriesResult {
+            entries,
+            all_bins: HashMap::new(),
+        })
+    })
+    .await
+    .map_err(|e| format!("scan task panicked: {}", e))?
 }

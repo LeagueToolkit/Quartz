@@ -33,6 +33,18 @@ fn format_for_path(path: &Path) -> SourceFormat {
     }
 }
 
+/// A sibling `.ritobin` / `.py` text dump for a saved `.bin`, if one already
+/// exists on disk. `.ritobin` wins when both are present.
+fn existing_text_sidecar(bin_path: &Path) -> Option<PathBuf> {
+    for ext in ["ritobin", "py"] {
+        let candidate = bin_path.with_extension(ext);
+        if candidate != bin_path && candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 pub struct BinSession {
     pub id: SessionId,
     pub source_path: PathBuf,
@@ -40,6 +52,7 @@ pub struct BinSession {
     pub tree: Bin,
     pub index: EditIndex,
     undo: Vec<Bin>,
+    redo: Vec<Bin>,
 }
 
 impl BinSession {
@@ -52,12 +65,14 @@ impl BinSession {
         model
     }
 
-    /// Push the current tree onto the undo stack before a mutating edit.
+    /// Push the current tree onto the undo stack before a mutating edit. A fresh
+    /// edit invalidates the redo history.
     fn snapshot(&mut self) {
         if self.undo.len() >= UNDO_CAP {
             self.undo.remove(0);
         }
         self.undo.push(self.tree.clone());
+        self.redo.clear();
     }
 }
 
@@ -95,7 +110,15 @@ pub fn open(path: impl AsRef<Path>) -> Result<OpenResult> {
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     registry().write().insert(
         id,
-        BinSession { id, source_path: path, source_format: format, tree, index, undo: Vec::new() },
+        BinSession {
+            id,
+            source_path: path,
+            source_format: format,
+            tree,
+            index,
+            undo: Vec::new(),
+            redo: Vec::new(),
+        },
     );
     Ok(OpenResult { session_id: id, model })
 }
@@ -186,7 +209,25 @@ pub fn undo(id: SessionId) -> Result<Option<VfxModel>> {
     with_session(id, |s| {
         match s.undo.pop() {
             Some(prev) => {
-                s.tree = prev;
+                // Park the current tree on the redo stack before restoring.
+                s.redo.push(std::mem::replace(&mut s.tree, prev));
+                Some(s.reproject())
+            }
+            None => None,
+        }
+    })
+}
+
+/// Redo the last undone edit. Returns the refreshed model, or null if there's
+/// nothing to redo.
+pub fn redo(id: SessionId) -> Result<Option<VfxModel>> {
+    with_session(id, |s| {
+        match s.redo.pop() {
+            Some(next) => {
+                if s.undo.len() >= UNDO_CAP {
+                    s.undo.remove(0);
+                }
+                s.undo.push(std::mem::replace(&mut s.tree, next));
                 Some(s.reproject())
             }
             None => None,
@@ -217,6 +258,12 @@ pub fn save(id: SessionId, out_path: Option<PathBuf>) -> Result<PathBuf> {
             SourceFormat::Bin => {
                 let bytes = write_bin_ltk(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
                 std::fs::write(&dest, bytes).map_err(|e| Error::io_with_path(e, &dest))?;
+                // Keep a sibling .ritobin / .py text dump in sync, but only if one
+                // already sits next to the bin — don't create new files.
+                if let Some(sidecar) = existing_text_sidecar(&dest) {
+                    let text = tree_to_text_cached(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
+                    std::fs::write(&sidecar, text).map_err(|e| Error::io_with_path(e, &sidecar))?;
+                }
             }
             SourceFormat::Text => {
                 let text = tree_to_text_cached(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;

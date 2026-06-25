@@ -140,6 +140,11 @@ export function paintUndo(sessionId: number): Promise<VfxModel | null> {
     return invokeCommand<VfxModel | null>('paint_undo', { sessionId });
 }
 
+/** Redo the last undone edit; returns the refreshed model or null. */
+export function paintRedo(sessionId: number): Promise<VfxModel | null> {
+    return invokeCommand<VfxModel | null>('paint_redo', { sessionId });
+}
+
 /** Serialize the resident tree to disk in its original format. */
 export function paintSave(sessionId: number, outPath?: string): Promise<string> {
     return invokeCommand<string>('paint_save', { sessionId, outPath: outPath ?? null });

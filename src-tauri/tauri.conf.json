@@ -41,6 +41,8 @@
         "title": "Quartz",
         "width": 1280,
         "height": 800,
+        "minWidth": 1100,
+        "minHeight": 720,
         "resizable": true,
         "fullscreen": false,
         "visible": true,

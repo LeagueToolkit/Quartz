@@ -10,7 +10,7 @@
 //! mod folders carry real Riot paths (assets/.../foo.dds), so this is the
 //! common case; hashed_files.json mappings are honored when present.
 
-use crate::bin::ltk_bridge::{read_bin, write_bin};
+use crate::bin::ltk_bridge::{get_cached_bin_hashes, read_bin, write_bin};
 use crate::error::{Error, Result};
 use ritoshark::bin::{Bin, BinValue};
 use std::collections::{HashMap, HashSet};
@@ -528,6 +528,205 @@ fn strip_prefix_segment(rel: &str) -> String {
     let mut rebuilt = vec![parts[0]];
     rebuilt.extend_from_slice(&parts[2..]);
     rebuilt.join("/")
+}
+
+// ---- Source enumeration + per-entry scan (Bumpath panel) ----
+
+/// A `.bin` file discovered under a source folder.
+#[derive(Debug, Clone)]
+pub struct SourceBinFile {
+    /// Absolute path to the BIN on disk.
+    pub path: PathBuf,
+    /// Normalized relative path from its source folder.
+    pub rel_path: String,
+}
+
+/// Enumerate every `.bin` under `folders` (recursively), keyed by absolute path.
+/// Honors `hashed_files.json` so hashed-name extractions surface their real rel
+/// path. First occurrence of a given rel path wins.
+pub fn enumerate_source_bins(folders: &[PathBuf]) -> Vec<SourceBinFile> {
+    let mut files: HashMap<String, SourceFile> = HashMap::new();
+    for folder in folders {
+        discover_files(folder, folder, &mut files);
+        apply_hashed_files_map(folder, &mut files);
+    }
+
+    let mut out = Vec::new();
+    for (rel, src) in files {
+        if rel.ends_with(".bin") {
+            out.push(SourceBinFile {
+                path: src.full_path,
+                rel_path: rel,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
+    out
+}
+
+/// A referenced asset/data path found inside an entry.
+#[derive(Debug, Clone)]
+pub struct ScannedReference {
+    /// The original path string as stored in the BIN.
+    pub path: String,
+    /// Whether the referenced file exists under the scanned source folders.
+    pub exists: bool,
+    /// Normalized relative path used as the lookup key.
+    pub unify_file: String,
+}
+
+/// A single BIN entry with its resolved name/type and referenced files.
+#[derive(Debug, Clone)]
+pub struct ScannedEntry {
+    /// Hash key (`path_hash` as 8-char hex), used as the map key.
+    pub hash: String,
+    pub name: String,
+    pub type_name: Option<String>,
+    pub referenced_files: Vec<ScannedReference>,
+}
+
+/// Result of scanning the selected BINs.
+#[derive(Debug, Clone, Default)]
+pub struct ScanResult {
+    pub entries: Vec<ScannedEntry>,
+}
+
+/// Resolve a u32 BIN hash to its name via the cached LMDB mapper, falling back
+/// to `Entry_{hash:08x}` when unknown.
+fn resolve_entry_name(hash: u32) -> String {
+    let hashes = get_cached_bin_hashes().read();
+    match hashes.get(hash as u64) {
+        Some(name) => name.to_string(),
+        None => format!("Entry_{:08x}", hash),
+    }
+}
+
+/// Resolve a u32 type/class hash, returning `None` for the null hash.
+fn resolve_type_name(hash: u32) -> Option<String> {
+    if hash == 0 {
+        return Some("0x00000000".to_string());
+    }
+    let hashes = get_cached_bin_hashes().read();
+    Some(match hashes.get(hash as u64) {
+        Some(name) => name.to_string(),
+        None => format!("0x{:08x}", hash),
+    })
+}
+
+/// Scan the selected `bin_paths` (absolute) for their entries and referenced
+/// assets, following linked BINs that resolve within `folders`. `exists` flags
+/// are computed against every file discovered under `folders`.
+pub fn scan_entries(folders: &[PathBuf], bin_paths: &[PathBuf]) -> Result<ScanResult> {
+    // Discover every source file so we can resolve links + asset existence.
+    let mut files: HashMap<String, SourceFile> = HashMap::new();
+    for folder in folders {
+        discover_files(folder, folder, &mut files);
+        apply_hashed_files_map(folder, &mut files);
+    }
+
+    // Build a reverse map (absolute path -> rel) for the explicitly selected
+    // BINs, then seed the scan queue with their rel paths.
+    let mut seeds: Vec<String> = Vec::new();
+    for bin_path in bin_paths {
+        let rel = files
+            .iter()
+            .find(|(_, src)| src.full_path == *bin_path)
+            .map(|(rel, _)| rel.clone());
+        match rel {
+            Some(r) => seeds.push(r),
+            None => {
+                // Not under a source folder; index it directly by file name.
+                let name = bin_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                let rel = rel_normalize(&name);
+                files.insert(
+                    rel.clone(),
+                    SourceFile {
+                        full_path: bin_path.clone(),
+                    },
+                );
+                seeds.push(rel);
+            }
+        }
+    }
+
+    let mut entries: Vec<ScannedEntry> = Vec::new();
+    let mut seen_entries: HashSet<String> = HashSet::new();
+    let mut scanned_bins: HashSet<String> = HashSet::new();
+    let mut queue: Vec<String> = seeds;
+
+    while let Some(rel) = queue.pop() {
+        if scanned_bins.contains(&rel) {
+            continue;
+        }
+        scanned_bins.insert(rel.clone());
+
+        let src = match files.get(&rel) {
+            Some(s) => s,
+            None => continue,
+        };
+        let data = match std::fs::read(&src.full_path) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        let bin = match read_bin(&data) {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::warn!("bumpath scan: skipping unparseable BIN {}: {}", rel, e);
+                continue;
+            }
+        };
+
+        for entry in &bin.entries {
+            let entry_hash = format!("{:08x}", entry.path_hash);
+            if seen_entries.contains(&entry_hash) {
+                continue;
+            }
+            seen_entries.insert(entry_hash.clone());
+
+            let mut refs: HashSet<String> = HashSet::new();
+            for (_k, v) in &entry.fields {
+                collect_assets(v, &mut refs);
+            }
+
+            let mut referenced_files: Vec<ScannedReference> = refs
+                .into_iter()
+                .map(|path| {
+                    let unify = rel_normalize(&path);
+                    let exists = files.contains_key(&unify);
+                    ScannedReference {
+                        path,
+                        exists,
+                        unify_file: unify,
+                    }
+                })
+                .collect();
+            referenced_files.sort_by(|a, b| a.path.cmp(&b.path));
+
+            entries.push(ScannedEntry {
+                hash: entry_hash,
+                name: resolve_entry_name(entry.path_hash),
+                type_name: resolve_type_name(entry.class_hash),
+                referenced_files,
+            });
+        }
+
+        // Follow linked BINs that resolve to a discovered source file.
+        for link in &bin.linked {
+            if is_character_bin(link) {
+                continue;
+            }
+            let link_rel = rel_normalize(link);
+            if files.contains_key(&link_rel) && !scanned_bins.contains(&link_rel) {
+                queue.push(link_rel);
+            }
+        }
+    }
+
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(ScanResult { entries })
 }
 
 #[cfg(test)]

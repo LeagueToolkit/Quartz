@@ -7,27 +7,18 @@ export {
     getHashStatus, downloadHashes, reloadHashes, forceRebuildHashes, readBin, writeBin,
     type HashStatus, type DownloadResult,
 } from './hashes';
-export {
-    getLeaguePath, discoverChampions, extractChampionAssets,
-    type Champion, type SkinEntry, type ExtractResult, type ExtractProgress,
-} from './extractor';
+export { getLeaguePath } from './league';
 export {
     readFileBase64, getFontsDir, listFonts, getCursorsDir, listCursors,
     getWallpapersDir, listWallpapers, importWallpaper, deleteWallpaper,
     type AssetFile, type WallpaperItem,
 } from './assets';
 export {
-    wadMount, wadUnmount, wadScan, wadListMounted, wadList, wadReadChunk, wadDecodeTexture, wadExtractSelected,
-    type WadOpenResult, type WadMountInfo, type WadEntry,
-    type WadExtractResult, type WadExtractProgress,
-    type ScannedWad, type WadScanResult,
-} from './wad';
-export {
     binScaleParams, binSplitSkin, binConsolidateAssets,
     type ScaleParamsResult, type SplitFile, type ConsolidateResult,
 } from './binEditor';
 export {
-    paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintUndo, paintSave,
+    paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintUndo, paintRedo, paintSave,
     type VfxModel, type VfxSystem, type VfxEmitter, type VfxMaterial, type MaterialParam,
     type ColorData, type ColorKeyframe, type EmitterColors, type EmitterTexture,
     type PaintOpenResult, type RecolorResult, type RecolorModeId, type ColorTargetId,
@@ -38,3 +29,27 @@ export {
     fileRandomize, fileRename, toolsExecute,
     type RandomizeResult, type RenameResult, type ExecResult,
 } from './fileOps';
+export {
+    prefsGet, prefsSet, upscaleCheckStatus, upscaleDownloadAll, realesrganEnsure,
+    upscaylStream, upscaylBatchProcess, upscaylCancel,
+    type UpscaleStatus, type UpscaleStreamResult, type UpscaleBatchResults,
+} from './upscale';
+export {
+    imgRecolorDecodeTexture, imgRecolorSaveTexture, imgRecolorScanDir,
+    type DecodedTexture, type ScannedImage,
+} from './imgrecolor';
+export {
+    aniportAutodetectSkl, aniportLoadSkeleton,
+    type JointInfo, type LoadedSkeleton,
+} from './aniport';
+export {
+    wadFindChampion, wadReadToc, wadExtractChunks,
+    portPrepareDonorFromSkin, portCleanupDonorTemp, portCopyAssetsToTarget, portResolveAssetPath,
+    backupCreate, backupList, backupRestore,
+    type WadTocEntry, type ExtractResult, type DonorResult, type AssetCopyResult, type BackupInfo,
+} from './wad';
+export {
+    fakegearCopyToggleScreenAssets, fakegearProcessMinimalMesh,
+    fakegearValidateAnm, fakegearWriteVariantBins,
+    type CopyAssetsResult, type MinimalMeshResult, type WriteVariantBinsResult,
+} from './fakegear';
