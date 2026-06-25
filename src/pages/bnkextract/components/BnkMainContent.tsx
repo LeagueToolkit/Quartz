@@ -90,7 +90,7 @@ function VirtualTreeList({
             }}
         >
             {rows.length === 0 ? (
-                <Typography sx={{ textAlign: 'center', marginTop: '3rem', fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.6)', fontWeight: 500, whiteSpace: 'pre-line' }}>
+                <Typography sx={{ textAlign: 'center', marginTop: '3rem', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'pre-line' }}>
                     {emptyText}
                 </Typography>
             ) : (
@@ -175,6 +175,7 @@ interface Props {
     rightTreeData: BnkNode[];
     setShowSettingsModal: (v: boolean) => void;
     onLeftPaneFolderDrop: (folderPath: string) => void;
+    stampDropTarget: (target: 'mod-folder' | 'reference') => void;
 }
 
 export default function BnkMainContent(props: Props) {
@@ -191,7 +192,7 @@ export default function BnkMainContent(props: Props) {
         handleUndo, undoStack, handleRedo, redoStack,
         handleExtract, handleReplace, hasAudioSelection, handleMakeSilent, handleSave, hasRootSelection,
         handlePlaySelected, stopAudio, volume, setVolume, treeData, rightTreeData,
-        setShowSettingsModal,
+        setShowSettingsModal, stampDropTarget,
     } = props;
 
     const treeBorder = treeViewStyle.border as string;
@@ -210,18 +211,20 @@ export default function BnkMainContent(props: Props) {
         setLeftDragOver(false);
     }, []);
 
-    // TODO(backend): Tauri does not expose dropped directory paths via the DOM
-    // drag event. Folder-drop auto-extract wires to the webview file-drop bridge
-    // once the soundbank scan command exists; the pane still highlights on drag.
+    /* Tauri delivers dropped directory paths through the webview file-drop event,
+       not the DOM. The DOM drop stamps the main pane as the target so the webview
+       listener can route the real folder path into the auto-extract scan. */
     const handleLeftDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
         setLeftDragOver(false);
-    }, []);
+        stampDropTarget('mod-folder');
+    }, [stampDropTarget]);
 
     const handleRightDrop = useCallback((e: React.DragEvent) => {
+        stampDropTarget('reference');
         handleRightPaneFileDrop?.(e);
-    }, [handleRightPaneFileDrop]);
+    }, [handleRightPaneFileDrop, stampDropTarget]);
 
     const leftRows = useMemo(() => flattenVisibleTree(filteredLeftTree, expandedNodes), [filteredLeftTree, expandedNodes]);
     const rightRows = useMemo(() => flattenVisibleTree(filteredRightTree, rightExpandedNodes), [filteredRightTree, rightExpandedNodes]);
@@ -236,16 +239,16 @@ export default function BnkMainContent(props: Props) {
                 sx={{
                     ...treeViewStyle,
                     border: leftDragOver
-                        ? '2px dashed var(--accent)'
-                        : (viewMode === 'split' && activePane === 'left' ? '1px solid var(--accent)' : treeBorder),
-                    background: leftDragOver ? 'rgba(var(--accent-rgb), 0.06)' : treeBackground,
+                        ? '2px dashed var(--accent-primary)'
+                        : (viewMode === 'split' && activePane === 'left' ? '1px solid var(--accent-primary)' : treeBorder),
+                    background: leftDragOver ? 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' : treeBackground,
                     position: 'relative',
                     display: 'flex',
                     flexDirection: 'column',
                     transition: 'border-color 0.15s, background 0.15s',
                 }}
             >
-                <Box sx={{ p: 1.25, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 1, minHeight: 56 }}>
+                <Box sx={{ p: 1.25, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 1, minHeight: 56 }}>
                     <TextField
                         value={leftSearchQuery}
                         onChange={(e) => setLeftSearchQuery(e.target.value)}
@@ -253,7 +256,7 @@ export default function BnkMainContent(props: Props) {
                         size="small"
                         sx={{ ...inputStyle, flex: 1 }}
                         InputProps={{
-                            startAdornment: <Search sx={{ fontSize: 18, mr: 0.75, color: 'var(--accent)', opacity: 0.8 }} />,
+                            startAdornment: <Search sx={{ fontSize: 18, mr: 0.75, color: 'var(--accent-primary)', opacity: 0.8 }} />,
                             endAdornment: leftSearchQuery ? (
                                 <IconButton size="small" onClick={() => setLeftSearchQuery('')} sx={{ p: 0.25, ml: 0.5 }}>
                                     <Close sx={{ fontSize: 14, opacity: 0.7 }} />
@@ -265,13 +268,13 @@ export default function BnkMainContent(props: Props) {
                         <IconButton
                             size="small"
                             onClick={() => setLeftSortMode((prev) => prev === 'none' ? 'name-asc' : (prev === 'name-asc' ? 'name-desc' : 'none'))}
-                            sx={{ color: leftSortMode !== 'none' ? 'var(--accent)' : 'rgba(255,255,255,0.3)', background: leftSortMode !== 'none' ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent', p: '6px' }}
+                            sx={{ color: leftSortMode !== 'none' ? 'var(--accent-primary)' : 'var(--text-muted)', background: leftSortMode !== 'none' ? 'color-mix(in oklab, var(--accent-primary) 10%, transparent)' : 'transparent', p: '6px' }}
                         >
                             <SortByAlpha sx={{ fontSize: 16, transform: leftSortMode === 'name-desc' ? 'scaleY(-1)' : 'none' }} />
                         </IconButton>
                     </Tooltip>
                     {leftSearchQuery && (
-                        <Typography sx={{ fontSize: '0.55rem', color: 'var(--accent)', opacity: 0.5, fontWeight: 800 }}>{filteredLeftTree.length}</Typography>
+                        <Typography sx={{ fontSize: '0.55rem', color: 'var(--accent-primary)', opacity: 0.5, fontWeight: 800 }}>{filteredLeftTree.length}</Typography>
                     )}
                 </Box>
 
@@ -293,7 +296,7 @@ export default function BnkMainContent(props: Props) {
 
                 {viewMode === 'split' && (
                     <Box sx={{ position: 'absolute', top: 4, right: 8, zIndex: 5, pointerEvents: 'none' }}>
-                        <Typography sx={{ fontSize: '0.6rem', color: 'var(--accent)', fontWeight: 800, opacity: 0.6 }}>MAIN BANK</Typography>
+                        <Typography sx={{ fontSize: '0.6rem', color: 'var(--accent-primary)', fontWeight: 800, opacity: 0.6 }}>MAIN BANK</Typography>
                     </Box>
                 )}
             </Box>
@@ -308,16 +311,16 @@ export default function BnkMainContent(props: Props) {
                         ...treeViewStyle,
                         marginLeft: 0,
                         border: rightPaneDragOver
-                            ? '2px dashed var(--accent)'
-                            : (activePane === 'right' ? '1px solid var(--accent)' : treeBorder),
+                            ? '2px dashed var(--accent-primary)'
+                            : (activePane === 'right' ? '1px solid var(--accent-primary)' : treeBorder),
                         position: 'relative',
                         display: 'flex',
                         flexDirection: 'column',
-                        background: rightPaneDragOver ? 'rgba(var(--accent-rgb), 0.1)' : treeBackground,
+                        background: rightPaneDragOver ? 'color-mix(in oklab, var(--accent-primary) 10%, transparent)' : treeBackground,
                         transition: 'all 0.2s ease',
                     }}
                 >
-                    <Box sx={{ p: 1.25, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 1, minHeight: 56 }}>
+                    <Box sx={{ p: 1.25, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 1, minHeight: 56 }}>
                         <TextField
                             value={rightSearchQuery}
                             onChange={(e) => setRightSearchQuery(e.target.value)}
@@ -325,7 +328,7 @@ export default function BnkMainContent(props: Props) {
                             size="small"
                             sx={{ ...inputStyle, flex: 1 }}
                             InputProps={{
-                                startAdornment: <Search sx={{ fontSize: 18, mr: 0.75, color: 'var(--accent)', opacity: 0.8 }} />,
+                                startAdornment: <Search sx={{ fontSize: 18, mr: 0.75, color: 'var(--accent-primary)', opacity: 0.8 }} />,
                                 endAdornment: rightSearchQuery ? (
                                     <IconButton size="small" onClick={() => setRightSearchQuery('')} sx={{ p: 0.25, ml: 0.5 }}>
                                         <Close sx={{ fontSize: 14, opacity: 0.7 }} />
@@ -337,13 +340,13 @@ export default function BnkMainContent(props: Props) {
                             <IconButton
                                 size="small"
                                 onClick={() => setRightSortMode((prev) => prev === 'none' ? 'name-asc' : (prev === 'name-asc' ? 'name-desc' : 'none'))}
-                                sx={{ color: rightSortMode !== 'none' ? 'var(--accent)' : 'rgba(255,255,255,0.3)', background: rightSortMode !== 'none' ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent', p: '6px' }}
+                                sx={{ color: rightSortMode !== 'none' ? 'var(--accent-primary)' : 'var(--text-muted)', background: rightSortMode !== 'none' ? 'color-mix(in oklab, var(--accent-primary) 10%, transparent)' : 'transparent', p: '6px' }}
                             >
                                 <SortByAlpha sx={{ fontSize: 16, transform: rightSortMode === 'name-desc' ? 'scaleY(-1)' : 'none' }} />
                             </IconButton>
                         </Tooltip>
                         {rightSearchQuery && (
-                            <Typography sx={{ fontSize: '0.55rem', color: 'var(--accent)', opacity: 0.5, fontWeight: 800 }}>{filteredRightTree.length}</Typography>
+                            <Typography sx={{ fontSize: '0.55rem', color: 'var(--accent-primary)', opacity: 0.5, fontWeight: 800 }}>{filteredRightTree.length}</Typography>
                         )}
                     </Box>
 
@@ -364,7 +367,7 @@ export default function BnkMainContent(props: Props) {
                     />
 
                     <Box sx={{ position: 'absolute', top: 4, right: 8, zIndex: 5, pointerEvents: 'none' }}>
-                        <Typography sx={{ fontSize: '0.6rem', color: 'var(--accent)', fontWeight: 800, opacity: 0.6 }}>REFERENCE BANKS</Typography>
+                        <Typography sx={{ fontSize: '0.6rem', color: 'var(--accent-primary)', fontWeight: 800, opacity: 0.6 }}>REFERENCE BANKS</Typography>
                     </Box>
                 </Box>
             )}
@@ -383,10 +386,10 @@ export default function BnkMainContent(props: Props) {
                     </Tooltip>
                 </Box>
 
-                <Button variant="contained" onClick={handleExtract} disabled={selectedNodes.size === 0} startIcon={<Download sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.9)' }}>
+                <Button variant="contained" onClick={handleExtract} disabled={selectedNodes.size === 0} startIcon={<Download sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--text-primary)' }}>
                     Extract
                 </Button>
-                <Button variant="contained" onClick={handleReplace} disabled={!hasAudioSelection()} startIcon={<Upload sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.9)' }}>
+                <Button variant="contained" onClick={handleReplace} disabled={!hasAudioSelection()} startIcon={<Upload sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--text-primary)' }}>
                     Replace
                 </Button>
                 <Button
@@ -394,31 +397,31 @@ export default function BnkMainContent(props: Props) {
                     onClick={handleAutoMatchByEventName}
                     disabled={!treeData.length || !rightTreeData.length}
                     startIcon={<AutoFixHigh sx={{ fontSize: 12 }} />}
-                    sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.9)', opacity: (!treeData.length || !rightTreeData.length) ? 0.35 : 1 }}
+                    sx={{ ...buttonStyle, color: 'var(--text-primary)', opacity: (!treeData.length || !rightTreeData.length) ? 0.35 : 1 }}
                 >
                     Auto Match Names
                 </Button>
-                <Button variant="contained" onClick={handleMakeSilent} disabled={!hasAudioSelection()} startIcon={<VolumeOff sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.9)' }}>
+                <Button variant="contained" onClick={handleMakeSilent} disabled={!hasAudioSelection()} startIcon={<VolumeOff sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--text-primary)' }}>
                     Make Silent
                 </Button>
 
-                <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)', margin: '0.25rem 0' }} />
+                <Divider sx={{ borderColor: 'var(--border)', margin: '0.25rem 0' }} />
 
-                <Button variant="contained" onClick={handleSave} disabled={!hasRootSelection()} startIcon={<Save sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.9)' }}>
+                <Button variant="contained" onClick={handleSave} disabled={!hasRootSelection()} startIcon={<Save sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--text-primary)' }}>
                     Save as BNK/WPK
                 </Button>
 
-                <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)', margin: '0.25rem 0' }} />
+                <Divider sx={{ borderColor: 'var(--border)', margin: '0.25rem 0' }} />
 
-                <Button variant="contained" onClick={handlePlaySelected} disabled={!hasAudioSelection()} startIcon={<PlayArrow sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--accent)' }}>
+                <Button variant="contained" onClick={handlePlaySelected} disabled={!hasAudioSelection()} startIcon={<PlayArrow sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--accent-primary)' }}>
                     Play
                 </Button>
-                <Button variant="contained" onClick={stopAudio} startIcon={<Stop sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.7)' }}>
+                <Button variant="contained" onClick={stopAudio} startIcon={<Stop sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--text-secondary)' }}>
                     Stop
                 </Button>
 
                 <Box sx={{ mt: 'auto', pt: 2 }}>
-                    <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)', mb: 1.5 }} />
+                    <Divider sx={{ borderColor: 'var(--border)', mb: 1.5 }} />
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: '0.75rem', px: 0.5 }}>
                         <VolumeUp sx={{ fontSize: 16, opacity: 0.6 }} />
                         <Slider
@@ -427,12 +430,12 @@ export default function BnkMainContent(props: Props) {
                             onChange={(_, newValue) => setVolume(newValue as number)}
                             aria-label="Volume"
                             sx={{
-                                color: 'var(--accent)',
+                                color: 'var(--accent-primary)',
                                 '& .MuiSlider-thumb': {
                                     width: 12,
                                     height: 12,
-                                    backgroundColor: 'var(--accent)',
-                                    '&:hover, &.Mui-focusVisible': { boxShadow: '0 0 0 8px rgba(var(--accent-rgb), 0.16)' },
+                                    backgroundColor: 'var(--accent-primary)',
+                                    '&:hover, &.Mui-focusVisible': { boxShadow: '0 0 0 8px color-mix(in oklab, var(--accent-primary) 16%, transparent)' },
                                 },
                                 '& .MuiSlider-rail': { opacity: 0.2 },
                             }}
@@ -443,8 +446,8 @@ export default function BnkMainContent(props: Props) {
                     </Typography>
                 </Box>
 
-                <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)', margin: '0.25rem 0' }} />
-                <Button variant="contained" onClick={() => setShowSettingsModal(true)} startIcon={<Settings sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'rgba(255, 255, 255, 0.6)' }}>
+                <Divider sx={{ borderColor: 'var(--border)', margin: '0.25rem 0' }} />
+                <Button variant="contained" onClick={() => setShowSettingsModal(true)} startIcon={<Settings sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--text-secondary)' }}>
                     Settings
                 </Button>
             </Box>

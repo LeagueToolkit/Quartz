@@ -116,20 +116,20 @@ export const inputStyle: Record<string, unknown> = {
         fontFamily: 'JetBrains Mono, monospace',
         color: 'var(--text)',
         height: '36px',
-        '& fieldset': { borderColor: 'var(--glass-border)' },
+        '& fieldset': { borderColor: 'var(--border)' },
         '&:hover fieldset': {
-            borderColor: 'rgba(255, 255, 255, 0.26)',
+            borderColor: 'color-mix(in oklab, var(--accent-primary) 30%, var(--border))',
         },
         '&.Mui-focused fieldset': {
-            borderColor: 'var(--accent)',
+            borderColor: 'var(--accent-primary)',
         },
     },
     '& .MuiInputBase-input': {
         padding: '4px 8px',
-        color: 'rgba(255, 255, 255, 0.85)',
+        color: 'var(--text-primary)',
     },
     '& .MuiInputBase-input::placeholder': {
-        color: 'rgba(255, 255, 255, 0.35)',
+        color: 'var(--text-muted)',
         opacity: 1,
     },
 };

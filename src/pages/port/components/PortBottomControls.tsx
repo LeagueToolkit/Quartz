@@ -18,24 +18,23 @@ export default function PortBottomControls({ handleUndo, undoHistory, handleSave
                 sx={{
                     flex: 1,
                     padding: '0 16px',
-                    fontFamily: 'JetBrains Mono, monospace',
+                    fontFamily: 'var(--font-mono)',
                     fontSize: '13px',
                     fontWeight: 700,
                     height: '36px',
-                    background: 'color-mix(in srgb, #9ca3af 14%, transparent)',
-                    border: '1px solid rgba(156, 163, 175, 0.3)',
-                    color: '#9ca3af',
+                    background: 'color-mix(in oklab, var(--text-secondary) 12%, transparent)',
+                    border: '1px solid color-mix(in oklab, var(--text-secondary) 30%, transparent)',
+                    color: 'var(--text-secondary)',
                     borderRadius: '4px',
                     letterSpacing: '0.05em',
                     textTransform: 'uppercase',
                     transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                     position: 'relative',
                     '&:hover': {
-                        background: 'color-mix(in srgb, #9ca3af 22%, transparent)',
-                        borderColor: '#9ca3af',
-                        textShadow: '0 0 8px color-mix(in srgb, #9ca3af, transparent 50%)',
+                        background: 'color-mix(in oklab, var(--text-secondary) 20%, transparent)',
+                        borderColor: 'var(--text-secondary)',
                     },
-                    '&:disabled': { opacity: 0.5, cursor: 'not-allowed', borderColor: 'rgba(156,163,175,0.32)', color: 'rgba(156,163,175,0.32)' },
+                    '&:disabled': { opacity: 0.5, cursor: 'not-allowed', borderColor: 'color-mix(in oklab, var(--text-muted) 32%, transparent)', color: 'var(--text-muted)' },
                 }}
                 title={undoHistory.length > 0 ? `Undo: ${undoHistory[undoHistory.length - 1]?.action}` : 'Nothing to undo'}
             >
@@ -47,24 +46,23 @@ export default function PortBottomControls({ handleUndo, undoHistory, handleSave
                 sx={{
                     flex: 1,
                     padding: '0 16px',
-                    fontFamily: 'JetBrains Mono, monospace',
+                    fontFamily: 'var(--font-mono)',
                     fontSize: '13px',
                     fontWeight: 700,
                     height: '36px',
-                    background: 'color-mix(in srgb, #22c55e 14%, transparent)',
-                    border: '1px solid rgba(34, 197, 94, 0.3)',
-                    color: '#22c55e',
+                    background: 'color-mix(in oklab, var(--color-success) 14%, transparent)',
+                    border: '1px solid color-mix(in oklab, var(--color-success) 30%, transparent)',
+                    color: 'var(--color-success)',
                     borderRadius: '4px',
                     letterSpacing: '0.05em',
                     textTransform: 'uppercase',
                     transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                     position: 'relative',
                     '&:hover': {
-                        background: 'color-mix(in srgb, #22c55e 22%, transparent)',
-                        borderColor: '#22c55e',
-                        textShadow: '0 0 8px color-mix(in srgb, #22c55e, transparent 50%)',
+                        background: 'color-mix(in oklab, var(--color-success) 22%, transparent)',
+                        borderColor: 'var(--color-success)',
                     },
-                    '&:disabled': { opacity: 0.5, cursor: 'not-allowed', borderColor: 'rgba(34, 197, 94, 0.3)', color: 'rgba(34, 197, 94, 0.3)' },
+                    '&:disabled': { opacity: 0.5, cursor: 'not-allowed', borderColor: 'color-mix(in oklab, var(--color-success) 30%, transparent)', color: 'color-mix(in oklab, var(--color-success) 40%, transparent)' },
                 }}
                 title={hasChangesToSave() ? 'Save changes to file' : 'No changes to save'}
             >

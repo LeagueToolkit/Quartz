@@ -187,6 +187,7 @@ export interface LoadedAniData {
     currentFileContent?: string;
     animationPath: string;
     skinsPath: string;
+    skeletonInfo?: { skeleton: string; simpleSkin: string | null; texture: string | null } | null;
     errors: string[];
     warnings: string[];
 }

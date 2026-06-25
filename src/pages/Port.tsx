@@ -1,9 +1,17 @@
 import { useCallback, useMemo, useState } from 'react';
 import './port/Port.css';
 import usePort from './port/usePort';
-import { parseVfxEmitters, type VfxSystem, type VfxSystemMap } from './port/utils/vfxEmitterParser';
+import { parseVfxEmitters, type VfxEmitter, type VfxSystem, type VfxSystemMap } from './port/utils/vfxEmitterParser';
 import { insertVFXSystemIntoFile, insertVFXSystemWithPreservedNames } from './port/utils/vfxInsertSystem';
 import { findAssetFiles } from './port/utils/assetCopier';
+import {
+    handleEmitterTextureMouseEnter,
+    handleEmitterTextureMouseLeave,
+    handleEmitterTextureContextMenu,
+    closeTextureHoverPreview,
+} from './port/utils/textureHoverPreview';
+import { getLeaguePath } from '@/lib/api/league';
+import { portPrepareDonorFromSkin, portCopyAssetsToTarget, backupCreate } from '@/lib/api/wad';
 import GlowingSpinner from './port/components/GlowingSpinner';
 import TargetColumn from './port/components/TargetColumn';
 import DonorColumn from './port/components/DonorColumn';
@@ -19,6 +27,7 @@ import IdleParticlesManagerModal from './port/components/modals/IdleParticlesMan
 import ChildParticleModal from './port/components/modals/ChildParticleModal';
 import PersistentEffectsModal from './port/components/modals/PersistentEffectsModal';
 import PortDonorFromGameModal from './port/components/modals/PortDonorFromGameModal';
+import BackupViewerModal from './port/components/modals/BackupViewerModal';
 
 function Port() {
     const p = usePort();
@@ -28,36 +37,86 @@ function Port() {
     const [showPortDonorModal, setShowPortDonorModal] = useState(false);
     const [isPreparingPortDonor, setIsPreparingPortDonor] = useState(false);
     const [portDonorProgress, setPortDonorProgress] = useState('');
+    const [showBackupViewer, setShowBackupViewer] = useState(false);
+    const [donorTempRoot, setDonorTempRoot] = useState<string | null>(null);
 
-    const sectionStyle = useMemo<React.CSSProperties>(() => ({ background: 'transparent', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '5px' }), []);
+    const sectionStyle = useMemo<React.CSSProperties>(() => ({ background: 'transparent', border: '1px solid var(--border)', borderRadius: '5px' }), []);
 
     // Debounced filter inputs mirroring the original filterTargetParticles/filterDonorParticles.
     const filterTargetParticles = useCallback((v: string) => p.setTargetFilter(v), [p]);
     const filterDonorParticles = useCallback((v: string) => p.setDonorFilter(v), [p]);
 
-    // Texture hover preview: disk path resolution + texture decode are native
-    // concerns; left as no-op-safe handlers here. // TODO(backend)
-    const handleEmitterMouseEnter = useCallback(() => {}, []);
-    const handleEmitterMouseLeave = useCallback(() => {}, []);
-    const handleEmitterClick = useCallback((e: React.MouseEvent) => e.stopPropagation(), []);
-    const handleEmitterContextMenu = useCallback((e: React.MouseEvent) => {
-        e.preventDefault();
+    // Texture hover preview: resolve the emitter's texture to a disk file under
+    // the bin's mod tree, decode it via the imgrecolor backend, and float a
+    // thumbnail. Right-click opens a context menu (reveal / open in ImgRecolor).
+    const binPathFor = useCallback((isTarget: boolean) => (isTarget ? p.targetPath : p.donorPath), [p.targetPath, p.donorPath]);
+    const handleEmitterMouseEnter = useCallback(
+        (e: React.MouseEvent, emitter: VfxEmitter, _system: VfxSystem, isTarget: boolean) => {
+            handleEmitterTextureMouseEnter(e, emitter, binPathFor(isTarget));
+        },
+        [binPathFor]
+    );
+    const handleEmitterMouseLeave = useCallback(() => handleEmitterTextureMouseLeave(), []);
+    const handleEmitterClick = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
+        closeTextureHoverPreview();
     }, []);
+    const handleEmitterContextMenu = useCallback(
+        (e: React.MouseEvent, emitter: VfxEmitter, _system: VfxSystem, isTarget: boolean) => {
+            handleEmitterTextureContextMenu(e, emitter, binPathFor(isTarget));
+        },
+        [binPathFor]
+    );
 
     const handleOpenDonorFromGame = useCallback(() => {
         setPortDonorProgress('');
         setShowPortDonorModal(true);
     }, []);
 
-    // Real bin->bin porting works without the native WAD prep; this is the only
-    // step that needs the backend extractor. // TODO(backend)
-    const handleConfirmDonorFromGame = useCallback(() => {
-        setIsPreparingPortDonor(true);
-        setPortDonorProgress('Preparing donor from a live skin WAD requires native extraction (not yet wired).');
-        p.setStatusMessage('Load donor from game requires the native WAD extractor (TODO).');
-        setIsPreparingPortDonor(false);
-    }, [p]);
+    const handleConfirmDonorFromGame = useCallback(
+        async (args: { champion: { id: string; name: string }; skin: { id: number; name: string }; portingPrefix: string }) => {
+            try {
+                setIsPreparingPortDonor(true);
+                setPortDonorProgress('Locating League install...');
+                const leaguePath = await getLeaguePath();
+                if (!leaguePath) {
+                    setPortDonorProgress('League install not found. Set the League path in Settings.');
+                    p.setStatusMessage('Load donor from game: League install not found');
+                    return;
+                }
+
+                setPortDonorProgress(`Extracting ${args.champion.name} skin ${args.skin.id} from the game WAD...`);
+                const result = await portPrepareDonorFromSkin({
+                    championName: args.champion.name,
+                    skinId: args.skin.id,
+                    leaguePath,
+                    portingPrefix: args.portingPrefix,
+                });
+
+                if (!result.donorPyContent) {
+                    setPortDonorProgress('No donor content was produced.');
+                    p.setStatusMessage('Load donor from game produced no content');
+                    return;
+                }
+
+                const systems = parseVfxEmitters(result.donorPyContent) || {};
+                p.setDonorPyContent(result.donorPyContent);
+                p.setDonorSystems(systems);
+                p.setDonorPath(`${result.championFileName} skin${result.skinId} (from game)`);
+                setDonorTempRoot(result.tempRoot);
+                setPortDonorProgress('Donor is ready.');
+                p.setStatusMessage(`Loaded donor from game: ${Object.keys(systems).length} VFX systems`);
+                setShowPortDonorModal(false);
+            } catch (error) {
+                const msg = (error as Error)?.message || String(error);
+                setPortDonorProgress(`Failed: ${msg}`);
+                p.setStatusMessage(`Load donor from game failed: ${msg}`);
+            } finally {
+                setIsPreparingPortDonor(false);
+            }
+        },
+        [p]
+    );
 
     const handleInsertDroppedVfxSystem = () => {
         try {
@@ -162,8 +221,28 @@ function Port() {
                 }
             });
 
-            // Asset copy to disk is a native step. // TODO(backend)
-            findAssetFiles(fullContent);
+            // Copy the dropped system's referenced assets into the target mod
+            // tree so its textures/meshes ship beside the bin. The donor temp
+            // root (when the donor came from the game) and the donor bin's own
+            // folder are the candidate sources.
+            const assetPaths = findAssetFiles(fullContent);
+            if (assetPaths.length > 0 && p.targetPath && p.targetPath.includes('.')) {
+                const sourceDirs = new Set<string>();
+                if (donorTempRoot) sourceDirs.add(`${donorTempRoot}/combined`);
+                const donorDir = p.donorPath && p.donorPath.includes('.') ? p.donorPath.replace(/[/\\][^/\\]*$/, '') : '';
+                if (donorDir) sourceDirs.add(donorDir);
+                if (sourceDirs.size > 0) {
+                    void portCopyAssetsToTarget({
+                        assetPaths,
+                        sourceDirs: Array.from(sourceDirs),
+                        targetBinPath: p.targetPath,
+                    })
+                        .then((res) => {
+                            if (res.copied > 0) p.setStatusMessage(`Copied ${res.copied} asset file(s) into the target mod`);
+                        })
+                        .catch(() => {});
+                }
+            }
         } catch {
             p.setStatusMessage('Failed to add VFX system');
         }
@@ -215,9 +294,24 @@ function Port() {
         [p]
     );
 
-    // Backup viewer is a native feature in the original. // TODO(backend)
     const handleOpenBackupViewer = useCallback(() => {
-        p.setStatusMessage('Backup history requires native backup storage (TODO).');
+        if (!p.targetPath || !p.targetPath.includes('.')) {
+            p.setStatusMessage('No target file loaded');
+            return;
+        }
+        setShowBackupViewer(true);
+    }, [p]);
+
+    // Save wrapper: snapshot the current target into zbackups before writing,
+    // matching the original's create-on-save backups.
+    const handleSaveWithBackup = useCallback(async () => {
+        try {
+            if (p.targetPath && p.targetPath.includes('.') && p.targetPyContent) {
+                await backupCreate(p.targetPath, p.targetPyContent, 'port').catch(() => {});
+            }
+        } finally {
+            await p.handleSave();
+        }
     }, [p]);
 
     const sharedListProps = {
@@ -321,6 +415,20 @@ function Port() {
                     if (!isPreparingPortDonor) setShowPortDonorModal(false);
                 }}
                 onConfirm={handleConfirmDonorFromGame}
+            />
+
+            <BackupViewerModal
+                open={showBackupViewer}
+                filePath={p.targetPath}
+                component="port"
+                onClose={(restored) => {
+                    setShowBackupViewer(false);
+                    if (restored) {
+                        p.setTargetPyContent(restored.content);
+                        p.setTargetSystems(parseVfxEmitters(restored.content) || {});
+                        p.setStatusMessage('Restored target from backup');
+                    }
+                }}
             />
 
             <PersistentEffectsModal
@@ -441,7 +549,7 @@ function Port() {
                 setTrimDonorNames={p.setTrimDonorNames}
             />
 
-            <PortBottomControls handleUndo={p.handleUndo} undoHistory={p.undoHistory} handleSave={p.handleSave} isProcessing={p.isProcessing} hasChangesToSave={p.hasChangesToSave} />
+            <PortBottomControls handleUndo={p.handleUndo} undoHistory={p.undoHistory} handleSave={handleSaveWithBackup} isProcessing={p.isProcessing} hasChangesToSave={p.hasChangesToSave} />
 
             <VfxFloatingActions
                 targetPyContent={p.targetPyContent}

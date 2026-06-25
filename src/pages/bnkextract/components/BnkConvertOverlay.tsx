@@ -7,7 +7,7 @@ interface Props {
 
 export default function BnkConvertOverlay({ open, convertStatus }: Props) {
     return (
-        <Backdrop open={open} sx={{ zIndex: 1500, backdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.55)', flexDirection: 'column', gap: '1.25rem' }}>
+        <Backdrop open={open} sx={{ zIndex: 1500, backdropFilter: 'blur(12px)', background: 'color-mix(in oklab, var(--bg-primary) 55%, transparent)', flexDirection: 'column', gap: '1.25rem' }}>
             <Box sx={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -19,11 +19,11 @@ export default function BnkConvertOverlay({ open, convertStatus }: Props) {
                     '100%': { opacity: 1, transform: 'scale(1)' },
                 },
             }}>
-                <CircularProgress size={48} sx={{ color: 'var(--accent)', animation: 'wwise-pulse 1.6s ease-in-out infinite' }} />
-                <Typography sx={{ fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--accent)', letterSpacing: '0.1em', fontWeight: 600 }}>
+                <CircularProgress size={48} sx={{ color: 'var(--accent-primary)', animation: 'wwise-pulse 1.6s ease-in-out infinite' }} />
+                <Typography sx={{ fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--accent-primary)', letterSpacing: '0.1em', fontWeight: 600 }}>
                     Synthesizing WEM from Audio Source...
                 </Typography>
-                <Typography sx={{ fontSize: '0.7rem', fontFamily: 'JetBrains Mono, monospace', color: 'rgba(255,255,255,0.4)' }}>
+                <Typography sx={{ fontSize: '0.7rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)' }}>
                     {convertStatus}
                 </Typography>
             </Box>

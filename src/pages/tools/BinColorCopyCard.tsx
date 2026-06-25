@@ -6,16 +6,17 @@ import {
     Palette as PaletteIcon, FolderOpen as FolderOpenIcon, PlayArrow as PlayArrowIcon, Clear as ClearIcon,
 } from '@mui/icons-material';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import { toolsBinCopyColors } from '@/lib/api/vfxTools';
 import { log } from '@/lib/util/logger';
 
 interface NotifyArg { message: string; severity: 'info' | 'success' | 'error' | 'warning' }
 
 const baseFieldSx = {
     '& .MuiOutlinedInput-root': {
-        background: 'rgba(255,255,255,0.03)', color: '#fff', borderRadius: '8px', fontSize: '0.78rem',
-        '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-        '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-        '&.Mui-focused fieldset': { borderColor: 'var(--accent)' },
+        background: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem',
+        '& fieldset': { borderColor: 'var(--border)' },
+        '&:hover fieldset': { borderColor: 'color-mix(in oklab, var(--accent-primary) 30%, var(--border))' },
+        '&.Mui-focused fieldset': { borderColor: 'var(--accent-primary)' },
     },
     '& .MuiInputBase-input': { py: 1 },
 } as const;
@@ -44,13 +45,13 @@ function PathPicker({ label, value, onChange, onPick }: {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <TextField size="small" fullWidth placeholder={`${label} .bin path…`} value={value} onChange={(e) => onChange(e.target.value)} sx={baseFieldSx} />
             <Tooltip title={`Browse for ${label.toLowerCase()} bin`}>
-                <IconButton size="small" onClick={onPick} sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: 'var(--accent)' } }}>
+                <IconButton size="small" onClick={onPick} sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--accent-primary)' } }}>
                     <FolderOpenIcon fontSize="small" />
                 </IconButton>
             </Tooltip>
             {value && (
                 <Tooltip title="Clear">
-                    <IconButton size="small" onClick={() => onChange('')} sx={{ color: 'rgba(255,255,255,0.3)', '&:hover': { color: '#ff4d4d' } }}>
+                    <IconButton size="small" onClick={() => onChange('')} sx={{ color: 'var(--text-muted)', '&:hover': { color: 'var(--color-danger)' } }}>
                         <ClearIcon fontSize="small" />
                     </IconButton>
                 </Tooltip>
@@ -86,12 +87,18 @@ export function BinColorCopyCard({ onNotify }: { onNotify?: (a: NotifyArg) => vo
         setBusy(true);
         setLastResult(null);
         try {
-            // TODO: backend command for VFX color copy (Electron used IPC 'bin:copyColors',
-            // inspired by ltmao's hapibin). No equivalent Rust command exists in quartz-lib yet,
-            // so wiring is pending a backend port. UI and validation match the original.
-            void createBackup;
-            notify('Copy BIN Colors backend is not available in this build yet', 'error');
-            setLastResult({ ok: false, error: 'backend unavailable' });
+            const res = await toolsBinCopyColors(sourcePath, targetPath, outputPath, createBackup);
+            notify(
+                `Copied ${res.fieldsCopied} color field(s) — ${res.entriesMatched} entr(ies) matched, ${res.entriesSkipped} skipped → ${basename(res.outputPath)}`,
+                res.fieldsCopied > 0 ? 'success' : 'info',
+            );
+            setLastResult({
+                ok: true,
+                fieldsCopied: res.fieldsCopied,
+                entriesMatched: res.entriesMatched,
+                entriesSkipped: res.entriesSkipped,
+                outputPath: res.outputPath,
+            });
         } catch (e) {
             log.error('bin:copyColors', e);
             notify(`Copy crashed: ${String((e as Error)?.message || e)}`, 'error');
@@ -102,23 +109,22 @@ export function BinColorCopyCard({ onNotify }: { onNotify?: (a: NotifyArg) => vo
     };
 
     const labelSx = {
-        color: 'var(--accent)', fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase',
-        letterSpacing: '0.1em', mb: 0.5, opacity: 0.8,
+        color: 'var(--accent-primary)', fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase',
+        letterSpacing: '0.1em', mb: 0.5,
     } as const;
 
     return (
         <Box sx={{
-            background: 'rgba(255,255,255,0.026)', border: '1px solid rgba(255,255,255,0.055)', borderRadius: '12px',
+            background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
             p: 2, mb: 3, position: 'relative', overflow: 'hidden',
-            '&::before': { content: '""', position: 'absolute', top: 0, left: '20%', right: '20%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)' },
         }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1.5 }}>
-                <Box sx={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', background: 'color-mix(in srgb, var(--accent) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)', color: 'var(--accent)' }}>
+                <Box sx={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-sm)', background: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)', border: '1px solid color-mix(in oklab, var(--accent-primary) 25%, transparent)', color: 'var(--accent-primary)' }}>
                     <PaletteIcon fontSize="small" />
                 </Box>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ color: '#fff', fontSize: '0.88rem', fontWeight: 700, lineHeight: 1.2 }}>Copy BIN Colors</Typography>
-                    <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem', mt: 0.25 }}>
+                    <Typography sx={{ color: 'var(--text-primary)', fontSize: '0.88rem', fontWeight: 700, lineHeight: 1.2 }}>Copy BIN Colors</Typography>
+                    <Typography sx={{ color: 'var(--text-muted)', fontSize: '0.7rem', mt: 0.25 }}>
                         Copy VFX colors (RGBA + named VEC4 fields) from a source bin into a structurally identical target bin. Inspired by ltmao&apos;s hapibin.
                     </Typography>
                 </Box>
@@ -137,29 +143,29 @@ export function BinColorCopyCard({ onNotify }: { onNotify?: (a: NotifyArg) => vo
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
                 <FormControlLabel
-                    control={<Checkbox size="small" checked={overwriteTarget} onChange={(e) => setOverwriteTarget(e.target.checked)} sx={{ color: 'rgba(255,255,255,0.3)', '&.Mui-checked': { color: 'var(--accent)' }, py: 0.5 }} />}
-                    label={<Typography sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)' }}>Overwrite target in place</Typography>}
+                    control={<Checkbox size="small" checked={overwriteTarget} onChange={(e) => setOverwriteTarget(e.target.checked)} sx={{ color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent-primary)' }, py: 0.5 }} />}
+                    label={<Typography sx={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Overwrite target in place</Typography>}
                     sx={{ m: 0 }}
                 />
                 <FormControlLabel
-                    control={<Checkbox size="small" checked={createBackup} disabled={!overwriteTarget} onChange={(e) => setCreateBackup(e.target.checked)} sx={{ color: 'rgba(255,255,255,0.3)', '&.Mui-checked': { color: 'var(--accent)' }, py: 0.5 }} />}
-                    label={<Typography sx={{ fontSize: '0.75rem', color: overwriteTarget ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)' }}>Create .bak backup</Typography>}
+                    control={<Checkbox size="small" checked={createBackup} disabled={!overwriteTarget} onChange={(e) => setCreateBackup(e.target.checked)} sx={{ color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent-primary)' }, py: 0.5 }} />}
+                    label={<Typography sx={{ fontSize: '0.75rem', color: overwriteTarget ? 'var(--text-secondary)' : 'var(--text-muted)' }}>Create .bak backup</Typography>}
                     sx={{ m: 0 }}
                 />
 
                 <Box sx={{ flex: 1 }} />
 
                 {lastResult?.ok && (
-                    <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.55)' }}>
+                    <Typography sx={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
                         Last run: {lastResult.fieldsCopied} field(s), {lastResult.entriesMatched} entries matched, {lastResult.entriesSkipped} skipped
                     </Typography>
                 )}
 
                 <Button
                     size="small" variant="contained"
-                    startIcon={(busy ? <CircularProgress size={14} sx={{ color: '#000' }} /> : <PlayArrowIcon />) as ReactNode}
+                    startIcon={(busy ? <CircularProgress size={14} sx={{ color: 'var(--accent-primary)' }} /> : <PlayArrowIcon />) as ReactNode}
                     disabled={busy || !sourcePath || !targetPath} onClick={handleRun}
-                    sx={{ background: 'var(--accent)', color: '#000', borderRadius: '8px', textTransform: 'none', fontSize: '0.75rem', fontWeight: 700, px: 2, boxShadow: 'none', '&:hover': { background: 'var(--accent)', opacity: 0.9 }, '&.Mui-disabled': { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' } }}
+                    sx={{ background: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in oklab, var(--accent-primary) 35%, transparent)', borderRadius: 'var(--radius-sm)', textTransform: 'none', fontSize: '0.75rem', fontWeight: 700, px: 2, boxShadow: 'none', '&:hover': { background: 'color-mix(in oklab, var(--accent-primary) 22%, transparent)', borderColor: 'color-mix(in oklab, var(--accent-primary) 60%, transparent)' }, '&.Mui-disabled': { background: 'var(--bg-tertiary)', color: 'var(--text-muted)' } }}
                 >
                     {busy ? 'Copying…' : 'Copy Colors'}
                 </Button>

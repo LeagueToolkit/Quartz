@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { Box, Typography, Chip, TextField, Slider, IconButton, Tooltip, Grid, Paper, Button as MuiButton, Fade } from '@mui/material';
 import {
     Palette as PaletteIcon,
@@ -9,6 +9,7 @@ import {
     Visibility as VisibilityIcon,
     VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
+import { ColorPickerHost, openColorPicker, cleanupColorPickers } from './paint/components/ColorPicker';
 
 type Vec4 = [number, number, number, number];
 
@@ -20,18 +21,17 @@ function vec4ToHex(vec: Vec4): string {
 }
 
 const celestialButtonStyle = {
-    background: 'var(--bg-2, rgba(255,255,255,0.04))',
-    border: '1px solid var(--accent-muted, color-mix(in srgb, var(--accent) 40%, transparent))',
-    color: 'var(--text)',
-    borderRadius: '5px',
-    transition: 'all 200ms ease',
+    background: 'var(--bg-tertiary)',
+    border: '1px solid var(--border)',
+    color: 'var(--text-primary)',
+    borderRadius: 'var(--radius-sm)',
+    transition: 'background 140ms var(--ease-out), border-color 140ms var(--ease-out), transform 140ms var(--ease-out)',
     textTransform: 'none' as const,
-    fontFamily: 'JetBrains Mono, monospace',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+    fontFamily: 'var(--font-mono)',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
     '&:hover': {
-        background: 'var(--surface-2, rgba(255,255,255,0.08))',
-        borderColor: 'var(--accent)',
-        boxShadow: '0 0 15px color-mix(in srgb, var(--accent), transparent 60%)',
+        background: 'var(--bg-hover)',
+        borderColor: 'color-mix(in oklab, var(--accent-primary) 45%, var(--border))',
     },
     '&:active': { transform: 'translateY(1px)' },
 };
@@ -78,7 +78,7 @@ function Rgba() {
         return null;
     }, []);
 
-    // Native color input gives hex; keep current alpha.
+    // Picker commits a hex string; keep current alpha.
     const handleHexChange = useCallback((hex: string) => {
         const clean = hex.startsWith('#') ? hex.slice(1) : hex;
         if (/^[0-9a-fA-F]{6}$/.test(clean)) {
@@ -88,6 +88,10 @@ function Rgba() {
             setVec4((prev) => [r, g, b, prev[3]]);
         }
     }, []);
+
+    const handleColorPickerClick = useCallback((event: MouseEvent) => {
+        openColorPicker(event, hexColor, handleHexChange);
+    }, [hexColor, handleHexChange]);
 
     const handleRgbaInputChange = useCallback((value: string) => {
         setRgbaInput(value);
@@ -107,23 +111,24 @@ function Rgba() {
 
     useEffect(() => () => {
         if (rgbaInputTimeoutRef.current) clearTimeout(rgbaInputTimeoutRef.current);
+        cleanupColorPickers();
     }, []);
-
-    const hiddenColorRef = useRef<HTMLInputElement>(null);
 
     return (
         <Box sx={{
             position: 'relative', height: '100%', width: '100%', overflow: 'hidden',
             display: 'flex', flexDirection: 'column',
-            color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace',
+            color: 'var(--text-primary)', fontFamily: 'var(--font-mono)',
             p: { xs: 2, sm: 3 }, boxSizing: 'border-box',
         }}>
+            <ColorPickerHost />
+
             <Box sx={{ flex: 1, display: 'flex', gap: 2, position: 'relative', zIndex: 1 }}>
                 {/* Left — Color Selection */}
                 <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <ColorizeIcon sx={{ color: 'var(--accent)', mr: 1, fontSize: 20 }} />
-                        <Typography variant="h6" sx={{ color: 'var(--accent)', fontWeight: 'bold' }}>
+                        <ColorizeIcon sx={{ color: 'var(--accent-primary)', mr: 1, fontSize: 20 }} />
+                        <Typography variant="h6" sx={{ color: 'var(--text-primary)', fontWeight: 'bold' }}>
                             Color Selection
                         </Typography>
                     </Box>
@@ -131,50 +136,43 @@ function Rgba() {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                         <Box sx={{ position: 'relative' }}>
                             <Box
-                                onClick={() => hiddenColorRef.current?.click()}
+                                onClick={handleColorPickerClick}
                                 sx={{
                                     width: '50px', height: '50px',
-                                    border: '2px solid #0b0a0f', borderRadius: '8px',
+                                    border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
                                     cursor: 'pointer', backgroundColor: hexColor,
-                                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.35)',
                                     transition: 'transform 0.2s ease, box-shadow 0.2s ease',
                                     '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' },
                                 }}
                             />
-                            <input
-                                ref={hiddenColorRef}
-                                type="color"
-                                value={hexColor}
-                                onChange={(e) => handleHexChange(e.target.value)}
-                                style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', bottom: 0, left: 0 }}
-                            />
                             <Box sx={{
                                 position: 'absolute', top: -4, right: -4,
-                                width: 16, height: 16, backgroundColor: 'var(--accent)', borderRadius: '50%',
+                                width: 16, height: 16, backgroundColor: 'var(--accent-primary)', borderRadius: '50%',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                boxShadow: '0 1px 4px rgba(236,185,106,0.4)',
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.35)',
                             }}>
-                                <PaletteIcon sx={{ fontSize: 10, color: 'var(--surface)' }} />
+                                <PaletteIcon sx={{ fontSize: 10, color: '#fff' }} />
                             </Box>
                         </Box>
 
                         <Box sx={{ flex: 1 }}>
-                            <Typography variant="body2" sx={{ color: 'var(--accent-muted, var(--accent))', mb: 0.5 }}>
+                            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 0.5 }}>
                                 Selected Color
                             </Typography>
                             <Chip
                                 label={hexColor}
                                 sx={{
                                     backgroundColor: hexColor, color: 'white',
-                                    fontFamily: 'JetBrains Mono, monospace', fontWeight: 'bold',
+                                    fontFamily: 'var(--font-mono)', fontWeight: 'bold',
                                     fontSize: '0.9rem', height: 28, px: 1,
-                                    boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
                                 }}
                             />
                         </Box>
 
                         <Box sx={{ flex: 1 }}>
-                            <Typography variant="body2" sx={{ color: 'var(--accent-muted, var(--accent))', mb: 0.5 }}>
+                            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 0.5 }}>
                                 RGBA (0-1)
                             </Typography>
                             <TextField
@@ -184,15 +182,15 @@ function Rgba() {
                                 size="small"
                                 sx={{
                                     '& .MuiOutlinedInput-root': {
-                                        fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem',
-                                        backgroundColor: 'var(--bg-2, rgba(0,0,0,0.3))',
-                                        border: '1px solid var(--accent-muted, color-mix(in srgb, var(--accent) 40%, transparent))',
-                                        borderRadius: '5px',
+                                        fontFamily: 'var(--font-mono)', fontSize: '0.9rem',
+                                        backgroundColor: 'var(--bg-tertiary)',
+                                        border: '1px solid var(--border)',
+                                        borderRadius: 'var(--radius-sm)',
                                         '& fieldset': { border: 'none' },
-                                        '&:hover': { borderColor: 'var(--accent)' },
-                                        '&.Mui-focused fieldset': { border: '1px solid var(--accent)' },
+                                        '&:hover': { borderColor: 'color-mix(in oklab, var(--accent-primary) 30%, var(--border))' },
+                                        '&.Mui-focused fieldset': { border: '1px solid var(--accent-primary)' },
                                     },
-                                    '& .MuiInputBase-input': { color: 'var(--text)', padding: '8px 12px' },
+                                    '& .MuiInputBase-input': { color: 'var(--text-primary)', padding: '8px 12px' },
                                 }}
                             />
                         </Box>
@@ -202,9 +200,9 @@ function Rgba() {
                                 onClick={() => setShowAlpha((s) => !s)}
                                 size="small"
                                 sx={{
-                                    color: showAlpha ? 'var(--accent)' : 'var(--accent-muted, var(--accent))',
-                                    backgroundColor: 'rgba(236,185,106,0.1)',
-                                    '&:hover': { backgroundColor: 'rgba(236,185,106,0.2)' },
+                                    color: showAlpha ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                                    backgroundColor: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)',
+                                    '&:hover': { backgroundColor: 'color-mix(in oklab, var(--accent-primary) 18%, transparent)' },
                                 }}
                             >
                                 {showAlpha ? <VisibilityIcon /> : <VisibilityOffIcon />}
@@ -216,8 +214,8 @@ function Rgba() {
                         <Fade in={showAlpha}>
                             <Box sx={{ mb: 2 }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                                    <OpacityIcon sx={{ color: 'var(--accent)', mr: 0.5, fontSize: 16 }} />
-                                    <Typography variant="body2" sx={{ color: 'var(--accent-muted, var(--accent))', fontWeight: 'bold' }}>
+                                    <OpacityIcon sx={{ color: 'var(--accent-primary)', mr: 0.5, fontSize: 16 }} />
+                                    <Typography variant="body2" sx={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}>
                                         Alpha: {Math.round(alphaPreview * 100)}% ({alphaPreview.toFixed(3)})
                                     </Typography>
                                 </Box>
@@ -229,14 +227,15 @@ function Rgba() {
                                     valueLabelDisplay="auto"
                                     valueLabelFormat={(value) => `${(Number(value) * 100).toFixed(1)}%`}
                                     sx={{
-                                        color: 'var(--accent)', height: 6,
+                                        color: 'var(--accent-primary)', height: 6,
                                         '& .MuiSlider-thumb': {
-                                            backgroundColor: 'var(--accent)', width: 16, height: 16,
-                                            boxShadow: '0 2px 6px rgba(236,185,106,0.4)',
-                                            '&:hover': { boxShadow: '0 3px 8px rgba(236,185,106,0.6)' },
+                                            backgroundColor: '#fff', width: 16, height: 16,
+                                            border: '2px solid var(--accent-primary)',
+                                            boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+                                            '&:hover': { boxShadow: '0 2px 6px rgba(0,0,0,0.35), 0 0 0 6px color-mix(in oklab, var(--accent-primary) 22%, transparent)' },
                                         },
-                                        '& .MuiSlider-track': { backgroundColor: 'var(--accent)', height: 6, borderRadius: 3 },
-                                        '& .MuiSlider-rail': { backgroundColor: 'var(--surface-2, rgba(255,255,255,0.1))', height: 6, borderRadius: 3 },
+                                        '& .MuiSlider-track': { backgroundColor: 'var(--accent-primary)', height: 6, borderRadius: 999, border: 'none' },
+                                        '& .MuiSlider-rail': { backgroundColor: 'var(--bg-tertiary)', height: 6, borderRadius: 999 },
                                     }}
                                 />
                             </Box>
@@ -260,11 +259,11 @@ function Rgba() {
                 </Box>
 
                 {/* Divider */}
-                <Box sx={{ width: '1px', background: 'rgba(255,255,255,0.06)', flexShrink: 0, margin: '0 1rem' }} />
+                <Box sx={{ width: '1px', background: 'var(--border)', flexShrink: 0, margin: '0 1rem' }} />
 
                 {/* Right — Color Information & Preview */}
                 <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: 2 }}>
-                    <Typography variant="h6" sx={{ color: 'var(--accent)', mb: 2, fontWeight: 'bold' }}>
+                    <Typography variant="h6" sx={{ color: 'var(--text-primary)', mb: 2, fontWeight: 'bold' }}>
                         Color Information
                     </Typography>
 
@@ -277,10 +276,10 @@ function Rgba() {
                         ].map((item) => (
                             <Grid item xs={6} key={item.label}>
                                 <Box sx={{ p: 1.5 }}>
-                                    <Typography variant="caption" sx={{ color: 'var(--text-2, rgba(255,255,255,0.6))', mb: 0.5, display: 'block' }}>
+                                    <Typography variant="caption" sx={{ color: 'var(--text-muted)', mb: 0.5, display: 'block' }}>
                                         {item.label}
                                     </Typography>
-                                    <Typography variant="body2" sx={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--accent-muted, var(--accent))' }}>
+                                    <Typography variant="body2" sx={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>
                                         {item.value}
                                     </Typography>
                                 </Box>
@@ -288,28 +287,28 @@ function Rgba() {
                         ))}
                     </Grid>
 
-                    <Typography variant="h6" sx={{ color: 'var(--accent)', mb: 2, fontWeight: 'bold' }}>
+                    <Typography variant="h6" sx={{ color: 'var(--text-primary)', mb: 2, fontWeight: 'bold' }}>
                         Color Preview
                     </Typography>
 
                     <Grid container spacing={2} sx={{ flex: 1 }}>
                         <Grid item xs={6}>
-                            <Typography variant="body2" sx={{ color: 'var(--accent-muted, var(--accent))', mb: 1, fontWeight: 'bold' }}>
+                            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 1, fontWeight: 'bold' }}>
                                 Solid Color
                             </Typography>
                             <Paper sx={{
                                 height: 60, backgroundColor: hexColor,
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                color: 'white', fontWeight: 'bold', fontFamily: 'JetBrains Mono, monospace',
-                                border: '1px solid rgba(255,255,255,0.10)', borderRadius: 2,
-                                boxShadow: '0 8px 18px rgba(0,0,0,0.35)', fontSize: '0.8rem',
+                                color: 'white', fontWeight: 'bold', fontFamily: 'var(--font-mono)',
+                                border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.35)', fontSize: '0.8rem',
                             }}>
                                 {hexColor}
                             </Paper>
                         </Grid>
 
                         <Grid item xs={6}>
-                            <Typography variant="body2" sx={{ color: 'var(--accent-muted, var(--accent))', mb: 1, fontWeight: 'bold' }}>
+                            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 1, fontWeight: 'bold' }}>
                                 With Alpha
                             </Typography>
                             <Paper sx={{
@@ -317,13 +316,13 @@ function Rgba() {
                                 background: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)',
                                 backgroundSize: '20px 20px',
                                 backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
-                                border: '1px solid rgba(255,255,255,0.06)', borderRadius: '5px',
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.2)', position: 'relative', overflow: 'hidden',
+                                border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.25)', position: 'relative', overflow: 'hidden',
                             }}>
                                 <Box sx={{
                                     height: '100%', backgroundColor: hexColor, opacity: vec4[3],
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    color: 'white', fontWeight: 'bold', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem',
+                                    color: 'white', fontWeight: 'bold', fontFamily: 'var(--font-mono)', fontSize: '0.8rem',
                                 }}>
                                     {alphaPercent.toFixed(1)}%
                                 </Box>

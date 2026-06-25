@@ -258,43 +258,39 @@ export function Tools() {
 
     // ─── Styles ──────────────────────────────────────────────────────────────────
     const cardSx = {
-        background: 'rgba(255,255,255,0.026)', border: '1px solid rgba(255,255,255,0.055)', borderRadius: '12px',
-        position: 'relative', overflow: 'hidden', transition: 'all 0.2s ease-in-out',
-        '&::before': {
-            content: '""', position: 'absolute', top: 0, left: '20%', right: '20%', height: '1px',
-            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)', pointerEvents: 'none',
-        },
+        background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
+        position: 'relative', overflow: 'hidden', transition: 'all var(--motion-fast)',
         '&:hover': {
-            borderColor: 'color-mix(in srgb, var(--accent) 35%, transparent)', background: 'rgba(255,255,255,0.04)',
-            transform: 'translateY(-2px)', boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            borderColor: 'color-mix(in oklab, var(--accent-primary) 35%, var(--border))', background: 'var(--bg-tertiary)',
+            transform: 'translateY(-2px)', boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
         },
     } as const;
     const dropZoneSx = (active: boolean) => ({
-        p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, borderRadius: '10px',
-        border: active ? '1.5px dashed var(--accent)' : '1.5px dashed rgba(255,255,255,0.1)',
-        background: active ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'rgba(255,255,255,0.015)',
-        transition: 'all 0.2s ease', cursor: 'pointer',
-        '&:hover': { borderColor: 'color-mix(in srgb, var(--accent) 60%, transparent)', background: 'rgba(255,255,255,0.035)' },
+        p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, borderRadius: 'var(--radius)',
+        border: active ? '1.5px dashed var(--accent-primary)' : '1.5px dashed var(--border)',
+        background: active ? 'color-mix(in oklab, var(--accent-primary) 8%, transparent)' : 'var(--bg-tertiary)',
+        transition: 'all var(--motion-fast)', cursor: 'pointer',
+        '&:hover': { borderColor: 'color-mix(in oklab, var(--accent-primary) 60%, var(--border))', background: 'var(--bg-hover)' },
     } as const);
 
     return (
-        <Box className="tools-root" sx={{ minHeight: '100%', height: '100%', width: '100%', background: 'var(--bg)', color: 'var(--text)', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <Box className="tools-root" sx={{ minHeight: '100%', height: '100%', width: '100%', background: 'var(--bg-primary)', color: 'var(--text-primary)', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {/* Slim Header */}
-            <Box sx={{ p: { xs: 1.5, sm: 2 }, px: { xs: 2, sm: 3 }, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', position: 'relative', zIndex: 10, background: 'rgba(0,0,0,0.05)' }}>
+            <Box sx={{ p: { xs: 1.5, sm: 2 }, px: { xs: 2, sm: 3 }, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', position: 'relative', zIndex: 10, background: 'var(--bg-secondary)' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <Box sx={{ width: 36, height: 36, borderRadius: '10px', background: 'color-mix(in srgb, var(--accent) 15%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)', color: 'var(--accent)' }}>
+                    <Box sx={{ width: 36, height: 36, borderRadius: 'var(--radius)', background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid color-mix(in oklab, var(--accent-primary) 25%, transparent)', color: 'var(--accent-primary)' }}>
                         <AppsIcon />
                     </Box>
                     <Box>
-                        <Typography sx={{ fontWeight: 700, fontSize: '1rem', color: '#fff', lineHeight: 1.2 }}>Tools Manager</Typography>
-                        <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', fontWeight: 500 }}>Add executables and drag skin folders onto them</Typography>
+                        <Typography sx={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', lineHeight: 1.2 }}>Tools Manager</Typography>
+                        <Typography sx={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500 }}>Add executables and drag skin folders onto them</Typography>
                     </Box>
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <IconButton onClick={reload} size="small" sx={{ color: 'rgba(255,255,255,0.4)', '&:hover': { color: 'var(--accent)' } }}><RefreshIcon fontSize="small" /></IconButton>
-                    <IconButton onClick={openToolsFolder} size="small" sx={{ color: 'rgba(255,255,255,0.4)', '&:hover': { color: 'var(--accent)' } }}><FolderIcon fontSize="small" /></IconButton>
+                    <IconButton onClick={reload} size="small" sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--accent-primary)' } }}><RefreshIcon fontSize="small" /></IconButton>
+                    <IconButton onClick={openToolsFolder} size="small" sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--accent-primary)' } }}><FolderIcon fontSize="small" /></IconButton>
                     <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={pickExe}
-                        sx={{ ml: 1, background: 'color-mix(in srgb, var(--accent) 15%, transparent)', color: 'var(--accent)', border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)', boxShadow: 'none', borderRadius: '8px', textTransform: 'none', fontSize: '0.75rem', fontWeight: 600, px: 2, '&:hover': { background: 'color-mix(in srgb, var(--accent) 25%, transparent)', borderColor: 'var(--accent)', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' } }}>
+                        sx={{ ml: 1, background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in oklab, var(--accent-primary) 30%, transparent)', boxShadow: 'none', borderRadius: 'var(--radius-sm)', textTransform: 'none', fontSize: '0.75rem', fontWeight: 600, px: 2, '&:hover': { background: 'color-mix(in oklab, var(--accent-primary) 25%, transparent)', borderColor: 'var(--accent-primary)', boxShadow: 'none' } }}>
                         Add Exe
                     </Button>
                 </Box>
@@ -304,21 +300,21 @@ export function Tools() {
             <Box sx={{ flex: 1, p: { xs: 2, sm: 3 }, overflow: 'auto', position: 'relative', zIndex: 1 }}>
                 {isProcessing && (
                     <Box sx={{ mb: 3 }}>
-                        <LinearProgress sx={{ borderRadius: 1, height: 6, backgroundColor: 'rgba(255,255,255,0.05)', '& .MuiLinearProgress-bar': { background: 'var(--accent-gradient)' } }} />
-                        <Typography sx={{ mt: 1, color: 'var(--accent)', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Processing files...</Typography>
+                        <LinearProgress sx={{ borderRadius: 1, height: 6, backgroundColor: 'var(--bg-tertiary)', '& .MuiLinearProgress-bar': { background: 'var(--accent-gradient)' } }} />
+                        <Typography sx={{ mt: 1, color: 'var(--accent-primary)', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Processing files...</Typography>
                     </Box>
                 )}
 
-                <Typography sx={{ color: 'var(--accent)', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', mb: 1, opacity: 0.8 }}>Built-in Tools</Typography>
+                <Typography sx={{ color: 'var(--accent-primary)', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', mb: 1 }}>Built-in Tools</Typography>
                 <BinColorCopyCard onNotify={({ message, severity }) => notify(message, severity)} />
                 <FixVfxShapeCard onNotify={({ message, severity }) => notify(message, severity)} />
 
-                <Typography sx={{ color: 'var(--accent)', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', mb: 1, mt: 2, opacity: 0.8 }}>External Executables</Typography>
+                <Typography sx={{ color: 'var(--accent-primary)', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', mb: 1, mt: 2 }}>External Executables</Typography>
 
                 {exes.length === 0 ? (
-                    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 8, color: 'rgba(255,255,255,0.25)' }}>
+                    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 8, color: 'var(--text-muted)' }}>
                         <AppsIcon sx={{ fontSize: 64, mb: 2, opacity: 0.5 }} />
-                        <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>No Executables Added</Typography>
+                        <Typography variant="h6" sx={{ color: 'var(--text-secondary)', fontWeight: 600 }}>No Executables Added</Typography>
                         <Typography variant="body2">Drag and drop .exe files here or use the Add button</Typography>
                     </Box>
                 ) : (
@@ -326,7 +322,7 @@ export function Tools() {
                         {exes.map((exe) => (
                             <Grid item xs={12} md={6} lg={4} key={exe.name}>
                                 <Box
-                                    sx={{ ...cardSx, height: '100%', display: 'flex', flexDirection: 'column', p: 2, ...(dragTarget === exe.name && { borderColor: 'var(--accent)', borderWidth: '1px', boxShadow: '0 0 20px color-mix(in srgb, var(--accent) 15%, transparent)', transform: 'translateY(-2px)' }) }}
+                                    sx={{ ...cardSx, height: '100%', display: 'flex', flexDirection: 'column', p: 2, ...(dragTarget === exe.name && { borderColor: 'var(--accent-primary)', borderWidth: '1px', boxShadow: '0 0 0 1px color-mix(in oklab, var(--accent-primary) 30%, transparent)', transform: 'translateY(-2px)' }) }}
                                     onDragOver={(e) => handleExeDragOver(e, exe)}
                                     onDragLeave={handleExeDragLeave}
                                     onDrop={(e) => handleExeDrop(e, exe)}
@@ -334,35 +330,35 @@ export function Tools() {
                                     {/* Card Header */}
                                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flex: 1, overflow: 'hidden' }}>
-                                            <Box sx={{ fontSize: '1.25rem', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                                                {exe.emoji || <FileCopyIcon sx={{ fontSize: '1rem', opacity: 0.4 }} />}
+                                            <Box sx={{ fontSize: '1.25rem', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-sm)', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
+                                                {exe.emoji || <FileCopyIcon sx={{ fontSize: '1rem', color: 'var(--text-muted)' }} />}
                                             </Box>
-                                            <Typography sx={{ color: '#fff', fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{exe.name}</Typography>
+                                            <Typography sx={{ color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{exe.name}</Typography>
                                         </Box>
                                         <Box sx={{ display: 'flex', gap: 0.5 }}>
-                                            <IconButton size="small" onClick={() => openEmojiDialog(exe.name)} sx={{ color: 'rgba(255,255,255,0.3)', '&:hover': { color: 'var(--accent)' } }}><EmojiIcon fontSize="inherit" /></IconButton>
-                                            <IconButton size="small" onClick={() => removeExe(exe.name)} sx={{ color: 'rgba(255,255,255,0.3)', '&:hover': { color: '#ff4d4d' } }}><DeleteIcon fontSize="inherit" /></IconButton>
+                                            <IconButton size="small" onClick={() => openEmojiDialog(exe.name)} sx={{ color: 'var(--text-muted)', '&:hover': { color: 'var(--accent-primary)' } }}><EmojiIcon fontSize="inherit" /></IconButton>
+                                            <IconButton size="small" onClick={() => removeExe(exe.name)} sx={{ color: 'var(--text-muted)', '&:hover': { color: 'var(--color-danger)' } }}><DeleteIcon fontSize="inherit" /></IconButton>
                                         </Box>
                                     </Box>
 
                                     {/* Drop Zone */}
                                     <Box sx={dropZoneSx(dragTarget === exe.name)}>
-                                        <FolderIcon sx={{ fontSize: 28, color: dragTarget === exe.name ? 'var(--accent)' : 'rgba(255,255,255,0.15)' }} />
-                                        <Typography sx={{ fontSize: '0.75rem', fontWeight: 500, color: dragTarget === exe.name ? 'var(--accent)' : 'rgba(255,255,255,0.35)' }}>Drop skin folders here</Typography>
+                                        <FolderIcon sx={{ fontSize: 28, color: dragTarget === exe.name ? 'var(--accent-primary)' : 'var(--text-muted)' }} />
+                                        <Typography sx={{ fontSize: '0.75rem', fontWeight: 500, color: dragTarget === exe.name ? 'var(--accent-primary)' : 'var(--text-muted)' }}>Drop skin folders here</Typography>
                                     </Box>
 
                                     {/* Last used */}
                                     {exe.lastUsed && (
                                         <Box sx={{ mt: 1, flex: 1 }}>
-                                            <Typography sx={{ color: 'var(--accent)', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', mb: 1, opacity: 0.8 }}>Recent Activity</Typography>
-                                            <List sx={{ p: 0, '& .MuiListItem-root': { px: 1, py: 0.75, borderRadius: '6px', mb: 0.5, transition: 'all 0.2s', '&:hover': { background: 'rgba(255,255,255,0.03)' } } }}>
+                                            <Typography sx={{ color: 'var(--accent-primary)', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', mb: 1 }}>Recent Activity</Typography>
+                                            <List sx={{ p: 0, '& .MuiListItem-root': { px: 1, py: 0.75, borderRadius: 'var(--radius-sm)', mb: 0.5, transition: 'all var(--motion-fast)', '&:hover': { background: 'var(--bg-tertiary)' } } }}>
                                                 <ListItem>
-                                                    <ListItemIcon sx={{ minWidth: 28 }}><SettingsIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.25)' }} /></ListItemIcon>
+                                                    <ListItemIcon sx={{ minWidth: 28 }}><SettingsIcon sx={{ fontSize: 16, color: 'var(--text-muted)' }} /></ListItemIcon>
                                                     <ListItemText
                                                         primary="Last run"
                                                         secondary={`Used ${new Date(exe.lastUsed).toLocaleString()}`}
-                                                        primaryTypographyProps={{ sx: { fontSize: '0.78rem', color: 'rgba(255,255,255,0.85)', fontWeight: 500 } }}
-                                                        secondaryTypographyProps={{ sx: { fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)', mt: -0.25 } }}
+                                                        primaryTypographyProps={{ sx: { fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 500 } }}
+                                                        secondaryTypographyProps={{ sx: { fontSize: '0.62rem', color: 'var(--text-muted)', mt: -0.25 } }}
                                                     />
                                                 </ListItem>
                                             </List>
@@ -376,32 +372,32 @@ export function Tools() {
             </Box>
 
             {/* Info Strip */}
-            <Box sx={{ p: 1.5, px: 3, borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: 2, position: 'relative', zIndex: 10 }}>
-                <InfoIcon sx={{ fontSize: 16, color: 'var(--accent)', opacity: 0.8 }} />
-                <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>
+            <Box sx={{ p: 1.5, px: 3, borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', gap: 2, position: 'relative', zIndex: 10 }}>
+                <InfoIcon sx={{ fontSize: 16, color: 'var(--accent-primary)' }} />
+                <Typography sx={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
                     <strong>Workflow:</strong> Add your favorite tools once, then drag and drop folders onto them to process.
                 </Typography>
             </Box>
 
             {/* Emoji dialog */}
-            <Dialog open={emojiDialog.open} onClose={closeEmojiDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { background: 'var(--surface, #1a1630)', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 24px 64px rgba(0,0,0,0.5)' } }}>
-                <DialogTitle sx={{ color: '#fff', fontSize: '1.1rem', fontWeight: 700, pb: 1 }}>Choose Emoji for {emojiDialog.exeName}</DialogTitle>
+            <Dialog open={emojiDialog.open} onClose={closeEmojiDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { background: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', boxShadow: '0 24px 48px -16px rgba(0,0,0,0.6)' } }}>
+                <DialogTitle sx={{ color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 700, pb: 1 }}>Choose Emoji for {emojiDialog.exeName}</DialogTitle>
                 <DialogContent>
                     <TextField fullWidth placeholder="Paste any emoji here..." value={selectedEmoji} onChange={(e) => setSelectedEmoji(e.target.value)}
-                        sx={{ mb: 2.5, mt: 1, '& .MuiOutlinedInput-root': { background: 'rgba(255,255,255,0.03)', color: '#fff', borderRadius: '8px', fontSize: '0.9rem', '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' }, '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' }, '&.Mui-focused fieldset': { borderColor: 'var(--accent)' } } }} />
-                    <Typography sx={{ color: 'var(--accent)', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', mb: 1.5 }}>Popular Choices</Typography>
+                        sx={{ mb: 2.5, mt: 1, '& .MuiOutlinedInput-root': { background: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderRadius: 'var(--radius-sm)', fontSize: '0.9rem', '& fieldset': { borderColor: 'var(--border)' }, '&:hover fieldset': { borderColor: 'color-mix(in oklab, var(--accent-primary) 30%, var(--border))' }, '&.Mui-focused fieldset': { borderColor: 'var(--accent-primary)' } } }} />
+                    <Typography sx={{ color: 'var(--accent-primary)', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', mb: 1.5 }}>Popular Choices</Typography>
                     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 0.75 }}>
                         {POPULAR_EMOJIS.map((emoji, idx) => (
-                            <Button key={idx} onClick={() => setSelectedEmoji(emoji)} sx={{ minWidth: 0, p: 0.5, fontSize: '1.25rem', borderRadius: '6px', background: selectedEmoji === emoji ? 'color-mix(in srgb, var(--accent) 20%, transparent)' : 'rgba(255,255,255,0.03)', border: `1px solid ${selectedEmoji === emoji ? 'var(--accent)' : 'transparent'}`, '&:hover': { background: 'rgba(255,255,255,0.08)' } }}>{emoji}</Button>
+                            <Button key={idx} onClick={() => setSelectedEmoji(emoji)} sx={{ minWidth: 0, p: 0.5, fontSize: '1.25rem', borderRadius: 'var(--radius-sm)', background: selectedEmoji === emoji ? 'color-mix(in oklab, var(--accent-primary) 20%, transparent)' : 'var(--bg-tertiary)', border: `1px solid ${selectedEmoji === emoji ? 'var(--accent-primary)' : 'transparent'}`, '&:hover': { background: 'var(--bg-hover)' } }}>{emoji}</Button>
                         ))}
                     </Box>
                 </DialogContent>
                 <DialogActions sx={{ p: 2.5, pt: 1 }}>
-                    <Button onClick={() => emojiDialog.exeName && setExeEmoji(emojiDialog.exeName, null)} sx={{ color: '#ff4d4d', fontSize: '0.8rem', fontWeight: 600, textTransform: 'none' }}>Remove Emoji</Button>
+                    <Button onClick={() => emojiDialog.exeName && setExeEmoji(emojiDialog.exeName, null)} sx={{ color: 'var(--color-danger)', fontSize: '0.8rem', fontWeight: 600, textTransform: 'none' }}>Remove Emoji</Button>
                     <Box sx={{ flex: 1 }} />
-                    <Button onClick={closeEmojiDialog} sx={{ color: 'rgba(255,255,255,0.5)', textTransform: 'none', fontWeight: 600 }}>Cancel</Button>
+                    <Button onClick={closeEmojiDialog} sx={{ color: 'var(--text-secondary)', textTransform: 'none', fontWeight: 600 }}>Cancel</Button>
                     <Button onClick={() => emojiDialog.exeName && setExeEmoji(emojiDialog.exeName, selectedEmoji)} disabled={!selectedEmoji} variant="contained"
-                        sx={{ background: 'var(--accent)', color: '#000', borderRadius: '8px', textTransform: 'none', fontWeight: 700, px: 3, '&:hover': { background: 'var(--accent)', opacity: 0.9 }, '&.Mui-disabled': { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.2)' } }}>
+                        sx={{ background: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in oklab, var(--accent-primary) 35%, transparent)', borderRadius: 'var(--radius-sm)', textTransform: 'none', fontWeight: 700, px: 3, boxShadow: 'none', '&:hover': { background: 'color-mix(in oklab, var(--accent-primary) 22%, transparent)', borderColor: 'color-mix(in oklab, var(--accent-primary) 60%, transparent)' }, '&.Mui-disabled': { background: 'var(--bg-tertiary)', color: 'var(--text-muted)' } }}>
                         Save Emoji
                     </Button>
                 </DialogActions>
@@ -410,19 +406,19 @@ export function Tools() {
             {/* Snackbar */}
             <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={() => setSnackbar((s) => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
                 <Alert onClose={() => setSnackbar((s) => ({ ...s, open: false }))} severity={snackbar.severity} variant="filled"
-                    sx={{ background: 'var(--surface, #1a1630)', color: '#fff', borderRadius: '10px', border: `1px solid ${snackbar.severity === 'error' ? '#ff4d4d' : snackbar.severity === 'success' ? '#4caf50' : 'var(--accent)'}`, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', '& .MuiAlert-icon': { color: snackbar.severity === 'error' ? '#ff4d4d' : snackbar.severity === 'success' ? '#4caf50' : 'var(--accent)' } }}>
+                    sx={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', borderRadius: 'var(--radius)', border: `1px solid ${snackbar.severity === 'error' ? 'var(--color-danger)' : snackbar.severity === 'success' ? 'var(--color-success)' : 'var(--accent-primary)'}`, boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)', '& .MuiAlert-icon': { color: snackbar.severity === 'error' ? 'var(--color-danger)' : snackbar.severity === 'success' ? 'var(--color-success)' : 'var(--accent-primary)' } }}>
                     {snackbar.message}
                 </Alert>
             </Snackbar>
 
             {/* Global Drag Overlay */}
-            <Box sx={{ position: 'fixed', inset: 0, zIndex: 9999, pointerEvents: 'none', display: isDragOver ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', transition: 'opacity 0.2s ease', opacity: isDragOver ? 1 : 0 }}>
-                <Box sx={{ p: 6, borderRadius: '24px', textAlign: 'center', background: 'rgba(255,255,255,0.03)', border: '2px dashed var(--accent)', backdropFilter: 'blur(16px)', boxShadow: '0 48px 96px rgba(0,0,0,0.6)' }}>
-                    <Box sx={{ width: 80, height: 80, borderRadius: '20px', background: 'color-mix(in srgb, var(--accent) 15%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', mb: 3, mx: 'auto' }}>
+            <Box sx={{ position: 'fixed', inset: 0, zIndex: 9999, pointerEvents: 'none', display: isDragOver ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', background: 'color-mix(in oklab, black 50%, transparent)', backdropFilter: 'blur(4px)', transition: 'opacity var(--motion-fast)', opacity: isDragOver ? 1 : 0 }}>
+                <Box sx={{ p: 6, borderRadius: 'var(--radius-lg)', textAlign: 'center', background: 'var(--bg-secondary)', border: '2px dashed var(--accent-primary)', backdropFilter: 'blur(16px)', boxShadow: '0 24px 48px -16px rgba(0,0,0,0.6)' }}>
+                    <Box sx={{ width: 80, height: 80, borderRadius: 'var(--radius-lg)', background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-primary)', mb: 3, mx: 'auto' }}>
                         <AddIcon sx={{ fontSize: 40 }} />
                     </Box>
-                    <Typography variant="h5" sx={{ fontWeight: 700, mb: 1, color: '#fff' }}>Add Executables</Typography>
-                    <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Drop .exe, .bat, or .cmd files to add them to your manager</Typography>
+                    <Typography variant="h5" sx={{ fontWeight: 700, mb: 1, color: 'var(--text-primary)' }}>Add Executables</Typography>
+                    <Typography sx={{ color: 'var(--text-secondary)' }}>Drop .exe, .bat, or .cmd files to add them to your manager</Typography>
                 </Box>
             </Box>
         </Box>

@@ -15,20 +15,19 @@ function skinMatchesSearch(skin: GameSkin, query: string): boolean {
 }
 
 const youtubeBtnStyle: CSSProperties = {
-    marginLeft: 'auto', width: 28, height: 24, borderRadius: 6, border: '1px solid rgba(255, 77, 77, 0.55)',
-    background: 'color-mix(in srgb, #ff2c2c, transparent 84%)', color: '#ff2c2c', fontFamily: 'JetBrains Mono, monospace',
+    marginLeft: 'auto', width: 28, height: 24, borderRadius: 6, border: '1px solid color-mix(in oklab, var(--color-danger) 55%, transparent)',
+    background: 'color-mix(in oklab, var(--color-danger) 16%, transparent)', color: 'var(--color-danger)', fontFamily: 'JetBrains Mono, monospace',
     cursor: 'pointer', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    boxShadow: '0 0 10px rgba(255, 46, 46, 0.22), inset 0 1px 0 rgba(255,255,255,0.16)',
 };
 
 const SkinIcon = memo(function SkinIcon({ tilePath, skinName }: { tilePath?: string | null; skinName: string }) {
     const [src, setSrc] = useState(() => toCdragonRaw(tilePath));
     if (!src) {
-        return <div style={{ width: 38, height: 38, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)', flexShrink: 0 }} />;
+        return <div style={{ width: 38, height: 38, borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--bg-tertiary)', flexShrink: 0 }} />;
     }
     return (
         <img src={src} alt={skinName} width={38} height={38} loading="lazy" onError={() => setSrc('')}
-            style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid rgba(255,255,255,0.14)' }} />
+            style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--border)' }} />
     );
 });
 
@@ -130,42 +129,42 @@ function BnkGameBanksModal({ open, loading = false, progressText = '', onClose, 
 
     if (!open) return null;
 
-    const panelStyle: CSSProperties = { borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', padding: 10, display: 'flex', flexDirection: 'column', minHeight: 0 };
-    const panelTitle: CSSProperties = { marginBottom: 8, color: 'var(--accent2)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' };
-    const inputStyle: CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.28)', color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', outline: 'none' };
+    const panelStyle: CSSProperties = { borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: 10, display: 'flex', flexDirection: 'column', minHeight: 0 };
+    const panelTitle: CSSProperties = { marginBottom: 8, color: 'var(--accent-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' };
+    const inputStyle: CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--accent-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', outline: 'none' };
 
     return (
         <div style={{ position: 'fixed', top: 32, left: 60, right: 0, bottom: 0, zIndex: 5300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-            <div onClick={loading ? undefined : onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} />
+            <div onClick={loading ? undefined : onClose} style={{ position: 'absolute', inset: 0, background: 'color-mix(in oklab, var(--bg-primary) 78%, transparent)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} />
 
             <div onClick={(e) => e.stopPropagation()} style={{
                 position: 'relative', width: 'min(980px, calc(100% - 16px))', height: 'min(760px, calc(100% - 16px))', maxHeight: 'calc(100% - 16px)',
-                display: 'flex', flexDirection: 'column', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)',
+                display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)', border: '1px solid var(--border)',
                 backdropFilter: 'saturate(180%) blur(16px)', WebkitBackdropFilter: 'saturate(180%) blur(16px)',
-                borderRadius: 16, boxShadow: '0 30px 70px rgba(0,0,0,0.55), 0 0 30px color-mix(in srgb, var(--accent2), transparent 82%)', overflow: 'hidden',
+                borderRadius: 16, boxShadow: '0 30px 70px color-mix(in oklab, var(--bg-primary) 55%, transparent)', overflow: 'hidden',
             }}>
-                <div style={{ height: 3, background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite', flexShrink: 0 }} />
+                <div style={{ height: 3, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite', flexShrink: 0 }} />
 
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h2 style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)' }}>
                         Load Sound Banks From Game
                     </h2>
                     <button onClick={loading ? undefined : onClose} type="button"
-                        style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', cursor: loading ? 'not-allowed' : 'pointer', transition: 'all 0.25s ease' }}>
+                        style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--text-secondary)', border: '1px solid var(--border)', background: 'var(--bg-tertiary)', cursor: loading ? 'not-allowed' : 'pointer', transition: 'all 0.25s ease' }}>
                         {'✕'}
                     </button>
                 </div>
 
-                <div style={{ padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
                     <button type="button" onClick={() => setIncludeVoiceover((v) => !v)}
-                        style={{ padding: '6px 10px', borderRadius: 8, border: includeVoiceover ? '1px solid var(--accent2)' : '1px solid rgba(255,255,255,0.2)', background: includeVoiceover ? 'color-mix(in srgb, var(--accent2), transparent 84%)' : 'rgba(255,255,255,0.03)', color: includeVoiceover ? 'var(--accent2)' : 'rgba(255,255,255,0.65)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', cursor: 'pointer' }}>
+                        style={{ padding: '6px 10px', borderRadius: 8, border: includeVoiceover ? '1px solid var(--accent-secondary)' : '1px solid var(--border-strong)', background: includeVoiceover ? 'color-mix(in oklab, var(--accent-secondary) 16%, transparent)' : 'var(--bg-tertiary)', color: includeVoiceover ? 'var(--accent-secondary)' : 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', cursor: 'pointer' }}>
                         Extract VO
                     </button>
                     <button type="button" onClick={() => setIncludeSfx((v) => !v)}
-                        style={{ padding: '6px 10px', borderRadius: 8, border: includeSfx ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.2)', background: includeSfx ? 'color-mix(in srgb, var(--accent), transparent 84%)' : 'rgba(255,255,255,0.03)', color: includeSfx ? 'var(--accent)' : 'rgba(255,255,255,0.65)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', cursor: 'pointer' }}>
+                        style={{ padding: '6px 10px', borderRadius: 8, border: includeSfx ? '1px solid var(--accent-primary)' : '1px solid var(--border-strong)', background: includeSfx ? 'color-mix(in oklab, var(--accent-primary) 16%, transparent)' : 'var(--bg-tertiary)', color: includeSfx ? 'var(--accent-primary)' : 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', cursor: 'pointer' }}>
                         Extract SFX
                     </button>
-                    <div style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.65)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem' }}>
+                    <div style={{ marginLeft: 'auto', color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem' }}>
                         {selectedChampion ? `${selectedChampion.name} - ${selectedSkinIds.size} skin(s) selected` : 'Select a champion first'}
                     </div>
                 </div>
@@ -176,19 +175,19 @@ function BnkGameBanksModal({ open, loading = false, progressText = '', onClose, 
                         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search champion..." style={{ ...inputStyle, marginBottom: 10 }} />
                         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                             {loadingChampions ? (
-                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.6)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>Loading champions...</div>
+                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>Loading champions...</div>
                             ) : filteredChampions.map((champ) => {
                                 const selected = selectedChampion?.id === champ.id;
                                 return (
                                     <button key={champ.id} type="button" onClick={() => setSelectedChampion(champ)}
-                                        style={{ width: '100%', height: 36, marginBottom: 4, borderRadius: 8, border: selected ? '1px solid var(--accent2)' : '1px solid transparent', background: selected ? 'color-mix(in srgb, var(--accent2), transparent 82%)' : 'rgba(255,255,255,0.02)', display: 'flex', alignItems: 'center', gap: 10, color: selected ? 'var(--accent2)' : 'rgba(255,255,255,0.84)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.76rem', cursor: 'pointer', padding: '0 10px', textAlign: 'left', overflow: 'hidden' }}>
+                                        style={{ width: '100%', height: 36, marginBottom: 4, borderRadius: 8, border: selected ? '1px solid var(--accent-secondary)' : '1px solid transparent', background: selected ? 'color-mix(in oklab, var(--accent-secondary) 16%, transparent)' : 'transparent', display: 'flex', alignItems: 'center', gap: 10, color: selected ? 'var(--accent-secondary)' : 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.76rem', cursor: 'pointer', padding: '0 10px', textAlign: 'left', overflow: 'hidden' }}>
                                         <img src={getChampionIconUrl(champ.id)} alt={champ.name} width={26} height={26} loading="lazy" style={{ borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
                                         <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{champ.name}</span>
                                         <span role="button" tabIndex={0} title="Search champion skins on YouTube"
                                             onClick={(e) => { e.stopPropagation(); openYouTubeSearch(`ALL ${champ.name} SKINS SPOTLIGHT League of Legends`); }}
                                             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openYouTubeSearch(`ALL ${champ.name} SKINS SPOTLIGHT League of Legends`); } }}
                                             style={youtubeBtnStyle}>
-                                            <Youtube size={14} color="#ff2c2c" />
+                                            <Youtube size={14} color="var(--color-danger)" />
                                         </span>
                                     </button>
                                 );
@@ -201,53 +200,53 @@ function BnkGameBanksModal({ open, loading = false, progressText = '', onClose, 
                         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
                             <input value={skinSearch} onChange={(e) => setSkinSearch(e.target.value)} placeholder="Filter selected champion skins..." style={inputStyle} />
                             <button type="button" onClick={() => setSelectedSkinIds(new Set(filteredSkins.map((s) => s.id)))}
-                                style={{ padding: '0 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.8)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', cursor: 'pointer' }}>All</button>
+                                style={{ padding: '0 10px', borderRadius: 8, border: '1px solid var(--border-strong)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', cursor: 'pointer' }}>All</button>
                             <button type="button" onClick={() => setSelectedSkinIds(new Set())}
-                                style={{ padding: '0 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.8)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', cursor: 'pointer' }}>None</button>
+                                style={{ padding: '0 10px', borderRadius: 8, border: '1px solid var(--border-strong)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', cursor: 'pointer' }}>None</button>
                         </div>
                         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                             {loadingSkins ? (
-                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.6)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>Loading skins...</div>
+                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>Loading skins...</div>
                             ) : selectedChampion ? (
                                 filteredSkins.length > 0 ? filteredSkins.map((skin) => {
                                     const selected = selectedSkinIds.has(skin.id);
                                     return (
                                         <button key={skin.id} type="button" onClick={() => toggleSkin(skin.id)}
-                                            style={{ width: '100%', height: 46, marginBottom: 4, borderRadius: 8, border: selected ? '1px solid var(--accent2)' : '1px solid transparent', background: selected ? 'color-mix(in srgb, var(--accent2), transparent 82%)' : 'rgba(255,255,255,0.02)', display: 'flex', alignItems: 'center', gap: 10, color: selected ? 'var(--accent2)' : 'rgba(255,255,255,0.84)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', cursor: 'pointer', padding: '0 10px', textAlign: 'left', overflow: 'hidden' }}>
+                                            style={{ width: '100%', height: 46, marginBottom: 4, borderRadius: 8, border: selected ? '1px solid var(--accent-secondary)' : '1px solid transparent', background: selected ? 'color-mix(in oklab, var(--accent-secondary) 16%, transparent)' : 'transparent', display: 'flex', alignItems: 'center', gap: 10, color: selected ? 'var(--accent-secondary)' : 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', cursor: 'pointer', padding: '0 10px', textAlign: 'left', overflow: 'hidden' }}>
                                             <SkinIcon tilePath={skin.tilePath} skinName={skin.name} />
                                             <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{skin.name} (ID {skin.id})</span>
                                             <span role="button" tabIndex={0} title="Search skin on YouTube"
                                                 onClick={(e) => { e.stopPropagation(); openYouTubeSearch(`${selectedChampion.name} ${skin.name} skin spotlight League of Legends`); }}
                                                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openYouTubeSearch(`${selectedChampion.name} ${skin.name} skin spotlight League of Legends`); } }}
                                                 style={youtubeBtnStyle}>
-                                                <Youtube size={14} color="#ff2c2c" />
+                                                <Youtube size={14} color="var(--color-danger)" />
                                             </span>
                                         </button>
                                     );
                                 }) : (
-                                    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.45)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>No skins match this search</div>
+                                    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>No skins match this search</div>
                                 )
                             ) : (
-                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.45)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>Select a champion first</div>
+                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>Select a champion first</div>
                             )}
                         </div>
                     </div>
                 </div>
 
                 {(errorText || progressText) ? (
-                    <div style={{ padding: '0 16px 10px', color: errorText ? '#ff7a7a' : 'rgba(255,255,255,0.78)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>
+                    <div style={{ padding: '0 16px 10px', color: errorText ? 'var(--color-danger)' : 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>
                         {errorText || progressText}
                     </div>
                 ) : null}
 
-                <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                     <button type="button" onClick={onClose} disabled={loading}
-                        style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.78)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}>
+                        style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}>
                         Cancel
                     </button>
                     <button type="button" disabled={!canConfirm}
                         onClick={() => onConfirm({ champion: selectedChampion, skinIds: Array.from(selectedSkinIds), includeVoiceover, includeSfx })}
-                        style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid color-mix(in srgb, var(--accent2), transparent 65%)', background: 'color-mix(in srgb, var(--accent2), transparent 88%)', color: 'var(--accent2)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem', fontWeight: 700, cursor: canConfirm ? 'pointer' : 'not-allowed', opacity: canConfirm ? 1 : 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid color-mix(in oklab, var(--accent-secondary) 35%, transparent)', background: 'color-mix(in oklab, var(--accent-secondary) 12%, transparent)', color: 'var(--accent-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem', fontWeight: 700, cursor: canConfirm ? 'pointer' : 'not-allowed', opacity: canConfirm ? 1 : 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                         {loading ? 'Extracting...' : 'Load Banks'}
                     </button>
                 </div>

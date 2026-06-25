@@ -35,31 +35,31 @@ export default function BnkSettingsModal({
     setMultiSelect,
 }: Props) {
     return (
-        <Backdrop open={showSettingsModal} sx={{ zIndex: 1400, backdropFilter: 'blur(10px)', background: 'rgba(0,0,0,0.5)' }}>
+        <Backdrop open={showSettingsModal} sx={{ zIndex: 1400, backdropFilter: 'blur(10px)', background: 'color-mix(in oklab, var(--bg-primary) 50%, transparent)' }}>
             <Box sx={{
                 width: 420,
-                background: 'rgba(18, 18, 22, 0.97)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
                 borderRadius: '16px',
                 padding: '2rem',
-                boxShadow: '0 24px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)',
+                boxShadow: '0 24px 80px color-mix(in oklab, var(--bg-primary) 60%, transparent)',
                 fontFamily: 'JetBrains Mono, monospace',
             }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                        <Settings sx={{ fontSize: 20, color: 'var(--accent)', opacity: 0.8 }} />
-                        <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.05em', fontFamily: 'JetBrains Mono' }}>
+                        <Settings sx={{ fontSize: 20, color: 'var(--accent-primary)', opacity: 0.8 }} />
+                        <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--accent-primary)', letterSpacing: '0.05em', fontFamily: 'JetBrains Mono' }}>
                             Extract Settings
                         </Typography>
                     </Box>
-                    <IconButton onClick={() => setShowSettingsModal(false)} sx={{ color: 'rgba(255,255,255,0.4)', '&:hover': { color: 'rgba(255,255,255,0.8)' } }}>
+                    <IconButton onClick={() => setShowSettingsModal(false)} sx={{ color: 'var(--text-muted)', '&:hover': { color: 'var(--text-primary)' } }}>
                         <Close sx={{ fontSize: 18 }} />
                     </IconButton>
                 </Box>
 
-                <Box sx={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)', mb: 2 }} />
+                <Box sx={{ height: 1, background: 'linear-gradient(90deg, transparent, var(--border), transparent)', mb: 2 }} />
 
-                <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.15em', textTransform: 'uppercase', mb: 1.2, fontFamily: 'JetBrains Mono' }}>
+                <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.15em', textTransform: 'uppercase', mb: 1.2, fontFamily: 'JetBrains Mono' }}>
                     Export Formats
                 </Typography>
                 <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', mb: 2 }}>
@@ -84,20 +84,20 @@ export default function BnkSettingsModal({
                                     alignItems: 'center',
                                     padding: '0.75rem 0.5rem',
                                     borderRadius: '10px',
-                                    border: checked ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.08)',
-                                    background: checked ? 'rgba(var(--accent-rgb), 0.12)' : 'rgba(255,255,255,0.02)',
+                                    border: checked ? '1px solid var(--accent-primary)' : '1px solid var(--border)',
+                                    background: checked ? 'color-mix(in oklab, var(--accent-primary) 12%, transparent)' : 'color-mix(in oklab, var(--text-primary) 2%, transparent)',
                                     cursor: 'pointer',
                                     transition: 'all 0.2s ease',
                                     '&:hover': {
-                                        background: checked ? 'rgba(var(--accent-rgb), 0.18)' : 'rgba(255,255,255,0.05)',
-                                        borderColor: checked ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
+                                        background: checked ? 'color-mix(in oklab, var(--accent-primary) 18%, transparent)' : 'color-mix(in oklab, var(--text-primary) 5%, transparent)',
+                                        borderColor: checked ? 'var(--accent-primary)' : 'var(--border-strong)',
                                     },
                                 }}
                             >
-                                <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: checked ? 'var(--accent)' : 'rgba(255,255,255,0.5)', fontFamily: 'JetBrains Mono', transition: 'color 0.2s ease' }}>
+                                <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: checked ? 'var(--accent-primary)' : 'var(--text-secondary)', fontFamily: 'JetBrains Mono', transition: 'color 0.2s ease' }}>
                                     {fmt.label}
                                 </Typography>
-                                <Typography sx={{ fontSize: '0.6rem', color: checked ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.25)', fontFamily: 'JetBrains Mono', mt: 0.3 }}>
+                                <Typography sx={{ fontSize: '0.6rem', color: checked ? 'var(--text-secondary)' : 'var(--text-muted)', fontFamily: 'JetBrains Mono', mt: 0.3 }}>
                                     {desc}
                                 </Typography>
                             </Box>
@@ -107,7 +107,7 @@ export default function BnkSettingsModal({
 
                 {extractFormats.has('mp3') && (
                     <Box sx={{ mb: 2 }}>
-                        <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.15em', textTransform: 'uppercase', mb: 0.8, fontFamily: 'JetBrains Mono' }}>
+                        <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.15em', textTransform: 'uppercase', mb: 0.8, fontFamily: 'JetBrains Mono' }}>
                             MP3 Bitrate
                         </Typography>
                         <Box sx={{ display: 'flex', gap: '0.4rem' }}>
@@ -124,13 +124,13 @@ export default function BnkSettingsModal({
                                         padding: '0.35rem 0',
                                         borderRadius: '6px',
                                         cursor: 'pointer',
-                                        border: mp3Bitrate === rate ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.06)',
-                                        background: mp3Bitrate === rate ? 'rgba(var(--accent-rgb), 0.12)' : 'rgba(255,255,255,0.02)',
+                                        border: mp3Bitrate === rate ? '1px solid var(--accent-primary)' : '1px solid var(--border)',
+                                        background: mp3Bitrate === rate ? 'color-mix(in oklab, var(--accent-primary) 12%, transparent)' : 'color-mix(in oklab, var(--text-primary) 2%, transparent)',
                                         transition: 'all 0.15s ease',
-                                        '&:hover': { borderColor: 'rgba(255,255,255,0.2)' },
+                                        '&:hover': { borderColor: 'var(--border-strong)' },
                                     }}
                                 >
-                                    <Typography sx={{ fontSize: '0.65rem', fontWeight: 600, color: mp3Bitrate === rate ? 'var(--accent)' : 'rgba(255,255,255,0.4)', fontFamily: 'JetBrains Mono' }}>
+                                    <Typography sx={{ fontSize: '0.65rem', fontWeight: 600, color: mp3Bitrate === rate ? 'var(--accent-primary)' : 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>
                                         {rate}
                                     </Typography>
                                 </Box>
@@ -139,9 +139,9 @@ export default function BnkSettingsModal({
                     </Box>
                 )}
 
-                <Box sx={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)', mb: 2 }} />
+                <Box sx={{ height: 1, background: 'linear-gradient(90deg, transparent, var(--border), transparent)', mb: 2 }} />
 
-                <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.15em', textTransform: 'uppercase', mb: 1, fontFamily: 'JetBrains Mono' }}>
+                <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.15em', textTransform: 'uppercase', mb: 1, fontFamily: 'JetBrains Mono' }}>
                     General
                 </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
@@ -151,10 +151,10 @@ export default function BnkSettingsModal({
                                 checked={autoPlay}
                                 onChange={(e) => setAutoPlay(e.target.checked)}
                                 size="small"
-                                sx={{ color: 'rgba(255,255,255,0.25)', '&.Mui-checked': { color: 'var(--accent)' }, padding: '4px 8px' }}
+                                sx={{ color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent-primary)' }, padding: '4px 8px' }}
                             />
                         }
-                        label={<Typography sx={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono', color: 'rgba(255,255,255,0.65)' }}>Autoplay on click</Typography>}
+                        label={<Typography sx={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono', color: 'var(--text-secondary)' }}>Autoplay on click</Typography>}
                     />
                     <FormControlLabel
                         control={
@@ -162,15 +162,15 @@ export default function BnkSettingsModal({
                                 checked={multiSelect}
                                 onChange={(e) => setMultiSelect(e.target.checked)}
                                 size="small"
-                                sx={{ color: 'rgba(255,255,255,0.25)', '&.Mui-checked': { color: 'var(--accent)' }, padding: '4px 8px' }}
+                                sx={{ color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent-primary)' }, padding: '4px 8px' }}
                             />
                         }
-                        label={<Typography sx={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono', color: 'rgba(255,255,255,0.65)' }}>Multi-select enabled</Typography>}
+                        label={<Typography sx={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono', color: 'var(--text-secondary)' }}>Multi-select enabled</Typography>}
                     />
                 </Box>
 
-                <Box sx={{ mt: 2, pt: 1.5, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                    <Typography sx={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.2)', fontFamily: 'JetBrains Mono', textAlign: 'center' }}>
+                <Box sx={{ mt: 2, pt: 1.5, borderTop: '1px solid var(--border)' }}>
+                    <Typography sx={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono', textAlign: 'center' }}>
                         {extractFormats.size === 0 ? 'No formats selected — extraction disabled' : `Extracting as: ${[...extractFormats].map((f) => '.' + f).join(', ')}`}
                     </Typography>
                 </Box>

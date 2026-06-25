@@ -41,6 +41,7 @@ import { useNotificationStore } from '@/lib/stores';
 import {
     extractVfxSystems,
     convertToSeparateBins,
+    writeVariantBinsWithMerge,
     hasToggleVariants,
     insertToggleScreen,
     hasToggleScreen,
@@ -62,27 +63,20 @@ import './fakegear/FakeGear.css';
 
 const DEFAULT_STENCIL = '0xe6deedc4';
 
-// ============ STYLES (from BinEditor) ============
-function hexToRgb(hex: string): string {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    if (result) {
-        return `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`;
-    }
-    return '255, 255, 255';
-}
-
+/* Flat token-driven button. `color` is any CSS color (token or var) used as
+   the accent for border/text; the fill is a low-opacity mix of it. */
 const buttonStyle = (color: string, disabled = false): CSSProperties => ({
     padding: '8px 14px',
-    background: disabled ? 'rgba(100,100,100,0.2)' : `rgba(${hexToRgb(color)}, 0.15)`,
-    border: `1px solid ${disabled ? 'rgba(100,100,100,0.3)' : color}`,
-    borderRadius: 'var(--border-radius, 6px)',
-    color: disabled ? '#666' : color,
+    background: disabled ? 'var(--bg-tertiary)' : `color-mix(in oklab, ${color} 12%, transparent)`,
+    border: `1px solid ${disabled ? 'var(--border)' : `color-mix(in oklab, ${color} 45%, transparent)`}`,
+    borderRadius: 'var(--radius-sm)',
+    color: disabled ? 'var(--text-muted)' : color,
     cursor: disabled ? 'not-allowed' : 'pointer',
     fontFamily: 'inherit',
     fontSize: '13px',
     fontWeight: 600,
     opacity: disabled ? 0.5 : 1,
-    transition: 'all 0.15s ease',
+    transition: 'background 140ms var(--ease-out), border-color 140ms var(--ease-out)',
 });
 
 function basename(p: string): string {
@@ -145,8 +139,8 @@ const SystemRowComponent = memo(function SystemRowComponent(props: SystemRowProp
                     alignItems: 'center',
                     padding: '4px 12px 4px 36px',
                     gap: '6px',
-                    background: isEmitterSelected ? 'rgba(var(--accent-rgb), 0.15)' : 'rgba(0,0,0,0.2)',
-                    borderLeft: `2px solid ${isEmitterSelected ? 'var(--accent)' : 'rgba(var(--accent-rgb), 0.3)'}`,
+                    background: isEmitterSelected ? 'color-mix(in oklab, var(--accent-primary) 15%, transparent)' : 'var(--bg-tertiary)',
+                    borderLeft: `2px solid ${isEmitterSelected ? 'var(--accent-primary)' : 'color-mix(in oklab, var(--accent-primary) 30%, transparent)'}`,
                     marginLeft: '8px',
                     boxSizing: 'border-box',
                     width: 'calc(100% - 16px)',
@@ -165,7 +159,7 @@ const SystemRowComponent = memo(function SystemRowComponent(props: SystemRowProp
                 />
                 <Typography sx={{
                     fontSize: '12px',
-                    color: isVariant2 ? 'var(--text-3)' : 'var(--text-2)',
+                    color: isVariant2 ? 'var(--text-muted)' : 'var(--text-secondary)',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -176,26 +170,26 @@ const SystemRowComponent = memo(function SystemRowComponent(props: SystemRowProp
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                     {isVariant2 && (
-                        <span style={{ fontSize: '9px', padding: '1px 4px', borderRadius: '3px', background: 'rgba(139, 92, 246, 0.2)', color: '#a78bfa' }}>
+                        <span style={{ fontSize: '9px', padding: '1px 4px', borderRadius: '3px', background: 'color-mix(in oklab, var(--accent-secondary) 22%, transparent)', color: 'var(--accent-hover)' }}>
                             V2
                         </span>
                     )}
                     {emitter.hasStencil && (
                         <Tooltip title="Has StencilMode - may not work">
-                            <span style={{ fontSize: '9px', padding: '1px 4px', borderRadius: '3px', background: 'rgba(234, 179, 8, 0.2)', color: '#fbbf24' }}>
+                            <span style={{ fontSize: '9px', padding: '1px 4px', borderRadius: '3px', background: 'color-mix(in oklab, var(--color-warning) 20%, transparent)', color: 'var(--color-warning)' }}>
                                 Stencil
                             </span>
                         </Tooltip>
                     )}
                     {emitter.hasGroundLayer && (
                         <Tooltip title="Has isGroundLayer - may not work">
-                            <span style={{ fontSize: '9px', padding: '1px 4px', borderRadius: '3px', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171' }}>
+                            <span style={{ fontSize: '9px', padding: '1px 4px', borderRadius: '3px', background: 'color-mix(in oklab, var(--color-danger) 20%, transparent)', color: 'var(--color-danger)' }}>
                                 Ground
                             </span>
                         </Tooltip>
                     )}
                     {emitter.hasRenderPhaseOverride && (
-                        <span style={{ fontSize: '9px', padding: '1px 4px', borderRadius: '3px', background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa' }}>
+                        <span style={{ fontSize: '9px', padding: '1px 4px', borderRadius: '3px', background: 'color-mix(in oklab, var(--color-info) 20%, transparent)', color: 'var(--color-info)' }}>
                             Phase
                         </span>
                     )}
@@ -229,8 +223,8 @@ const SystemRowComponent = memo(function SystemRowComponent(props: SystemRowProp
                 borderRadius: '4px',
                 cursor: 'pointer',
                 margin: '0 8px',
-                border: `1px solid ${isSelected ? 'rgba(var(--accent-rgb), 0.3)' : 'transparent'}`,
-                background: isSelected ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
+                border: `1px solid ${isSelected ? 'color-mix(in oklab, var(--accent-primary) 30%, transparent)' : 'transparent'}`,
+                background: isSelected ? 'color-mix(in oklab, var(--accent-primary) 10%, transparent)' : 'transparent',
                 opacity: isDisabled ? 0.5 : 1,
                 boxSizing: 'border-box',
                 width: 'calc(100% - 16px)',
@@ -240,7 +234,7 @@ const SystemRowComponent = memo(function SystemRowComponent(props: SystemRowProp
             <IconButton
                 size="small"
                 onClick={(e) => { e.stopPropagation(); toggleExpand(system.key); }}
-                sx={{ padding: '2px', color: 'var(--text-2)' }}
+                sx={{ padding: '2px', color: 'var(--text-secondary)' }}
             >
                 {isExpanded ? (
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" /></svg>
@@ -262,7 +256,7 @@ const SystemRowComponent = memo(function SystemRowComponent(props: SystemRowProp
                 <Typography sx={{
                     fontSize: '13px',
                     fontWeight: 500,
-                    color: 'var(--text)',
+                    color: 'var(--text-primary)',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -270,25 +264,25 @@ const SystemRowComponent = memo(function SystemRowComponent(props: SystemRowProp
                     {system.name}
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'nowrap', marginTop: '2px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-2)' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                         {system.emitterCount} emitter{system.emitterCount !== 1 ? 's' : ''}
                     </span>
                     {alreadyHasVariants && (
-                        <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px', background: 'rgba(34, 197, 94, 0.2)', color: '#22c55e' }}>Child</span>
+                        <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px', background: 'color-mix(in oklab, var(--color-success) 20%, transparent)', color: 'var(--color-success)' }}>Child</span>
                     )}
                     {alreadyHasInlineVariants && (
-                        <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px', background: 'rgba(139, 92, 246, 0.2)', color: '#a78bfa' }}>Inline</span>
+                        <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px', background: 'color-mix(in oklab, var(--accent-secondary) 22%, transparent)', color: 'var(--accent-hover)' }}>Inline</span>
                     )}
                     {stencilCount > 0 && (
                         <Tooltip title={`${stencilCount} emitters have StencilMode - conversion may not work!`}>
-                            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px', background: 'rgba(234, 179, 8, 0.2)', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px', background: 'color-mix(in oklab, var(--color-warning) 20%, transparent)', color: 'var(--color-warning)', display: 'flex', alignItems: 'center', gap: '2px' }}>
                                 <WarningAmberIcon sx={{ fontSize: 10 }} /> Stencil
                             </span>
                         </Tooltip>
                     )}
                     {groundLayerCount > 0 && (
                         <Tooltip title={`${groundLayerCount} emitters have isGroundLayer - conversion may not work!`}>
-                            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px', background: 'color-mix(in oklab, var(--color-danger) 20%, transparent)', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: '2px' }}>
                                 <WarningAmberIcon sx={{ fontSize: 10 }} /> Ground
                             </span>
                         </Tooltip>
@@ -302,9 +296,9 @@ const SystemRowComponent = memo(function SystemRowComponent(props: SystemRowProp
                         onClick={(e) => { e.stopPropagation(); handleRemoveRenderPhase(system.key, e); }}
                         disabled={isLoading}
                         sx={{
-                            color: '#f59e0b',
+                            color: 'var(--color-warning)',
                             padding: '4px',
-                            '&:hover': { backgroundColor: 'rgba(245, 158, 11, 0.1)' },
+                            '&:hover': { backgroundColor: 'color-mix(in oklab, var(--color-warning) 12%, transparent)' },
                         }}
                     >
                         <ClearIcon sx={{ fontSize: 16 }} />
@@ -317,9 +311,9 @@ const SystemRowComponent = memo(function SystemRowComponent(props: SystemRowProp
                             onClick={(e) => { e.stopPropagation(); handleDeleteVariant2Click(system.key, e); }}
                             disabled={isLoading}
                             sx={{
-                                color: '#ef4444',
+                                color: 'var(--color-danger)',
                                 padding: '4px',
-                                '&:hover': { backgroundColor: 'rgba(239, 68, 68, 0.1)' },
+                                '&:hover': { backgroundColor: 'color-mix(in oklab, var(--color-danger) 12%, transparent)' },
                             }}
                         >
                             <DeleteIcon sx={{ fontSize: 16 }} />
@@ -691,6 +685,16 @@ function FakeGear() {
             const result = convertToSeparateBins(pyContent, [...selectedSystems], binPath || '', stencilId);
 
             if (result.success && result.mainContent) {
+                // Write variant1.bin / variant2.bin to disk (merging existing systems).
+                if (binPath) {
+                    const writeResult = await writeVariantBinsWithMerge(result, binPath);
+                    if (!writeResult.success) {
+                        setStatusMessage(`Error: ${writeResult.error}`);
+                        notify('error', `Error writing variant bins: ${writeResult.error}`);
+                        return;
+                    }
+                }
+
                 setPyContent(result.mainContent);
                 setHasUnsavedChanges(true);
                 setSelectedSystems(new Set());
@@ -767,7 +771,7 @@ function FakeGear() {
             await executeConversion(stencilId);
         } else if (pendingAction === 'togglescreen') {
             try {
-                const result = insertToggleScreen(pyContent, binPath, null, null, stencilId);
+                const result = await insertToggleScreen(pyContent, binPath, null, null, stencilId);
                 if (result.success) {
                     setPyContent(result.content);
                     setHasUnsavedChanges(true);
@@ -803,7 +807,7 @@ function FakeGear() {
     }, [pyContent]);
 
     // Add animation toggle system
-    const handleAddAnimationToggle = useCallback(() => {
+    const handleAddAnimationToggle = useCallback(async () => {
         if (!pyContent) { setStatusMessage('Load a file first'); return; }
         if (!binPath) { setStatusMessage('No file loaded'); return; }
         if (hasAnimationToggle(pyContent)) { setStatusMessage('Animation toggle already exists'); return; }
@@ -812,7 +816,7 @@ function FakeGear() {
             setIsLoading(true);
             setLoadingText('Adding animation toggle...');
 
-            const result = insertAnimationToggle(pyContent, binPath);
+            const result = await insertAnimationToggle(pyContent, binPath);
 
             if (result.success) {
                 setPyContent(result.content);
@@ -961,24 +965,24 @@ function FakeGear() {
             {/* Initial Warning Modal */}
             {showWarning && (
                 <div className="fakegear-modal-overlay" style={{ zIndex: 10000 }}>
-                    <div className="fakegear-modal" onClick={(e) => e.stopPropagation()} style={{ borderColor: 'rgba(234, 179, 8, 0.5)', maxWidth: '600px' }}>
+                    <div className="fakegear-modal" onClick={(e) => e.stopPropagation()} style={{ borderColor: 'color-mix(in oklab, var(--color-warning) 50%, var(--border))', maxWidth: '600px' }}>
                         <div className="fakegear-modal-header">
-                            <InfoOutlinedIcon style={{ color: '#fbbf24', fontSize: '1.5rem' }} />
-                            <Typography className="fakegear-modal-title" style={{ color: '#fbbf24' }}>
+                            <InfoOutlinedIcon style={{ color: 'var(--color-warning)', fontSize: '1.5rem' }} />
+                            <Typography className="fakegear-modal-title" style={{ color: 'var(--color-warning)' }}>
                                 ⚠️ Test Page Warning
                             </Typography>
                         </div>
 
                         <div className="fakegear-modal-body">
                             <Typography className="fakegear-modal-desc" style={{ fontSize: '1rem', lineHeight: '1.6' }}>
-                                This is a <strong style={{ color: '#fbbf24' }}>test page</strong> meant to make VFX exchangeable.
+                                This is a <strong style={{ color: 'var(--color-warning)' }}>test page</strong> meant to make VFX exchangeable.
                             </Typography>
                             <Typography className="fakegear-modal-desc" style={{ marginTop: '1rem', fontSize: '0.95rem', opacity: 0.9 }}>
-                                <strong style={{ color: '#ef4444' }}>Important Limitations:</strong>
+                                <strong style={{ color: 'var(--color-danger)' }}>Important Limitations:</strong>
                             </Typography>
-                            <ul style={{ marginTop: '0.5rem', paddingLeft: '1.5rem', color: 'rgba(255,255,255,0.8)', fontSize: '0.9rem', lineHeight: '1.8' }}>
-                                <li>Will <strong style={{ color: '#ef4444' }}>NOT work</strong> on stencil emitters</li>
-                                <li>Will <strong style={{ color: '#ef4444' }}>NOT work</strong> on emitters that have <code style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '3px' }}>isGroundLayer</code></li>
+                            <ul style={{ marginTop: '0.5rem', paddingLeft: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: '1.8' }}>
+                                <li>Will <strong style={{ color: 'var(--color-danger)' }}>NOT work</strong> on stencil emitters</li>
+                                <li>Will <strong style={{ color: 'var(--color-danger)' }}>NOT work</strong> on emitters that have <code style={{ background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '3px' }}>isGroundLayer</code></li>
                             </ul>
                             <Typography className="fakegear-modal-desc" style={{ marginTop: '1rem', fontSize: '0.85rem', opacity: 0.7, fontStyle: 'italic' }}>
                                 Please proceed with caution and test thoroughly.
@@ -987,9 +991,9 @@ function FakeGear() {
 
                         <div className="fakegear-modal-actions">
                             <button
-                                className="fakegear-modal-btn confirm"
+                                className="fakegear-modal-btn"
                                 onClick={() => setShowWarning(false)}
-                                style={{ background: '#fbbf24', color: '#000', width: '100%' }}
+                                style={{ background: 'var(--color-warning)', color: '#000', width: '100%' }}
                             >
                                 I Understand, Continue
                             </button>
@@ -1001,23 +1005,23 @@ function FakeGear() {
             {/* Header */}
             <div style={{
                 padding: '16px 20px',
-                borderBottom: '1px solid rgba(255,255,255,0.1)',
-                background: 'rgba(0,0,0,0.2)',
+                borderBottom: '1px solid var(--border)',
+                background: 'var(--bg-secondary)',
             }}>
                 {/* Title Bar */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--accent)' }}>
+                    <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--accent-primary)' }}>
                         🪄 FakeGearSkin {binPath ? `- ${basename(binPath)}` : ''}
                     </h1>
 
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={loadBinFile} style={buttonStyle('#22c55e')}>
+                        <button onClick={loadBinFile} style={buttonStyle('var(--color-success)')}>
                             Open
                         </button>
                         <button
                             onClick={handleUndo}
                             disabled={!originalContent || pyContent === originalContent}
-                            style={buttonStyle('#6cb6ff', !originalContent || pyContent === originalContent)}
+                            style={buttonStyle('var(--text-secondary)', !originalContent || pyContent === originalContent)}
                             title="Undo changes (restore original)"
                         >
                             Undo
@@ -1025,7 +1029,7 @@ function FakeGear() {
                         <button
                             onClick={saveFile}
                             disabled={!hasUnsavedChanges}
-                            style={buttonStyle('#ecb96a', !hasUnsavedChanges)}
+                            style={buttonStyle('var(--accent-primary)', !hasUnsavedChanges)}
                         >
                             Save
                         </button>
@@ -1033,7 +1037,7 @@ function FakeGear() {
                 </div>
 
                 {/* Status */}
-                <div style={{ fontSize: '12px', color: '#888' }}>{statusMessage}</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{statusMessage}</div>
             </div>
 
             {/* Main Content */}
@@ -1041,7 +1045,7 @@ function FakeGear() {
                 {/* Left Panel - System List */}
                 <div style={{
                     flex: 1,
-                    borderRight: '1px solid rgba(255,255,255,0.1)',
+                    borderRight: '1px solid var(--border)',
                     overflow: 'auto',
                     display: 'flex',
                     flexDirection: 'column',
@@ -1049,13 +1053,13 @@ function FakeGear() {
                     {/* Header */}
                     <div style={{
                         padding: '12px 16px',
-                        borderBottom: '1px solid rgba(255,255,255,0.1)',
+                        borderBottom: '1px solid var(--border)',
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
-                        background: 'rgba(0,0,0,0.1)',
+                        background: 'var(--bg-tertiary)',
                     }}>
-                        <Typography variant="h6" style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text)' }}>VFX Systems</Typography>
+                        <Typography variant="h6" style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>VFX Systems</Typography>
                         <div style={{ display: 'flex', gap: '4px' }}>
                             <Tooltip title="Select all visible">
                                 <IconButton size="small" onClick={selectAll} sx={{ padding: '4px' }}>
@@ -1073,13 +1077,13 @@ function FakeGear() {
                     {/* Search */}
                     <div style={{
                         padding: '8px 16px',
-                        borderBottom: '1px solid rgba(255,255,255,0.1)',
+                        borderBottom: '1px solid var(--border)',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '8px',
-                        background: 'rgba(0,0,0,0.05)',
+                        background: 'var(--bg-tertiary)',
                     }}>
-                        <SearchIcon style={{ color: 'var(--text-2)', fontSize: '18px' }} />
+                        <SearchIcon style={{ color: 'var(--text-secondary)', fontSize: '18px' }} />
                         <input
                             type="text"
                             placeholder="Search systems..."
@@ -1088,10 +1092,10 @@ function FakeGear() {
                             style={{
                                 flex: 1,
                                 padding: '6px 8px',
-                                background: 'rgba(0,0,0,0.3)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                borderRadius: '4px',
-                                color: 'var(--text)',
+                                background: 'var(--bg-secondary)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 'var(--radius-sm)',
+                                color: 'var(--text-primary)',
                                 fontSize: '12px',
                                 fontFamily: 'inherit',
                                 outline: 'none',
@@ -1102,16 +1106,16 @@ function FakeGear() {
                     {/* System List */}
                     <div ref={listContainerRef} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 0' }}>
                         {isLoading ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', color: 'var(--text-2)' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
                                 <CircularProgress size={32} />
                                 <Typography style={{ marginTop: '1rem' }}>{loadingText}</Typography>
                             </div>
                         ) : systems.length === 0 ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', color: 'var(--text-2)' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
                                 <Typography>No VFX systems found</Typography>
                             </div>
                         ) : filteredSystems.length === 0 ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', color: 'var(--text-2)' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
                                 <Typography>No matching systems</Typography>
                             </div>
                         ) : (
@@ -1141,10 +1145,10 @@ function FakeGear() {
                     {/* Footer */}
                     <div style={{
                         padding: '8px 16px',
-                        borderTop: '1px solid rgba(255,255,255,0.1)',
-                        background: 'rgba(0,0,0,0.1)',
+                        borderTop: '1px solid var(--border)',
+                        background: 'var(--bg-tertiary)',
                         fontSize: '11px',
-                        color: 'var(--text-2)',
+                        color: 'var(--text-secondary)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
@@ -1161,15 +1165,14 @@ function FakeGear() {
                                     padding: '8px 16px',
                                     fontSize: '12px',
                                     fontWeight: 600,
-                                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(168, 85, 247, 0.3))',
-                                    border: '1px solid #a78bfa',
-                                    borderRadius: '6px',
-                                    color: '#c4b5fd',
+                                    background: 'color-mix(in oklab, var(--accent-secondary) 22%, transparent)',
+                                    border: '1px solid color-mix(in oklab, var(--accent-primary) 45%, transparent)',
+                                    borderRadius: 'var(--radius-sm)',
+                                    color: 'var(--accent-hover)',
                                     cursor: isLoading ? 'not-allowed' : 'pointer',
                                     fontFamily: 'inherit',
                                     opacity: isLoading ? 0.5 : 1,
-                                    transition: 'all 0.15s ease',
-                                    boxShadow: '0 2px 8px rgba(139, 92, 246, 0.2)',
+                                    transition: 'background 140ms var(--ease-out), border-color 140ms var(--ease-out)',
                                 }}
                             >
                                 ✨ Duplicate {selectedEmitters.size} Emitter{selectedEmitters.size !== 1 ? 's' : ''} as Inline
@@ -1189,10 +1192,10 @@ function FakeGear() {
                     {/* Header */}
                     <div style={{
                         padding: '12px 16px',
-                        borderBottom: '1px solid rgba(255,255,255,0.1)',
-                        background: 'rgba(0,0,0,0.1)',
+                        borderBottom: '1px solid var(--border)',
+                        background: 'var(--bg-tertiary)',
                     }}>
-                        <Typography variant="h6" style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text)' }}>Actions</Typography>
+                        <Typography variant="h6" style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Actions</Typography>
                     </div>
 
                     {/* Content */}
@@ -1211,14 +1214,14 @@ function FakeGear() {
                                 <button
                                     onClick={handleConvertToVariants}
                                     disabled={selectedSystems.size === 0 || isLoading}
-                                    style={buttonStyle('#ecb96a', selectedSystems.size === 0 || isLoading)}
+                                    style={buttonStyle('var(--accent-primary)', selectedSystems.size === 0 || isLoading)}
                                 >
                                     Convert to Child Particles
                                 </button>
                                 <button
                                     onClick={handleConvertToInlineVariants}
                                     disabled={selectedSystems.size === 0 || isLoading}
-                                    style={buttonStyle('#9d8cd9', selectedSystems.size === 0 || isLoading)}
+                                    style={buttonStyle('var(--accent-hover)', selectedSystems.size === 0 || isLoading)}
                                 >
                                     Duplicate as Inline Variants
                                 </button>
@@ -1247,7 +1250,7 @@ function FakeGear() {
                                 <button
                                     onClick={handleAddToggleScreen}
                                     disabled={!pyContent}
-                                    style={buttonStyle('#22c55e', !pyContent)}
+                                    style={buttonStyle('var(--color-success)', !pyContent)}
                                 >
                                     Add Toggle Screen
                                 </button>
@@ -1272,7 +1275,7 @@ function FakeGear() {
                                 <button
                                     onClick={handleAddAnimationToggle}
                                     disabled={!pyContent}
-                                    style={buttonStyle('#6cb6ff', !pyContent)}
+                                    style={buttonStyle('var(--accent-primary)', !pyContent)}
                                 >
                                     Add Animation Toggle
                                 </button>
@@ -1287,7 +1290,7 @@ function FakeGear() {
             {statusMessage && (
                 <Box className="fakegear-toast-container">
                     <Box className="fakegear-toast">
-                        <InfoOutlinedIcon fontSize="small" style={{ color: 'var(--accent)' }} />
+                        <InfoOutlinedIcon fontSize="small" style={{ color: 'var(--accent-primary)' }} />
                         <Typography variant="body2">{statusMessage}</Typography>
                     </Box>
                 </Box>
@@ -1326,20 +1329,20 @@ function FakeGear() {
 
                 return (
                     <div className="fakegear-modal-overlay" onClick={() => setShowGroundLayerWarning(false)}>
-                        <div className="fakegear-modal" onClick={(e) => e.stopPropagation()} style={{ borderColor: 'rgba(239, 68, 68, 0.5)', maxWidth: '550px' }}>
+                        <div className="fakegear-modal" onClick={(e) => e.stopPropagation()} style={{ borderColor: 'color-mix(in oklab, var(--color-danger) 50%, var(--border))', maxWidth: '550px' }}>
                             <div className="fakegear-modal-header">
-                                <WarningAmberIcon style={{ color: '#f87171', fontSize: '1.5rem' }} />
-                                <Typography className="fakegear-modal-title" style={{ color: '#f87171' }}>
+                                <WarningAmberIcon style={{ color: 'var(--color-danger)', fontSize: '1.5rem' }} />
+                                <Typography className="fakegear-modal-title" style={{ color: 'var(--color-danger)' }}>
                                     ⚠️ Ground Layer Emitters Detected
                                 </Typography>
                             </div>
 
                             <div className="fakegear-modal-body">
                                 <Typography className="fakegear-modal-desc">
-                                    <strong style={{ color: '#f87171' }}>{groundCount}</strong> {isEmitterMode ? 'of your selected emitters have' : 'emitters in selected systems have'} <strong style={{ color: 'var(--accent)' }}>isGroundLayer: flag = true</strong>
+                                    <strong style={{ color: 'var(--color-danger)' }}>{groundCount}</strong> {isEmitterMode ? 'of your selected emitters have' : 'emitters in selected systems have'} <strong style={{ color: 'var(--accent-primary)' }}>isGroundLayer: flag = true</strong>
                                 </Typography>
                                 <Typography className="fakegear-modal-desc" style={{ marginTop: '0.75rem', fontSize: '0.85rem', opacity: 0.9 }}>
-                                    Patching ground layer emitters will likely cause <strong style={{ color: '#f87171' }}>rendering bugs</strong> where the character renders <strong>behind</strong> the particle effect.
+                                    Patching ground layer emitters will likely cause <strong style={{ color: 'var(--color-danger)' }}>rendering bugs</strong> where the character renders <strong>behind</strong> the particle effect.
                                 </Typography>
                                 <Typography className="fakegear-modal-desc" style={{ marginTop: '0.75rem', fontSize: '0.85rem', opacity: 0.7 }}>
                                     What would you like to do?
@@ -1361,7 +1364,7 @@ function FakeGear() {
                                                     setShowStencilModal(true);
                                                 }
                                             }}
-                                            style={{ background: '#22c55e', color: '#000', width: '100%' }}
+                                            style={{ background: 'var(--color-success)', color: '#000', width: '100%' }}
                                         >
                                             Skip Ground Layer Emitters (Recommended)
                                         </button>
@@ -1377,7 +1380,7 @@ function FakeGear() {
                                                     setShowStencilModal(true);
                                                 }
                                             }}
-                                            style={{ background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #f87171', color: '#f87171', width: '100%' }}
+                                            style={{ background: 'color-mix(in oklab, var(--color-danger) 18%, transparent)', border: '1px solid color-mix(in oklab, var(--color-danger) 45%, transparent)', color: 'var(--color-danger)', width: '100%' }}
                                         >
                                             Patch Anyway (May Cause Bugs)
                                         </button>
@@ -1397,7 +1400,7 @@ function FakeGear() {
                                                     setShowStencilModal(true);
                                                 }
                                             }}
-                                            style={{ background: '#22c55e', color: '#000', width: '100%' }}
+                                            style={{ background: 'var(--color-success)', color: '#000', width: '100%' }}
                                         >
                                             Skip Ground Layer Emitters (Recommended)
                                         </button>
@@ -1414,7 +1417,7 @@ function FakeGear() {
                                                     setShowStencilModal(true);
                                                 }
                                             }}
-                                            style={{ background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #f87171', color: '#f87171', width: '100%' }}
+                                            style={{ background: 'color-mix(in oklab, var(--color-danger) 18%, transparent)', border: '1px solid color-mix(in oklab, var(--color-danger) 45%, transparent)', color: 'var(--color-danger)', width: '100%' }}
                                         >
                                             Patch Anyway (May Cause Bugs)
                                         </button>
@@ -1519,20 +1522,20 @@ const ChildParticlesWarningModal = memo(function ChildParticlesWarningModal({ op
 
     return (
         <div className="fakegear-modal-overlay" onClick={onCancel}>
-            <div className="fakegear-modal" onClick={(e) => e.stopPropagation()} style={{ borderColor: 'rgba(234, 179, 8, 0.3)' }}>
+            <div className="fakegear-modal" onClick={(e) => e.stopPropagation()} style={{ borderColor: 'color-mix(in oklab, var(--color-warning) 35%, var(--border))' }}>
                 <div className="fakegear-modal-header">
-                    <InfoOutlinedIcon style={{ color: '#fbbf24', fontSize: '1.5rem' }} />
-                    <Typography className="fakegear-modal-title" style={{ color: '#fbbf24' }}>
+                    <InfoOutlinedIcon style={{ color: 'var(--color-warning)', fontSize: '1.5rem' }} />
+                    <Typography className="fakegear-modal-title" style={{ color: 'var(--color-warning)' }}>
                         ⚠️ Warning: Child Particles Method
                     </Typography>
                 </div>
 
                 <div className="fakegear-modal-body">
                     <Typography className="fakegear-modal-desc">
-                        The <strong style={{ color: 'var(--accent)' }}>"Convert to Child Particles"</strong> method creates separate VFX systems for each variant, which can cause more bugs and compatibility issues.
+                        The <strong style={{ color: 'var(--accent-primary)' }}>"Convert to Child Particles"</strong> method creates separate VFX systems for each variant, which can cause more bugs and compatibility issues.
                     </Typography>
                     <Typography className="fakegear-modal-desc" style={{ marginTop: '0.75rem', fontSize: '0.85rem', opacity: 0.8 }}>
-                        <strong style={{ color: '#4ade80' }}>Recommended:</strong> Use <strong>"Duplicate as Inline Variants"</strong> instead, which duplicates emitters within the same system and has fewer bugs.
+                        <strong style={{ color: 'var(--color-success)' }}>Recommended:</strong> Use <strong>"Duplicate as Inline Variants"</strong> instead, which duplicates emitters within the same system and has fewer bugs.
                     </Typography>
                     <Typography className="fakegear-modal-desc" style={{ marginTop: '0.75rem', fontSize: '0.85rem', opacity: 0.7 }}>
                         Do you still want to proceed with Child Particles?
@@ -1543,7 +1546,7 @@ const ChildParticlesWarningModal = memo(function ChildParticlesWarningModal({ op
                     <button className="fakegear-modal-btn cancel" onClick={onCancel}>
                         Cancel
                     </button>
-                    <button className="fakegear-modal-btn confirm" onClick={onConfirm} style={{ background: '#fbbf24', color: '#000' }}>
+                    <button className="fakegear-modal-btn" onClick={onConfirm} style={{ background: 'var(--color-warning)', color: '#000' }}>
                         Proceed Anyway
                     </button>
                 </div>
@@ -1565,17 +1568,17 @@ const DeleteConfirmModal = memo(function DeleteConfirmModal({ open, systemKey, o
 
     return (
         <div className="fakegear-modal-overlay" onClick={onCancel}>
-            <div className="fakegear-modal" onClick={(e) => e.stopPropagation()} style={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}>
+            <div className="fakegear-modal" onClick={(e) => e.stopPropagation()} style={{ borderColor: 'color-mix(in oklab, var(--color-danger) 35%, var(--border))' }}>
                 <div className="fakegear-modal-header">
-                    <DeleteIcon style={{ color: '#ef4444', fontSize: '1.5rem' }} />
-                    <Typography className="fakegear-modal-title" style={{ color: '#ef4444' }}>
+                    <DeleteIcon style={{ color: 'var(--color-danger)', fontSize: '1.5rem' }} />
+                    <Typography className="fakegear-modal-title" style={{ color: 'var(--color-danger)' }}>
                         Revert Variants
                     </Typography>
                 </div>
 
                 <div className="fakegear-modal-body">
                     <Typography className="fakegear-modal-desc">
-                        Are you sure you want to revert variants from <strong style={{ color: 'var(--accent)' }}>"{systemKey}"</strong>?
+                        Are you sure you want to revert variants from <strong style={{ color: 'var(--accent-primary)' }}>"{systemKey}"</strong>?
                     </Typography>
                     <Typography className="fakegear-modal-desc" style={{ marginTop: '0.75rem', fontSize: '0.85rem', opacity: 0.8 }}>
                         This will:
@@ -1596,9 +1599,9 @@ const DeleteConfirmModal = memo(function DeleteConfirmModal({ open, systemKey, o
                         className="fakegear-modal-btn"
                         onClick={onConfirm}
                         style={{
-                            backgroundColor: '#ef4444',
+                            backgroundColor: 'var(--color-danger)',
                             color: 'white',
-                            border: '1px solid #ef4444',
+                            border: '1px solid var(--color-danger)',
                         }}
                     >
                         Revert Variants

@@ -47,8 +47,8 @@ const EntriesPanel = React.memo(function EntriesPanel({
                             gap: 2,
                         }}
                     >
-                        <CircularProgress sx={{ color: 'var(--accent)' }} />
-                        <Typography variant="body2" sx={{ color: 'var(--accent2)' }}>
+                        <CircularProgress sx={{ color: 'var(--accent-primary)' }} />
+                        <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
                             Scanning BIN files...
                         </Typography>
                     </Box>
@@ -60,8 +60,8 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                 sx={{
                                     px: 1,
                                     py: 0.5,
-                                    borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-                                    '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.03)' },
+                                    borderBottom: '1px solid var(--border)',
+                                    '&:hover': { backgroundColor: 'var(--bg-hover)' },
                                 }}
                             >
                                 <Box sx={{ width: '100%' }}>
@@ -70,10 +70,10 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                             size="small"
                                             onClick={() => handleEntryExpand(entryHash)}
                                             sx={{
-                                                color: 'var(--text-2)',
+                                                color: 'var(--text-secondary)',
                                                 '&:hover': {
-                                                    color: 'var(--accent)',
-                                                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                                    color: 'var(--accent-primary)',
+                                                    backgroundColor: 'var(--bg-hover)',
                                                 },
                                             }}
                                         >
@@ -85,9 +85,9 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                             onChange={() => handleEntrySelect(entryHash)}
                                             disabled={entryData.prefix === 'Uneditable'}
                                             sx={{
-                                                color: 'var(--text-2)',
+                                                color: 'var(--text-secondary)',
                                                 '&.Mui-checked': {
-                                                    color: 'var(--accent)',
+                                                    color: 'var(--accent-primary)',
                                                 },
                                             }}
                                         />
@@ -97,7 +97,7 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                 <Typography
                                                     variant="body2"
                                                     sx={{
-                                                        color: 'var(--text)',
+                                                        color: 'var(--text-primary)',
                                                         fontSize: '0.7rem',
                                                         fontWeight: '600',
                                                         fontFamily: 'JetBrains Mono, monospace',
@@ -109,8 +109,8 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                 </Typography>
                                                 <Box
                                                     sx={{
-                                                        backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                                                        border: '1px solid rgba(139, 92, 246, 0.2)',
+                                                        backgroundColor: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
+                                                        border: '1px solid color-mix(in oklab, var(--accent-primary) 24%, transparent)',
                                                         borderRadius: '3px',
                                                         px: 0.5,
                                                         py: 0.25,
@@ -122,7 +122,7 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                     <Typography
                                                         variant="body2"
                                                         sx={{
-                                                            color: 'var(--accent)',
+                                                            color: 'var(--accent-primary)',
                                                             fontSize: '0.65rem',
                                                             fontWeight: '600',
                                                             fontFamily: 'JetBrains Mono, monospace',
@@ -138,7 +138,7 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                 <Typography
                                                     variant="body2"
                                                     sx={{
-                                                        color: 'var(--text-2)',
+                                                        color: 'var(--text-secondary)',
                                                         fontSize: '0.65rem',
                                                         fontFamily: 'JetBrains Mono, monospace',
                                                         opacity: 0.7,
@@ -170,7 +170,7 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                                     cursor: 'pointer',
                                                                     opacity: 1,
                                                                     '&:hover': {
-                                                                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                                                        backgroundColor: 'var(--bg-hover)',
                                                                         borderRadius: '4px',
                                                                     },
                                                                     py: 0.25,
@@ -181,11 +181,11 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                                 <IconButton
                                                                     size="small"
                                                                     sx={{
-                                                                        color: 'var(--text-2)',
+                                                                        color: 'var(--text-secondary)',
                                                                         p: 0.25,
                                                                         '&:hover': {
-                                                                            color: 'var(--accent)',
-                                                                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                                                            color: 'var(--accent-primary)',
+                                                                            backgroundColor: 'var(--bg-hover)',
                                                                         },
                                                                     }}
                                                                 >
@@ -200,14 +200,14 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                                         width: 8,
                                                                         height: 8,
                                                                         borderRadius: '50%',
-                                                                        backgroundColor: '#f87171',
+                                                                        backgroundColor: 'var(--color-danger)',
                                                                         flexShrink: 0,
                                                                     }}
                                                                 />
                                                                 <Typography
                                                                     variant="body2"
                                                                     sx={{
-                                                                        color: 'var(--text)',
+                                                                        color: 'var(--text-primary)',
                                                                         fontSize: '0.7rem',
                                                                         fontWeight: '600',
                                                                         fontFamily: 'JetBrains Mono, monospace',
@@ -236,11 +236,11 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                                                     width: 8,
                                                                                     height: 8,
                                                                                     borderRadius: '50%',
-                                                                                    backgroundColor: textureFile.exists ? '#4ade80' : '#f87171',
+                                                                                    backgroundColor: textureFile.exists ? 'var(--color-success)' : 'var(--color-danger)',
                                                                                     flexShrink: 0,
                                                                                 }}
                                                                             />
-                                                                            <Typography variant="body2" sx={{ color: 'var(--text-2)', fontSize: '0.7rem', wordBreak: 'break-all' }}>
+                                                                            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', fontSize: '0.7rem', wordBreak: 'break-all' }}>
                                                                                 {textureFile.path}
                                                                             </Typography>
                                                                         </Box>
@@ -268,11 +268,11 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                                     width: 8,
                                                                     height: 8,
                                                                     borderRadius: '50%',
-                                                                    backgroundColor: file.exists ? '#4ade80' : '#f87171',
+                                                                    backgroundColor: file.exists ? 'var(--color-success)' : 'var(--color-danger)',
                                                                     flexShrink: 0,
                                                                 }}
                                                             />
-                                                            <Typography variant="body2" sx={{ color: 'var(--text-2)', fontSize: '0.7rem', wordBreak: 'break-all' }}>
+                                                            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', fontSize: '0.7rem', wordBreak: 'break-all' }}>
                                                                 {file.path}
                                                             </Typography>
                                                         </Box>,
@@ -300,13 +300,13 @@ const EntriesPanel = React.memo(function EntriesPanel({
                             px: 2,
                         }}
                     >
-                        <Typography variant="h6" sx={{ color: 'var(--text-2)' }}>
+                        <Typography variant="h6" sx={{ color: 'var(--text-secondary)' }}>
                             No scanned data
                         </Typography>
-                        <Typography variant="body2" sx={{ color: 'var(--text-2)', textAlign: 'center' }}>
+                        <Typography variant="body2" sx={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
                             Drag and drop a source folder into Bumpath, or click "Add Source Folders" to begin.
                         </Typography>
-                        <Typography variant="body2" sx={{ color: 'var(--text-2)', opacity: 0.8, fontSize: '0.78rem' }}>
+                        <Typography variant="body2" sx={{ color: 'var(--text-secondary)', opacity: 0.8, fontSize: '0.78rem' }}>
                             Then select a main BIN and continue with Quick Repath (recommended) or the normal flow.
                         </Typography>
                     </Box>

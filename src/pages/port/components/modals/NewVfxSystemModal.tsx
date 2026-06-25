@@ -19,8 +19,8 @@ export default function NewVfxSystemModal({ open, onClose, newSystemName, setNew
     const btnBase: React.CSSProperties = {
         padding: '6px 14px',
         borderRadius: 6,
-        border: '1px solid rgba(255,255,255,0.08)',
-        fontFamily: 'JetBrains Mono, monospace',
+        border: '1px solid var(--border)',
+        fontFamily: 'var(--font-mono)',
         fontSize: '0.75rem',
         fontWeight: 600,
         cursor: 'pointer',
@@ -32,7 +32,7 @@ export default function NewVfxSystemModal({ open, onClose, newSystemName, setNew
 
     return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} onClick={onClose} />
+            <div style={{ position: 'absolute', inset: 0, background: 'color-mix(in oklab, black 65%, transparent)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} onClick={onClose} />
             <div
                 style={{
                     position: 'relative',
@@ -45,7 +45,7 @@ export default function NewVfxSystemModal({ open, onClose, newSystemName, setNew
                     backdropFilter: 'saturate(180%) blur(16px)',
                     WebkitBackdropFilter: 'saturate(180%) blur(16px)',
                     borderRadius: 16,
-                    boxShadow: '0 30px 70px rgba(0,0,0,0.55), 0 0 30px color-mix(in srgb, var(--accent2), transparent 82%)',
+                    boxShadow: '0 24px 48px -16px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.3)',
                     overflow: 'hidden',
                 }}
                 onClick={(e) => e.stopPropagation()}
@@ -53,14 +53,14 @@ export default function NewVfxSystemModal({ open, onClose, newSystemName, setNew
                 <div
                     style={{
                         height: 3,
-                        background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+                        background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))',
                         backgroundSize: '200% 100%',
                         animation: 'shimmer 3s linear infinite',
                         flexShrink: 0,
                     }}
                 />
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h2 style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)' }}>
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h2 style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>
                         New VFX System
                     </h2>
                     <button
@@ -73,9 +73,9 @@ export default function NewVfxSystemModal({ open, onClose, newSystemName, setNew
                             alignItems: 'center',
                             justifyContent: 'center',
                             fontSize: 13,
-                            color: 'rgba(255,255,255,0.5)',
-                            border: '1px solid rgba(255,255,255,0.08)',
-                            background: 'rgba(255,255,255,0.04)',
+                            color: 'var(--text-muted)',
+                            border: '1px solid var(--border)',
+                            background: 'var(--bg-tertiary)',
                             cursor: 'pointer',
                             outline: 'none',
                         }}
@@ -84,8 +84,8 @@ export default function NewVfxSystemModal({ open, onClose, newSystemName, setNew
                     </button>
                 </div>
                 <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    <div style={{ borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', padding: 14 }}>
-                        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--accent2)', marginBottom: 10 }}>
+                    <div style={{ borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: 14 }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--accent-secondary)', marginBottom: 10 }}>
                             System Name
                         </div>
                         <input
@@ -98,24 +98,24 @@ export default function NewVfxSystemModal({ open, onClose, newSystemName, setNew
                                 width: '100%',
                                 boxSizing: 'border-box',
                                 padding: '8px 12px',
-                                background: 'rgba(0,0,0,0.3)',
-                                color: 'var(--accent)',
-                                border: '1px solid rgba(255,255,255,0.10)',
+                                background: 'var(--bg-primary)',
+                                color: 'var(--accent-primary)',
+                                border: '1px solid var(--border)',
                                 borderRadius: 8,
                                 fontSize: '0.85rem',
-                                fontFamily: 'JetBrains Mono, monospace',
+                                fontFamily: 'var(--font-mono)',
                                 outline: 'none',
                             }}
                         />
-                        <div style={{ marginTop: 10, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: 'rgba(255,255,255,0.35)', fontStyle: 'italic', lineHeight: 1.5 }}>
+                        <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic', lineHeight: 1.5 }}>
                             Creates a minimal system with an empty emitters list and adds a resolver mapping.
                         </div>
                     </div>
                 </div>
-                <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                     <button
                         onClick={onCreate}
-                        style={{ ...btnBase, background: 'color-mix(in srgb, var(--accent2), transparent 90%)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--accent2)' }}
+                        style={{ ...btnBase, background: 'color-mix(in oklab, var(--accent-secondary) 10%, transparent)', border: '1px solid color-mix(in oklab, var(--accent-secondary) 35%, transparent)', color: 'var(--accent-secondary)' }}
                     >
                         Create
                     </button>

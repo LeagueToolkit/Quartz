@@ -66,20 +66,20 @@ const ConsoleWindow: React.FC<ConsoleWindowProps> = ({ open, onClose, logs = [],
     };
 
     const formatLogLine = (logLine: string, index: number) => {
-        // Color code different types of logs
-        let color = '#ffffff';
+        // Color code different types of logs by severity token
+        let color = 'var(--text-primary)';
         if (logLine.includes('❌') || logLine.includes('Error') || logLine.includes('Failed')) {
-            color = '#ff6b6b';
+            color = 'var(--color-danger)';
         } else if (logLine.includes('✅') || logLine.includes('Success') || logLine.includes('Completed')) {
-            color = '#51cf66';
+            color = 'var(--color-success)';
         } else if (logLine.includes('⚠️') || logLine.includes('Warning')) {
-            color = '#ffd43b';
+            color = 'var(--color-warning)';
         } else if (logLine.includes('🔗') || logLine.includes('Combining')) {
-            color = '#74c0fc';
+            color = 'var(--color-info)';
         } else if (logLine.includes('📋') || logLine.includes('Copying')) {
-            color = '#ffa8a8';
+            color = 'var(--text-secondary)';
         } else if (logLine.includes('🔧') || logLine.includes('Repathing')) {
-            color = '#ffd43b';
+            color = 'var(--color-warning)';
         }
 
         return (
@@ -90,9 +90,9 @@ const ConsoleWindow: React.FC<ConsoleWindowProps> = ({ open, onClose, logs = [],
                     fontSize: '12px',
                     color,
                     padding: '2px 8px',
-                    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderBottom: '1px solid var(--border)',
                     '&:hover': {
-                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        backgroundColor: 'var(--bg-hover)',
                     },
                 }}
             >
@@ -109,9 +109,9 @@ const ConsoleWindow: React.FC<ConsoleWindowProps> = ({ open, onClose, logs = [],
             fullWidth
             PaperProps={{
                 sx: {
-                    backgroundColor: 'rgba(20, 20, 30, 0.95)',
+                    backgroundColor: 'color-mix(in oklab, var(--bg-secondary) 95%, transparent)',
                     backdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    border: '1px solid var(--border)',
                     borderRadius: '16px',
                     minHeight: '600px',
                 },
@@ -122,15 +122,15 @@ const ConsoleWindow: React.FC<ConsoleWindowProps> = ({ open, onClose, logs = [],
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    color: '#ffffff',
-                    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                    color: 'var(--text-primary)',
+                    borderBottom: '1px solid var(--border)',
                     fontFamily: 'JetBrains Mono, monospace',
                     fontSize: '1.25rem',
                     fontWeight: 600,
                 }}
             >
                 🖥️ Bumpath Console
-                <IconButton onClick={onClose} sx={{ color: '#ffffff' }}>
+                <IconButton onClick={onClose} sx={{ color: 'var(--text-primary)' }}>
                     <CloseIcon />
                 </IconButton>
             </DialogTitle>
@@ -140,8 +140,8 @@ const ConsoleWindow: React.FC<ConsoleWindowProps> = ({ open, onClose, logs = [],
                 <Box
                     sx={{
                         padding: '16px',
-                        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-                        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                        borderBottom: '1px solid var(--border)',
+                        backgroundColor: 'var(--bg-tertiary)',
                     }}
                 >
                     <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
@@ -153,32 +153,32 @@ const ConsoleWindow: React.FC<ConsoleWindowProps> = ({ open, onClose, logs = [],
                             sx={{
                                 flexGrow: 1,
                                 '& .MuiOutlinedInput-root': {
-                                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                                    color: '#ffffff',
+                                    backgroundColor: 'var(--bg-tertiary)',
+                                    color: 'var(--text-primary)',
                                     '& fieldset': {
-                                        borderColor: 'rgba(255, 255, 255, 0.2)',
+                                        borderColor: 'var(--border)',
                                     },
                                     '&:hover fieldset': {
-                                        borderColor: 'rgba(255, 255, 255, 0.3)',
+                                        borderColor: 'var(--border-strong)',
                                     },
                                     '&.Mui-focused fieldset': {
-                                        borderColor: '#74c0fc',
+                                        borderColor: 'var(--accent-primary)',
                                     },
                                 },
                                 '& .MuiInputBase-input': {
-                                    color: '#ffffff',
+                                    color: 'var(--text-primary)',
                                 },
                             }}
                         />
-                        <IconButton onClick={handleClear} sx={{ color: '#ffffff' }}>
+                        <IconButton onClick={handleClear} sx={{ color: 'var(--text-primary)' }}>
                             <ClearIcon />
                         </IconButton>
                         {onRefresh && (
-                            <IconButton onClick={onRefresh} sx={{ color: '#ffffff' }}>
+                            <IconButton onClick={onRefresh} sx={{ color: 'var(--text-primary)' }}>
                                 <RefreshIcon />
                             </IconButton>
                         )}
-                        <IconButton onClick={handleDownload} sx={{ color: '#ffffff' }}>
+                        <IconButton onClick={handleDownload} sx={{ color: 'var(--text-primary)' }}>
                             <DownloadIcon />
                         </IconButton>
                     </Box>
@@ -190,19 +190,19 @@ const ConsoleWindow: React.FC<ConsoleWindowProps> = ({ open, onClose, logs = [],
                     sx={{
                         height: '400px',
                         overflow: 'auto',
-                        backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                        backgroundColor: 'var(--bg-primary)',
                         '&::-webkit-scrollbar': {
                             width: '8px',
                         },
                         '&::-webkit-scrollbar-track': {
-                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                            backgroundColor: 'var(--bg-secondary)',
                         },
                         '&::-webkit-scrollbar-thumb': {
-                            backgroundColor: 'rgba(255, 255, 255, 0.3)',
+                            backgroundColor: 'var(--bg-hover)',
                             borderRadius: '4px',
                         },
                         '&::-webkit-scrollbar-thumb:hover': {
-                            backgroundColor: 'rgba(255, 255, 255, 0.5)',
+                            backgroundColor: 'var(--border-strong)',
                         },
                     }}
                 >
@@ -211,7 +211,7 @@ const ConsoleWindow: React.FC<ConsoleWindowProps> = ({ open, onClose, logs = [],
                             sx={{
                                 padding: '20px',
                                 textAlign: 'center',
-                                color: 'rgba(255, 255, 255, 0.5)',
+                                color: 'var(--text-muted)',
                                 fontStyle: 'italic',
                             }}
                         >
@@ -226,11 +226,11 @@ const ConsoleWindow: React.FC<ConsoleWindowProps> = ({ open, onClose, logs = [],
                 <Box
                     sx={{
                         padding: '12px 16px',
-                        borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-                        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                        borderTop: '1px solid var(--border)',
+                        backgroundColor: 'var(--bg-tertiary)',
                     }}
                 >
-                    <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                    <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
                         Showing {filteredLogs.length} of {logs.length} log entries
                         {filter && ` (filtered by "${filter}")`}
                     </Typography>
@@ -240,11 +240,11 @@ const ConsoleWindow: React.FC<ConsoleWindowProps> = ({ open, onClose, logs = [],
             <DialogActions
                 sx={{
                     padding: '16px',
-                    borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-                    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                    borderTop: '1px solid var(--border)',
+                    backgroundColor: 'var(--bg-tertiary)',
                 }}
             >
-                <Button onClick={onClose} sx={{ color: '#ffffff' }}>
+                <Button onClick={onClose} sx={{ color: 'var(--text-primary)' }}>
                     Close
                 </Button>
             </DialogActions>

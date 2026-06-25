@@ -55,19 +55,19 @@ const CelestiaTutorialOverlays = React.memo(function CelestiaTutorialOverlays({
                                 ...(panelStyle as object),
                                 opacity: 0.95,
                                 pointerEvents: 'none',
-                                border: '2px solid var(--accent)',
-                                boxShadow: '0 0 20px rgba(139, 92, 246, 0.5)',
+                                border: '2px solid var(--accent-primary)',
+                                boxShadow: '0 0 16px color-mix(in oklab, var(--accent-primary) 40%, transparent)',
                                 display: 'flex',
                                 flexDirection: 'column',
                                 overflow: 'hidden',
                             }}
                         >
                             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-                                <Box sx={{ p: 2, borderBottom: '1px solid var(--glass-border)', flexShrink: 0 }}>
+                                <Box sx={{ p: 2, borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                            <FormatListBulletedIcon sx={{ color: 'var(--accent)', fontSize: '1.2rem' }} />
-                                            <Typography variant="h6" sx={{ color: 'var(--accent)', fontSize: '1rem' }}>
+                                            <FormatListBulletedIcon sx={{ color: 'var(--accent-primary)', fontSize: '1.2rem' }} />
+                                            <Typography variant="h6" sx={{ color: 'var(--accent-primary)', fontSize: '1rem' }}>
                                                 Source BINs:
                                             </Typography>
                                         </Box>
@@ -79,11 +79,11 @@ const CelestiaTutorialOverlays = React.memo(function CelestiaTutorialOverlays({
                                                 px: 1.5,
                                                 py: 0.5,
                                                 borderRadius: 1,
-                                                backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                                                border: '1px solid rgba(139, 92, 246, 0.2)',
+                                                backgroundColor: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
+                                                border: '1px solid color-mix(in oklab, var(--accent-primary) 24%, transparent)',
                                             }}
                                         >
-                                            <Typography variant="body2" sx={{ color: '#8b5cf6', fontSize: '0.7rem', fontWeight: '600' }}>
+                                            <Typography variant="body2" sx={{ color: 'var(--accent-primary)', fontSize: '0.7rem', fontWeight: '600' }}>
                                                 {simulatedBinSelected ? '1' : '0'} / 3 selected
                                             </Typography>
                                         </Box>
@@ -99,7 +99,7 @@ const CelestiaTutorialOverlays = React.memo(function CelestiaTutorialOverlays({
                                                     px: 1,
                                                     py: 0.75,
                                                     minHeight: 'auto',
-                                                    backgroundColor: idx % 2 === 0 ? 'rgba(139, 92, 246, 0.02)' : 'transparent',
+                                                    backgroundColor: idx % 2 === 0 ? 'color-mix(in oklab, var(--accent-primary) 4%, transparent)' : 'transparent',
                                                     borderRadius: '4px',
                                                     mb: 0.25,
                                                     position: 'relative',
@@ -115,8 +115,8 @@ const CelestiaTutorialOverlays = React.memo(function CelestiaTutorialOverlays({
                                                             width: '24px',
                                                             height: '24px',
                                                             borderRadius: '50%',
-                                                            backgroundColor: 'rgba(139, 92, 246, 0.3)',
-                                                            border: '2px solid var(--accent)',
+                                                            backgroundColor: 'color-mix(in oklab, var(--accent-primary) 30%, transparent)',
+                                                            border: '2px solid var(--accent-primary)',
                                                             display: 'flex',
                                                             alignItems: 'center',
                                                             justifyContent: 'center',
@@ -128,14 +128,14 @@ const CelestiaTutorialOverlays = React.memo(function CelestiaTutorialOverlays({
                                                             },
                                                         }}
                                                     >
-                                                        <Box sx={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--accent)' }} />
+                                                        <Box sx={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--accent-primary)' }} />
                                                     </Box>
                                                 )}
                                                 <Checkbox
                                                     checked={bin.animateClick ? simulatedBinSelected : false}
                                                     sx={{
-                                                        color: '#8b5cf6',
-                                                        '&.Mui-checked': { color: '#7c3aed' },
+                                                        color: 'var(--accent-primary)',
+                                                        '&.Mui-checked': { color: 'var(--accent-secondary)' },
                                                         p: 0.25,
                                                         mr: 1,
                                                         position: 'relative',
@@ -146,15 +146,15 @@ const CelestiaTutorialOverlays = React.memo(function CelestiaTutorialOverlays({
                                                 />
                                                 <Box sx={{ flex: 1, minWidth: 0 }}>
                                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
-                                                        <Typography variant="body2" sx={{ color: 'var(--accent2)', fontSize: '0.65rem', opacity: 0.7, fontFamily: 'JetBrains Mono, monospace' }}>
+                                                        <Typography variant="body2" sx={{ color: 'var(--text-secondary)', fontSize: '0.65rem', opacity: 0.7, fontFamily: 'JetBrains Mono, monospace' }}>
                                                             {bin.path.split('\\').slice(0, -1).join('\\')}
                                                         </Typography>
                                                     </Box>
                                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                                        <Typography variant="body2" sx={{ color: 'var(--accent)', fontSize: '0.75rem', fontWeight: '600', fontFamily: 'JetBrains Mono, monospace' }}>
+                                                        <Typography variant="body2" sx={{ color: 'var(--accent-primary)', fontSize: '0.75rem', fontWeight: '600', fontFamily: 'JetBrains Mono, monospace' }}>
                                                             {bin.path.split('\\').pop()}
                                                         </Typography>
-                                                        <Typography variant="body2" sx={{ color: '#06b6d4', fontSize: '0.7rem', fontWeight: '700', fontFamily: 'JetBrains Mono, monospace', backgroundColor: 'rgba(6, 182, 212, 0.1)', px: 0.5, py: 0.25, borderRadius: '3px' }}>
+                                                        <Typography variant="body2" sx={{ color: 'var(--color-info)', fontSize: '0.7rem', fontWeight: '700', fontFamily: 'JetBrains Mono, monospace', backgroundColor: 'color-mix(in oklab, var(--color-info) 12%, transparent)', px: 0.5, py: 0.25, borderRadius: '3px' }}>
                                                             .{bin.ext}
                                                         </Typography>
                                                     </Box>
@@ -194,9 +194,9 @@ const CelestiaTutorialOverlays = React.memo(function CelestiaTutorialOverlays({
                                     width: '100%',
                                     height: '100%',
                                     borderRadius: '50%',
-                                    backgroundColor: 'rgba(139, 92, 246, 0.6)',
-                                    border: '2px solid var(--accent)',
-                                    boxShadow: '0 0 10px rgba(139, 92, 246, 0.8)',
+                                    backgroundColor: 'color-mix(in oklab, var(--accent-primary) 60%, transparent)',
+                                    border: '2px solid var(--accent-primary)',
+                                    boxShadow: '0 0 8px color-mix(in oklab, var(--accent-primary) 70%, transparent)',
                                 }}
                             />
                         </Box>
@@ -217,8 +217,8 @@ const CelestiaTutorialOverlays = React.memo(function CelestiaTutorialOverlays({
                             p: 1,
                             opacity: 0.95,
                             pointerEvents: 'none',
-                            border: '2px solid var(--accent)',
-                            boxShadow: '0 0 20px rgba(139, 92, 246, 0.5)',
+                            border: '2px solid var(--accent-primary)',
+                            boxShadow: '0 0 16px color-mix(in oklab, var(--accent-primary) 40%, transparent)',
                             display: 'flex',
                             flexDirection: 'column',
                         }}
@@ -230,8 +230,8 @@ const CelestiaTutorialOverlays = React.memo(function CelestiaTutorialOverlays({
                                     sx={{
                                         px: 1,
                                         py: 0.5,
-                                        borderBottom: '1px solid var(--glass-border)',
-                                        '&:hover': { backgroundColor: 'color-mix(in srgb, var(--accent2), transparent 95%)' },
+                                        borderBottom: '1px solid var(--border)',
+                                        '&:hover': { backgroundColor: 'var(--bg-hover)' },
                                     }}
                                 >
                                     <Box sx={{ width: '100%' }}>
@@ -239,8 +239,8 @@ const CelestiaTutorialOverlays = React.memo(function CelestiaTutorialOverlays({
                                             <IconButton
                                                 size="small"
                                                 sx={{
-                                                    color: '#06b6d4',
-                                                    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                                                    color: 'var(--color-info)',
+                                                    backgroundColor: 'color-mix(in oklab, var(--color-info) 12%, transparent)',
                                                     borderRadius: '6px',
                                                     width: 24,
                                                     height: 24,
@@ -253,8 +253,8 @@ const CelestiaTutorialOverlays = React.memo(function CelestiaTutorialOverlays({
                                             <Checkbox
                                                 checked
                                                 sx={{
-                                                    color: '#10b981',
-                                                    '&.Mui-checked': { color: '#059669' },
+                                                    color: 'var(--color-success)',
+                                                    '&.Mui-checked': { color: 'var(--color-success)' },
                                                     p: 0.25,
                                                     mr: 1,
                                                     '& .MuiSvgIcon-root': { fontSize: '1.1rem' },
@@ -263,16 +263,16 @@ const CelestiaTutorialOverlays = React.memo(function CelestiaTutorialOverlays({
 
                                             <Box sx={{ flex: 1, minWidth: 0 }}>
                                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25, flexWrap: 'wrap' }}>
-                                                    <Typography variant="body2" sx={{ color: 'var(--accent)', fontSize: '0.7rem', fontWeight: '600', fontFamily: 'JetBrains Mono, monospace', flex: '1 1 auto', minWidth: 0 }}>
+                                                    <Typography variant="body2" sx={{ color: 'var(--accent-primary)', fontSize: '0.7rem', fontWeight: '600', fontFamily: 'JetBrains Mono, monospace', flex: '1 1 auto', minWidth: 0 }}>
                                                         {entry.id}
                                                     </Typography>
-                                                    <Box sx={{ backgroundColor: 'rgba(6, 182, 212, 0.1)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '3px', px: 0.5, py: 0.25, display: 'inline-flex', alignItems: 'center', flex: '0 0 auto' }}>
-                                                        <Typography variant="body2" sx={{ color: '#06b6d4', fontSize: '0.65rem', fontWeight: '600', fontFamily: 'JetBrains Mono, monospace', lineHeight: 1, whiteSpace: 'nowrap' }}>
+                                                    <Box sx={{ backgroundColor: 'color-mix(in oklab, var(--color-info) 12%, transparent)', border: '1px solid color-mix(in oklab, var(--color-info) 24%, transparent)', borderRadius: '3px', px: 0.5, py: 0.25, display: 'inline-flex', alignItems: 'center', flex: '0 0 auto' }}>
+                                                        <Typography variant="body2" sx={{ color: 'var(--color-info)', fontSize: '0.65rem', fontWeight: '600', fontFamily: 'JetBrains Mono, monospace', lineHeight: 1, whiteSpace: 'nowrap' }}>
                                                             {entry.prefix}
                                                         </Typography>
                                                     </Box>
                                                 </Box>
-                                                <Typography variant="body2" sx={{ color: 'var(--accent2)', fontSize: '0.65rem', fontFamily: 'JetBrains Mono, monospace', opacity: 0.7, display: 'block', width: '100%' }}>
+                                                <Typography variant="body2" sx={{ color: 'var(--text-secondary)', fontSize: '0.65rem', fontFamily: 'JetBrains Mono, monospace', opacity: 0.7, display: 'block', width: '100%' }}>
                                                     ID: {entry.id}
                                                 </Typography>
                                             </Box>

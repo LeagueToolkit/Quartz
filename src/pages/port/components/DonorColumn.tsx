@@ -58,8 +58,8 @@ export default function DonorColumn(props: DonorColumnProps) {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        background: 'color-mix(in srgb, var(--accent2) 12%, transparent)',
-                        border: '2px dashed var(--accent2)',
+                        background: 'color-mix(in oklab, var(--accent-secondary) 12%, transparent)',
+                        border: '2px dashed var(--accent-secondary)',
                         borderRadius: '8px',
                         transition: 'all 0.15s ease-out',
                     }}
@@ -68,11 +68,11 @@ export default function DonorColumn(props: DonorColumnProps) {
                         style={{
                             padding: '10px 16px',
                             borderRadius: '6px',
-                            border: '1px dashed var(--accent2)',
-                            color: 'var(--accent2)',
-                            fontFamily: 'JetBrains Mono, monospace',
+                            border: '1px dashed var(--accent-secondary)',
+                            color: 'var(--accent-secondary)',
+                            fontFamily: 'var(--font-mono)',
                             fontSize: '13px',
-                            background: 'color-mix(in srgb, var(--accent2), transparent 80%)',
+                            background: 'color-mix(in oklab, var(--accent-secondary) 20%, transparent)',
                         }}
                     >
                         Drop .bin or .py to load as Donor
@@ -86,13 +86,13 @@ export default function DonorColumn(props: DonorColumnProps) {
                     sx={{
                         flex: 1,
                         padding: '0 16px',
-                        fontFamily: 'JetBrains Mono, monospace',
+                        fontFamily: 'var(--font-mono)',
                         fontSize: '13px',
                         fontWeight: 700,
                         height: '36px',
-                        background: 'color-mix(in srgb, var(--accent2) 14%, transparent)',
-                        border: '1px solid color-mix(in srgb, var(--accent2), transparent 70%)',
-                        color: 'var(--accent2)',
+                        background: 'color-mix(in oklab, var(--accent-secondary) 14%, transparent)',
+                        border: '1px solid color-mix(in oklab, var(--accent-secondary) 30%, transparent)',
+                        color: 'var(--accent-secondary)',
                         borderRadius: '4px',
                         letterSpacing: '0.05em',
                         textTransform: 'uppercase',
@@ -101,11 +101,10 @@ export default function DonorColumn(props: DonorColumnProps) {
                         transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                         position: 'relative',
                         '&:hover': {
-                            background: 'color-mix(in srgb, var(--accent2) 22%, transparent)',
-                            borderColor: 'var(--accent2)',
-                            textShadow: '0 0 8px color-mix(in srgb, var(--accent2), transparent 50%)',
+                            background: 'color-mix(in oklab, var(--accent-secondary) 22%, transparent)',
+                            borderColor: 'var(--accent-secondary)',
                         },
-                        '&:disabled': { opacity: 0.5, cursor: 'not-allowed', borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' },
+                        '&:disabled': { opacity: 0.5, cursor: 'not-allowed', borderColor: 'var(--border)', color: 'var(--text-muted)' },
                     }}
                 >
                     {isProcessing ? 'Processing...' : 'Open Donor Bin'}
@@ -124,16 +123,15 @@ export default function DonorColumn(props: DonorColumnProps) {
                                 height: '40px',
                                 p: 0,
                                 borderRadius: '10px',
-                                border: '1px solid color-mix(in srgb, var(--accent2), transparent 62%)',
-                                background: 'color-mix(in srgb, var(--accent2) 14%, transparent)',
-                                color: 'var(--accent2)',
+                                border: '1px solid color-mix(in oklab, var(--accent-secondary) 38%, transparent)',
+                                background: 'color-mix(in oklab, var(--accent-secondary) 14%, transparent)',
+                                color: 'var(--accent-secondary)',
                                 transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                                 '&:hover': {
-                                    background: 'color-mix(in srgb, var(--accent2) 24%, transparent)',
-                                    borderColor: 'var(--accent2)',
-                                    boxShadow: '0 0 10px color-mix(in srgb, var(--accent2), transparent 55%)',
+                                    background: 'color-mix(in oklab, var(--accent-secondary) 24%, transparent)',
+                                    borderColor: 'var(--accent-secondary)',
                                 },
-                                '&.Mui-disabled': { color: 'rgba(255,255,255,0.3)', borderColor: 'rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.02)' },
+                                '&.Mui-disabled': { color: 'var(--text-muted)', borderColor: 'var(--border)', background: 'var(--bg-tertiary)' },
                             }}
                         >
                             <SportsEsportsIcon sx={{ fontSize: 16 }} />
@@ -147,8 +145,8 @@ export default function DonorColumn(props: DonorColumnProps) {
                     initialValue={donorFilterInput}
                     placeholder={enableDonorEmitterSearch ? 'Filter by Particle or Emitter Name' : 'Filter by Particle Name Only'}
                     onChange={filterDonorParticles}
-                    accentVar="var(--accent2)"
-                    style={{ color: 'var(--accent2)' }}
+                    accentVar="var(--accent-secondary)"
+                    style={{ color: 'var(--accent-secondary)' }}
                     className="port-donor-search"
                 />
                 <button
@@ -159,22 +157,21 @@ export default function DonorColumn(props: DonorColumnProps) {
                         height: '40px',
                         minWidth: '52px',
                         padding: '0 14px',
-                        background: enableDonorEmitterSearch ? 'color-mix(in srgb, var(--accent2) 15%, transparent)' : 'color-mix(in srgb, var(--accent2) 12%, transparent)',
-                        border: enableDonorEmitterSearch ? '1px solid var(--accent2)' : '1px solid color-mix(in srgb, var(--accent2) 35%, transparent)',
+                        background: enableDonorEmitterSearch ? 'color-mix(in oklab, var(--accent-secondary) 18%, transparent)' : 'color-mix(in oklab, var(--accent-secondary) 12%, transparent)',
+                        border: enableDonorEmitterSearch ? '1px solid var(--accent-secondary)' : '1px solid color-mix(in oklab, var(--accent-secondary) 35%, transparent)',
                         borderRadius: '10px',
-                        color: 'var(--accent2)',
-                        fontFamily: 'JetBrains Mono, monospace',
+                        color: 'var(--accent-secondary)',
+                        fontFamily: 'var(--font-mono)',
                         fontSize: '12px',
                         cursor: 'pointer',
                         transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                        boxShadow: enableDonorEmitterSearch ? '0 0 10px color-mix(in srgb, var(--accent2) 15%, transparent)' : 'none',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         boxSizing: 'border-box',
                     }}
                 >
-                    <SearchIcon sx={{ fontSize: 16, color: 'var(--accent2)', opacity: enableDonorEmitterSearch ? 1 : 0.78 }} />
+                    <SearchIcon sx={{ fontSize: 16, color: 'var(--accent-secondary)', opacity: enableDonorEmitterSearch ? 1 : 0.78 }} />
                 </button>
             </div>
 
@@ -189,9 +186,9 @@ export default function DonorColumn(props: DonorColumnProps) {
                 ) : (
                     <div
                         style={{
-                            color: 'var(--accent2)',
+                            color: 'var(--text-muted)',
                             fontSize: '16px',
-                            fontFamily: 'JetBrains Mono, monospace',
+                            fontFamily: 'var(--font-mono)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',

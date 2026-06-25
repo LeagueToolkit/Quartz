@@ -80,6 +80,8 @@ export interface SplitterFile {
     nodeId?: string;
     pane?: Pane;
     isWem?: boolean;
+    /* Raw audio bytes (WEM/WAV/OGG) of the source node, when opened from the tree. */
+    data?: Uint8Array;
 }
 
 export interface SplitterSegment {

@@ -12,17 +12,17 @@ export default function BnkLoadingOverlay({ isLoading, autoExtractOpen, statusMe
             {isLoading && <LinearProgress sx={{ height: 2 }} />}
             <Backdrop
                 sx={{
-                    color: 'var(--accent)',
+                    color: 'var(--accent-primary)',
                     zIndex: (theme) => theme.zIndex.drawer + 1,
                     flexDirection: 'column',
                     gap: 2,
                     backdropFilter: 'blur(8px)',
-                    background: 'rgba(0,0,0,0.7)',
+                    background: 'color-mix(in oklab, var(--bg-primary) 70%, transparent)',
                 }}
                 open={isLoading && autoExtractOpen === false}
             >
                 <CircularProgress color="inherit" />
-                <Typography sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem', color: 'white' }}>
+                <Typography sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
                     {statusMessage}
                 </Typography>
             </Backdrop>

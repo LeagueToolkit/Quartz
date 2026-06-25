@@ -10,7 +10,7 @@ interface ParticleSystemListProps extends ListSharedProps {
 export default function ParticleSystemList({ systems, isTarget, ...otherProps }: ParticleSystemListProps) {
     if (!systems || systems.length === 0) {
         return (
-            <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--accent)' }}>{isTarget ? 'No target bin loaded' : 'No donor bin loaded'}</div>
+            <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)' }}>{isTarget ? 'No target bin loaded' : 'No donor bin loaded'}</div>
         );
     }
 

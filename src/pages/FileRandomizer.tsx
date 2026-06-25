@@ -280,33 +280,28 @@ export function FileRandomizer() {
 
     // ─── Modern style helpers ──────────────────────────────────────────────────
     const panelSx = {
-        background: 'rgba(255,255,255,0.026)', border: '1px solid rgba(255,255,255,0.055)',
-        borderRadius: '12px', p: { xs: 1.25, sm: 1.5 }, position: 'relative', overflow: 'hidden',
-        '&::before': {
-            content: '""', position: 'absolute', top: 0, left: '20%', right: '20%', height: '1px',
-            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)',
-            pointerEvents: 'none',
-        },
+        background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-lg)', p: { xs: 1.25, sm: 1.5 }, position: 'relative', overflow: 'hidden',
     } as const;
     const inputSx = {
         '& .MuiOutlinedInput-root': {
-            background: 'rgba(255,255,255,0.03)', color: 'var(--text)', fontSize: '0.8rem', borderRadius: '8px',
-            '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-            '&:hover fieldset': { borderColor: 'color-mix(in srgb, var(--accent) 50%, transparent)' },
-            '&.Mui-focused fieldset': { borderColor: 'var(--accent)', borderWidth: '1px' },
+            background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: '0.8rem', borderRadius: 'var(--radius-sm)',
+            '& fieldset': { borderColor: 'var(--border)' },
+            '&:hover fieldset': { borderColor: 'color-mix(in oklab, var(--accent-primary) 30%, var(--border))' },
+            '&.Mui-focused fieldset': { borderColor: 'var(--accent-primary)', borderWidth: '1px' },
         },
-        '& .MuiInputBase-input': { color: 'var(--text)', '&::placeholder': { color: 'rgba(255,255,255,0.25)', opacity: 1 } },
+        '& .MuiInputBase-input': { color: 'var(--text-primary)', '&::placeholder': { color: 'var(--text-muted)', opacity: 1 } },
     } as const;
-    const labelStyle = { color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem', cursor: 'pointer', userSelect: 'none', fontFamily: 'inherit' } as const;
-    const radioStyle = { width: 13, height: 13, accentColor: 'var(--accent)', cursor: 'pointer', marginRight: 4 } as const;
-    const checkStyle = { width: 13, height: 13, accentColor: 'var(--accent)', cursor: 'pointer', marginRight: 6 } as const;
+    const labelStyle = { color: 'var(--text-secondary)', fontSize: '0.7rem', cursor: 'pointer', userSelect: 'none', fontFamily: 'inherit' } as const;
+    const radioStyle = { width: 13, height: 13, accentColor: 'var(--accent-primary)', cursor: 'pointer', marginRight: 4 } as const;
+    const checkStyle = { width: 13, height: 13, accentColor: 'var(--accent-primary)', cursor: 'pointer', marginRight: 6 } as const;
     const modePillSx = (active: boolean) => ({
-        px: 1.35, py: 0.45, borderRadius: '5px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.02em',
-        background: active ? 'color-mix(in srgb, var(--accent) 14%, transparent)' : 'transparent',
-        color: active ? 'var(--accent)' : 'rgba(255,255,255,0.28)',
-        border: active ? '1px solid color-mix(in srgb, var(--accent) 28%, transparent)' : '1px solid transparent',
-        transition: 'all 0.18s ease', userSelect: 'none',
-        '&:hover': { color: active ? 'var(--accent)' : 'rgba(255,255,255,0.5)' },
+        px: 1.35, py: 0.45, borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.02em',
+        background: active ? 'color-mix(in oklab, var(--accent-primary) 14%, transparent)' : 'transparent',
+        color: active ? 'var(--accent-primary)' : 'var(--text-muted)',
+        border: active ? '1px solid color-mix(in oklab, var(--accent-primary) 28%, transparent)' : '1px solid transparent',
+        transition: 'all var(--motion-fast)', userSelect: 'none',
+        '&:hover': { color: active ? 'var(--accent-primary)' : 'var(--text-secondary)' },
     } as const);
 
     const startDisabled = !isRunning && (mode === 'randomizer'
@@ -314,20 +309,20 @@ export function FileRandomizer() {
         : (renamerMode === 'replace' ? (!textToFind.trim() || !targetFolder) : (!targetFolder || (!prefixToAdd.trim() && !suffixToAdd.trim()))));
 
     return (
-        <Box className="universal-file-randomizer-root" sx={{ height: '100%', minHeight: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: 'var(--text)', overflow: 'hidden', position: 'relative' }}>
+        <Box className="universal-file-randomizer-root" sx={{ height: '100%', minHeight: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)', color: 'var(--text-primary)', overflow: 'hidden', position: 'relative' }}>
 
             {/* ── Page header ── */}
-            <Box sx={{ flexShrink: 0, px: { xs: 2, sm: 2.5 }, py: { xs: 1.1, sm: 1.35 }, borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 1.5, position: 'relative', zIndex: 2 }}>
-                <FolderIcon sx={{ color: 'var(--accent)', fontSize: 18 }} />
+            <Box sx={{ flexShrink: 0, px: { xs: 2, sm: 2.5 }, py: { xs: 1.1, sm: 1.35 }, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 1.5, position: 'relative', zIndex: 2 }}>
+                <FolderIcon sx={{ color: 'var(--accent-primary)', fontSize: 18 }} />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)', lineHeight: 1.2 }}>File Handler</Typography>
-                    <Typography sx={{ fontSize: '0.67rem', color: 'var(--text-2)', opacity: 0.5, mt: 0.1, lineHeight: 1 }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', lineHeight: 1.2 }}>File Handler</Typography>
+                    <Typography sx={{ fontSize: '0.67rem', color: 'var(--text-muted)', mt: 0.1, lineHeight: 1 }}>
                         {mode === 'randomizer' ? 'Randomly swap files with your collection' : 'Rename files with text operations'}
                     </Typography>
                 </Box>
 
                 {/* Mode toggle pills */}
-                <Box sx={{ display: 'flex', gap: '3px', background: 'rgba(0,0,0,0.25)', borderRadius: '8px', p: '3px' }}>
+                <Box sx={{ display: 'flex', gap: '3px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', p: '3px' }}>
                     {([['randomizer', 'Randomizer'], ['renamer', 'Renamer']] as const).map(([key, lbl]) => (
                         <Box key={key} onClick={() => setMode(key)} sx={modePillSx(mode === key)}>{lbl}</Box>
                     ))}
@@ -336,12 +331,12 @@ export function FileRandomizer() {
                 {/* Reset + Settings */}
                 <Box sx={{ display: 'flex', gap: 0.25 }}>
                     <Tooltip title="Reset" arrow>
-                        <IconButton size="small" onClick={reset} sx={{ color: 'rgba(255,255,255,0.35)', '&:hover': { color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 8%, transparent)' } }}>
+                        <IconButton size="small" onClick={reset} sx={{ color: 'var(--text-muted)', '&:hover': { color: 'var(--accent-primary)', background: 'color-mix(in oklab, var(--accent-primary) 8%, transparent)' } }}>
                             <RefreshIcon sx={{ fontSize: 17 }} />
                         </IconButton>
                     </Tooltip>
                     <Tooltip title="Settings" arrow>
-                        <IconButton size="small" onClick={() => setShowSettings(true)} sx={{ color: 'rgba(255,255,255,0.35)', '&:hover': { color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 8%, transparent)' } }}>
+                        <IconButton size="small" onClick={() => setShowSettings(true)} sx={{ color: 'var(--text-muted)', '&:hover': { color: 'var(--accent-primary)', background: 'color-mix(in oklab, var(--accent-primary) 8%, transparent)' } }}>
                             <SettingsIcon sx={{ fontSize: 17 }} />
                         </IconButton>
                     </Tooltip>
@@ -355,24 +350,24 @@ export function FileRandomizer() {
                 <Box sx={{
                     width: { xs: '100%', sm: '300px', md: '320px' }, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 1, minHeight: 0, overflowY: 'auto',
                     '&::-webkit-scrollbar': { width: 4 },
-                    '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.1)', borderRadius: 2 },
+                    '&::-webkit-scrollbar-thumb': { background: 'var(--border-strong)', borderRadius: 2 },
                 }}>
 
                     {/* — Mode-specific inputs — */}
                     <Box className="glass-section" sx={panelSx}>
                         {mode === 'randomizer' ? (
                             <>
-                                <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.85, mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent-primary)', mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
                                     <ShuffleIcon sx={{ fontSize: 13 }} /> Replacement Files
                                 </Typography>
                                 <Button className="glass-button" onClick={handleReplacementFilesSelect} disabled={isRunning} startIcon={<FolderOpenIcon sx={{ fontSize: '15px !important' }} />}
-                                    sx={{ width: '100%', background: 'color-mix(in srgb, var(--accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)', color: 'var(--accent)', fontWeight: 600, fontSize: '0.78rem', textTransform: 'none', borderRadius: '8px', py: 0.75, transition: 'all 0.2s ease', '&:hover': { background: 'color-mix(in srgb, var(--accent) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--accent) 55%, transparent)', transform: 'translateY(-1px)' }, '&:disabled': { opacity: 0.35, transform: 'none' } }}>
+                                    sx={{ width: '100%', background: 'color-mix(in oklab, var(--accent-primary) 8%, transparent)', border: '1px solid color-mix(in oklab, var(--accent-primary) 30%, transparent)', color: 'var(--accent-primary)', fontWeight: 600, fontSize: '0.78rem', textTransform: 'none', borderRadius: 'var(--radius-sm)', py: 0.75, transition: 'all var(--motion-fast)', '&:hover': { background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)', borderColor: 'color-mix(in oklab, var(--accent-primary) 55%, transparent)', transform: 'translateY(-1px)' }, '&:disabled': { opacity: 0.35, transform: 'none' } }}>
                                     Select Files
                                 </Button>
                                 {replacementFiles.length > 0 && (
-                                    <Box sx={{ mt: 0.75, px: 1, py: 0.5, borderRadius: '7px', background: 'color-mix(in srgb, var(--accent) 7%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 18%, transparent)', display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                                        <Typography sx={{ fontSize: '0.72rem', color: 'var(--accent)', fontWeight: 600 }}>{replacementFiles.length} files</Typography>
-                                        <Typography sx={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)' }}>
+                                    <Box sx={{ mt: 0.75, px: 1, py: 0.5, borderRadius: 'var(--radius-sm)', background: 'color-mix(in oklab, var(--accent-primary) 7%, transparent)', border: '1px solid color-mix(in oklab, var(--accent-primary) 18%, transparent)', display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                        <Typography sx={{ fontSize: '0.72rem', color: 'var(--accent-primary)', fontWeight: 600 }}>{replacementFiles.length} files</Typography>
+                                        <Typography sx={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
                                             {(() => { const ext = [...new Set(replacementFiles.map((f) => f.extension))]; return ext.length === 1 ? ext[0].toUpperCase() : `${ext.length} types`; })()}
                                         </Typography>
                                     </Box>
@@ -380,27 +375,27 @@ export function FileRandomizer() {
                             </>
                         ) : (
                             <>
-                                <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.85, mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent-primary)', mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
                                     <CopyIcon sx={{ fontSize: 13 }} /> File Renaming
                                 </Typography>
                                 {/* Renamer sub-mode tabs */}
-                                <Box sx={{ display: 'flex', gap: '3px', background: 'rgba(0,0,0,0.2)', borderRadius: '7px', p: '3px', mb: 1.25 }}>
+                                <Box sx={{ display: 'flex', gap: '3px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', p: '3px', mb: 1.25 }}>
                                     {([['replace', 'Replace Text'], ['add', 'Prefix / Suffix']] as const).map(([key, lbl]) => (
                                         <Box key={key} onClick={() => setRenamerMode(key)} sx={{ flex: 1, textAlign: 'center', ...modePillSx(renamerMode === key) }}>{lbl}</Box>
                                     ))}
                                 </Box>
                                 {renamerMode === 'replace' ? (
                                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                                        <Typography sx={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.38)', mb: 0.25 }}>Find and replace text in filenames:</Typography>
+                                        <Typography sx={{ fontSize: '0.67rem', color: 'var(--text-muted)', mb: 0.25 }}>Find and replace text in filenames:</Typography>
                                         <TextField fullWidth size="small" value={textToFind} onChange={(e) => setTextToFind(e.target.value)} placeholder="Text to find..." sx={inputSx} />
                                         <TextField fullWidth size="small" value={textToReplaceWith} onChange={(e) => setTextToReplaceWith(e.target.value)} placeholder="Replace with (empty = delete)..." sx={inputSx} />
                                     </Box>
                                 ) : (
                                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                                        <Typography sx={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.38)', mb: 0.25 }}>Add prefix and/or suffix to all filenames:</Typography>
+                                        <Typography sx={{ fontSize: '0.67rem', color: 'var(--text-muted)', mb: 0.25 }}>Add prefix and/or suffix to all filenames:</Typography>
                                         <TextField fullWidth size="small" value={prefixToAdd} onChange={(e) => setPrefixToAdd(e.target.value)} placeholder="Prefix (e.g. new_)" sx={inputSx} />
                                         <TextField fullWidth size="small" value={suffixToAdd} onChange={(e) => setSuffixToAdd(e.target.value)} placeholder="Suffix (e.g. _v2)" sx={inputSx} />
-                                        <Typography sx={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.28)', fontStyle: 'italic' }}>Suffix inserts before the file extension</Typography>
+                                        <Typography sx={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Suffix inserts before the file extension</Typography>
                                     </Box>
                                 )}
                             </>
@@ -409,13 +404,13 @@ export function FileRandomizer() {
 
                     {/* — Target Folder — */}
                     <Box className="glass-section" sx={panelSx}>
-                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.85, mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent-primary)', mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
                             <FolderIcon sx={{ fontSize: 13 }} /> Target Folder
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 0.75 }}>
                             <TextField fullWidth size="small" value={targetFolder} placeholder="Select target folder..." InputProps={{ readOnly: true }} sx={inputSx} />
                             <IconButton onClick={handleTargetFolderSelect} disabled={isRunning} size="small"
-                                sx={{ flexShrink: 0, background: 'color-mix(in srgb, var(--accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 28%, transparent)', borderRadius: '8px', color: 'var(--accent)', '&:hover': { background: 'color-mix(in srgb, var(--accent) 16%, transparent)', borderColor: 'color-mix(in srgb, var(--accent) 50%, transparent)' }, '&:disabled': { opacity: 0.35 } }}>
+                                sx={{ flexShrink: 0, background: 'color-mix(in oklab, var(--accent-primary) 8%, transparent)', border: '1px solid color-mix(in oklab, var(--accent-primary) 28%, transparent)', borderRadius: 'var(--radius-sm)', color: 'var(--accent-primary)', '&:hover': { background: 'color-mix(in oklab, var(--accent-primary) 16%, transparent)', borderColor: 'color-mix(in oklab, var(--accent-primary) 50%, transparent)' }, '&:disabled': { opacity: 0.35 } }}>
                                 <FolderOpenIcon sx={{ fontSize: 17 }} />
                             </IconButton>
                         </Box>
@@ -423,13 +418,13 @@ export function FileRandomizer() {
 
                     {/* — Filtering & Options — */}
                     <Box className="glass-section" sx={panelSx}>
-                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.85, mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent-primary)', mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
                             <InfoIcon sx={{ fontSize: 13 }} /> {mode === 'randomizer' ? 'File Filtering' : 'Options'}
                         </Typography>
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.9 }}>
                             {mode === 'randomizer' && (
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                    <Typography sx={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.4)', minWidth: 40 }}>Mode:</Typography>
+                                    <Typography sx={{ fontSize: '0.67rem', color: 'var(--text-muted)', minWidth: 40 }}>Mode:</Typography>
                                     <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
                                         <input type="radio" name="filterMode" value="skip" checked={filterMode === 'skip'} onChange={() => setFilterMode('skip')} style={radioStyle} />
                                         <span style={labelStyle}>Skip</span>
@@ -442,9 +437,9 @@ export function FileRandomizer() {
                             )}
                             {mode === 'randomizer' && (
                                 <Box>
-                                    <Typography sx={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.38)', mb: 0.5 }}>Keywords (comma-separated):</Typography>
+                                    <Typography sx={{ fontSize: '0.67rem', color: 'var(--text-muted)', mb: 0.5 }}>Keywords (comma-separated):</Typography>
                                     <TextField fullWidth size="small" value={filterKeywords} onChange={(e) => setFilterKeywords(e.target.value)} placeholder="glow, sparkle, shine" sx={inputSx} />
-                                    <Typography sx={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.28)', fontStyle: 'italic', mt: 0.4 }}>
+                                    <Typography sx={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontStyle: 'italic', mt: 0.4 }}>
                                         {filterMode === 'skip' ? 'Files containing these keywords will be skipped' : 'Only files containing these keywords will be replaced'}
                                     </Typography>
                                 </Box>
@@ -465,44 +460,44 @@ export function FileRandomizer() {
                     {/* — Progress (while running) — */}
                     {isRunning && (
                         <Box className="glass-section" sx={panelSx}>
-                            <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.85, mb: 1 }}>Progress</Typography>
-                            <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', mb: 0.75 }}>{currentOperation}</Typography>
+                            <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent-primary)', mb: 1 }}>Progress</Typography>
+                            <Typography sx={{ fontSize: '0.72rem', color: 'var(--text-secondary)', mb: 0.75 }}>{currentOperation}</Typography>
                             <LinearProgress variant="determinate" value={progress}
-                                sx={{ height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.07)', '& .MuiLinearProgress-bar': { background: 'linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, var(--accent2)))', borderRadius: 3 } }} />
-                            <Typography sx={{ fontSize: '0.68rem', color: 'var(--accent)', mt: 0.5, textAlign: 'right', fontWeight: 600 }}>{progress}%</Typography>
+                                sx={{ height: 5, borderRadius: 3, background: 'var(--bg-tertiary)', '& .MuiLinearProgress-bar': { background: 'linear-gradient(90deg, var(--accent-primary), color-mix(in oklab, var(--accent-primary) 60%, var(--accent-secondary)))', borderRadius: 3 } }} />
+                            <Typography sx={{ fontSize: '0.68rem', color: 'var(--accent-primary)', mt: 0.5, textAlign: 'right', fontWeight: 600 }}>{progress}%</Typography>
                         </Box>
                     )}
 
                     {/* — Actions — */}
                     <Box className="glass-section" sx={panelSx}>
-                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.85, mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent-primary)', mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
                             <PlayIcon sx={{ fontSize: 13 }} /> Actions
                         </Typography>
                         <Button className="glass-button" onClick={isRunning ? stopProcess : startProcess} disabled={startDisabled}
                             startIcon={isRunning ? <StopIcon sx={{ fontSize: '15px !important' }} /> : <PlayIcon sx={{ fontSize: '15px !important' }} />}
                             sx={{
                                 width: '100%',
-                                background: isRunning ? 'color-mix(in srgb, #ef4444 10%, transparent)' : 'color-mix(in srgb, var(--accent) 10%, transparent)',
-                                border: `1px solid ${isRunning ? 'rgba(239,68,68,0.35)' : 'color-mix(in srgb, var(--accent) 32%, transparent)'}`,
-                                color: isRunning ? '#ef4444' : 'var(--accent)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'none', borderRadius: '8px', py: 0.85,
-                                letterSpacing: '0.02em', transition: 'all 0.2s ease',
-                                '&:hover': { background: isRunning ? 'color-mix(in srgb, #ef4444 18%, transparent)' : 'color-mix(in srgb, var(--accent) 18%, transparent)', borderColor: isRunning ? 'rgba(239,68,68,0.6)' : 'color-mix(in srgb, var(--accent) 55%, transparent)', transform: 'translateY(-1px)' },
+                                background: isRunning ? 'color-mix(in oklab, var(--color-danger) 10%, transparent)' : 'color-mix(in oklab, var(--accent-primary) 10%, transparent)',
+                                border: `1px solid ${isRunning ? 'color-mix(in oklab, var(--color-danger) 35%, transparent)' : 'color-mix(in oklab, var(--accent-primary) 32%, transparent)'}`,
+                                color: isRunning ? 'var(--color-danger)' : 'var(--accent-primary)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'none', borderRadius: 'var(--radius-sm)', py: 0.85,
+                                letterSpacing: '0.02em', transition: 'all var(--motion-fast)',
+                                '&:hover': { background: isRunning ? 'color-mix(in oklab, var(--color-danger) 18%, transparent)' : 'color-mix(in oklab, var(--accent-primary) 18%, transparent)', borderColor: isRunning ? 'color-mix(in oklab, var(--color-danger) 60%, transparent)' : 'color-mix(in oklab, var(--accent-primary) 55%, transparent)', transform: 'translateY(-1px)' },
                                 '&:disabled': { opacity: 0.32, transform: 'none' },
                             }}>
                             {isRunning ? 'Stop Process' : (mode === 'randomizer' ? 'Start Randomization' : 'Start Renaming')}
                         </Button>
                         <Box sx={{ display: 'flex', gap: 0.5, mt: 0.75 }}>
-                            <Tooltip title="Clear console" arrow><IconButton onClick={clearLog} size="small" sx={{ color: 'rgba(255,255,255,0.3)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '7px', '&:hover': { color: 'var(--accent)', borderColor: 'color-mix(in srgb, var(--accent) 30%, transparent)' } }}><RefreshIcon sx={{ fontSize: 15 }} /></IconButton></Tooltip>
-                            <Tooltip title="Copy console" arrow><IconButton onClick={copyLog} size="small" sx={{ color: 'rgba(255,255,255,0.3)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '7px', '&:hover': { color: 'var(--accent)', borderColor: 'color-mix(in srgb, var(--accent) 30%, transparent)' } }}><CopyIcon sx={{ fontSize: 15 }} /></IconButton></Tooltip>
-                            <Tooltip title="Help" arrow><IconButton onClick={() => setShowHelp(true)} size="small" sx={{ color: 'rgba(255,255,255,0.3)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '7px', '&:hover': { color: 'var(--accent)', borderColor: 'color-mix(in srgb, var(--accent) 30%, transparent)' } }}><HelpIcon sx={{ fontSize: 15 }} /></IconButton></Tooltip>
+                            <Tooltip title="Clear console" arrow><IconButton onClick={clearLog} size="small" sx={{ color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', '&:hover': { color: 'var(--accent-primary)', borderColor: 'color-mix(in oklab, var(--accent-primary) 30%, transparent)' } }}><RefreshIcon sx={{ fontSize: 15 }} /></IconButton></Tooltip>
+                            <Tooltip title="Copy console" arrow><IconButton onClick={copyLog} size="small" sx={{ color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', '&:hover': { color: 'var(--accent-primary)', borderColor: 'color-mix(in oklab, var(--accent-primary) 30%, transparent)' } }}><CopyIcon sx={{ fontSize: 15 }} /></IconButton></Tooltip>
+                            <Tooltip title="Help" arrow><IconButton onClick={() => setShowHelp(true)} size="small" sx={{ color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', '&:hover': { color: 'var(--accent-primary)', borderColor: 'color-mix(in oklab, var(--accent-primary) 30%, transparent)' } }}><HelpIcon sx={{ fontSize: 15 }} /></IconButton></Tooltip>
                         </Box>
                         {status === 'completed' && (
-                            <Alert severity="success" icon={<CheckIcon sx={{ fontSize: 15 }} />} sx={{ mt: 1, py: 0.4, px: 1, borderRadius: '8px', background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)', fontSize: '0.72rem', '& .MuiAlert-message': { color: '#4ade80' } }}>
+                            <Alert severity="success" icon={<CheckIcon sx={{ fontSize: 15 }} />} sx={{ mt: 1, py: 0.4, px: 1, borderRadius: 'var(--radius-sm)', background: 'color-mix(in oklab, var(--color-success) 8%, transparent)', border: '1px solid color-mix(in oklab, var(--color-success) 25%, transparent)', fontSize: '0.72rem', '& .MuiAlert-message': { color: 'var(--color-success)' }, '& .MuiAlert-icon': { color: 'var(--color-success)' } }}>
                                 {mode === 'randomizer' ? 'Randomization complete!' : 'Renaming complete!'}
                             </Alert>
                         )}
                         {status === 'error' && (
-                            <Alert severity="error" icon={<ErrorIcon sx={{ fontSize: 15 }} />} sx={{ mt: 1, py: 0.4, px: 1, borderRadius: '8px', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', fontSize: '0.72rem', '& .MuiAlert-message': { color: '#f87171' } }}>
+                            <Alert severity="error" icon={<ErrorIcon sx={{ fontSize: 15 }} />} sx={{ mt: 1, py: 0.4, px: 1, borderRadius: 'var(--radius-sm)', background: 'color-mix(in oklab, var(--color-danger) 8%, transparent)', border: '1px solid color-mix(in oklab, var(--color-danger) 25%, transparent)', fontSize: '0.72rem', '& .MuiAlert-message': { color: 'var(--color-danger)' }, '& .MuiAlert-icon': { color: 'var(--color-danger)' } }}>
                                 Error during {mode === 'randomizer' ? 'randomization' : 'renaming'}
                             </Alert>
                         )}
@@ -512,21 +507,20 @@ export function FileRandomizer() {
                 {/* ── Console panel ── */}
                 <Box sx={{
                     flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column',
-                    background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.055)',
-                    borderRadius: '12px', overflow: 'hidden', position: 'relative',
-                    '&::before': { content: '""', position: 'absolute', top: 0, left: '20%', right: '20%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)', pointerEvents: 'none' },
+                    background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-lg)', overflow: 'hidden', position: 'relative',
                 }}>
-                    <Box sx={{ px: 1.5, py: 1, borderBottom: '1px solid rgba(255,255,255,0.055)', display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
-                        <InfoIcon sx={{ color: 'var(--accent)', fontSize: 14, opacity: 0.8 }} />
-                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.8 }}>Console Output</Typography>
+                    <Box sx={{ px: 1.5, py: 1, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
+                        <InfoIcon sx={{ color: 'var(--accent-primary)', fontSize: 14 }} />
+                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent-primary)' }}>Console Output</Typography>
                     </Box>
                     <Box ref={logRef} sx={{
                         flex: 1, minHeight: 0, p: 1.5, overflow: 'auto',
-                        fontFamily: 'JetBrains Mono, monospace', fontSize: '12.5px', lineHeight: 1.6, whiteSpace: 'pre-wrap',
-                        color: 'rgba(255,255,255,0.75)', background: 'rgba(0,0,0,0.15)',
+                        fontFamily: 'var(--font-mono)', fontSize: '12.5px', lineHeight: 1.6, whiteSpace: 'pre-wrap',
+                        color: 'var(--text-secondary)', background: 'var(--bg-primary)',
                         '&::-webkit-scrollbar': { width: 5 },
                         '&::-webkit-scrollbar-track': { background: 'transparent' },
-                        '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.1)', borderRadius: 3 },
+                        '&::-webkit-scrollbar-thumb': { background: 'var(--border-strong)', borderRadius: 3 },
                     }}>
                         {logText || 'Console ready...\n'}
                     </Box>
@@ -535,32 +529,32 @@ export function FileRandomizer() {
 
             {/* ── Help Dialog ── */}
             <Dialog open={showHelp} onClose={() => setShowHelp(false)} maxWidth="md" fullWidth
-                PaperProps={{ className: 'glass-modal-content', sx: { background: 'var(--surface, #1a1630)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', boxShadow: '0 24px 48px rgba(0,0,0,0.5)' } }}>
-                <DialogTitle className="glass-modal-header" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'var(--accent)', fontWeight: 700, fontSize: '0.95rem' }}>
-                    <HelpIcon sx={{ color: 'var(--accent)', fontSize: 18 }} /> File Handler — Help
+                PaperProps={{ className: 'glass-modal-content', sx: { background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', boxShadow: '0 24px 48px -16px rgba(0,0,0,0.6)' } }}>
+                <DialogTitle className="glass-modal-header" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'var(--accent-primary)', fontWeight: 700, fontSize: '0.95rem' }}>
+                    <HelpIcon sx={{ color: 'var(--accent-primary)', fontSize: 18 }} /> File Handler — Help
                 </DialogTitle>
-                <DialogContent sx={{ color: 'var(--text)' }}>
+                <DialogContent sx={{ color: 'var(--text-primary)' }}>
                     <Typography variant="body1" sx={{ mb: 2, fontSize: '0.875rem' }}>
                         Two modes: <strong>Randomizer</strong> — replace files with random selections; <strong>Renamer</strong> — manipulate filenames.
                     </Typography>
-                    <Typography sx={{ mb: 1, color: 'var(--accent)', fontWeight: 700, fontSize: '0.85rem' }}>Randomizer Mode:</Typography>
+                    <Typography sx={{ mb: 1, color: 'var(--accent-primary)', fontWeight: 700, fontSize: '0.85rem' }}>Randomizer Mode:</Typography>
                     <Box component="ol" sx={{ pl: 2, mb: 2, fontSize: '0.85rem' }}>
                         <li>Select replacement files (.dds, .tex, .png, etc.)</li>
                         <li>Choose the target folder</li>
                         <li>Click "Start Randomization"</li>
                         <li>Monitor progress in the console</li>
                     </Box>
-                    <Typography sx={{ mb: 1, color: 'var(--accent)', fontWeight: 700, fontSize: '0.85rem' }}>Renamer Mode:</Typography>
+                    <Typography sx={{ mb: 1, color: 'var(--accent-primary)', fontWeight: 700, fontSize: '0.85rem' }}>Renamer Mode:</Typography>
                     <Box component="ol" sx={{ pl: 2, mb: 2, fontSize: '0.85rem' }}>
                         <li><strong>Replace Text:</strong> Find and replace text in filenames</li>
                         <li><strong>Prefix/Suffix:</strong> Add prefixes and/or suffixes to all filenames</li>
                         <li>Choose target folder and click "Start Renaming"</li>
                     </Box>
-                    <Box sx={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', p: 1.5, borderRadius: '10px', fontSize: '0.82rem', mb: 2, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6 }}>
-                        <strong style={{ color: 'var(--accent)' }}>Randomizer:</strong> Replaces files of matching type from your collection. Backup recommended.<br /><br />
-                        <strong style={{ color: 'var(--accent)' }}>Renamer:</strong> Replace Text: find/replace any pattern in filenames. Prefix/Suffix: add text before or after the filename (suffix inserts before extension).
+                    <Box sx={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', p: 1.5, borderRadius: 'var(--radius)', fontSize: '0.82rem', mb: 2, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                        <strong style={{ color: 'var(--accent-primary)' }}>Randomizer:</strong> Replaces files of matching type from your collection. Backup recommended.<br /><br />
+                        <strong style={{ color: 'var(--accent-primary)' }}>Renamer:</strong> Replace Text: find/replace any pattern in filenames. Prefix/Suffix: add text before or after the filename (suffix inserts before extension).
                     </Box>
-                    <Typography sx={{ mb: 1, color: 'var(--accent)', fontWeight: 700, fontSize: '0.85rem' }}>Key Features:</Typography>
+                    <Typography sx={{ mb: 1, color: 'var(--accent-primary)', fontWeight: 700, fontSize: '0.85rem' }}>Key Features:</Typography>
                     <Box component="ul" sx={{ pl: 2, fontSize: '0.85rem', lineHeight: 1.8 }}>
                         <li>🔒 Only replaces files of the same type</li>
                         <li>🎯 Smart: related files get the same replacement</li>
@@ -570,32 +564,32 @@ export function FileRandomizer() {
                     </Box>
                 </DialogContent>
                 <DialogActions sx={{ px: 2.5, pb: 2 }}>
-                    <Button onClick={() => setShowHelp(false)} sx={{ background: 'color-mix(in srgb, var(--accent) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)', color: 'var(--accent)', fontWeight: 600, textTransform: 'none', borderRadius: '8px', '&:hover': { background: 'color-mix(in srgb, var(--accent) 18%, transparent)' } }}>Close</Button>
+                    <Button onClick={() => setShowHelp(false)} sx={{ background: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)', border: '1px solid color-mix(in oklab, var(--accent-primary) 30%, transparent)', color: 'var(--accent-primary)', fontWeight: 600, textTransform: 'none', borderRadius: 'var(--radius-sm)', '&:hover': { background: 'color-mix(in oklab, var(--accent-primary) 18%, transparent)' } }}>Close</Button>
                 </DialogActions>
             </Dialog>
 
             {/* ── Settings Modal ── */}
             {showSettings && (
-                <Box sx={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', zIndex: 1400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Box className="glass-modal-content" sx={{ background: 'var(--surface, #16142a)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', width: '100%', maxWidth: 440, boxShadow: '0 24px 48px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
-                        <Box className="glass-modal-header" sx={{ px: 2.5, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box sx={{ position: 'fixed', inset: 0, background: 'color-mix(in oklab, black 55%, transparent)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', zIndex: 1400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Box className="glass-modal-content" sx={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: 440, boxShadow: '0 24px 48px -16px rgba(0,0,0,0.6)', overflow: 'hidden' }}>
+                        <Box className="glass-modal-header" sx={{ px: 2.5, py: 1.5, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <SettingsIcon sx={{ color: 'var(--accent)', fontSize: 17 }} />
-                                <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--accent)' }}>Settings</Typography>
+                                <SettingsIcon sx={{ color: 'var(--accent-primary)', fontSize: 17 }} />
+                                <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--accent-primary)' }}>Settings</Typography>
                             </Box>
-                            <IconButton size="small" onClick={() => setShowSettings(false)} sx={{ color: 'rgba(255,255,255,0.4)', '&:hover': { color: 'var(--text)' } }}>
+                            <IconButton size="small" onClick={() => setShowSettings(false)} sx={{ color: 'var(--text-muted)', '&:hover': { color: 'var(--text-primary)' } }}>
                                 <span style={{ fontSize: 20, lineHeight: 1 }}>×</span>
                             </IconButton>
                         </Box>
                         <Box sx={{ p: 2.5 }}>
-                            <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.8, mb: 1.25 }}>Backup Options</Typography>
-                            <Box sx={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', p: 1.5 }}>
+                            <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent-primary)', mb: 1.25 }}>Backup Options</Typography>
+                            <Box sx={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', p: 1.5 }}>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                                    <input type="checkbox" checked={createBackup} onChange={(e) => setCreateBackup(e.target.checked)} style={{ width: 14, height: 14, accentColor: 'var(--accent)', cursor: 'pointer' }} />
-                                    <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', userSelect: 'none' }}>Create backup before replacement</span>
+                                    <input type="checkbox" checked={createBackup} onChange={(e) => setCreateBackup(e.target.checked)} style={{ width: 14, height: 14, accentColor: 'var(--accent-primary)', cursor: 'pointer' }} />
+                                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', userSelect: 'none' }}>Create backup before replacement</span>
                                 </label>
-                                <Box sx={{ mt: 1, p: 1, background: 'rgba(255,255,255,0.03)', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                    <Typography sx={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.38)', lineHeight: 1.6 }}>
+                                <Box sx={{ mt: 1, p: 1, background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                                    <Typography sx={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
                                         Creates a timestamped backup of your target folder before making changes. Backup stored in the same directory. Recommended to keep enabled.
                                     </Typography>
                                 </Box>

@@ -18,12 +18,12 @@ export default function BnkInstallModal({
     onInstall,
 }: Props) {
     return (
-        <Backdrop open={open} sx={{ zIndex: 1400, backdropFilter: 'blur(8px)', background: 'rgba(0,0,0,0.6)' }}>
+        <Backdrop open={open} sx={{ zIndex: 1400, backdropFilter: 'blur(8px)', background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)' }}>
             <Box sx={{
-                background: 'rgba(16,16,24,0.92)',
-                border: '1px solid rgba(var(--accent-rgb),0.35)',
+                background: 'var(--bg-secondary)',
+                border: '1px solid color-mix(in oklab, var(--accent-primary) 35%, transparent)',
                 borderRadius: '14px',
-                boxShadow: '0 8px 48px rgba(0,0,0,0.7)',
+                boxShadow: '0 8px 48px color-mix(in oklab, var(--bg-primary) 70%, transparent)',
                 padding: '2rem 2.5rem',
                 maxWidth: 420,
                 width: '90%',
@@ -32,18 +32,18 @@ export default function BnkInstallModal({
                 gap: '1rem',
                 fontFamily: 'JetBrains Mono, monospace',
             }}>
-                <Typography sx={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.08em' }}>
+                <Typography sx={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent-primary)', letterSpacing: '0.08em' }}>
                     Audio Conversion Tools
                 </Typography>
-                <Typography sx={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.6 }}>
-                    Converting <strong style={{ color: 'var(--text)' }}>.wav / .mp3 / .ogg</strong> to WEM
+                <Typography sx={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    Converting <strong style={{ color: 'var(--text-primary)' }}>.wav / .mp3 / .ogg</strong> to WEM
                     requires the Wwise engine (~200 MB). Install it once to your AppData folder.
                 </Typography>
 
                 {isInstalling ? (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <LinearProgress sx={{ borderRadius: 4, height: 4, background: 'rgba(255,255,255,0.1)', '& .MuiLinearProgress-bar': { background: 'var(--accent)' } }} />
-                        <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)' }}>{installProgress}</Typography>
+                        <LinearProgress sx={{ borderRadius: 4, height: 4, background: 'var(--border)', '& .MuiLinearProgress-bar': { background: 'var(--accent-primary)' } }} />
+                        <Typography sx={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{installProgress}</Typography>
                     </Box>
                 ) : (
                     <Box sx={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
@@ -53,7 +53,7 @@ export default function BnkInstallModal({
                         <Button
                             onClick={onInstall}
                             variant="contained"
-                            sx={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono, monospace', textTransform: 'none', background: 'var(--accent)', '&:hover': { background: 'var(--accent)', filter: 'brightness(1.15)' } }}
+                            sx={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono, monospace', textTransform: 'none', background: 'var(--accent-primary)', '&:hover': { background: 'var(--accent-hover)' } }}
                         >
                             Install Wwise Tools
                         </Button>

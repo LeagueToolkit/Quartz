@@ -4,7 +4,7 @@ import { PAGE_LABELS, PAGE_DEFAULTS } from '@/lib/stores/uiPrefsStore';
 
 const PAGES = PAGE_LABELS.map((p) => ({ id: p.page, label: p.label }));
 
-const Divider = () => <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '8px 0' }} />;
+const Divider = () => <div style={{ height: '1px', background: 'var(--border)', margin: '8px 0' }} />;
 
 export function PageVisibilitySection() {
     const pageVisibility = useUiPrefsStore((s) => s.pageVisibility);

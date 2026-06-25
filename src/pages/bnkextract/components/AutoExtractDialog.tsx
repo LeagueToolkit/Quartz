@@ -17,15 +17,15 @@ interface Props {
 
 const inputStyle = {
     '& .MuiOutlinedInput-root': {
-        background: 'rgba(0, 0, 0, 0.4)',
-        color: 'white',
+        background: 'var(--bg-primary)',
+        color: 'var(--text-primary)',
         fontSize: '0.8rem',
         fontFamily: 'JetBrains Mono, monospace',
-        '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.1)' },
-        '&:hover fieldset': { borderColor: 'rgba(var(--accent-rgb), 0.5)' },
-        '&.Mui-focused fieldset': { borderColor: 'var(--accent)' },
+        '& fieldset': { borderColor: 'var(--border)' },
+        '&:hover fieldset': { borderColor: 'color-mix(in oklab, var(--accent-primary) 50%, transparent)' },
+        '&.Mui-focused fieldset': { borderColor: 'var(--accent-primary)' },
     },
-    '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.8rem' },
+    '& .MuiInputLabel-root': { color: 'var(--text-secondary)', fontSize: '0.8rem' },
 };
 
 export default function AutoExtractDialog({ open: isOpen, onClose, onProcess }: Props) {
@@ -68,7 +68,6 @@ export default function AutoExtractDialog({ open: isOpen, onClose, onProcess }: 
                 onProcess({ batchFiles, outputPath, loadToTree, skinId });
                 onClose();
             }
-            // TODO(backend): no mod files found path notifies via status once scan lands.
         } catch (e) {
             log.error('[AutoExtractDialog] scan error', e);
         } finally {
@@ -82,9 +81,9 @@ export default function AutoExtractDialog({ open: isOpen, onClose, onProcess }: 
             onClose={onClose}
             PaperProps={{
                 sx: {
-                    background: 'rgba(25, 25, 30, 0.95)',
-                    color: 'white',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)',
+                    border: '1px solid var(--border)',
                     backdropFilter: 'blur(10px)',
                     maxWidth: '500px',
                     width: '100%',
@@ -93,14 +92,14 @@ export default function AutoExtractDialog({ open: isOpen, onClose, onProcess }: 
         >
             <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <AutoFixHigh sx={{ color: 'var(--accent)' }} />
+                    <AutoFixHigh sx={{ color: 'var(--accent-primary)' }} />
                     <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 600 }}>Batch Mod Processor</Typography>
                 </Box>
-                <IconButton onClick={onClose} size="small" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                <IconButton onClick={onClose} size="small" sx={{ color: 'var(--text-secondary)' }}>
                     <Close />
                 </IconButton>
             </DialogTitle>
-            <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
+            <Divider sx={{ borderColor: 'var(--border)' }} />
             <DialogContent sx={{ py: 3 }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
                     <Box>
@@ -114,11 +113,11 @@ export default function AutoExtractDialog({ open: isOpen, onClose, onProcess }: 
                                 size="small"
                                 sx={inputStyle}
                             />
-                            <Button variant="outlined" onClick={() => handleSelectFolder('mod')} sx={{ minWidth: '40px', border: '1px solid rgba(255,255,255,0.1)', color: 'white' }}>
+                            <Button variant="outlined" onClick={() => handleSelectFolder('mod')} sx={{ minWidth: '40px', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
                                 <FolderOpen fontSize="small" />
                             </Button>
                             {modPaths.length > 0 && (
-                                <IconButton size="small" onClick={() => setModPaths([])} sx={{ color: '#ff6666' }}>
+                                <IconButton size="small" onClick={() => setModPaths([])} sx={{ color: 'var(--color-danger)' }}>
                                     <Close fontSize="small" />
                                 </IconButton>
                             )}
@@ -136,7 +135,7 @@ export default function AutoExtractDialog({ open: isOpen, onClose, onProcess }: 
                                 size="small"
                                 sx={inputStyle}
                             />
-                            <Button variant="outlined" onClick={() => handleSelectFolder('output')} sx={{ minWidth: '40px', border: '1px solid rgba(255,255,255,0.1)', color: 'white' }}>
+                            <Button variant="outlined" onClick={() => handleSelectFolder('output')} sx={{ minWidth: '40px', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
                                 <FolderOpen fontSize="small" />
                             </Button>
                         </Box>
@@ -154,27 +153,27 @@ export default function AutoExtractDialog({ open: isOpen, onClose, onProcess }: 
                                 onChange={(e) => setLoadToTree(e.target.checked)}
                                 size="small"
                                 sx={{
-                                    '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--accent)' },
-                                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'var(--accent)' },
+                                    '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--accent-primary)' },
+                                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'var(--accent-primary)' },
                                 }}
                             />
                         }
-                        label={<Typography sx={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.7)', fontFamily: 'JetBrains Mono' }}>LOAD INTO TREE VIEW</Typography>}
+                        label={<Typography sx={{ fontSize: '0.7rem', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono' }}>LOAD INTO TREE VIEW</Typography>}
                     />
                 </Box>
             </DialogContent>
-            <DialogActions sx={{ p: 2, background: 'rgba(0,0,0,0.2)' }}>
-                <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.6)' }}>Cancel</Button>
+            <DialogActions sx={{ p: 2, background: 'color-mix(in oklab, var(--bg-primary) 20%, transparent)' }}>
+                <Button onClick={onClose} sx={{ color: 'var(--text-secondary)' }}>Cancel</Button>
                 <Button
                     variant="contained"
                     onClick={handleRun}
                     disabled={modPaths.length === 0 || isProcessing}
                     sx={{
-                        background: outputPath ? 'var(--accent)' : 'rgba(255, 255, 255, 0.9)',
-                        color: 'black',
+                        background: outputPath ? 'var(--accent-primary)' : 'var(--text-primary)',
+                        color: 'var(--bg-primary)',
                         fontWeight: 700,
-                        '&:hover': { background: 'white' },
-                        '&.Mui-disabled': { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' },
+                        '&:hover': { background: outputPath ? 'var(--accent-hover)' : 'var(--text-primary)' },
+                        '&.Mui-disabled': { background: 'var(--bg-tertiary)', color: 'var(--text-muted)' },
                     }}
                 >
                     {isProcessing ? 'Processing...' : (outputPath ? 'Batch Auto-Extract' : 'Batch Parse Only')}

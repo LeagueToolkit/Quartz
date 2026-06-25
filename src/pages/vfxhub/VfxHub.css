@@ -41,8 +41,8 @@
     box-sizing: border-box;
     height: 38px;
     padding: 0 40px 0 14px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: color-mix(in oklab, var(--text-primary) 3%, transparent);
+    border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--text);
     font-family: 'JetBrains Mono', monospace;
@@ -53,18 +53,18 @@
 
 .vfx-hub-search:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent), transparent 70%);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent-primary) 30%, transparent);
 }
 
 .vfx-hub-search.right:focus {
     border-color: var(--accent2);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent2), transparent 70%);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent2) 30%, transparent);
 }
 
 .vfx-hub-section {
     flex: 1;
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0;
     overflow: hidden;
@@ -89,7 +89,7 @@
     width: 100%;
     height: 100%;
     overflow: auto;
-    background: rgba(255, 255, 255, 0.03);
+    background: color-mix(in oklab, var(--text-primary) 3%, transparent);
 }
 
 .with-scrollbars::-webkit-scrollbar {
@@ -98,7 +98,7 @@
 }
 
 .with-scrollbars::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--accent), transparent 70%);
+    background: color-mix(in oklab, var(--accent-primary) 30%, transparent);
     border-radius: 4px;
 }
 
@@ -112,14 +112,14 @@
     align-items: center;
     gap: 8px;
     padding: 8px 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid var(--border);
     cursor: grab;
     user-select: none;
     transition: background 0.12s ease;
 }
 
 .vfx-sys-row:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: color-mix(in oklab, var(--text-primary) 4%, transparent);
 }
 
 .vfx-sys-row .name {
@@ -143,15 +143,15 @@
 }
 
 .vfx-emitter-row:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: color-mix(in oklab, var(--text-primary) 3%, transparent);
     color: var(--text);
 }
 
 /* Collection browser preview cards */
 .vfx-preview-container {
     height: 120px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, color-mix(in oklab, var(--text-primary) 4%, transparent), transparent);
+    border: 1px solid var(--border);
     border-radius: 0.6rem;
     display: flex;
     align-items: center;

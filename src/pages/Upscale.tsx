@@ -29,7 +29,19 @@ import {
     Close as CloseIcon,
 } from '@mui/icons-material';
 import { open } from '@tauri-apps/plugin-dialog';
-import { readFileBase64 } from '@/lib/api';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import {
+    readFileBase64,
+    prefsGet,
+    prefsSet,
+    upscaleCheckStatus,
+    upscaleDownloadAll,
+    realesrganEnsure,
+    upscaylStream,
+    upscaylBatchProcess,
+    upscaylCancel,
+    imgRecolorScanDir,
+} from '@/lib/api';
 import { log } from '@/lib/util/logger';
 import './upscale/Upscale.css';
 
@@ -131,8 +143,6 @@ export function Upscale() {
     const [showDownloadModal, setShowDownloadModal] = useState(false);
 
     // Batch processing state
-    // TODO(backend): setBatchInfo / setBatchResults are wired for the 'upscayl:batch-*'
-    // events; with the bridge absent they are write-only, so we drop the read bindings.
     const [, setBatchInfo] = useState<{ totalFiles: number } | null>(null);
     const [batchProgress, setBatchProgress] = useState<BatchProgress>({
         currentFile: 0,
@@ -173,35 +183,27 @@ export function Upscale() {
 
     // ─── Modern style helpers ──────────────────────────────────────────────────
     const panelSx = {
-        background: 'rgba(255,255,255,0.02)',
-        backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(255,255,255,0.06)',
-        borderRadius: '16px',
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-lg)',
         p: { xs: 1.25, sm: 1.5 },
         position: 'relative',
         overflow: 'hidden',
-        '&::before': {
-            content: '""',
-            position: 'absolute',
-            top: 0, left: '20%', right: '20%', height: '1px',
-            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)',
-            pointerEvents: 'none',
-        },
     } as const;
 
     const inputSx = {
         '& .MuiOutlinedInput-root': {
-            background: 'rgba(255,255,255,0.03)',
-            color: 'var(--text)',
+            background: 'var(--bg-tertiary)',
+            color: 'var(--text-primary)',
             fontSize: '0.8rem',
-            borderRadius: '8px',
-            '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-            '&:hover fieldset': { borderColor: 'color-mix(in srgb, var(--accent) 50%, transparent)' },
-            '&.Mui-focused fieldset': { borderColor: 'var(--accent)', borderWidth: '1px' },
+            borderRadius: 'var(--radius-sm)',
+            '& fieldset': { borderColor: 'var(--border)' },
+            '&:hover fieldset': { borderColor: 'color-mix(in oklab, var(--accent-primary) 30%, var(--border))' },
+            '&.Mui-focused fieldset': { borderColor: 'var(--accent-primary)', borderWidth: '1px' },
         },
         '& .MuiInputBase-input': {
-            color: 'var(--text)',
-            '&::placeholder': { color: 'rgba(255,255,255,0.25)', opacity: 1 },
+            color: 'var(--text-primary)',
+            '&::placeholder': { color: 'var(--text-muted)', opacity: 1 },
         },
     } as const;
 
@@ -220,80 +222,79 @@ export function Upscale() {
 
     const modePillSx = (active: boolean) => ({
         px: 1.35, py: 0.45,
-        borderRadius: '6px',
+        borderRadius: 'var(--radius-sm)',
         cursor: 'pointer',
         fontSize: '0.7rem',
         fontWeight: 600,
         letterSpacing: '0.02em',
-        background: active ? 'color-mix(in srgb, var(--accent) 14%, transparent)' : 'transparent',
-        color: active ? 'var(--accent)' : 'rgba(255,255,255,0.28)',
-        border: active ? '1px solid color-mix(in srgb, var(--accent) 28%, transparent)' : '1px solid transparent',
-        transition: 'all 0.18s ease',
+        background: active ? 'color-mix(in oklab, var(--accent-primary) 14%, transparent)' : 'transparent',
+        color: active ? 'var(--accent-primary)' : 'var(--text-muted)',
+        border: active ? '1px solid color-mix(in oklab, var(--accent-primary) 28%, transparent)' : '1px solid transparent',
+        transition: 'all 0.18s var(--ease-out)',
         userSelect: 'none',
-        '&:hover': { color: active ? 'var(--accent)' : 'rgba(255,255,255,0.5)' },
+        '&:hover': { color: active ? 'var(--accent-primary)' : 'var(--text-secondary)' },
     });
 
     const buttonSx = {
         width: '100%',
-        background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
-        border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-        color: 'var(--accent)',
+        background: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
+        border: '1px solid color-mix(in oklab, var(--accent-primary) 35%, transparent)',
+        color: 'color-mix(in oklab, var(--accent-primary) 30%, var(--text-primary))',
         fontWeight: 700,
         fontSize: '0.8rem',
         textTransform: 'none',
-        borderRadius: '10px',
+        borderRadius: 'var(--radius-sm)',
         py: 1,
-        transition: 'all 0.2s ease',
+        transition: 'background 140ms var(--ease-out), border-color 140ms var(--ease-out), transform 140ms var(--ease-out)',
         '&:hover': {
-            background: 'color-mix(in srgb, var(--accent) 15%, transparent)',
-            borderColor: 'color-mix(in srgb, var(--accent) 55%, transparent)',
+            background: 'color-mix(in oklab, var(--accent-primary) 22%, transparent)',
+            borderColor: 'color-mix(in oklab, var(--accent-primary) 60%, transparent)',
             transform: 'translateY(-1px)',
         },
-        '&:disabled': { opacity: 0.5, transform: 'none', cursor: 'not-allowed' },
+        '&:disabled': { opacity: 0.45, transform: 'none', cursor: 'not-allowed' },
     } as const;
 
     const primaryButtonSx = {
         ...buttonSx,
-        background: 'var(--accent) !important',
-        color: '#000 !important',
+        background: 'var(--accent-primary) !important',
+        color: '#fff !important',
+        border: '1px solid var(--accent-primary) !important',
         '&:hover': {
-            background: 'var(--accent)',
-            filter: 'brightness(1.15)',
+            background: 'var(--accent-hover)',
             transform: 'translateY(-1.5px)',
             boxShadow: '0 8px 20px rgba(0,0,0,0.4)',
         },
         '&.Mui-disabled': {
-            background: 'rgba(255,255,255,0.06) !important',
-            color: 'rgba(255,255,255,0.25) !important',
-            border: '1px solid rgba(255,255,255,0.02) !important',
+            background: 'var(--bg-tertiary) !important',
+            color: 'var(--text-muted) !important',
+            border: '1px solid var(--border) !important',
             opacity: 1,
         },
     } as const;
 
     const sliderSx = {
-        color: 'var(--accent)',
+        color: 'var(--accent-primary)',
         height: 4,
         '& .MuiSlider-thumb': {
             width: 12,
             height: 12,
+            backgroundColor: '#fff',
+            border: '2px solid var(--accent-primary)',
             transition: '0.3s cubic-bezier(.47,1.64,.41,.8)',
-            '&:before': { boxShadow: '0 2px 12px 0 rgba(0,0,0,0.4)' },
-            '&:hover, &.Mui-focusVisible': { boxShadow: '0px 0px 0px 8px color-mix(in srgb, var(--accent) 16%, transparent)' },
+            '&:before': { boxShadow: '0 2px 6px 0 rgba(0,0,0,0.35)' },
+            '&:hover, &.Mui-focusVisible': { boxShadow: '0px 0px 0px 6px color-mix(in oklab, var(--accent-primary) 18%, transparent)' },
             '&.Mui-active': { width: 16, height: 16 },
         },
-        '& .MuiSlider-rail': { opacity: 0.15 },
+        '& .MuiSlider-rail': { backgroundColor: 'var(--bg-tertiary)', opacity: 1 },
     } as const;
 
-    // TODO(backend): the Upscayl IPC bridge (upscale:* / upscayl:* commands, binary
-    // download + Real-ESRGAN NCNN process, live log/progress events, prefs persistence)
-    // does not exist yet. The listeners below are kept as no-op stubs so the wiring
-    // is obvious once the backend lands.
+    // Resolve the saved binary path on mount, then subscribe to the backend's
+    // upscale/upscayl events so the log + progress bars update live.
     useEffect(() => {
         let mounted = true;
         (async () => {
             try {
-                // TODO(backend): const saved = await invokeCommand('prefs:get', { key: 'RealesrganExePath' });
-                const saved = '';
+                const saved = await prefsGet('RealesrganExePath');
                 if (mounted && saved) {
                     setExePath(saved);
                 } else if (mounted) {
@@ -302,7 +303,41 @@ export function Upscale() {
                 }
             } catch { /* ignore */ }
         })();
-        return () => { mounted = false; };
+
+        const unlisteners: UnlistenFn[] = [];
+        (async () => {
+            const appendLog = (data: string) => setLog((prev) => (prev ? prev + data : data));
+
+            unlisteners.push(await listen<string>('upscayl:log', (e) => appendLog(e.payload)));
+            unlisteners.push(await listen<string>('upscale:log', (e) => appendLog(e.payload)));
+            unlisteners.push(await listen<number>('upscayl:progress', (e) => setProgress(e.payload)));
+            unlisteners.push(await listen<{ progress?: number; message?: string }>('upscale:progress', (e) => {
+                setDownloadProgress(e.payload?.progress || 0);
+                setDownloadMessage(e.payload?.message || '');
+            }));
+            unlisteners.push(await listen<{ totalFiles: number }>('upscayl:batch-start', (e) => {
+                setBatchInfo(e.payload);
+                setBatchProgress({
+                    currentFile: 0,
+                    totalFiles: e.payload.totalFiles,
+                    currentFileName: '',
+                    overallProgress: 0,
+                    fileProgress: 0,
+                });
+            }));
+            unlisteners.push(await listen<BatchProgress>('upscayl:batch-progress', (e) => {
+                setBatchProgress(e.payload);
+            }));
+            unlisteners.push(await listen<unknown>('upscayl:batch-complete', (e) => {
+                setBatchResults(e.payload);
+                setIsRunning(false);
+            }));
+        })();
+
+        return () => {
+            mounted = false;
+            for (const un of unlisteners) un();
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -393,21 +428,16 @@ export function Upscale() {
 
     const pickInput = async () => {
         if (batchMode) {
-            // Batch mode: select folder.
-            // TODO(backend): a folder picker only returns the directory path; enumerating
-            // image files inside it for thumbnails needs a backend list-directory command.
-            // As a faithful interim we let the user multi-select the source images so the
-            // grid preview still works against real files on disk.
-            const picked = await open({
-                multiple: true,
-                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'jfif', 'bmp', 'tif', 'tiff'] }],
-            });
-            if (Array.isArray(picked) && picked.length > 0) {
-                const selectedPath = dirname(picked[0]);
-                setInputPath(selectedPath);
-                await loadFolderContents(picked);
+            // Batch mode: pick a folder and enumerate its images on the backend so
+            // the grid preview and batch run have their file list.
+            const picked = await open({ directory: true, multiple: false });
+            if (typeof picked === 'string') {
+                const scanned = await imgRecolorScanDir(picked, false);
+                const files = scanned.map((img) => img.path);
+                setInputPath(picked);
+                await loadFolderContents(files);
                 // Automatically set output folder to a subfolder of the selected folder
-                setOutputDir(joinPath(selectedPath, 'upscaled'));
+                setOutputDir(joinPath(picked, 'upscaled'));
             }
         } else {
             // Single file mode: select image file
@@ -436,8 +466,7 @@ export function Upscale() {
     // Download manager functions
     const checkDownloadStatus = async () => {
         try {
-            // TODO(backend): const status = await invokeCommand('upscale:check-status');
-            const status: DownloadStatus = { binary: { installed: false }, models: { installed: [], total: 0 } };
+            const status = await upscaleCheckStatus();
             setDownloadStatus(status);
         } catch (error) {
             log.error('Failed to check download status', String(error));
@@ -451,9 +480,12 @@ export function Upscale() {
         setLog(''); // Clear previous logs
 
         try {
-            // TODO(backend): await invokeCommand('upscale:download-all'); — streams
-            // 'upscale:progress' / 'upscale:log' events back to drive the bar below.
-            throw new Error('Upscayl backend download not wired yet');
+            // Streams 'upscale:progress' / 'upscale:log' events to drive the bar below.
+            const path = await upscaleDownloadAll();
+            if (path) {
+                setExePath(path);
+                await prefsSet('RealesrganExePath', path);
+            }
         } catch (error) {
             log.error('Download failed', String(error));
             setDownloadMessage('Download failed');
@@ -470,11 +502,10 @@ export function Upscale() {
         setEnsureError('');
         setLog('');
         try {
-            // TODO(backend): const path = await invokeCommand('realesrgan.ensure');
-            const path = '';
+            const path = await realesrganEnsure();
             if (path) {
                 setExePath(path);
-                // TODO(backend): await invokeCommand('prefs:set', { key: 'RealesrganExePath', value: path });
+                await prefsSet('RealesrganExePath', path);
             } else {
                 setExePath('');
                 setEnsureError('Upscayl binary not found. Please download it from the AI Components Settings in the top right corner.');
@@ -493,7 +524,7 @@ export function Upscale() {
 
         // Cancel the upscaling process
         try {
-            // TODO(backend): await invokeCommand('upscayl:cancel');
+            await upscaylCancel();
         } catch (e) {
             log.error('Error canceling upscaling', String(e));
         }
@@ -535,9 +566,15 @@ export function Upscale() {
                     throw new Error('Please select an output folder for batch processing');
                 }
 
-                // TODO(backend): await invokeCommand('upscayl:batch-process', {
-                //     inputFolder: inputPath, outputFolder: outputDir, model, scale, extraArgs, exePath });
-                throw new Error('Upscale (batch) not wired yet');
+                // Streams 'upscayl:batch-*' events; batch-complete flips isRunning off.
+                await upscaylBatchProcess({
+                    inputFolder: inputPath,
+                    outputFolder: outputDir,
+                    model,
+                    scale,
+                    extraArgs,
+                    exePath,
+                });
             } else {
                 // Single file processing mode
                 const args: string[] = [];
@@ -570,11 +607,20 @@ export function Upscale() {
                     args.push(...extraArgs.split(' ').filter(Boolean));
                 }
 
-                // TODO(backend): const { code, stdout, stderr } = await invokeCommand('upscayl:stream', {
-                //     exePath, args, cwd: dirname(exePath) }); — streams 'upscayl:log' / 'upscayl:progress'.
-                // On success, load the upscaled output for the before/after comparison:
-                //   const dataUrl = await readAsDataUrl(resolvedOutput); setUpscaledImage(dataUrl);
-                throw new Error('Upscale not wired yet');
+                // Streams 'upscayl:log' / 'upscayl:progress' events for live output.
+                const { code, stdout, stderr } = await upscaylStream(exePath, args, dirname(exePath));
+                setLog((prev) => prev + (stdout || '') + (stderr || ''));
+                setProgress(code === 0 ? 100 : 0);
+
+                // On success, load the upscaled output for the before/after comparison.
+                if (code === 0 && resolvedOutput) {
+                    try {
+                        const dataUrl = await readAsDataUrl(resolvedOutput);
+                        setUpscaledImage(dataUrl);
+                    } catch {
+                        setUpscaledImage(null);
+                    }
+                }
             }
         } catch (e) {
             log.error('Upscaling error', String(e));
@@ -625,27 +671,26 @@ export function Upscale() {
     // Modern Processing Modal
     const runningModal = (
         <Box sx={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)',
+            position: 'fixed', inset: 0, background: 'color-mix(in oklab, black 60%, transparent)', backdropFilter: 'blur(6px)',
             zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3,
         }}>
             <Box sx={{
                 width: '100%', maxWidth: 480,
-                background: 'rgba(15, 15, 20, 0.98)',
-                backdropFilter: 'blur(30px)',
-                border: '1px solid rgba(255,255,255,0.08)', borderRadius: '24px',
-                overflow: 'hidden', boxShadow: '0 42px 100px rgba(0,0,0,0.9)',
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)', borderRadius: '18px',
+                overflow: 'hidden', boxShadow: '0 24px 48px -16px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.3)',
                 position: 'relative',
             }}>
                 {/* Modal Header */}
                 <Box sx={{
-                    p: 2.2, borderBottom: '1px solid rgba(255,255,255,0.08)',
+                    p: 2.2, borderBottom: '1px solid var(--border)',
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    background: 'rgba(255,255,255,0.02)',
+                    background: 'var(--bg-tertiary)',
                 }}>
-                    <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', letterSpacing: '0.05em', color: 'var(--accent)' }}>
+                    <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', letterSpacing: '0.05em', color: 'var(--accent-primary)' }}>
                         AI PROCESSING IN PROGRESS
                     </Typography>
-                    <IconButton size="small" onClick={cancelUpscaling} sx={{ color: 'rgba(255,255,255,0.35)', '&:hover': { color: '#f87171' } }}>
+                    <IconButton size="small" onClick={cancelUpscaling} sx={{ color: 'var(--text-muted)', '&:hover': { color: 'var(--color-danger)' } }}>
                         <CloseIcon sx={{ fontSize: 18 }} />
                     </IconButton>
                 </Box>
@@ -659,7 +704,7 @@ export function Upscale() {
                     }}>
                         <Box sx={{
                             position: 'absolute', inset: 0, borderRadius: '50%',
-                            background: 'linear-gradient(135deg, var(--accent), var(--accent-bright))',
+                            background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-hover))',
                             opacity: 0.15, animation: 'pulse 2s infinite',
                         }} />
                         <CircularProgress
@@ -667,17 +712,17 @@ export function Upscale() {
                             value={batchMode ? batchProgress.overallProgress : progress}
                             size={84}
                             thickness={2.5}
-                            sx={{ color: 'var(--accent)', position: 'absolute' }}
+                            sx={{ color: 'var(--accent-primary)', position: 'absolute' }}
                         />
-                        <LoaderIcon sx={{ fontSize: 32, color: 'var(--accent)', animation: 'spin 2s linear infinite' }} />
+                        <LoaderIcon sx={{ fontSize: 32, color: 'var(--accent-primary)', animation: 'spin 2s linear infinite' }} />
                     </Box>
 
                     <Typography sx={{ fontWeight: 700, fontSize: '1.2rem', mb: 1 }}>
                         {batchMode ? `${batchProgress.currentFile} of ${batchProgress.totalFiles} Files` : 'Enhancing Image'}
                     </Typography>
-                    <Typography sx={{ fontSize: '0.8rem', color: 'var(--text-2)', opacity: 0.6, mb: 4, px: 2, lineHeight: 1.5 }} component="div">
+                    <Typography sx={{ fontSize: '0.8rem', color: 'var(--text-secondary)', mb: 4, px: 2, lineHeight: 1.5 }} component="div">
                         {batchMode ? (
-                            <>Currently processing: <Box component="span" sx={{ color: 'var(--accent)', fontWeight: 600 }}>{batchProgress.currentFileName}</Box></>
+                            <>Currently processing: <Box component="span" sx={{ color: 'var(--accent-primary)', fontWeight: 600 }}>{batchProgress.currentFileName}</Box></>
                         ) : (
                             `AI is upscaling your image by ${scale}x. This may take a minute depending on your hardware.`
                         )}
@@ -689,31 +734,31 @@ export function Upscale() {
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                                 <Box>
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
-                                        <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, opacity: 0.4 }}>OVERALL PROGRESS</Typography>
-                                        <Typography sx={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--accent)' }}>{batchProgress.overallProgress}%</Typography>
+                                        <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)' }}>OVERALL PROGRESS</Typography>
+                                        <Typography sx={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--accent-primary)' }}>{batchProgress.overallProgress}%</Typography>
                                     </Box>
-                                    <Box sx={{ height: 6, background: 'rgba(255,255,255,0.04)', borderRadius: 3, overflow: 'hidden' }}>
-                                        <Box sx={{ width: `${batchProgress.overallProgress}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.4s ease-out' }} />
+                                    <Box sx={{ height: 6, background: 'var(--bg-tertiary)', borderRadius: 999, overflow: 'hidden' }}>
+                                        <Box sx={{ width: `${batchProgress.overallProgress}%`, height: '100%', background: 'var(--accent-primary)', transition: 'width 0.4s ease-out' }} />
                                     </Box>
                                 </Box>
                                 <Box>
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
-                                        <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, opacity: 0.4 }}>CURRENT FILE</Typography>
-                                        <Typography sx={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--accent)' }}>{Math.round(batchProgress.fileProgress)}%</Typography>
+                                        <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)' }}>CURRENT FILE</Typography>
+                                        <Typography sx={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--accent-primary)' }}>{Math.round(batchProgress.fileProgress)}%</Typography>
                                     </Box>
-                                    <Box sx={{ height: 4, background: 'rgba(255,255,255,0.04)', borderRadius: 2, overflow: 'hidden' }}>
-                                        <Box sx={{ width: `${batchProgress.fileProgress}%`, height: '100%', background: 'linear-gradient(90deg, rgba(255,255,255,0.2), var(--accent))', transition: 'width 0.3s' }} />
+                                    <Box sx={{ height: 4, background: 'var(--bg-tertiary)', borderRadius: 999, overflow: 'hidden' }}>
+                                        <Box sx={{ width: `${batchProgress.fileProgress}%`, height: '100%', background: 'linear-gradient(90deg, color-mix(in oklab, var(--accent-primary) 60%, var(--accent-secondary)), var(--accent-primary))', transition: 'width 0.3s' }} />
                                     </Box>
                                 </Box>
                             </Box>
                         ) : (
                             <Box>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, opacity: 0.4 }}>PROCESSING</Typography>
-                                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--accent)' }}>{Math.round(progress)}%</Typography>
+                                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)' }}>PROCESSING</Typography>
+                                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--accent-primary)' }}>{Math.round(progress)}%</Typography>
                                 </Box>
-                                <Box sx={{ height: 8, background: 'rgba(255,255,255,0.04)', borderRadius: 4, overflow: 'hidden', p: '2px' }}>
-                                    <Box sx={{ width: `${progress}%`, height: '100%', background: 'var(--accent)', borderRadius: 4, transition: 'width 0.5s cubic-bezier(0.1, 0, 0.3, 1)' }} />
+                                <Box sx={{ height: 8, background: 'var(--bg-tertiary)', borderRadius: 999, overflow: 'hidden', p: '2px' }}>
+                                    <Box sx={{ width: `${progress}%`, height: '100%', background: 'var(--accent-primary)', borderRadius: 999, transition: 'width 0.5s cubic-bezier(0.1, 0, 0.3, 1)' }} />
                                 </Box>
                             </Box>
                         )}
@@ -723,10 +768,10 @@ export function Upscale() {
                         onClick={cancelUpscaling}
                         variant="outlined"
                         sx={{
-                            borderColor: 'rgba(239,68,68,0.2)', color: '#f87171',
+                            borderColor: 'color-mix(in oklab, var(--color-danger) 45%, transparent)', color: 'var(--color-danger)',
                             textTransform: 'none', fontSize: '0.75rem', fontWeight: 700,
-                            px: 4, borderRadius: '8px',
-                            '&:hover': { borderColor: '#ef4444', background: 'rgba(239,68,68,0.05)' },
+                            px: 4, borderRadius: 'var(--radius-sm)',
+                            '&:hover': { borderColor: 'var(--color-danger)', background: 'color-mix(in oklab, var(--color-danger) 10%, transparent)' },
                         }}
                     >
                         Cancel Process
@@ -740,29 +785,29 @@ export function Upscale() {
         <Box className="upscale-root" sx={{
             height: '100%', minHeight: '100%', width: '100%',
             display: 'flex', flexDirection: 'column',
-            background: 'var(--bg)', color: 'var(--text)',
+            background: 'var(--bg-primary)', color: 'var(--text-primary)',
             overflow: 'hidden', position: 'relative',
         }}>
             {/* ── Page header ── */}
             <Box sx={{
                 flexShrink: 0,
                 px: { xs: 2, sm: 2.5 }, py: { xs: 1.1, sm: 1.35 },
-                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                borderBottom: '1px solid var(--border)',
                 display: 'flex', alignItems: 'center', gap: 1.5,
                 position: 'relative', zIndex: 2,
-                background: 'rgba(0,0,0,0.05)',
+                background: 'var(--bg-secondary)',
             }}>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)', lineHeight: 1.2 }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', lineHeight: 1.2 }}>
                         AI Image Upscaler
                     </Typography>
-                    <Typography sx={{ fontSize: '0.67rem', color: 'var(--text-2)', opacity: 0.5, mt: 0.1, lineHeight: 1 }}>
+                    <Typography sx={{ fontSize: '0.67rem', color: 'var(--text-muted)', mt: 0.1, lineHeight: 1 }}>
                         {batchMode ? 'Upscale multiple images from a folder' : 'Enhance a single image using AI models'}
                     </Typography>
                 </Box>
 
                 {/* Batch mode toggle pills */}
-                <Box sx={{ display: 'flex', gap: '3px', background: 'rgba(0,0,0,0.25)', borderRadius: '8px', p: '3px' }}>
+                <Box sx={{ display: 'flex', gap: '3px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', p: '3px' }}>
                     {([
                         { key: false, label: 'Single File' },
                         { key: true, label: 'Batch Mode' },
@@ -777,15 +822,15 @@ export function Upscale() {
                         <IconButton size="small"
                             onClick={() => setShowDownloadModal(true)}
                             sx={{
-                                color: downloadStatus?.binary?.installed ? 'rgba(255,255,255,0.35)' : '#f59e0b',
-                                '&:hover': { color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 8%, transparent)' },
+                                color: downloadStatus?.binary?.installed ? 'var(--text-muted)' : 'var(--color-warning)',
+                                '&:hover': { color: 'var(--accent-primary)', background: 'color-mix(in oklab, var(--accent-primary) 8%, transparent)' },
                             }}
                         >
                             <SettingsIcon sx={{ fontSize: 17 }} />
                             {!downloadStatus?.binary?.installed && (
                                 <Box sx={{
                                     position: 'absolute', top: 6, right: 6, width: 6, height: 6,
-                                    background: '#f59e0b', borderRadius: '50%', border: '1px solid var(--bg)',
+                                    background: 'var(--color-warning)', borderRadius: '50%', border: '1px solid var(--bg-primary)',
                                     animation: 'pulse 2s infinite',
                                 }} />
                             )}
@@ -804,24 +849,23 @@ export function Upscale() {
                     width: { xs: '100%', sm: '300px', md: '320px' },
                     flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 1.25,
                     px: { xs: 1.5, sm: 2 }, py: 2,
-                    background: 'rgba(0,0,0,0.08)',
-                    backdropFilter: 'blur(10px)',
-                    borderRight: '1px solid rgba(255,255,255,0.06)',
+                    background: 'var(--bg-secondary)',
+                    borderRight: '1px solid var(--border)',
                     overflowY: 'auto',
                     '&::-webkit-scrollbar': { width: 4 },
-                    '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.1)', borderRadius: 2 },
+                    '&::-webkit-scrollbar-thumb': { background: 'var(--border-strong)', borderRadius: 2 },
                 }}>
                     {/* Status Chip */}
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', color: 'rgba(255,255,255,0.3)' }}>SYSTEM STATUS</Typography>
+                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', color: 'var(--text-muted)' }}>SYSTEM STATUS</Typography>
                         <Chip
                             label={exePath ? 'READY' : 'NOT INSTALLED'}
                             size="small"
                             sx={{
                                 height: 18, fontSize: '0.6rem', fontWeight: 800,
-                                background: exePath ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-                                color: exePath ? '#4ade80' : '#f87171',
-                                border: `1px solid ${exePath ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                                background: exePath ? 'color-mix(in oklab, var(--color-success) 15%, var(--bg-tertiary))' : 'color-mix(in oklab, var(--color-danger) 15%, var(--bg-tertiary))',
+                                color: exePath ? 'var(--color-success)' : 'var(--color-danger)',
+                                border: `1px solid ${exePath ? 'color-mix(in oklab, var(--color-success) 30%, var(--border))' : 'color-mix(in oklab, var(--color-danger) 30%, var(--border))'}`,
                                 '& .MuiChip-label': { px: 1 },
                             }}
                         />
@@ -829,7 +873,7 @@ export function Upscale() {
 
                     {/* Step 1: Input */}
                     <Box sx={panelSx}>
-                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.85, mb: 1.25, display: 'flex', alignItems: 'center', gap: 0.75 }} component="div">
+                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent-primary)', mb: 1.25, display: 'flex', alignItems: 'center', gap: 0.75 }} component="div">
                             {batchMode ? <FolderIcon sx={{ fontSize: 13 }} /> : <UploadIcon sx={{ fontSize: 13 }} />} {batchMode ? 'Source Folder' : 'Source Image'}
                         </Typography>
                         <Button onClick={pickInput} disabled={isRunning}
@@ -839,8 +883,8 @@ export function Upscale() {
                             {inputPath ? 'Change Selection' : (batchMode ? 'Select Folder' : 'Select Image')}
                         </Button>
                         {inputPath && (
-                            <Box sx={{ mt: 1, px: 1, py: 0.75, borderRadius: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <Typography sx={{ fontSize: '0.7rem', color: 'var(--text-2)', wordBreak: 'break-all', opacity: 0.8, lineHeight: 1.2 }}>
+                            <Box sx={{ mt: 1, px: 1, py: 0.75, borderRadius: 'var(--radius-sm)', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
+                                <Typography sx={{ fontSize: '0.7rem', color: 'var(--text-secondary)', wordBreak: 'break-all', lineHeight: 1.2 }}>
                                     {basename(inputPath)}
                                 </Typography>
                             </Box>
@@ -849,7 +893,7 @@ export function Upscale() {
 
                     {/* Step 2: Model Configuration */}
                     <Box sx={panelSx}>
-                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.85, mb: 1.5, display: 'flex', alignItems: 'center', gap: 0.75 }} component="div">
+                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent-primary)', mb: 1.5, display: 'flex', alignItems: 'center', gap: 0.75 }} component="div">
                             <RocketIcon sx={{ fontSize: 13 }} /> Model Configuration
                         </Typography>
 
@@ -863,14 +907,14 @@ export function Upscale() {
 
                         <Box sx={{ px: 0.5 }}>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                                <Typography sx={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>UPSCALE SCALE</Typography>
-                                <Typography sx={{ fontSize: '0.7rem', color: 'var(--accent)', fontWeight: 700 }}>{scale}x</Typography>
+                                <Typography sx={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>UPSCALE SCALE</Typography>
+                                <Typography sx={{ fontSize: '0.7rem', color: 'var(--accent-primary)', fontWeight: 700 }}>{scale}x</Typography>
                             </Box>
                             <Slider value={scale} onChange={(_e, v) => setScale(v as number)} min={1} max={4} step={1} marks sx={sliderSx} />
                         </Box>
 
                         <Box sx={{ px: 0.5, mt: 1.5 }}>
-                            <Typography sx={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, mb: 0.5 }}>EXTRA ARGUMENTS</Typography>
+                            <Typography sx={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, mb: 0.5 }}>EXTRA ARGUMENTS</Typography>
                             <Box
                                 component="input"
                                 value={extraArgs}
@@ -878,12 +922,12 @@ export function Upscale() {
                                 placeholder="-t 0 -g 0 ..."
                                 sx={{
                                     width: '100%', boxSizing: 'border-box',
-                                    background: 'rgba(255,255,255,0.03)', color: 'var(--text)',
-                                    fontSize: '0.8rem', borderRadius: '8px', px: 1, py: 0.75,
-                                    border: '1px solid rgba(255,255,255,0.1)', outline: 'none',
-                                    fontFamily: 'JetBrains Mono, monospace',
-                                    '&:focus': { borderColor: 'var(--accent)' },
-                                    '&::placeholder': { color: 'rgba(255,255,255,0.25)' },
+                                    background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+                                    fontSize: '0.8rem', borderRadius: 'var(--radius-sm)', px: 1, py: 0.75,
+                                    border: '1px solid var(--border)', outline: 'none',
+                                    fontFamily: 'var(--font-mono)',
+                                    '&:focus': { borderColor: 'var(--accent-primary)' },
+                                    '&::placeholder': { color: 'var(--text-muted)' },
                                 }}
                             />
                         </Box>
@@ -891,7 +935,7 @@ export function Upscale() {
 
                     {/* Step 3: Output */}
                     <Box sx={panelSx}>
-                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.85, mb: 1.25, display: 'flex', alignItems: 'center', gap: 0.75 }} component="div">
+                        <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--accent-primary)', mb: 1.25, display: 'flex', alignItems: 'center', gap: 0.75 }} component="div">
                             <FolderIcon sx={{ fontSize: 13 }} /> Destination
                         </Typography>
                         <Button onClick={pickOutput} disabled={isRunning}
@@ -901,8 +945,8 @@ export function Upscale() {
                             {outputDir ? 'Change Folder' : 'Set Output Folder'}
                         </Button>
                         {outputDir && (
-                            <Box sx={{ mt: 1, px: 1, py: 0.75, borderRadius: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <Typography sx={{ fontSize: '0.65rem', color: 'var(--text-2)', wordBreak: 'break-all', opacity: 0.6, lineHeight: 1.3 }}>
+                            <Box sx={{ mt: 1, px: 1, py: 0.75, borderRadius: 'var(--radius-sm)', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
+                                <Typography sx={{ fontSize: '0.65rem', color: 'var(--text-muted)', wordBreak: 'break-all', lineHeight: 1.3 }}>
                                     {outputDir}
                                 </Typography>
                             </Box>
@@ -921,7 +965,7 @@ export function Upscale() {
                         </Button>
 
                         {ensureError && (
-                            <Typography sx={{ mt: 1.5, fontSize: '0.65rem', color: '#f87171', background: 'rgba(239,68,68,0.1)', p: 1, borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)', lineHeight: 1.4 }}>
+                            <Typography sx={{ mt: 1.5, fontSize: '0.65rem', color: 'var(--color-danger)', background: 'color-mix(in oklab, var(--color-danger) 12%, transparent)', p: 1, borderRadius: 'var(--radius-sm)', border: '1px solid color-mix(in oklab, var(--color-danger) 30%, var(--border))', lineHeight: 1.4 }}>
                                 {ensureError}
                             </Typography>
                         )}
@@ -931,32 +975,32 @@ export function Upscale() {
                 {/* Preview Area */}
                 <Box sx={{
                     flex: 1, display: 'flex', flexDirection: 'column',
-                    position: 'relative', background: 'rgba(0,0,0,0.15)',
+                    position: 'relative', background: 'var(--bg-primary)',
                     overflow: 'hidden',
                 }}>
                     {/* Small Preview Toolbar */}
                     <Box sx={{
                         px: 2, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        borderBottom: '1px solid rgba(255,255,255,0.03)', background: 'rgba(0,0,0,0.05)',
+                        borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)',
                         zIndex: 5,
                     }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <IconButton size="small" onClick={handleZoomOut} sx={{ color: 'rgba(255,255,255,0.4)', '&:hover': { color: '#fff' } }}>
+                            <IconButton size="small" onClick={handleZoomOut} sx={{ color: 'var(--text-muted)', '&:hover': { color: 'var(--text-primary)' } }}>
                                 <ZoomOutIcon sx={{ fontSize: 18 }} />
                             </IconButton>
-                            <Typography sx={{ minWidth: 45, textAlign: 'center', fontSize: '0.72rem', fontWeight: 600, color: 'rgba(255,255,255,0.6)', fontFamily: 'JetBrains Mono, monospace' }}>
+                            <Typography sx={{ minWidth: 45, textAlign: 'center', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
                                 {zoomLevel}%
                             </Typography>
-                            <IconButton size="small" onClick={handleZoomIn} sx={{ color: 'rgba(255,255,255,0.4)', '&:hover': { color: '#fff' } }}>
+                            <IconButton size="small" onClick={handleZoomIn} sx={{ color: 'var(--text-muted)', '&:hover': { color: 'var(--text-primary)' } }}>
                                 <ZoomInIcon sx={{ fontSize: 18 }} />
                             </IconButton>
-                            <IconButton size="small" onClick={handleResetZoom} sx={{ ml: 1, color: 'rgba(255,255,255,0.4)', '&:hover': { color: 'var(--accent)' } }}>
+                            <IconButton size="small" onClick={handleResetZoom} sx={{ ml: 1, color: 'var(--text-muted)', '&:hover': { color: 'var(--accent-primary)' } }}>
                                 <ResetIcon sx={{ fontSize: 17 }} />
                             </IconButton>
                         </Box>
 
                         {upscaledImage && (
-                            <Typography sx={{ fontSize: '0.65rem', color: 'var(--accent)', fontWeight: 700, letterSpacing: '0.05em', background: 'color-mix(in srgb, var(--accent) 15%, transparent)', px: 1, py: 0.3, borderRadius: '4px' }}>
+                            <Typography sx={{ fontSize: '0.65rem', color: 'var(--accent-primary)', fontWeight: 700, letterSpacing: '0.05em', background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)', px: 1, py: 0.3, borderRadius: 'var(--radius-sm)' }}>
                                 AI ENHANCED COMPARISON
                             </Typography>
                         )}
@@ -967,50 +1011,50 @@ export function Upscale() {
                         flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
                         position: 'relative', overflow: 'auto', p: 4,
                         '&::-webkit-scrollbar': { width: 6, height: 6 },
-                        '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.05)', borderRadius: 3 },
+                        '&::-webkit-scrollbar-thumb': { background: 'var(--border-strong)', borderRadius: 3 },
                     }}>
                         {!previewImage && !isRunning && !batchMode && (
-                            <Box sx={{ textAlign: 'center', color: 'var(--text)' }}>
+                            <Box sx={{ textAlign: 'center', color: 'var(--text-primary)' }}>
                                 <Box sx={{
                                     width: 96,
                                     height: 96,
-                                    background: 'rgba(255,255,255,0.05)',
-                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    background: 'var(--bg-tertiary)',
+                                    border: '1px solid var(--border)',
                                     borderRadius: '50%',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     mx: 'auto', mb: 3,
                                 }}>
-                                    <ImageIcon sx={{ fontSize: 48, color: 'rgba(255,255,255,0.15)' }} />
+                                    <ImageIcon sx={{ fontSize: 48, color: 'var(--text-muted)' }} />
                                 </Box>
-                                <Typography sx={{ mb: 1, color: 'rgba(255,255,255,0.4)', fontWeight: 700, fontSize: '1rem' }}>No Image Selected</Typography>
-                                <Typography sx={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.75rem' }}>Select an image from the sidebar to get started</Typography>
+                                <Typography sx={{ mb: 1, color: 'var(--text-secondary)', fontWeight: 700, fontSize: '1rem' }}>No Image Selected</Typography>
+                                <Typography sx={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Select an image from the sidebar to get started</Typography>
                             </Box>
                         )}
 
                         {/* Batch Mode Folder Preview */}
                         {batchMode && inputPath && folderContents.length > 0 && !isRunning && (
                             <Box sx={{ width: '100%', height: '100%', p: 2, overflow: 'auto' }}>
-                                <Typography sx={{ mb: 2, fontWeight: 700, color: 'var(--accent)', fontSize: '0.85rem' }}>
+                                <Typography sx={{ mb: 2, fontWeight: 700, color: 'var(--accent-primary)', fontSize: '0.85rem' }}>
                                     SOURCE FOLDER: {folderContents.length} IMAGES
                                 </Typography>
                                 <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 1.5 }}>
                                     {folderContents.map((file, idx) => (
                                         <Box key={idx} sx={{
-                                            background: 'rgba(255,255,255,0.03)', p: 1, borderRadius: '8px',
-                                            border: '1px solid rgba(255,255,255,0.05)',
-                                            '&:hover': { borderColor: 'rgba(255,255,255,0.15)', transform: 'translateY(-2px)' },
-                                            transition: 'all 0.2s ease',
+                                            background: 'var(--bg-secondary)', p: 1, borderRadius: 'var(--radius-sm)',
+                                            border: '1px solid var(--border)',
+                                            '&:hover': { borderColor: 'color-mix(in oklab, var(--accent-primary) 35%, var(--border))', transform: 'translateY(-2px)' },
+                                            transition: 'border-color 140ms var(--ease-out), transform 140ms var(--ease-out)',
                                         }}>
                                             {file.thumbnail ? (
                                                 <img src={file.thumbnail} style={{ width: '100%', height: 100, objectFit: 'cover', borderRadius: '4px' }} alt="" />
                                             ) : (
-                                                <Box sx={{ width: '100%', height: 100, background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }}>
-                                                    <ImageIcon sx={{ opacity: 0.1 }} />
+                                                <Box sx={{ width: '100%', height: 100, background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', color: 'var(--text-muted)' }}>
+                                                    <ImageIcon />
                                                 </Box>
                                             )}
-                                            <Typography noWrap sx={{ mt: 0.75, fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>{file.name}</Typography>
+                                            <Typography noWrap sx={{ mt: 0.75, fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 600 }}>{file.name}</Typography>
                                         </Box>
                                     ))}
                                 </Box>
@@ -1020,7 +1064,7 @@ export function Upscale() {
                         {/* Single File Preview */}
                         {previewImage && !batchMode && (
                             <Box sx={{ position: 'relative', transform: `scale(${zoomLevel / 100})`, transition: 'transform 0.3s ease' }}>
-                                <Box sx={{ position: 'relative', borderRadius: '4px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} onMouseMove={handleMouseMove} onMouseLeave={() => setIsDragging(false)}>
+                                <Box sx={{ position: 'relative', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border)', boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)' }} onMouseMove={handleMouseMove} onMouseLeave={() => setIsDragging(false)}>
                                     <img src={previewImage} draggable={false} style={{ maxWidth: displaySize.width || 900, maxHeight: displaySize.height || 650, display: 'block' }} alt="" onLoad={handleOriginalLoad} />
                                     {upscaledImage && (
                                         <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden', clipPath: `inset(0 0 0 ${sliderPosition}%)` }}>
@@ -1028,8 +1072,8 @@ export function Upscale() {
                                         </Box>
                                     )}
                                     {upscaledImage && (
-                                        <Box sx={{ position: 'absolute', top: 0, bottom: 0, left: `${sliderPosition}%`, width: 1.5, background: 'var(--accent)', cursor: 'col-resize', transform: 'translateX(-50%)', zIndex: 3 }} onMouseDown={handleSliderMouseDown}>
-                                            <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 28, height: 28, borderRadius: '50%', background: 'var(--accent)', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', border: '2px solid rgba(0,0,0,0.2)' }}>
+                                        <Box sx={{ position: 'absolute', top: 0, bottom: 0, left: `${sliderPosition}%`, width: 1.5, background: 'var(--accent-primary)', cursor: 'col-resize', transform: 'translateX(-50%)', zIndex: 3 }} onMouseDown={handleSliderMouseDown}>
+                                            <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 28, height: 28, borderRadius: '50%', background: 'var(--accent-primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', border: '2px solid var(--bg-primary)' }}>
                                                 <CompareIcon sx={{ fontSize: 16 }} />
                                             </Box>
                                         </Box>
@@ -1041,19 +1085,19 @@ export function Upscale() {
 
                     {/* Console / log output */}
                     <Box sx={{
-                        flexShrink: 0, height: 140, borderTop: '1px solid rgba(255,255,255,0.06)',
-                        background: 'rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column',
+                        flexShrink: 0, height: 140, borderTop: '1px solid var(--border)',
+                        background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column',
                     }}>
-                        <Box sx={{ px: 2, py: 0.75, display: 'flex', alignItems: 'center', gap: 0.75, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                            <InfoIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.35)' }} />
-                            <Typography sx={{ fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.09em', color: 'rgba(255,255,255,0.35)' }}>CONSOLE</Typography>
+                        <Box sx={{ px: 2, py: 0.75, display: 'flex', alignItems: 'center', gap: 0.75, borderBottom: '1px solid var(--border)' }}>
+                            <InfoIcon sx={{ fontSize: 13, color: 'var(--text-muted)' }} />
+                            <Typography sx={{ fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.09em', color: 'var(--text-muted)' }}>CONSOLE</Typography>
                         </Box>
                         <Box ref={logRef} sx={{
                             flex: 1, minHeight: 0, p: 1.25, overflow: 'auto',
-                            fontFamily: 'JetBrains Mono, monospace', fontSize: '11.5px', lineHeight: 1.55,
-                            whiteSpace: 'pre-wrap', color: 'rgba(255,255,255,0.7)',
+                            fontFamily: 'var(--font-mono)', fontSize: '11.5px', lineHeight: 1.55,
+                            whiteSpace: 'pre-wrap', color: 'var(--text-secondary)',
                             '&::-webkit-scrollbar': { width: 6 },
-                            '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.08)', borderRadius: 3 },
+                            '&::-webkit-scrollbar-thumb': { background: 'var(--border-strong)', borderRadius: 3 },
                         }}>
                             {logText || 'Console ready...\n'}
                         </Box>
@@ -1063,35 +1107,34 @@ export function Upscale() {
 
             {/* Download/Settings Modal */}
             {showDownloadModal && (
-                <Box sx={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>
+                <Box sx={{ position: 'fixed', inset: 0, background: 'color-mix(in oklab, black 60%, transparent)', backdropFilter: 'blur(6px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>
                     <Box sx={{
                         width: '100%', maxWidth: 460,
-                        background: 'rgba(15, 15, 20, 0.98)',
-                        backdropFilter: 'blur(30px)',
-                        border: '1px solid rgba(255,255,255,0.08)', borderRadius: '24px',
-                        overflow: 'hidden', boxShadow: '0 42px 100px rgba(0,0,0,0.9)',
+                        background: 'var(--bg-secondary)',
+                        border: '1px solid var(--border)', borderRadius: '18px',
+                        overflow: 'hidden', boxShadow: '0 24px 48px -16px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.3)',
                     }}>
-                        <Box sx={{ p: 2.2, borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', letterSpacing: '0.05em', color: 'var(--accent)' }}>AI COMPONENTS SETTINGS</Typography>
-                            <IconButton size="small" onClick={() => setShowDownloadModal(false)} sx={{ color: 'rgba(255,255,255,0.3)' }}><CloseIcon sx={{ fontSize: 18 }} /></IconButton>
+                        <Box sx={{ p: 2.2, borderBottom: '1px solid var(--border)', background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', letterSpacing: '0.05em', color: 'var(--accent-primary)' }}>AI COMPONENTS SETTINGS</Typography>
+                            <IconButton size="small" onClick={() => setShowDownloadModal(false)} sx={{ color: 'var(--text-muted)' }}><CloseIcon sx={{ fontSize: 18 }} /></IconButton>
                         </Box>
                         <Box sx={{ p: 2.5 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                                 <Box>
                                     <Typography sx={{ fontSize: '0.85rem', fontWeight: 700 }}>Upscayl Binary</Typography>
-                                    <Typography sx={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', mt: 0.2 }}>Required for AI processing</Typography>
+                                    <Typography sx={{ fontSize: '0.65rem', color: 'var(--text-muted)', mt: 0.2 }}>Required for AI processing</Typography>
                                 </Box>
-                                <Chip label={downloadStatus?.binary?.installed ? 'INSTALLED' : 'MISSING'} size="small" sx={{ background: downloadStatus?.binary?.installed ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)', color: downloadStatus?.binary?.installed ? '#4ade80' : '#f59e0b', fontSize: '0.62rem', fontWeight: 800 }} />
+                                <Chip label={downloadStatus?.binary?.installed ? 'INSTALLED' : 'MISSING'} size="small" sx={{ background: downloadStatus?.binary?.installed ? 'color-mix(in oklab, var(--color-success) 15%, var(--bg-tertiary))' : 'color-mix(in oklab, var(--color-warning) 15%, var(--bg-tertiary))', color: downloadStatus?.binary?.installed ? 'var(--color-success)' : 'var(--color-warning)', fontSize: '0.62rem', fontWeight: 800 }} />
                             </Box>
 
                             {isDownloading && (
                                 <Box sx={{ mb: 2.5 }}>
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
-                                        <Typography sx={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)' }}>{downloadMessage}</Typography>
-                                        <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--accent)' }}>{Math.round(downloadProgress)}%</Typography>
+                                        <Typography sx={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{downloadMessage}</Typography>
+                                        <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--accent-primary)' }}>{Math.round(downloadProgress)}%</Typography>
                                     </Box>
-                                    <Box sx={{ height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' }}>
-                                        <Box sx={{ width: `${downloadProgress}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.3s' }} />
+                                    <Box sx={{ height: 4, background: 'var(--bg-tertiary)', borderRadius: 999, overflow: 'hidden' }}>
+                                        <Box sx={{ width: `${downloadProgress}%`, height: '100%', background: 'var(--accent-primary)', transition: 'width 0.3s' }} />
                                     </Box>
                                 </Box>
                             )}

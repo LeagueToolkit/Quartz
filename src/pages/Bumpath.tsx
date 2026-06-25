@@ -542,8 +542,8 @@ export function Bumpath() {
             height: '100%',
             minHeight: '100%',
             overflow: 'hidden',
-            background: 'var(--bg)',
-            color: 'var(--text)',
+            background: 'var(--bg-primary)',
+            color: 'var(--text-primary)',
             fontFamily: 'JetBrains Mono, monospace',
             display: 'flex',
             flexDirection: 'column',
@@ -559,17 +559,17 @@ export function Bumpath() {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        background: 'color-mix(in srgb, var(--accent2), transparent 88%)',
-                        border: '2px dashed color-mix(in srgb, var(--accent2), transparent 30%)',
+                        background: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
+                        border: '2px dashed color-mix(in oklab, var(--accent-primary) 70%, transparent)',
                     }}
                 >
                     <Box sx={{
                         px: 2,
                         py: 1.1,
                         borderRadius: '8px',
-                        border: '1px solid color-mix(in srgb, var(--accent2), transparent 45%)',
-                        background: 'color-mix(in srgb, var(--surface), black 10%)',
-                        color: 'var(--text)',
+                        border: '1px solid color-mix(in oklab, var(--accent-primary) 55%, transparent)',
+                        background: 'var(--bg-secondary)',
+                        color: 'var(--text-primary)',
                         fontFamily: 'JetBrains Mono, monospace',
                         fontSize: '0.82rem',
                     }}>

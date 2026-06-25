@@ -4,28 +4,28 @@ import type { SxProps, Theme } from '@mui/material';
 
 const switchSx = {
     '& .MuiSwitch-switchBase.Mui-checked': {
-        color: '#06b6d4',
+        color: 'var(--accent-primary)',
         '&:hover': {
-            backgroundColor: 'rgba(6, 182, 212, 0.1)',
+            backgroundColor: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
         },
     },
     '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-        backgroundColor: '#06b6d4',
+        backgroundColor: 'var(--accent-primary)',
         opacity: 0.8,
     },
     '& .MuiSwitch-track': {
-        backgroundColor: 'rgba(107, 114, 128, 0.3)',
-        border: '1px solid rgba(107, 114, 128, 0.2)',
+        backgroundColor: 'var(--bg-hover)',
+        border: '1px solid var(--border)',
     },
     '& .MuiSwitch-thumb': {
-        backgroundColor: '#ffffff',
-        border: '1px solid rgba(107, 114, 128, 0.2)',
+        backgroundColor: 'var(--text-primary)',
+        border: '1px solid var(--border)',
         boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
     },
 };
 
 const labelSx = {
-    color: 'var(--accent2)',
+    color: 'var(--text-secondary)',
     fontSize: '0.8rem',
     fontWeight: '500',
 };
@@ -58,7 +58,7 @@ const BumpathSettingsPanel = React.memo(function BumpathSettingsPanel({
             data-bumpath-settings-panel
             sx={{
                 ...(panelStyle as object),
-                borderTop: '1px solid var(--glass-border)',
+                borderTop: '1px solid var(--border)',
                 overflow: 'hidden',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 maxHeight: settingsExpanded ? '160px' : '0px',

@@ -6,7 +6,7 @@
 import type { SxProps, Theme } from '@mui/material';
 
 const tonedSurface = (tone: string, alphaTop: number, alphaBot: number) =>
-    `linear-gradient(180deg, color-mix(in srgb, ${tone}, transparent ${alphaTop}%), color-mix(in srgb, ${tone}, transparent ${alphaBot}%))`;
+    `linear-gradient(180deg, color-mix(in oklab, ${tone}, transparent ${alphaTop}%), color-mix(in oklab, ${tone}, transparent ${alphaBot}%))`;
 
 const FONT = 'JetBrains Mono, monospace';
 
@@ -33,9 +33,9 @@ export const celestialButtonStyle = {
         opacity: 0.4,
         cursor: 'not-allowed',
         transform: 'none',
-        background: 'rgba(255,255,255,0.025)',
-        border: '1px solid rgba(255,255,255,0.06)',
-        color: 'rgba(255,255,255,0.32)',
+        background: 'var(--bg-tertiary)',
+        border: '1px solid var(--border)',
+        color: 'var(--text-muted)',
         boxShadow: 'none',
     },
 } as const;
@@ -69,13 +69,13 @@ export const getActionButtonSx = (tone: string, options: ActionButtonOptions = {
         width: iconOnly ? '36px' : 'auto',
         color: tone,
         borderRadius: '6px',
-        border: `1px solid color-mix(in srgb, ${tone}, transparent ${prominent ? 55 : 70}%)`,
+        border: `1px solid color-mix(in oklab, ${tone}, transparent ${prominent ? 55 : 70}%)`,
         background: prominent
             ? tonedSurface(tone, 80, 92)
             : tonedSurface(tone, 89, 95),
         boxShadow: prominent
-            ? `0 2px 6px rgba(0,0,0,0.22), inset 0 1px 0 color-mix(in srgb, ${tone}, transparent 70%)`
-            : `0 1px 2px rgba(0,0,0,0.16), inset 0 1px 0 color-mix(in srgb, ${tone}, transparent 82%)`,
+            ? `0 2px 6px rgba(0,0,0,0.22), inset 0 1px 0 color-mix(in oklab, ${tone}, transparent 70%)`
+            : `0 1px 2px rgba(0,0,0,0.16), inset 0 1px 0 color-mix(in oklab, ${tone}, transparent 82%)`,
         '& .MuiButton-startIcon': {
             marginRight: '7px',
             '& svg': { fontSize: '1rem' },
@@ -83,17 +83,17 @@ export const getActionButtonSx = (tone: string, options: ActionButtonOptions = {
         '&:hover': {
             transform: 'translateY(-1px)',
             color: tone,
-            borderColor: `color-mix(in srgb, ${tone}, transparent 30%)`,
+            borderColor: `color-mix(in oklab, ${tone}, transparent 30%)`,
             background: prominent
                 ? tonedSurface(tone, 70, 84)
                 : tonedSurface(tone, 78, 88),
             boxShadow: prominent
-                ? `0 8px 22px rgba(0,0,0,0.34), 0 0 22px color-mix(in srgb, ${tone}, transparent 55%), inset 0 1px 0 color-mix(in srgb, ${tone}, transparent 55%)`
-                : `0 5px 16px rgba(0,0,0,0.28), 0 0 14px color-mix(in srgb, ${tone}, transparent 65%), inset 0 1px 0 color-mix(in srgb, ${tone}, transparent 65%)`,
+                ? `0 6px 16px rgba(0,0,0,0.34), inset 0 1px 0 color-mix(in oklab, ${tone}, transparent 55%)`
+                : `0 4px 12px rgba(0,0,0,0.28), inset 0 1px 0 color-mix(in oklab, ${tone}, transparent 65%)`,
         },
         '&:active': {
             transform: 'translateY(0) scale(0.985)',
-            boxShadow: `inset 0 2px 5px rgba(0,0,0,0.35), inset 0 0 0 1px color-mix(in srgb, ${tone}, transparent 60%)`,
+            boxShadow: `inset 0 2px 5px rgba(0,0,0,0.35), inset 0 0 0 1px color-mix(in oklab, ${tone}, transparent 60%)`,
         },
         '&:disabled': celestialButtonStyle['&:disabled'],
     };
@@ -103,24 +103,24 @@ export const getActionButtonSx = (tone: string, options: ActionButtonOptions = {
    focus glow, no jarring solid bg). Drop into any TextField via `sx`. */
 export const inputSx = {
     '& .MuiOutlinedInput-root': {
-        color: 'var(--text)',
+        color: 'var(--text-primary)',
         fontSize: '0.8rem',
-        background: 'linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.008))',
+        background: 'var(--bg-tertiary)',
         borderRadius: '8px',
         transition: 'background 180ms ease, box-shadow 180ms ease',
         '& fieldset': {
-            border: '1px solid rgba(255,255,255,0.08)',
+            border: '1px solid var(--border)',
             transition: 'border-color 180ms ease',
         },
         '&:hover fieldset': {
-            borderColor: 'color-mix(in srgb, var(--accent), transparent 55%)',
+            borderColor: 'color-mix(in oklab, var(--accent-primary) 45%, var(--border))',
         },
         '&.Mui-focused': {
-            background: 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 92%), color-mix(in srgb, var(--accent), transparent 97%))',
-            boxShadow: '0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%)',
+            background: 'var(--bg-secondary)',
+            boxShadow: '0 0 0 2px color-mix(in oklab, var(--accent-primary) 60%, transparent)',
         },
         '&.Mui-focused fieldset': {
-            borderColor: 'var(--accent)',
+            borderColor: 'var(--accent-primary)',
             borderWidth: '1px',
         },
     },
@@ -129,7 +129,7 @@ export const inputSx = {
         fontSize: '0.8rem',
         py: '8px',
         '&::placeholder': {
-            color: 'rgba(255,255,255,0.35)',
+            color: 'var(--text-muted)',
             opacity: 1,
         },
     },
@@ -143,13 +143,12 @@ export const countBadgeSx = {
     px: 1.25,
     py: 0.4,
     borderRadius: '999px',
-    background: 'linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 82%), color-mix(in srgb, var(--accent), transparent 92%))',
-    border: '1px solid color-mix(in srgb, var(--accent), transparent 55%)',
-    boxShadow: 'inset 0 1px 0 color-mix(in srgb, var(--accent), transparent 70%)',
+    background: 'color-mix(in oklab, var(--accent-primary) 15%, var(--bg-tertiary))',
+    border: '1px solid color-mix(in oklab, var(--accent-primary) 30%, var(--border))',
     fontFamily: FONT,
     fontWeight: 600,
     fontSize: '0.7rem',
     letterSpacing: '0.02em',
-    color: 'var(--accent)',
+    color: 'color-mix(in oklab, var(--accent-primary) 50%, var(--text-primary))',
     whiteSpace: 'nowrap',
 } as const;

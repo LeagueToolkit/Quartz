@@ -97,8 +97,8 @@ const TreeNode = React.memo<TreeNodeProps>(({
 
         if (e.dataTransfer?.files?.length > 0) {
             const VALID_EXTS = ['wem', 'wav', 'mp3', 'ogg'];
-            // TODO(backend): Tauri exposes dropped paths via the webview file-drop event,
-            // not File.path. Until that bridge lands, name/ext filtering still works.
+            // Tauri delivers real absolute paths through the webview file-drop event;
+            // this DOM drop just stamps the target node so that event can route them.
             const validFiles: DroppedFile[] = Array.from(e.dataTransfer.files)
                 .filter((f) => VALID_EXTS.includes((f.name.toLowerCase().split('.').pop() ?? '')))
                 .map((f) => ({ path: (f as File & { path?: string }).path ?? f.name, name: f.name }));
@@ -140,18 +140,18 @@ const TreeNode = React.memo<TreeNodeProps>(({
                     paddingLeft: `${level * 18 + 6}px`,
                     cursor: 'pointer',
                     borderRadius: '5px',
-                    border: isSelected ? '1px solid var(--accent)' : '1px solid transparent',
-                    background: isSelected ? 'rgba(var(--accent-rgb), 0.15)' : 'transparent',
+                    border: isSelected ? '1px solid color-mix(in oklab, var(--accent-primary) 38%, transparent)' : '1px solid transparent',
+                    background: isSelected ? 'color-mix(in oklab, var(--accent-primary) 16%, transparent)' : 'transparent',
                     marginBottom: '2px',
                     transition: 'background-color 80ms ease, border-color 80ms ease',
                     position: 'relative',
                     '&.bnk-drop-over': {
-                        border: '2px dashed var(--accent)',
-                        background: 'rgba(var(--accent-rgb), 0.08)',
+                        border: '2px dashed var(--accent-primary)',
+                        background: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)',
                     },
                     '&:hover': {
-                        background: isSelected ? 'rgba(var(--accent-rgb), 0.25)' : 'rgba(255, 255, 255, 0.05)',
-                        borderColor: isSelected ? 'var(--accent)' : 'rgba(255, 255, 255, 0.15)',
+                        background: isSelected ? 'color-mix(in oklab, var(--accent-primary) 22%, transparent)' : 'color-mix(in oklab, var(--accent-primary) 10%, transparent)',
+                        borderColor: isSelected ? 'color-mix(in oklab, var(--accent-primary) 50%, transparent)' : 'color-mix(in oklab, var(--accent-primary) 25%, transparent)',
                     },
                 }}
             >
@@ -166,8 +166,8 @@ const TreeNode = React.memo<TreeNodeProps>(({
                             alignItems: 'center',
                             justifyContent: 'center',
                             padding: '2px',
-                            color: isExpanded ? 'var(--accent)' : 'rgba(255, 255, 255, 0.4)',
-                            '&:hover': { color: 'var(--accent)' },
+                            color: isExpanded ? 'var(--accent-primary)' : 'var(--text-muted)',
+                            '&:hover': { color: 'var(--accent-primary)' },
                             borderRadius: '4px',
                         }}
                     >
@@ -175,15 +175,15 @@ const TreeNode = React.memo<TreeNodeProps>(({
                     </Box>
                 ) : (
                     <Box sx={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {isAudioFile && <VolumeUp sx={{ fontSize: 12, color: 'var(--accent)', opacity: isSelected ? 1 : 0.6 }} />}
-                        {!isAudioFile && !hasChildren && <Box sx={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.2)' }} />}
+                        {isAudioFile && <VolumeUp sx={{ fontSize: 12, color: 'var(--accent-primary)', opacity: isSelected ? 1 : 0.6 }} />}
+                        {!isAudioFile && !hasChildren && <Box sx={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--text-muted)' }} />}
                     </Box>
                 )}
                 <Typography
                     sx={{
                         fontSize: '0.8rem',
                         fontFamily: 'JetBrains Mono, monospace',
-                        color: isAudioFile ? 'var(--accent)' : (isSelected ? 'white' : 'rgba(255, 255, 255, 0.7)'),
+                        color: isAudioFile ? 'var(--accent-primary)' : (isSelected ? 'var(--text-primary)' : 'var(--text-secondary)'),
                         marginLeft: '8px',
                         userSelect: 'none',
                         fontWeight: (isSelected || !isAudioFile) ? 600 : 400,
@@ -200,7 +200,7 @@ const TreeNode = React.memo<TreeNodeProps>(({
                     <Typography
                         sx={{
                             fontSize: '0.65rem',
-                            color: 'rgba(255, 255, 255, 0.35)',
+                            color: 'var(--text-muted)',
                             ml: 1,
                             mr: 1,
                             fontFamily: 'JetBrains Mono, monospace',
@@ -212,7 +212,7 @@ const TreeNode = React.memo<TreeNodeProps>(({
                 )}
 
                 {isSelected && pane === 'right' && (
-                    <ArrowForward sx={{ fontSize: 10, ml: 'auto', opacity: 0.5, color: 'var(--accent)' }} titleAccess="Drag to Main Bank" />
+                    <ArrowForward sx={{ fontSize: 10, ml: 'auto', opacity: 0.5, color: 'var(--accent-primary)' }} titleAccess="Drag to Main Bank" />
                 )}
             </Box>
             {renderChildren && hasChildren && isExpanded && (

@@ -65,8 +65,8 @@ export default function TargetColumn(props: TargetColumnProps) {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
-                        border: '2px dashed var(--accent)',
+                        background: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
+                        border: '2px dashed var(--accent-primary)',
                         borderRadius: '8px',
                         transition: 'all 0.15s ease-out',
                     }}
@@ -75,11 +75,11 @@ export default function TargetColumn(props: TargetColumnProps) {
                         style={{
                             padding: '10px 16px',
                             borderRadius: '6px',
-                            border: '1px dashed var(--accent)',
-                            color: 'var(--accent)',
-                            fontFamily: 'JetBrains Mono, monospace',
+                            border: '1px dashed var(--accent-primary)',
+                            color: 'var(--accent-primary)',
+                            fontFamily: 'var(--font-mono)',
                             fontSize: '13px',
-                            background: 'color-mix(in srgb, var(--accent), transparent 80%)',
+                            background: 'color-mix(in oklab, var(--accent-primary) 20%, transparent)',
                         }}
                     >
                         Drop .bin or .py to load as Target
@@ -92,24 +92,23 @@ export default function TargetColumn(props: TargetColumnProps) {
                 sx={{
                     width: '100%',
                     padding: '0 16px',
-                    fontFamily: 'JetBrains Mono, monospace',
+                    fontFamily: 'var(--font-mono)',
                     fontSize: '13px',
                     fontWeight: 700,
                     height: '36px',
-                    background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
-                    border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)',
-                    color: 'var(--accent)',
+                    background: 'color-mix(in oklab, var(--accent-primary) 14%, transparent)',
+                    border: '1px solid color-mix(in oklab, var(--accent-primary) 30%, transparent)',
+                    color: 'var(--accent-primary)',
                     borderRadius: '4px',
                     letterSpacing: '0.05em',
                     textTransform: 'uppercase',
                     transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                     position: 'relative',
                     '&:hover': {
-                        background: 'color-mix(in srgb, var(--accent) 22%, transparent)',
-                        borderColor: 'var(--accent)',
-                        textShadow: '0 0 8px color-mix(in srgb, var(--accent), transparent 50%)',
+                        background: 'color-mix(in oklab, var(--accent-primary) 22%, transparent)',
+                        borderColor: 'var(--accent-primary)',
                     },
-                    '&:disabled': { opacity: 0.5, cursor: 'not-allowed', borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' },
+                    '&:disabled': { opacity: 0.5, cursor: 'not-allowed', borderColor: 'var(--border)', color: 'var(--text-muted)' },
                 }}
             >
                 {isProcessing ? 'Processing...' : 'Open Target Bin'}
@@ -120,8 +119,8 @@ export default function TargetColumn(props: TargetColumnProps) {
                     initialValue={targetFilterInput}
                     placeholder={enableTargetEmitterSearch ? 'Filter by Particle or Emitter Name' : 'Filter by Particle Name Only'}
                     onChange={filterTargetParticles}
-                    accentVar="var(--accent)"
-                    style={{ color: 'var(--accent)' }}
+                    accentVar="var(--accent-primary)"
+                    style={{ color: 'var(--accent-primary)' }}
                     className="port-target-search"
                 />
                 <button
@@ -133,23 +132,22 @@ export default function TargetColumn(props: TargetColumnProps) {
                         minWidth: '52px',
                         padding: '0 14px',
                         background: enableTargetEmitterSearch
-                            ? 'linear-gradient(180deg, rgba(236, 185, 106, 0.15), rgba(236, 185, 106, 0.05))'
-                            : 'color-mix(in srgb, var(--accent) 12%, transparent)',
-                        border: enableTargetEmitterSearch ? '1px solid var(--accent)' : '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
+                            ? 'color-mix(in oklab, var(--accent-primary) 18%, transparent)'
+                            : 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
+                        border: enableTargetEmitterSearch ? '1px solid var(--accent-primary)' : '1px solid color-mix(in oklab, var(--accent-primary) 35%, transparent)',
                         borderRadius: '10px',
-                        color: 'var(--accent)',
-                        fontFamily: 'JetBrains Mono, monospace',
+                        color: 'var(--accent-primary)',
+                        fontFamily: 'var(--font-mono)',
                         fontSize: '12px',
                         cursor: 'pointer',
                         transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                        boxShadow: enableTargetEmitterSearch ? '0 0 10px rgba(236, 185, 106, 0.1)' : 'none',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         boxSizing: 'border-box',
                     }}
                 >
-                    <SearchIcon sx={{ fontSize: 16, color: 'var(--accent)', opacity: enableTargetEmitterSearch ? 1 : 0.78 }} />
+                    <SearchIcon sx={{ fontSize: 16, color: 'var(--accent-primary)', opacity: enableTargetEmitterSearch ? 1 : 0.78 }} />
                 </button>
             </div>
 
@@ -158,7 +156,7 @@ export default function TargetColumn(props: TargetColumnProps) {
                 style={{
                     flex: 1,
                     ...sectionStyle,
-                    border: isDragOverVfx ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.10)',
+                    border: isDragOverVfx ? '1px solid var(--accent-primary)' : '1px solid var(--border)',
                     borderRadius: '8px',
                     padding: 0,
                     overflow: 'hidden',
@@ -182,8 +180,8 @@ export default function TargetColumn(props: TargetColumnProps) {
                             justifyContent: 'center',
                             pointerEvents: 'none',
                             zIndex: 2,
-                            background: 'rgba(139, 92, 246, 0.15)',
-                            border: '2px dashed var(--accent)',
+                            background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)',
+                            border: '2px dashed var(--accent-primary)',
                             borderRadius: '8px',
                             transition: 'all 0.15s ease-out',
                         }}
@@ -192,11 +190,11 @@ export default function TargetColumn(props: TargetColumnProps) {
                             style={{
                                 padding: '10px 16px',
                                 borderRadius: '6px',
-                                border: '1px dashed var(--accent)',
-                                color: 'var(--accent)',
-                                fontFamily: 'JetBrains Mono, monospace',
+                                border: '1px dashed var(--accent-primary)',
+                                color: 'var(--accent-primary)',
+                                fontFamily: 'var(--font-mono)',
                                 fontSize: '13px',
-                                background: 'color-mix(in srgb, var(--accent), transparent 90%)',
+                                background: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)',
                             }}
                         >
                             Drop to add VFX system
@@ -206,7 +204,7 @@ export default function TargetColumn(props: TargetColumnProps) {
                 {Object.keys(safeTargetSystems).length > 0 ? (
                     <div
                         ref={targetListRef}
-                        style={{ width: '100%', height: '100%', overflow: 'auto', background: 'rgba(255, 255, 255, 0.03)' }}
+                        style={{ width: '100%', height: '100%', overflow: 'auto', background: 'var(--bg-secondary)' }}
                         onDragOver={handleTargetDropDragOver}
                         onDrop={(e) => processVfxSystemDrop(e, 'target list container')}
                     >
@@ -215,9 +213,9 @@ export default function TargetColumn(props: TargetColumnProps) {
                 ) : (
                     <div
                         style={{
-                            color: 'var(--accent)',
+                            color: 'var(--text-muted)',
                             fontSize: '16px',
-                            fontFamily: 'JetBrains Mono, monospace',
+                            fontFamily: 'var(--font-mono)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',

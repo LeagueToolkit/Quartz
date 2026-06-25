@@ -30,14 +30,14 @@ const BumpathTopBar = React.memo(function BumpathTopBar({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                borderBottom: '1px solid var(--border)',
                 minHeight: '60px',
             }}
         >
             <Button
                 startIcon={<FolderIcon />}
                 onClick={handleSelectSourceDir}
-                sx={getActionButtonSx('#ecb96a')}
+                sx={getActionButtonSx('var(--color-warning)')}
             >
                 Add Source Folders
             </Button>
@@ -48,7 +48,7 @@ const BumpathTopBar = React.memo(function BumpathTopBar({
                     onClick={handleSelectAll}
                     disabled={!scannedData || Object.keys(scannedData.entries).length === 0}
                     data-bumpath-select-all
-                    sx={getActionButtonSx('#10b981')}
+                    sx={getActionButtonSx('var(--color-success)')}
                 >
                     Select All
                 </Button>
@@ -57,7 +57,7 @@ const BumpathTopBar = React.memo(function BumpathTopBar({
                     startIcon={<ClearIcon />}
                     onClick={handleDeselectAll}
                     disabled={!scannedData || selectedEntriesSize === 0}
-                    sx={getActionButtonSx('#ef4444')}
+                    sx={getActionButtonSx('var(--color-danger)')}
                 >
                     Deselect All
                 </Button>
@@ -79,9 +79,8 @@ const BumpathTopBar = React.memo(function BumpathTopBar({
                                     color: '#fff',
                                     transform: 'translateX(16px)',
                                     '& + .MuiSwitch-track': {
-                                        backgroundColor: 'var(--accent)',
+                                        backgroundColor: 'var(--accent-primary)',
                                         opacity: 1,
-                                        boxShadow: '0 0 10px color-mix(in srgb, var(--accent), transparent 65%)',
                                     },
                                 },
                             },
@@ -92,9 +91,9 @@ const BumpathTopBar = React.memo(function BumpathTopBar({
                             },
                             '& .MuiSwitch-track': {
                                 borderRadius: 999,
-                                background: 'rgba(255,255,255,0.12)',
+                                background: 'var(--bg-hover)',
                                 opacity: 1,
-                                transition: 'background 200ms ease, box-shadow 200ms ease',
+                                transition: 'background 200ms ease',
                             },
                         }}
                     />
@@ -103,7 +102,7 @@ const BumpathTopBar = React.memo(function BumpathTopBar({
                     <Typography
                         variant="body2"
                         sx={{
-                            color: showMissingOnly ? 'var(--accent)' : 'rgba(255,255,255,0.6)',
+                            color: showMissingOnly ? 'var(--accent-primary)' : 'var(--text-secondary)',
                             fontSize: '0.72rem',
                             fontWeight: 600,
                             fontFamily: 'JetBrains Mono, monospace',

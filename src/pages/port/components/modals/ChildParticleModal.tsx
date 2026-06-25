@@ -6,9 +6,9 @@ import type { AvailableVfxSystem } from '../../utils/childParticlesManager';
 const inputStyle: React.CSSProperties = {
     width: '100%',
     padding: '10px 14px',
-    background: 'rgba(255,255,255,0.04)',
-    color: 'var(--text)',
-    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'var(--bg-tertiary)',
+    color: 'var(--text-primary)',
+    border: '1px solid var(--border)',
     borderRadius: 8,
     fontSize: '0.85rem',
     fontFamily: 'JetBrains Mono, monospace',
@@ -102,11 +102,11 @@ export default function ChildParticleModal(props: ChildParticleModalProps) {
     } = props;
     if (!open) return null;
 
-    const labelSx: React.CSSProperties = { fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.04em' };
+    const labelSx: React.CSSProperties = { fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' };
 
     return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} onClick={onClose} />
+            <div style={{ position: 'absolute', inset: 0, background: 'color-mix(in oklab, black 65%, transparent)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} onClick={onClose} />
             <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
@@ -121,35 +121,35 @@ export default function ChildParticleModal(props: ChildParticleModalProps) {
                     backdropFilter: 'saturate(180%) blur(16px)',
                     WebkitBackdropFilter: 'saturate(180%) blur(16px)',
                     borderRadius: 16,
-                    boxShadow: '0 30px 70px rgba(0,0,0,0.55)',
+                    boxShadow: '0 24px 48px -16px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.3)',
                     overflow: 'hidden',
                 }}
             >
-                <div style={{ height: 3, flexShrink: 0, background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' }} />
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                <div style={{ height: 3, flexShrink: 0, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' }} />
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'color-mix(in srgb, var(--accent), transparent 85%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {isEdit ? <EditIcon sx={{ color: 'var(--accent)', fontSize: 18 }} /> : <AddIcon sx={{ color: 'var(--accent)', fontSize: 18 }} />}
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {isEdit ? <EditIcon sx={{ color: 'var(--accent-primary)', fontSize: 18 }} /> : <AddIcon sx={{ color: 'var(--accent-primary)', fontSize: 18 }} />}
                         </div>
-                        <h2 style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)' }}>
+                        <h2 style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>
                             {isEdit ? 'Edit Child Particle' : 'Add Child Particle'}
                         </h2>
                     </div>
                     <button
                         onClick={onClose}
-                        style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', cursor: 'pointer', outline: 'none' }}
+                        style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--text-muted)', border: '1px solid var(--border)', background: 'var(--bg-tertiary)', cursor: 'pointer', outline: 'none' }}
                     >
                         {'✕'}
                     </button>
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)' }}>
-                            Parent System: <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{targetSystem?.name || 'N/A'}</span>
+                        <div style={{ padding: '10px 14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                            Parent System: <span style={{ color: 'var(--accent-primary)', fontWeight: 700 }}>{targetSystem?.name || 'N/A'}</span>
                         </div>
                         {isEdit && (
-                            <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: 'rgba(255,255,255,0.45)' }}>
-                                Emitter: <span style={{ color: 'var(--accent2)', fontWeight: 700 }}>{emitterName}</span>
+                            <div style={{ padding: '10px 14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                Emitter: <span style={{ color: 'var(--accent-secondary)', fontWeight: 700 }}>{emitterName}</span>
                             </div>
                         )}
                     </div>
@@ -157,9 +157,9 @@ export default function ChildParticleModal(props: ChildParticleModalProps) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <label style={labelSx}>Child VFX System</label>
                         <select value={selectedChildSystem || ''} onChange={(e) => setSelectedChildSystem(e.target.value)} style={selectStyle}>
-                            <option value="" style={{ background: '#1a1825' }}>Select a VFX System...</option>
+                            <option value="" style={{ background: 'var(--bg-primary)' }}>Select a VFX System...</option>
                             {availableSystems.map((sys) => (
-                                <option key={sys.key} value={sys.key} style={{ background: '#1a1825' }}>
+                                <option key={sys.key} value={sys.key} style={{ background: 'var(--bg-primary)' }}>
                                     {sys.name} {sys.key.startsWith('0x') ? `(${sys.key})` : ''}
                                 </option>
                             ))}
@@ -200,7 +200,7 @@ export default function ChildParticleModal(props: ChildParticleModalProps) {
                         <div style={{ display: 'flex', gap: 10 }}>
                             {(['X', 'Y', 'Z'] as const).map((axis) => (
                                 <div key={axis} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', color: 'var(--accent)' }}>{axis}</span>
+                                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', color: 'var(--accent-primary)' }}>{axis}</span>
                                     <MemoizedInput
                                         type="number"
                                         value={axis === 'X' ? translationOverrideX : axis === 'Y' ? translationOverrideY : translationOverrideZ}
@@ -223,28 +223,28 @@ export default function ChildParticleModal(props: ChildParticleModalProps) {
                                 width: 18,
                                 height: 18,
                                 borderRadius: 4,
-                                border: isSingle ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.2)',
-                                background: isSingle ? 'var(--accent)' : 'transparent',
+                                border: isSingle ? '1px solid var(--accent-primary)' : '1px solid var(--border-strong)',
+                                background: isSingle ? 'var(--accent-primary)' : 'transparent',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 transition: 'all 0.2s ease',
                             }}
                         >
-                            {isSingle && <div style={{ width: 10, height: 10, borderRadius: 2, background: '#1a1825' }} />}
+                            {isSingle && <div style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--bg-primary)' }} />}
                         </div>
-                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: isSingle ? 'var(--text)' : 'rgba(255,255,255,0.5)' }}>Is Single Particle</span>
+                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: isSingle ? 'var(--text-primary)' : 'var(--text-muted)' }}>Is Single Particle</span>
                     </div>
                 </div>
-                <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
+                <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
                     <button
                         disabled={!selectedChildSystem || (!isEdit && !emitterName.trim())}
                         onClick={onConfirm}
                         style={{
                             ...btnBase,
-                            background: 'color-mix(in srgb, var(--accent2), transparent 88%)',
-                            borderColor: 'color-mix(in srgb, var(--accent2), transparent 55%)',
-                            color: 'var(--accent2)',
+                            background: 'color-mix(in oklab, var(--accent-secondary) 12%, transparent)',
+                            borderColor: 'color-mix(in oklab, var(--accent-secondary) 45%, transparent)',
+                            color: 'var(--accent-secondary)',
                             opacity: !selectedChildSystem || (!isEdit && !emitterName.trim()) ? 0.5 : 1,
                             cursor: !selectedChildSystem || (!isEdit && !emitterName.trim()) ? 'not-allowed' : 'pointer',
                         }}

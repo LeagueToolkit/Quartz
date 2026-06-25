@@ -69,9 +69,16 @@ export default function useBumpathSourceScan({
         setError(null);
         setScannedData(null);
 
+        const binSelections: Record<string, boolean> = {};
+        Object.entries(binState || {}).forEach(([path, fileData]) => {
+            binSelections[path] = !!fileData?.selected;
+        });
+
         try {
             const result = await apiCall('scan', {
                 hashesPath,
+                folders: sourceDirs,
+                binSelections,
             });
 
             if (result.success && result.data) {
@@ -90,6 +97,7 @@ export default function useBumpathSourceScan({
     }, [
         apiCall,
         hashesPath,
+        sourceDirs,
         setAppliedPrefixes,
         setError,
         setExpandedEntries,

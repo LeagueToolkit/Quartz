@@ -58,7 +58,7 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
         <Box
             sx={{
                 p: 1.5,
-                borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+                borderTop: '1px solid var(--border)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 1.5,
@@ -69,7 +69,7 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
             <Button
                 startIcon={<CloseIcon />}
                 onClick={handleReset}
-                sx={getActionButtonSx('#ef4444')}
+                sx={getActionButtonSx('var(--color-danger)')}
             >
                 Reset
             </Button>
@@ -94,7 +94,7 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
                 startIcon={<EditIcon />}
                 onClick={handleApplyPrefix}
                 disabled={selectedEntriesSize === 0 || !debouncedPrefixText.trim()}
-                sx={getActionButtonSx('#8b5cf6')}
+                sx={getActionButtonSx('var(--accent-primary)')}
             >
                 Apply Prefix
             </Button>
@@ -104,7 +104,7 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
                 onClick={handleSelectOutputDir}
                 data-bumpath-output
                 color="inherit"
-                sx={getActionButtonSx('#06b6d4')}
+                sx={getActionButtonSx('var(--color-info)')}
             >
                 Select Output
             </Button>
@@ -114,7 +114,7 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
                 onClick={handleProcess}
                 disabled={isProcessing || !scannedData || !outputPath}
                 data-bumpath-process
-                sx={getActionButtonSx('#f97316', { minWidth: '120px', prominent: true })}
+                sx={getActionButtonSx('var(--color-warning)', { minWidth: '120px', prominent: true })}
             >
                 {isProcessing ? 'Processing...' : 'Bum'}
             </Button>
@@ -122,7 +122,7 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
                 startIcon={<AutoFixHighIcon />}
                 onClick={handleOpenQuickRepath}
                 disabled={quickRepathDisabled}
-                sx={getActionButtonSx('#8b5cf6', { minWidth: '150px', prominent: true })}
+                sx={getActionButtonSx('var(--accent-primary)', { minWidth: '150px', prominent: true })}
             >
                 Quick Repath
             </Button>
@@ -130,7 +130,7 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, marginLeft: 'auto' }}>
                 <Button
                     onClick={() => setConsoleOpen(true)}
-                    sx={getActionButtonSx('var(--accent2)', { iconOnly: true, height: '36px', px: 0 })}
+                    sx={getActionButtonSx('var(--accent-secondary)', { iconOnly: true, height: '36px', px: 0 })}
                 >
                     <TerminalIcon />
                 </Button>
@@ -141,7 +141,7 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
                         setSettingsAutoOpened(false);
                     }}
                     data-bumpath-settings
-                    sx={getActionButtonSx('var(--accent)', { iconOnly: true, height: '36px', px: 0 })}
+                    sx={getActionButtonSx('var(--accent-primary)', { iconOnly: true, height: '36px', px: 0 })}
                 >
                     <SettingsIcon />
                 </Button>

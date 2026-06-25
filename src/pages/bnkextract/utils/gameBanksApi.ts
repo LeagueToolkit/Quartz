@@ -1,9 +1,7 @@
 /* Champion/skin data for the "Load Banks From Game" modal.
 
-   The Electron build pulled this from FrogChanger's communityDragonApi service,
-   which does not exist in this port yet. We fetch the same CommunityDragon
-   endpoints directly so the modal's champion list, skin list and icons work
-   today. TODO(backend): route through a shared cdragon service once ported. */
+   We fetch the CommunityDragon endpoints directly so the modal's champion list,
+   skin list and icons work without a separate cdragon service. */
 
 import { log } from '@/lib/util/logger';
 import type { GameChampion, GameSkin } from '../types';

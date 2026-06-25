@@ -2,33 +2,33 @@ import { useState, useEffect, useRef, type CSSProperties } from 'react';
 
 const styles: Record<string, CSSProperties> = {
     overlay: { position: 'fixed', inset: 0, zIndex: 1400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px' },
-    backdrop: { position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' },
+    backdrop: { position: 'absolute', inset: 0, background: 'color-mix(in oklab, var(--bg-primary) 75%, transparent)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' },
     modal: {
         position: 'relative', width: '100%', maxWidth: 420,
-        background: 'var(--glass-bg)', border: '1px solid var(--glass-border)',
+        background: 'var(--bg-secondary)', border: '1px solid var(--border)',
         backdropFilter: 'saturate(180%) blur(16px)', WebkitBackdropFilter: 'saturate(180%) blur(16px)',
-        borderRadius: 16, boxShadow: '0 30px 70px rgba(0,0,0,0.55), 0 0 30px color-mix(in srgb, var(--accent2), transparent 82%)',
+        borderRadius: 16, boxShadow: '0 30px 70px color-mix(in oklab, var(--bg-primary) 55%, transparent)',
         overflow: 'hidden', fontFamily: 'JetBrains Mono, monospace',
     },
-    accentBar: { height: 3, background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' },
+    accentBar: { height: 3, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' },
     body: { padding: 24 },
     header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-    title: { fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)', margin: 0, fontFamily: 'JetBrains Mono, monospace' },
-    subtitle: { fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', margin: '0 0 18px 0', fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-    section: { borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', padding: '12px 14px', marginBottom: 14 },
-    sectionTitle: { color: 'var(--accent2)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '0 0 8px 0', fontFamily: 'JetBrains Mono, monospace' },
-    input: { width: '100%', boxSizing: 'border-box', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.3)', padding: '8px 12px', fontSize: '0.85rem', color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace', outline: 'none', transition: 'border-color 0.2s' },
-    hint: { fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)', margin: '6px 0 0 0', fontFamily: 'JetBrains Mono, monospace' },
-    footer: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.07)' },
+    title: { fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)', margin: 0, fontFamily: 'JetBrains Mono, monospace' },
+    subtitle: { fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0 0 18px 0', fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+    section: { borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: '12px 14px', marginBottom: 14 },
+    sectionTitle: { color: 'var(--accent-secondary)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '0 0 8px 0', fontFamily: 'JetBrains Mono, monospace' },
+    input: { width: '100%', boxSizing: 'border-box', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-primary)', padding: '8px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', outline: 'none', transition: 'border-color 0.2s' },
+    hint: { fontSize: '0.62rem', color: 'var(--text-muted)', margin: '6px 0 0 0', fontFamily: 'JetBrains Mono, monospace' },
+    footer: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)' },
 };
 
 const btnGhost: CSSProperties = {
-    padding: '7px 16px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)',
-    color: 'rgba(255,255,255,0.75)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s ease',
+    padding: '7px 16px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-tertiary)',
+    color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s ease',
 };
 const btnPrimary: CSSProperties = {
     padding: '7px 16px', borderRadius: 6, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s ease',
-    background: 'color-mix(in srgb, var(--accent), transparent 80%)', color: 'var(--accent)', border: '1px solid color-mix(in srgb, var(--accent), transparent 60%)',
+    background: 'color-mix(in oklab, var(--accent-primary) 20%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in oklab, var(--accent-primary) 40%, transparent)',
 };
 
 interface Props {
@@ -71,7 +71,7 @@ export default function BnkModDropModal({ open, folderName, onConfirm, onCancel 
                         <h2 style={styles.title}>Mod Folder</h2>
                         <button
                             onClick={onCancel}
-                            style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', cursor: 'pointer' }}
+                            style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--text-secondary)', border: '1px solid var(--border)', background: 'var(--bg-tertiary)', cursor: 'pointer' }}
                         >✕</button>
                     </div>
                     <p style={styles.subtitle} title={folderName}>{folderName}</p>
@@ -85,8 +85,8 @@ export default function BnkModDropModal({ open, folderName, onConfirm, onCancel 
                             onChange={(e) => setSkinId(e.target.value)}
                             placeholder="e.g. 0, 1, 2 …"
                             style={styles.input}
-                            onFocus={(e) => { e.target.style.borderColor = 'var(--accent)'; }}
-                            onBlur={(e) => { e.target.style.borderColor = 'rgba(255,255,255,0.12)'; }}
+                            onFocus={(e) => { e.target.style.borderColor = 'var(--accent-primary)'; }}
+                            onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
                         />
                         <p style={styles.hint}>Leave blank to load all skins · Enter to confirm · Esc to cancel</p>
                     </div>
@@ -94,20 +94,20 @@ export default function BnkModDropModal({ open, folderName, onConfirm, onCancel 
                     <div style={styles.footer}>
                         <button
                             style={btnGhost}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-tertiary)'; }}
                             onClick={onCancel}
                         >Cancel</button>
                         <button
                             style={btnGhost}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-tertiary)'; }}
                             onClick={() => onConfirm(null)}
                         >Skip Skin</button>
                         <button
                             style={btnPrimary}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--accent), transparent 60%)'; e.currentTarget.style.boxShadow = '0 0 16px color-mix(in srgb, var(--accent), transparent 55%)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--accent), transparent 80%)'; e.currentTarget.style.boxShadow = 'none'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in oklab, var(--accent-primary) 40%, transparent)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'color-mix(in oklab, var(--accent-primary) 20%, transparent)'; }}
                             onClick={() => onConfirm(skinId.trim() || null)}
                         >Load</button>
                     </div>

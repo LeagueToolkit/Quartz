@@ -16,9 +16,9 @@ const makeBtn = (color: string, disabled: boolean): React.CSSProperties => ({
     width: 36,
     height: 36,
     borderRadius: '50%',
-    border: `1px solid ${disabled ? 'rgba(255,255,255,0.07)' : color + '55'}`,
-    background: disabled ? 'rgba(255,255,255,0.03)' : color + '18',
-    color: disabled ? 'rgba(255,255,255,0.2)' : color,
+    border: `1px solid ${disabled ? 'var(--border)' : `color-mix(in oklab, ${color} 35%, transparent)`}`,
+    background: disabled ? 'var(--bg-tertiary)' : `color-mix(in oklab, ${color} 12%, transparent)`,
+    color: disabled ? 'var(--text-muted)' : color,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -85,9 +85,9 @@ function VfxFloatingActions({
             ? [
                   {
                       id: 'portAll',
-                      color: '#3b82f6',
+                      color: 'var(--accent-primary)',
                       title: isPortAllLoading ? 'Porting…' : portAllTooltip,
-                      icon: isPortAllLoading ? <CircularProgress size={15} sx={{ color: '#3b82f6' }} /> : <ArrowBackIcon sx={{ fontSize: 16 }} />,
+                      icon: isPortAllLoading ? <CircularProgress size={15} sx={{ color: 'var(--accent-primary)' }} /> : <ArrowBackIcon sx={{ fontSize: 16 }} />,
                       onClick: onPortAll,
                       disabled: paDis,
                   },
@@ -97,7 +97,7 @@ function VfxFloatingActions({
             ? [
                   {
                       id: 'newSystem',
-                      color: '#fbbf24',
+                      color: 'var(--color-warning)',
                       title: nDis ? 'New VFX System (needs ResourceResolver)' : 'New VFX System',
                       icon: <AddIcon sx={{ fontSize: 18 }} />,
                       onClick: handleOpenNewSystemModal,
@@ -109,7 +109,7 @@ function VfxFloatingActions({
             ? [
                   {
                       id: 'persistent',
-                      color: '#4ade80',
+                      color: 'var(--color-success)',
                       title: pDis ? 'Persistent Effects (needs ResourceResolver + SkinData)' : 'Persistent Effects',
                       icon: <AppsIcon sx={{ fontSize: 16 }} />,
                       onClick: handleOpenPersistent,
@@ -121,7 +121,7 @@ function VfxFloatingActions({
             ? [
                   {
                       id: 'idleParticles',
-                      color: '#22d3ee',
+                      color: 'var(--color-info)',
                       title: pDis ? 'Idle Particles (needs ResourceResolver + SkinData)' : 'Idle Particles',
                       icon: <BubbleChartIcon sx={{ fontSize: 16 }} />,
                       onClick: handleOpenIdleParticles,
@@ -129,10 +129,10 @@ function VfxFloatingActions({
                   },
               ]
             : []),
-        { id: 'backup', color: '#c084fc', title: 'Backup History', icon: <FolderIcon sx={{ fontSize: 16 }} />, onClick: handleOpenBackupViewer, disabled: false },
+        { id: 'backup', color: 'var(--accent-secondary)', title: 'Backup History', icon: <FolderIcon sx={{ fontSize: 16 }} />, onClick: handleOpenBackupViewer, disabled: false },
     ];
 
-    const ttSx = { fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem' };
+    const ttSx = { fontFamily: 'var(--font-mono)', fontSize: '0.72rem' };
 
     return (
         <div style={{ position: 'fixed', right: 0, bottom: 90, zIndex: 4500, display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
@@ -165,16 +165,14 @@ function VfxFloatingActions({
                             onMouseEnter={(e) => {
                                 if (disabled) return;
                                 e.currentTarget.style.transform = 'scale(1.12)';
-                                e.currentTarget.style.background = color + '2a';
-                                e.currentTarget.style.borderColor = color + '99';
-                                e.currentTarget.style.boxShadow = `0 0 12px ${color}44`;
+                                e.currentTarget.style.background = `color-mix(in oklab, ${color} 22%, transparent)`;
+                                e.currentTarget.style.borderColor = `color-mix(in oklab, ${color} 60%, transparent)`;
                             }}
                             onMouseLeave={(e) => {
                                 if (disabled) return;
                                 e.currentTarget.style.transform = '';
-                                e.currentTarget.style.background = color + '18';
-                                e.currentTarget.style.borderColor = color + '55';
-                                e.currentTarget.style.boxShadow = '';
+                                e.currentTarget.style.background = `color-mix(in oklab, ${color} 12%, transparent)`;
+                                e.currentTarget.style.borderColor = `color-mix(in oklab, ${color} 35%, transparent)`;
                             }}
                         >
                             {icon}
@@ -199,16 +197,16 @@ function VfxFloatingActions({
                         WebkitBackdropFilter: 'blur(12px)',
                         borderRadius: '8px 0 0 8px',
                         cursor: 'pointer',
-                        color: 'rgba(255,255,255,0.4)',
+                        color: 'var(--text-muted)',
                         transition: 'background 0.2s ease, color 0.2s ease',
                     }}
                     onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'color-mix(in srgb, var(--accent), transparent 78%)';
-                        e.currentTarget.style.color = 'var(--accent)';
+                        e.currentTarget.style.background = 'color-mix(in oklab, var(--accent-primary) 22%, transparent)';
+                        e.currentTarget.style.color = 'var(--accent-primary)';
                     }}
                     onMouseLeave={(e) => {
                         e.currentTarget.style.background = 'var(--glass-bg)';
-                        e.currentTarget.style.color = 'rgba(255,255,255,0.4)';
+                        e.currentTarget.style.color = 'var(--text-muted)';
                     }}
                 >
                     {expanded ? <ChevronRightIcon sx={{ fontSize: 14 }} /> : <ChevronLeftIcon sx={{ fontSize: 14 }} />}

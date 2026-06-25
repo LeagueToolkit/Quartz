@@ -73,9 +73,9 @@ export default function EmitterItem({
                 if (typeof setDraggedEmitter === 'function') setDraggedEmitter(null);
             }}
             style={{
-                border: isQuartzChild ? '2px solid #3b82f6' : undefined,
+                border: isQuartzChild ? '2px solid var(--accent-primary)' : undefined,
                 borderRadius: isQuartzChild ? '6px' : undefined,
-                background: isQuartzChild ? 'rgba(59, 130, 246, 0.05)' : undefined,
+                background: isQuartzChild ? 'color-mix(in oklab, var(--accent-primary) 8%, transparent)' : undefined,
                 cursor: isTarget ? 'default' : 'grab',
                 opacity: draggedEmitter && draggedEmitter.sourceSystemKey === system.key && draggedEmitter.emitterName === emitter.name ? 0.5 : 1,
             }}
@@ -94,9 +94,9 @@ export default function EmitterItem({
                     style={{
                         flexShrink: 0,
                         minWidth: '24px',
-                        color: 'var(--accent2)',
-                        borderColor: 'color-mix(in srgb, var(--accent2) 45%, transparent)',
-                        background: 'color-mix(in srgb, var(--accent2) 14%, transparent)',
+                        color: 'var(--accent-secondary)',
+                        borderColor: 'color-mix(in oklab, var(--accent-secondary) 45%, transparent)',
+                        background: 'color-mix(in oklab, var(--accent-secondary) 14%, transparent)',
                     }}
                 >
                     <KeyboardArrowLeftIcon sx={{ fontSize: 18, lineHeight: 1 }} />
@@ -117,10 +117,9 @@ export default function EmitterItem({
                     className="label flex-1 ellipsis"
                     style={{
                         minWidth: 0,
-                        color: isTarget ? 'var(--accent)' : 'var(--accent2)',
+                        color: isTarget ? 'var(--accent-primary)' : 'var(--accent-secondary)',
                         fontWeight: 600,
                         fontSize: '0.95rem',
-                        textShadow: '0 1px 2px rgba(0,0,0,0.5)',
                     }}
                 >
                     <span
@@ -143,11 +142,11 @@ export default function EmitterItem({
                             style={{
                                 marginLeft: '6px',
                                 fontSize: '10px',
-                                background: 'rgba(255, 193, 7, 0.2)',
-                                color: '#ffc107',
+                                background: 'color-mix(in oklab, var(--color-warning) 20%, transparent)',
+                                color: 'var(--color-warning)',
                                 padding: '1px 4px',
                                 borderRadius: '3px',
-                                border: '1px solid rgba(255, 193, 7, 0.3)',
+                                border: '1px solid color-mix(in oklab, var(--color-warning) 35%, transparent)',
                                 fontWeight: 'bold',
                             }}
                             title={`Child particle referencing: ${emitter.childSystemKey}`}
@@ -165,9 +164,10 @@ export default function EmitterItem({
                         width: '16px',
                         height: '16px',
                         borderRadius: '3px',
-                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        border: '1px solid var(--border-strong)',
                         marginLeft: '6px',
                         flexShrink: 0,
+                        /* user-chosen particle color — keep literal value */
                         background: emitter.color.constantValue || '#ffffff',
                     }}
                     title={`Color: ${emitter.color.constantValue || 'Unknown'}`}
@@ -187,10 +187,10 @@ export default function EmitterItem({
                         height: '24px',
                         marginLeft: '6px',
                         flexShrink: 0,
-                        background: 'rgba(59, 130, 246, 0.1)',
-                        border: '1px solid #3b82f6',
+                        background: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
+                        border: '1px solid var(--accent-primary)',
                         borderRadius: '4px',
-                        color: '#3b82f6',
+                        color: 'var(--accent-primary)',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
@@ -210,9 +210,9 @@ export default function EmitterItem({
                     marginLeft: '6px',
                     flexShrink: 0,
                     background: 'transparent',
-                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    border: '1px solid var(--border-strong)',
                     borderRadius: '4px',
-                    color: isTarget ? 'var(--accent, #3b82f6)' : 'var(--accent2)',
+                    color: isTarget ? 'var(--accent-primary)' : 'var(--accent-secondary)',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
@@ -240,7 +240,7 @@ export default function EmitterItem({
                         flexShrink: 0,
                         background: 'transparent',
                         border: 'none',
-                        color: '#ef4444',
+                        color: 'var(--color-danger)',
                         cursor: 'pointer',
                         padding: '2px 4px',
                         display: 'flex',

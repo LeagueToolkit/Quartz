@@ -88,13 +88,13 @@ const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
             fullWidth
             PaperProps={{
                 sx: {
-                    background: 'linear-gradient(135deg, color-mix(in srgb, var(--bg), black 10%) 0%, color-mix(in srgb, var(--surface), var(--accent2) 10%) 100%)',
-                    border: '1px solid color-mix(in srgb, var(--accent2), transparent 55%)',
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border)',
                     borderRadius: '14px',
                 },
             }}
         >
-            <DialogTitle sx={{ color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }}>
+            <DialogTitle sx={{ color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }}>
                 Quick Repath Wizard
             </DialogTitle>
 
@@ -110,10 +110,10 @@ const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
                                 fontSize: '0.72rem',
                                 fontFamily: 'JetBrains Mono, monospace',
                                 border: '1px solid',
-                                borderColor: index === step ? 'var(--accent)' : 'color-mix(in srgb, var(--accent2), transparent 70%)',
-                                color: index <= step ? 'var(--text)' : 'var(--text-2)',
+                                borderColor: index === step ? 'var(--accent-primary)' : 'var(--border)',
+                                color: index <= step ? 'var(--text-primary)' : 'var(--text-secondary)',
                                 background: index === step
-                                    ? 'color-mix(in srgb, var(--accent), transparent 85%)'
+                                    ? 'color-mix(in oklab, var(--accent-primary) 15%, transparent)'
                                     : 'transparent',
                             }}
                         >
@@ -124,18 +124,18 @@ const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
 
                 {step === 0 && (
                     <Box>
-                        <Typography sx={{ color: 'var(--text-2)', mb: 1.2, fontSize: '0.85rem' }}>
+                        <Typography sx={{ color: 'var(--text-secondary)', mb: 1.2, fontSize: '0.85rem' }}>
                             Pick the main BIN file that should drive repathing.
                         </Typography>
                         <FormControl fullWidth size="small">
-                            <InputLabel sx={{ color: 'var(--text-2)' }}>Main BIN</InputLabel>
+                            <InputLabel sx={{ color: 'var(--text-secondary)' }}>Main BIN</InputLabel>
                             <Select
                                 value={selectedMainBin}
                                 label="Main BIN"
                                 onChange={(e) => setSelectedMainBin(e.target.value)}
                                 sx={{
-                                    color: 'var(--text)',
-                                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--glass-border)' },
+                                    color: 'var(--text-primary)',
+                                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border)' },
                                 }}
                             >
                                 {binOptions.map((bin) => (
@@ -150,7 +150,7 @@ const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
 
                 {step === 1 && (
                     <Box>
-                        <Typography sx={{ color: 'var(--text-2)', mb: 1.2, fontSize: '0.85rem' }}>
+                        <Typography sx={{ color: 'var(--text-secondary)', mb: 1.2, fontSize: '0.85rem' }}>
                             Enter the prefix to apply to all editable entries.
                         </Typography>
                         <TextField
@@ -161,8 +161,8 @@ const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
                             placeholder="e.g. bum"
                             sx={{
                                 '& .MuiOutlinedInput-root': {
-                                    color: 'var(--text)',
-                                    '& fieldset': { borderColor: 'var(--glass-border)' },
+                                    color: 'var(--text-primary)',
+                                    '& fieldset': { borderColor: 'var(--border)' },
                                 },
                             }}
                         />
@@ -171,7 +171,7 @@ const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
 
                 {step === 2 && (
                     <Box>
-                        <Typography sx={{ color: 'var(--text-2)', mb: 1.2, fontSize: '0.85rem' }}>
+                        <Typography sx={{ color: 'var(--text-secondary)', mb: 1.2, fontSize: '0.85rem' }}>
                             Select or type an output folder. Missing folders will be created.
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -183,15 +183,15 @@ const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
                                 placeholder="Output path"
                                 sx={{
                                     '& .MuiOutlinedInput-root': {
-                                        color: 'var(--text)',
-                                        '& fieldset': { borderColor: 'var(--glass-border)' },
+                                        color: 'var(--text-primary)',
+                                        '& fieldset': { borderColor: 'var(--border)' },
                                     },
                                 }}
                             />
                             <Button
                                 startIcon={<FolderOpenIcon />}
                                 onClick={onSelectOutputDir}
-                                sx={getActionButtonSx('#06b6d4')}
+                                sx={getActionButtonSx('var(--color-info)')}
                             >
                                 Browse
                             </Button>
@@ -203,12 +203,12 @@ const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
                                         checked={ignoreMissing}
                                         onChange={(e) => setIgnoreMissing(e.target.checked)}
                                         sx={{
-                                            '& .MuiSwitch-switchBase.Mui-checked': { color: '#06b6d4' },
-                                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: '#06b6d4' },
+                                            '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--accent-primary)' },
+                                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'var(--accent-primary)' },
                                         }}
                                     />
                                 )}
-                                label={<Typography sx={{ color: 'var(--text-2)', fontSize: '0.82rem' }}>Ignore Missing Files</Typography>}
+                                label={<Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>Ignore Missing Files</Typography>}
                             />
                             <FormControlLabel
                                 control={(
@@ -216,12 +216,12 @@ const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
                                         checked={combineLinked}
                                         onChange={(e) => setCombineLinked(e.target.checked)}
                                         sx={{
-                                            '& .MuiSwitch-switchBase.Mui-checked': { color: '#06b6d4' },
-                                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: '#06b6d4' },
+                                            '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--accent-primary)' },
+                                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'var(--accent-primary)' },
                                         }}
                                     />
                                 )}
-                                label={<Typography sx={{ color: 'var(--text-2)', fontSize: '0.82rem' }}>Combine Linked BINs</Typography>}
+                                label={<Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>Combine Linked BINs</Typography>}
                             />
                         </Box>
                     </Box>
@@ -229,14 +229,14 @@ const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
             </DialogContent>
 
             <DialogActions sx={{ p: 2 }}>
-                <Button onClick={onClose} disabled={isRunning} sx={getActionButtonSx('var(--text-2)')}>
+                <Button onClick={onClose} disabled={isRunning} sx={getActionButtonSx('var(--text-secondary)')}>
                     Cancel
                 </Button>
-                <Button onClick={handleBack} disabled={isRunning || step === 0} sx={getActionButtonSx('var(--accent2)')}>
+                <Button onClick={handleBack} disabled={isRunning || step === 0} sx={getActionButtonSx('var(--accent-secondary)')}>
                     Back
                 </Button>
                 {step < 2 ? (
-                    <Button onClick={handleNext} disabled={isRunning || (step === 0 ? !canNextStep1 : !canNextStep2)} sx={getActionButtonSx('var(--accent)')}>
+                    <Button onClick={handleNext} disabled={isRunning || (step === 0 ? !canNextStep1 : !canNextStep2)} sx={getActionButtonSx('var(--accent-primary)')}>
                         Next
                     </Button>
                 ) : (
@@ -244,7 +244,7 @@ const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
                         startIcon={<AutoFixHighIcon />}
                         onClick={onRunQuickRepath}
                         disabled={!canRun}
-                        sx={getActionButtonSx('#f97316', { prominent: true })}
+                        sx={getActionButtonSx('var(--color-warning)', { prominent: true })}
                     >
                         {isRunning ? 'Running...' : 'Run Quick Repath'}
                     </Button>

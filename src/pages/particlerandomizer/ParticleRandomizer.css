@@ -4,9 +4,9 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--app-font-family), -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
     overflow: hidden;
     position: relative;
 }
@@ -18,13 +18,13 @@
     z-index: 10;
 }
 
-/* ── Buttons (bumpath-style tone gradients) ─────────── */
+/* ── Buttons (flat tinted tone) ─────────────────────── */
 .pr-btn {
-    --btn-tone: var(--accent);
+    --btn-tone: var(--accent-primary);
     height: 32px;
     padding: 0 14px;
-    border-radius: 6px;
-    font-family: 'JetBrains Mono', monospace;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     font-weight: 600;
     letter-spacing: 0.02em;
@@ -35,33 +35,29 @@
     align-items: center;
     justify-content: center;
     gap: 7px;
-    border: 1px solid color-mix(in srgb, var(--btn-tone), transparent 70%);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--btn-tone), transparent 89%), color-mix(in srgb, var(--btn-tone), transparent 95%));
+    border: 1px solid color-mix(in oklab, var(--btn-tone) 35%, transparent);
+    background: color-mix(in oklab, var(--btn-tone) 12%, transparent);
     color: var(--btn-tone);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16), inset 0 1px 0 color-mix(in srgb, var(--btn-tone), transparent 82%);
-    transition: transform 140ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 180ms ease, background 180ms ease, border-color 180ms ease, color 180ms ease;
+    transition: transform var(--motion-fast), background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
 }
 
 .pr-btn:hover:not(:disabled) {
     transform: translateY(-1px);
-    border-color: color-mix(in srgb, var(--btn-tone), transparent 30%);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--btn-tone), transparent 78%), color-mix(in srgb, var(--btn-tone), transparent 88%));
-    box-shadow: 0 5px 16px rgba(0, 0, 0, 0.28), 0 0 14px color-mix(in srgb, var(--btn-tone), transparent 65%), inset 0 1px 0 color-mix(in srgb, var(--btn-tone), transparent 65%);
+    border-color: color-mix(in oklab, var(--btn-tone) 60%, transparent);
+    background: color-mix(in oklab, var(--btn-tone) 22%, transparent);
 }
 
 .pr-btn:active:not(:disabled) {
     transform: translateY(0) scale(0.985);
-    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.35), inset 0 0 0 1px color-mix(in srgb, var(--btn-tone), transparent 60%);
 }
 
 .pr-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
     transform: none;
-    background: rgba(255, 255, 255, 0.025);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.32);
-    box-shadow: none;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
 }
 
 .pr-btn-small {
@@ -71,21 +67,19 @@
 }
 
 .pr-btn-prominent {
-    border-color: color-mix(in srgb, var(--btn-tone), transparent 55%);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--btn-tone), transparent 80%), color-mix(in srgb, var(--btn-tone), transparent 92%));
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22), inset 0 1px 0 color-mix(in srgb, var(--btn-tone), transparent 70%);
+    border-color: color-mix(in oklab, var(--btn-tone) 45%, transparent);
+    background: color-mix(in oklab, var(--btn-tone) 16%, transparent);
 }
 
 .pr-btn-prominent:hover:not(:disabled) {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--btn-tone), transparent 70%), color-mix(in srgb, var(--btn-tone), transparent 84%));
-    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.34), 0 0 22px color-mix(in srgb, var(--btn-tone), transparent 55%), inset 0 1px 0 color-mix(in srgb, var(--btn-tone), transparent 55%);
+    background: color-mix(in oklab, var(--btn-tone) 26%, transparent);
 }
 
-.pr-btn-green   { --btn-tone: #22c55e; }
-.pr-btn-accent  { --btn-tone: var(--accent); }
-.pr-btn-amber   { --btn-tone: #ecb96a; }
-.pr-btn-blue    { --btn-tone: #3b82f6; }
-.pr-btn-red     { --btn-tone: #ef4444; }
+.pr-btn-green   { --btn-tone: var(--color-success); }
+.pr-btn-accent  { --btn-tone: var(--accent-primary); }
+.pr-btn-amber   { --btn-tone: var(--color-warning); }
+.pr-btn-blue    { --btn-tone: var(--color-info); }
+.pr-btn-red     { --btn-tone: var(--color-danger); }
 
 /* ── Main Layout ────────────────────────────────────── */
 .pr-main {
@@ -97,7 +91,7 @@
 /* ── Left Panel (VFX list) ──────────────────────────── */
 .pr-left-panel {
     width: 50%;
-    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -105,7 +99,7 @@
 
 .pr-search-bar {
     padding: 10px 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -116,44 +110,44 @@
     flex: 1;
     min-width: 150px;
     padding: 7px 12px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.008));
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
-    color: var(--text);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
     font-size: 0.8rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     outline: none;
-    transition: background 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+    transition: background var(--motion-fast), box-shadow var(--motion-fast), border-color var(--motion-fast);
 }
 
 .pr-search-input::placeholder {
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--text-muted);
 }
 
 .pr-search-input:hover {
-    border-color: color-mix(in srgb, var(--accent), transparent 55%);
+    border-color: color-mix(in oklab, var(--accent-primary) 30%, var(--border));
 }
 
 .pr-search-input:focus {
-    border-color: var(--accent);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 92%), color-mix(in srgb, var(--accent), transparent 97%));
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%);
+    border-color: var(--accent-primary);
+    background: var(--bg-secondary);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-primary) 60%, transparent);
 }
 
 .pr-search-count {
     font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--text-secondary);
     white-space: nowrap;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
 }
 
 .pr-selection-bar {
     padding: 8px 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     gap: 6px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.012), rgba(255, 255, 255, 0));
+    background: var(--bg-secondary);
 }
 
 .pr-selection-count {
@@ -162,14 +156,13 @@
     align-items: center;
     padding: 3px 10px;
     border-radius: 999px;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 82%), color-mix(in srgb, var(--accent), transparent 92%));
-    border: 1px solid color-mix(in srgb, var(--accent), transparent 55%);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent), transparent 70%);
-    font-family: 'JetBrains Mono', monospace;
+    background: color-mix(in oklab, var(--accent-primary) 15%, var(--bg-tertiary));
+    border: 1px solid color-mix(in oklab, var(--accent-primary) 30%, var(--border));
+    font-family: var(--font-mono);
     font-weight: 600;
     font-size: 0.68rem;
     letter-spacing: 0.02em;
-    color: var(--accent);
+    color: color-mix(in oklab, var(--accent-primary) 50%, var(--text-primary));
     white-space: nowrap;
 }
 
@@ -185,15 +178,14 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: rgba(255, 255, 255, 0.32);
+    color: var(--text-muted);
     gap: 12px;
     font-size: 0.78rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
 }
 
 .pr-empty-state .icon {
-    color: color-mix(in srgb, var(--accent), transparent 40%);
-    opacity: 0.6;
+    color: color-mix(in oklab, var(--accent-primary) 60%, var(--text-muted));
 }
 
 /* ── Custom Checkbox ────────────────────────────────── */
@@ -204,11 +196,11 @@
     height: 16px;
     margin: 0;
     border-radius: 4px;
-    border: 1.5px solid rgba(255, 255, 255, 0.22);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+    border: 1.5px solid var(--border-strong);
+    background: var(--bg-tertiary);
     cursor: pointer;
     flex-shrink: 0;
-    transition: all 0.15s ease;
+    transition: all var(--motion-fast);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -216,14 +208,13 @@
 }
 
 .pr-vfx-checkbox:hover:not(:disabled) {
-    border-color: color-mix(in srgb, var(--accent), transparent 35%);
-    background: color-mix(in srgb, var(--accent), transparent 88%);
+    border-color: color-mix(in oklab, var(--accent-primary) 55%, var(--border));
+    background: color-mix(in oklab, var(--accent-primary) 10%, var(--bg-tertiary));
 }
 
 .pr-vfx-checkbox:checked {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 35%), color-mix(in srgb, var(--accent), transparent 60%));
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%);
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
 }
 
 .pr-vfx-checkbox:checked::after {
@@ -236,8 +227,8 @@
 }
 
 .pr-vfx-checkbox:indeterminate {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 35%), color-mix(in srgb, var(--accent), transparent 60%));
-    border-color: var(--accent);
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
 }
 
 .pr-vfx-checkbox:indeterminate::after {
@@ -258,11 +249,11 @@
     flex: 1;
     font-size: 0.78rem;
     font-weight: 500;
-    color: var(--text);
+    color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
 }
 
 /* ── Right Panel (Config / Output) ──────────────────── */
@@ -286,12 +277,12 @@
 .pr-section-title {
     font-size: 0.78rem;
     font-weight: 700;
-    color: var(--accent);
+    color: var(--accent-primary);
     margin-bottom: 10px;
     display: flex;
     align-items: center;
     gap: 8px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     letter-spacing: 0.02em;
 }
 
@@ -299,26 +290,23 @@
     font-size: 0.66rem;
     padding: 2px 9px;
     border-radius: 999px;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 82%), color-mix(in srgb, var(--accent), transparent 92%));
-    border: 1px solid color-mix(in srgb, var(--accent), transparent 55%);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent), transparent 70%);
-    color: var(--accent);
+    background: color-mix(in oklab, var(--accent-primary) 15%, var(--bg-tertiary));
+    border: 1px solid color-mix(in oklab, var(--accent-primary) 30%, var(--border));
+    color: color-mix(in oklab, var(--accent-primary) 50%, var(--text-primary));
     font-weight: 600;
     letter-spacing: 0.02em;
 }
 
 .pr-section-title .badge.badge-active {
-    background: linear-gradient(180deg, color-mix(in srgb, #22c55e, transparent 82%), color-mix(in srgb, #22c55e, transparent 92%));
-    border-color: color-mix(in srgb, #22c55e, transparent 55%);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, #22c55e, transparent 70%);
-    color: #22c55e;
+    background: color-mix(in oklab, var(--color-success) 15%, var(--bg-tertiary));
+    border-color: color-mix(in oklab, var(--color-success) 30%, var(--border));
+    color: var(--color-success);
 }
 
 .pr-section-title .badge.badge-off {
-    background: rgba(255, 255, 255, 0.04);
-    border-color: rgba(255, 255, 255, 0.1);
-    box-shadow: none;
-    color: rgba(255, 255, 255, 0.45);
+    background: var(--bg-tertiary);
+    border-color: var(--border);
+    color: var(--text-muted);
 }
 
 /* ── Number Input ───────────────────────────────────── */
@@ -331,32 +319,32 @@
 
 .pr-number-row label {
     font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.65);
+    color: var(--text-secondary);
     white-space: nowrap;
 }
 
 .pr-number-input {
     width: 70px;
     padding: 7px 10px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.008));
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
-    color: var(--text);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
     font-size: 0.8rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     text-align: center;
     outline: none;
-    transition: background 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+    transition: background var(--motion-fast), box-shadow var(--motion-fast), border-color var(--motion-fast);
 }
 
 .pr-number-input:hover {
-    border-color: color-mix(in srgb, var(--accent), transparent 55%);
+    border-color: color-mix(in oklab, var(--accent-primary) 30%, var(--border));
 }
 
 .pr-number-input:focus {
-    border-color: var(--accent);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 92%), color-mix(in srgb, var(--accent), transparent 97%));
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%);
+    border-color: var(--accent-primary);
+    background: var(--bg-secondary);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-primary) 60%, transparent);
 }
 
 /* ── Custom checkbox option rows ────────────────────── */
@@ -375,11 +363,11 @@
     height: 16px;
     margin: 0;
     border-radius: 4px;
-    border: 1.5px solid rgba(255, 255, 255, 0.22);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+    border: 1.5px solid var(--border-strong);
+    background: var(--bg-tertiary);
     cursor: pointer;
     flex-shrink: 0;
-    transition: all 0.15s ease;
+    transition: all var(--motion-fast);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -387,14 +375,13 @@
 }
 
 .pr-option input[type="checkbox"]:hover {
-    border-color: color-mix(in srgb, var(--accent), transparent 35%);
-    background: color-mix(in srgb, var(--accent), transparent 88%);
+    border-color: color-mix(in oklab, var(--accent-primary) 55%, var(--border));
+    background: color-mix(in oklab, var(--accent-primary) 10%, var(--bg-tertiary));
 }
 
 .pr-option input[type="checkbox"]:checked {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 35%), color-mix(in srgb, var(--accent), transparent 60%));
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%);
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
 }
 
 .pr-option input[type="checkbox"]:checked::after {
@@ -408,7 +395,7 @@
 
 .pr-option label {
     font-size: 0.78rem;
-    color: rgba(255, 255, 255, 0.78);
+    color: var(--text-secondary);
     cursor: pointer;
     user-select: none;
 }
@@ -421,42 +408,41 @@
     align-items: center;
     margin-top: 8px;
     padding: 12px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0.005));
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
 }
 
 .pr-prefix-grid label {
     font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.55);
+    color: var(--text-secondary);
     white-space: nowrap;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
 }
 
 .pr-prefix-input {
     padding: 6px 10px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.008));
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
-    color: var(--text);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
     font-size: 0.78rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     outline: none;
-    transition: background 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+    transition: background var(--motion-fast), box-shadow var(--motion-fast), border-color var(--motion-fast);
 }
 
 .pr-prefix-input::placeholder {
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--text-muted);
 }
 
 .pr-prefix-input:hover {
-    border-color: color-mix(in srgb, var(--accent), transparent 55%);
+    border-color: color-mix(in oklab, var(--accent-primary) 30%, var(--border));
 }
 
 .pr-prefix-input:focus {
-    border-color: var(--accent);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--accent), transparent 92%), color-mix(in srgb, var(--accent), transparent 97%));
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-primary) 60%, transparent);
 }
 
 /* ── Asset Folder Inputs ────────────────────────────── */
@@ -467,42 +453,42 @@
     align-items: center;
     margin-top: 8px;
     padding: 12px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0.005));
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
 }
 
 .pr-asset-grid label {
     font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.55);
+    color: var(--text-secondary);
     white-space: nowrap;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
 }
 
 .pr-asset-grid .path-hint {
     font-size: 0.65rem;
-    color: rgba(255, 255, 255, 0.35);
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
 }
 
 /* ── Assets Output ──────────────────────────────────── */
 .pr-assets-output {
     margin-top: 12px;
     padding: 12px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0.005));
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
 }
 
 .pr-assets-output-title {
     font-size: 0.72rem;
     font-weight: 600;
-    color: var(--accent);
+    color: var(--accent-primary);
     margin-bottom: 8px;
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
 }
 
 .pr-assets-folder {
@@ -512,12 +498,12 @@
 .pr-assets-folder-name {
     font-size: 0.74rem;
     font-weight: 600;
-    color: var(--accent);
+    color: var(--accent-primary);
     margin-bottom: 4px;
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
 }
 
 .pr-assets-folder ul {
@@ -530,16 +516,16 @@
 
 .pr-assets-folder li {
     font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.55);
+    color: var(--text-secondary);
     padding: 2px 0;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
 }
 
 /* ── Action Bar ─────────────────────────────────────── */
 .pr-action-bar {
     padding: 10px 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.012));
+    border-top: 1px solid var(--border);
+    background: var(--bg-secondary);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -554,16 +540,16 @@
 .pr-action-status {
     margin-left: auto;
     font-size: 0.72rem;
-    color: rgba(255, 255, 255, 0.45);
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 50%;
 }
 
-.pr-action-status.success { color: #22c55e; }
-.pr-action-status.error   { color: #ef4444; }
+.pr-action-status.success { color: var(--color-success); }
+.pr-action-status.error   { color: var(--color-danger); }
 
 /* ── Scrollbar ──────────────────────────────────────── */
 .pr-vfx-list::-webkit-scrollbar,
@@ -578,13 +564,13 @@
 
 .pr-vfx-list::-webkit-scrollbar-thumb,
 .pr-config-area::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--border-strong);
     border-radius: 3px;
 }
 
 .pr-vfx-list::-webkit-scrollbar-thumb:hover,
 .pr-config-area::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.18);
+    background: var(--bg-hover);
 }
 
 /* ── Info tooltip ───────────────────────────────────── */
@@ -595,16 +581,16 @@
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.05);
-    color: rgba(255, 255, 255, 0.5);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
     cursor: help;
     flex-shrink: 0;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: background var(--motion-fast), color var(--motion-fast);
 }
 
 .pr-info-tip:hover {
-    background: color-mix(in srgb, var(--accent), transparent 80%);
-    color: var(--accent);
+    background: color-mix(in oklab, var(--accent-primary) 18%, transparent);
+    color: var(--accent-primary);
 }
 
 /* ── Badges (variant / randomizer indicators) ───────── */
@@ -616,41 +602,43 @@
     letter-spacing: 0.02em;
     white-space: nowrap;
     flex-shrink: 0;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
 }
 
 .pr-badge-variant {
-    background: linear-gradient(180deg, color-mix(in srgb, #9d8cd9, transparent 82%), color-mix(in srgb, #9d8cd9, transparent 92%));
-    border: 1px solid color-mix(in srgb, #9d8cd9, transparent 55%);
-    color: #9d8cd9;
+    background: color-mix(in oklab, var(--accent-secondary) 15%, var(--bg-tertiary));
+    border: 1px solid color-mix(in oklab, var(--accent-secondary) 35%, var(--border));
+    color: color-mix(in oklab, var(--accent-secondary) 40%, var(--text-primary));
 }
 
 .pr-badge-system-mode {
-    background: linear-gradient(180deg, color-mix(in srgb, #3b82f6, transparent 82%), color-mix(in srgb, #3b82f6, transparent 92%));
-    border: 1px solid color-mix(in srgb, #3b82f6, transparent 55%);
-    color: #60a5fa;
+    background: color-mix(in oklab, var(--color-info) 15%, var(--bg-tertiary));
+    border: 1px solid color-mix(in oklab, var(--color-info) 35%, var(--border));
+    color: var(--color-info);
 }
 
 .pr-badge-done {
-    background: linear-gradient(180deg, color-mix(in srgb, #22c55e, transparent 82%), color-mix(in srgb, #22c55e, transparent 92%));
-    border: 1px solid color-mix(in srgb, #22c55e, transparent 55%);
-    color: #4ade80;
+    background: color-mix(in oklab, var(--color-success) 15%, var(--bg-tertiary));
+    border: 1px solid color-mix(in oklab, var(--color-success) 35%, var(--border));
+    color: var(--color-success);
 }
 
 /* ── Asset hint text ────────────────────────────────── */
 .pr-asset-hint {
     font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--text-muted);
     margin-bottom: 8px;
     line-height: 1.5;
 }
 
 .pr-asset-hint code {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-tertiary);
     padding: 1px 6px;
     border-radius: 4px;
-    color: #ecb96a;
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--color-warning);
+    font-family: var(--font-mono);
     font-size: 0.66rem;
 }
 
@@ -664,57 +652,57 @@
     align-items: center;
     gap: 8px;
     padding: 7px 10px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.012));
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 6px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     cursor: pointer;
     user-select: none;
-    transition: background 0.12s ease, border-color 0.12s ease;
+    transition: background var(--motion-fast), border-color var(--motion-fast);
 }
 
 .pr-system-header:hover {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
-    border-color: rgba(255, 255, 255, 0.1);
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
 }
 
 .pr-system-header.has-selection {
-    background: linear-gradient(180deg, color-mix(in srgb, #ecb96a, transparent 86%), color-mix(in srgb, #ecb96a, transparent 94%));
-    border-color: color-mix(in srgb, #ecb96a, transparent 65%);
+    background: color-mix(in oklab, var(--color-warning) 12%, var(--bg-tertiary));
+    border-color: color-mix(in oklab, var(--color-warning) 35%, var(--border));
 }
 
 .pr-system-header.system-mode {
-    background: linear-gradient(180deg, color-mix(in srgb, #3b82f6, transparent 82%), color-mix(in srgb, #3b82f6, transparent 92%));
-    border-color: color-mix(in srgb, #3b82f6, transparent 55%);
+    background: color-mix(in oklab, var(--color-info) 15%, var(--bg-tertiary));
+    border-color: color-mix(in oklab, var(--color-info) 35%, var(--border));
 }
 
 .pr-system-header.is-randomized {
-    background: linear-gradient(180deg, color-mix(in srgb, #22c55e, transparent 88%), color-mix(in srgb, #22c55e, transparent 94%));
-    border-color: color-mix(in srgb, #22c55e, transparent 65%);
+    background: color-mix(in oklab, var(--color-success) 12%, var(--bg-tertiary));
+    border-color: color-mix(in oklab, var(--color-success) 35%, var(--border));
 }
 
 .pr-system-header.has-randomized {
-    background: linear-gradient(180deg, color-mix(in srgb, #22c55e, transparent 92%), color-mix(in srgb, #22c55e, transparent 96%));
-    border-color: color-mix(in srgb, #22c55e, transparent 80%);
+    background: color-mix(in oklab, var(--color-success) 8%, var(--bg-tertiary));
+    border-color: color-mix(in oklab, var(--color-success) 20%, var(--border));
 }
 
 .pr-expand-icon {
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--text-muted);
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 14px;
     height: 14px;
-    transition: transform 0.15s ease, color 0.15s ease;
+    transition: transform var(--motion-fast), color var(--motion-fast);
 }
 
 .pr-system-header:hover .pr-expand-icon {
-    color: var(--accent);
+    color: var(--accent-primary);
 }
 
 .pr-system-name {
     font-weight: 600;
-    color: var(--accent);
+    color: var(--accent-primary);
 }
 
 /* ── Tree: Emitter Rows ─────────────────────────────── */
@@ -723,25 +711,25 @@
     align-items: center;
     gap: 10px;
     padding: 5px 10px 5px 30px;
-    border-left: 2px solid rgba(255, 255, 255, 0.05);
+    border-left: 2px solid var(--border);
     margin-left: 8px;
     cursor: pointer;
     user-select: none;
-    transition: background 0.1s ease, border-color 0.1s ease;
+    transition: background var(--motion-fast), border-color var(--motion-fast);
     border-radius: 0 4px 4px 0;
 }
 
 .pr-emitter-row:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-hover);
 }
 
 .pr-emitter-row.selected {
-    background: linear-gradient(180deg, color-mix(in srgb, #ecb96a, transparent 86%), color-mix(in srgb, #ecb96a, transparent 94%));
-    border-left-color: color-mix(in srgb, #ecb96a, transparent 50%);
+    background: color-mix(in oklab, var(--color-warning) 12%, var(--bg-tertiary));
+    border-left-color: color-mix(in oklab, var(--color-warning) 50%, var(--border));
 }
 
 .pr-emitter-row.selected .pr-vfx-label {
-    color: #ecb96a;
+    color: var(--color-warning);
 }
 
 .pr-emitter-row.unnamed {
@@ -755,7 +743,7 @@
 
 .pr-emitter-row.randomized {
     cursor: default;
-    border-left-color: color-mix(in srgb, #22c55e, transparent 60%);
+    border-left-color: color-mix(in oklab, var(--color-success) 50%, var(--border));
 }
 
 .pr-emitter-row.randomized:hover {
@@ -763,7 +751,7 @@
 }
 
 .pr-emitter-row.randomized .pr-vfx-label {
-    color: #4ade80;
+    color: var(--color-success);
     opacity: 0.75;
 }
 
@@ -777,24 +765,23 @@
     align-items: center;
     justify-content: center;
     gap: 16px;
-    background: color-mix(in srgb, var(--bg), transparent 18%);
-    backdrop-filter: blur(var(--glass-blur, 8px));
+    background: color-mix(in oklab, var(--bg-primary) 82%, transparent);
+    backdrop-filter: blur(8px);
 }
 
 .pr-spinner {
     width: 46px;
     height: 46px;
     border-radius: 50%;
-    border: 3px solid color-mix(in srgb, var(--accent), transparent 78%);
-    border-top-color: var(--accent);
+    border: 3px solid color-mix(in oklab, var(--accent-primary) 22%, transparent);
+    border-top-color: var(--accent-primary);
     animation: pr-spin 0.8s linear infinite;
-    box-shadow: 0 0 22px color-mix(in srgb, var(--accent), transparent 60%);
 }
 
 .pr-spinner-text {
     font-size: 0.78rem;
-    color: var(--accent);
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
     letter-spacing: 0.02em;
 }
 

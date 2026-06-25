@@ -56,7 +56,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
+  background: color-mix(in oklab, var(--bg-primary) 80%, transparent);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -155,8 +155,8 @@
 .combined-button,
 .load-button {
   flex: 1;
-  background: color-mix(in srgb, var(--accent2), transparent 88%);
-  border: 1px solid color-mix(in srgb, var(--accent2), transparent 72%);
+  background: color-mix(in oklab, var(--accent2) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--accent2) 28%, transparent);
   color: var(--text);
   padding: 14px 24px;
   border-radius: 12px;
@@ -180,16 +180,16 @@
 
 .file-button:hover,
 .combined-button:hover {
-  background: color-mix(in srgb, var(--accent2), transparent 82%);
-  border-color: color-mix(in srgb, var(--accent2), transparent 66%);
+  background: color-mix(in oklab, var(--accent2) 18%, transparent);
+  border-color: color-mix(in oklab, var(--accent2) 34%, transparent);
   transform: translateY(-2px);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
 }
 
 .combined-button {
-  background: color-mix(in srgb, var(--accent2), transparent 85%);
+  background: color-mix(in oklab, var(--accent2) 15%, transparent);
   color: var(--text);
-  border: 1px solid color-mix(in srgb, var(--accent2), transparent 60%);
+  border: 1px solid color-mix(in oklab, var(--accent2) 40%, transparent);
   font-weight: 600;
   position: relative;
   overflow: hidden;
@@ -204,7 +204,7 @@
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--text-primary) 18%, transparent), transparent);
   transition: left 0.5s ease;
   z-index: 1;
 }
@@ -215,9 +215,9 @@
 
 .combined-button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
-  background: color-mix(in srgb, var(--accent2), transparent 80%);
-  border-color: color-mix(in srgb, var(--accent2), transparent 50%);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  background: color-mix(in oklab, var(--accent2) 20%, transparent);
+  border-color: color-mix(in oklab, var(--accent2) 50%, transparent);
 }
 
 .combined-button:active {
@@ -241,19 +241,19 @@
   border-radius: 0.4rem;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(236, 185, 106, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   max-width: 300px;
   width: 100%;
 }
 
 .load-button:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(236, 185, 106, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .load-button:disabled {
   background: var(--surface-2);
-  color: #404040;
+  color: var(--text-muted);
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
@@ -343,7 +343,7 @@
 
 .search-input:focus {
   border-color: var(--accent);
-  background: #3a3747;
+  background: var(--bg-hover);
 }
 
 .search-input::placeholder {
@@ -414,7 +414,7 @@
 }
 
 .clip-header:hover {
-  background: #3a3747;
+  background: var(--bg-hover);
 }
 
 .clip-info {
@@ -457,7 +457,7 @@
 .clip-delete-btn {
   background: transparent;
   border: none;
-  color: var(--error);
+  color: var(--color-danger);
   font-size: 14px;
   padding: 2px 6px;
   margin: 0 2px;
@@ -469,7 +469,7 @@
 
 .clip-delete-btn:hover {
   opacity: 1;
-  background: var(--error);
+  background: var(--color-danger);
   color: var(--surface);
   transform: scale(1.1);
 }
@@ -578,11 +578,11 @@
 }
 
 .delete-button {
-  background: #dc2626;
-  border: 1px solid #dc2626;
+  background: var(--color-danger);
+  border: 1px solid var(--color-danger);
   border-radius: 0.2rem;
   padding: 4px 6px;
-  color: white;
+  color: #fff;
   font-size: 0.7rem;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -594,8 +594,8 @@
 }
 
 .delete-button:hover {
-  background: #b91c1c;
-  border-color: #b91c1c;
+  background: color-mix(in oklab, var(--color-danger) 85%, black);
+  border-color: color-mix(in oklab, var(--color-danger) 85%, black);
   transform: scale(1.05);
 }
 
@@ -604,8 +604,8 @@
 }
 
 .ported-badge {
-  background: #16a34a;
-  color: white;
+  background: var(--color-success);
+  color: #fff;
   padding: 2px 4px;
   border-radius: 0.1rem;
   font-size: 0.6rem;
@@ -652,7 +652,7 @@
 /* Drag over effect */
 .animation-clip.drag-over {
   border: 2px solid var(--accent) !important;
-  background: rgba(236, 185, 106, 0.1) !important;
+  background: color-mix(in oklab, var(--accent-primary) 10%, transparent) !important;
   transform: scale(1.02);
   transition: all 0.2s ease;
 }
@@ -663,14 +663,14 @@
   text-align: center;
   border: 2px dashed var(--accent-muted);
   border-radius: 0.4rem;
-  background: rgba(236, 185, 106, 0.05);
+  background: color-mix(in oklab, var(--accent-primary) 5%, transparent);
   margin: 10px 0;
   transition: all 0.3s ease;
 }
 
 .animation-clip.drag-over .empty-clip-drop-zone {
   border-color: var(--accent);
-  background: rgba(236, 185, 106, 0.15);
+  background: color-mix(in oklab, var(--accent-primary) 15%, transparent);
   transform: scale(1.05);
 }
 
@@ -739,14 +739,14 @@
 }
 
 .undo-button:hover:not(.disabled) {
-  background: #3a3747;
+  background: var(--bg-hover);
   border-color: var(--accent);
   color: var(--accent);
 }
 
 .undo-button.disabled {
   background: var(--surface);
-  color: #404040;
+  color: var(--text-muted);
   cursor: not-allowed;
   opacity: 0.5;
 }
@@ -757,13 +757,13 @@
 }
 
 .save-button.has-changes {
-  background: linear-gradient(180deg, rgba(34, 197, 94, 0.22), rgba(22, 163, 74, 0.18));
-  border-color: rgba(34, 197, 94, 0.32);
-  color: #eaffef;
+  background: color-mix(in oklab, var(--color-success) 18%, transparent);
+  border-color: color-mix(in oklab, var(--color-success) 32%, transparent);
+  color: var(--color-success);
 }
 
 .save-button.has-changes:hover:not(.processing) {
-  background: linear-gradient(180deg, rgba(34, 197, 94, 0.32), rgba(22, 163, 74, 0.28));
+  background: color-mix(in oklab, var(--color-success) 28%, transparent);
   transform: translateY(-1px);
 }
 
@@ -790,7 +790,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
+  background: color-mix(in oklab, var(--bg-primary) 80%, transparent);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -926,7 +926,7 @@
 
 /* Clip Property Editor */
 .clip-property-editor {
-  background: var(--surface-elevated);
+  background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: 4px;
   margin: 4px;
@@ -976,8 +976,8 @@
 
 .property-input:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px var(--primary-alpha);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-primary) 18%, transparent);
 }
 
 .property-input::placeholder {
@@ -986,7 +986,7 @@
 }
 
 .property-input:disabled {
-  background: var(--surface-elevated);
+  background: var(--bg-tertiary);
   color: var(--accent-muted);
   opacity: 0.6;
   cursor: not-allowed;
@@ -999,7 +999,7 @@
 
 .current-value {
   color: var(--accent);
-  background: var(--surface-elevated);
+  background: var(--bg-tertiary);
   padding: 2px 6px;
   border-radius: 3px;
   border: 1px solid var(--border);
@@ -1024,7 +1024,7 @@
   align-items: center;
   gap: 8px;
   padding: 6px;
-  background: var(--surface-elevated);
+  background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: 4px;
 }
@@ -1085,9 +1085,9 @@
 }
 
 .new-clip-create-btn {
-  background: var(--primary-alpha);
-  border: 1px solid var(--primary);
-  color: var(--primary);
+  background: color-mix(in oklab, var(--accent-primary) 18%, transparent);
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
   padding: 6px 10px;
   border-radius: 4px;
   cursor: pointer;
@@ -1129,9 +1129,9 @@
 }
 
 .ensure-eventmap-btn {
-  background: var(--primary-alpha);
-  border: 1px solid var(--primary);
-  color: var(--primary);
+  background: color-mix(in oklab, var(--accent-primary) 18%, transparent);
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
   padding: 4px 8px;
   border-radius: 4px;
   cursor: pointer;
@@ -1162,7 +1162,7 @@
   align-items: center;
   gap: 8px;
   padding: 4px 6px;
-  background: var(--surface-elevated);
+  background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: 3px;
   font-size: 11px;
@@ -1186,7 +1186,7 @@
 }
 
 .pair-probability.editable:hover {
-  background: var(--surface-elevated);
+  background: var(--bg-tertiary);
 }
 
 .probability-editor {
@@ -1207,9 +1207,9 @@
 }
 
 .save-probability-btn {
-  background: rgba(76, 175, 80, 0.2);
-  border: 1px solid rgba(76, 175, 80, 0.5);
-  color: #4caf50;
+  background: color-mix(in oklab, var(--color-success) 20%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-success) 50%, transparent);
+  color: var(--color-success);
   width: 16px;
   height: 16px;
   border-radius: 2px;
@@ -1221,13 +1221,13 @@
 }
 
 .save-probability-btn:hover {
-  background: rgba(76, 175, 80, 0.3);
+  background: color-mix(in oklab, var(--color-success) 30%, transparent);
 }
 
 .cancel-probability-btn {
-  background: rgba(244, 67, 54, 0.2);
-  border: 1px solid rgba(244, 67, 54, 0.5);
-  color: #f44336;
+  background: color-mix(in oklab, var(--color-danger) 20%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-danger) 50%, transparent);
+  color: var(--color-danger);
   width: 16px;
   height: 16px;
   border-radius: 2px;
@@ -1239,13 +1239,13 @@
 }
 
 .cancel-probability-btn:hover {
-  background: rgba(244, 67, 54, 0.3);
+  background: color-mix(in oklab, var(--color-danger) 30%, transparent);
 }
 
 .remove-pair-btn {
-  background: rgba(244, 67, 54, 0.2);
-  border: 1px solid rgba(244, 67, 54, 0.5);
-  color: #f44336;
+  background: color-mix(in oklab, var(--color-danger) 20%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-danger) 50%, transparent);
+  color: var(--color-danger);
   width: 16px;
   height: 16px;
   border-radius: 2px;
@@ -1258,7 +1258,7 @@
 }
 
 .remove-pair-btn:hover {
-  background: rgba(244, 67, 54, 0.3);
+  background: color-mix(in oklab, var(--color-danger) 30%, transparent);
 }
 
 .selector-add-row {
@@ -1308,9 +1308,9 @@
 }
 
 .edit-name-btn {
-  background: rgba(100, 181, 246, 0.2);
-  border: 1px solid rgba(100, 181, 246, 0.5);
-  color: #64b5f6;
+  background: color-mix(in oklab, var(--accent-primary) 20%, transparent);
+  border: 1px solid color-mix(in oklab, var(--accent-primary) 50%, transparent);
+  color: var(--accent-primary);
   cursor: pointer;
   font-size: 10px;
   padding: 2px 6px;
@@ -1323,7 +1323,7 @@
 
 .edit-name-btn:hover {
   opacity: 1;
-  background: rgba(100, 181, 246, 0.3);
+  background: color-mix(in oklab, var(--accent-primary) 30%, transparent);
   transform: scale(1.05);
 }
 
@@ -1331,7 +1331,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--surface-elevated);
+  background: var(--bg-tertiary);
   padding: 2px 6px;
   border-radius: 4px;
   border: 1px solid var(--border);
@@ -1351,8 +1351,8 @@
 }
 
 .clip-name-input:focus {
-  border-color: #64b5f6;
-  box-shadow: 0 0 0 1px rgba(100, 181, 246, 0.3);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent-primary) 30%, transparent);
 }
 
 .clip-name-actions {
@@ -1374,22 +1374,22 @@
 }
 
 .save-name-btn {
-  background: rgba(76, 175, 80, 0.3);
-  color: #4caf50;
+  background: color-mix(in oklab, var(--color-success) 30%, transparent);
+  color: var(--color-success);
 }
 
 .save-name-btn:hover {
-  background: rgba(76, 175, 80, 0.4);
+  background: color-mix(in oklab, var(--color-success) 40%, transparent);
   transform: scale(1.1);
 }
 
 .cancel-name-btn {
-  background: rgba(244, 67, 54, 0.3);
-  color: #f44336;
+  background: color-mix(in oklab, var(--color-danger) 30%, transparent);
+  color: var(--color-danger);
 }
 
 .cancel-name-btn:hover {
-  background: rgba(244, 67, 54, 0.4);
+  background: color-mix(in oklab, var(--color-danger) 40%, transparent);
   transform: scale(1.1);
 }
 
@@ -1476,7 +1476,7 @@
   align-items: center;
   padding: 1rem;
   border-bottom: 1px solid var(--border);
-  background: var(--surface-elevated);
+  background: var(--bg-tertiary);
 }
 
 .standalone-slide-header h3 {
@@ -1498,7 +1498,7 @@
 
 .standalone-close-btn:hover {
   color: var(--accent);
-  background: var(--surface-hover);
+  background: var(--bg-hover);
 }
 
 .standalone-slide-body {

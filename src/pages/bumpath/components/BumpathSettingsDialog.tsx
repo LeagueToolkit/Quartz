@@ -14,7 +14,7 @@ const BumpathSettingsDialog = React.memo(function BumpathSettingsDialog({
 }: BumpathSettingsDialogProps) {
     return (
         <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} maxWidth="sm" fullWidth>
-            <DialogTitle sx={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace' }}>
+            <DialogTitle sx={{ color: 'var(--accent-primary)', fontFamily: 'JetBrains Mono, monospace' }}>
                 Bumpath Settings
             </DialogTitle>
             <DialogContent>
@@ -31,22 +31,22 @@ const BumpathSettingsDialog = React.memo(function BumpathSettingsDialog({
                         data-bumpath-hash-dir
                         sx={{
                             '& .MuiOutlinedInput-root': {
-                                color: 'var(--accent)',
-                                backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                                color: 'var(--text-primary)',
+                                backgroundColor: 'var(--bg-tertiary)',
                             },
-                            '& .MuiInputLabel-root': { color: 'var(--accent2)' },
-                            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--accent2)' },
-                            '& .MuiFormHelperText-root': { color: 'var(--accent-muted)', fontSize: '0.75rem' },
+                            '& .MuiInputLabel-root': { color: 'var(--text-secondary)' },
+                            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border)' },
+                            '& .MuiFormHelperText-root': { color: 'var(--text-muted)', fontSize: '0.75rem' },
                         }}
                     />
-                    <Typography variant="body2" sx={{ color: 'var(--accent2)', fontSize: '0.8rem' }}>
+                    <Typography variant="body2" sx={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
                         Hash files are downloaded automatically from CommunityDragon.
                         Go to Settings -&gt; Hash Files section to download or update hash files.
                     </Typography>
                 </Box>
             </DialogContent>
             <DialogActions>
-                <Button onClick={() => setSettingsOpen(false)} sx={{ color: 'var(--accent2)' }}>
+                <Button onClick={() => setSettingsOpen(false)} sx={{ color: 'var(--text-secondary)' }}>
                     Close
                 </Button>
             </DialogActions>

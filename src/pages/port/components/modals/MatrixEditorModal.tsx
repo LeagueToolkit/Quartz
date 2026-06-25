@@ -44,8 +44,8 @@ export default function MatrixEditorModal({ open, initialMatrix, onApply, onClos
     const btnBase: React.CSSProperties = {
         padding: '8px 16px',
         borderRadius: 8,
-        border: '1px solid rgba(255,255,255,0.08)',
-        fontFamily: 'JetBrains Mono, monospace',
+        border: '1px solid var(--border)',
+        fontFamily: 'var(--font-mono)',
         fontSize: '0.75rem',
         fontWeight: 600,
         cursor: 'pointer',
@@ -59,7 +59,7 @@ export default function MatrixEditorModal({ open, initialMatrix, onApply, onClos
 
     return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} onClick={onClose} />
+            <div style={{ position: 'absolute', inset: 0, background: 'color-mix(in oklab, black 65%, transparent)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} onClick={onClose} />
             <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
@@ -73,7 +73,7 @@ export default function MatrixEditorModal({ open, initialMatrix, onApply, onClos
                     backdropFilter: 'saturate(180%) blur(16px)',
                     WebkitBackdropFilter: 'saturate(180%) blur(16px)',
                     borderRadius: 16,
-                    boxShadow: '0 30px 70px rgba(0,0,0,0.55)',
+                    boxShadow: '0 24px 48px -16px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.3)',
                     overflow: 'hidden',
                 }}
             >
@@ -81,13 +81,13 @@ export default function MatrixEditorModal({ open, initialMatrix, onApply, onClos
                     style={{
                         height: 3,
                         flexShrink: 0,
-                        background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+                        background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))',
                         backgroundSize: '200% 100%',
                         animation: 'shimmer 3s linear infinite',
                     }}
                 />
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                    <h2 style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)' }}>
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                    <h2 style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.9rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>
                         Matrix Editor
                     </h2>
                     <button
@@ -100,9 +100,9 @@ export default function MatrixEditorModal({ open, initialMatrix, onApply, onClos
                             alignItems: 'center',
                             justifyContent: 'center',
                             fontSize: 13,
-                            color: 'rgba(255,255,255,0.5)',
-                            border: '1px solid rgba(255,255,255,0.08)',
-                            background: 'rgba(255,255,255,0.04)',
+                            color: 'var(--text-muted)',
+                            border: '1px solid var(--border)',
+                            background: 'var(--bg-tertiary)',
                             cursor: 'pointer',
                             outline: 'none',
                         }}
@@ -112,10 +112,10 @@ export default function MatrixEditorModal({ open, initialMatrix, onApply, onClos
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent2)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                             4×4 Transform Matrix
                         </div>
-                        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>Row-Major Order</div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Row-Major Order</div>
                     </div>
                     <div
                         style={{
@@ -123,8 +123,8 @@ export default function MatrixEditorModal({ open, initialMatrix, onApply, onClos
                             gridTemplateColumns: 'repeat(4, 1fr)',
                             gap: 10,
                             padding: 16,
-                            background: 'rgba(255,255,255,0.02)',
-                            border: '1px solid rgba(255,255,255,0.06)',
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--border)',
                             borderRadius: 12,
                         }}
                     >
@@ -139,12 +139,12 @@ export default function MatrixEditorModal({ open, initialMatrix, onApply, onClos
                                     width: '100%',
                                     height: '34px',
                                     padding: 0,
-                                    background: 'rgba(0,0,0,0.35)',
-                                    color: 'var(--accent)',
-                                    border: '1px solid rgba(255,255,255,0.08)',
+                                    background: 'var(--bg-primary)',
+                                    color: 'var(--accent-primary)',
+                                    border: '1px solid var(--border)',
                                     borderRadius: 6,
                                     fontSize: '0.82rem',
-                                    fontFamily: 'JetBrains Mono, monospace',
+                                    fontFamily: 'var(--font-mono)',
                                     textAlign: 'center',
                                     outline: 'none',
                                     boxSizing: 'border-box',
@@ -162,21 +162,21 @@ export default function MatrixEditorModal({ open, initialMatrix, onApply, onClos
                             <button
                                 key={p.label}
                                 onClick={p.onClick}
-                                style={{ ...btnBase, background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)', fontSize: '0.7rem', padding: '6px 12px' }}
+                                style={{ ...btnBase, background: 'var(--bg-tertiary)', borderColor: 'var(--border)', color: 'var(--text-secondary)', fontSize: '0.7rem', padding: '6px 12px' }}
                             >
                                 {p.label}
                             </button>
                         ))}
                     </div>
                 </div>
-                <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
+                <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
                     <button
                         onClick={() => onApply(values.slice(0, 16))}
                         style={{
                             ...btnBase,
-                            background: 'color-mix(in srgb, var(--accent2), transparent 88%)',
-                            borderColor: 'color-mix(in srgb, var(--accent2), transparent 55%)',
-                            color: 'var(--accent2)',
+                            background: 'color-mix(in oklab, var(--accent-secondary) 12%, transparent)',
+                            borderColor: 'color-mix(in oklab, var(--accent-secondary) 45%, transparent)',
+                            color: 'var(--accent-secondary)',
                             padding: '10px 24px',
                         }}
                     >

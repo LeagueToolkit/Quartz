@@ -27,5 +27,5 @@
 }
 
 .upscale-root {
-    --accent-bright: color-mix(in srgb, var(--accent) 70%, white);
+    --accent-bright: var(--accent-hover);
 }

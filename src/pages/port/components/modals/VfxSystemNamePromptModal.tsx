@@ -20,8 +20,8 @@ export default function VfxSystemNamePromptModal({ open, value, onChange, onClos
     const btnBase: React.CSSProperties = {
         padding: '8px 18px',
         borderRadius: 8,
-        border: '1px solid rgba(255,255,255,0.08)',
-        fontFamily: 'JetBrains Mono, monospace',
+        border: '1px solid var(--border)',
+        fontFamily: 'var(--font-mono)',
         fontSize: '0.78rem',
         fontWeight: 700,
         cursor: 'pointer',
@@ -34,7 +34,7 @@ export default function VfxSystemNamePromptModal({ open, value, onChange, onClos
 
     return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 5100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} onClick={onClose} />
+            <div style={{ position: 'absolute', inset: 0, background: 'color-mix(in oklab, black 65%, transparent)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }} onClick={onClose} />
             <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
@@ -48,7 +48,7 @@ export default function VfxSystemNamePromptModal({ open, value, onChange, onClos
                     backdropFilter: 'saturate(180%) blur(16px)',
                     WebkitBackdropFilter: 'saturate(180%) blur(16px)',
                     borderRadius: 16,
-                    boxShadow: '0 30px 70px rgba(0,0,0,0.55)',
+                    boxShadow: '0 24px 48px -16px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.3)',
                     overflow: 'hidden',
                 }}
             >
@@ -56,13 +56,13 @@ export default function VfxSystemNamePromptModal({ open, value, onChange, onClos
                     style={{
                         height: 3,
                         flexShrink: 0,
-                        background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))',
+                        background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))',
                         backgroundSize: '200% 100%',
                         animation: 'shimmer 3s linear infinite',
                     }}
                 />
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                    <h2 style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.85rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)' }}>
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                    <h2 style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.85rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>
                         Name VFX System
                     </h2>
                     <button
@@ -75,9 +75,9 @@ export default function VfxSystemNamePromptModal({ open, value, onChange, onClos
                             alignItems: 'center',
                             justifyContent: 'center',
                             fontSize: 13,
-                            color: 'rgba(255,255,255,0.5)',
-                            border: '1px solid rgba(255,255,255,0.08)',
-                            background: 'rgba(255,255,255,0.04)',
+                            color: 'var(--text-muted)',
+                            border: '1px solid var(--border)',
+                            background: 'var(--bg-tertiary)',
                             cursor: 'pointer',
                             outline: 'none',
                         }}
@@ -86,8 +86,8 @@ export default function VfxSystemNamePromptModal({ open, value, onChange, onClos
                     </button>
                 </div>
                 <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    <div style={{ borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', padding: 14 }}>
-                        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', fontWeight: 700, color: 'var(--accent2)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>
+                    <div style={{ borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: 14 }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', fontWeight: 700, color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>
                             System Name
                         </div>
                         <input
@@ -100,29 +100,29 @@ export default function VfxSystemNamePromptModal({ open, value, onChange, onClos
                                 width: '100%',
                                 boxSizing: 'border-box',
                                 padding: '10px 14px',
-                                background: 'rgba(0,0,0,0.3)',
-                                color: 'var(--accent)',
-                                border: '1px solid rgba(255,255,255,0.1)',
+                                background: 'var(--bg-primary)',
+                                color: 'var(--accent-primary)',
+                                border: '1px solid var(--border)',
                                 borderRadius: 8,
                                 fontSize: '0.9rem',
-                                fontFamily: 'JetBrains Mono, monospace',
+                                fontFamily: 'var(--font-mono)',
                                 outline: 'none',
                             }}
                         />
-                        <div style={{ marginTop: 12, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)', lineHeight: 1.5, fontStyle: 'italic' }}>
+                        <div style={{ marginTop: 12, fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.5, fontStyle: 'italic' }}>
                             Configures the Definition Data key, particleName, and particlePath.
                         </div>
                     </div>
                 </div>
-                <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
+                <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
                     <button
                         disabled={!value.trim()}
                         onClick={onInsert}
                         style={{
                             ...btnBase,
-                            background: 'color-mix(in srgb, var(--accent2), transparent 88%)',
-                            borderColor: 'color-mix(in srgb, var(--accent2), transparent 55%)',
-                            color: 'var(--accent2)',
+                            background: 'color-mix(in oklab, var(--accent-secondary) 12%, transparent)',
+                            borderColor: 'color-mix(in oklab, var(--accent-secondary) 45%, transparent)',
+                            color: 'var(--accent-secondary)',
                             opacity: !value.trim() ? 0.5 : 1,
                             cursor: !value.trim() ? 'not-allowed' : 'pointer',
                             padding: '10px 24px',

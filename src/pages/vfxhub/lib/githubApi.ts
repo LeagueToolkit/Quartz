@@ -1,11 +1,13 @@
 /* GitHub-backed VFX Hub catalog, ported from the Electron Quartz
-   (src/pages/vfxhub/services/githubApi.js). Uses public (unauthenticated)
-   access against the same repository and directory layout the old app used:
-   FrogCsLoL/VFXHub — collection/vfx collection/*.py + collection/previews + assets.
-   Runs over the browser fetch API (Tauri CSP allows api.github.com and
-   raw.githubusercontent.com). Token-authenticated upload is out of scope. */
+   (src/pages/vfxhub/services/githubApi.js). Browsing uses public
+   (unauthenticated) access against the same repository and directory layout
+   the old app used: FrogCsLoL/VFXHub — collection/vfx collection/*.py +
+   collection/previews + assets. Uploading uses the GitHub contents API with
+   the personal access token stored in Settings → GitHub Integration. Runs
+   over the browser fetch API (Tauri CSP allows api.github.com and
+   raw.githubusercontent.com). */
 
-import { getSettings } from '@/lib/api';
+import { useUiPrefsStore } from '@/lib/stores';
 import { parseCompleteVFXSystems, getShortSystemName, type ParsedVfxSystem } from './vfxSystemParser';
 import type { HubAsset } from './vfxEmitterParser';
 
@@ -45,6 +47,9 @@ interface GitHubCredentials {
     owner: string;
     repo: string;
     repoUrl: string;
+    username: string;
+    token: string | null;
+    isPublicOnly: boolean;
 }
 
 interface DownloadedVfxSystem {
@@ -62,17 +67,21 @@ const cache = new Map<string, CacheEntry>();
 const cacheTimeout = 5 * 60 * 1000;
 
 async function getCredentials(): Promise<GitHubCredentials> {
-    let repoUrl = DEFAULT_REPO_URL;
-    try {
-        const settings = await getSettings();
-        const configured = (settings as unknown as Record<string, unknown>)?.GitHubRepoUrl;
-        if (typeof configured === 'string' && configured.trim()) repoUrl = configured.trim();
-    } catch {
-        // Settings unavailable — fall back to the default public repo.
-    }
+    const prefs = useUiPrefsStore.getState();
+    const username = (prefs.githubUsername || '').trim();
+    const token = (prefs.githubToken || '').trim();
+    const repoUrl = (prefs.githubRepoUrl || '').trim() || DEFAULT_REPO_URL;
+
     const urlMatch = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
     if (!urlMatch) throw new Error('Invalid GitHub repository URL format. Expected: https://github.com/owner/repo');
-    return { owner: urlMatch[1], repo: urlMatch[2].replace(/\.git$/, ''), repoUrl };
+    return {
+        owner: urlMatch[1],
+        repo: urlMatch[2].replace(/\.git$/, ''),
+        repoUrl,
+        username: username || 'public',
+        token: token || null,
+        isPublicOnly: !token,
+    };
 }
 
 function cleanPreviewKey(s: string): string {
@@ -335,9 +344,243 @@ export async function downloadVFXSystem(systemName: string, collectionFile: stri
     return { system: targetSystem, assets, pythonContent: targetSystem.fullContent };
 }
 
+// --- Authenticated upload ---------------------------------------------------
+
+export interface UploadMetadata {
+    name: string;
+    description?: string;
+    category?: string;
+    emitters?: number;
+}
+
+/* Authenticated request against the GitHub API. The token comes from
+   Settings → GitHub Integration; without it uploads are not possible. */
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const credentials = await getCredentials();
+    const url = endpoint.startsWith('http') ? endpoint : `https://api.github.com${endpoint}`;
+    const headers: Record<string, string> = {
+        Accept: 'application/vnd.github.v3+json',
+        'User-Agent': 'Quartz-VFXHub',
+        ...(options.headers as Record<string, string> | undefined),
+    };
+    if (credentials.token) headers.Authorization = `token ${credentials.token}`;
+
+    const response = await fetch(url, { ...options, headers });
+    if (!response.ok) {
+        const err = new Error(`GitHub API Error: ${response.status} ${response.statusText}`) as Error & { status?: number };
+        err.status = response.status;
+        if (response.status === 403) {
+            err.message = 'Access forbidden: your GitHub token does not have write access to this repository, or you are unauthenticated. Set a token in Settings → GitHub Integration.';
+        } else if (response.status === 401) {
+            err.message = 'Authentication failed. Check your GitHub token in Settings → GitHub Integration.';
+        }
+        throw err;
+    }
+    if (response.status === 204) return undefined as T;
+    return response.json() as Promise<T>;
+}
+
+function utf8ToBase64(text: string): string {
+    const bytes = new TextEncoder().encode(text);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+}
+
+/* Create or update a file in the repository. content is plain UTF-8 text
+   unless isBinary is set, in which case it must already be base64. */
+export async function updateFile(filePath: string, content: string, commitMessage: string, isBinary = false): Promise<void> {
+    const { owner, repo } = await getCredentials();
+
+    let sha: string | null = null;
+    try {
+        const fileInfo = await request<{ sha: string }>(`/repos/${owner}/${repo}/contents/${encodeURI(filePath)}`);
+        sha = fileInfo.sha;
+    } catch (error) {
+        // 404 just means we are creating a new file.
+        if ((error as { status?: number }).status !== 404) throw error;
+    }
+
+    const encodedContent = isBinary ? content : utf8ToBase64(content);
+    const body = JSON.stringify({ message: commitMessage, content: encodedContent, branch: BRANCH, ...(sha ? { sha } : {}) });
+
+    await request(`/repos/${owner}/${repo}/contents/${encodeURI(filePath)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+    });
+}
+
+function createMetadataHeader(metadata: UploadMetadata): string {
+    const comments: string[] = [];
+    if (metadata.name) comments.push(`# VFX_HUB_NAME: ${metadata.name}`);
+    if (metadata.description) comments.push(`# VFX_HUB_DESCRIPTION: ${metadata.description}`);
+    if (metadata.category) comments.push(`# VFX_HUB_CATEGORY: ${metadata.category}`);
+    if (metadata.emitters) comments.push(`# VFX_HUB_EMITTERS: ${metadata.emitters}`);
+    return comments.join('\n');
+}
+
+// Add the system entry to an existing ResourceResolver's resourceMap, in place.
+function addToResolverLines(lines: string[], systemName: string): void {
+    for (let i = 0; i < lines.length; i++) {
+        if (!lines[i].includes('ResourceResolver {')) continue;
+        let braceCount = 0;
+        let foundResourceMap = false;
+        for (let j = i; j < lines.length; j++) {
+            const line = lines[j];
+            if (line.includes('resourceMap: map[hash,link] = {')) {
+                foundResourceMap = true;
+                braceCount = 1;
+            } else if (foundResourceMap) {
+                braceCount += (line.match(/{/g) || []).length;
+                braceCount -= (line.match(/}/g) || []).length;
+                if (braceCount === 0) {
+                    lines.splice(j, 0, `            "${systemName}" = "${systemName}"`);
+                    return;
+                }
+            }
+        }
+        return;
+    }
+}
+
+/* Append a serialized VFX system to a collection .py, mirroring the Electron
+   addVFXSystemToCollection: insert after the last system (or before the
+   resolver) and wire a resourceMap entry. */
+function addVFXSystemToCollection(collectionContent: string, systemFullContent: string, metadata: UploadMetadata): string {
+    const systemName = metadata.name || 'UnknownSystem';
+    if (!systemFullContent) throw new Error('No VFX system content provided for upload');
+
+    let body = systemFullContent;
+    const vfxStart = body.indexOf('VfxSystemDefinitionData {');
+    if (vfxStart === -1) throw new Error('Could not find VfxSystemDefinitionData in the provided content');
+    // Drop any leading "name" = before VfxSystemDefinitionData to avoid duplication.
+    if (vfxStart > 0) body = body.slice(vfxStart);
+    body = body
+        .replace(/particleName:\s*string\s*=\s*"[^"]*"/g, `particleName: string = "${systemName}"`)
+        .replace(/particlePath:\s*string\s*=\s*"[^"]*"/g, `particlePath: string = "${systemName}"`);
+
+    const newEntry = `    "${systemName}" = ${body}`;
+    const lines = collectionContent.split('\n');
+
+    let lastVFXSystemEnd = -1;
+    let bracketCount = 0;
+    let inSystem = false;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.trim().startsWith('"') && line.includes('= VfxSystemDefinitionData {')) {
+            inSystem = true;
+            bracketCount = 1;
+            continue;
+        }
+        if (inSystem) {
+            bracketCount += (line.match(/{/g) || []).length;
+            bracketCount -= (line.match(/}/g) || []).length;
+            if (bracketCount === 0) {
+                lastVFXSystemEnd = i + 1;
+                inSystem = false;
+            }
+        }
+    }
+
+    let insertIndex = lastVFXSystemEnd;
+    if (insertIndex === -1) {
+        insertIndex = lines.findIndex((l) => l.includes('ResourceResolver {'));
+    }
+    if (insertIndex === -1) {
+        insertIndex = lines.findIndex((l) => l.trim().startsWith('entries: map[hash,embed] = {'));
+        if (insertIndex !== -1) insertIndex += 1;
+    }
+    if (insertIndex === -1) insertIndex = Math.max(0, lines.length - 1);
+
+    const header = createMetadataHeader(metadata);
+    const newLines = ['', ...(header ? [header] : []), newEntry, ''];
+    lines.splice(insertIndex, 0, ...newLines);
+
+    addToResolverLines(lines, systemName);
+    return lines.join('\n');
+}
+
+const DEFAULT_COLLECTION_TEMPLATE = `entries: map[hash,embed] = {
+    #addvfxsystemswithrightbrackets
+    #dontcreatenewresourceresolver
+    "Characters/Aurora/Skins/Skin0/Resources" = ResourceResolver {
+        resourceMap: map[hash,link] = {
+            #addresourceresolverhere
+        }
+    }
+}`;
+
+export interface UploadSystemInput {
+    name: string;
+    fullContent: string;
+}
+
+/* Push one or more VFX systems into a target collection .py in the hub repo.
+   Reads the current collection file, appends each system, then PUTs it back
+   with the stored token. Returns the resolved collection filename. */
+export async function uploadVFXSystem(
+    systems: UploadSystemInput[],
+    collectionFile: string,
+    metadata: UploadMetadata,
+): Promise<string> {
+    const credentials = await getCredentials();
+    if (credentials.isPublicOnly) {
+        throw new Error('Authentication required for uploads. Set a GitHub token in Settings → GitHub Integration.');
+    }
+    const { owner, repo } = credentials;
+
+    // GitHub paths are case-sensitive; resolve to the exact existing filename.
+    let resolvedCollectionFile = collectionFile;
+    try {
+        const entries = await request<{ type?: string; name?: string }[]>(`/repos/${owner}/${repo}/contents/${encodeURI('collection/vfx collection')}`);
+        const matched = Array.isArray(entries)
+            ? entries.find((e) => e?.type === 'file' && typeof e.name === 'string' && e.name.toLowerCase() === collectionFile.toLowerCase())
+            : null;
+        if (matched?.name) resolvedCollectionFile = matched.name;
+    } catch {
+        // Directory may not exist yet — it will be created on PUT.
+    }
+
+    const targetPath = `collection/vfx collection/${resolvedCollectionFile}`;
+    let currentContent: string;
+    try {
+        currentContent = await getRawFile(targetPath);
+    } catch {
+        currentContent = DEFAULT_COLLECTION_TEMPLATE;
+    }
+
+    let updatedContent = currentContent;
+    for (const system of systems) {
+        updatedContent = addVFXSystemToCollection(updatedContent, system.fullContent, {
+            ...metadata,
+            name: system.name,
+        });
+    }
+
+    const label = systems.length === 1 ? systems[0].name : `${systems.length} systems`;
+    await updateFile(targetPath, updatedContent, `Add VFX system: ${label}`);
+    return resolvedCollectionFile;
+}
+
+/* Upload a preview image (base64, no data-URL prefix) to collection/previews,
+   keyed by the cleaned effect name. */
+export async function uploadPreview(base64Content: string, effectName: string, extension = 'png'): Promise<string> {
+    const baseName = String(effectName || 'preview').trim();
+    const cleanName = baseName.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'preview';
+    const supported = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
+    const finalExt = supported.includes(String(extension).toLowerCase()) ? String(extension).toLowerCase() : 'png';
+    const pathInRepo = `collection/previews/${cleanName}.${finalExt}`;
+    await updateFile(pathInRepo, base64Content, `Add preview for ${baseName}`, true);
+    return pathInRepo;
+}
+
 export default {
     testConnection,
     getVFXCollections,
     getVFXCollectionsPublic,
     downloadVFXSystem,
+    updateFile,
+    uploadVFXSystem,
+    uploadPreview,
 };

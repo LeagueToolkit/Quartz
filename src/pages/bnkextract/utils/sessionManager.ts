@@ -1,17 +1,13 @@
 /* Session persistence for BnkExtract.
 
-   The Electron build wrote session JSON to %APPDATA%/Quartz/bnk_sessions via
-   Node fs. Until a Rust-side session store command lands we back this with
-   localStorage so the Session Manager UI is fully functional today. The public
-   API matches the original (saveSession / loadAllSessions / loadSessionDetail /
-   deleteSession). TODO(backend): move to an on-disk store under the shared
-   RitoShark data dir once the command exists. */
+   Backed by an on-disk store under %APPDATA%/Quartz/bnk_sessions (one JSON file
+   per session), matching the Electron build's bnk_sessions folder. The public
+   API mirrors the original (saveSession / loadAllSessions / loadSessionDetail /
+   deleteSession). */
 
+import { invoke } from '@tauri-apps/api/core';
 import { log } from '@/lib/util/logger';
 import type { BnkNode, SessionMeta, SessionState } from '../types';
-
-const INDEX_KEY = 'bnk-sessions-index';
-const SESSION_PREFIX = 'bnk-session:';
 
 interface StoredSession {
     name: string;
@@ -28,25 +24,7 @@ export interface SessionDetail extends StoredSession {
     isDelta: boolean;
 }
 
-const readIndex = (): SessionMeta[] => {
-    try {
-        const raw = localStorage.getItem(INDEX_KEY);
-        return raw ? (JSON.parse(raw) as SessionMeta[]) : [];
-    } catch (e) {
-        log.error('[SessionManager] failed to read index', e);
-        return [];
-    }
-};
-
-const writeIndex = (index: SessionMeta[]) => {
-    try {
-        localStorage.setItem(INDEX_KEY, JSON.stringify(index));
-    } catch (e) {
-        log.error('[SessionManager] failed to write index', e);
-    }
-};
-
-export function saveSession(state: SessionState, name: string): void {
+export async function saveSession(state: SessionState, name: string): Promise<void> {
     const isAutoSave = name === 'AutoSave_Exit';
     const sanitizedName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
     const filename = isAutoSave ? 'autosave_exit' : `${sanitizedName}_${Date.now()}`;
@@ -63,30 +41,48 @@ export function saveSession(state: SessionState, name: string): void {
         isDelta: true,
     };
 
-    localStorage.setItem(SESSION_PREFIX + filename, JSON.stringify(payload));
-
-    let index = readIndex().filter((s) => s.filename !== filename);
-    index = [{ filename, name, created: Date.parse(created) }, ...index];
-    writeIndex(index);
-}
-
-export function loadAllSessions(): SessionMeta[] {
-    return readIndex().sort((a, b) => b.created - a.created);
-}
-
-export function loadSessionDetail(filename: string): SessionDetail | null {
     try {
-        const raw = localStorage.getItem(SESSION_PREFIX + filename);
-        if (!raw) return null;
-        return JSON.parse(raw) as SessionDetail;
+        await invoke('bnk_session_save', { filename, payload: JSON.stringify(payload) });
+    } catch (e) {
+        log.error('[SessionManager] failed to save session', e);
+    }
+}
+
+export async function loadAllSessions(): Promise<SessionMeta[]> {
+    try {
+        const entries = await invoke<[string, string][]>('bnk_session_list');
+        const metas: SessionMeta[] = [];
+        for (const [filename, content] of entries) {
+            try {
+                const stored = JSON.parse(content) as StoredSession;
+                metas.push({ filename, name: stored.name, created: Date.parse(stored.created) });
+            } catch (e) {
+                log.error('[SessionManager] bad session payload', filename, e);
+            }
+        }
+        return metas.sort((a, b) => b.created - a.created);
+    } catch (e) {
+        log.error('[SessionManager] failed to list sessions', e);
+        return [];
+    }
+}
+
+export async function loadSessionDetail(filename: string): Promise<SessionDetail | null> {
+    try {
+        const raw = await invoke<string | null>('bnk_session_load', { filename });
+        return raw ? (JSON.parse(raw) as SessionDetail) : null;
     } catch (e) {
         log.error('[SessionManager] failed to load session', e);
         return null;
     }
 }
 
-export function deleteSession(filename: string): boolean {
-    localStorage.removeItem(SESSION_PREFIX + filename);
-    writeIndex(readIndex().filter((s) => s.filename !== filename));
-    return true;
+export async function deleteSession(filename: string): Promise<boolean> {
+    try {
+        await invoke('bnk_session_delete', { filename });
+        return true;
+    } catch (e) {
+        log.error('[SessionManager] failed to delete session', e);
+        return false;
+    }
 }

@@ -59,9 +59,9 @@ const SpotlightOverlay = ({
     const ringStyle: CSSProperties = {
         position: 'fixed', left: x, top: y, width: w, height: h,
         borderRadius: 10,
-        // Outer glow + inner glow
+        // Accent ring with a restrained spotlight glow
         boxShadow:
-            '0 0 0 2px color-mix(in srgb, var(--accent), transparent 5%), 0 0 24px color-mix(in srgb, var(--accent), transparent 30%), inset 0 0 16px color-mix(in srgb, var(--accent), transparent 65%)',
+            '0 0 0 2px color-mix(in oklab, var(--accent-primary) 95%, transparent), 0 0 16px color-mix(in oklab, var(--accent-primary) 45%, transparent), inset 0 0 12px color-mix(in oklab, var(--accent-primary) 30%, transparent)',
         pointerEvents: 'none',
         zIndex: zIndex + 1,
     };

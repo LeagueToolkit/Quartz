@@ -6,13 +6,11 @@ import { useConfigStore } from '@/lib/stores';
 import { getLeaguePath } from '@/lib/api';
 import { log } from '@/lib/util/logger';
 
-/* Centralized League / extraction paths, moved here from the Asset Extractor's
-   own modal so they're configurable in one discoverable place. Persists to the
-   shared Quartz settings (configStore → settings.json), the same store the
-   Asset Extractor and WAD Explorer already read from. */
-export function AssetExtractorSection() {
+/* Centralized League path config. Panels that pull assets from the live game
+   (Port, Sound Banks) read leaguePath from the shared Quartz settings
+   (configStore → settings.json). */
+export function PathsSection() {
     const leaguePath = useConfigStore((s) => s.settings.leaguePath) || '';
-    const wadOutputPath = useConfigStore((s) => s.settings.wadOutputPath) || '';
     const update = useConfigStore((s) => s.update);
 
     const [detectStatus, setDetectStatus] = useState<null | 'loading' | 'success' | 'error'>(null);
@@ -49,22 +47,17 @@ export function AssetExtractorSection() {
         if (dir) await update({ leaguePath: dir });
     };
 
-    const browseOutput = async () => {
-        const dir = await pickDirectory();
-        if (dir) await update({ wadOutputPath: dir });
-    };
-
     const statusColor = detectStatus === 'success'
-        ? 'var(--accent-green)'
-        : detectStatus === 'error' ? '#ef4444' : 'var(--text-2)';
+        ? 'var(--color-success)'
+        : detectStatus === 'error' ? 'var(--color-danger)' : 'var(--text-secondary)';
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <FormGroup
                 label="League Install Path"
-                description="Your League of Legends install folder — used by the Asset Extractor and WAD Explorer to locate game WADs."
+                description="Your League of Legends install folder — used to locate game WADs when pulling assets from the live game."
             >
-                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '16px' }}>
+                <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '16px' }}>
                     <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
                         <Button icon={<Search size={16} />} variant="secondary" onClick={autoDetect} disabled={detectStatus === 'loading'}>
                             {detectStatus === 'loading' ? 'Scanning…' : 'Auto Detect'}
@@ -84,21 +77,8 @@ export function AssetExtractorSection() {
                 </div>
             </FormGroup>
 
-            <FormGroup label="WAD Output Path" description="Where extracted WAD files are saved.">
-                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '16px' }}>
-                    <InputWithButton
-                        value={wadOutputPath}
-                        onChange={(e) => update({ wadOutputPath: e.target.value })}
-                        placeholder="No path selected"
-                        buttonIcon={<FolderOpen size={16} />}
-                        buttonText="Browse"
-                        onButtonClick={browseOutput}
-                    />
-                </div>
-            </FormGroup>
-
             <FormGroup label="Hash Tables Path" description="Managed automatically by Quartz.">
-                <div style={{ fontSize: '11px', color: 'var(--text-2)', opacity: 0.75 }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                     Hash files are downloaded and kept up to date automatically. See External Tools → Hash Files.
                 </div>
             </FormGroup>

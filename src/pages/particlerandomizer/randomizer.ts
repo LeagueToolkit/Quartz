@@ -429,14 +429,13 @@ export interface CopyAssetsResult {
 
 /* Copy detected assets into per-variant subfolders next to the source bin.
    The original used Node fs directly; here the actual file copying is delegated
-   to the Rust backend, which resolves the project root and ASSETS layout. */
+   to the Rust `copy_particle_assets` command, which resolves the project root
+   (walking up to the `data` folder) and the ASSETS/<variant>/ layout, with a
+   _backup folder of the originals. */
 export async function copyAssetsToFolders(
     assetsByFolder: AssetsByFolder,
     sourceFilePath: string
 ): Promise<CopyAssetsResult> {
-    // TODO(backend): no `copy_particle_assets` command exists in src-tauri yet.
-    // The randomized bin saves fine without it; this only performs the optional
-    // physical asset duplication into ASSETS/<variant>/ folders.
     const { invokeCommand } = await import('@/lib/api');
     return invokeCommand<CopyAssetsResult>('copy_particle_assets', {
         sourceFilePath,

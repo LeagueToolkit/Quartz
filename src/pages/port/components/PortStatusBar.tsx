@@ -14,9 +14,9 @@ export default function PortStatusBar({ statusMessage, targetPyContent, trimTarg
             style={{
                 padding: '6px 12px',
                 background: 'transparent',
-                borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-                color: 'var(--accent)',
-                fontFamily: 'JetBrains Mono, monospace',
+                borderTop: '1px solid var(--border)',
+                color: 'var(--accent-primary)',
+                fontFamily: 'var(--font-mono)',
                 fontSize: '12px',
                 display: 'flex',
                 alignItems: 'center',
@@ -26,7 +26,7 @@ export default function PortStatusBar({ statusMessage, targetPyContent, trimTarg
         >
             <span style={{ flex: 1 }}>{statusMessage}</span>
             {targetPyContent && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '11px', color: 'rgba(255,255,255,0.7)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '11px', color: 'var(--text-secondary)' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                         <input type="checkbox" checked={trimTargetNames} onChange={(e) => setTrimTargetNames(e.target.checked)} style={{ cursor: 'pointer' }} />
                         <span>Trim Target Names</span>

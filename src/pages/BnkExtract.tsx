@@ -4,11 +4,10 @@
    the audio splitter overlay, the session / auto-extract / game-banks toolbar,
    the playback footer, per-format extract and the full context-menu + modal set.
 
-   Backend note: BNK/WPK parsing and WEM decode/encode do NOT exist in Rust yet.
-   All UI state and interactions are wired and work; the actual parse / extract /
-   decode calls go through thin async stubs in ./bnkextract/utils/backend.ts and
-   are marked TODO(backend). The audio splitter's waveform used wavesurfer.js in
-   the original (not bundled here) — see AudioSplitter.tsx. */
+   Backend: BNK/WPK parsing, WEM decode and the external Wwise/vgmstream tooling
+   live behind the bnk_* / wwise_* / audio_* Tauri commands, wrapped by
+   ./bnkextract/utils/backend.ts. The audio splitter renders its waveform with
+   wavesurfer.js — see AudioSplitter.tsx. */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Box } from '@mui/material';
@@ -36,14 +35,18 @@ import { saveSession, type SessionDetail } from './bnkextract/utils/sessionManag
 import {
     loadBanks, wemToPlayable, extractNodes, saveBank, checkWwiseInstalled, installWwise,
     getModFiles, extractBnkBanksFromGame, loadCodebook, pickDirectory,
+    convertToWem, amplifyWem, silenceWem, readFileBytes,
 } from './bnkextract/utils/backend';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import {
     containerStyle, headerStyle, mainContentStyle, treeViewStyle, sidebarStyle,
     buttonStyle, compactButtonStyle, inputStyle,
 } from './bnkextract/styles';
 import type {
-    BnkNode, ContextMenuState, ExtractFormat, GameBanksConfirm, GameBanksSelection,
-    HistoryEntry, LastSelected, Pane, SortMode, SplitterFile, SplitterSegment, ViewMode,
+    AutoExtractRequest, BnkNode, ContextMenuState, ExtractFormat, GameBanksConfirm, GameBanksSelection,
+    HistoryEntry, LastSelected, ModFileSet, Pane, SortMode, SplitterFile, SplitterSegment, ViewMode,
 } from './bnkextract/types';
 import './bnkextract/BnkExtract.css';
 
@@ -188,6 +191,16 @@ export function BnkExtract() {
     const pendingConversion = useRef<{ filePath: string; targetNodeId: string } | null>(null);
     const pendingGroupIds = useRef<string[]>([]);
 
+    /* Routing for the Tauri webview file-drop event. DOM drag handlers stamp the
+       intended target here; the webview 'drop' (carrying real absolute paths)
+       reads and clears it. */
+    const webviewDropTarget = useRef<
+        { kind: 'reference' }
+        | { kind: 'node'; targetId: string; pane: Pane }
+        | { kind: 'mod-folder' }
+        | null
+    >(null);
+
     const setVolume = useCallback((v: number) => {
         setVolumeState(v);
         localStorage.setItem(VOLUME_KEY, String(v));
@@ -263,11 +276,11 @@ export function BnkExtract() {
                 if (magic === 'RIFF' || magic === 'OggS') playable = raw;
             }
             if (!playable) {
-                // TODO(backend): decode WEM -> ogg/wav. Returns null until wired.
+                // Decode the WEM to a playable OGG/WAV container in Rust.
                 playable = await wemToPlayable(raw, codebookDataRef.current);
             }
             if (!playable || playable.length === 0) {
-                setStatusMessage(`Cannot play: WEM format not yet decodable (${node.name})`);
+                setStatusMessage(`Cannot decode ${node.name} for playback`);
                 return;
             }
             const isWav = playable[0] === 0x52 && playable[1] === 0x49 && playable[2] === 0x46 && playable[3] === 0x46;
@@ -331,7 +344,7 @@ export function BnkExtract() {
             }
         } catch (e) {
             log.error('[BnkExtract] parse failed', e);
-            setStatusMessage('Parse failed (backend not wired yet)');
+            setStatusMessage(`Parse failed: ${(e as Error).message}`);
         } finally {
             setIsLoading(false);
         }
@@ -398,6 +411,24 @@ export function BnkExtract() {
             .filter((n) => !ids.has(n.id))
             .map((n) => (n.children ? { ...n, children: removeNodesByIds(n.children, ids) } : n)), []);
 
+    // Swap raw WEM bytes onto every audio node whose id is in `ids` (the node keeps
+    // its original audioData.id so the bank still maps the event to it).
+    const applyAudioToNodes = useCallback((pane: Pane, ids: Set<string>, data: Uint8Array) => {
+        const patch = (nodes: BnkNode[]): BnkNode[] => nodes.map((n) => {
+            if (ids.has(n.id) && n.audioData) {
+                return {
+                    ...n,
+                    isModified: true,
+                    audioData: { ...n.audioData, data, length: data.length, isModified: true },
+                };
+            }
+            if (n.children) return { ...n, children: patch(n.children) };
+            return n;
+        });
+        if (pane === 'right') setRightTreeData((p) => patch(p));
+        else setTreeData((p) => patch(p));
+    }, []);
+
     const handleDeleteSelected = useCallback(() => {
         const pane = activePane;
         const sel = pane === 'left' ? selectedNodes : rightSelectedNodes;
@@ -451,7 +482,7 @@ export function BnkExtract() {
             setStatusMessage(`Extracted ${count} track(s)`);
         } catch (e) {
             log.error('[BnkExtract] extract failed', e);
-            setStatusMessage('Extraction failed (backend not wired yet)');
+            setStatusMessage(`Extraction failed: ${(e as Error).message}`);
         } finally {
             setIsLoading(false);
         }
@@ -459,19 +490,40 @@ export function BnkExtract() {
 
     const handleReplace = useCallback(async () => {
         if (!hasAudioSelection()) return;
+        if (!isWwiseInstalled) { setShowInstallModal(true); return; }
         const picked = await open({ multiple: false, filters: [{ name: 'Audio', extensions: ['wem', 'wav', 'ogg', 'mp3'] }] });
         if (typeof picked !== 'string') return;
-        // TODO(backend): read+convert the picked file to WEM and swap audioData on the selected node(s).
-        setStatusMessage('Replace queued (backend not wired yet)');
-    }, [hasAudioSelection]);
+        const targets = collectSelectedAudioNodes();
+        if (targets.length === 0) return;
+        const targetPane = activePane;
+        setShowConvertOverlay(true);
+        setConvertStatus('Converting replacement audio...');
+        try {
+            const wem = picked.toLowerCase().endsWith('.wem')
+                ? await readFileBytes(picked)
+                : await convertToWem(picked);
+            pushToHistory();
+            const ids = new Set(targets.map((n) => n.id));
+            applyAudioToNodes(targetPane, ids, wem);
+            setStatusMessage(`Replaced ${targets.length} track(s)`);
+        } catch (e) {
+            log.error('[BnkExtract] replace failed', e);
+            setStatusMessage(`Replace failed: ${(e as Error).message}`);
+        } finally {
+            setShowConvertOverlay(false);
+        }
+    }, [hasAudioSelection, isWwiseInstalled, collectSelectedAudioNodes, activePane, pushToHistory, applyAudioToNodes]);
 
     const handleMakeSilent = useCallback(() => {
         if (!hasAudioSelection()) return;
+        const targets = collectSelectedAudioNodes();
+        if (targets.length === 0) return;
         pushToHistory();
-        // TODO(backend): substitute a silent WEM payload on the selected audio nodes.
-        setStatusMessage('Make silent queued (backend not wired yet)');
+        const ids = new Set(targets.map((n) => n.id));
+        applyAudioToNodes(activePane, ids, silenceWem());
+        setStatusMessage(`Silenced ${targets.length} track(s)`);
         handleCloseContextMenu();
-    }, [hasAudioSelection, pushToHistory, handleCloseContextMenu]);
+    }, [hasAudioSelection, collectSelectedAudioNodes, activePane, pushToHistory, applyAudioToNodes, handleCloseContextMenu]);
 
     const handleSave = useCallback(async () => {
         if (!hasRootSelection()) return;
@@ -488,32 +540,89 @@ export function BnkExtract() {
             setStatusMessage('Saved bank');
         } catch (e) {
             log.error('[BnkExtract] save failed', e);
-            setStatusMessage('Save failed (backend not wired yet)');
+            setStatusMessage(`Save failed: ${(e as Error).message}`);
         } finally {
             setIsLoading(false);
         }
     }, [hasRootSelection, activePane, selectedNodes, rightSelectedNodes, treeData, rightTreeData]);
 
     // ── Drop / auto-match ops ─────────────────────────────────────────────────
-    const handleDropReplace = useCallback((_ids: string[], _targetId: string) => {
+    /* Drag a right-pane (reference) node onto a left-pane (main) node: copy the
+       source's WEM bytes onto the target leaf, keeping the target's audio id. */
+    const handleDropReplace = useCallback((ids: string[], targetId: string) => {
+        const sources: BnkNode[] = [];
+        for (const id of ids) {
+            const n = findNode(rightTreeData, id);
+            if (n) collectAudioUnder(n, sources);
+        }
+        const src = sources.find((n) => n.audioData?.data?.length);
+        const target = findNode(treeData, targetId);
+        if (!src?.audioData || !target?.audioData) { setStatusMessage('Nothing to copy from reference'); return; }
         pushToHistory();
-        // TODO(backend): copy audioData from right-pane source nodes onto matching left-pane targets.
-        setStatusMessage('Drop replace queued (backend not wired yet)');
-    }, [pushToHistory]);
+        applyAudioToNodes('left', new Set([targetId]), src.audioData.data);
+        setStatusMessage(`Replaced ${target.name} from reference`);
+    }, [rightTreeData, treeData, pushToHistory, applyAudioToNodes]);
 
-    const handleExternalFileDrop = useCallback((_files: { path: string; name: string }[], _targetId: string, _pane: Pane) => {
-        // TODO(backend): convert dropped wem/wav/ogg/mp3 to WEM and apply to target node.
-        if (!isWwiseInstalled) { setShowInstallModal(true); return; }
+    /* Convert dropped wem/wav/ogg/mp3 files to WEM and apply to the target node. */
+    const applyExternalFiles = useCallback(async (files: { path: string; name: string }[], targetId: string, pane: Pane) => {
+        const file = files.find((f) => /\.(wem|wav|ogg|mp3)$/i.test(f.name));
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith('.wem') && !isWwiseInstalled) { setShowInstallModal(true); return; }
         setShowConvertOverlay(true);
-        setConvertStatus('Preparing...');
-        setTimeout(() => { setShowConvertOverlay(false); setStatusMessage('External file drop queued (backend not wired yet)'); }, 400);
-    }, [isWwiseInstalled]);
+        setConvertStatus(`Converting ${file.name}...`);
+        try {
+            const wem = file.name.toLowerCase().endsWith('.wem')
+                ? await readFileBytes(file.path)
+                : await convertToWem(file.path);
+            pushToHistory();
+            applyAudioToNodes(pane, new Set([targetId]), wem);
+            setStatusMessage(`Replaced from ${file.name}`);
+        } catch (e) {
+            log.error('[BnkExtract] external file drop failed', e);
+            setStatusMessage(`Replace failed: ${(e as Error).message}`);
+        } finally {
+            setShowConvertOverlay(false);
+        }
+    }, [isWwiseInstalled, pushToHistory, applyAudioToNodes]);
 
+    const handleExternalFileDrop = useCallback((_files: { path: string; name: string }[], targetId: string, pane: Pane) => {
+        // The DOM event lacks real paths under Tauri; stamp the target and let the
+        // webview drop listener apply the converted bytes.
+        webviewDropTarget.current = { kind: 'node', targetId, pane };
+    }, []);
+
+    /* Match audio leaves between panes by their numeric WEM id and copy the
+       reference (right) bytes onto the matching main (left) leaf. */
     const handleAutoMatchByEventName = useCallback(() => {
+        const refLeaves: BnkNode[] = [];
+        rightTreeData.forEach((n) => collectAudioUnder(n, refLeaves));
+        const byId = new Map<number, BnkNode>();
+        for (const n of refLeaves) {
+            if (n.audioData?.id != null && n.audioData.data?.length) byId.set(n.audioData.id, n);
+        }
+        if (byId.size === 0) { setStatusMessage('No reference audio to match'); return; }
+
+        const mainLeaves: BnkNode[] = [];
+        treeData.forEach((n) => collectAudioUnder(n, mainLeaves));
+        const matches: { targetId: string; data: Uint8Array }[] = [];
+        for (const n of mainLeaves) {
+            const ref = n.audioData?.id != null ? byId.get(n.audioData.id) : undefined;
+            if (ref?.audioData) matches.push({ targetId: n.id, data: ref.audioData.data });
+        }
+        if (matches.length === 0) { setStatusMessage('No matching WEM ids between panes'); return; }
+
         pushToHistory();
-        // TODO(backend): match WEM numeric ID prefixes between panes and replace.
-        setStatusMessage('Auto-match queued (backend not wired yet)');
-    }, [pushToHistory]);
+        const patch = (nodes: BnkNode[]): BnkNode[] => nodes.map((n) => {
+            const m = n.audioData ? matches.find((x) => x.targetId === n.id) : undefined;
+            if (m && n.audioData) {
+                return { ...n, isModified: true, audioData: { ...n.audioData, data: m.data, length: m.data.length, isModified: true } };
+            }
+            if (n.children) return { ...n, children: patch(n.children) };
+            return n;
+        });
+        setTreeData((p) => patch(p));
+        setStatusMessage(`Auto-matched ${matches.length} track(s) by WEM id`);
+    }, [rightTreeData, treeData, pushToHistory]);
 
     const handleRightPaneDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -523,33 +632,111 @@ export function BnkExtract() {
         e.preventDefault();
         setRightPaneDragOver(false);
     }, []);
+
+    /* Import dropped audio files as a reference-pane group (each converted to WEM). */
+    const importReferenceFiles = useCallback(async (paths: string[]) => {
+        const audio = paths.filter((p) => /\.(wem|wav|ogg|mp3)$/i.test(p));
+        if (audio.length === 0) return;
+        const nonWem = audio.some((p) => !p.toLowerCase().endsWith('.wem'));
+        if (nonWem && !isWwiseInstalled) { setShowInstallModal(true); return; }
+        setShowConvertOverlay(true);
+        const children: BnkNode[] = [];
+        for (let i = 0; i < audio.length; i++) {
+            const p = audio[i];
+            const name = p.split(/[\\/]/).pop() || `audio_${i}`;
+            setConvertStatus(`Importing ${name} (${i + 1}/${audio.length})...`);
+            try {
+                const wem = p.toLowerCase().endsWith('.wem') ? await readFileBytes(p) : await convertToWem(p);
+                children.push({
+                    id: `ref_${Date.now()}_${i}`,
+                    name,
+                    audioData: { id: Date.now() + i, data: wem, offset: 0, length: wem.length, isModified: true },
+                });
+            } catch (e) {
+                log.error('[BnkExtract] reference import failed', e);
+            }
+        }
+        setShowConvertOverlay(false);
+        if (children.length === 0) { setStatusMessage('No files imported'); return; }
+        pushToHistory();
+        const group: BnkNode = { id: `refgroup_${Date.now()}`, name: `Imported (${children.length})`, children };
+        setRightTreeData((prev) => [...prev, group]);
+        setRightExpandedNodes((prev) => new Set(prev).add(group.id));
+        setActivePane('right');
+        setStatusMessage(`Imported ${children.length} reference file(s)`);
+    }, [isWwiseInstalled, pushToHistory]);
+
     const handleRightPaneFileDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setRightPaneDragOver(false);
-        // TODO(backend): import dropped audio files as a reference-pane group.
-        if (e.dataTransfer?.files?.length) setStatusMessage('Reference import queued (backend not wired yet)');
+        // Real paths arrive through the Tauri webview drop listener; the DOM event
+        // only tells us the reference pane was the target.
+        webviewDropTarget.current = { kind: 'reference' };
     }, []);
 
     // ── Wwise install ─────────────────────────────────────────────────────────
     const handleInstallWwise = useCallback(async () => {
         setIsInstalling(true);
         setInstallProgress('Installing Wwise tools...');
+        const unlisten = await listen<string>('wwise:install-progress', (e) => setInstallProgress(e.payload));
         try {
             const res = await installWwise();
             if (res.success) { setIsWwiseInstalled(true); setShowInstallModal(false); setStatusMessage('Wwise tools installed'); }
-            else setInstallProgress(res.error || 'Install failed (backend not wired yet)');
+            else setInstallProgress(res.error || 'Install failed');
         } finally {
+            unlisten();
             setIsInstalling(false);
         }
     }, []);
 
     // ── Gain ──────────────────────────────────────────────────────────────────
-    const handleApplyGain = useCallback(() => {
+    /* Re-encode each targeted WEM with the chosen dB gain (decode → scale → Wwise). */
+    const handleApplyGain = useCallback(async () => {
         setShowGainDialog(false);
-        pushToHistory();
-        // TODO(backend): re-encode selected WEMs with the chosen dB gain.
-        setStatusMessage(`Gain ${gainDb}dB queued (backend not wired yet)`);
-    }, [gainDb, pushToHistory]);
+        const ids = gainTargetNodeIds.current.length > 0
+            ? gainTargetNodeIds.current
+            : Array.from(gainTargetPane === 'left' ? selectedNodes : rightSelectedNodes);
+        const pane = gainTargetPane;
+        const tree = pane === 'left' ? treeData : rightTreeData;
+        const targets: BnkNode[] = [];
+        for (const id of ids) {
+            const n = findNode(tree, id);
+            if (n) collectAudioUnder(n, targets);
+        }
+        const withData = targets.filter((n) => n.audioData?.data?.length);
+        if (withData.length === 0) { setStatusMessage('No audio to amplify'); return; }
+        if (!isWwiseInstalled) { setShowInstallModal(true); return; }
+
+        const db = parseFloat(gainDb);
+        if (isNaN(db)) { setStatusMessage('Invalid gain value'); return; }
+
+        setShowConvertOverlay(true);
+        try {
+            const patches = new Map<string, Uint8Array>();
+            for (let i = 0; i < withData.length; i++) {
+                const n = withData[i];
+                setConvertStatus(`Applying ${db}dB gain (${i + 1}/${withData.length})...`);
+                const amplified = await amplifyWem(n.audioData!.data, db);
+                patches.set(n.id, amplified);
+            }
+            pushToHistory();
+            const patch = (nodes: BnkNode[]): BnkNode[] => nodes.map((n) => {
+                const data = n.audioData ? patches.get(n.id) : undefined;
+                if (data && n.audioData) {
+                    return { ...n, isModified: true, audioData: { ...n.audioData, data, length: data.length, isModified: true } };
+                }
+                if (n.children) return { ...n, children: patch(n.children) };
+                return n;
+            });
+            if (pane === 'right') setRightTreeData((p) => patch(p)); else setTreeData((p) => patch(p));
+            setStatusMessage(`Applied ${db}dB gain to ${patches.size} track(s)`);
+        } catch (e) {
+            log.error('[BnkExtract] gain failed', e);
+            setStatusMessage(`Gain failed: ${(e as Error).message}`);
+        } finally {
+            setShowConvertOverlay(false);
+        }
+    }, [gainDb, gainTargetPane, selectedNodes, rightSelectedNodes, treeData, rightTreeData, isWwiseInstalled, pushToHistory]);
 
     // ── Splitter actions ──────────────────────────────────────────────────────
     const handleOpenInSplitter = useCallback(() => {
@@ -560,15 +747,22 @@ export function BnkExtract() {
             setShowInstallModal(true);
             return;
         }
-        setSplitterInitialFile(node ? { nodeId: node.id, name: node.name, pane, isWem: !!node.audioData } : null);
+        setSplitterInitialFile(node ? {
+            nodeId: node.id,
+            name: node.name,
+            pane,
+            isWem: !!node.audioData,
+            data: node.audioData?.data,
+        } : null);
         setShowAudioSplitter(true);
     }, [contextMenu, activePane, isWwiseInstalled, handleCloseContextMenu]);
 
-    const handleSplitterReplace = useCallback((_data: Uint8Array, _nodeId: string, _pane?: string) => {
+    const handleSplitterReplace = useCallback((data: Uint8Array, nodeId: string, pane?: string) => {
+        if (!data?.length || !nodeId) return;
         pushToHistory();
-        // TODO(backend): write replacement bytes back onto the source node.
-        setStatusMessage('Splitter replace queued (backend not wired yet)');
-    }, [pushToHistory]);
+        applyAudioToNodes((pane as Pane) || 'left', new Set([nodeId]), data);
+        setStatusMessage('Replaced source with edited audio');
+    }, [pushToHistory, applyAudioToNodes]);
 
     const handleSplitterExportSegments = useCallback((segments: SplitterSegment[]) => {
         pushToHistory();
@@ -588,16 +782,54 @@ export function BnkExtract() {
     }, [pushToHistory]);
 
     // ── Auto-extract / mod folder ─────────────────────────────────────────────
-    const handleAutoExtractProcess = useCallback(async () => {
+    /* Parse each scanned mod-file set into the left tree, then (if an output dir
+       was given) extract every loaded root to disk in the chosen formats. */
+    const handleAutoExtractProcess = useCallback(async (req?: AutoExtractRequest) => {
+        const batch = req?.batchFiles ?? [];
+        if (batch.length === 0) { setStatusMessage('No mod files to process'); return; }
         setIsLoading(true);
         setStatusMessage('Auto-extract running...');
         try {
-            // TODO(backend): batch parse + extract the scanned mod files into the tree.
-            setStatusMessage('Auto-extract queued (backend not wired yet)');
+            const loaded: BnkNode[] = [];
+            for (let i = 0; i < batch.length; i++) {
+                const set = batch[i];
+                setStatusMessage(`Parsing ${set.modFolderName || set.audio || 'mod'} (${i + 1}/${batch.length})...`);
+                const result = await loadBanks({
+                    bnkPath: set.events || '',
+                    wpkPath: set.audio || '',
+                    binPath: set.bin || '',
+                });
+                if (result?.tree) {
+                    const root = set.modFolderName ? { ...result.tree, name: set.modFolderName } : result.tree;
+                    loaded.push(root);
+                }
+            }
+            if (loaded.length === 0) { setStatusMessage('Nothing parsed from mod folder'); return; }
+
+            if (req?.loadToTree !== false) {
+                pushToHistory();
+                setTreeData((prev) => [...prev, ...loaded]);
+            }
+
+            if (req?.outputPath) {
+                let total = 0;
+                for (const root of loaded) {
+                    const audioNodes = collectAudioUnder(root);
+                    if (audioNodes.length > 0) {
+                        total += await extractNodes(audioNodes, [...extractFormats], mp3Bitrate, req.outputPath);
+                    }
+                }
+                setStatusMessage(`Loaded ${loaded.length} bank(s), extracted ${total} track(s)`);
+            } else {
+                setStatusMessage(`Loaded ${loaded.length} bank(s) into tree`);
+            }
+        } catch (e) {
+            log.error('[BnkExtract] auto-extract failed', e);
+            setStatusMessage(`Auto-extract failed: ${(e as Error).message}`);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [pushToHistory, extractFormats, mp3Bitrate]);
 
     const handleLeftPaneFolderDrop = useCallback((folderPath: string) => {
         setPendingModFolder(folderPath);
@@ -611,9 +843,9 @@ export function BnkExtract() {
         setPendingModFolder(null);
         setStatusMessage('Scanning mod folder...');
         try {
-            const sets = await getModFiles(folderPath, skinId);
+            const sets = (await getModFiles(folderPath, skinId)) as ModFileSet[];
             if (!sets || sets.length === 0) { setStatusMessage('No audio files found in mod folder'); return; }
-            await handleAutoExtractProcess();
+            await handleAutoExtractProcess({ batchFiles: sets, outputPath: null, loadToTree: true, skinId: skinId ?? undefined });
         } catch (e) {
             setStatusMessage(`Mod folder error: ${(e as Error).message}`);
         }
@@ -747,13 +979,15 @@ export function BnkExtract() {
         setIsGameBanksLoading(true);
         setGameBanksProgress('Resolving paths...');
         try {
+            const leaguePath = (await invoke<string | null>('get_league_path').catch(() => null)) || null;
             const loadedTrees: BnkNode[] = [];
+            let lastError = '';
             for (let i = 0; i < requestItems.length; i++) {
                 const req = requestItems[i];
                 if (!req.champion) continue;
                 setGameBanksProgress(`Extracting ${req.champion.name} (${i + 1}/${requestItems.length})...`);
-                const result = await extractBnkBanksFromGame({ championName: req.champion.name, skinIds: req.skinIds, includeVoiceover, includeSfx });
-                if (!result?.success) continue;
+                const result = await extractBnkBanksFromGame({ championName: req.champion.name, leaguePath, skinIds: req.skinIds, includeVoiceover, includeSfx });
+                if (!result?.success) { if (result?.error) lastError = result.error; continue; }
                 const groups = Array.isArray(result.groups) ? result.groups : [];
                 for (const group of groups) {
                     const g = group as { eventsBnk?: string; audioWpk?: string; audioBnk?: string; binPath?: string };
@@ -762,7 +996,7 @@ export function BnkExtract() {
                 }
             }
             if (loadedTrees.length === 0) {
-                throw new Error('Game bank extraction not wired yet');
+                throw new Error(lastError || 'No banks found for the selected champion skins');
             }
             pushToHistory();
             setRightTreeData((prev) => [...prev, ...loadedTrees]);
@@ -777,6 +1011,48 @@ export function BnkExtract() {
             setGameBanksProgress('');
         }
     }, [pushToHistory]);
+
+    // ── Webview file-drop (real absolute paths) ───────────────────────────────
+    /* Tauri delivers dropped file/folder paths through the webview drop event, not
+       the DOM. The DOM drag handlers stamp the intended target into
+       webviewDropTarget; here we read it and route the real paths. */
+    const dropHandlersRef = useRef({ applyExternalFiles, importReferenceFiles, handleLeftPaneFolderDrop });
+    dropHandlersRef.current = { applyExternalFiles, importReferenceFiles, handleLeftPaneFolderDrop };
+
+    useEffect(() => {
+        let unlisten: (() => void) | null = null;
+        let active = true;
+        void getCurrentWebview().onDragDropEvent((event) => {
+            if (event.payload.type !== 'drop') return;
+            const paths = event.payload.paths || [];
+            const target = webviewDropTarget.current;
+            webviewDropTarget.current = null;
+            if (paths.length === 0) return;
+
+            const audioPaths = paths.filter((p) => /\.(wem|wav|ogg|mp3)$/i.test(p));
+            const { applyExternalFiles: applyFn, importReferenceFiles: importFn, handleLeftPaneFolderDrop: folderFn } = dropHandlersRef.current;
+
+            if (target?.kind === 'node') {
+                if (audioPaths.length === 0) { setStatusMessage('Drop a .wem/.wav/.ogg/.mp3 file'); return; }
+                const name = audioPaths[0].split(/[\\/]/).pop() || '';
+                void applyFn([{ path: audioPaths[0], name }], target.targetId, target.pane);
+                return;
+            }
+            if (target?.kind === 'reference') {
+                if (audioPaths.length === 0) { setStatusMessage('Drop .wem/.wav/.ogg/.mp3 files into the reference pane'); return; }
+                void importFn(audioPaths);
+                return;
+            }
+            // Left pane / unspecified: a single audio file isn't a mod folder, so
+            // treat any non-audio path as a folder for the auto-extract scan.
+            const folder = paths.find((p) => !/\.[a-z0-9]{1,5}$/i.test(p));
+            if (folder) { folderFn(folder); return; }
+            if (audioPaths.length > 0) void importFn(audioPaths);
+        }).then((fn) => {
+            if (active) unlisten = fn; else fn();
+        }).catch((e) => log.error('[BnkExtract] webview drop listener failed', e));
+        return () => { active = false; if (unlisten) unlisten(); };
+    }, []);
 
     // ── Hotkeys ───────────────────────────────────────────────────────────────
     useEffect(() => {
@@ -911,6 +1187,7 @@ export function BnkExtract() {
                 rightTreeData={rightTreeData}
                 setShowSettingsModal={setShowSettingsModal}
                 onLeftPaneFolderDrop={handleLeftPaneFolderDrop}
+                stampDropTarget={(t) => { webviewDropTarget.current = { kind: t }; }}
             />
 
             <BnkContextMenu

@@ -8,8 +8,8 @@
     padding: 0 16px;
     box-sizing: border-box;
     border-radius: 4px;
-    border: 1px solid color-mix(in srgb, var(--bin-btn-color, var(--accent)), transparent 70%);
-    background: color-mix(in srgb, var(--bin-btn-color, var(--accent)) 14%, transparent);
+    border: 1px solid color-mix(in oklab, var(--bin-btn-color, var(--accent)) 30%, transparent);
+    background: color-mix(in oklab, var(--bin-btn-color, var(--accent)) 14%, transparent);
     color: var(--bin-btn-color, var(--accent));
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
@@ -25,9 +25,8 @@
 }
 
 .bin-editor-topbar .bin-editor-action-btn:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--bin-btn-color, var(--accent)) 22%, transparent);
+    background: color-mix(in oklab, var(--bin-btn-color, var(--accent)) 22%, transparent);
     border-color: var(--bin-btn-color, var(--accent));
-    text-shadow: 0 0 8px color-mix(in srgb, var(--bin-btn-color, var(--accent)), transparent 50%);
 }
 
 .bin-editor-topbar .bin-editor-action-btn.is-load {
@@ -35,7 +34,7 @@
 }
 
 .bin-editor-topbar .bin-editor-action-btn.is-undo {
-    --bin-btn-color: #9ca3af;
+    --bin-btn-color: var(--text-secondary);
 }
 
 .bin-editor-topbar .bin-editor-action-btn.is-restore {
@@ -43,22 +42,22 @@
 }
 
 .bin-editor-topbar .bin-editor-action-btn.is-save {
-    --bin-btn-color: #22c55e;
+    --bin-btn-color: var(--color-success);
 }
 
 .bin-editor-topbar .bin-editor-action-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-    border-color: rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.3);
+    border-color: var(--border);
+    color: var(--text-muted);
 }
 
 /* Search input inside the toolbar. */
 .bin-editor-search {
     height: 34px;
     border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(18, 20, 28, 0.55);
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
     color: var(--text);
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.82rem;
@@ -68,24 +67,24 @@
 }
 
 .bin-editor-search::placeholder {
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--text-muted);
 }
 
 .bin-editor-search:hover {
-    background: rgba(34, 38, 52, 0.62);
-    border-color: rgba(255, 255, 255, 0.4);
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
 }
 
 .bin-editor-search:focus {
-    border-color: color-mix(in srgb, var(--accent2), transparent 35%);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent2), transparent 75%);
+    border-color: color-mix(in oklab, var(--accent2) 65%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent2) 25%, transparent);
 }
 
 /* Glowing spinner overlay. */
 .glow-spinner-overlay {
     position: absolute;
     inset: 0;
-    background: color-mix(in srgb, var(--bg) 55%, transparent);
+    background: color-mix(in oklab, var(--bg) 55%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -104,17 +103,16 @@
     width: 56px;
     height: 56px;
     border-radius: 50%;
-    border: 3px solid color-mix(in srgb, var(--accent) 20%, transparent);
-    border-top-color: var(--accent);
+    border: 3px solid color-mix(in oklab, var(--accent-primary) 20%, transparent);
+    border-top-color: var(--accent-primary);
     animation: binEditorSpin 0.85s linear infinite;
-    box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 45%, transparent);
+    box-shadow: 0 0 10px color-mix(in oklab, var(--accent-primary) 35%, transparent);
 }
 
 .glow-spinner-text {
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
     color: var(--accent);
-    text-shadow: 0 0 4px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 @keyframes binEditorSpin {

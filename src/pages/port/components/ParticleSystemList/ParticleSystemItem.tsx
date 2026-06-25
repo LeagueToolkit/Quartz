@@ -142,7 +142,7 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
             }}
             style={{
                 cursor: isTarget ? 'pointer' : 'default',
-                outline: isPressed || isDragging ? '2px dashed var(--accent)' : 'none',
+                outline: isPressed || isDragging ? '2px dashed var(--accent-primary)' : 'none',
                 outlineOffset: isPressed || isDragging ? '2px' : '0px',
                 userSelect: 'none',
                 opacity: isPressed ? 0.8 : isDragging ? 0.7 : 1,
@@ -151,8 +151,8 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                 ...(isTarget && system.ported
                     ? {
                           background:
-                              'linear-gradient(180deg, color-mix(in srgb, var(--accent-green, #22c55e), transparent 65%), color-mix(in srgb, var(--accent-green, #22c55e), transparent 78%))',
-                          border: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)',
+                              'linear-gradient(180deg, color-mix(in oklab, var(--color-success) 35%, transparent), color-mix(in oklab, var(--color-success) 22%, transparent))',
+                          border: '1px solid color-mix(in oklab, var(--color-success) 55%, transparent)',
                       }
                     : {}),
             }}
@@ -167,8 +167,8 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                     minHeight: '42px',
                     ...(isTarget && system.ported
                         ? {
-                              background: 'color-mix(in srgb, var(--accent-green, #22c55e), transparent 75%)',
-                              borderBottom: '1px solid color-mix(in srgb, var(--accent-green, #22c55e), transparent 45%)',
+                              background: 'color-mix(in oklab, var(--color-success) 25%, transparent)',
+                              borderBottom: '1px solid color-mix(in oklab, var(--color-success) 55%, transparent)',
                           }
                         : {}),
                 }}
@@ -185,14 +185,14 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                         justifyContent: 'center',
                         cursor: 'pointer',
                         transition: 'background 0.2s',
-                        borderRight: '1px solid rgba(255,255,255,0.04)',
-                        backgroundColor: 'rgba(255,255,255,0.02)',
+                        borderRight: '1px solid var(--border)',
+                        backgroundColor: 'color-mix(in oklab, var(--bg-hover) 30%, transparent)',
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'color-mix(in oklab, var(--bg-hover) 30%, transparent)')}
                     title={collapsedSystems.has(system.key) ? 'Expand' : 'Collapse'}
                 >
-                    <span style={{ fontSize: '14px', opacity: 0.9, color: isTarget ? 'var(--accent)' : 'var(--accent2)' }}>
+                    <span style={{ fontSize: '14px', opacity: 0.9, color: isTarget ? 'var(--accent-primary)' : 'var(--accent-secondary)' }}>
                         {collapsedSystems.has(system.key) ? '▶' : '▼'}
                     </span>
                 </div>
@@ -200,7 +200,7 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                 <div
                     className={`flex-1 flex items-center ${isTarget && selectedTargetSystem === system.key ? 'selected' : ''}`}
                     style={{ padding: '0 12px', cursor: 'pointer', transition: 'background 0.2s', display: 'flex', alignItems: 'center', gap: '8px' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'color-mix(in oklab, var(--bg-hover) 40%, transparent)')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     onClick={() => {
                         if (isTarget) setSelectedTargetSystem(selectedTargetSystem === system.key ? null : system.key);
@@ -226,9 +226,9 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 borderRadius: '7px',
-                                border: '1px solid color-mix(in srgb, var(--accent2) 45%, transparent)',
-                                background: 'color-mix(in srgb, var(--accent2) 14%, transparent)',
-                                color: 'var(--accent2)',
+                                border: '1px solid color-mix(in oklab, var(--accent-secondary) 45%, transparent)',
+                                background: 'color-mix(in oklab, var(--accent-secondary) 14%, transparent)',
+                                color: 'var(--accent-secondary)',
                             }}
                         >
                             <KeyboardDoubleArrowLeftIcon sx={{ fontSize: 18, lineHeight: 1, opacity: 0.95 }} />
@@ -250,7 +250,7 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                             className="label ellipsis flex-1"
                             title={system.particleName || system.name}
                             style={{
-                                color: isTarget ? 'var(--accent)' : 'var(--accent2)',
+                                color: isTarget ? 'var(--accent-primary)' : 'var(--accent-secondary)',
                                 fontWeight: 600,
                                 fontSize: '0.95rem',
                                 cursor: 'pointer',
@@ -275,17 +275,17 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                                     return shouldTrim ? getShortSystemName(displayName) : displayName;
                                 })()}
                             </span>
-                            {selectedTargetSystem === system.key && isTarget && <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>✓</span>}
+                            {selectedTargetSystem === system.key && isTarget && <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>✓</span>}
                             <span
                                 style={{
                                     marginLeft: 'auto',
                                     opacity: 1,
                                     fontSize: '12px',
-                                    background: isTarget ? 'rgba(255,255,255,0.08)' : 'color-mix(in srgb, var(--accent2) 14%, transparent)',
+                                    background: isTarget ? 'var(--bg-hover)' : 'color-mix(in oklab, var(--accent-secondary) 14%, transparent)',
                                     padding: '1px 7px',
                                     borderRadius: '12px',
-                                    color: isTarget ? 'var(--text)' : 'var(--accent2)',
-                                    border: isTarget ? '1px solid rgba(255,255,255,0.05)' : '1px solid color-mix(in srgb, var(--accent2) 40%, transparent)',
+                                    color: isTarget ? 'var(--text-primary)' : 'var(--accent-secondary)',
+                                    border: isTarget ? '1px solid var(--border)' : '1px solid color-mix(in oklab, var(--accent-secondary) 40%, transparent)',
                                     fontWeight: 600,
                                 }}
                             >

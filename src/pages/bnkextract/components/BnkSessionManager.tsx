@@ -8,30 +8,30 @@ import type { SessionMeta, SessionState } from '../types';
 
 const modalStyles: Record<string, CSSProperties> = {
     overlay: { position: 'fixed', inset: 0, zIndex: 1350, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px' },
-    backdrop: { position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' },
+    backdrop: { position: 'absolute', inset: 0, background: 'color-mix(in oklab, var(--bg-primary) 75%, transparent)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' },
     modal: {
         position: 'relative', width: '100%', maxWidth: 860, height: 720, display: 'flex', flexDirection: 'column',
-        background: 'var(--glass-bg, rgba(15, 18, 26, 0.95))', border: '1px solid var(--glass-border, rgba(255, 255, 255, 0.1))',
+        background: 'var(--bg-secondary)', border: '1px solid var(--border)',
         backdropFilter: 'saturate(180%) blur(16px)', WebkitBackdropFilter: 'saturate(180%) blur(16px)',
-        borderRadius: 16, boxShadow: '0 30px 70px rgba(0,0,0,0.55), 0 0 30px color-mix(in srgb, var(--accent2, #8b5cf6), transparent 82%)', overflow: 'hidden',
+        borderRadius: 16, boxShadow: '0 30px 70px color-mix(in oklab, var(--bg-primary) 55%, transparent)', overflow: 'hidden',
     },
-    accentBar: { height: 3, background: 'linear-gradient(90deg, var(--accent, #7c3aed), var(--accent2, #8b5cf6), var(--accent, #7c3aed))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' },
+    accentBar: { height: 3, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' },
     body: { padding: 20, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: 0 },
     header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
     title: { fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)', margin: 0, fontFamily: 'JetBrains Mono, monospace' },
-    closeBtn: { width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', cursor: 'pointer', transition: 'all 0.25s ease', outline: 'none' },
-    section: { borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', padding: 14, marginBottom: 12 },
-    sectionTitle: { color: 'var(--accent2, #8b5cf6)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: 0, marginBottom: 10, fontFamily: 'JetBrains Mono, monospace' },
-    input: { width: '100%', boxSizing: 'border-box', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', padding: '8px 12px', fontSize: '0.82rem', color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace', outline: 'none', transition: 'all 0.2s ease' },
-    footer: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.08)' },
+    closeBtn: { width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--text-secondary)', border: '1px solid var(--border)', background: 'var(--bg-tertiary)', cursor: 'pointer', transition: 'all 0.25s ease', outline: 'none' },
+    section: { borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: 14, marginBottom: 12 },
+    sectionTitle: { color: 'var(--accent-secondary)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: 0, marginBottom: 10, fontFamily: 'JetBrains Mono, monospace' },
+    input: { width: '100%', boxSizing: 'border-box', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: '8px 12px', fontSize: '0.82rem', color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace', outline: 'none', transition: 'all 0.2s ease' },
+    footer: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' },
 };
 
 const btnBase: CSSProperties = {
-    padding: '6px 14px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', background: 'color-mix(in srgb, var(--accent2, #8b5cf6), transparent 90%)',
-    color: 'var(--accent2, #8b5cf6)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.25s ease', display: 'inline-flex', alignItems: 'center', gap: 5, outline: 'none',
+    padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'color-mix(in oklab, var(--accent-secondary) 10%, transparent)',
+    color: 'var(--accent-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.25s ease', display: 'inline-flex', alignItems: 'center', gap: 5, outline: 'none',
 };
-const btnGhost: CSSProperties = { ...btnBase, background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.18)' };
-const btnDanger: CSSProperties = { ...btnBase, padding: '6px 12px', minWidth: 36, justifyContent: 'center', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)' };
+const btnGhost: CSSProperties = { ...btnBase, background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' };
+const btnDanger: CSSProperties = { ...btnBase, padding: '6px 12px', minWidth: 36, justifyContent: 'center', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border)' };
 
 interface Props {
     open: boolean;
@@ -56,25 +56,25 @@ export default function BnkSessionManager({
 
     useEffect(() => {
         if (open) {
-            setSessions(loadAllSessions());
+            loadAllSessions().then(setSessions);
             setSessionName(defaultSessionName);
         }
     }, [open, defaultSessionName]);
 
-    const handleSaveManual = () => {
+    const handleSaveManual = async () => {
         const name = sessionName.trim() || defaultSessionName;
-        saveSession(currentState, name);
-        setSessions(loadAllSessions());
+        await saveSession(currentState, name);
+        setSessions(await loadAllSessions());
         setSessionName(defaultSessionName);
     };
 
-    const handleDelete = (filename: string) => {
-        deleteSession(filename);
-        setSessions(loadAllSessions());
+    const handleDelete = async (filename: string) => {
+        await deleteSession(filename);
+        setSessions(await loadAllSessions());
     };
 
-    const handleLoad = (filename: string) => {
-        const detail = loadSessionDetail(filename);
+    const handleLoad = async (filename: string) => {
+        const detail = await loadSessionDetail(filename);
         if (detail) {
             onLoadSession(detail);
             onClose();
@@ -98,10 +98,10 @@ export default function BnkSessionManager({
                                         checked={autoSaveEnabled}
                                         onChange={(e) => setAutoSaveEnabled(e.target.checked)}
                                         size="small"
-                                        sx={{ color: 'rgba(255,255,255,0.2)', padding: '4px', '&.Mui-checked': { color: 'var(--accent)' } }}
+                                        sx={{ color: 'var(--text-muted)', padding: '4px', '&.Mui-checked': { color: 'var(--accent-primary)' } }}
                                     />
                                 }
-                                label={<Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 500 }}>AUTO-SAVE ON EXIT</Typography>}
+                                label={<Typography sx={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 500 }}>AUTO-SAVE ON EXIT</Typography>}
                                 sx={{ margin: 0 }}
                             />
                             <button onClick={onClose} style={modalStyles.closeBtn}>✕</button>
@@ -128,22 +128,22 @@ export default function BnkSessionManager({
                         <h3 style={{ ...modalStyles.sectionTitle, padding: '14px 14px 0 14px', marginBottom: 5 }}>Saved Sessions</h3>
                         <div style={{ flex: 1, overflowY: 'auto', padding: '0 14px 14px 14px' }}>
                             {sessions.length === 0 && (
-                                <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', textAlign: 'center', py: 4 }}>
+                                <Typography sx={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center', py: 4 }}>
                                     No sessions found
                                 </Typography>
                             )}
                             {sessions.map((s, idx) => (
-                                <div key={s.filename} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: idx < sessions.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
-                                    <BookmarkIcon style={{ fontSize: 16, color: 'var(--accent)' }} />
+                                <div key={s.filename} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: idx < sessions.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                                    <BookmarkIcon style={{ fontSize: 16, color: 'var(--accent-primary)' }} />
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                         <Typography sx={{ color: 'var(--text)', fontSize: '0.84rem', fontFamily: 'JetBrains Mono', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                             {s.name}
                                         </Typography>
-                                        <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem' }}>
+                                        <Typography sx={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
                                             {new Date(s.created).toLocaleString()}
                                         </Typography>
                                     </div>
-                                    <button onClick={() => handleLoad(s.filename)} style={{ ...btnBase, background: 'rgba(var(--accent-rgb), 0.1)' }}>
+                                    <button onClick={() => handleLoad(s.filename)} style={{ ...btnBase, background: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)' }}>
                                         <FileOpenIcon style={{ fontSize: 14 }} /> Load
                                     </button>
                                     <button onClick={() => handleDelete(s.filename)} style={btnDanger}>

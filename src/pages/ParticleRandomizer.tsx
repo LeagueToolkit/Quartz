@@ -536,7 +536,7 @@ export function ParticleRandomizer() {
                                                             </span>
                                                         )}
                                                         {isUnnamed && !isRandomized && (
-                                                            <span className="pr-badge" style={{ color: '#555', borderColor: '#333' }}>
+                                                            <span className="pr-badge" style={{ color: 'var(--text-muted)', borderColor: 'var(--border)' }}>
                                                                 no name
                                                             </span>
                                                         )}
@@ -680,7 +680,7 @@ export function ParticleRandomizer() {
                                                     <li key={i}>{a.filename}</li>
                                                 ))}
                                                 {assets.length > 8 && (
-                                                    <li style={{ color: 'rgba(255,255,255,0.32)' }}>…and {assets.length - 8} more</li>
+                                                    <li style={{ color: 'var(--text-muted)' }}>…and {assets.length - 8} more</li>
                                                 )}
                                             </ul>
                                         </div>

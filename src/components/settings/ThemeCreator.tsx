@@ -50,9 +50,9 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <input type="color" value={safe} onChange={(e) => onChange(e.target.value)}
-                style={{ width: '32px', height: '28px', background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', cursor: 'pointer', flexShrink: 0 }} />
+                style={{ width: '32px', height: '28px', background: 'none', border: '1px solid var(--border-strong)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', flexShrink: 0 }} />
             <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-2)' }}>{label}</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{label}</div>
                 <Input value={value} onChange={(e) => onChange(e.target.value)} style={{ padding: '4px 8px', fontSize: '12px' }} />
             </div>
         </div>
@@ -140,10 +140,10 @@ export function ThemeCreator() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                     {themes.map((t) => (
                         <button key={t.id} onClick={() => { setActive(t.id); reseed(t); }}
-                            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', color: 'var(--text)', border: `1px solid ${activeId === t.id ? 'var(--accent)' : 'rgba(255,255,255,0.1)'}`, background: 'rgba(255,255,255,0.03)' }}>
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '11px', color: 'var(--text-primary)', border: `1px solid ${activeId === t.id ? 'var(--accent-primary)' : 'var(--border)'}`, background: 'var(--bg-tertiary)' }}>
                             <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: t.tokens.accent }} />
                             {t.name}
-                            {!t.builtin && <span onClick={(e) => { e.stopPropagation(); removeTheme(t.id); }} title="Delete" style={{ color: 'var(--text-2)', marginLeft: '2px' }}>✕</span>}
+                            {!t.builtin && <span onClick={(e) => { e.stopPropagation(); removeTheme(t.id); }} title="Delete" style={{ color: 'var(--text-muted)', marginLeft: '2px' }}>✕</span>}
                         </button>
                     ))}
                 </div>
@@ -189,12 +189,12 @@ export function ThemeCreator() {
                 </div>
             </FormGroup>
 
-            <button onClick={() => setShowAdvanced(!showAdvanced)} style={{ alignSelf: 'flex-start', fontSize: '12px', color: 'var(--accent-2)', background: 'none', border: 'none', cursor: 'pointer' }}>
+            <button onClick={() => setShowAdvanced(!showAdvanced)} style={{ alignSelf: 'flex-start', fontSize: '12px', color: 'var(--accent-primary)', background: 'none', border: 'none', cursor: 'pointer' }}>
                 {showAdvanced ? '▾ Advanced' : '▸ Advanced'}
             </button>
 
             {showAdvanced && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', borderLeft: '2px solid rgba(255,255,255,0.06)', paddingLeft: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', borderLeft: '2px solid var(--border)', paddingLeft: '12px' }}>
                     <FormGroup label="Secondary Colors">
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
                             {(Object.keys(ADVANCED_TOKEN_LABELS) as (keyof ThemeTokens)[]).map((key) => (
@@ -216,8 +216,8 @@ export function ThemeCreator() {
                             <Input value={tokens.liquidButtonTint || ''} onChange={(e) => setToken('liquidButtonTint', e.target.value)} placeholder="Liquid Tint (rgba)" />
                             <Input value={tokens.liquidButtonHoverTint || ''} onChange={(e) => setToken('liquidButtonHoverTint', e.target.value)} placeholder="Liquid Hover Tint (rgba)" />
                             <div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-2)' }}>Liquid Blur ({tokens.liquidButtonBlur || '0'}px)</div>
-                                <input type="range" min={0} max={36} value={parseFloat(tokens.liquidButtonBlur || '0')} onChange={(e) => setToken('liquidButtonBlur', e.target.value)} style={{ width: '100%', accentColor: 'var(--accent)' }} />
+                                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Liquid Blur ({tokens.liquidButtonBlur || '0'}px)</div>
+                                <input type="range" min={0} max={36} value={parseFloat(tokens.liquidButtonBlur || '0')} onChange={(e) => setToken('liquidButtonBlur', e.target.value)} style={{ width: '100%', accentColor: 'var(--accent-primary)' }} />
                             </div>
                         </div>
                     </FormGroup>
@@ -230,8 +230,8 @@ export function ThemeCreator() {
                             ['glassBgAlpha', 'Glass BG alpha (%)', 80],
                         ] as [keyof typeof strength, string, number][]).map(([key, label, max]) => (
                             <div key={key} style={{ marginBottom: '6px' }}>
-                                <div style={{ fontSize: '11px', color: 'var(--text-2)' }}>{label} ({strength[key]}%)</div>
-                                <input type="range" min={0} max={max} value={strength[key]} onChange={(e) => applyStrength(key, parseInt(e.target.value, 10))} style={{ width: '100%', accentColor: 'var(--accent)' }} />
+                                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{label} ({strength[key]}%)</div>
+                                <input type="range" min={0} max={max} value={strength[key]} onChange={(e) => applyStrength(key, parseInt(e.target.value, 10))} style={{ width: '100%', accentColor: 'var(--accent-primary)' }} />
                             </div>
                         ))}
                     </FormGroup>

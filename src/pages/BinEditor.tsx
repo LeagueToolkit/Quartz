@@ -63,6 +63,12 @@ import {
     createEmitterKey,
 } from './bineditor/utils/operations';
 import type { ParsedData, VfxSystem, Emitter, Vec3 } from './bineditor/utils/types';
+import {
+    handleTextureMouseEnter as handleTextureMouseEnterPreview,
+    handleTextureMouseLeave as handleTextureMouseLeavePreview,
+    handleTextureContextMenu as handleTextureContextMenuPreview,
+    closeTextureHoverPreview,
+} from './bineditor/utils/textureHoverPreview';
 
 import './bineditor/BinEditor.css';
 
@@ -77,16 +83,17 @@ const ICONS = {
     check: '✓',
 };
 
+// Semantic category colors used to color-code emitter property sections.
 const UI_COLORS = {
     primary: 'var(--accent)',
-    bs: '#3FA9FF',
-    scale: '#39E86C',
-    bw: '#B184FF',
-    pl: '#FF7A00',
-    lt: '#00D65A',
-    pass: 'color-mix(in srgb, var(--accent), white 10%)',
-    to: 'color-mix(in srgb, var(--accent), white 18%)',
-    ground: '#22c55e',
+    bs: 'var(--color-info)',
+    scale: 'var(--color-success)',
+    bw: 'var(--accent2)',
+    pl: 'var(--color-warning)',
+    lt: 'var(--color-info)',
+    pass: 'var(--accent-hover)',
+    to: 'var(--accent-hover)',
+    ground: 'var(--color-success)',
 };
 
 // Parse numbers with both comma and period as decimal separators.
@@ -104,25 +111,25 @@ const toolbarSelectStyle = {
     height: '34px',
     minWidth: '170px',
     borderRadius: '8px',
-    background: 'rgba(18, 20, 28, 0.55)',
-    border: '1px solid rgba(255, 255, 255, 0.24)',
+    background: 'var(--bg-tertiary)',
+    border: '1px solid var(--border)',
     transition: 'all 160ms ease',
     '& .MuiSelect-select': {
         padding: '6px 10px',
         paddingRight: '28px !important',
     },
     '& .MuiSelect-icon': {
-        color: 'rgba(255,255,255,0.78)',
+        color: 'var(--text-secondary)',
         fontSize: '1rem',
     },
     '&:hover': {
-        background: 'rgba(34, 38, 52, 0.62)',
-        borderColor: 'rgba(255, 255, 255, 0.52)',
+        background: 'var(--bg-hover)',
+        borderColor: 'var(--border-strong)',
         boxShadow: '0 8px 18px rgba(0,0,0,0.28)',
     },
     '&.Mui-focused': {
-        borderColor: 'color-mix(in srgb, var(--accent2), transparent 35%)',
-        boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent2), transparent 75%)',
+        borderColor: 'color-mix(in oklab, var(--accent2) 65%, transparent)',
+        boxShadow: '0 0 0 2px color-mix(in oklab, var(--accent2) 25%, transparent)',
     },
     '& fieldset': { border: 'none' },
     '&:hover fieldset': { border: 'none' },
@@ -131,10 +138,10 @@ const toolbarSelectStyle = {
 
 const toolbarMenuPaperSx = {
     mt: 0.6,
-    background: 'var(--glass-bg, rgba(20, 20, 24, 0.94))',
-    border: '1px solid var(--glass-border, rgba(255,255,255,0.12))',
+    background: 'var(--glass-bg)',
+    border: '1px solid var(--glass-border)',
     borderRadius: '12px',
-    boxShadow: '0 20px 48px rgba(0,0,0,0.5), 0 0 16px color-mix(in srgb, var(--accent2), transparent 80%)',
+    boxShadow: 'var(--glass-shadow)',
     backdropFilter: 'saturate(180%) blur(12px)',
     WebkitBackdropFilter: 'saturate(180%) blur(12px)',
     overflow: 'hidden',
@@ -148,26 +155,26 @@ const toolbarMenuPaperSx = {
         minHeight: '34px',
         transition: 'all 140ms ease',
         '&:hover': {
-            background: 'rgba(255,255,255,0.07)',
+            background: 'var(--bg-hover)',
             color: 'var(--text)',
         },
         '&.Mui-selected': {
-            background: 'color-mix(in srgb, var(--accent), transparent 85%)',
+            background: 'color-mix(in oklab, var(--accent) 15%, transparent)',
             color: 'var(--accent)',
             fontWeight: 700,
         },
         '&.Mui-selected:hover': {
-            background: 'color-mix(in srgb, var(--accent), transparent 80%)',
+            background: 'color-mix(in oklab, var(--accent) 20%, transparent)',
         },
     },
 };
 
 const smallButtonStyle = (color: string, disabled = false): CSSProperties => ({
     padding: '4px 10px',
-    background: disabled ? 'rgba(100,100,100,0.2)' : `color-mix(in srgb, ${color} 24%, transparent)`,
-    border: `1px solid ${disabled ? 'rgba(100,100,100,0.3)' : color}`,
+    background: disabled ? 'color-mix(in oklab, var(--text-muted) 20%, transparent)' : `color-mix(in oklab, ${color} 24%, transparent)`,
+    border: `1px solid ${disabled ? 'color-mix(in oklab, var(--text-muted) 30%, transparent)' : color}`,
     borderRadius: 'var(--border-radius, 4px)',
-    color: disabled ? '#666' : color,
+    color: disabled ? 'var(--text-muted)' : color,
     cursor: disabled ? 'not-allowed' : 'pointer',
     fontFamily: 'inherit',
     fontSize: '11px',
@@ -886,14 +893,21 @@ export function BinEditor() {
         [selectedEmitter, data, selectedEmitters, markChanged, saveToUndoHistory],
     );
 
-    // Texture preview / convert is an Electron-only feature (fs + ritobin tex
-    // conversion) that has no Tauri backend yet, so the button stays
-    // decorative. The core load/edit/save flow does not depend on it.
-    // TODO(backend): wire texture conversion + asset preview for the hover/click.
+    // Texture hover preview: resolve the emitter's texture (from its raw bin text)
+    // to a disk file under the loaded bin's mod tree, decode it via the imgrecolor
+    // backend, and float a thumbnail. Right-click opens a context menu (reveal /
+    // open in ImgRecolor); click just dismisses any open preview.
+    const handleTextureMouseEnter = useCallback((e: ReactMouseEvent, emitter: Emitter) => {
+        handleTextureMouseEnterPreview(e, emitter.rawContent, binPath);
+    }, [binPath]);
+    const handleTextureMouseLeave = useCallback(() => handleTextureMouseLeavePreview(), []);
     const handleTextureClick = useCallback((e: ReactMouseEvent) => {
         e.stopPropagation();
-        notify('info', 'Texture preview is not available yet in the Tauri build');
-    }, [notify]);
+        closeTextureHoverPreview();
+    }, []);
+    const handleTextureContextMenu = useCallback((e: ReactMouseEvent, emitter: Emitter) => {
+        handleTextureContextMenuPreview(e, emitter.rawContent, binPath);
+    }, [binPath]);
 
     // ============ RENDER HELPERS ============
     const renderEmitter = (emitter: Emitter, systemName: string) => {
@@ -910,8 +924,8 @@ export function BinEditor() {
                     padding: '8px 12px',
                     marginLeft: '16px',
                     marginBottom: '4px',
-                    background: isSelected ? 'rgba(236, 185, 106, 0.3)' : 'rgba(255,255,255,0.06)',
-                    border: isSelected ? '1px solid rgba(236, 185, 106, 0.5)' : '1px solid rgba(255,255,255,0.04)',
+                    background: isSelected ? 'color-mix(in oklab, var(--accent) 30%, transparent)' : 'color-mix(in oklab, var(--text-primary) 6%, transparent)',
+                    border: isSelected ? '1px solid color-mix(in oklab, var(--accent) 50%, transparent)' : '1px solid var(--border)',
                     borderRadius: '4px',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
@@ -922,11 +936,11 @@ export function BinEditor() {
                 }}
             >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, color: isSelected ? UI_COLORS.primary : '#e8e6e3', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ fontWeight: 600, color: isSelected ? UI_COLORS.primary : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {emitter.name}
                         {isSelected && <span>{ICONS.check}</span>}
                     </div>
-                    <div style={{ fontSize: '11px', color: '#888', marginTop: '4px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         {emitter.birthScale0?.constantValue && (
                             <span style={{ color: UI_COLORS.bs }} title="Birth Scale">BS: ({emitter.birthScale0.constantValue.x.toFixed(1)}, {emitter.birthScale0.constantValue.y.toFixed(1)}, {emitter.birthScale0.constantValue.z.toFixed(1)})</span>
                         )}
@@ -946,13 +960,13 @@ export function BinEditor() {
                             <span style={{ color: UI_COLORS.lt }} title="Emitter Lifetime">LT: {emitter.lifetime.value.toFixed(2)}</span>
                         )}
                         {emitter.rate?.constantValue != null && (
-                            <span style={{ color: '#06b6d4' }} title="Emission Rate">R: {emitter.rate.constantValue}</span>
+                            <span style={{ color: 'var(--color-info)' }} title="Emission Rate">R: {emitter.rate.constantValue}</span>
                         )}
                         {emitter.pass != null && (
                             <span style={{ color: UI_COLORS.pass }} title="Render Pass">P: {emitter.pass}</span>
                         )}
                         {emitter.miscRenderFlags != null && (
-                            <span style={{ color: '#ef4444' }} title="Misc Render Flags">MR: {emitter.miscRenderFlags}</span>
+                            <span style={{ color: 'var(--color-danger)' }} title="Misc Render Flags">MR: {emitter.miscRenderFlags}</span>
                         )}
                         {emitter.isGroundLayer != null && (
                             <span style={{ color: UI_COLORS.ground }} title="Ground Layer">GL: {emitter.isGroundLayer ? 'T' : 'F'}</span>
@@ -962,14 +976,17 @@ export function BinEditor() {
                 {hasTexture && (
                     <button
                         onClick={handleTextureClick}
+                        onMouseEnter={(e) => handleTextureMouseEnter(e, emitter)}
+                        onMouseLeave={handleTextureMouseLeave}
+                        onContextMenu={(e) => handleTextureContextMenu(e, emitter)}
                         style={{
                             width: '24px',
                             height: '24px',
                             flexShrink: 0,
                             background: 'transparent',
-                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            border: '1px solid color-mix(in oklab, var(--text-primary) 20%, transparent)',
                             borderRadius: '4px',
-                            color: 'var(--accent, #3b82f6)',
+                            color: 'var(--accent)',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
@@ -1000,9 +1017,9 @@ export function BinEditor() {
                         display: 'flex',
                         alignItems: 'center',
                         background: selectedCount > 0
-                            ? 'color-mix(in srgb, var(--accent), transparent 84%)'
-                            : 'rgba(255,255,255,0.08)',
-                        border: '1px solid rgba(255,255,255,0.06)',
+                            ? 'color-mix(in oklab, var(--accent) 16%, transparent)'
+                            : 'color-mix(in oklab, var(--text-primary) 8%, transparent)',
+                        border: '1px solid var(--border)',
                         borderRadius: '6px',
                         cursor: 'pointer',
                         userSelect: 'none',
@@ -1022,10 +1039,10 @@ export function BinEditor() {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            borderRight: '1px solid rgba(255,255,255,0.04)',
+                            borderRight: '1px solid var(--border)',
                             transition: 'background 0.2s',
                         }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = 'color-mix(in oklab, var(--text-primary) 5%, transparent)')}
                         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         title={isExpanded ? 'Collapse' : 'Expand'}
                     >
@@ -1045,7 +1062,7 @@ export function BinEditor() {
                             gap: '8px',
                             transition: 'background 0.2s',
                         }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = 'color-mix(in oklab, var(--text-primary) 3%, transparent)')}
                         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         title={`Click to select all emitters in ${system.name}`}
                     >
@@ -1057,11 +1074,11 @@ export function BinEditor() {
                         <span
                             style={{
                                 padding: '1px 7px',
-                                background: 'color-mix(in srgb, var(--accent), transparent 85%)',
+                                background: 'color-mix(in oklab, var(--accent) 15%, transparent)',
                                 borderRadius: '12px',
                                 fontSize: '12px',
                                 color: 'var(--accent)',
-                                border: '1px solid color-mix(in srgb, var(--accent), transparent 80%)',
+                                border: '1px solid color-mix(in oklab, var(--accent) 20%, transparent)',
                                 fontWeight: '600',
                             }}
                         >
@@ -1104,10 +1121,10 @@ export function BinEditor() {
                             style={{
                                 width: '100%',
                                 padding: '6px 8px',
-                                background: 'rgba(0,0,0,0.3)',
-                                border: '1px solid rgba(255,255,255,0.1)',
+                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                border: '1px solid var(--border)',
                                 borderRadius: '4px',
-                                color: '#e8e6e3',
+                                color: 'var(--text-primary)',
                                 fontFamily: 'JetBrains Mono, monospace',
                                 fontSize: '13px',
                             }}
@@ -1174,10 +1191,10 @@ export function BinEditor() {
                             style={{
                                 width: '100%',
                                 padding: '6px 8px',
-                                background: 'rgba(0,0,0,0.3)',
-                                border: '1px solid rgba(255,255,255,0.1)',
+                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                border: '1px solid var(--border)',
                                 borderRadius: '4px',
-                                color: '#e8e6e3',
+                                color: 'var(--text-primary)',
                                 fontFamily: 'JetBrains Mono, monospace',
                                 fontSize: '13px',
                             }}
@@ -1197,8 +1214,8 @@ export function BinEditor() {
                             style={{
                                 width: '100%',
                                 padding: '6px 8px',
-                                background: 'rgba(0,0,0,0.3)',
-                                border: '1px solid rgba(249, 115, 22, 0.3)',
+                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
                                 borderRadius: '4px',
                                 color: UI_COLORS.pl,
                                 fontFamily: 'JetBrains Mono, monospace',
@@ -1220,8 +1237,8 @@ export function BinEditor() {
                             style={{
                                 width: '100%',
                                 padding: '6px 8px',
-                                background: 'rgba(0,0,0,0.3)',
-                                border: '1px solid rgba(34, 197, 94, 0.3)',
+                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                border: '1px solid color-mix(in oklab, var(--color-success) 30%, transparent)',
                                 borderRadius: '4px',
                                 color: UI_COLORS.lt,
                                 fontFamily: 'JetBrains Mono, monospace',
@@ -1233,7 +1250,7 @@ export function BinEditor() {
 
                 {selectedEmitter.particleLinger?.value != null && (
                     <div style={{ marginBottom: '16px' }}>
-                        <div style={{ fontWeight: 600, color: '#a855f7', marginBottom: '8px' }}>Particle Linger</div>
+                        <div style={{ fontWeight: 600, color: 'var(--accent2)', marginBottom: '8px' }}>Particle Linger</div>
                         <input
                             type="text"
                             key={`${selectedEmitter.name}-particleLinger`}
@@ -1243,10 +1260,10 @@ export function BinEditor() {
                             style={{
                                 width: '100%',
                                 padding: '6px 8px',
-                                background: 'rgba(0,0,0,0.3)',
-                                border: '1px solid rgba(168, 85, 247, 0.3)',
+                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                border: '1px solid color-mix(in oklab, var(--accent2) 30%, transparent)',
                                 borderRadius: '4px',
-                                color: '#a855f7',
+                                color: 'var(--accent2)',
                                 fontFamily: 'JetBrains Mono, monospace',
                                 fontSize: '13px',
                             }}
@@ -1256,7 +1273,7 @@ export function BinEditor() {
 
                 {selectedEmitter.rate?.constantValue != null && (
                     <div style={{ marginBottom: '16px' }}>
-                        <div style={{ fontWeight: 600, color: '#06b6d4', marginBottom: '8px' }}>Emission Rate</div>
+                        <div style={{ fontWeight: 600, color: 'var(--color-info)', marginBottom: '8px' }}>Emission Rate</div>
                         <input
                             type="text"
                             key={`${selectedEmitter.name}-rate`}
@@ -1266,10 +1283,10 @@ export function BinEditor() {
                             style={{
                                 width: '100%',
                                 padding: '6px 8px',
-                                background: 'rgba(0,0,0,0.3)',
-                                border: '1px solid rgba(6, 182, 212, 0.3)',
+                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                border: '1px solid color-mix(in oklab, var(--color-info) 30%, transparent)',
                                 borderRadius: '4px',
-                                color: '#06b6d4',
+                                color: 'var(--color-info)',
                                 fontFamily: 'JetBrains Mono, monospace',
                                 fontSize: '13px',
                             }}
@@ -1289,8 +1306,8 @@ export function BinEditor() {
                             style={{
                                 width: '100%',
                                 padding: '6px 8px',
-                                background: 'rgba(0,0,0,0.3)',
-                                border: '1px solid rgba(250, 204, 21, 0.3)',
+                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
                                 borderRadius: '4px',
                                 color: UI_COLORS.pass,
                                 fontFamily: 'JetBrains Mono, monospace',
@@ -1302,7 +1319,7 @@ export function BinEditor() {
 
                 {selectedEmitter.miscRenderFlags != null && (
                     <div style={{ marginBottom: '16px' }}>
-                        <div style={{ fontWeight: 600, color: '#ef4444', marginBottom: '8px' }}>Misc Render Flags</div>
+                        <div style={{ fontWeight: 600, color: 'var(--color-danger)', marginBottom: '8px' }}>Misc Render Flags</div>
                         <input
                             type="text"
                             key={`${selectedEmitter.name}-miscRenderFlags`}
@@ -1312,10 +1329,10 @@ export function BinEditor() {
                             style={{
                                 width: '100%',
                                 padding: '6px 8px',
-                                background: 'rgba(0,0,0,0.3)',
-                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                border: '1px solid color-mix(in oklab, var(--color-danger) 30%, transparent)',
                                 borderRadius: '4px',
-                                color: '#ef4444',
+                                color: 'var(--color-danger)',
                                 fontFamily: 'JetBrains Mono, monospace',
                                 fontSize: '13px',
                             }}
@@ -1333,8 +1350,8 @@ export function BinEditor() {
                             style={{
                                 width: '100%',
                                 padding: '6px 8px',
-                                background: 'rgba(0,0,0,0.3)',
-                                border: '1px solid rgba(34, 197, 94, 0.35)',
+                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                border: '1px solid color-mix(in oklab, var(--color-success) 35%, transparent)',
                                 borderRadius: '4px',
                                 color: UI_COLORS.ground,
                                 fontFamily: 'JetBrains Mono, monospace',
@@ -1422,7 +1439,7 @@ export function BinEditor() {
                 <div style={{
                     position: 'absolute', inset: 0, zIndex: 9999, pointerEvents: 'none',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+                    background: 'color-mix(in oklab, var(--accent) 12%, transparent)',
                     border: '2px dashed var(--accent)', borderRadius: '8px',
                     transition: 'all 0.15s ease-out',
                 }}>
@@ -1430,7 +1447,7 @@ export function BinEditor() {
                         padding: '10px 16px', borderRadius: '6px',
                         border: '1px dashed var(--accent)', color: 'var(--accent)',
                         fontFamily: 'JetBrains Mono, monospace', fontSize: '13px',
-                        background: 'color-mix(in srgb, var(--accent), transparent 80%)',
+                        background: 'color-mix(in oklab, var(--accent) 20%, transparent)',
                     }}>
                         Drop .bin or .py to load
                     </div>
@@ -1452,7 +1469,7 @@ export function BinEditor() {
                 justifyContent: 'space-between',
                 gap: '12px',
                 padding: '10px 16px',
-                borderBottom: '1px solid rgba(255,255,255,0.1)',
+                borderBottom: '1px solid var(--border)',
                 background: 'transparent',
                 flexShrink: 0,
             }}>
@@ -1505,7 +1522,7 @@ export function BinEditor() {
             {data && (
                 <div className="bin-editor-toolbar" style={{
                     padding: '12px 20px',
-                    borderBottom: '1px solid rgba(255,255,255,0.08)',
+                    borderBottom: '1px solid var(--border)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '16px',
@@ -1534,7 +1551,7 @@ export function BinEditor() {
                         </Select>
                     </div>
 
-                    <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)', marginRight: '16px' }} />
+                    <div style={{ width: '1px', height: '24px', background: 'var(--border)', marginRight: '16px' }} />
 
                     {/* Scale Controls */}
                     {toolbarTab === 'scale' && (
@@ -1551,10 +1568,10 @@ export function BinEditor() {
                                 style={{
                                     width: '60px',
                                     padding: '4px 8px',
-                                    background: 'rgba(0,0,0,0.3)',
-                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                    border: '1px solid var(--border)',
                                     borderRadius: '4px',
-                                    color: '#e8e6e3',
+                                    color: 'var(--text-primary)',
                                     fontSize: '12px',
                                 }}
                             />
@@ -1594,13 +1611,13 @@ export function BinEditor() {
                     {/* MiscRenderFlags */}
                     {toolbarTab === 'misc' && (
                         <div style={{ display: 'flex', gap: '4px' }}>
-                            <button onClick={handleAddMiscRenderFlags} style={smallButtonStyle('#ef4444')} title="Add Misc Render Flags property">
+                            <button onClick={handleAddMiscRenderFlags} style={smallButtonStyle('var(--color-danger)')} title="Add Misc Render Flags property">
                                 + MR
                             </button>
-                            <button onClick={handleSetMiscRenderFlagsZero} style={smallButtonStyle('#ef4444')} title="Set Misc Render Flags to 0">
+                            <button onClick={handleSetMiscRenderFlagsZero} style={smallButtonStyle('var(--color-danger)')} title="Set Misc Render Flags to 0">
                                 MR=0
                             </button>
-                            <button onClick={handleSetMiscRenderFlagsOne} style={smallButtonStyle('#ef4444')} title="Set Misc Render Flags to 1">
+                            <button onClick={handleSetMiscRenderFlagsOne} style={smallButtonStyle('var(--color-danger)')} title="Set Misc Render Flags to 1">
                                 MR=1
                             </button>
                         </div>
@@ -1637,8 +1654,8 @@ export function BinEditor() {
                                 style={{
                                     width: '60px',
                                     padding: '4px 8px',
-                                    background: 'rgba(0,0,0,0.3)',
-                                    border: '1px solid rgba(250, 204, 21, 0.3)',
+                                    background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                    border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
                                     borderRadius: '4px',
                                     color: UI_COLORS.pass,
                                     fontSize: '12px',
@@ -1648,7 +1665,7 @@ export function BinEditor() {
                             <button onClick={handleSetPass} style={smallButtonStyle(UI_COLORS.pass)} title="Set pass for selected emitters">
                                 P={passValue}
                             </button>
-                            <span style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
+                            <span style={{ width: '1px', height: '20px', background: 'var(--border)', margin: '0 4px' }} />
                             <input
                                 type="text"
                                 defaultValue={passDeltaValue}
@@ -1662,8 +1679,8 @@ export function BinEditor() {
                                 style={{
                                     width: '60px',
                                     padding: '4px 8px',
-                                    background: 'rgba(0,0,0,0.3)',
-                                    border: '1px solid rgba(250, 204, 21, 0.3)',
+                                    background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                    border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
                                     borderRadius: '4px',
                                     color: UI_COLORS.pass,
                                     fontSize: '12px',
@@ -1695,8 +1712,8 @@ export function BinEditor() {
                                 style={{
                                     width: '50px',
                                     padding: '4px 6px',
-                                    background: 'rgba(0,0,0,0.3)',
-                                    border: '1px solid rgba(210, 153, 34, 0.3)',
+                                    background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                    border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
                                     borderRadius: '4px',
                                     color: UI_COLORS.to,
                                     fontSize: '11px',
@@ -1716,8 +1733,8 @@ export function BinEditor() {
                                 style={{
                                     width: '50px',
                                     padding: '4px 6px',
-                                    background: 'rgba(0,0,0,0.3)',
-                                    border: '1px solid rgba(210, 153, 34, 0.3)',
+                                    background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                    border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
                                     borderRadius: '4px',
                                     color: UI_COLORS.to,
                                     fontSize: '11px',
@@ -1737,8 +1754,8 @@ export function BinEditor() {
                                 style={{
                                     width: '50px',
                                     padding: '4px 6px',
-                                    background: 'rgba(0,0,0,0.3)',
-                                    border: '1px solid rgba(210, 153, 34, 0.3)',
+                                    background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
+                                    border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
                                     borderRadius: '4px',
                                     color: UI_COLORS.to,
                                     fontSize: '11px',
@@ -1770,7 +1787,7 @@ export function BinEditor() {
                 {/* Left Panel - Systems List */}
                 <div className="bin-editor-list" style={{
                     width: '50%',
-                    borderRight: '1px solid rgba(255,255,255,0.1)',
+                    borderRight: '1px solid var(--border)',
                     overflow: 'auto',
                     padding: '12px',
                 }}>

@@ -12,13 +12,13 @@ export default function GlowingSpinner({ text = 'Working...' }: { text?: string 
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 16,
-                background: 'rgba(0,0,0,0.55)',
+                background: 'color-mix(in oklab, black 55%, transparent)',
                 backdropFilter: 'blur(3px)',
                 WebkitBackdropFilter: 'blur(3px)',
             }}
         >
-            <CircularProgress size={48} sx={{ color: 'var(--accent)' }} />
-            <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem', color: 'var(--accent)' }}>{text}</div>
+            <CircularProgress size={48} sx={{ color: 'var(--accent-primary)' }} />
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: 'var(--accent-primary)' }}>{text}</div>
         </div>
     );
 }

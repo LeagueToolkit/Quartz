@@ -46,11 +46,11 @@ export const RenameInput = React.memo(({ initialValue, onConfirm, onCancel, onCl
                 flex: 1,
                 minWidth: 0,
                 padding: '4px 8px',
-                background: 'var(--surface-2)',
-                border: '1px solid var(--accent)',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--accent-primary)',
                 borderRadius: '4px',
-                color: 'var(--accent)',
-                fontFamily: 'JetBrains Mono, monospace',
+                color: 'var(--accent-primary)',
+                fontFamily: 'var(--font-mono)',
                 fontSize: '0.95rem',
                 fontWeight: 600,
                 outline: 'none',
@@ -68,7 +68,7 @@ interface SearchInputProps {
     className?: string;
 }
 
-export const SearchInput = React.memo(({ initialValue, placeholder, onChange, accentVar = 'var(--accent)', style = {}, className = '' }: SearchInputProps) => {
+export const SearchInput = React.memo(({ initialValue, placeholder, onChange, accentVar = 'var(--accent-primary)', style = {}, className = '' }: SearchInputProps) => {
     const [localValue, setLocalValue] = useState(initialValue || '');
     const [isFocused, setIsFocused] = useState(false);
     const isFocusedRef = useRef(false);
@@ -109,16 +109,16 @@ export const SearchInput = React.memo(({ initialValue, placeholder, onChange, ac
                 minWidth: 0,
                 boxSizing: 'border-box',
                 padding: '10px 18px',
-                background: isFocused ? `color-mix(in srgb, ${accentVar} 18%, transparent)` : `color-mix(in srgb, ${accentVar} 10%, transparent)`,
-                border: isFocused ? `1px solid color-mix(in srgb, ${accentVar} 75%, transparent)` : `1px solid color-mix(in srgb, ${accentVar} 35%, transparent)`,
+                background: isFocused ? `color-mix(in oklab, ${accentVar} 18%, transparent)` : `color-mix(in oklab, ${accentVar} 10%, transparent)`,
+                border: isFocused ? `1px solid color-mix(in oklab, ${accentVar} 75%, transparent)` : `1px solid color-mix(in oklab, ${accentVar} 35%, transparent)`,
                 borderRadius: '10px',
                 color: accentVar,
-                fontFamily: 'JetBrains Mono, monospace',
+                fontFamily: 'var(--font-mono)',
                 fontSize: '0.85rem',
                 outline: 'none',
                 transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                 boxShadow: isFocused
-                    ? `0 0 15px color-mix(in srgb, ${accentVar} 28%, transparent), inset 0 1px 2px rgba(0,0,0,0.16)`
+                    ? `0 0 0 2px color-mix(in oklab, ${accentVar} 30%, transparent), inset 0 1px 2px rgba(0,0,0,0.16)`
                     : 'inset 0 1px 2px rgba(0,0,0,0.12)',
                 ...style,
             }}

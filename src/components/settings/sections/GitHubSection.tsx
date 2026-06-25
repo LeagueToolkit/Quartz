@@ -75,10 +75,10 @@ export function GitHubSection() {
             {status && (
                 <div style={{
                     padding: '12px',
-                    background: status.type === 'success' ? 'rgba(74,222,128,0.1)' : status.type === 'warning' ? 'rgba(251,191,36,0.1)' : 'rgba(239,68,68,0.1)',
-                    border: `1px solid ${status.type === 'success' ? 'rgba(74,222,128,0.3)' : status.type === 'warning' ? 'rgba(251,191,36,0.3)' : 'rgba(239,68,68,0.3)'}`,
-                    borderRadius: '6px', fontSize: '13px',
-                    color: status.type === 'success' ? '#4ade80' : status.type === 'warning' ? '#fbbf24' : '#ef4444',
+                    background: status.type === 'success' ? 'color-mix(in oklab, var(--color-success) 12%, transparent)' : status.type === 'warning' ? 'color-mix(in oklab, var(--color-warning) 12%, transparent)' : 'color-mix(in oklab, var(--color-danger) 12%, transparent)',
+                    border: `1px solid ${status.type === 'success' ? 'color-mix(in oklab, var(--color-success) 30%, transparent)' : status.type === 'warning' ? 'color-mix(in oklab, var(--color-warning) 30%, transparent)' : 'color-mix(in oklab, var(--color-danger) 30%, transparent)'}`,
+                    borderRadius: 'var(--radius-sm)', fontSize: '13px',
+                    color: status.type === 'success' ? 'var(--color-success)' : status.type === 'warning' ? 'var(--color-warning)' : 'var(--color-danger)',
                 }}>
                     {status.message}
                 </div>

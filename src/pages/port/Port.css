@@ -1,18 +1,16 @@
-/* Port component styles. Ported from the Electron Quartz Port2 page.
-   The old code used --accent2 / --accent-rgb; this project exposes --accent-2.
-   Alias them locally so the ported markup stays byte-identical. */
+/* Port component styles. Ported from the Electron Quartz Port2 page and
+   retokenized onto the canonical Design Lab theme variables. */
 .port-container {
-    --accent2: var(--accent-2);
-    --accent-rgb: 236, 185, 106;
+    --accent2: var(--accent-secondary);
     height: 100%;
     min-height: 100%;
     width: 100%;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
     font-size: small;
 }
 
@@ -21,18 +19,18 @@
     100% { background-position: 200% 50%; }
 }
 
-/* Override Material-UI styles to match the original design */
+/* Override Material-UI styles to match the design-lab surfaces. */
 .port-container .MuiPaper-root {
-    background-color: var(--surface-2) !important;
-    border: 1px solid var(--bg) !important;
+    background-color: var(--bg-tertiary) !important;
+    border: 1px solid var(--border) !important;
 }
 
 .port-container .MuiTypography-root {
-    font-family: 'JetBrains Mono', monospace !important;
+    font-family: var(--font-mono) !important;
 }
 
 .port-container .MuiButton-root {
-    font-family: 'JetBrains Mono', monospace !important;
+    font-family: var(--font-mono) !important;
     text-transform: none !important;
 }
 
@@ -45,8 +43,8 @@
 
 .port-container .label {
     user-select: none;
-    color: var(--accent-muted);
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
     font-size: small;
 }
 
@@ -63,59 +61,57 @@
 .port-container .target-container,
 .port-container .donor-container {
     border-radius: 0.4rem;
-    border: 1px solid var(--surface-2);
+    border: 1px solid var(--border);
     overflow-x: hidden;
     overflow-y: auto;
     flex: 1;
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--bg-secondary);
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
-/* Particle Divs - Modern Card Design */
+/* Particle Divs - card design */
 .port-container .particle-div,
 .port-container .material-div {
     margin: 0.75rem 0;
-    color: var(--accent-muted);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
     border-radius: 10px;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+    background: var(--bg-tertiary);
     contain: layout style;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.1);
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    transition: border-color var(--motion-fast), transform var(--motion-fast), box-shadow var(--motion-fast);
     overflow: hidden;
 }
 
 .port-container .particle-div:hover,
 .port-container .material-div:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.15);
-    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.25);
+    border-color: color-mix(in oklab, var(--accent-primary) 35%, var(--border));
 }
 
-/* Particle Title Div - Enhanced Header */
+/* Particle Title - header */
 .port-container .particle-title-div {
     min-height: 2.5rem;
     border-radius: 10px 10px 0 0;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.03) 100%);
+    background: color-mix(in oklab, var(--bg-hover) 60%, transparent);
     padding: 0.75rem 1rem;
     display: flex;
     align-items: center;
-    color: var(--accent);
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
     font-size: 0.95rem;
     font-weight: 600;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border);
     margin-bottom: 0;
     letter-spacing: 0.02em;
-    transition: all 0.2s ease;
+    transition: background var(--motion-fast);
 }
 
 .port-container .particle-title-div:hover {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%);
+    background: var(--bg-hover);
 }
 
 /* Flex Utilities */
@@ -131,19 +127,19 @@
     text-overflow: ellipsis;
 }
 
-.port-container strong { color: var(--accent); }
+.port-container strong { color: var(--accent-primary); }
 
 .port-container mark {
     background-color: var(--accent-muted);
-    color: var(--surface);
+    color: var(--text-primary);
     padding: 0.1rem 0.3rem;
     border-radius: 0.2rem;
 }
 
 /* Delete Button */
 .port-container .delete-btn {
-    background: #dc2626;
-    color: white;
+    background: var(--color-danger);
+    color: #fff;
     border: none;
     border-radius: 0.2rem;
     width: 25px;
@@ -155,16 +151,16 @@
     align-items: center;
     justify-content: center;
     margin-left: 0.5rem;
-    transition: background-color 0.2s;
+    transition: background-color var(--motion-fast);
 }
 
-/* Selection Styles */
+/* Selection */
 .port-container .selected-system {
-    border-color: var(--accent) !important;
-    box-shadow: 0 0 0 1px rgba(236, 185, 106, 0.2);
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent-primary) 30%, transparent);
 }
 
-/* Emitter Div - Modern Row Design */
+/* Emitter Row */
 .port-container .emitter-div {
     margin: 0.25rem 0.5rem;
     min-height: 2rem;
@@ -172,17 +168,17 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    background: rgba(255, 255, 255, 0.02);
+    background: color-mix(in oklab, var(--bg-hover) 30%, transparent);
     border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    transition: all 0.2s ease;
+    border: 1px solid var(--border);
+    transition: background var(--motion-fast), border-color var(--motion-fast), transform var(--motion-fast);
     position: relative;
     overflow: visible;
 }
 
 .port-container .emitter-div:hover {
-    background: rgba(255, 255, 255, 0.04);
-    border-color: rgba(255, 255, 255, 0.08);
+    background: color-mix(in oklab, var(--bg-hover) 55%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 25%, var(--border));
     transform: translateX(2px);
 }
 
@@ -191,31 +187,30 @@
 }
 
 .port-container .emitter-div button {
-    color: var(--accent);
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--accent-primary);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
     border-radius: 6px;
     margin: 0;
     padding: 0.35rem 0.65rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.8rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: border-color var(--motion-fast), background var(--motion-fast), transform var(--motion-fast);
 }
 
 .port-container .emitter-div button:hover {
-    border-color: var(--accent);
-    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--accent-primary);
+    background: var(--bg-hover);
     transform: scale(1.05);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-/* Port Button - Modern Icon Button */
+/* Port Button */
 .port-container .port-btn {
-    background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.15), rgba(var(--accent-rgb), 0.08));
-    color: var(--accent);
-    border: 1px solid rgba(var(--accent-rgb), 0.3);
+    background: color-mix(in oklab, var(--accent-primary) 12%, transparent);
+    color: var(--accent-primary);
+    border: 1px solid color-mix(in oklab, var(--accent-primary) 35%, transparent);
     border-radius: 6px;
     width: 28px;
     height: 28px;
@@ -226,26 +221,24 @@
     align-items: center;
     justify-content: center;
     margin-right: 0.5rem;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background var(--motion-fast), border-color var(--motion-fast), transform var(--motion-fast);
     flex-shrink: 0;
     min-width: 28px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
     z-index: 10;
     position: relative;
 }
 
 .port-container .port-btn:hover:not(:disabled) {
-    background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.25), rgba(var(--accent-rgb), 0.15));
-    border-color: var(--accent);
+    background: color-mix(in oklab, var(--accent-primary) 22%, transparent);
+    border-color: var(--accent-primary);
     transform: scale(1.1);
-    box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3), 0 0 20px rgba(var(--accent-rgb), 0.2);
     z-index: 20;
 }
 
 .port-container .port-btn:disabled {
-    background: rgba(255, 255, 255, 0.03);
-    border-color: rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.3);
+    background: var(--bg-tertiary);
+    border-color: var(--border);
+    color: var(--text-muted);
     cursor: not-allowed;
     transform: none;
     opacity: 0.5;
@@ -260,11 +253,11 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 0.9rem;
-    color: var(--accent-muted);
+    color: var(--text-secondary);
     font-weight: 500;
 }
 
 .port-donor-search::placeholder {
-    color: color-mix(in srgb, var(--accent2), transparent 20%);
+    color: color-mix(in oklab, var(--accent-secondary) 80%, transparent);
     opacity: 1;
 }

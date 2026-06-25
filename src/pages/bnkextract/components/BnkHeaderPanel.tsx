@@ -88,9 +88,9 @@ export default function BnkHeaderPanel({
                                 minWidth: '32px',
                                 padding: '4px',
                                 background: 'transparent',
-                                color: showAudioSplitter ? 'var(--accent)' : 'rgba(255,255,255,0.4)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                '&:hover': { background: 'transparent', color: 'var(--accent)' },
+                                color: showAudioSplitter ? 'var(--accent-primary)' : 'var(--text-muted)',
+                                border: '1px solid var(--border)',
+                                '&:hover': { background: 'transparent', color: 'var(--accent-primary)' },
                             }}
                         >
                             <ContentCut sx={{ fontSize: 18 }} />
@@ -104,8 +104,8 @@ export default function BnkHeaderPanel({
                                 minWidth: '32px',
                                 padding: '4px',
                                 background: 'transparent',
-                                color: viewMode === 'split' ? 'var(--accent)' : '',
-                                border: '1px solid rgba(255,255,255,0.1)',
+                                color: viewMode === 'split' ? 'var(--accent-primary)' : '',
+                                border: '1px solid var(--border)',
                                 '&:hover': { background: 'transparent' },
                             }}
                         >
@@ -154,10 +154,10 @@ export default function BnkHeaderPanel({
                                         px: '12px',
                                         cursor: 'pointer',
                                         borderRadius: '4px',
-                                        background: activePane === p ? 'var(--accent)' : 'transparent',
-                                        color: activePane === p ? '#000' : 'rgba(255,255,255,0.5)',
+                                        background: activePane === p ? 'var(--accent-primary)' : 'transparent',
+                                        color: activePane === p ? 'var(--text-primary)' : 'var(--text-secondary)',
                                         transition: 'all 0.15s ease',
-                                        '&:hover': { color: activePane === p ? '#000' : 'rgba(255,255,255,0.8)' },
+                                        '&:hover': { color: activePane === p ? 'var(--text-primary)' : 'var(--text-primary)' },
                                     }}
                                 >
                                     {p.toUpperCase()}
@@ -177,11 +177,11 @@ export default function BnkHeaderPanel({
                                     size="small"
                                     onClick={() => handleSelectFile(kind)}
                                     sx={{
-                                        color: val ? 'var(--accent)' : 'var(--text)',
+                                        color: val ? 'var(--accent-primary)' : 'var(--text)',
                                         ...controlShellSx,
                                         borderRadius: '4px',
                                         padding: '4px',
-                                        '&:hover': { borderColor: 'var(--accent)' },
+                                        '&:hover': { borderColor: 'var(--accent-primary)' },
                                     }}
                                 >
                                     <FolderOpen sx={{ fontSize: 16 }} />
@@ -198,7 +198,7 @@ export default function BnkHeaderPanel({
                             onClick={handleParseFiles}
                             disabled={isLoading || (!wpkPath && !bnkPath)}
                             startIcon={<Refresh sx={{ fontSize: 12 }} />}
-                            sx={{ ...buttonStyle, ...controlShellSx, color: 'var(--accent)', fontWeight: 600 }}
+                            sx={{ ...buttonStyle, ...controlShellSx, color: 'var(--accent-primary)', fontWeight: 600 }}
                         >
                             Parse
                         </Button>
@@ -206,7 +206,7 @@ export default function BnkHeaderPanel({
                             <IconButton
                                 size="small"
                                 onClick={() => handleClearPane(viewMode === 'split' ? activePane : 'left')}
-                                sx={{ color: 'rgba(255,255,255,0.5)', ...controlShellSx, borderRadius: '4px', padding: '4px', '&:hover': { color: '#ff6666', borderColor: '#ff6666' } }}
+                                sx={{ color: 'var(--text-secondary)', ...controlShellSx, borderRadius: '4px', padding: '4px', '&:hover': { color: 'var(--color-danger)', borderColor: 'var(--color-danger)' } }}
                             >
                                 <Delete sx={{ fontSize: 14 }} />
                             </IconButton>
@@ -215,7 +215,7 @@ export default function BnkHeaderPanel({
                             <IconButton
                                 size="small"
                                 onClick={onSessionClick}
-                                sx={{ color: 'rgba(255,255,255,0.5)', ...controlShellSx, borderRadius: '4px', padding: '4px', '&:hover': { color: 'var(--accent)', borderColor: 'var(--accent)' } }}
+                                sx={{ color: 'var(--text-secondary)', ...controlShellSx, borderRadius: '4px', padding: '4px', '&:hover': { color: 'var(--accent-primary)', borderColor: 'var(--accent-primary)' } }}
                             >
                                 <Bookmark style={{ fontSize: 14 }} />
                             </IconButton>
@@ -224,7 +224,7 @@ export default function BnkHeaderPanel({
                             <IconButton
                                 size="small"
                                 onClick={() => setAutoExtractOpen(true)}
-                                sx={{ color: 'rgba(255,255,255,0.5)', ...controlShellSx, borderRadius: '4px', padding: '4px', '&:hover': { color: 'var(--accent)', borderColor: 'var(--accent)' } }}
+                                sx={{ color: 'var(--text-secondary)', ...controlShellSx, borderRadius: '4px', padding: '4px', '&:hover': { color: 'var(--accent-primary)', borderColor: 'var(--accent-primary)' } }}
                             >
                                 <AutoFixHigh sx={{ fontSize: 14 }} />
                             </IconButton>
@@ -233,7 +233,7 @@ export default function BnkHeaderPanel({
                             <IconButton
                                 size="small"
                                 onClick={onOpenGameBanks}
-                                sx={{ color: 'rgba(255,255,255,0.5)', ...controlShellSx, borderRadius: '4px', padding: '4px', '&:hover': { color: 'var(--accent2)', borderColor: 'var(--accent2)' } }}
+                                sx={{ color: 'var(--text-secondary)', ...controlShellSx, borderRadius: '4px', padding: '4px', '&:hover': { color: 'var(--accent-secondary)', borderColor: 'var(--accent-secondary)' } }}
                             >
                                 <SportsEsports sx={{ fontSize: 14 }} />
                             </IconButton>

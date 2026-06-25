@@ -5,7 +5,12 @@
  */
 
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { readFileBase64 } from '@/lib/api';
+import {
+    readFileBase64,
+    imgRecolorDecodeTexture,
+    imgRecolorSaveTexture,
+    imgRecolorScanDir,
+} from '@/lib/api';
 
 export interface LoadedFolder {
     folderPath: string;
@@ -18,72 +23,60 @@ export interface ImageEntry {
     type: string;
 }
 
-const IMAGE_EXTENSIONS = ['.tex', '.dds', '.png', '.jpg', '.jpeg'];
+/*
+ * Remembers the on-disk format tag (e.g. "tex:bc3", "dds:bgra8") of each TEX/DDS we
+ * decode, keyed by path. saveImageFile reads it back so the re-encode preserves the
+ * original container and block format, matching the Electron build's behavior.
+ */
+const textureFormats = new Map<string, string>();
+
+/* Decode a base64 string into raw bytes. */
+function base64ToBytes(b64: string): Uint8Array {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+}
+
+/* Encode raw bytes into a base64 string (chunked to avoid call-stack limits). */
+function bytesToBase64(bytes: Uint8Array): string {
+    let bin = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+        bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin);
+}
 
 function extname(p: string): string {
     const m = /\.[^./\\]+$/.exec(p);
     return m ? m[0].toLowerCase() : '';
 }
 
-function basename(p: string): string {
-    return p.split(/[\\/]/).pop() || p;
-}
-
-function dirname(p: string): string {
-    const parts = p.split(/[\\/]/);
-    parts.pop();
-    return parts.join('/');
-}
 
 /*
- * Load a folder and scan for images.
- *
- * The Electron version walked the folder with Node's fs and returned every
- * image inside it (optionally recursing). There is no Rust dir-scan wrapper
- * yet, so a real folder walk is deferred to the backend. To keep the page
- * fully usable for PNG/JPG we open a multi-file picker, which lets the user
- * grab any number of images at once (the functional equivalent for the user).
+ * Load a folder and scan for images. When no path is given, prompt for a directory and
+ * walk it on the backend (honouring `recursive`), mirroring the Electron scanDirectory.
  */
 export async function loadFolder(
     initialPath: string | null = null,
-    _recursive = false,
+    recursive = false,
 ): Promise<LoadedFolder | null> {
     try {
-        if (initialPath) {
-            // TODO(backend): enumerate IMAGE_EXTENSIONS under `initialPath`
-            // (honouring `_recursive`). No Rust dir-scan command exists yet, so
-            // an explicit path cannot be expanded into its contents here.
-            return null;
+        let folderPath = initialPath;
+
+        if (!folderPath) {
+            const picked = await open({ directory: true, multiple: false });
+            if (!picked || Array.isArray(picked)) return null;
+            folderPath = picked;
         }
 
-        const picked = await open({
-            multiple: true,
-            filters: [
-                { name: 'Images', extensions: ['tex', 'dds', 'png', 'jpg', 'jpeg'] },
-                { name: 'All Files', extensions: ['*'] },
-            ],
-        });
-
-        if (!picked) return null;
-        const paths = Array.isArray(picked) ? picked : [picked];
-        if (paths.length === 0) return null;
-
-        const images: ImageEntry[] = [];
-        const folderPaths = new Set<string>();
-
-        for (const filePath of paths) {
-            const ext = extname(filePath);
-            if (IMAGE_EXTENSIONS.includes(ext)) {
-                images.push({ path: filePath, name: basename(filePath), type: ext.substring(1) });
-                folderPaths.add(dirname(filePath));
-            }
-        }
-
-        if (images.length === 0) return null;
-
-        const folderPath = folderPaths.size === 1
-            ? Array.from(folderPaths)[0]
-            : dirname(paths[0]);
+        const scanned = await imgRecolorScanDir(folderPath, recursive);
+        const images: ImageEntry[] = scanned.map((img) => ({
+            path: img.path,
+            name: img.name,
+            type: img.type,
+        }));
 
         return { folderPath, images };
     } catch (error) {
@@ -98,10 +91,10 @@ export async function loadSingleImage(filePath: string): Promise<ImageData | nul
         const ext = extname(filePath);
 
         if (ext === '.tex' || ext === '.dds') {
-            // TODO(backend): decode TEX/DDS to RGBA (old native
-            // texture:decodeToDataUrl). No Rust wrapper exists yet, so these
-            // formats cannot be previewed or recolored on the frontend.
-            return null;
+            const decoded = await imgRecolorDecodeTexture(filePath);
+            textureFormats.set(filePath, decoded.format);
+            const rgba = base64ToBytes(decoded.rgba);
+            return new ImageData(new Uint8ClampedArray(rgba), decoded.width, decoded.height);
         }
 
         if (ext === '.png' || ext === '.jpg' || ext === '.jpeg') {
@@ -138,47 +131,39 @@ function loadStandardImage(dataUri: string): Promise<ImageData> {
     });
 }
 
-/* Turn ImageData into a PNG blob via canvas. */
-function imageDataToPngBlob(imageData: ImageData): Promise<Blob | null> {
-    const canvas = document.createElement('canvas');
-    canvas.width = imageData.width;
-    canvas.height = imageData.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return Promise.resolve(null);
-    ctx.putImageData(imageData, 0, 0);
-    return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+/* Pick the format tag for a destination path, preserving a decoded texture's original
+   on-disk format when one was remembered, otherwise deriving from the extension. */
+function formatForPath(destPath: string, sourcePath: string): string {
+    const ext = extname(destPath);
+    if (ext === '.tex' || ext === '.dds') {
+        return textureFormats.get(sourcePath) ?? (ext === '.dds' ? 'dds:bgra8' : 'tex:bc3');
+    }
+    if (ext === '.png') return 'png:rgba';
+    if (ext === '.jpg' || ext === '.jpeg') return 'jpg:rgb';
+    return 'png:rgba';
+}
+
+/* Write the recolored pixels to `destPath` in `format`. */
+async function writeTexture(imageData: ImageData, destPath: string, format: string): Promise<boolean> {
+    const rgba = bytesToBase64(new Uint8Array(imageData.data.buffer.slice(0)));
+    await imgRecolorSaveTexture({
+        path: destPath,
+        width: imageData.width,
+        height: imageData.height,
+        rgba,
+        format,
+    });
+    return true;
 }
 
 /*
- * Save image file. The Electron version overwrote the original (re-encoding
- * TEX/DDS via the native addon). There is no Rust file-write wrapper yet, so
- * the disk write is deferred. We keep the function fully working for the user
- * by exporting the recolored PNG through a browser download.
+ * Save image file, overwriting the original in place. TEX/DDS are re-encoded into their
+ * original container/block format (remembered from decode); PNG/JPG are re-encoded as-is.
  */
 export async function saveImageFile(imageData: ImageData, originalPath: string): Promise<boolean> {
     try {
-        const ext = extname(originalPath);
-
-        // TODO(backend): overwrite the original file in place. For TEX/DDS this
-        // also needs the native re-encoder (writeTEX/writeDDS/compressToDDS).
-        // Until a Rust write command exists, fall back to a PNG download so the
-        // recolor result is still retrievable.
-        const blob = await imageDataToPngBlob(imageData);
-        if (!blob) return false;
-
-        const baseName = basename(originalPath).replace(/\.[^.]+$/, '');
-        const isTexture = ext === '.tex' || ext === '.dds';
-        const suggested = isTexture ? `${baseName}.png` : `${baseName}_recolored.png`;
-
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = suggested;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        return true;
+        const format = formatForPath(originalPath, originalPath);
+        return await writeTexture(imageData, originalPath, format);
     } catch (error) {
         console.error('Error saving image:', error);
         return false;
@@ -186,26 +171,28 @@ export async function saveImageFile(imageData: ImageData, originalPath: string):
 }
 
 /*
- * Save a single image with a save dialog. Mirrors the old
- * saveImageFileWithDialog: pick a destination, then write the PNG.
+ * Save a single image with a save dialog. Pick a destination, then write the recolored
+ * pixels there. When the destination is a TEX/DDS its original format is preserved.
  */
 export async function saveImageFileWithDialog(imageData: ImageData, originalPath: string): Promise<boolean> {
     try {
         const ext = extname(originalPath);
-        const defaultPath = originalPath.replace(new RegExp(`${ext}$`), '_recolored.png');
+        const isTexture = ext === '.tex' || ext === '.dds';
+        const defaultPath = isTexture
+            ? originalPath
+            : originalPath.replace(new RegExp(`${ext}$`), '_recolored.png');
 
         const dest = await save({
             defaultPath,
             filters: [
-                { name: 'PNG Files', extensions: ['png'] },
+                { name: 'Images', extensions: ['tex', 'dds', 'png', 'jpg', 'jpeg'] },
                 { name: 'All Files', extensions: ['*'] },
             ],
         });
         if (!dest) return false;
 
-        // TODO(backend): write the PNG bytes to `dest`. No Rust file-write
-        // wrapper exists, so fall back to a browser download for now.
-        return await saveImageFile(imageData, originalPath);
+        const format = formatForPath(dest, originalPath);
+        return await writeTexture(imageData, dest, format);
     } catch (error) {
         console.error('Error saving image:', error);
         return false;

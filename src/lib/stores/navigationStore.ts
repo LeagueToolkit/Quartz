@@ -7,8 +7,6 @@ export type Page =
     | 'paint'
     | 'port'
     | 'vfxhub'
-    | 'extractor'
-    | 'wadexplorer'
     | 'bineditor'
     | 'imgrecolor'
     | 'upscale'

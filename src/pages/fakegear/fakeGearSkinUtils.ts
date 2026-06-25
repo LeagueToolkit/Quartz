@@ -6,10 +6,21 @@
  * write_bin consumes), so load -> select -> apply -> save runs on real bins.
  *
  * The original relied on window.require('fs'/'path') for variant-bin file IO,
- * asset copying, SKL/SKN mesh editing and timestamped backups. Those filesystem
- * pieces are not available under Tauri's webview, so they are marked
- * TODO(backend); the pure content transforms below are fully functional.
+ * asset copying, SKL/SKN mesh editing and timestamped backups. Under Tauri the
+ * pure content transforms stay here and synchronous, while the filesystem pieces
+ * are routed to the fakegear backend commands (lib/api/fakegear):
+ *   - insertToggleScreen      -> fakegear_copy_togglescreen_assets
+ *   - insertAnimationToggle   -> fakegear_validate_anm + fakegear_process_minimal_mesh
+ *   - writeVariantBinsWithMerge -> fakegear_write_variant_bins
+ * Those entry points are async; everything else remains a plain string transform.
  */
+
+import {
+    fakegearCopyToggleScreenAssets,
+    fakegearProcessMinimalMesh,
+    fakegearValidateAnm,
+    fakegearWriteVariantBins,
+} from '@/lib/api/fakegear';
 
 // Stencil configuration
 export const STENCIL_REFERENCE_ID = '0xe6deedc4';
@@ -589,9 +600,9 @@ function createSpawnerSystem(originalKey: string, variant1Key: string, variant2K
  * Convert selected VFX systems to separate variant bins (child particles).
  *
  * The main bin content is fully transformed here (spawner + resolver + linked
- * list). Writing variant1.bin/variant2.bin and copying assets requires
- * filesystem access — see TODO(backend) in writeVariantBinsWithMerge /
- * copyAssetsToVariantFolders.
+ * list). The variant1Systems/variant2Systems it returns are handed to
+ * writeVariantBinsWithMerge, which writes variant1.bin/variant2.bin to disk via
+ * the fakegear backend.
  */
 export function convertToSeparateBins(
     pyContent: string,
@@ -668,6 +679,51 @@ export function convertToSeparateBins(
         variant2Folder,
         message: `Created ${createdVariants.length} variant systems in separate bins`,
     };
+}
+
+export interface WriteVariantBinsResult {
+    success: boolean;
+    error?: string;
+    variant1Path?: string;
+    variant2Path?: string;
+    variant1SystemCount?: number;
+    variant2SystemCount?: number;
+    message?: string;
+}
+
+/**
+ * Write the variant1/variant2 bins produced by convertToSeparateBins to disk.
+ *
+ * The backend (fakegear_write_variant_bins) locates the mod's data folder from
+ * mainBinPath, merges the new systems with any already in an existing variant bin
+ * (deduped by system key), and writes variant1.bin / variant2.bin.
+ */
+export async function writeVariantBinsWithMerge(
+    conversionResult: { variant1Systems?: string[]; variant2Systems?: string[] },
+    mainBinPath: string,
+): Promise<WriteVariantBinsResult> {
+    if (!mainBinPath) {
+        return { success: false, error: 'No main bin path provided' };
+    }
+
+    try {
+        const result = await fakegearWriteVariantBins(
+            mainBinPath,
+            conversionResult.variant1Systems || [],
+            conversionResult.variant2Systems || [],
+        );
+
+        return {
+            success: true,
+            variant1Path: result.variant1Path,
+            variant2Path: result.variant2Path,
+            variant1SystemCount: result.variant1SystemCount,
+            variant2SystemCount: result.variant2SystemCount,
+            message: `Wrote ${result.variant1SystemCount} system(s) to variant1.bin and ${result.variant2SystemCount} to variant2.bin`,
+        };
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
 }
 
 /* ---- spawner detection ---- */
@@ -815,24 +871,37 @@ export function hasToggleScreen(pyContent: string): boolean {
 
 /**
  * Insert togglescreen system and its ResourceResolver entry.
- * Asset copying (screen.dds / screen.scb into the project) is backend-side; the
- * .py is still wired up to reference assets/togglescreen/screen.*.
+ * Copies the bundled screen.dds / screen.scb into the project (via the fakegear
+ * backend) and wires the .py to reference assets/togglescreen/screen.*.
  */
-export function insertToggleScreen(
+export async function insertToggleScreen(
     pyContent: string,
-    _binPath: string | null = null,
+    binPath: string | null = null,
     texturePath: string | null = null,
     meshPath: string | null = null,
     stencilReferenceId: string = STENCIL_REFERENCE_ID,
-): OpResult {
+): Promise<OpResult> {
     if (hasToggleScreen(pyContent)) {
         return { success: false, error: 'togglescreen already exists', content: pyContent };
     }
 
-    const finalTexturePath = texturePath || 'assets/togglescreen/screen.dds';
-    const finalMeshPath = meshPath || 'assets/togglescreen/screen.scb';
+    let finalTexturePath = texturePath || 'assets/togglescreen/screen.dds';
+    let finalMeshPath = meshPath || 'assets/togglescreen/screen.scb';
 
-    // TODO(backend): copy screen.dds / screen.scb into <project>/assets/togglescreen.
+    // Copy the bundled screen.dds/screen.scb into <project>/assets/togglescreen.
+    if (binPath) {
+        try {
+            const copyResult = await fakegearCopyToggleScreenAssets(binPath);
+            finalTexturePath = texturePath || copyResult.texturePath;
+            finalMeshPath = meshPath || copyResult.meshPath;
+        } catch (error) {
+            return {
+                success: false,
+                error: `Failed to copy togglescreen assets: ${error instanceof Error ? error.message : String(error)}`,
+                content: pyContent,
+            };
+        }
+    }
 
     const toggleScreenContent = getToggleScreenSystem(finalTexturePath, finalMeshPath, stencilReferenceId);
 
@@ -1205,7 +1274,7 @@ export function hasAnimationToggle(pyContent: string): boolean {
     return hasToggleClip || (hasToggleTrack && hasToggleMask);
 }
 
-function findValidAnmPath(pyContent: string): string | null {
+async function findValidAnmPath(pyContent: string, binPath: string): Promise<string | null> {
     const anmPattern = /mAnimationFilePath:\s*string\s*=\s*"([^"]+\.anm)"/gi;
     const matches: string[] = [];
     let match: RegExpExecArray | null;
@@ -1215,8 +1284,14 @@ function findValidAnmPath(pyContent: string): string | null {
     }
 
     if (matches.length === 0) return null;
-    // TODO(backend): validate the .anm exists on disk; using the first reference.
-    return matches[0];
+
+    // Let the backend resolve which .anm actually exists on disk; it falls back to
+    // the first reference if none resolve, matching the original behaviour.
+    try {
+        return await fakegearValidateAnm(pyContent, binPath);
+    } catch {
+        return matches[0];
+    }
 }
 
 function generateToggleClipData(anmPath: string): string {
@@ -1436,25 +1511,39 @@ ${indent0}}`;
 
 /**
  * Insert the Ctrl+5 animation toggle clip/mask/track data plus the togglescreen
- * persistent effect. The original first edits the SKN to add a MinimalMesh and
- * reads the bone count from the SKL — that mesh/skeleton IO is backend-side
- * (see TODO(backend) below); the .py clip data uses the default 93-bone mask.
+ * persistent effect. The SKN is edited (via the fakegear backend) to add a
+ * MinimalMesh, and the bone count for the toggle mask is read from the SKL — both
+ * happen in fakegear_process_minimal_mesh; the mask falls back to 93 bones if the
+ * SKL count can't be determined.
  */
-export function insertAnimationToggle(pyContent: string, _binPath: string): OpResult {
+export async function insertAnimationToggle(pyContent: string, binPath: string): Promise<OpResult> {
     try {
         if (hasAnimationToggle(pyContent)) {
             return { success: false, error: 'Animation toggle already exists', content: pyContent };
         }
 
-        const anmPath = findValidAnmPath(pyContent);
+        const anmPath = await findValidAnmPath(pyContent, binPath);
         if (!anmPath) {
             return { success: false, error: 'No animation files found in mod. Cannot add animation toggle.', content: pyContent };
         }
 
         let updatedContent = pyContent;
 
-        // TODO(backend): edit SKN to add MinimalMesh and read true bone count from SKL.
-        const boneCount = 93;
+        // Edit the SKN to add MinimalMesh and read the true bone count from the SKL.
+        let boneCount = 93;
+        try {
+            const meshResult = await fakegearProcessMinimalMesh(pyContent, binPath);
+            if (meshResult.status === 'error') {
+                return { success: false, error: meshResult.message, content: pyContent };
+            }
+            if (meshResult.boneCount > 0) boneCount = meshResult.boneCount;
+        } catch (error) {
+            return {
+                success: false,
+                error: `Failed to process minimal mesh: ${error instanceof Error ? error.message : String(error)}`,
+                content: pyContent,
+            };
+        }
 
         const clipDataMapMatch = updatedContent.match(/mClipDataMap:\s*map\[hash,pointer\]\s*=\s*\{/);
         if (clipDataMapMatch && clipDataMapMatch.index !== undefined) {

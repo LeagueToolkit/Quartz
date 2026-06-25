@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Type, FolderOpen, RefreshCw, Plus, Trash2 } from 'lucide-react';
+import { Type, FolderOpen, RefreshCw, Plus, Trash2, FlaskConical } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { openPath } from '@tauri-apps/plugin-opener';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { FormGroup, CustomSelect, ThemeCard, Button } from '../primitives';
@@ -15,24 +16,30 @@ import {
 import { log } from '@/lib/util/logger';
 
 const card: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: '8px', padding: '16px',
+    background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm)', padding: '16px',
 };
 
 function Range({ value, min, max, step, onChange }: { value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
     return (
         <input type="range" min={min} max={max} step={step ?? 1} value={value}
             onChange={(e) => onChange(parseFloat(e.target.value))}
-            style={{ width: '100%', accentColor: 'var(--accent)' }} />
+            style={{ width: '100%', accentColor: 'var(--accent-primary)' }} />
     );
 }
 
 function Checkbox({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: ReactNode }) {
     return (
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
-            <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)}
-                style={{ width: '18px', height: '18px', accentColor: 'var(--accent)', cursor: 'pointer' }} />
-            <span style={{ fontSize: '13px', color: 'var(--text)' }}>{children}</span>
+        <label className="dl-check">
+            <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+            <span className="dl-check__box">
+                <span className="dl-check__tick">
+                    <span className="dl-icon">
+                        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 6l3 3 5-6" /></svg>
+                    </span>
+                </span>
+            </span>
+            <span>{children}</span>
         </label>
     );
 }
@@ -54,12 +61,30 @@ function RgbaControl({ label, value, fallback, onChange }: { label: string; valu
     const { hex, alpha } = parseRgba(value || fallback);
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '12px', color: 'var(--text-2)', width: '110px' }}>{label}</span>
+            <span style={{ fontSize: '12px', color: 'var(--text-secondary)', width: '110px' }}>{label}</span>
             <input type="color" value={hex} onChange={(e) => onChange(toRgba(e.target.value, alpha))}
-                style={{ width: '36px', height: '28px', background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', cursor: 'pointer' }} />
+                style={{ width: '36px', height: '28px', background: 'none', border: '1px solid var(--border-strong)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }} />
             <Range value={alpha} min={0} max={1} step={0.01} onChange={(a) => onChange(toRgba(hex, a))} />
         </div>
     );
+}
+
+/* Open the Design Lab in a real separate window. Focuses the existing one if
+   it's already open. */
+async function openDesignLab() {
+    const existing = await WebviewWindow.getByLabel('design-lab');
+    if (existing) {
+        await existing.setFocus();
+        return;
+    }
+    const win = new WebviewWindow('design-lab', {
+        url: 'index.html?lab',
+        title: 'Quartz — Design Lab',
+        width: 1180,
+        height: 860,
+        resizable: true,
+    });
+    win.once('tauri://error', (e) => log.error('Design Lab window failed', String(e)));
 }
 
 export function AppearanceSection() {
@@ -152,7 +177,7 @@ export function AppearanceSection() {
                         <RgbaControl label="Tint" value={prefs.liquidButtonTint} fallback="rgba(255,255,255,0.1)" onChange={(v) => onLiquid('liquidButtonTint', v)} />
                         <RgbaControl label="Hover Tint" value={prefs.liquidButtonHoverTint} fallback="rgba(255,255,255,0.16)" onChange={(v) => onLiquid('liquidButtonHoverTint', v)} />
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ fontSize: '12px', color: 'var(--text-2)', width: '110px' }}>Blur ({prefs.liquidButtonBlur || '14'}px)</span>
+                            <span style={{ fontSize: '12px', color: 'var(--text-secondary)', width: '110px' }}>Blur ({prefs.liquidButtonBlur || '14'}px)</span>
                             <Range value={parseFloat(prefs.liquidButtonBlur || '14')} min={0} max={36} onChange={(v) => onLiquid('liquidButtonBlur', String(v))} />
                         </div>
                     </div>
@@ -169,6 +194,12 @@ export function AppearanceSection() {
                 </div>
             </FormGroup>
 
+            <FormGroup label="Design Lab" description="Open a window showcasing every standardized UI element (buttons, inputs, sliders, toggles, modals)">
+                <Button icon={<FlaskConical size={16} />} variant="secondary" onClick={() => openDesignLab().catch((e) => log.error('openDesignLab failed', String(e)))}>
+                    Open Design Lab
+                </Button>
+            </FormGroup>
+
             <FormGroup label="Wallpaper" description="Set a background image that covers the entire app">
                 <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <Checkbox checked={prefs.wallpaperEnabled} onChange={(c) => set('wallpaperEnabled', c)}>Enable wallpaper</Checkbox>
@@ -182,27 +213,27 @@ export function AppearanceSection() {
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: '8px', maxHeight: '220px', overflowY: 'auto' }}>
                             {wallpapers.map((w) => (
                                 <button key={w.id} onClick={() => selectWallpaper(w)} title={w.displayName}
-                                    style={{ position: 'relative', padding: 0, height: '76px', borderRadius: '6px', overflow: 'hidden', cursor: 'pointer', border: `2px solid ${prefs.wallpaperId === w.id ? 'var(--accent)' : 'rgba(255,255,255,0.08)'}` }}>
+                                    style={{ position: 'relative', padding: 0, height: '76px', borderRadius: 'var(--radius-sm)', overflow: 'hidden', cursor: 'pointer', border: `2px solid ${prefs.wallpaperId === w.id ? 'var(--accent-primary)' : 'var(--border)'}` }}>
                                     {wallThumbs[w.id]
                                         ? <img src={wallThumbs[w.id]} alt={w.displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                        : <div style={{ width: '100%', height: '100%', background: 'rgba(255,255,255,0.04)' }} />}
+                                        : <div style={{ width: '100%', height: '100%', background: 'var(--bg-hover)' }} />}
                                 </button>
                             ))}
                         </div>
                     )}
                     <div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' }}>Opacity ({Math.round(prefs.wallpaperOpacity * 100)}%)</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Opacity ({Math.round(prefs.wallpaperOpacity * 100)}%)</div>
                         <Range value={prefs.wallpaperOpacity} min={0} max={1} step={0.01} onChange={(v) => set('wallpaperOpacity', v)} />
                     </div>
                     <Checkbox checked={prefs.wallpaperVignetteEnabled} onChange={(c) => set('wallpaperVignetteEnabled', c)}>Enable vignette</Checkbox>
                     {prefs.wallpaperVignetteEnabled && (
                         <div>
-                            <div style={{ fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' }}>Vignette ({Math.round(prefs.wallpaperVignetteStrength * 100)}%)</div>
+                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Vignette ({Math.round(prefs.wallpaperVignetteStrength * 100)}%)</div>
                             <Range value={prefs.wallpaperVignetteStrength} min={0} max={1} step={0.01} onChange={(v) => set('wallpaperVignetteStrength', v)} />
                         </div>
                     )}
                     <div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' }}>UI Blur ({prefs.glassBlur}px)</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>UI Blur ({prefs.glassBlur}px)</div>
                         <Range value={prefs.glassBlur} min={0} max={24} onChange={onBlur} />
                     </div>
                 </div>
@@ -237,17 +268,17 @@ export function AppearanceSection() {
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', maxHeight: '260px', overflowY: 'auto' }}>
                             {cursors.map((c) => (
                                 <button key={c.path} onClick={() => set('cursorEffectPath', c.path)} title={c.name}
-                                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '8px', borderRadius: '6px', cursor: 'pointer', border: `2px solid ${prefs.cursorEffectPath === c.path ? 'var(--accent)' : 'rgba(255,255,255,0.08)'}`, background: 'rgba(255,255,255,0.02)' }}>
+                                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', border: `2px solid ${prefs.cursorEffectPath === c.path ? 'var(--accent-primary)' : 'var(--border)'}`, background: 'var(--bg-tertiary)' }}>
                                     {cursorThumbs[c.path] && <img src={cursorThumbs[c.path]} alt={c.name} style={{ maxWidth: '36px', maxHeight: '36px', objectFit: 'contain' }} />}
-                                    <span style={{ fontSize: '10px', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{c.name}</span>
+                                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{c.name}</span>
                                 </button>
                             ))}
                         </div>
                     ) : (
-                        <div style={{ fontSize: '12px', color: 'var(--text-2)', opacity: 0.7 }}>No cursors found — drop .cur, .png, or .gif files into the folder.</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No cursors found — drop .cur, .png, or .gif files into the folder.</div>
                     )}
                     <div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' }}>Cursor Size ({prefs.cursorEffectSize}px)</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Cursor Size ({prefs.cursorEffectSize}px)</div>
                         <Range value={prefs.cursorEffectSize} min={16} max={128} step={4} onChange={(v) => set('cursorEffectSize', v)} />
                     </div>
                 </div>

@@ -22,12 +22,12 @@ export default function BnkGainModal({
     onApply,
 }: Props) {
     return (
-        <Backdrop open={open} onClick={onClose} sx={{ zIndex: 1400, backdropFilter: 'blur(6px)', background: 'rgba(0,0,0,0.55)' }}>
+        <Backdrop open={open} onClick={onClose} sx={{ zIndex: 1400, backdropFilter: 'blur(6px)', background: 'color-mix(in oklab, var(--bg-primary) 55%, transparent)' }}>
             <Box onClick={(e) => e.stopPropagation()} sx={{
-                background: 'rgba(16,16,24,0.95)',
-                border: '1px solid rgba(var(--accent-rgb),0.3)',
+                background: 'var(--bg-secondary)',
+                border: '1px solid color-mix(in oklab, var(--accent-primary) 30%, transparent)',
                 borderRadius: '12px',
-                boxShadow: '0 8px 40px rgba(0,0,0,0.7)',
+                boxShadow: '0 8px 40px color-mix(in oklab, var(--bg-primary) 70%, transparent)',
                 padding: '1.5rem 2rem',
                 width: 320,
                 display: 'flex',
@@ -35,11 +35,11 @@ export default function BnkGainModal({
                 gap: '1rem',
                 fontFamily: 'JetBrains Mono, monospace',
             }}>
-                <Typography sx={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.08em' }}>
+                <Typography sx={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--accent-primary)', letterSpacing: '0.08em' }}>
                     Adjust Volume
                 </Typography>
-                <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
-                    Applies to <strong style={{ color: 'var(--text)' }}>{gainTargetNodeId ? 'selected node and all audio below it' : 'selection'}</strong>.<br />
+                <Typography sx={{ fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    Applies to <strong style={{ color: 'var(--text-primary)' }}>{gainTargetNodeId ? 'selected node and all audio below it' : 'selection'}</strong>.<br />
                     Requires WEM to WAV to WEM re-encode (minor quality loss).
                 </Typography>
 
@@ -52,7 +52,7 @@ export default function BnkGainModal({
                         onChange={(_, v) => setGainDb(String(v))}
                         sx={{
                             flex: 1,
-                            color: 'var(--accent)',
+                            color: 'var(--accent-primary)',
                             '& .MuiSlider-thumb': { width: 14, height: 14 },
                             '& .MuiSlider-rail': { opacity: 0.2 },
                         }}
@@ -64,14 +64,14 @@ export default function BnkGainModal({
                         inputProps={{ style: { textAlign: 'center', width: 52, fontFamily: 'JetBrains Mono', fontSize: '0.8rem', padding: '4px 6px' } }}
                         sx={{
                             '& .MuiOutlinedInput-root': {
-                                background: 'rgba(0,0,0,0.3)',
-                                '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
-                                '&:hover fieldset': { borderColor: 'var(--accent)' },
+                                background: 'var(--bg-tertiary)',
+                                '& fieldset': { borderColor: 'var(--border)' },
+                                '&:hover fieldset': { borderColor: 'var(--accent-primary)' },
                             },
-                            '& .MuiInputBase-input': { color: 'var(--text)' },
+                            '& .MuiInputBase-input': { color: 'var(--text-primary)' },
                         }}
                     />
-                    <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', minWidth: 20 }}>dB</Typography>
+                    <Typography sx={{ fontSize: '0.72rem', color: 'var(--text-muted)', minWidth: 20 }}>dB</Typography>
                 </Box>
 
                 <Box sx={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
@@ -83,8 +83,8 @@ export default function BnkGainModal({
                                 ...compactButtonStyle,
                                 fontSize: '0.65rem',
                                 minWidth: 40,
-                                color: parseFloat(gainDb) === parseFloat(v) ? 'var(--accent)' : 'var(--text-2)',
-                                borderColor: parseFloat(gainDb) === parseFloat(v) ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
+                                color: parseFloat(gainDb) === parseFloat(v) ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                                borderColor: parseFloat(gainDb) === parseFloat(v) ? 'var(--accent-primary)' : 'var(--border)',
                             }}
                         >
                             {v} dB
@@ -97,7 +97,7 @@ export default function BnkGainModal({
                     <Button
                         onClick={onApply}
                         variant="contained"
-                        sx={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono, monospace', textTransform: 'none', background: 'var(--accent)', '&:hover': { filter: 'brightness(1.15)', background: 'var(--accent)' } }}
+                        sx={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono, monospace', textTransform: 'none', background: 'var(--accent-primary)', '&:hover': { background: 'var(--accent-hover)' } }}
                     >
                         Apply
                     </Button>

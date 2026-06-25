@@ -23,9 +23,10 @@ const BumpathStatusOverlays = React.memo(function BumpathStatusOverlays({
                         top: 80,
                         right: 20,
                         zIndex: 1000,
-                        background: 'var(--glass-bg)',
-                        border: '1px solid var(--glass-border)',
-                        '& .MuiAlert-message': { color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace' },
+                        background: 'var(--bg-secondary)',
+                        border: '1px solid color-mix(in oklab, var(--color-danger) 35%, var(--border))',
+                        '& .MuiAlert-message': { color: 'var(--color-danger)', fontFamily: 'JetBrains Mono, monospace' },
+                        '& .MuiAlert-icon': { color: 'var(--color-danger)' },
                     }}
                 >
                     {error}
@@ -45,9 +46,9 @@ const BumpathStatusOverlays = React.memo(function BumpathStatusOverlays({
                         px: 2.5,
                         py: 1.5,
                         borderRadius: '8px',
-                        backgroundColor: 'rgba(16, 185, 129, 0.95)',
-                        border: '1px solid rgba(16, 185, 129, 0.3)',
-                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+                        backgroundColor: 'color-mix(in oklab, var(--color-success) 92%, transparent)',
+                        border: '1px solid color-mix(in oklab, var(--color-success) 30%, transparent)',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
                         backdropFilter: 'blur(10px)',
                         WebkitBackdropFilter: 'blur(10px)',
                         maxWidth: '400px',

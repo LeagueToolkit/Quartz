@@ -2,16 +2,17 @@
    Electron Quartz src/pages/vfxhub/VFXHub.js: target bin tree on the left,
    downloaded donor systems on the right, a GitHub collection browser modal
    (category filter, search, pagination, image previews, per-system download),
-   drag-to-target porting, and Save. Real data over the same GitHub repo the
-   old app used (FrogCsLoL/VFXHub) via browser fetch; porting inserts the
-   downloaded VfxSystemDefinitionData into the target .py and rewires its
-   ResourceResolver. Upload's GitHub push step is // TODO(backend). */
+   drag-to-target porting, Save, and upload to the hub. Real data over the same
+   GitHub repo the old app used (FrogCsLoL/VFXHub) via browser fetch; porting
+   inserts the downloaded VfxSystemDefinitionData into the target .py and
+   rewires its ResourceResolver. Upload pushes selected target systems back to
+   the hub repo with the token from Settings → GitHub Integration. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readBin, writeBin } from '@/lib/api';
 import { useNotificationStore } from '@/lib/stores';
-import githubApi, { type HubVfxSystem } from './vfxhub/lib/githubApi';
+import githubApi, { type HubVfxSystem, type UploadSystemInput } from './vfxhub/lib/githubApi';
 import { parseVfxEmitters, type DonorSystem, type HubAsset } from './vfxhub/lib/vfxEmitterParser';
 import { extractVFXSystem } from './vfxhub/lib/vfxSystemParser';
 import { insertVFXSystemIntoFile, addToResourceResolver } from './vfxhub/lib/vfxInsertSystem';
@@ -23,7 +24,7 @@ const SYSTEMS_PER_PAGE = 8;
 
 const sectionStyle = {
     background: 'transparent',
-    border: '1px solid rgba(255, 255, 255, 0.06)',
+    border: '1px solid var(--border)',
     borderRadius: '5px',
 };
 
@@ -39,6 +40,19 @@ interface FlatSystem extends HubVfxSystem {
     collection: string;
 }
 
+interface UndoEntry {
+    action: string;
+    timestamp: number;
+    targetSystems: Record<string, DonorSystem>;
+    targetPyContent: string;
+}
+
+function getShortUndoAction(action: string): string {
+    if (!action) return 'Undo';
+    if (action.startsWith('Port VFX system "')) return 'Port VFX system';
+    return action.length > 48 ? `${action.slice(0, 48)}...` : action;
+}
+
 function VfxHub() {
     const notify = useNotificationStore((s) => s.push);
 
@@ -50,6 +64,7 @@ function VfxHub() {
     const [fileSaved, setFileSaved] = useState(true);
     const [targetFilter, setTargetFilter] = useState('');
     const [collapsedTarget, setCollapsedTarget] = useState<Set<string>>(new Set());
+    const [undoHistory, setUndoHistory] = useState<UndoEntry[]>([]);
 
     // Donor (downloaded) state.
     const [donorPath, setDonorPath] = useState('VFX Hub - GitHub Collections');
@@ -75,6 +90,14 @@ function VfxHub() {
     const [selectedCategory, setSelectedCategory] = useState('All');
     const [currentPage, setCurrentPage] = useState(1);
     const [hoveredPreview, setHoveredPreview] = useState<string | null>(null);
+
+    // Upload modal state.
+    const [showUploadModal, setShowUploadModal] = useState(false);
+    const [uploadName, setUploadName] = useState('');
+    const [uploadDescription, setUploadDescription] = useState('');
+    const [uploadCollection, setUploadCollection] = useState('missilevfxs.py');
+    const [uploadSelected, setUploadSelected] = useState<Set<string>>(new Set());
+    const [uploadPreview, setUploadPreview] = useState<{ base64: string; ext: string } | null>(null);
 
     const dragPayloadRef = useRef<string | null>(null);
 
@@ -106,6 +129,7 @@ function VfxHub() {
             setHasResourceResolver(/ResourceResolver\s*\{/.test(text));
             setFileSaved(true);
             setCollapsedTarget(new Set());
+            setUndoHistory([]);
             setStatusMessage(`Loaded target: ${Object.keys(systems).length} VFX systems`);
         } catch (error) {
             setStatusMessage(`Failed to load bin: ${error instanceof Error ? error.message : String(error)}`);
@@ -259,10 +283,34 @@ function VfxHub() {
             await writeBin(content, targetPath);
             setFileSaved(true);
         } catch {
-            // TODO(backend): write_bin not available — keep in-memory edit.
+            /* Auto-save failed — keep the in-memory edit so the user can retry
+               via the Save button. */
             setFileSaved(false);
         }
     }, [targetPath]);
+
+    const saveStateToHistory = useCallback((action: string) => {
+        const entry: UndoEntry = {
+            action,
+            timestamp: Date.now(),
+            targetSystems: JSON.parse(JSON.stringify(targetSystems || {})),
+            targetPyContent,
+        };
+        setUndoHistory((prev) => [...prev, entry].slice(-20));
+    }, [targetSystems, targetPyContent]);
+
+    const handleUndo = useCallback(() => {
+        if (undoHistory.length === 0) {
+            setStatusMessage('Nothing to undo');
+            return;
+        }
+        const last = undoHistory[undoHistory.length - 1];
+        setTargetSystems(last.targetSystems || {});
+        setTargetPyContent(last.targetPyContent);
+        setFileSaved(false);
+        setUndoHistory((prev) => prev.slice(0, -1));
+        setStatusMessage(`Undone: ${getShortUndoAction(last.action)}`);
+    }, [undoHistory]);
 
     const portVFXSystemToTarget = useCallback(async (donorSystemKey: string) => {
         const donorSystem = donorSystems[donorSystemKey];
@@ -288,6 +336,8 @@ function VfxHub() {
         }
 
         try {
+            saveStateToHistory(`Port VFX system "${donorSystem.name}"`);
+
             const sourcePy = donorPyContent || donorSystem.rawContent;
             const extracted = donorPyContent ? extractVFXSystem(sourcePy, donorSystem.name) : null;
 
@@ -322,7 +372,7 @@ function VfxHub() {
             setStatusMessage(`Failed to insert VFX system "${donorSystem.name}": ${error instanceof Error ? error.message : String(error)}`);
             notify('error', 'Port failed');
         }
-    }, [donorSystems, donorPyContent, hasResourceResolver, notify, persistTarget, targetPyContent, targetSystems]);
+    }, [donorSystems, donorPyContent, hasResourceResolver, notify, persistTarget, saveStateToHistory, targetPyContent, targetSystems]);
 
     // --- Drag and drop ------------------------------------------------------
 
@@ -371,11 +421,69 @@ function VfxHub() {
         }
     }, [notify, targetPath, targetPyContent]);
 
-    const handleLocalHub = useCallback(() => {
-        // TODO(backend): Local Hub + GitHub upload need a token / native file walk.
-        setStatusMessage('Local Hub upload is not available yet in this build');
-        notify('info', 'Local Hub / upload deferred (backend)');
-    }, [notify]);
+    const handleOpenUpload = useCallback(() => {
+        if (isProcessing) return;
+        if (Object.keys(targetSystems).length === 0) {
+            setStatusMessage('Open a target bin first — upload pulls systems from it');
+            notify('info', 'Open a target bin to upload from');
+            return;
+        }
+        setUploadSelected(new Set());
+        setShowUploadModal(true);
+        setStatusMessage('Select systems to upload to the VFX Hub');
+    }, [isProcessing, notify, targetSystems]);
+
+    const handleExecuteUpload = useCallback(async () => {
+        const name = uploadName.trim();
+        if (!name) {
+            notify('info', 'Enter an effect name');
+            return;
+        }
+        if (uploadSelected.size === 0) {
+            notify('info', 'Select at least one system');
+            return;
+        }
+
+        const systems: UploadSystemInput[] = [];
+        let first = true;
+        for (const key of uploadSelected) {
+            const sys = targetSystems[key];
+            if (!sys?.rawContent) continue;
+            // First selection adopts the chosen effect name; extras keep theirs.
+            systems.push({ name: first ? name : (sys.particleName || sys.name || key), fullContent: sys.rawContent });
+            first = false;
+        }
+        if (systems.length === 0) {
+            notify('error', 'Selected systems have no content to upload');
+            return;
+        }
+
+        setIsProcessing(true);
+        setProcessingText('Uploading to VFX Hub...');
+        setStatusMessage('Uploading VFX system(s) to the hub...');
+        try {
+            const category = uploadCollection.replace(/\.py$/i, '').toLowerCase();
+            await githubApi.uploadVFXSystem(systems, uploadCollection, { name, description: uploadDescription.trim(), category });
+            if (uploadPreview?.base64) {
+                setProcessingText('Uploading preview...');
+                await githubApi.uploadPreview(uploadPreview.base64, name, uploadPreview.ext);
+            }
+            setStatusMessage(`Uploaded "${name}" to ${uploadCollection}`);
+            notify('success', `Uploaded "${name}" to VFX Hub`);
+            setShowUploadModal(false);
+            setUploadName('');
+            setUploadDescription('');
+            setUploadPreview(null);
+            setUploadSelected(new Set());
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            setStatusMessage(`Upload failed: ${msg}`);
+            notify('error', 'Upload failed');
+        } finally {
+            setIsProcessing(false);
+            setProcessingText('');
+        }
+    }, [notify, targetSystems, uploadCollection, uploadDescription, uploadName, uploadPreview, uploadSelected]);
 
     // --- Derived lists ------------------------------------------------------
 
@@ -408,7 +516,7 @@ function VfxHub() {
                 isLoadingCollections={isLoadingCollections}
                 onOpenTargetBin={handleOpenTargetBin}
                 onOpenHub={handleOpenVFXHub}
-                onUpload={handleLocalHub}
+                onUpload={handleOpenUpload}
             />
 
             <div className="vfx-hub-panels">
@@ -432,13 +540,13 @@ function VfxHub() {
                             <div style={{
                                 position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
                                 justifyContent: 'center', pointerEvents: 'none', zIndex: 2,
-                                background: 'rgba(139, 92, 246, 0.15)', border: '2px dashed var(--accent)',
+                                background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)', border: '2px dashed var(--accent)',
                                 borderRadius: '8px',
                             }}>
                                 <div style={{
                                     padding: '10px 16px', borderRadius: '6px', border: '1px dashed var(--accent)',
                                     color: 'var(--accent)', fontFamily: FONT, fontSize: '13px',
-                                    background: 'color-mix(in srgb, var(--accent), transparent 90%)',
+                                    background: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)',
                                 }}>
                                     Drop to add VFX system
                                 </div>
@@ -495,6 +603,8 @@ function VfxHub() {
                 showTrimTargetNames={showTrimTargetNames}
                 trimTargetNames={trimTargetNames}
                 setTrimTargetNames={setTrimTargetNames}
+                handleUndo={handleUndo}
+                undoHistory={undoHistory}
                 handleSave={handleSave}
                 isProcessing={isProcessing}
                 hasChangesToSave={hasChangesToSave}
@@ -519,6 +629,28 @@ function VfxHub() {
                 onDownload={downloadVFXSystem}
                 onRefresh={handleRefreshCollections}
                 onClose={handleCloseDownloadModal}
+            />
+
+            <UploadModal
+                open={showUploadModal}
+                isProcessing={isProcessing}
+                targetSystems={targetSystems}
+                name={uploadName}
+                description={uploadDescription}
+                collection={uploadCollection}
+                selected={uploadSelected}
+                preview={uploadPreview}
+                onName={setUploadName}
+                onDescription={setUploadDescription}
+                onCollection={setUploadCollection}
+                onToggleSelected={(key, checked) => setUploadSelected((prev) => {
+                    const next = new Set(prev);
+                    if (checked) next.add(key); else next.delete(key);
+                    return next;
+                })}
+                onPreview={setUploadPreview}
+                onUpload={handleExecuteUpload}
+                onClose={() => setShowUploadModal(false)}
             />
         </div>
     );
@@ -545,8 +677,8 @@ function Toolbar({ isProcessing, isLoadingCollections, onOpenTargetBin, onOpenHu
                 disabled={isProcessing}
                 style={{
                     ...base,
-                    background: 'color-mix(in srgb, var(--accent), var(--bg) 85%)',
-                    border: '1px solid color-mix(in srgb, var(--accent), transparent 70%)',
+                    background: 'color-mix(in oklab, var(--accent-primary) 15%, var(--bg-primary))',
+                    border: '1px solid color-mix(in oklab, var(--accent-primary) 30%, transparent)',
                     color: 'var(--accent)', opacity: isProcessing ? 0.5 : 1,
                 }}
             >
@@ -557,8 +689,8 @@ function Toolbar({ isProcessing, isLoadingCollections, onOpenTargetBin, onOpenHu
                 disabled={isProcessing || isLoadingCollections}
                 style={{
                     ...base,
-                    background: 'color-mix(in srgb, var(--accent2), var(--bg) 85%)',
-                    border: '1px solid color-mix(in srgb, var(--accent2), transparent 70%)',
+                    background: 'color-mix(in oklab, var(--accent2) 15%, var(--bg-primary))',
+                    border: '1px solid color-mix(in oklab, var(--accent2) 30%, transparent)',
                     color: 'var(--accent2)', opacity: isProcessing || isLoadingCollections ? 0.5 : 1,
                 }}
             >
@@ -570,8 +702,8 @@ function Toolbar({ isProcessing, isLoadingCollections, onOpenTargetBin, onOpenHu
                 title="Upload VFX system to VFX Hub"
                 style={{
                     ...base,
-                    background: 'color-mix(in srgb, var(--accent2), var(--bg) 85%)',
-                    border: '1px solid color-mix(in srgb, var(--accent2), transparent 70%)',
+                    background: 'color-mix(in oklab, var(--accent2) 15%, var(--bg-primary))',
+                    border: '1px solid color-mix(in oklab, var(--accent2) 30%, transparent)',
                     color: 'var(--accent2)', opacity: isProcessing ? 0.5 : 1,
                 }}
             >
@@ -583,26 +715,29 @@ function Toolbar({ isProcessing, isLoadingCollections, onOpenTargetBin, onOpenHu
 
 // --- Footer -----------------------------------------------------------------
 
-function Footer({ statusMessage, showTrimTargetNames, trimTargetNames, setTrimTargetNames, handleSave, isProcessing, hasChangesToSave }: {
+function Footer({ statusMessage, showTrimTargetNames, trimTargetNames, setTrimTargetNames, handleUndo, undoHistory, handleSave, isProcessing, hasChangesToSave }: {
     statusMessage: string;
     showTrimTargetNames: boolean;
     trimTargetNames: boolean;
     setTrimTargetNames: (v: boolean) => void;
+    handleUndo: () => void;
+    undoHistory: UndoEntry[];
     handleSave: () => void;
     isProcessing: boolean;
     hasChangesToSave: () => boolean;
 }) {
     const saveDisabled = isProcessing || !hasChangesToSave();
+    const undoDisabled = undoHistory.length === 0;
     return (
         <>
             <div style={{
-                padding: '6px 20px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', color: 'var(--accent)',
+                padding: '6px 20px', borderTop: '1px solid var(--border)', color: 'var(--accent)',
                 fontFamily: FONT, fontSize: '12px', display: 'flex', alignItems: 'center',
                 justifyContent: 'space-between', gap: '20px',
             }}>
                 <span style={{ flex: 1 }}>{statusMessage}</span>
                 {showTrimTargetNames && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', whiteSpace: 'nowrap', fontSize: '11px', color: 'rgba(255,255,255,0.7)' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', whiteSpace: 'nowrap', fontSize: '11px', color: 'var(--text-secondary)' }}>
                         <input type="checkbox" checked={trimTargetNames} onChange={(e) => setTrimTargetNames(e.target.checked)} />
                         <span>Trim Target Names</span>
                     </label>
@@ -610,13 +745,27 @@ function Footer({ statusMessage, showTrimTargetNames, trimTargetNames, setTrimTa
             </div>
             <div style={{ display: 'flex', gap: '12px', padding: '12px 20px' }}>
                 <button
+                    onClick={handleUndo}
+                    disabled={undoDisabled}
+                    title={undoHistory.length > 0 ? `Undo: ${undoHistory[undoHistory.length - 1]?.action}` : 'Nothing to undo'}
+                    style={{
+                        flex: 1, padding: '0 16px', fontFamily: FONT, fontSize: '13px', fontWeight: 700,
+                        height: '36px', background: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border)', color: 'var(--text-secondary)', borderRadius: '4px',
+                        letterSpacing: '0.05em', textTransform: 'uppercase', cursor: undoDisabled ? 'not-allowed' : 'pointer',
+                        opacity: undoDisabled ? 0.5 : 1,
+                    }}
+                >
+                    Undo ({undoHistory.length})
+                </button>
+                <button
                     onClick={handleSave}
                     disabled={saveDisabled}
                     title={hasChangesToSave() ? 'Save changes to file' : 'No changes to save'}
                     style={{
                         flex: 1, padding: '0 16px', fontFamily: FONT, fontSize: '13px', fontWeight: 700,
-                        height: '36px', background: 'color-mix(in srgb, #22c55e, var(--bg) 85%)',
-                        border: '1px solid rgba(34, 197, 94, 0.3)', color: '#22c55e', borderRadius: '4px',
+                        height: '36px', background: 'color-mix(in oklab, var(--color-success) 15%, var(--bg-primary))',
+                        border: '1px solid color-mix(in oklab, var(--color-success) 30%, transparent)', color: 'var(--color-success)', borderRadius: '4px',
                         letterSpacing: '0.05em', textTransform: 'uppercase', cursor: saveDisabled ? 'not-allowed' : 'pointer',
                         opacity: saveDisabled ? 0.5 : 1,
                     }}
@@ -711,8 +860,8 @@ function SystemList({ systems, accent, collapsed, onToggle, trim, draggable, onD
                                     onClick={() => onPort(sys.key)}
                                     title="Port to target"
                                     style={{
-                                        background: 'color-mix(in srgb, var(--accent), transparent 85%)',
-                                        border: '1px solid color-mix(in srgb, var(--accent), transparent 60%)',
+                                        background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)',
+                                        border: '1px solid color-mix(in oklab, var(--accent-primary) 40%, transparent)',
                                         color: 'var(--accent)', borderRadius: '4px', fontSize: '10px',
                                         padding: '2px 8px', cursor: 'pointer', fontFamily: FONT,
                                     }}
@@ -767,26 +916,26 @@ function CollectionBrowser({
 
     const btnAccent: React.CSSProperties = {
         padding: '6px 14px', borderRadius: 6, cursor: 'pointer', fontFamily: FONT, fontSize: '0.75rem',
-        fontWeight: 600, background: 'color-mix(in srgb, var(--accent), transparent 85%)',
-        color: 'var(--accent)', border: '1px solid color-mix(in srgb, var(--accent), transparent 60%)',
+        fontWeight: 600, background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)',
+        color: 'var(--accent)', border: '1px solid color-mix(in oklab, var(--accent-primary) 40%, transparent)',
     };
     const btnGhost: React.CSSProperties = {
         padding: '6px 14px', borderRadius: 6, cursor: 'pointer', fontFamily: FONT, fontSize: '0.75rem',
-        fontWeight: 600, background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.75)',
-        border: '1px solid rgba(255,255,255,0.12)',
+        fontWeight: 600, background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)', color: 'var(--text-secondary)',
+        border: '1px solid var(--border)',
     };
 
     return (
         <div style={{
             position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)',
+            justifyContent: 'center', background: 'color-mix(in oklab, black 75%, transparent)', backdropFilter: 'blur(4px)',
         }}>
             <div style={{
                 position: 'relative', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)',
                 borderRadius: 16, width: '1000px', height: '700px', maxWidth: '90vw', maxHeight: '88vh',
                 display: 'flex', flexDirection: 'column', overflow: 'hidden',
                 backdropFilter: 'saturate(180%) blur(16px)',
-                boxShadow: '0 30px 70px rgba(0,0,0,0.55), 0 0 40px color-mix(in srgb, var(--accent2), transparent 82%)',
+                boxShadow: '0 24px 48px -16px rgba(0,0,0,.6), 0 4px 12px rgba(0,0,0,.3)',
                 fontFamily: FONT,
             }}>
                 <div style={{
@@ -796,14 +945,14 @@ function CollectionBrowser({
                 }} />
 
                 <div style={{
-                    padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)',
+                    padding: '14px 20px', borderBottom: '1px solid var(--border)',
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0,
                 }}>
                     <div>
                         <h2 style={{ margin: 0, fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)', fontFamily: FONT }}>
                             VFX Hub Collections
                         </h2>
-                        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.68rem', marginTop: 4 }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', marginTop: 4 }}>
                             {filteredSystems.length} effect{filteredSystems.length !== 1 ? 's' : ''} available
                         </div>
                     </div>
@@ -819,8 +968,8 @@ function CollectionBrowser({
                             onClick={onClose}
                             style={{
                                 width: 28, height: 28, borderRadius: 8, flexShrink: 0, display: 'flex',
-                                alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'rgba(255,255,255,0.5)',
-                                border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', cursor: 'pointer',
+                                alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--text-muted)',
+                                border: '1px solid var(--border)', background: 'color-mix(in oklab, var(--text-primary) 4%, transparent)', cursor: 'pointer',
                             }}
                         >
                             ✕
@@ -828,7 +977,7 @@ function CollectionBrowser({
                     </div>
                 </div>
 
-                <div style={{ padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+                <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
                     <input
                         value={searchTerm}
                         onChange={(e) => onSearchTerm(e.target.value)}
@@ -846,9 +995,9 @@ function CollectionBrowser({
                                     style={{
                                         padding: '5px 10px', borderRadius: 6, cursor: 'pointer', fontFamily: FONT,
                                         fontSize: '0.72rem', fontWeight: active ? 700 : 600,
-                                        border: active ? '1px solid color-mix(in srgb, var(--accent2), transparent 50%)' : '1px solid rgba(255,255,255,0.08)',
-                                        background: active ? 'color-mix(in srgb, var(--accent2), transparent 82%)' : 'rgba(255,255,255,0.03)',
-                                        color: active ? 'var(--accent2)' : 'rgba(255,255,255,0.65)',
+                                        border: active ? '1px solid color-mix(in oklab, var(--accent2) 50%, transparent)' : '1px solid var(--border)',
+                                        background: active ? 'color-mix(in oklab, var(--accent2) 18%, transparent)' : 'color-mix(in oklab, var(--text-primary) 3%, transparent)',
+                                        color: active ? 'var(--accent2)' : 'var(--text-secondary)',
                                     }}
                                 >
                                     {category}
@@ -863,15 +1012,15 @@ function CollectionBrowser({
                     gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12, alignContent: 'start',
                 }}>
                     {isLoadingCollections ? (
-                        <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: 'rgba(255,255,255,0.4)', fontSize: '0.82rem' }}>
+                        <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                             Loading VFX collections...
                         </div>
                     ) : !githubConnected ? (
-                        <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: '#f87171', fontSize: '0.82rem' }}>
+                        <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: 'var(--color-danger)', fontSize: '0.82rem' }}>
                             Failed to connect
                         </div>
                     ) : filteredSystems.length === 0 ? (
-                        <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: 'rgba(255,255,255,0.4)', fontSize: '0.82rem' }}>
+                        <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                             No VFX effects found
                         </div>
                     ) : (
@@ -889,7 +1038,7 @@ function CollectionBrowser({
 
                 {totalPages > 1 && (
                     <div style={{
-                        padding: '10px 20px', flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.07)',
+                        padding: '10px 20px', flexShrink: 0, borderTop: '1px solid var(--border)',
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     }}>
                         <button onClick={() => onPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}
@@ -901,9 +1050,9 @@ function CollectionBrowser({
                                     <button key={page} onClick={() => onPage(page)} style={{
                                         width: 30, height: 30, borderRadius: 6, cursor: 'pointer', fontFamily: FONT,
                                         fontSize: '0.75rem', fontWeight: active ? 700 : 400,
-                                        border: active ? '1px solid color-mix(in srgb, var(--accent2), transparent 50%)' : '1px solid rgba(255,255,255,0.1)',
-                                        background: active ? 'color-mix(in srgb, var(--accent2), transparent 80%)' : 'rgba(255,255,255,0.02)',
-                                        color: active ? 'var(--accent2)' : 'rgba(255,255,255,0.65)',
+                                        border: active ? '1px solid color-mix(in oklab, var(--accent2) 50%, transparent)' : '1px solid var(--border)',
+                                        background: active ? 'color-mix(in oklab, var(--accent2) 20%, transparent)' : 'color-mix(in oklab, var(--text-primary) 2%, transparent)',
+                                        color: active ? 'var(--accent2)' : 'var(--text-secondary)',
                                     }}>{page}</button>
                                 );
                             })}
@@ -916,22 +1065,22 @@ function CollectionBrowser({
 
             {hoveredPreview && (
                 <>
-                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1999 }} onClick={() => onSetHoveredPreview(null)} />
+                    <div style={{ position: 'fixed', inset: 0, background: 'color-mix(in oklab, black 80%, transparent)', zIndex: 1999 }} onClick={() => onSetHoveredPreview(null)} />
                     <div style={{
                         position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 2000,
                         background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 14, padding: 14,
                         maxWidth: '84vw', maxHeight: '84vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
-                        boxShadow: '0 30px 70px rgba(0,0,0,0.65)', backdropFilter: 'saturate(180%) blur(16px)',
+                        boxShadow: '0 24px 48px -16px rgba(0,0,0,.6), 0 4px 12px rgba(0,0,0,.3)', backdropFilter: 'saturate(180%) blur(16px)',
                     }}>
                         <button onClick={() => onSetHoveredPreview(null)} style={{
                             alignSelf: 'flex-end', marginBottom: 8, width: 28, height: 28, borderRadius: 8,
-                            border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)',
-                            cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: 13,
+                            border: '1px solid var(--border)', background: 'color-mix(in oklab, var(--text-primary) 4%, transparent)',
+                            cursor: 'pointer', color: 'var(--text-muted)', fontSize: 13,
                         }}>✕</button>
                         <img
                             src={hoveredPreview}
                             alt="Full preview"
-                            style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)' }}
+                            style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: 10, border: '1px solid var(--border)' }}
                             onError={() => onSetHoveredPreview(null)}
                         />
                     </div>
@@ -968,8 +1117,8 @@ function CollectionItem({ system, isProcessing, onDownload, onPreview }: {
                 }
             }}
             style={{
-                background: 'linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015))',
-                border: '1px solid rgba(255,255,255,0.12)', borderRadius: '12px', padding: '0.55rem',
+                background: 'linear-gradient(180deg, color-mix(in oklab, var(--text-primary) 4%, transparent), transparent)',
+                border: '1px solid var(--border)', borderRadius: '12px', padding: '0.55rem',
                 cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.28)',
             }}
         >
@@ -1008,15 +1157,201 @@ function CollectionItem({ system, isProcessing, onDownload, onPreview }: {
                 disabled={isProcessing}
                 style={{
                     width: '100%', padding: '0.42rem',
-                    background: isProcessing ? 'rgba(160,160,160,0.12)' : 'color-mix(in srgb, var(--accent) 11%, transparent)',
-                    border: isProcessing ? '1px solid rgba(200,200,200,0.2)' : '1px solid color-mix(in srgb, var(--accent) 42%, transparent)',
-                    color: isProcessing ? '#ccc' : 'var(--accent)', borderRadius: '9px',
+                    background: isProcessing ? 'var(--bg-tertiary)' : 'color-mix(in oklab, var(--accent-primary) 11%, transparent)',
+                    border: isProcessing ? '1px solid var(--border)' : '1px solid color-mix(in oklab, var(--accent-primary) 42%, transparent)',
+                    color: isProcessing ? 'var(--text-secondary)' : 'var(--accent)', borderRadius: '9px',
                     cursor: isProcessing ? 'not-allowed' : 'pointer', fontFamily: FONT, fontWeight: 'bold',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
                 }}
             >
                 {isProcessing ? 'Loading...' : 'Download'}
             </button>
+        </div>
+    );
+}
+
+// --- Upload modal -----------------------------------------------------------
+
+const UPLOAD_COLLECTIONS: { value: string; label: string }[] = [
+    { value: 'missilevfxs.py', label: 'Missiles' },
+    { value: 'auravfx.py', label: 'Auras' },
+    { value: 'explosionvfxs.py', label: 'Explosions' },
+    { value: 'targetvfx.py', label: 'Target' },
+    { value: 'shieldvfx.py', label: 'Shield' },
+    { value: 'bufvfx.py', label: 'Buf' },
+];
+
+function UploadModal({
+    open: isOpen, isProcessing, targetSystems, name, description, collection, selected, preview,
+    onName, onDescription, onCollection, onToggleSelected, onPreview, onUpload, onClose,
+}: {
+    open: boolean;
+    isProcessing: boolean;
+    targetSystems: Record<string, DonorSystem>;
+    name: string;
+    description: string;
+    collection: string;
+    selected: Set<string>;
+    preview: { base64: string; ext: string } | null;
+    onName: (v: string) => void;
+    onDescription: (v: string) => void;
+    onCollection: (v: string) => void;
+    onToggleSelected: (key: string, checked: boolean) => void;
+    onPreview: (v: { base64: string; ext: string } | null) => void;
+    onUpload: () => void;
+    onClose: () => void;
+}) {
+    const [systemSearch, setSystemSearch] = useState('');
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+    if (!isOpen) return null;
+
+    const entries = Object.entries(targetSystems);
+    const term = systemSearch.trim().toLowerCase();
+    const visibleEntries = entries.filter(([key, sys]) => {
+        const label = sys.particleName || sys.name || key;
+        return !term || label.toLowerCase().includes(term);
+    });
+    const canUpload = !isProcessing && name.trim() !== '' && selected.size > 0;
+
+    const readPreviewFile = (file: File) => {
+        if (!String(file.type || '').startsWith('image/')) return;
+        const ext = (file.name?.split('.').pop() || 'png').toLowerCase();
+        const reader = new FileReader();
+        reader.onload = () => {
+            const dataUrl = String(reader.result || '');
+            const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : null;
+            if (base64) onPreview({ base64, ext });
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const label: React.CSSProperties = {
+        fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+        color: 'var(--accent2)', fontFamily: FONT, marginBottom: 6, display: 'block',
+    };
+    const input: React.CSSProperties = {
+        width: '100%', boxSizing: 'border-box', borderRadius: 6, border: '1px solid var(--border)',
+        background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)', padding: '8px 12px', fontSize: '0.8rem', color: 'var(--text)',
+        fontFamily: FONT, outline: 'none',
+    };
+
+    return (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px' }}>
+            <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'color-mix(in oklab, black 75%, transparent)', backdropFilter: 'blur(4px)' }} />
+            <div onClick={(e) => e.stopPropagation()} style={{
+                position: 'relative', zIndex: 1, width: '100%', maxWidth: 820, background: 'var(--glass-bg)',
+                border: '1px solid var(--glass-border)', backdropFilter: 'saturate(180%) blur(16px)', borderRadius: 16,
+                boxShadow: '0 24px 48px -16px rgba(0,0,0,.6), 0 4px 12px rgba(0,0,0,.3)', fontFamily: FONT,
+            }}>
+                <div style={{ borderRadius: '16px 16px 0 0', overflow: 'hidden' }}>
+                    <div style={{ height: 3, background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' }} />
+                </div>
+
+                <div style={{ padding: '16px 22px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <h2 style={{ margin: 0, fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)', fontFamily: FONT }}>
+                        Upload to VFX Hub
+                    </h2>
+                    <button onClick={onClose} style={{
+                        width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 13, color: 'var(--text-muted)', border: '1px solid var(--border)', background: 'color-mix(in oklab, var(--text-primary) 4%, transparent)', cursor: 'pointer',
+                    }}>✕</button>
+                </div>
+
+                <div style={{ padding: 22, display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 16 }}>
+                    <div style={{ ...sectionStyle, borderRadius: 10, padding: '14px 16px' }}>
+                        <span style={label}>VFX Systems</span>
+                        <p style={{ margin: '0 0 10px 0', fontSize: '0.68rem', color: 'var(--text-muted)' }}>Select from target bin</p>
+                        <input value={systemSearch} onChange={(e) => setSystemSearch(e.target.value)} placeholder="Search systems..." style={{ ...input, marginBottom: 8 }} />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 260, overflowY: 'auto' }}>
+                            {visibleEntries.length === 0 ? (
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic', textAlign: 'center', padding: '2.5rem 0' }}>
+                                    No systems in target bin
+                                </div>
+                            ) : (
+                                visibleEntries.map(([key, sys]) => {
+                                    const systemLabel = sys.particleName || sys.name || key;
+                                    const checked = selected.has(key);
+                                    return (
+                                        <label key={key} style={{
+                                            display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+                                            border: '1px solid', borderColor: checked ? 'color-mix(in oklab, var(--accent-primary) 45%, transparent)' : 'var(--border)',
+                                            background: checked ? 'color-mix(in oklab, var(--accent-primary) 15%, transparent)' : 'color-mix(in oklab, var(--text-primary) 2%, transparent)',
+                                        }}>
+                                            <input type="checkbox" checked={checked} onChange={(e) => onToggleSelected(key, e.target.checked)} style={{ width: 13, height: 13, accentColor: 'var(--accent)', cursor: 'pointer', flexShrink: 0 }} />
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{systemLabel}</div>
+                                                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{sys.emitters?.length || 0} emitters</div>
+                                            </div>
+                                        </label>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <div style={{ ...sectionStyle, borderRadius: 10, padding: '14px 16px' }}>
+                            <span style={label}>Collection</span>
+                            <select value={collection} onChange={(e) => onCollection(e.target.value)} style={{ ...input, cursor: 'pointer' }}>
+                                {UPLOAD_COLLECTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value} style={{ background: 'var(--bg-secondary)' }}>{opt.label}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div style={{ ...sectionStyle, borderRadius: 10, padding: '14px 16px' }}>
+                            <span style={label}>Effect Name</span>
+                            <input value={name} onChange={(e) => onName(e.target.value)} placeholder="MyCustomVFX" style={input} />
+                        </div>
+
+                        <div style={{ ...sectionStyle, borderRadius: 10, padding: '14px 16px' }}>
+                            <span style={label}>Description</span>
+                            <textarea value={description} onChange={(e) => onDescription(e.target.value)} placeholder="Custom VFX effect with particles…" style={{ ...input, height: 70, resize: 'vertical' }} />
+                        </div>
+
+                        <div style={{ ...sectionStyle, borderRadius: 10, padding: '14px 16px' }}>
+                            <span style={label}>Preview (optional)</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div
+                                    onClick={() => fileInputRef.current?.click()}
+                                    onDragOver={(e) => e.preventDefault()}
+                                    onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer?.files?.[0]; if (f) readPreviewFile(f); }}
+                                    style={{
+                                        width: 72, height: 72, borderRadius: 8, border: '1px dashed var(--border-strong)', overflow: 'hidden',
+                                        background: 'color-mix(in oklab, var(--text-primary) 3%, transparent)', color: 'var(--text-secondary)', fontSize: '10px', display: 'flex',
+                                        alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 6, cursor: 'pointer', flexShrink: 0,
+                                    }}
+                                    title="Drag/drop or click to select image/gif"
+                                >
+                                    {preview ? (
+                                        <img src={`data:image/${preview.ext};base64,${preview.base64}`} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    ) : 'Drop/Click'}
+                                    <input ref={fileInputRef} type="file" accept="image/*,.gif" onChange={(e) => { const f = e.target.files?.[0]; if (f) readPreviewFile(f); e.target.value = ''; }} style={{ display: 'none' }} />
+                                </div>
+                                {preview && (
+                                    <button onClick={() => onPreview(null)} style={{
+                                        padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontFamily: FONT, fontSize: '0.72rem',
+                                        background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)', color: 'var(--text-secondary)', border: '1px solid var(--border)',
+                                    }}>Remove</button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, justifyContent: 'flex-end', borderRadius: '0 0 16px 16px' }}>
+                    <button onClick={onClose} style={{
+                        padding: '7px 18px', borderRadius: 6, cursor: 'pointer', fontFamily: FONT, fontSize: '0.75rem', fontWeight: 600,
+                        background: 'color-mix(in oklab, var(--text-primary) 5%, transparent)', color: 'var(--text-secondary)', border: '1px solid var(--border)',
+                    }}>Cancel</button>
+                    <button onClick={onUpload} disabled={!canUpload} style={{
+                        padding: '7px 18px', borderRadius: 6, cursor: canUpload ? 'pointer' : 'not-allowed', fontFamily: FONT, fontSize: '0.75rem', fontWeight: 600,
+                        background: 'color-mix(in oklab, var(--accent-primary) 20%, transparent)', color: 'var(--accent)',
+                        border: '1px solid color-mix(in oklab, var(--accent-primary) 40%, transparent)', opacity: canUpload ? 1 : 0.5,
+                    }}>{isProcessing ? 'Uploading…' : 'Upload to VFX Hub'}</button>
+                </div>
+            </div>
         </div>
     );
 }
@@ -1028,11 +1363,11 @@ function ProcessingOverlay({ text }: { text: string }) {
         <div style={{
             position: 'absolute', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center', gap: 16,
-            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)',
+            background: 'color-mix(in oklab, black 55%, transparent)', backdropFilter: 'blur(2px)',
         }}>
             <div style={{
                 width: 44, height: 44, borderRadius: '50%',
-                border: '3px solid color-mix(in srgb, var(--accent), transparent 70%)',
+                border: '3px solid color-mix(in oklab, var(--accent-primary) 30%, transparent)',
                 borderTopColor: 'var(--accent)', animation: 'spin 0.8s linear infinite',
             }} />
             <div style={{ color: 'var(--accent)', fontFamily: FONT, fontSize: 13 }}>{text}</div>

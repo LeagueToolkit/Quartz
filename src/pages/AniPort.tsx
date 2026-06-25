@@ -11,7 +11,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 
 import './aniport/AniPort.css';
 
-import { readBin, writeBin } from '@/lib/api';
+import { readBin, writeBin, aniportAutodetectSkl, aniportLoadSkeleton, type LoadedSkeleton } from '@/lib/api';
 
 import { parseAnimationData } from './aniport/utils/animationParser';
 import { findVfxSystemForEffectKey, portAnimationEventWithVfx } from './aniport/utils/animationVfxLinker';
@@ -105,6 +105,12 @@ function AniPort() {
     // Page switching state
     const [currentPage, setCurrentPage] = useState<'animation' | 'mask'>('animation');
 
+    // Mask viewer state — skeleton joints read from the target .skl
+    const [maskSkeleton, setMaskSkeleton] = useState<LoadedSkeleton | null>(null);
+    const [maskSelectedJoints, setMaskSelectedJoints] = useState<Set<number>>(new Set());
+    const [maskLoading, setMaskLoading] = useState(false);
+    const [maskError, setMaskError] = useState<string | null>(null);
+
     // Standalone events panel state
     const [standaloneExpanded, setStandaloneExpanded] = useState(true);
     const [standaloneGroupExpanded, setStandaloneGroupExpanded] = useState<Set<string>>(new Set(['particle', 'submesh', 'sound', 'facetarget']));
@@ -119,6 +125,53 @@ function AniPort() {
     // The single source of truth for text transforms. Falls back to original.
     const getTargetContent = (data: LoadedAniData | null = targetData): string =>
         data?.currentFileContent || data?.originalAnimationContent || '';
+
+    // ---- Mask viewer skeleton loading --------------------------------------
+    // Auto-detect the target .skl from the skins bin context, then read its joints.
+    const loadMaskSkeleton = async () => {
+        const binPath = targetSkinsFile || targetAnimationFile;
+        if (!binPath) return;
+
+        setMaskLoading(true);
+        setMaskError(null);
+        try {
+            const skeletonRef = targetData?.skeletonInfo?.skeleton || undefined;
+            const sklPath = await aniportAutodetectSkl(binPath, skeletonRef);
+            const skeleton = await aniportLoadSkeleton(sklPath);
+            setMaskSkeleton(skeleton);
+            setStatusMessage(`Skeleton loaded: ${skeleton.totalJoints} joints`);
+        } catch (err) {
+            setMaskSkeleton(null);
+            setMaskError(String(err));
+        } finally {
+            setMaskLoading(false);
+        }
+    };
+
+    // Load joints when the mask page opens (or the target changes while open).
+    useEffect(() => {
+        if (currentPage !== 'mask') return;
+        if (maskSkeleton || maskLoading) return;
+        void loadMaskSkeleton();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentPage, targetSkinsFile, targetAnimationFile]);
+
+    // Reset the cached skeleton when the target file changes.
+    useEffect(() => {
+        setMaskSkeleton(null);
+        setMaskSelectedJoints(new Set());
+        setMaskError(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [targetSkinsFile, targetAnimationFile]);
+
+    const toggleMaskJoint = (id: number) => {
+        setMaskSelectedJoints((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
 
     // ---- File reading ------------------------------------------------------
     const readBinAsText = async (filePath: string): Promise<string> => {
@@ -288,6 +341,7 @@ function AniPort() {
                 currentFileContent: targetAnimContent,
                 animationPath: targetAnimationFile,
                 skinsPath: targetSkinsFile,
+                skeletonInfo: targetResult.skeletonInfo,
                 errors: targetResult.errors,
                 warnings: targetResult.warnings,
             };
@@ -1477,10 +1531,10 @@ function AniPort() {
                     <IconButton
                         onClick={() => setShowInfoTooltip(!showInfoTooltip)}
                         sx={{
-                            backgroundColor: 'rgba(255, 152, 0, 0.1)',
-                            border: '1px solid rgba(255, 152, 0, 0.3)',
-                            color: '#ff9800',
-                            '&:hover': { backgroundColor: 'rgba(255, 152, 0, 0.2)' },
+                            backgroundColor: 'color-mix(in oklab, var(--color-warning) 10%, transparent)',
+                            border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
+                            color: 'var(--color-warning)',
+                            '&:hover': { backgroundColor: 'color-mix(in oklab, var(--color-warning) 20%, transparent)' },
                         }}
                         size="small"
                     >
@@ -2233,11 +2287,94 @@ function AniPort() {
                         </div>
                     ) : (
                         <div className="mask-editor">
-                            <div className="no-clips">
-                                <p>Mask Viewer</p>
-                                {/* TODO(backend): MaskViewer relied on the league-toolkit skeleton reader
-                                    via Electron; its Tauri equivalent is not yet wired. */}
-                                <p>Mask editing is not available in this build.</p>
+                            <div className="mask-viewer">
+                                <div className="mask-viewer-header">
+                                    <h3>🎭 Mask Viewer</h3>
+                                    <div className="mask-viewer-actions">
+                                        {maskSkeleton && (
+                                            <span className="mask-stat">{maskSkeleton.totalJoints} joints</span>
+                                        )}
+                                        {maskSelectedJoints.size > 0 && (
+                                            <>
+                                                <span className="mask-stat">{maskSelectedJoints.size} selected</span>
+                                                <button className="btn-small" onClick={() => setMaskSelectedJoints(new Set())}>
+                                                    Clear
+                                                </button>
+                                            </>
+                                        )}
+                                        <button
+                                            className="btn-small"
+                                            onClick={() => {
+                                                setMaskSkeleton(null);
+                                                void loadMaskSkeleton();
+                                            }}
+                                            disabled={maskLoading}
+                                        >
+                                            🔄 Reload
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {maskSkeleton && (
+                                    <div className="mask-viewer-meta" title={maskSkeleton.sklPath}>
+                                        SKL: {baseName(maskSkeleton.sklPath)}
+                                    </div>
+                                )}
+
+                                {maskLoading ? (
+                                    <div className="no-clips">
+                                        <p>Loading skeleton…</p>
+                                    </div>
+                                ) : maskError ? (
+                                    <div className="no-clips">
+                                        <p>Failed to load skeleton</p>
+                                        <p className="mask-error">{maskError}</p>
+                                        <button className="btn-small" onClick={() => void loadMaskSkeleton()}>
+                                            Retry
+                                        </button>
+                                    </div>
+                                ) : maskSkeleton && maskSkeleton.joints.length > 0 ? (
+                                    <div className="mask-joint-list">
+                                        <table className="mask-joint-table">
+                                            <thead>
+                                                <tr>
+                                                    <th className="joint-id-col">ID</th>
+                                                    <th className="joint-name-col">Joint</th>
+                                                    <th className="joint-parent-col">Parent</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {maskSkeleton.joints.map((joint) => {
+                                                    const parent =
+                                                        joint.parentId >= 0
+                                                            ? maskSkeleton.joints.find((j) => j.id === joint.parentId)
+                                                            : null;
+                                                    const selected = maskSelectedJoints.has(joint.id);
+                                                    return (
+                                                        <tr
+                                                            key={joint.id}
+                                                            className={`mask-joint-row ${selected ? 'selected' : ''}`}
+                                                            onClick={() => toggleMaskJoint(joint.id)}
+                                                        >
+                                                            <td className="joint-id-col">[{joint.id}]</td>
+                                                            <td className="joint-name-col">
+                                                                {joint.name}
+                                                                {selected && <span className="joint-check"> ✓</span>}
+                                                            </td>
+                                                            <td className="joint-parent-col">
+                                                                {parent ? parent.name : joint.parentId >= 0 ? `[${joint.parentId}]` : '—'}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="no-clips">
+                                        <p>No skeleton joints found</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -2395,13 +2532,13 @@ function AniPort() {
             >
                 <DialogTitle sx={{ color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 1, fontWeight: 600 }}>⚠️ Delete Clip</DialogTitle>
                 <DialogContent sx={{ pt: 2 }}>
-                    <div style={{ color: '#e5e7eb', lineHeight: 1.5 }}>
+                    <div style={{ color: 'var(--text-primary)', lineHeight: 1.5 }}>
                         Are you sure you want to delete the entire "{clipToDelete}" clip? This action cannot be undone.
                     </div>
                 </DialogContent>
                 <DialogActions sx={{ p: 2, gap: 1 }}>
-                    <Button onClick={handleDeleteCancel} sx={{ color: 'var(--accent2)', '&:hover': { backgroundColor: 'rgba(139, 92, 246, 0.1)' } }}>Cancel</Button>
-                    <Button variant="contained" onClick={handleDeleteClip} sx={{ background: '#ef4444', color: '#ffffff', borderRadius: '4px', px: 2, '&:hover': { background: '#dc2626' } }}>Delete</Button>
+                    <Button onClick={handleDeleteCancel} sx={{ color: 'var(--accent2)', '&:hover': { backgroundColor: 'color-mix(in oklab, var(--accent2) 12%, transparent)' } }}>Cancel</Button>
+                    <Button variant="contained" onClick={handleDeleteClip} sx={{ background: 'var(--color-danger)', color: '#fff', borderRadius: '4px', px: 2, '&:hover': { background: 'color-mix(in oklab, var(--color-danger) 85%, black)' } }}>Delete</Button>
                 </DialogActions>
             </Dialog>
 
@@ -2422,7 +2559,7 @@ function AniPort() {
             >
                 <DialogTitle sx={{ color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 1, fontWeight: 600 }}>🗑️ Delete VFX System?</DialogTitle>
                 <DialogContent sx={{ pt: 2 }}>
-                    <div style={{ color: '#e5e7eb', lineHeight: 1.5 }}>
+                    <div style={{ color: 'var(--text-primary)', lineHeight: 1.5 }}>
                         <div style={{ marginBottom: '8px' }}>
                             This particle event uses effect key <strong style={{ color: 'var(--accent)' }}>"{vfxDeleteEffectKey}"</strong>.
                         </div>
@@ -2430,9 +2567,9 @@ function AniPort() {
                     </div>
                 </DialogContent>
                 <DialogActions sx={{ p: 2, gap: 1 }}>
-                    <Button onClick={() => vfxDeleteCallbackRef.current?.('cancel')} sx={{ color: 'var(--accent2)', '&:hover': { backgroundColor: 'rgba(139, 92, 246, 0.1)' } }}>Cancel</Button>
-                    <Button onClick={() => vfxDeleteCallbackRef.current?.('delete-event-only')} sx={{ color: 'var(--accent2)', '&:hover': { backgroundColor: 'rgba(139, 92, 246, 0.1)' } }}>Delete Event Only</Button>
-                    <Button variant="contained" onClick={() => vfxDeleteCallbackRef.current?.('delete-vfx')} sx={{ background: '#ef4444', color: '#ffffff', borderRadius: '4px', px: 2, '&:hover': { background: '#dc2626' } }}>Delete VFX System Too</Button>
+                    <Button onClick={() => vfxDeleteCallbackRef.current?.('cancel')} sx={{ color: 'var(--accent2)', '&:hover': { backgroundColor: 'color-mix(in oklab, var(--accent2) 12%, transparent)' } }}>Cancel</Button>
+                    <Button onClick={() => vfxDeleteCallbackRef.current?.('delete-event-only')} sx={{ color: 'var(--accent2)', '&:hover': { backgroundColor: 'color-mix(in oklab, var(--accent2) 12%, transparent)' } }}>Delete Event Only</Button>
+                    <Button variant="contained" onClick={() => vfxDeleteCallbackRef.current?.('delete-vfx')} sx={{ background: 'var(--color-danger)', color: '#fff', borderRadius: '4px', px: 2, '&:hover': { background: 'color-mix(in oklab, var(--color-danger) 85%, black)' } }}>Delete VFX System Too</Button>
                 </DialogActions>
             </Dialog>
         </div>

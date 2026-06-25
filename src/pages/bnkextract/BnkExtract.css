@@ -6,8 +6,8 @@
     height: 100%;
     overflow: hidden;
     background: transparent;
-    color: var(--accent);
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
 }
 
 .bnk-extract-header {
@@ -15,7 +15,7 @@
     align-items: center;
     padding: 1rem 1.5rem;
     background: transparent;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid var(--border);
 }
 
 .bnk-extract-header h1 {
@@ -35,8 +35,8 @@
     flex: 1;
     overflow: auto;
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     margin: 1.25rem;
     padding: 0.75rem;
 }
@@ -47,17 +47,17 @@
 }
 
 .bnk-extract-tree::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--bg-primary);
     border-radius: 5px;
 }
 
 .bnk-extract-tree::-webkit-scrollbar-thumb {
-    background: rgba(var(--accent-rgb), 0.3);
+    background: color-mix(in oklab, var(--accent-primary) 30%, transparent);
     border-radius: 5px;
 }
 
 .bnk-extract-tree::-webkit-scrollbar-thumb:hover {
-    background: rgba(var(--accent-rgb), 0.5);
+    background: color-mix(in oklab, var(--accent-primary) 50%, transparent);
 }
 
 .bnk-extract-sidebar {
@@ -70,11 +70,11 @@
 }
 
 .bnk-extract-btn {
-    background: transparent;
-    color: var(--accent);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
     font-size: 0.85rem;
     text-transform: none;
     text-align: left;
@@ -83,12 +83,12 @@
     display: flex;
     align-items: center;
     gap: 0.65rem;
-    transition: all 0.15s ease;
+    transition: background var(--motion-fast), border-color var(--motion-fast);
 }
 
 .bnk-extract-btn:hover {
-    background: transparent;
-    border-color: var(--accent);
+    background: var(--bg-hover);
+    border-color: color-mix(in oklab, var(--accent-primary) 45%, var(--border));
 }
 
 .bnk-extract-btn:disabled {
@@ -97,7 +97,14 @@
 }
 
 .bnk-extract-btn.primary {
-    background: transparent;
+    background: color-mix(in oklab, var(--accent-primary) 12%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 35%, transparent);
+    color: color-mix(in oklab, var(--accent-primary) 30%, var(--text-primary));
+}
+
+.bnk-extract-btn.primary:hover {
+    background: color-mix(in oklab, var(--accent-primary) 22%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 60%, transparent);
 }
 
 /* Tree Node Styles */
@@ -111,19 +118,22 @@
     padding: 4px 8px;
     cursor: pointer;
     border-radius: 6px;
-    transition: background 0.1s ease;
+    border: 1px solid transparent;
+    transition: background var(--motion-fast), border-color var(--motion-fast);
 }
 
 .tree-node-row:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: color-mix(in oklab, var(--accent-primary) 10%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 25%, transparent);
 }
 
 .tree-node-row.selected {
-    background: rgba(var(--accent-rgb), 0.2);
+    background: color-mix(in oklab, var(--accent-primary) 16%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 38%, transparent);
 }
 
 .tree-node-row.selected:hover {
-    background: rgba(var(--accent-rgb), 0.25);
+    background: color-mix(in oklab, var(--accent-primary) 22%, transparent);
 }
 
 .tree-node-toggle {
@@ -135,7 +145,7 @@
     padding: 0;
     background: none;
     border: none;
-    color: var(--accent);
+    color: var(--text-secondary);
     cursor: pointer;
 }
 
@@ -150,7 +160,7 @@
 
 .tree-node-label {
     font-size: 0.85rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     margin-left: 6px;
     white-space: nowrap;
     overflow: hidden;
@@ -158,11 +168,11 @@
 }
 
 .tree-node-label.audio {
-    color: var(--accent);
+    color: var(--accent-primary);
 }
 
 .tree-node-label.folder {
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--text-secondary);
 }
 
 .tree-node-children {
@@ -171,24 +181,25 @@
 
 /* Input Styles */
 .bnk-extract-input {
-    background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    color: var(--accent);
-    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
     font-size: 0.85rem;
     padding: 10px 14px;
     flex: 1;
     outline: none;
-    transition: border-color 0.15s ease;
+    transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
 
 .bnk-extract-input:focus {
-    border-color: var(--accent);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-primary) 60%, transparent);
 }
 
 .bnk-extract-input::placeholder {
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--text-muted);
 }
 
 /* File Selection Row */
@@ -201,15 +212,15 @@
 /* Status Bar */
 .bnk-extract-status {
     font-size: 0.75rem;
-    opacity: 0.5;
+    color: var(--text-muted);
 }
 
 /* Context Menu */
 .bnk-extract-context-menu {
-    background: rgba(20, 20, 25, 0.95);
+    background: color-mix(in oklab, var(--bg-secondary) 95%, transparent);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     padding: 0.25rem 0;
     min-width: 180px;
 }
@@ -220,28 +231,29 @@
     gap: 0.5rem;
     padding: 0.5rem 1rem;
     font-size: 0.75rem;
-    font-family: 'JetBrains Mono', monospace;
-    color: var(--accent);
+    font-family: var(--font-mono);
+    color: var(--text-primary);
     cursor: pointer;
-    transition: background 0.1s ease;
+    transition: background var(--motion-fast), color var(--motion-fast);
 }
 
 .bnk-extract-context-menu-item:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: color-mix(in oklab, var(--accent-primary) 16%, transparent);
+    color: color-mix(in oklab, var(--accent-primary) 12%, var(--text-primary));
 }
 
 .bnk-extract-divider {
     height: 1px;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--border);
     margin: 0.25rem 0;
 }
 
 /* Settings Menu */
 .bnk-extract-settings {
-    background: rgba(20, 20, 25, 0.95);
+    background: color-mix(in oklab, var(--bg-secondary) 95%, transparent);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     padding: 0.5rem;
 }
 
@@ -250,18 +262,18 @@
     align-items: center;
     gap: 0.5rem;
     font-size: 0.75rem;
-    font-family: 'JetBrains Mono', monospace;
-    color: var(--text);
+    font-family: var(--font-mono);
+    color: var(--text-primary);
     cursor: pointer;
 }
 
 .bnk-extract-checkbox input {
-    accent-color: var(--accent);
+    accent-color: var(--accent-primary);
 }
 
 /* Empty State */
 .bnk-extract-empty {
-    opacity: 0.3;
+    color: var(--text-muted);
     text-align: center;
     margin-top: 2rem;
     font-size: 0.8rem;
@@ -272,7 +284,7 @@
     height: 2px;
     background: linear-gradient(90deg,
             transparent 0%,
-            var(--accent) 50%,
+            var(--accent-primary) 50%,
             transparent 100%);
     animation: loading-slide 1.5s infinite ease-in-out;
 }

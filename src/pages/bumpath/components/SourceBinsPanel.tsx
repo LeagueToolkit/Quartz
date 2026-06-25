@@ -26,17 +26,17 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
         <Box
             sx={{
                 width: '350px',
-                borderRight: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRight: '1px solid var(--border)',
                 display: 'flex',
                 flexDirection: 'column',
             }}
         >
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }} data-bumpath-bin-list>
-                <Box sx={{ p: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                <Box sx={{ p: 2, borderBottom: '1px solid var(--border)' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <FormatListBulletedIcon sx={{ color: 'var(--accent)', fontSize: '1.2rem' }} />
-                            <Typography variant="h6" sx={{ color: 'var(--accent)', fontSize: '1rem' }}>
+                            <FormatListBulletedIcon sx={{ color: 'var(--accent-primary)', fontSize: '1.2rem' }} />
+                            <Typography variant="h6" sx={{ color: 'var(--accent-primary)', fontSize: '1rem' }}>
                                 Source BINs:
                             </Typography>
                         </Box>
@@ -54,7 +54,7 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                             InputProps={{
                                 startAdornment: (
                                     <InputAdornment position="start">
-                                        <SearchIcon sx={{ color: 'var(--accent)', fontSize: '1rem', opacity: 0.85 }} />
+                                        <SearchIcon sx={{ color: 'var(--accent-primary)', fontSize: '1rem', opacity: 0.85 }} />
                                     </InputAdornment>
                                 ),
                             }}
@@ -70,17 +70,17 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                                     px: 0,
                                     py: 0,
                                     borderRadius: '6px',
-                                    color: 'rgba(255,255,255,0.5)',
-                                    border: '1px solid rgba(255,255,255,0.08)',
-                                    background: 'rgba(255,255,255,0.025)',
+                                    color: 'var(--text-muted)',
+                                    border: '1px solid var(--border)',
+                                    background: 'var(--bg-tertiary)',
                                     fontFamily: 'JetBrains Mono, monospace',
                                     fontSize: '0.85rem',
                                     fontWeight: 600,
                                     transition: 'all 160ms ease',
                                     '&:hover': {
-                                        color: '#ef4444',
-                                        borderColor: 'color-mix(in srgb, #ef4444, transparent 50%)',
-                                        background: 'color-mix(in srgb, #ef4444, transparent 90%)',
+                                        color: 'var(--color-danger)',
+                                        borderColor: 'color-mix(in oklab, var(--color-danger) 50%, transparent)',
+                                        background: 'color-mix(in oklab, var(--color-danger) 10%, transparent)',
                                     },
                                 }}
                             >
@@ -90,7 +90,7 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                     </Box>
 
                     {binFilter && (
-                        <Typography variant="body2" sx={{ color: 'var(--accent2)', fontSize: '0.7rem', mt: 0.5 }}>
+                        <Typography variant="body2" sx={{ color: 'var(--text-secondary)', fontSize: '0.7rem', mt: 0.5 }}>
                             Showing {filteredBins.length} of {totalBinCount} BINs
                         </Typography>
                     )}
@@ -105,14 +105,14 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                             width: '8px',
                         },
                         '&::-webkit-scrollbar-track': {
-                            background: 'var(--bg-2)',
+                            background: 'var(--bg-secondary)',
                             borderRadius: '4px',
                         },
                         '&::-webkit-scrollbar-thumb': {
-                            background: 'var(--accent2)',
+                            background: 'var(--bg-hover)',
                             borderRadius: '4px',
                             '&:hover': {
-                                background: 'var(--accent)',
+                                background: 'var(--border-strong)',
                             },
                         },
                         minHeight: '200px',
@@ -136,7 +136,7 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                                         borderRadius: '4px',
                                         mb: 0.25,
                                         '&:hover': {
-                                            backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                            backgroundColor: 'var(--bg-hover)',
                                         },
                                         transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                                     }}
@@ -145,9 +145,9 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                                         checked={data.selected}
                                         onChange={(e) => handleBinSelect(unifyPath, e.target.checked)}
                                         sx={{
-                                            color: 'var(--text-2)',
+                                            color: 'var(--text-secondary)',
                                             '&.Mui-checked': {
-                                                color: 'var(--accent)',
+                                                color: 'var(--accent-primary)',
                                             },
                                             p: 0.25,
                                             mr: 1,
@@ -161,7 +161,7 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                                             <Typography
                                                 variant="body2"
                                                 sx={{
-                                                    color: 'var(--text-2)',
+                                                    color: 'var(--text-secondary)',
                                                     fontSize: '0.65rem',
                                                     opacity: 0.7,
                                                     fontFamily: 'JetBrains Mono, monospace',
@@ -174,7 +174,7 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                                             <Typography
                                                 variant="body2"
                                                 sx={{
-                                                    color: 'var(--text)',
+                                                    color: 'var(--text-primary)',
                                                     fontSize: '0.75rem',
                                                     fontWeight: '600',
                                                     fontFamily: 'JetBrains Mono, monospace',
@@ -186,11 +186,11 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                                                 <Typography
                                                     variant="body2"
                                                     sx={{
-                                                        color: 'var(--accent)',
+                                                        color: 'var(--accent-primary)',
                                                         fontSize: '0.7rem',
                                                         fontWeight: '700',
                                                         fontFamily: 'JetBrains Mono, monospace',
-                                                        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                                                        backgroundColor: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
                                                         px: 0.5,
                                                         py: 0.25,
                                                         borderRadius: '3px',

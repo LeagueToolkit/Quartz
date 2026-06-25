@@ -15,28 +15,42 @@ import {
     type ImageEntry,
     type RecolorParams,
 } from './utils/imgRecolorLogic';
+import { useFileDrop } from '@/lib/util/useFileDrop';
 import './ImgRecolor.css';
 
-// Celestial-style minimalistic button
+// File extensions ImgRecolor can decode; anything else dropped is treated as a folder.
+const IMG_RECOLOR_EXTS = ['.png', '.jpg', '.jpeg', '.jfif', '.bmp', '.tif', '.tiff', '.tex', '.dds'];
+
+function hasImageExt(p: string): boolean {
+    const dot = p.lastIndexOf('.');
+    if (dot < 0) return false;
+    return IMG_RECOLOR_EXTS.includes(p.slice(dot).toLowerCase());
+}
+
+function baseName(p: string): string {
+    const m = /[^/\\]+$/.exec(p);
+    return m ? m[0] : p;
+}
+
+// Flat design-lab toolbar button
 const celestialButtonStyle = {
-    background: 'rgba(0, 0, 0, 0.35)',
-    border: '2px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-    color: 'var(--accent)',
-    borderRadius: '8px',
-    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+    background: 'var(--bg-tertiary)',
+    border: '1px solid var(--border)',
+    color: 'var(--text-primary)',
+    borderRadius: 'var(--radius-sm)',
+    transition: 'background 140ms var(--ease-out), border-color 140ms var(--ease-out), transform 140ms var(--ease-out)',
     textTransform: 'none' as const,
-    fontFamily: 'JetBrains Mono, monospace',
+    fontFamily: 'var(--font-mono)',
     '&:hover': {
-        background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
-        borderColor: 'var(--accent)',
-        boxShadow: '0 0 15px color-mix(in srgb, var(--accent) 25%, transparent)',
+        background: 'var(--bg-hover)',
+        borderColor: 'color-mix(in oklab, var(--accent-primary) 45%, var(--border))',
         transform: 'translateY(-1px)',
     },
     '&:disabled': {
-        background: 'rgba(0, 0, 0, 0.2)',
-        borderColor: 'rgba(255, 255, 255, 0.05)',
-        color: 'var(--text-2)',
-        opacity: 0.4,
+        background: 'var(--bg-tertiary)',
+        borderColor: 'var(--border)',
+        color: 'var(--text-muted)',
+        opacity: 0.45,
         cursor: 'not-allowed',
     },
     '&:active': {
@@ -47,27 +61,27 @@ const celestialButtonStyle = {
 const sliderSx = {
     width: '100%',
     height: '8px',
-    color: 'var(--accent)',
+    color: 'var(--accent-primary)',
     '& .MuiSlider-track': {
-        background: 'linear-gradient(90deg, var(--accent-muted), var(--accent))',
+        background: 'linear-gradient(90deg, color-mix(in oklab, var(--accent-primary) 70%, var(--accent-secondary)), var(--accent-primary))',
         border: 'none',
-        height: '8px',
-        borderRadius: '4px',
+        height: '6px',
+        borderRadius: '999px',
     },
     '& .MuiSlider-rail': {
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        height: '8px',
-        borderRadius: '4px',
+        backgroundColor: 'var(--bg-tertiary)',
+        height: '6px',
+        borderRadius: '999px',
     },
     '& .MuiSlider-thumb': {
-        width: '20px',
-        height: '20px',
-        backgroundColor: 'var(--accent)',
-        border: '3px solid #fff',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-        transition: 'box-shadow 0.2s ease',
+        width: '16px',
+        height: '16px',
+        backgroundColor: '#fff',
+        border: '2px solid var(--accent-primary)',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+        transition: 'box-shadow 140ms var(--ease-out)',
         '&:hover, &.Mui-active': {
-            boxShadow: '0 6px 16px color-mix(in srgb, var(--accent), transparent 60%)',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.35), 0 0 0 6px color-mix(in oklab, var(--accent-primary) 22%, transparent)',
         },
     },
 };
@@ -291,21 +305,20 @@ const ImageThumbnail = memo(({ image, isSelected, onImageClick }: ImageThumbnail
             data-image-path={image.path}
             sx={{
                 position: 'relative',
-                background: 'rgba(255, 255, 255, 0.03)',
-                borderRadius: '8px',
+                background: 'var(--bg-tertiary)',
+                borderRadius: 'var(--radius-sm)',
                 overflow: 'hidden',
-                border: isSelected ? '2px solid var(--accent)' : '1px solid rgba(255, 255, 255, 0.06)',
+                border: isSelected ? '2px solid var(--accent-primary)' : '1px solid var(--border)',
                 cursor: 'pointer',
-                transition: 'all 0.2s',
+                transition: 'border-color 140ms var(--ease-out), box-shadow 140ms var(--ease-out)',
                 aspectRatio: '1',
                 display: 'flex',
                 flexDirection: 'column',
-                boxShadow: isSelected ? '0 0 20px color-mix(in srgb, var(--accent), transparent 80%)' : 'none',
+                boxShadow: 'none',
                 '&:hover': {
-                    border: isSelected ? '2px solid var(--accent)' : '1px solid var(--accent-muted)',
-                    boxShadow: isSelected
-                        ? '0 0 20px color-mix(in srgb, var(--accent), transparent 80%), 0 0 30px color-mix(in srgb, var(--accent), transparent 50%)'
-                        : '0 0 15px color-mix(in srgb, var(--accent-muted), transparent 60%)',
+                    border: isSelected
+                        ? '2px solid var(--accent-primary)'
+                        : '1px solid color-mix(in oklab, var(--accent-primary) 45%, var(--border))',
                 },
             }}
         >
@@ -319,16 +332,16 @@ const ImageThumbnail = memo(({ image, isSelected, onImageClick }: ImageThumbnail
                 <Checkbox
                     checked={isSelected}
                     sx={{
-                        color: 'var(--text-2)',
-                        background: 'var(--bg)',
-                        borderRadius: '4px',
+                        color: 'var(--text-muted)',
+                        background: 'var(--bg-primary)',
+                        borderRadius: 'var(--radius-sm)',
                         padding: '4px',
                         '&.Mui-checked': {
-                            color: 'var(--accent)',
-                            background: 'var(--bg)',
+                            color: 'var(--accent-primary)',
+                            background: 'var(--bg-primary)',
                         },
                         '&:hover': {
-                            background: 'var(--surface-2)',
+                            background: 'var(--bg-tertiary)',
                         },
                     }}
                 />
@@ -363,9 +376,9 @@ const ImageThumbnail = memo(({ image, isSelected, onImageClick }: ImageThumbnail
                     justifyContent: 'center',
                 }}>
                     <Typography sx={{
-                        color: 'var(--text-2)',
+                        color: 'var(--text-muted)',
                         fontSize: '0.7rem',
-                        fontFamily: 'JetBrains Mono, monospace',
+                        fontFamily: 'var(--font-mono)',
                     }}>
                         Loading...
                     </Typography>
@@ -377,8 +390,8 @@ const ImageThumbnail = memo(({ image, isSelected, onImageClick }: ImageThumbnail
                 p: 0.5,
             }}>
                 <Typography sx={{
-                    color: 'var(--text)',
-                    fontFamily: 'JetBrains Mono, monospace',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'var(--font-mono)',
                     fontSize: '0.65rem',
                     textAlign: 'center',
                     overflow: 'hidden',
@@ -456,8 +469,8 @@ const ProcessedImageCard = memo(({ imagePath, displayImage }: ProcessedImageCard
             )}
             <Typography sx={{
                 p: 1,
-                color: 'var(--text-2)',
-                fontFamily: 'JetBrains Mono, monospace',
+                color: 'var(--text-secondary)',
+                fontFamily: 'var(--font-mono)',
                 fontSize: '0.7rem',
                 textAlign: 'center',
                 overflow: 'hidden',
@@ -790,31 +803,66 @@ function ImgRecolor() {
         e.stopPropagation();
     }, []);
 
-    const handleDrop = useCallback(async (e: React.DragEvent) => {
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        // The OS drag-drop event (below) carries the absolute paths; just swallow
+        // the browser event so it doesn't navigate.
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(false);
         dragCounterRef.current = 0;
+    }, []);
 
-        // Tauri's webview does not expose dropped file paths through the HTML5
-        // dataTransfer API, so fall back to the file picker to stay usable.
-        // TODO(backend): resolve dropped paths via the native drag-drop event.
+    // Resolve dropped absolute paths from the native drag-drop event: image files
+    // load directly, dropped folders are scanned on the backend.
+    const loadDroppedPaths = useCallback(async (paths: string[]) => {
+        if (paths.length === 0) return;
         setIsLoading(true);
         try {
-            const result = await loadFolder(null, recursiveScan);
-            if (result) {
-                setFolderPath(result.folderPath);
-                setAllImages(result.images);
-                setSelectedImages(new Set(result.images.map((img) => img.path))); // Auto-select dropped files
-                setShowingSelection(true);
-                setLoadedImages(new Map());
+            const fileEntries: ImageEntry[] = [];
+            let scannedFolder: string | null = null;
+
+            for (const p of paths) {
+                if (hasImageExt(p)) {
+                    const ext = p.slice(p.lastIndexOf('.')).toLowerCase().replace('.', '');
+                    fileEntries.push({ path: p, name: baseName(p), type: ext });
+                } else {
+                    // Treat as a directory and enumerate its images on the backend.
+                    const result = await loadFolder(p, recursiveScan);
+                    if (result) {
+                        scannedFolder = result.folderPath;
+                        fileEntries.push(...result.images);
+                    }
+                }
             }
+
+            if (fileEntries.length === 0) return;
+
+            // Deduplicate while preserving order.
+            const seen = new Set<string>();
+            const images = fileEntries.filter((img) => (seen.has(img.path) ? false : seen.add(img.path)));
+
+            const folder = scannedFolder || images[0].path.replace(/[/\\][^/\\]*$/, '');
+            setFolderPath(folder);
+            setAllImages(images);
+            setSelectedImages(new Set(images.map((img) => img.path))); // Auto-select dropped files
+            setShowingSelection(true);
+            setLoadedImages(new Map());
         } catch (error) {
             console.error('Drop error:', error);
         } finally {
             setIsLoading(false);
         }
     }, [recursiveScan]);
+
+    useFileDrop({
+        onEnter: () => setIsDragging(true),
+        onLeave: () => setIsDragging(false),
+        onDrop: (paths) => {
+            setIsDragging(false);
+            dragCounterRef.current = 0;
+            void loadDroppedPaths(paths);
+        },
+    });
 
     return (
         <Box
@@ -823,7 +871,7 @@ function ImgRecolor() {
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
-                background: 'var(--bg)',
+                background: 'var(--bg-primary)',
                 position: 'relative',
                 overflow: 'hidden',
             }}
@@ -841,35 +889,35 @@ function ImgRecolor() {
                     right: 0,
                     bottom: 0,
                     zIndex: 100,
-                    background: 'rgba(0, 0, 0, 0.85)',
+                    background: 'color-mix(in oklab, var(--bg-primary) 85%, transparent)',
                     backdropFilter: 'blur(8px)',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: 2,
-                    border: '3px dashed var(--accent)',
-                    borderRadius: '12px',
+                    border: '3px dashed var(--accent-primary)',
+                    borderRadius: 'var(--radius-lg)',
                     margin: '16px',
                     animation: 'pulse-border 1.5s ease-in-out infinite',
                     pointerEvents: 'none',
                 }}>
                     <CloudUploadIcon sx={{
                         fontSize: '4rem',
-                        color: 'var(--accent)',
+                        color: 'var(--accent-primary)',
                         animation: 'float 2s ease-in-out infinite',
                     }} />
                     <Typography sx={{
-                        color: 'var(--accent)',
-                        fontFamily: 'JetBrains Mono, monospace',
+                        color: 'var(--accent-primary)',
+                        fontFamily: 'var(--font-mono)',
                         fontSize: '1.2rem',
                         fontWeight: 600,
                     }}>
                         Drop images or folder here
                     </Typography>
                     <Typography sx={{
-                        color: 'var(--text-2)',
-                        fontFamily: 'JetBrains Mono, monospace',
+                        color: 'var(--text-secondary)',
+                        fontFamily: 'var(--font-mono)',
                         fontSize: '0.85rem',
                     }}>
                         Supports TEX, DDS, PNG, JPG files
@@ -880,8 +928,8 @@ function ImgRecolor() {
             {/* Drag overlay animations */}
             <style>{`
         @keyframes pulse-border {
-          0%, 100% { border-color: var(--accent); box-shadow: 0 0 20px color-mix(in srgb, var(--accent), transparent 70%); }
-          50% { border-color: var(--accent-muted); box-shadow: 0 0 40px color-mix(in srgb, var(--accent), transparent 50%); }
+          0%, 100% { border-color: var(--accent-primary); }
+          50% { border-color: color-mix(in oklab, var(--accent-primary) 55%, var(--border)); }
         }
         @keyframes float {
           0%, 100% { transform: translateY(0); }
@@ -966,8 +1014,8 @@ function ImgRecolor() {
                         {/* Right side - Status text and Settings */}
                         <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
                             <Typography sx={{
-                                color: 'var(--text-2)',
-                                fontFamily: 'JetBrains Mono, monospace',
+                                color: 'var(--text-secondary)',
+                                fontFamily: 'var(--font-mono)',
                                 fontSize: '0.85rem',
                             }}>
                                 {folderPath ? `${allImages.length} images found` : 'No folder loaded'}
@@ -981,8 +1029,8 @@ function ImgRecolor() {
                                     height: '34px',
                                     padding: 0,
                                     minWidth: 'unset',
-                                    color: optionsOpen ? 'var(--accent)' : 'var(--text)',
-                                    borderColor: optionsOpen ? 'var(--accent)' : 'var(--accent-muted)',
+                                    color: optionsOpen ? 'var(--accent-primary)' : 'var(--text-primary)',
+                                    borderColor: optionsOpen ? 'var(--accent-primary)' : 'var(--border)',
                                 }}
                             >
                                 <SettingsIcon sx={{ fontSize: '1.1rem' }} />
@@ -997,10 +1045,10 @@ function ImgRecolor() {
                                 slotProps={{
                                     paper: {
                                         sx: {
-                                            background: 'var(--bg-2)',
-                                            border: '1px solid var(--accent-muted)',
-                                            borderRadius: '8px',
-                                            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+                                            background: 'var(--bg-secondary)',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: 'var(--radius)',
+                                            boxShadow: '0 8px 24px -8px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.25)',
                                             minWidth: '200px',
                                             mt: 0.5,
                                         },
@@ -1016,15 +1064,15 @@ function ImgRecolor() {
                                         justifyContent: 'space-between',
                                         padding: '8px 16px',
                                         cursor: 'pointer',
-                                        transition: 'background 150ms ease',
+                                        transition: 'background 140ms var(--ease-out)',
                                         '&:hover': {
-                                            background: 'rgba(255, 255, 255, 0.05)',
+                                            background: 'var(--bg-hover)',
                                         },
                                     }}
                                 >
                                     <Typography sx={{
-                                        color: 'var(--text)',
-                                        fontFamily: 'JetBrains Mono, monospace',
+                                        color: 'var(--text-primary)',
+                                        fontFamily: 'var(--font-mono)',
                                         fontSize: '0.85rem',
                                         userSelect: 'none',
                                     }}>
@@ -1039,16 +1087,16 @@ function ImgRecolor() {
                                         size="small"
                                         sx={{
                                             '& .MuiSwitch-switchBase': {
-                                                color: 'var(--text-2)',
+                                                color: 'var(--text-muted)',
                                             },
                                             '& .MuiSwitch-switchBase.Mui-checked': {
-                                                color: 'var(--accent)',
+                                                color: 'var(--accent-primary)',
                                             },
                                             '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                                backgroundColor: 'var(--accent-muted)',
+                                                backgroundColor: 'var(--accent-primary)',
                                             },
                                             '& .MuiSwitch-track': {
-                                                backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                                                backgroundColor: 'var(--bg-hover)',
                                             },
                                         }}
                                     />
@@ -1059,9 +1107,9 @@ function ImgRecolor() {
 
                     {/* Horizontal Divider */}
                     <Box sx={{
-                        height: '2px',
+                        height: '1px',
                         width: '100%',
-                        background: 'rgba(255, 255, 255, 0.1)',
+                        background: 'var(--border)',
                         flexShrink: 0,
                     }} />
 
@@ -1118,7 +1166,7 @@ function ImgRecolor() {
                                 justifyContent: 'center',
                                 height: '100%',
                             }}>
-                                <Typography sx={{ color: 'var(--text-2)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem' }}>
+                                <Typography sx={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>
                                     Load a folder to start
                                 </Typography>
                             </Box>
@@ -1128,8 +1176,8 @@ function ImgRecolor() {
 
                 {/* Vertical Divider */}
                 <Box sx={{
-                    width: '2px',
-                    background: 'rgba(255, 255, 255, 0.1)',
+                    width: '1px',
+                    background: 'var(--border)',
                     flexShrink: 0,
                     margin: '0 clamp(0.5rem, 1vw, 0.75rem)',
                 }} />
@@ -1155,8 +1203,8 @@ function ImgRecolor() {
                         <Typography sx={{
                             fontSize: 'clamp(1rem, 1.2vw, 1.1rem)',
                             fontWeight: '700',
-                            color: 'var(--accent)',
-                            fontFamily: 'JetBrains Mono, monospace',
+                            color: 'var(--text-primary)',
+                            fontFamily: 'var(--font-mono)',
                             marginBottom: '20px',
                         }}>
                             Color Adjustments
@@ -1166,21 +1214,22 @@ function ImgRecolor() {
                         <Box sx={{ marginBottom: '20px', flexShrink: 0 }}>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                                 <Typography sx={{
-                                    color: 'var(--accent)',
+                                    color: 'var(--text-secondary)',
                                     fontWeight: '600',
                                     fontSize: '14px',
-                                    fontFamily: 'JetBrains Mono, monospace',
+                                    fontFamily: 'var(--font-mono)',
                                 }}>
                                     Target Hue
                                 </Typography>
                                 <Typography sx={{
-                                    color: 'var(--accent-muted)',
+                                    color: 'var(--accent-primary)',
                                     fontWeight: '600',
                                     fontSize: '14px',
-                                    fontFamily: 'JetBrains Mono, monospace',
-                                    background: 'rgba(255,255,255,0.05)',
+                                    fontFamily: 'var(--font-mono)',
+                                    background: 'var(--bg-tertiary)',
+                                    border: '1px solid var(--border)',
                                     padding: '4px 8px',
-                                    borderRadius: '6px',
+                                    borderRadius: 'var(--radius-sm)',
                                     minWidth: '50px',
                                     textAlign: 'center',
                                 }}>
@@ -1201,21 +1250,22 @@ function ImgRecolor() {
                         <Box sx={{ marginBottom: '20px', flexShrink: 0 }}>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                                 <Typography sx={{
-                                    color: 'var(--accent)',
+                                    color: 'var(--text-secondary)',
                                     fontWeight: '600',
                                     fontSize: '14px',
-                                    fontFamily: 'JetBrains Mono, monospace',
+                                    fontFamily: 'var(--font-mono)',
                                 }}>
                                     Saturation
                                 </Typography>
                                 <Typography sx={{
-                                    color: 'var(--accent-muted)',
+                                    color: 'var(--accent-primary)',
                                     fontWeight: '600',
                                     fontSize: '14px',
-                                    fontFamily: 'JetBrains Mono, monospace',
-                                    background: 'rgba(255,255,255,0.05)',
+                                    fontFamily: 'var(--font-mono)',
+                                    background: 'var(--bg-tertiary)',
+                                    border: '1px solid var(--border)',
                                     padding: '4px 8px',
-                                    borderRadius: '6px',
+                                    borderRadius: 'var(--radius-sm)',
                                     minWidth: '50px',
                                     textAlign: 'center',
                                 }}>
@@ -1236,21 +1286,22 @@ function ImgRecolor() {
                         <Box sx={{ marginBottom: '20px', flexShrink: 0 }}>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                                 <Typography sx={{
-                                    color: 'var(--accent)',
+                                    color: 'var(--text-secondary)',
                                     fontWeight: '600',
                                     fontSize: '14px',
-                                    fontFamily: 'JetBrains Mono, monospace',
+                                    fontFamily: 'var(--font-mono)',
                                 }}>
                                     Lightness
                                 </Typography>
                                 <Typography sx={{
-                                    color: 'var(--accent-muted)',
+                                    color: 'var(--accent-primary)',
                                     fontWeight: '600',
                                     fontSize: '14px',
-                                    fontFamily: 'JetBrains Mono, monospace',
-                                    background: 'rgba(255,255,255,0.05)',
+                                    fontFamily: 'var(--font-mono)',
+                                    background: 'var(--bg-tertiary)',
+                                    border: '1px solid var(--border)',
                                     padding: '4px 8px',
-                                    borderRadius: '6px',
+                                    borderRadius: 'var(--radius-sm)',
                                     minWidth: '50px',
                                     textAlign: 'center',
                                 }}>
@@ -1271,21 +1322,22 @@ function ImgRecolor() {
                         <Box sx={{ marginBottom: '20px', flexShrink: 0 }}>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                                 <Typography sx={{
-                                    color: 'var(--accent)',
+                                    color: 'var(--text-secondary)',
                                     fontWeight: '600',
                                     fontSize: '14px',
-                                    fontFamily: 'JetBrains Mono, monospace',
+                                    fontFamily: 'var(--font-mono)',
                                 }}>
                                     Opacity
                                 </Typography>
                                 <Typography sx={{
-                                    color: 'var(--accent-muted)',
+                                    color: 'var(--accent-primary)',
                                     fontWeight: '600',
                                     fontSize: '14px',
-                                    fontFamily: 'JetBrains Mono, monospace',
-                                    background: 'rgba(255,255,255,0.05)',
+                                    fontFamily: 'var(--font-mono)',
+                                    background: 'var(--bg-tertiary)',
+                                    border: '1px solid var(--border)',
                                     padding: '4px 8px',
-                                    borderRadius: '6px',
+                                    borderRadius: 'var(--radius-sm)',
                                     minWidth: '50px',
                                     textAlign: 'center',
                                 }}>
@@ -1313,22 +1365,22 @@ function ImgRecolor() {
                                 checked={preserveOriginalColors}
                                 onChange={(e) => setPreserveOriginalColors(e.target.checked)}
                                 sx={{
-                                    color: 'var(--accent-muted)',
+                                    color: 'var(--text-muted)',
                                     padding: '4px',
                                     marginRight: '4px',
                                     '&.Mui-checked': {
-                                        color: 'var(--accent)',
+                                        color: 'var(--accent-primary)',
                                     },
                                     '&:hover': {
-                                        background: 'rgba(255,255,255,0.05)',
+                                        background: 'var(--bg-hover)',
                                     },
                                 }}
                             />
                             <Typography
                                 sx={{
-                                    color: 'var(--text)',
+                                    color: 'var(--text-primary)',
                                     fontSize: '13px',
-                                    fontFamily: 'JetBrains Mono, monospace',
+                                    fontFamily: 'var(--font-mono)',
                                     cursor: 'pointer',
                                     userSelect: 'none',
                                 }}
@@ -1351,15 +1403,15 @@ function ImgRecolor() {
                     animation: 'slideIn 0.3s ease-out',
                 }}>
                     <div style={{
-                        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.95), rgba(5, 150, 105, 0.95))',
-                        border: '1px solid rgba(16, 185, 129, 0.5)',
-                        borderRadius: '12px',
+                        background: 'color-mix(in oklab, var(--color-success) 18%, var(--bg-secondary))',
+                        border: '1px solid color-mix(in oklab, var(--color-success) 40%, var(--border))',
+                        borderRadius: 'var(--radius)',
                         padding: '16px 24px',
-                        color: 'white',
-                        fontFamily: 'JetBrains Mono, monospace',
+                        color: 'var(--text-primary)',
+                        fontFamily: 'var(--font-mono)',
                         fontSize: '14px',
                         fontWeight: '600',
-                        boxShadow: '0 12px 32px rgba(0, 0, 0, 0.4)',
+                        boxShadow: '0 12px 28px rgba(0, 0, 0, 0.45)',
                         backdropFilter: 'blur(10px)',
                     }}>
                         {toastMessage}

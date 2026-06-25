@@ -146,8 +146,15 @@ const CelestiaGuide = ({
 
             {/* Speech bubble */}
             <div
-                className="relative bg-gradient-to-br from-[#0f0e13] via-[#1a1825] to-[#25222f] rounded-2xl border border-[#a855f7]/50 shadow-2xl backdrop-blur-sm w-96 p-4 pr-10 flex flex-col"
-                style={{ position: 'relative', zIndex: 9000, minHeight: 180, order: isTopRight ? 1 : 2 }}
+                className="relative rounded-2xl shadow-2xl backdrop-blur-sm w-96 p-4 pr-10 flex flex-col"
+                style={{
+                    position: 'relative',
+                    zIndex: 9000,
+                    minHeight: 180,
+                    order: isTopRight ? 1 : 2,
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid color-mix(in oklab, var(--accent-primary) 45%, var(--border))',
+                }}
             >
                 {/* Close */}
                 <button
@@ -157,38 +164,41 @@ const CelestiaGuide = ({
                         }
                         handleSkip();
                     }}
-                    className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-white hover:bg-[#e53e3e] transition-colors"
+                    className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center transition-colors text-[var(--text-secondary)] hover:text-white hover:bg-[var(--color-danger)]"
                     aria-label="Close"
                 >
                     <X size={14} />
                 </button>
 
                 {/* Decorative top bar */}
-                <div className="absolute -top-1 left-4 right-4 h-1.5 rounded-full bg-gradient-to-r from-[#a855f7] via-[#c084fc] to-[#a855f7]" />
+                <div
+                    className="absolute -top-1 left-4 right-4 h-1.5 rounded-full"
+                    style={{ background: 'linear-gradient(90deg, var(--accent-secondary), var(--accent-primary), var(--accent-secondary))' }}
+                />
 
                 {/* Header */}
                 <div className="flex items-center gap-2 mb-1">
-                    <div className="w-2.5 h-2.5 bg-[#fbbf24] rounded-full animate-pulse shadow-lg" />
-                    <h3 className="text-[#fbbf24] font-semibold text-xs tracking-wide">Guide</h3>
-                    <div className="ml-auto text-[10px] text-gray-300/80">Step {stepIndex + 1} of {total}</div>
+                    <div className="w-2.5 h-2.5 rounded-full animate-pulse bg-[var(--accent-primary)]" />
+                    <h3 className="font-semibold text-xs tracking-wide text-[var(--accent-primary)]">Guide</h3>
+                    <div className="ml-auto text-[10px] text-[var(--text-muted)]">Step {stepIndex + 1} of {total}</div>
                 </div>
 
-                <div className="mb-1 text-[#ecb96a] font-semibold text-sm">{current.title}</div>
-                <p className="text-[#f3f4f6] text-sm leading-relaxed">{current.text}</p>
+                <div className="mb-1 font-semibold text-sm text-[var(--text-primary)]">{current.title}</div>
+                <p className="text-sm leading-relaxed text-[var(--text-secondary)]">{current.text}</p>
 
                 {/* Actions */}
                 <div className="mt-auto pt-2 flex items-center gap-2 flex-nowrap">
                     <button
                         onClick={handlePrev}
                         disabled={stepIndex === 0}
-                        className={`px-2 py-1 h-7 leading-none whitespace-nowrap rounded-full border text-xs flex items-center gap-1 transition ` +
-                            `${stepIndex === 0 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-white/10'}`}
+                        className={`px-2 py-1 h-7 leading-none whitespace-nowrap rounded-full border border-[var(--border)] text-xs flex items-center gap-1 transition text-[var(--text-secondary)] ` +
+                            `${stepIndex === 0 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-[var(--bg-hover)]'}`}
                     >
                         <ChevronLeft size={14} /> Prev
                     </button>
                     <button
                         onClick={handleNext}
-                        className="px-3 py-1 h-7 leading-none whitespace-nowrap rounded-full border border-[#a855f7]/60 bg-white/5 hover:bg-white/10 text-xs flex items-center gap-1"
+                        className="px-3 py-1 h-7 leading-none whitespace-nowrap rounded-full border text-xs flex items-center gap-1 border-[color-mix(in_oklab,var(--accent-primary)_50%,var(--border))] bg-[color-mix(in_oklab,var(--accent-primary)_12%,transparent)] text-[var(--text-primary)] hover:bg-[color-mix(in_oklab,var(--accent-primary)_22%,transparent)]"
                     >
                         {stepIndex < total - 1 ? 'Next' : 'Finish'} <ChevronRight size={14} />
                     </button>
@@ -199,7 +209,7 @@ const CelestiaGuide = ({
                             }
                             handleSkip();
                         }}
-                        className="ml-auto h-7 leading-none whitespace-nowrap text-[11px] text-gray-300/80 hover:text-white"
+                        className="ml-auto h-7 leading-none whitespace-nowrap text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                     >
                         Skip tour
                     </button>
@@ -207,9 +217,9 @@ const CelestiaGuide = ({
 
                 {/* Tail pointer - points towards character */}
                 {isTopRight ? (
-                    <div className="absolute right-0 top-6 translate-x-full w-0 h-0 border-t-8 border-b-8 border-l-8 border-t-transparent border-b-transparent border-l-[#1a1825]" />
+                    <div className="absolute right-0 top-6 translate-x-full w-0 h-0 border-t-8 border-b-8 border-l-8 border-t-transparent border-b-transparent border-l-[var(--bg-secondary)]" />
                 ) : (
-                    <div className="absolute left-0 bottom-6 -translate-x-full w-0 h-0 border-t-8 border-b-8 border-r-8 border-t-transparent border-b-transparent border-r-[#1a1825]" />
+                    <div className="absolute left-0 bottom-6 -translate-x-full w-0 h-0 border-t-8 border-b-8 border-r-8 border-t-transparent border-b-transparent border-r-[var(--bg-secondary)]" />
                 )}
             </div>
 
@@ -228,8 +238,14 @@ const CelestiaGuide = ({
                         target.parentElement?.appendChild(fallback);
                     }}
                 />
-                <div className="absolute inset-0 rounded-full blur-2xl -z-10 bg-gradient-to-br from-[#783CB5]/30 via-[#9333ea]/20 to-[#a855f7]/30" />
-                <div className="absolute top-2 right-2 w-8 h-8 bg-gradient-to-br from-[#34d399] to-[#10b981] rounded-full flex items-center justify-center text-lg font-bold text-black animate-bounce border border-white/70 shadow-lg">
+                <div
+                    className="absolute inset-0 rounded-full blur-xl -z-10"
+                    style={{ background: 'radial-gradient(circle, color-mix(in oklab, var(--accent-primary) 25%, transparent), transparent 70%)' }}
+                />
+                <div
+                    className="absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center text-lg font-bold animate-bounce shadow-lg"
+                    style={{ background: 'var(--accent-primary)', color: '#fff', border: '1px solid color-mix(in oklab, white 70%, transparent)' }}
+                >
                     {stepIndex + 1}
                 </div>
             </div>

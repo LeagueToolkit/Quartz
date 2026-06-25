@@ -19,8 +19,6 @@ export const PAGE_DEFAULTS: Partial<Record<Page, boolean>> = {
     soundbanks: true,
     bumpath: false,
     aniport: false,
-    extractor: false,
-    wadexplorer: true,
     fakegear: false,
     particlerandomizer: false,
 };
@@ -37,8 +35,6 @@ export const PAGE_LABELS: { page: Page; label: string }[] = [
     { page: 'soundbanks', label: 'Sound Banks' },
     { page: 'bumpath', label: 'Bumpath' },
     { page: 'aniport', label: 'AniPort' },
-    { page: 'extractor', label: 'Asset Extractor' },
-    { page: 'wadexplorer', label: 'WAD Explorer' },
     { page: 'fakegear', label: 'FakeGear' },
     { page: 'particlerandomizer', label: 'Particle Randomizer' },
     { page: 'paint', label: 'Paint' },

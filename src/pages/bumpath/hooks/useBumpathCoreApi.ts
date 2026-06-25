@@ -1,16 +1,16 @@
 import { useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { bumpathRepath } from '@/lib/api/bumpath';
 import type { ScannedData, SourceBins } from '../utils/types';
 
 /* The original Electron build ran a client-side `BumpathCore` (jsritofile + fs)
    that enumerated source folders, parsed BINs, scanned referenced assets and
-   wrote the repathed output entirely in the renderer. None of that is available
-   under Tauri: the only real backend is `bumpath_repath(folder, options)`, which
-   scans + repaths a whole folder server-side in one shot.
+   wrote the repathed output entirely in the renderer. Under Tauri the same work
+   is done server-side: `bumpath_enumerate_sources` lists the source BINs,
+   `bumpath_scan_entries` previews their entries/assets, and `bumpath_repath`
+   scans + repaths a whole folder in one shot.
 
-   This hook keeps the original endpoint surface so the panels/hooks stay 1:1.
-   The enumeration/scan endpoints are stubbed and flagged // TODO(backend) until a
-   scan wrapper lands; `process` calls the real backend so Run works end to end. */
+   This hook keeps the original endpoint surface so the panels/hooks stay 1:1. */
 
 export interface ApiResult {
     success: boolean;
@@ -50,13 +50,18 @@ export default function useBumpathCoreApi({ addLog }: UseBumpathCoreApiArgs): Bu
         try {
             switch (endpoint) {
                 case 'add-source-dirs': {
-                    /* TODO(backend): enumerate .bin files in the source folders. No scan
-                       wrapper exists yet, so register each added folder as a single bin. */
-                    const bins: SourceBins = {};
-                    (data.sourceDirs || []).forEach((dir) => {
-                        bins[dir] = { path: dir, rel_path: dir, selected: false };
+                    // Enumerate every .bin under the source folders, keyed by absolute path.
+                    const result = await invoke<{
+                        source_files: Record<string, unknown>;
+                        source_bins: SourceBins;
+                    }>('bumpath_enumerate_sources', {
+                        folders: data.sourceDirs || [],
                     });
-                    return { success: true, source_files: {}, source_bins: bins };
+                    return {
+                        success: true,
+                        source_files: result.source_files || {},
+                        source_bins: result.source_bins || {},
+                    };
                 }
 
                 case 'update-bin-selection':
@@ -64,9 +69,19 @@ export default function useBumpathCoreApi({ addLog }: UseBumpathCoreApiArgs): Bu
                     return { success: true };
 
                 case 'scan': {
-                    /* TODO(backend): per-entry BIN scan is not exposed by the Rust backend.
-                       Return an empty scan so the entries panel renders its empty state. */
-                    return { success: true, data: { entries: {}, all_bins: {} } };
+                    // Open the selected BINs and preview their entries + referenced assets.
+                    const binPaths = Object.entries(data.binSelections || {})
+                        .filter(([, selected]) => selected)
+                        .map(([path]) => path);
+                    if (binPaths.length === 0) {
+                        return { success: true, data: { entries: {}, all_bins: {} } };
+                    }
+                    const data_ = await invoke<ScannedData>('bumpath_scan_entries', {
+                        folders: data.folders || [],
+                        binPaths,
+                        hashesPath: data.hashesPath || null,
+                    });
+                    return { success: true, data: data_ };
                 }
 
                 case 'apply-prefix':

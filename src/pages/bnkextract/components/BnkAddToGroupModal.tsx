@@ -3,32 +3,32 @@ import type { BnkNode } from '../types';
 
 const styles: Record<string, CSSProperties> = {
     overlay: { position: 'fixed', inset: 0, zIndex: 1400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px' },
-    backdrop: { position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' },
+    backdrop: { position: 'absolute', inset: 0, background: 'color-mix(in oklab, var(--bg-primary) 75%, transparent)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' },
     modal: {
         position: 'relative', width: '100%', maxWidth: 360,
-        background: 'var(--glass-bg)', border: '1px solid var(--glass-border)',
+        background: 'var(--bg-secondary)', border: '1px solid var(--border)',
         backdropFilter: 'saturate(180%) blur(16px)', WebkitBackdropFilter: 'saturate(180%) blur(16px)',
-        borderRadius: 16, boxShadow: '0 30px 70px rgba(0,0,0,0.55), 0 0 30px color-mix(in srgb, var(--accent2), transparent 82%)',
+        borderRadius: 16, boxShadow: '0 30px 70px color-mix(in oklab, var(--bg-primary) 55%, transparent)',
         overflow: 'hidden', fontFamily: 'JetBrains Mono, monospace',
     },
-    accentBar: { height: 3, background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' },
+    accentBar: { height: 3, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' },
     body: { padding: 24 },
     header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-    title: { fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)', margin: 0, fontFamily: 'JetBrains Mono, monospace' },
-    subtitle: { fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', margin: '0 0 14px 0', fontFamily: 'JetBrains Mono, monospace' },
+    title: { fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)', margin: 0, fontFamily: 'JetBrains Mono, monospace' },
+    subtitle: { fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0 0 14px 0', fontFamily: 'JetBrains Mono, monospace' },
     list: { display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto' },
     groupBtn: {
         display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: 8,
-        border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace',
+        border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace',
         fontSize: '0.82rem', cursor: 'pointer', transition: 'all 0.15s ease',
     },
     folderIcon: { fontSize: '0.9rem', opacity: 0.6, flexShrink: 0 },
     groupName: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-    childCount: { fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)', flexShrink: 0 },
-    footer: { display: 'flex', justifyContent: 'flex-end', marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.07)' },
+    childCount: { fontSize: '0.65rem', color: 'var(--text-muted)', flexShrink: 0 },
+    footer: { display: 'flex', justifyContent: 'flex-end', marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' },
     cancelBtn: {
-        padding: '7px 16px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)',
-        color: 'rgba(255,255,255,0.75)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s ease',
+        padding: '7px 16px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-tertiary)',
+        color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s ease',
     },
 };
 
@@ -62,7 +62,7 @@ export default function BnkAddToGroupModal({ open, count, groups, onConfirm, onC
                         <h2 style={styles.title}>Add to Group</h2>
                         <button
                             onClick={onCancel}
-                            style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', cursor: 'pointer' }}
+                            style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--text-secondary)', border: '1px solid var(--border)', background: 'var(--bg-tertiary)', cursor: 'pointer' }}
                         >✕</button>
                     </div>
                     <p style={styles.subtitle}>{count} file{count !== 1 ? 's' : ''} — pick a group</p>
@@ -73,14 +73,14 @@ export default function BnkAddToGroupModal({ open, count, groups, onConfirm, onC
                                 key={group.id}
                                 style={styles.groupBtn}
                                 onMouseEnter={(e) => {
-                                    e.currentTarget.style.background = 'color-mix(in srgb, var(--accent), transparent 85%)';
-                                    e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--accent), transparent 60%)';
-                                    e.currentTarget.style.color = 'var(--accent)';
+                                    e.currentTarget.style.background = 'color-mix(in oklab, var(--accent-primary) 15%, transparent)';
+                                    e.currentTarget.style.borderColor = 'color-mix(in oklab, var(--accent-primary) 40%, transparent)';
+                                    e.currentTarget.style.color = 'var(--accent-primary)';
                                 }}
                                 onMouseLeave={(e) => {
-                                    e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
-                                    e.currentTarget.style.color = 'var(--text)';
+                                    e.currentTarget.style.background = 'var(--bg-tertiary)';
+                                    e.currentTarget.style.borderColor = 'var(--border)';
+                                    e.currentTarget.style.color = 'var(--text-primary)';
                                 }}
                                 onClick={() => onConfirm(group.id)}
                             >
@@ -94,8 +94,8 @@ export default function BnkAddToGroupModal({ open, count, groups, onConfirm, onC
                     <div style={styles.footer}>
                         <button
                             style={styles.cancelBtn}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-tertiary)'; }}
                             onClick={onCancel}
                         >Cancel</button>
                     </div>
