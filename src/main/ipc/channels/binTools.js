@@ -18,16 +18,29 @@ function fnv1a(s) {
 // LoL VFX bin color field names. RGBA-typed fields are always copied; VEC4
 // fields are only copied if their field-name hash is in this set, since VEC4
 // is also used for positions, scales, etc.
-const VFX_COLOR_FIELD_NAMES = [
+const VFX_COLOR_BASE = [
+    // Lifecycle colors
     'color', 'startColor', 'endColor', 'peakColor', 'lingerColor',
+    'birthColor', 'deathColor',
+    // Indexed slots
     'color0', 'color1', 'color2', 'color3', 'color4', 'color5', 'color6', 'color7',
+    // Animation curves
     'colorOverTime', 'colorOverLifetime',
     'colorStart', 'colorMid', 'colorEnd',
+    // Particle/tint
     'particleColor', 'tintColor', 'colorTint',
-    'reflectionColor', 'emissiveColor', 'diffuseColor', 'baseColor',
+    // Material
+    'reflectionColor', 'reflectionFresnelColor',
+    'emissiveColor', 'diffuseColor', 'baseColor',
     'edgeColor', 'fresnelColor', 'rimColor',
-    'mEmissiveColor', 'mDiffuseColor',
+    // Bounds
     'colorMin', 'colorMax',
+];
+// Riot mirrors most VFX bin fields with an `m`-prefixed (member) variant;
+// accept both with and without the prefix without duplicating the source.
+const VFX_COLOR_FIELD_NAMES = [
+    ...VFX_COLOR_BASE,
+    ...VFX_COLOR_BASE.map((n) => 'm' + n.charAt(0).toUpperCase() + n.slice(1)),
 ];
 const VFX_COLOR_HASH_SET = new Set(VFX_COLOR_FIELD_NAMES.map(fnv1a));
 
