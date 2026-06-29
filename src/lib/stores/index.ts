@@ -4,7 +4,7 @@ export { useNavigationStore, type Page } from './navigationStore';
 export { useConfigStore } from './configStore';
 export { useNotificationStore } from './notificationStore';
 export { useThemeStore } from './themeStore';
-export { useUiPrefsStore, applyUiPrefs, TOGGLEABLE_PAGES, type InterfaceStyle } from './uiPrefsStore';
+export { useUiPrefsStore, applyUiPrefs, TOGGLEABLE_PAGES } from './uiPrefsStore';
 export { usePaintStore, type HslValues, type PaintState } from './paintStore';
 export { usePortStore, type PortResidentState } from './portStore';
 

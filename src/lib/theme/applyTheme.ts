@@ -1,4 +1,4 @@
-import type { ThemeTokens, InterfaceStyle } from './types';
+import type { ThemeTokens } from './types';
 
 /* ── color helpers (ported from Quartz themeManager) ─────────────────────── */
 
@@ -28,14 +28,6 @@ export function withAlpha(hex: string, alpha = 0.35): string {
     if (!isHexColor(hex)) return hex;
     const { r, g, b } = hexToRgb(hex);
     return `rgba(${r}, ${g}, ${b}, ${clamp01(alpha)})`;
-}
-
-function normalizeBlurValue(value?: string): string {
-    if (value === undefined || value === null) return '';
-    const raw = String(value).trim();
-    if (!raw) return '';
-    if (/^-?\d+(\.\d+)?$/.test(raw)) return `${raw}px`;
-    return raw;
 }
 
 function setOptionalCssVar(root: HTMLElement, name: string, value?: string) {
@@ -93,11 +85,6 @@ export function applyTheme(rawTokens: Partial<ThemeTokens>, id?: string) {
     root.style.setProperty('--glass-border', t.glassBorder!);
     root.style.setProperty('--glass-shadow', t.glassShadow!);
 
-    // Liquid-glass button tuning (optional).
-    setOptionalCssVar(root, '--liquid-button-bg', t.liquidButtonTint);
-    setOptionalCssVar(root, '--liquid-button-hover-bg', t.liquidButtonHoverTint);
-    setOptionalCssVar(root, '--liquid-button-blur', normalizeBlurValue(t.liquidButtonBlur));
-
     // MUI palette (optional — only builtins carry these).
     setOptionalCssVar(root, '--mui-primary', t.muiPrimary);
     setOptionalCssVar(root, '--mui-primary-light', t.muiPrimaryLight);
@@ -133,11 +120,4 @@ export function applyTheme(rawTokens: Partial<ThemeTokens>, id?: string) {
     root.style.setProperty('--border', t.muiDivider || t.glassBorder!);
     root.style.setProperty('--color-success', t.accentGreen || '#3FB950');
     // Status warning/danger/info stay theme-independent (defined in theme.css).
-}
-
-/* Interface styles (winforms/liquid/minecraft) were removed; the app is always
-   the Quartz style now. Kept as a no-op-ish setter so existing callers compile
-   and any stale CSS keyed on data-style="quartz" still matches. */
-export function applyInterfaceStyle(_style?: InterfaceStyle | string) {
-    document.documentElement.setAttribute('data-style', 'quartz');
 }

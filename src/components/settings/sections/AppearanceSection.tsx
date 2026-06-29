@@ -3,8 +3,9 @@ import { Type, FolderOpen, RefreshCw, Plus, Trash2, FlaskConical } from 'lucide-
 import { open } from '@tauri-apps/plugin-dialog';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { FormGroup, CustomSelect, ThemeCard, Button } from '../primitives';
-import { useThemeStore, useUiPrefsStore, applyUiPrefs } from '@/lib/stores';
+import { FormGroup, CustomSelect, Button } from '../primitives';
+import { ThemeCardGrid } from '../ThemeCardGrid';
+import { useUiPrefsStore, applyUiPrefs } from '@/lib/stores';
 import { CLICK_EFFECT_TYPES, BACKGROUND_EFFECT_TYPES } from '@/lib/theme/behaviors';
 import { refreshFonts, applyFont, openFontsFolder, type FontOption } from '@/lib/fonts/fontManager';
 import {
@@ -61,9 +62,6 @@ async function openDesignLab() {
 }
 
 export function AppearanceSection() {
-    const themes = useThemeStore((s) => s.themes);
-    const activeTheme = useThemeStore((s) => s.activeId);
-    const setActive = useThemeStore((s) => s.setActive);
     const prefs = useUiPrefsStore();
     const set = prefs.set;
 
@@ -119,14 +117,8 @@ export function AppearanceSection() {
                 </Checkbox>
             </FormGroup>
 
-            <FormGroup label="Color Theme" description="Choose your preferred color scheme">
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
-                    {themes.map((t) => (
-                        <ThemeCard key={t.id} name={t.name}
-                            desc={t.builtin ? 'Built-in' : 'Custom Theme'}
-                            selected={activeTheme === t.id} onClick={() => setActive(t.id)} />
-                    ))}
-                </div>
+            <FormGroup label="Color Theme" description="Pick a base, choose a theme, click its dot to customize the accent">
+                <ThemeCardGrid />
             </FormGroup>
 
             <FormGroup label="Design Lab" description="Open a window showcasing every standardized UI element (buttons, inputs, sliders, toggles, modals)">

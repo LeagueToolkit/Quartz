@@ -1,0 +1,109 @@
+/* Celestial-style theme picker cards. */
+
+.q-themegrid {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.q-themegrid__base {
+    display: flex;
+    gap: 8px;
+    max-width: 240px;
+}
+
+.q-themegrid__cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+}
+
+.q-themecard {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-secondary);
+    cursor: pointer;
+    font-family: inherit;
+    transition: border-color var(--motion-fast), box-shadow var(--motion-fast), transform var(--motion-fast);
+}
+.q-themecard:hover { transform: translateY(-2px); border-color: var(--text-muted); }
+.q-themecard.is-active {
+    border-color: var(--tc-accent);
+    box-shadow: 0 0 18px color-mix(in oklab, var(--tc-accent) 28%, transparent);
+}
+
+/* Mockup */
+.q-themecard__mock {
+    display: flex;
+    align-items: flex-end;
+    gap: 5px;
+    height: 78px;
+    padding: 10px;
+}
+.q-themecard__rail {
+    width: 12px;
+    height: 100%;
+    border-radius: 3px;
+}
+.q-themecard__rows {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    flex: 1;
+}
+.q-themecard__row { display: flex; gap: 5px; }
+.q-themecard__tile { flex: 1; height: 18px; border-radius: 3px; }
+.q-themecard__row:last-child .q-themecard__tile { height: 24px; }
+
+/* Foot */
+.q-themecard__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 11px;
+    background: var(--bg-tertiary);
+}
+.q-themecard__name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.q-themecard__controls {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.q-themecard__dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid color-mix(in oklab, white 30%, transparent);
+    cursor: pointer;
+    transition: transform var(--motion-fast);
+}
+.q-themecard__dot:hover { transform: scale(1.18); }
+.q-themecard__reset {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color var(--motion-fast), background var(--motion-fast);
+}
+.q-themecard__reset:hover { color: var(--text-primary); background: var(--bg-hover); }
+.q-themecard__check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+}

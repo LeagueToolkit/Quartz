@@ -153,25 +153,6 @@ export const ToggleSwitch = ({ label, checked, onChange, compact }: {
     </label>
 );
 
-export const ThemeCard = ({ name, desc, selected, onClick }: {
-    name: string; desc: string; selected: boolean; onClick: () => void;
-}) => (
-    <button
-        onClick={onClick}
-        style={{
-            padding: '12px',
-            background: selected ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.02)',
-            border: `1px solid ${selected ? 'var(--accent)' : 'rgba(255,255,255,0.06)'}`,
-            borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s ease', textAlign: 'left', fontFamily: 'inherit',
-        }}
-        onMouseEnter={(e) => { if (!selected) { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; } }}
-        onMouseLeave={(e) => { if (!selected) { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; } }}
-    >
-        <div style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--settings-ink, var(--accent))', marginBottom: '4px' }}>{name}</div>
-        <div style={{ fontSize: '11px', color: 'var(--settings-muted, var(--accent-2))' }}>{desc}</div>
-    </button>
-);
-
 export const StatusBadge = ({ status, text }: { status: 'success' | 'warning'; text: string }) => (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', background: status === 'success' ? 'rgba(74,222,128,0.1)' : 'rgba(251,191,36,0.1)', border: `1px solid ${status === 'success' ? 'rgba(74,222,128,0.3)' : 'rgba(251,191,36,0.3)'}`, borderRadius: '6px', fontSize: '12px', color: status === 'success' ? '#4ade80' : '#fbbf24' }}>
         {status === 'success' ? <Check size={14} /> : <AlertTriangle size={14} />}

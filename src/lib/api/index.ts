@@ -9,7 +9,7 @@ export {
 } from './hashes';
 export { getLeaguePath } from './league';
 export {
-    readFileBase64, getFontsDir, listFonts, getCursorsDir, listCursors,
+    readFileBase64, getFontsDir, listFonts,
     getWallpapersDir, listWallpapers, importWallpaper, deleteWallpaper,
     type AssetFile, type WallpaperItem,
 } from './assets';

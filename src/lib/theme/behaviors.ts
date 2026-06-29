@@ -1,12 +1,6 @@
-import type { ThemeBehavior } from './types';
-
 /* The per-theme interface-style / wallpaper / effect presets and the multi-style
-   picker were removed in the theme rework. Themes are now pure colour schemes.
-   getThemeBehavior is kept as a stable no-op so existing callers compile. */
-
-export function getThemeBehavior(_themeId: string): ThemeBehavior | null {
-    return null;
-}
+   picker were removed in the theme rework. Only the effect option lists below
+   remain — themes are now pure colour schemes. */
 
 // Click/background effect option lists (still used by the effect pickers).
 export const CLICK_EFFECT_TYPES: { id: string; name: string }[] = [

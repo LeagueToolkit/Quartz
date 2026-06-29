@@ -22,13 +22,6 @@ export function listFonts(): Promise<AssetFile[]> {
     return invokeCommand<AssetFile[]>('list_fonts');
 }
 
-export function getCursorsDir(): Promise<string> {
-    return invokeCommand<string>('get_cursors_dir');
-}
-export function listCursors(): Promise<AssetFile[]> {
-    return invokeCommand<AssetFile[]>('list_cursors');
-}
-
 export function getWallpapersDir(): Promise<string> {
     return invokeCommand<string>('get_wallpapers_dir');
 }

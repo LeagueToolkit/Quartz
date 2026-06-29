@@ -5,10 +5,9 @@ import { PathsSection } from '@/components/settings/sections/PathsSection';
 import { ToolsSection } from '@/components/settings/sections/ToolsSection';
 import { WindowsIntegrationSection } from '@/components/settings/sections/WindowsIntegrationSection';
 import { PageVisibilitySection } from '@/components/settings/sections/PageVisibilitySection';
-import { ThemeCreatorSection } from '@/components/settings/sections/ThemeCreatorSection';
 import { GitHubSection } from '@/components/settings/sections/GitHubSection';
 
-type SectionId = 'appearance' | 'paths' | 'tools' | 'windowsIntegration' | 'pages' | 'themeCreator' | 'github';
+type SectionId = 'appearance' | 'paths' | 'tools' | 'windowsIntegration' | 'pages' | 'github';
 
 const SECTIONS: { id: SectionId; name: string; icon: LucideIcon }[] = [
     { id: 'appearance', name: 'Appearance', icon: Palette },
@@ -16,7 +15,6 @@ const SECTIONS: { id: SectionId; name: string; icon: LucideIcon }[] = [
     { id: 'tools', name: 'External Tools', icon: Terminal },
     { id: 'windowsIntegration', name: 'Windows Integration', icon: HardDrive },
     { id: 'pages', name: 'Page Visibility', icon: Eye },
-    { id: 'themeCreator', name: 'Custom Theme Creator', icon: Palette },
     { id: 'github', name: 'GitHub Integration', icon: Github },
 ];
 
@@ -27,7 +25,6 @@ function SectionContent({ id }: { id: SectionId }) {
         case 'tools': return <ToolsSection />;
         case 'windowsIntegration': return <WindowsIntegrationSection />;
         case 'pages': return <PageVisibilitySection />;
-        case 'themeCreator': return <ThemeCreatorSection />;
         case 'github': return <GitHubSection />;
     }
 }

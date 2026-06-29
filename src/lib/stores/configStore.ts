@@ -12,6 +12,8 @@ const DEFAULT_SETTINGS: QuartzSettings = {
     autoUpdateEnabled: true,
     skippedUpdateVersion: null,
     selectedTheme: null,
+    themeBase: 'dark',
+    themeOverrides: {},
 };
 
 interface ConfigState {

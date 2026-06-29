@@ -2,8 +2,6 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Page } from './navigationStore';
 
-export type InterfaceStyle = 'quartz' | 'winforms' | 'liquid' | 'minecraft';
-
 /* Pages that can be toggled in Page Visibility, mapped to their Quartz default.
    Paint and Port are included (Quartz exposes them too). */
 export const PAGE_DEFAULTS: Partial<Record<Page, boolean>> = {
@@ -46,7 +44,6 @@ export const TOGGLEABLE_PAGES: Page[] = PAGE_LABELS.map((p) => p.page);
 interface UiPrefs {
     // Appearance
     font: string;
-    interfaceStyle: InterfaceStyle;
     glassBlur: number;
     performanceMode: boolean;
     // Wallpaper
@@ -56,18 +53,11 @@ interface UiPrefs {
     wallpaperOpacity: number;
     wallpaperVignetteEnabled: boolean;
     wallpaperVignetteStrength: number;
-    // Liquid-glass button tuning
-    liquidButtonTint: string;
-    liquidButtonHoverTint: string;
-    liquidButtonBlur: string;
     // Effects
     clickEffectEnabled: boolean;
     clickEffectType: string;
     backgroundEffectEnabled: boolean;
     backgroundEffectType: string;
-    cursorEffectEnabled: boolean;
-    cursorEffectPath: string;
-    cursorEffectSize: number;
     // Navigation / pages
     autoLoadEnabled: boolean;
     expandSystemsOnLoad: boolean;
@@ -92,7 +82,6 @@ export const useUiPrefsStore = create<UiPrefs>()(
     persist(
         (set) => ({
             font: 'Segoe UI',
-            interfaceStyle: 'quartz',
             glassBlur: 6,
             performanceMode: false,
             wallpaperEnabled: true,
@@ -101,16 +90,10 @@ export const useUiPrefsStore = create<UiPrefs>()(
             wallpaperOpacity: 0.15,
             wallpaperVignetteEnabled: false,
             wallpaperVignetteStrength: 0.35,
-            liquidButtonTint: '',
-            liquidButtonHoverTint: '',
-            liquidButtonBlur: '',
             clickEffectEnabled: false,
             clickEffectType: 'water',
             backgroundEffectEnabled: false,
             backgroundEffectType: 'fireflies',
-            cursorEffectEnabled: false,
-            cursorEffectPath: '',
-            cursorEffectSize: 32,
             autoLoadEnabled: false,
             expandSystemsOnLoad: false,
             pageVisibility: {},
@@ -136,13 +119,10 @@ export function isPageVisible(page: Page): boolean {
     return pageVisibility[page] ?? PAGE_DEFAULTS[page] ?? true;
 }
 
-// Apply prefs that affect global CSS (glass blur, performance mode, liquid tuning).
+// Apply prefs that affect global CSS (glass blur, performance mode).
 export function applyUiPrefs() {
     const s = useUiPrefsStore.getState();
     const root = document.documentElement;
     root.style.setProperty('--glass-blur', `${s.performanceMode ? Math.min(s.glassBlur, 2) : s.glassBlur}px`);
     root.setAttribute('data-performance', s.performanceMode ? 'on' : 'off');
-    if (s.liquidButtonTint) root.style.setProperty('--liquid-button-bg', s.liquidButtonTint);
-    if (s.liquidButtonHoverTint) root.style.setProperty('--liquid-button-hover-bg', s.liquidButtonHoverTint);
-    if (s.liquidButtonBlur) root.style.setProperty('--liquid-button-blur', `${s.liquidButtonBlur}px`);
 }

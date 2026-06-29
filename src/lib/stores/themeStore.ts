@@ -1,20 +1,32 @@
 import { create } from 'zustand';
-import { BUILTIN_THEMES, DEFAULT_THEME_ID } from '@/lib/theme/builtinThemes';
-import { applyTheme, applyInterfaceStyle } from '@/lib/theme/applyTheme';
-import { getThemeBehavior } from '@/lib/theme/behaviors';
-import type { Theme, ThemeBehavior } from '@/lib/theme/types';
+import { BUILTIN_THEMES, BUILTIN_VARIANTS, DEFAULT_THEME_ID } from '@/lib/theme/builtinThemes';
+import { applyTheme } from '@/lib/theme/applyTheme';
+import { deriveTheme, type BaseMode } from '@/lib/theme/deriveTheme';
+import type { Theme, ThemeTokens } from '@/lib/theme/types';
 import { listCustomThemes, saveCustomTheme, deleteCustomTheme } from '@/lib/api';
 import { useConfigStore } from './configStore';
-import { useUiPrefsStore } from './uiPrefsStore';
 import { log } from '@/lib/util/logger';
 
 interface ThemeState {
     themes: Theme[];
     activeId: string;
+    base: BaseMode;
+    overrides: Record<string, string>;
     init: () => Promise<void>;
+    /* Re-derive a theme's tokens from its seed accent (or a per-theme override)
+       on the active base mode. The seed accent — not the derived tokens — is the
+       source of truth, so base/override changes compound correctly. */
+    tokensFor: (theme: Theme) => ThemeTokens;
     setActive: (id: string) => void;
+    setBase: (base: BaseMode) => void;
+    setOverride: (id: string, accent: string | null) => void;
     saveTheme: (theme: Theme) => Promise<void>;
     removeTheme: (id: string) => Promise<void>;
+}
+
+function seedAccent(theme: Theme): string {
+    const variant = BUILTIN_VARIANTS.find((v) => v.id === theme.id);
+    return variant?.accent ?? theme.tokens.accent;
 }
 
 function resolve(themes: Theme[], id: string): Theme {
@@ -23,50 +35,16 @@ function resolve(themes: Theme[], id: string): Theme {
         ?? themes[0];
 }
 
-/* Applies a theme's side effects (preferred interface style + click/background
-   effect presets + wallpaper preset), mirroring Quartz's handleThemeChange.
-   Only runs on explicit user selection — not on startup. */
-function applyThemeBehavior(behavior: ThemeBehavior | null) {
-    if (!behavior) return;
-    const prefs = useUiPrefsStore.getState();
-
-    if (behavior.preferredStyle) {
-        prefs.set('interfaceStyle', behavior.preferredStyle);
-        applyInterfaceStyle(behavior.preferredStyle);
-    }
-
-    const click = behavior.effects?.click;
-    if (click) {
-        prefs.set('clickEffectEnabled', click.enabled === true);
-        if (click.type) prefs.set('clickEffectType', click.type);
-        window.dispatchEvent(new CustomEvent('clickEffectChanged', {
-            detail: { enabled: click.enabled === true, ...(click.type ? { type: click.type } : {}) },
-        }));
-    }
-
-    const bg = behavior.effects?.background;
-    if (bg) {
-        prefs.set('backgroundEffectEnabled', bg.enabled === true);
-        if (bg.type) prefs.set('backgroundEffectType', bg.type);
-        window.dispatchEvent(new CustomEvent('backgroundEffectChanged', {
-            detail: { enabled: bg.enabled === true, ...(bg.type ? { type: bg.type } : {}) },
-        }));
-    }
-
-    if (behavior.wallpaper) {
-        if (behavior.wallpaper.enabled === false) {
-            // Themes that opt out of a wallpaper just disable it; the layer is store-driven.
-            prefs.set('wallpaperEnabled', false);
-        } else {
-            // The wallpaper subsystem resolves a preset by display name / filename.
-            window.dispatchEvent(new CustomEvent('themeWallpaperPreset', { detail: behavior.wallpaper }));
-        }
-    }
-}
-
 export const useThemeStore = create<ThemeState>((set, get) => ({
     themes: BUILTIN_THEMES,
     activeId: DEFAULT_THEME_ID,
+    base: 'dark',
+    overrides: {},
+
+    tokensFor: (theme) => {
+        const { overrides, base } = get();
+        return deriveTheme(overrides[theme.id] ?? seedAccent(theme), base);
+    },
 
     init: async () => {
         let custom: Theme[] = [];
@@ -76,19 +54,38 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
             log.error('Failed to load custom themes', e);
         }
         const themes = [...BUILTIN_THEMES, ...custom];
-        const wanted = useConfigStore.getState().settings.selectedTheme ?? DEFAULT_THEME_ID;
-        const active = resolve(themes, wanted);
-        set({ themes, activeId: active.id });
-        applyTheme(active.tokens, active.id);
-        applyInterfaceStyle(useUiPrefsStore.getState().interfaceStyle);
+        const cfg = useConfigStore.getState().settings;
+        const base: BaseMode = cfg.themeBase === 'light' ? 'light' : 'dark';
+        const overrides = cfg.themeOverrides ?? {};
+        const active = resolve(themes, cfg.selectedTheme ?? DEFAULT_THEME_ID);
+        set({ themes, activeId: active.id, base, overrides });
+        applyTheme(get().tokensFor(active), active.id);
     },
 
     setActive: (id) => {
         const active = resolve(get().themes, id);
         set({ activeId: active.id });
-        applyTheme(active.tokens, active.id);
-        applyThemeBehavior(active.behavior ?? getThemeBehavior(active.id));
+        applyTheme(get().tokensFor(active), active.id);
         void useConfigStore.getState().update({ selectedTheme: active.id });
+    },
+
+    setBase: (base) => {
+        set({ base });
+        const active = resolve(get().themes, get().activeId);
+        applyTheme(get().tokensFor(active), active.id);
+        void useConfigStore.getState().update({ themeBase: base });
+    },
+
+    setOverride: (id, accent) => {
+        const overrides = { ...get().overrides };
+        if (accent) overrides[id] = accent;
+        else delete overrides[id];
+        set({ overrides });
+        if (get().activeId === id) {
+            const active = resolve(get().themes, id);
+            applyTheme(get().tokensFor(active), active.id);
+        }
+        void useConfigStore.getState().update({ themeOverrides: overrides });
     },
 
     saveTheme: async (theme) => {

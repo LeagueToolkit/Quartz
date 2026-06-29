@@ -15,6 +15,8 @@ export interface QuartzSettings {
     autoUpdateEnabled: boolean;
     skippedUpdateVersion: string | null;
     selectedTheme: string | null;
+    themeBase?: 'dark' | 'light';
+    themeOverrides?: Record<string, string>;
 }
 
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';

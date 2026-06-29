@@ -74,8 +74,6 @@ fn main() {
             commands::assets::read_file_base64,
             commands::assets::get_fonts_dir,
             commands::assets::list_fonts,
-            commands::assets::get_cursors_dir,
-            commands::assets::list_cursors,
             commands::assets::get_wallpapers_dir,
             commands::assets::list_wallpapers,
             commands::assets::import_wallpaper,

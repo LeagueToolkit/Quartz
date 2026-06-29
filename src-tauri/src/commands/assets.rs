@@ -46,11 +46,11 @@ fn list_files_with_exts(dir: &Path, exts: &[&str]) -> Vec<AssetFile> {
     out
 }
 
-/* Copies bundled wallpapers/cursors (shipped as Tauri resources) into the app's
-   wallpapers/cursors dirs on first run, so themed presets have their images.
+/* Copies bundled wallpapers (shipped as Tauri resources) into the app's
+   wallpapers dir on first run, so themed presets have their images.
    Existing files are never overwritten — user imports win. */
 pub fn seed_bundled_assets(resource_dir: &Path) {
-    for sub in ["wallpapers", "cursors"] {
+    for sub in ["wallpapers"] {
         // Tauri keeps the declared `resources/<sub>` path under resource_dir; some
         // layouts flatten it. Try both.
         let candidates = [resource_dir.join("resources").join(sub), resource_dir.join(sub)];
@@ -89,17 +89,6 @@ pub fn list_fonts() -> Result<Vec<AssetFile>, String> {
     Ok(list_files_with_exts(&subdir("fonts")?, &["ttf", "otf", "woff", "woff2"]))
 }
 
-// ── Cursors ────────────────────────────────────────────────────────────────
-
-#[tauri::command]
-pub fn get_cursors_dir() -> Result<String, String> {
-    Ok(subdir("cursors")?.to_string_lossy().into_owned())
-}
-
-#[tauri::command]
-pub fn list_cursors() -> Result<Vec<AssetFile>, String> {
-    Ok(list_files_with_exts(&subdir("cursors")?, &["cur", "png", "gif"]))
-}
 
 // ── Wallpapers ─────────────────────────────────────────────────────────────
 

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 const SCHEMA_VERSION: u32 = 1;
@@ -22,6 +23,12 @@ pub struct QuartzSettings {
     pub skipped_update_version: Option<String>,
 
     pub selected_theme: Option<String>,
+
+    // Theme base mode ("dark" | "light") and per-theme accent overrides
+    // (themeId -> hex). Both optional so older settings files still load.
+    pub theme_base: Option<String>,
+    #[serde(default)]
+    pub theme_overrides: HashMap<String, String>,
 }
 
 fn default_schema_version() -> u32 { SCHEMA_VERSION }
@@ -38,6 +45,8 @@ impl Default for QuartzSettings {
             auto_update_enabled: true,
             skipped_update_version: None,
             selected_theme: None,
+            theme_base: None,
+            theme_overrides: HashMap::new(),
         }
     }
 }
