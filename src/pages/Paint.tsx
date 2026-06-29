@@ -959,7 +959,7 @@ function Paint() {
                         </Box>
 
                         <button onClick={handleSelectByBlendMode} className="dl-btn dl-btn--primary dl-btn--sm">
-                            Select BM{blendModeSelect}
+                            Select BM {blendModeSelect}
                         </button>
 
                         <BlendModeChanceSlider value={blendModeChance} onCommit={setBlendModeChance} />
