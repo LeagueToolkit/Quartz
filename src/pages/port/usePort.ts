@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePortStore } from '@/lib/stores/portStore';
 import { pickBinPath, loadBin, saveBinText } from './utils/loadBin';
 import {
     parseVfxEmitters,
@@ -84,19 +85,29 @@ const typeOptions = [
 ];
 
 export default function usePort() {
-    // File state
-    const [targetPath, setTargetPath] = useState('This will show target bin');
-    const [donorPath, setDonorPath] = useState('This will show donor bin');
-    const [targetPyContent, setTargetPyContent] = useState('');
-    const [donorPyContent, setDonorPyContent] = useState('');
-    const [targetSystems, setTargetSystems] = useState<VfxSystemMap>({});
-    const [donorSystems, setDonorSystems] = useState<VfxSystemMap>({});
+    // File state — seeded from the resident store so the loaded bins survive a
+    // page swap (App remounts pages). Mirrored back via the effect below.
+    const portStore = usePortStore.getState();
+    const [targetPath, setTargetPath] = useState(portStore.targetPath);
+    const [donorPath, setDonorPath] = useState(portStore.donorPath);
+    const [targetPyContent, setTargetPyContent] = useState(portStore.targetPyContent);
+    const [donorPyContent, setDonorPyContent] = useState(portStore.donorPyContent);
+    const [targetSystems, setTargetSystems] = useState<VfxSystemMap>(portStore.targetSystems);
+    const [donorSystems, setDonorSystems] = useState<VfxSystemMap>(portStore.donorSystems);
 
     // Shared state
     const [statusMessage, setStatusMessage] = useState('Ready - Select files to begin porting');
     const [isProcessing, setIsProcessing] = useState(false);
     const [processingText, setProcessingText] = useState('');
-    const [fileSaved, setFileSaved] = useState(true);
+    const [fileSaved, setFileSaved] = useState(portStore.fileSaved);
+
+    // Mirror the loaded-bin state into the resident store so it persists across
+    // page swaps. The store is the source of truth between mounts.
+    useEffect(() => {
+        usePortStore.getState().hydrate({
+            targetPath, donorPath, targetPyContent, donorPyContent, targetSystems, donorSystems, fileSaved,
+        });
+    }, [targetPath, donorPath, targetPyContent, donorPyContent, targetSystems, donorSystems, fileSaved]);
     const [deletedEmitters, setDeletedEmitters] = useState<DeletedEmittersMap>(new Map());
     const [selectedTargetSystem, setSelectedTargetSystem] = useState<string | null>(null);
     const [collapsedTargetSystems, setCollapsedTargetSystems] = useState<Set<string>>(new Set());

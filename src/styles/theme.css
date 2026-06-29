@@ -12,11 +12,11 @@
    ========================================================================== */
 
 :root {
-    /* ── Accent (blue) ──────────────────────────────────────────────────── */
-    --accent-primary:   #3f75f4;
-    --accent-hover:     #5e8dfb;
-    --accent-secondary: #1d58e1;
-    --accent-muted:     #1d3a7f;
+    /* ── Accent (cyan-blue) ─────────────────────────────────────────────── */
+    --accent-primary:   #3fa6f4;
+    --accent-hover:     #66b8f6;
+    --accent-secondary: #0f90f1;
+    --accent-muted:     #1e5681;
 
     /* ── Surfaces (dark) ────────────────────────────────────────────────── */
     --bg-primary:   #0d0d0f;

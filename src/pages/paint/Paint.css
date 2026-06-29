@@ -19,10 +19,8 @@
         transparent 60%);
 }
 
-/* Glass-mode hooks: keep the same selectors the Electron index.css used so
-   wallpaper / liquid themes tint the paint panels consistently. */
-.has-wallpaper .paint2-container .paint-emitter-row.is-selected,
-[data-style="liquid"] .paint2-container .paint-emitter-row.is-selected {
+/* Wallpaper hook: tint the selected paint emitter row over a wallpaper. */
+.has-wallpaper .paint2-container .paint-emitter-row.is-selected {
     background: color-mix(in oklab, var(--accent-primary) 18%, transparent) !important;
 }
 

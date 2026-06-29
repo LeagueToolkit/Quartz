@@ -135,8 +135,9 @@ export function applyTheme(rawTokens: Partial<ThemeTokens>, id?: string) {
     // Status warning/danger/info stay theme-independent (defined in theme.css).
 }
 
-// Sets the interface style attribute consumed by style-specific CSS.
-export function applyInterfaceStyle(style: InterfaceStyle | string) {
-    const resolved = style === 'fluid' ? 'liquid' : style === 'cs16' ? 'quartz' : style;
-    document.documentElement.setAttribute('data-style', resolved);
+/* Interface styles (winforms/liquid/minecraft) were removed; the app is always
+   the Quartz style now. Kept as a no-op-ish setter so existing callers compile
+   and any stale CSS keyed on data-style="quartz" still matches. */
+export function applyInterfaceStyle(_style?: InterfaceStyle | string) {
+    document.documentElement.setAttribute('data-style', 'quartz');
 }

@@ -4,7 +4,6 @@ import { findPreset } from '@/lib/wallpaper/wallpaperManager';
 import { log } from '@/lib/util/logger';
 import GlobalBackgroundEffect from './background/GlobalBackgroundEffect';
 import GlobalClickEffect from './click/GlobalClickEffect';
-import GlobalCursorEffect from './cursor/GlobalCursorEffect';
 import WallpaperLayer from './WallpaperLayer';
 
 type Override = { enabled: boolean; type?: string } | null;
@@ -20,9 +19,6 @@ export function EffectsLayer() {
     const clickType = useUiPrefsStore((s) => s.clickEffectType);
     const bgEnabled = useUiPrefsStore((s) => s.backgroundEffectEnabled);
     const bgType = useUiPrefsStore((s) => s.backgroundEffectType);
-    const cursorEnabled = useUiPrefsStore((s) => s.cursorEffectEnabled);
-    const cursorPath = useUiPrefsStore((s) => s.cursorEffectPath);
-    const cursorSize = useUiPrefsStore((s) => s.cursorEffectSize);
 
     const [clickOverride, setClickOverride] = useState<Override>(null);
     const [bgOverride, setBgOverride] = useState<Override>(null);
@@ -62,7 +58,6 @@ export function EffectsLayer() {
             <WallpaperLayer />
             <GlobalBackgroundEffect enabled={!performanceMode && bg.enabled} type={bg.type ?? bgType} />
             <GlobalClickEffect enabled={!performanceMode && click.enabled} type={click.type ?? clickType} />
-            <GlobalCursorEffect enabled={!performanceMode && cursorEnabled} path={cursorPath} size={cursorSize} />
         </>
     );
 }
