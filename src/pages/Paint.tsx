@@ -18,7 +18,7 @@ import PaletteIcon from '@mui/icons-material/Palette';
 import TuneIcon from '@mui/icons-material/Tune';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
-import { FolderOpen as FolderOpenIcon, Undo2 as UndoIcon, Redo2 as RedoIcon } from 'lucide-react';
+import { FolderOpen as FolderOpenIcon, Undo2 as UndoIcon, Redo2 as RedoIcon, SlidersHorizontal as SlidersIcon, ChevronDown as ChevronDownIcon } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
     paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintUndo, paintRedo, paintSave,
@@ -269,6 +269,8 @@ function Paint() {
     // === TRANSIENT UI STATE (fine to reset on remount) ===
     const [isLoading, setIsLoading] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
+    // The BM / color-target row collapses into a toggle to save vertical space.
+    const [bmRowOpen, setBmRowOpen] = useState(false);
     const [paletteNameDialogOpen, setPaletteNameDialogOpen] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [paletteToDelete, setPaletteToDelete] = useState<number | null>(null);
@@ -930,10 +932,14 @@ function Paint() {
                 onStatus={setStatusMessage}
             />
 
-            {/* Sub-Toolbar Row 1: BM & Color Targets (hidden in materials mode) */}
+            {/* Sub-Toolbar Row 1: BM & Color Targets — collapses via the toggle in
+               the search row. Hidden entirely in materials mode. The wrapper
+               animates grid-template-rows 0fr→1fr for the slide-down. */}
             {mode !== 'materials' && (
+                <div className={`paint2-bmrow-wrap${bmRowOpen ? ' is-open' : ''}`}>
+                  <div className="paint2-bmrow-inner">
                 <Box className="paint2-subtoolbar-main" sx={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 16px', gap: 2,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 16px', gap: 2,
                     borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)',
                     background: isMinecraftStyle ? '#353535' : 'var(--bg-secondary)', flexShrink: 0,
                 }}>
@@ -977,6 +983,8 @@ function Paint() {
                         <ModeSelect value={mode} onChange={(v) => setMode(v as typeof mode)} />
                     </Box>
                 </Box>
+                  </div>
+                </div>
             )}
 
             {/* Materials Mode Info Bar */}
@@ -1115,6 +1123,19 @@ function Paint() {
                         <MenuItem value="v2">Variant 2</MenuItem>
                     </Select>
                 </Box>
+
+                {mode !== 'materials' && (
+                    <button
+                        type="button"
+                        className={`paint2-bmrow-toggle${bmRowOpen ? ' is-open' : ''}`}
+                        onClick={() => setBmRowOpen((v) => !v)}
+                        title={bmRowOpen ? 'Hide blend mode & color targets' : 'Show blend mode & color targets'}
+                    >
+                        <SlidersIcon size={14} />
+                        <span>Targets</span>
+                        <ChevronDownIcon size={14} className="paint2-bmrow-toggle__chev" />
+                    </button>
+                )}
 
                 <IconButton size="small" onClick={toggleLockAll} sx={{ color: 'var(--text-secondary)', opacity: 0.6, mr: 0.5 }}>
                     {lockedSystems.size > 0 ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}

@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
-import { Button } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
+import { FolderOpen as FolderOpenIcon } from 'lucide-react';
 import { SearchInput } from './common/Inputs';
 import { useBinFileDrop } from './common/binFileDrop';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
@@ -86,68 +86,32 @@ export default function TargetColumn(props: TargetColumnProps) {
                     </div>
                 </div>
             )}
-            <Button
-                onClick={handleOpenTargetBin}
-                disabled={isProcessing}
-                sx={{
-                    width: '100%',
-                    padding: '0 16px',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '13px',
-                    fontWeight: 700,
-                    height: '36px',
-                    background: 'color-mix(in oklab, var(--accent-primary) 14%, transparent)',
-                    border: '1px solid color-mix(in oklab, var(--accent-primary) 30%, transparent)',
-                    color: 'var(--accent-primary)',
-                    borderRadius: '4px',
-                    letterSpacing: '0.05em',
-                    textTransform: 'uppercase',
-                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                    position: 'relative',
-                    '&:hover': {
-                        background: 'color-mix(in oklab, var(--accent-primary) 22%, transparent)',
-                        borderColor: 'var(--accent-primary)',
-                    },
-                    '&:disabled': { opacity: 0.5, cursor: 'not-allowed', borderColor: 'var(--border)', color: 'var(--text-muted)' },
-                }}
-            >
-                {isProcessing ? 'Processing...' : 'Open Target Bin'}
-            </Button>
-
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {/* One row: open + filter + emitter-search toggle (mirrors Donor). */}
+            <div className="port-toolbar-row">
+                <button
+                    className="port-open-btn"
+                    onClick={handleOpenTargetBin}
+                    disabled={isProcessing}
+                    title={isProcessing ? 'Processing...' : 'Open Target Bin'}
+                    style={{ '--port-accent': 'var(--accent-primary)' } as React.CSSProperties}
+                >
+                    <FolderOpenIcon size={16} />
+                </button>
                 <SearchInput
                     initialValue={targetFilterInput}
                     placeholder={enableTargetEmitterSearch ? 'Filter by Particle or Emitter Name' : 'Filter by Particle Name Only'}
                     onChange={filterTargetParticles}
                     accentVar="var(--accent-primary)"
-                    style={{ color: 'var(--accent-primary)' }}
+                    style={{ color: 'var(--accent-primary)', height: '40px', padding: '0 14px' }}
                     className="port-target-search"
                 />
                 <button
-                    className="port-search-toggle-btn"
+                    className={`port-search-toggle-btn${enableTargetEmitterSearch ? ' is-active' : ''}`}
                     onClick={() => setEnableTargetEmitterSearch(!enableTargetEmitterSearch)}
                     title={enableTargetEmitterSearch ? 'Disable emitter search (faster)' : 'Enable emitter search'}
-                    style={{
-                        height: '40px',
-                        minWidth: '52px',
-                        padding: '0 14px',
-                        background: enableTargetEmitterSearch
-                            ? 'color-mix(in oklab, var(--accent-primary) 18%, transparent)'
-                            : 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
-                        border: enableTargetEmitterSearch ? '1px solid var(--accent-primary)' : '1px solid color-mix(in oklab, var(--accent-primary) 35%, transparent)',
-                        borderRadius: '10px',
-                        color: 'var(--accent-primary)',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '12px',
-                        cursor: 'pointer',
-                        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxSizing: 'border-box',
-                    }}
+                    style={{ '--port-accent': 'var(--accent-primary)' } as React.CSSProperties}
                 >
-                    <SearchIcon sx={{ fontSize: 16, color: 'var(--accent-primary)', opacity: enableTargetEmitterSearch ? 1 : 0.78 }} />
+                    <SearchIcon sx={{ fontSize: 16 }} />
                 </button>
             </div>
 

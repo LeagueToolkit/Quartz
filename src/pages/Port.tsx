@@ -15,7 +15,6 @@ import { portPrepareDonorFromSkin, portCopyAssetsToTarget, backupCreate } from '
 import GlowingSpinner from './port/components/GlowingSpinner';
 import TargetColumn from './port/components/TargetColumn';
 import DonorColumn from './port/components/DonorColumn';
-import PortStatusBar from './port/components/PortStatusBar';
 import PortBottomControls from './port/components/PortBottomControls';
 import VfxFloatingActions from './port/components/VfxFloatingActions';
 import NewVfxSystemModal from './port/components/modals/NewVfxSystemModal';
@@ -540,16 +539,19 @@ function Port() {
                 onConfirm={p.handleConfirmChildParticles}
             />
 
-            <PortStatusBar
+            <PortBottomControls
                 statusMessage={p.statusMessage}
                 targetPyContent={p.targetPyContent}
                 trimTargetNames={p.trimTargetNames}
                 setTrimTargetNames={p.setTrimTargetNames}
                 trimDonorNames={p.trimDonorNames}
                 setTrimDonorNames={p.setTrimDonorNames}
+                handleUndo={p.handleUndo}
+                undoHistory={p.undoHistory}
+                handleSave={handleSaveWithBackup}
+                isProcessing={p.isProcessing}
+                hasChangesToSave={p.hasChangesToSave}
             />
-
-            <PortBottomControls handleUndo={p.handleUndo} undoHistory={p.undoHistory} handleSave={handleSaveWithBackup} isProcessing={p.isProcessing} hasChangesToSave={p.hasChangesToSave} />
 
             <VfxFloatingActions
                 targetPyContent={p.targetPyContent}

@@ -1,7 +1,8 @@
 import React, { useCallback } from 'react';
-import { Button, IconButton, Tooltip } from '@mui/material';
+import { Tooltip } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
+import { FolderOpen as FolderOpenIcon } from 'lucide-react';
 import { SearchInput } from './common/Inputs';
 import { useBinFileDrop } from './common/binFileDrop';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
@@ -79,99 +80,42 @@ export default function DonorColumn(props: DonorColumnProps) {
                     </div>
                 </div>
             )}
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <Button
+            {/* One row: open + load-from-game + filter + emitter-search toggle. */}
+            <div className="port-toolbar-row" style={{ '--port-accent': 'var(--accent-secondary)' } as React.CSSProperties}>
+                <button
+                    className="port-open-btn"
                     onClick={handleOpenDonorBin}
                     disabled={isProcessing}
-                    sx={{
-                        flex: 1,
-                        padding: '0 16px',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '13px',
-                        fontWeight: 700,
-                        height: '36px',
-                        background: 'color-mix(in oklab, var(--accent-secondary) 14%, transparent)',
-                        border: '1px solid color-mix(in oklab, var(--accent-secondary) 30%, transparent)',
-                        color: 'var(--accent-secondary)',
-                        borderRadius: '4px',
-                        letterSpacing: '0.05em',
-                        textTransform: 'uppercase',
-                        textAlign: 'center',
-                        justifyContent: 'center',
-                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                        position: 'relative',
-                        '&:hover': {
-                            background: 'color-mix(in oklab, var(--accent-secondary) 22%, transparent)',
-                            borderColor: 'var(--accent-secondary)',
-                        },
-                        '&:disabled': { opacity: 0.5, cursor: 'not-allowed', borderColor: 'var(--border)', color: 'var(--text-muted)' },
-                    }}
+                    title={isProcessing ? 'Processing...' : 'Open Donor Bin'}
                 >
-                    {isProcessing ? 'Processing...' : 'Open Donor Bin'}
-                </Button>
-
+                    <FolderOpenIcon size={16} />
+                </button>
                 <Tooltip title="Load donor from game">
                     <span>
-                        <IconButton
+                        <button
+                            className="port-open-btn"
                             onClick={handleOpenDonorFromGame}
                             disabled={isProcessing}
-                            size="small"
                             aria-label="Load donor from game"
-                            sx={{
-                                minWidth: '52px',
-                                width: '52px',
-                                height: '40px',
-                                p: 0,
-                                borderRadius: '10px',
-                                border: '1px solid color-mix(in oklab, var(--accent-secondary) 38%, transparent)',
-                                background: 'color-mix(in oklab, var(--accent-secondary) 14%, transparent)',
-                                color: 'var(--accent-secondary)',
-                                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                                '&:hover': {
-                                    background: 'color-mix(in oklab, var(--accent-secondary) 24%, transparent)',
-                                    borderColor: 'var(--accent-secondary)',
-                                },
-                                '&.Mui-disabled': { color: 'var(--text-muted)', borderColor: 'var(--border)', background: 'var(--bg-tertiary)' },
-                            }}
                         >
                             <SportsEsportsIcon sx={{ fontSize: 16 }} />
-                        </IconButton>
+                        </button>
                     </span>
                 </Tooltip>
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <SearchInput
                     initialValue={donorFilterInput}
                     placeholder={enableDonorEmitterSearch ? 'Filter by Particle or Emitter Name' : 'Filter by Particle Name Only'}
                     onChange={filterDonorParticles}
                     accentVar="var(--accent-secondary)"
-                    style={{ color: 'var(--accent-secondary)' }}
+                    style={{ color: 'var(--accent-secondary)', height: '40px', padding: '0 14px' }}
                     className="port-donor-search"
                 />
                 <button
-                    className="port-search-toggle-btn"
+                    className={`port-search-toggle-btn${enableDonorEmitterSearch ? ' is-active' : ''}`}
                     onClick={() => setEnableDonorEmitterSearch(!enableDonorEmitterSearch)}
                     title={enableDonorEmitterSearch ? 'Disable emitter search (faster)' : 'Enable emitter search'}
-                    style={{
-                        height: '40px',
-                        minWidth: '52px',
-                        padding: '0 14px',
-                        background: enableDonorEmitterSearch ? 'color-mix(in oklab, var(--accent-secondary) 18%, transparent)' : 'color-mix(in oklab, var(--accent-secondary) 12%, transparent)',
-                        border: enableDonorEmitterSearch ? '1px solid var(--accent-secondary)' : '1px solid color-mix(in oklab, var(--accent-secondary) 35%, transparent)',
-                        borderRadius: '10px',
-                        color: 'var(--accent-secondary)',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '12px',
-                        cursor: 'pointer',
-                        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxSizing: 'border-box',
-                    }}
                 >
-                    <SearchIcon sx={{ fontSize: 16, color: 'var(--accent-secondary)', opacity: enableDonorEmitterSearch ? 1 : 0.78 }} />
+                    <SearchIcon sx={{ fontSize: 16 }} />
                 </button>
             </div>
 
