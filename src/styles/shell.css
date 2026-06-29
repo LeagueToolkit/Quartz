@@ -83,6 +83,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: space-between;
+    padding: 4px;
+    box-sizing: border-box;
     background: var(--bg-primary);
     z-index: 5;
 }
@@ -94,8 +96,8 @@
     gap: 4px;
     width: 100%;
 }
-.q-rail-group:first-child { margin-top: 8px; }
-.q-rail-group:last-child { margin-bottom: 8px; }
+.q-rail-group:first-child { margin-top: 0; }
+.q-rail-group:last-child { margin-bottom: 0; }
 
 /* Scrollable middle list — tool buttons scroll when they overflow.
    Scrollbar is hidden so it never reserves width and shifts the icons. */

@@ -52,7 +52,7 @@ export function NavRail() {
     const visible = ITEMS.filter((i) => ALWAYS_VISIBLE.includes(i.id) || pageVisibility[i.id] !== false);
 
     return (
-        <nav className="q-rail shrink-0 py-3">
+        <nav className="q-rail shrink-0">
             <div className="q-rail-group q-rail-scroll">
                 {visible.map((item) => <NavBtn key={item.id} item={item} />)}
             </div>
