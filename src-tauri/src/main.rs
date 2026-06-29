@@ -1,6 +1,7 @@
 // Prevents an extra console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod cli_convert;
 mod commands;
 mod core;
 mod state;
@@ -10,6 +11,11 @@ use tauri::Manager;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 fn main() {
+    // Right-click "Convert" verbs run headlessly and exit before Tauri starts.
+    if let Some(code) = cli_convert::try_run() {
+        std::process::exit(code);
+    }
+
     let log_dir = get_quartz_home()
         .map(|h| h.join("logs"))
         .unwrap_or_else(|_| std::path::PathBuf::from("./logs"));

@@ -41,6 +41,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+windows-sys = { version = "0.59", features = ["Win32_System_Console"] }
 
 [profile.release]
 opt-level = 3

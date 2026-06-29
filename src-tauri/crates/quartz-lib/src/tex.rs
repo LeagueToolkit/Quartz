@@ -33,6 +33,28 @@ fn tex_format_tag(format: TexFormat) -> &'static str {
     }
 }
 
+const PNG_MAGIC: &[u8; 4] = b"\x89PNG";
+
+/* Decode any supported texture input to RGBA8. PNG/JPEG go through the image
+   crate; .tex/.dds go through `decode_texture`. The engine decoders only know
+   TEX/DDS magic, so standard images must be handled separately (used by the
+   right-click "convert to .tex/.dds" verbs that take a PNG/JPG source). */
+pub fn decode_any(bytes: &[u8]) -> Result<DecodedTexture, String> {
+    if bytes.len() < 4 {
+        return Err("File too small to be an image".into());
+    }
+    let is_standard = &bytes[0..4] == PNG_MAGIC || (bytes[0] == 0xFF && bytes[1] == 0xD8); // PNG or JPEG SOI
+    if is_standard {
+        let img = image::load_from_memory(bytes)
+            .map_err(|e| format!("Failed to read image: {e}"))?
+            .to_rgba8();
+        let (width, height) = (img.width(), img.height());
+        Ok(DecodedTexture { width, height, format: "png:rgba".into(), rgba: img.into_raw() })
+    } else {
+        decode_texture(bytes)
+    }
+}
+
 /* Decode a .tex or .dds buffer into RGBA8 plus a tag describing its container and format.
    The container is taken from the magic bytes; DDS surfaces with no .tex equivalent (e.g.
    BC7) are decoded straight from the DDS reader and reported as "dds:rgba". */

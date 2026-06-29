@@ -27,7 +27,7 @@ export function WindowsIntegrationSection() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <FormGroup
                 label="Windows Explorer Context Menu"
-                description="Add Quartz to the right-click menu for BIN/PY, model, texture, WAD, and folder workflows"
+                description="Add Quartz to the right-click menu for BIN/PY, texture, and folder workflows"
             >
                 <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -44,10 +44,10 @@ export function WindowsIntegrationSection() {
                         <div style={{ padding: '12px', background: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)', border: '1px solid color-mix(in oklab, var(--accent-primary) 30%, transparent)', borderRadius: 'var(--radius-sm)', fontSize: '12px', color: 'var(--text-secondary)' }}>
                             <div style={{ fontWeight: 600, marginBottom: '8px' }}>Available Actions:</div>
                             <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: 1.6 }}>
-                                <li><strong>BIN tools:</strong> Convert to .py, Separate VFX, Combine Linked, NoSkinLite.</li>
-                                <li><strong>Model tools:</strong> Convert XPS / PMX to .fbx.</li>
-                                <li><strong>Texture tools:</strong> .tex/.dds/.png conversions, single and batch.</li>
-                                <li><strong>WAD tools:</strong> Extract hashes, Unpack WAD.</li>
+                                <li><strong>.bin:</strong> Convert to .py, Separate VFX, Batch Split VFX.</li>
+                                <li><strong>.py:</strong> Convert to .bin.</li>
+                                <li><strong>Textures:</strong> .tex / .dds / .png conversions.</li>
+                                <li><strong>Folders:</strong> Convert all BIN↔PY and batch texture conversions.</li>
                             </ul>
                         </div>
                     )}
@@ -56,7 +56,7 @@ export function WindowsIntegrationSection() {
 
             <FormGroup label="About Windows Integration" description="How the context menu works">
                 <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '16px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    <p style={{ margin: '0 0 8px 0' }}><strong style={{ color: 'var(--accent-primary)' }}>What it does:</strong> Adds Quartz to your Windows Explorer right-click menu.</p>
+                    <p style={{ margin: '0 0 8px 0' }}><strong style={{ color: 'var(--accent-primary)' }}>What it does:</strong> Adds a Quartz submenu to your Windows Explorer right-click menu. Conversions run with the Quartz app itself — no separate helper is installed.</p>
                     <p style={{ margin: '0 0 8px 0' }}><strong style={{ color: 'var(--accent-primary)' }}>Privacy:</strong> Only modifies your user registry (HKCU). No admin rights required.</p>
                     <p style={{ margin: 0 }}><strong style={{ color: 'var(--accent-primary)' }}>Uninstall:</strong> Toggle off to remove all registry entries.</p>
                 </div>
