@@ -361,15 +361,22 @@ fn as_f32(value: &BinValue) -> Option<f32> {
 /// LoL VFX color field names. RGBA fields are always copied; VEC4 fields only
 /// copy when their field-name hash is whitelisted (VEC4 also carries positions
 /// and scales).
-const VFX_COLOR_FIELD_NAMES: &[&str] = &[
+const VFX_COLOR_BASE: &[&str] = &[
+    // Lifecycle colors
     "color", "startColor", "endColor", "peakColor", "lingerColor",
+    "birthColor", "deathColor",
+    // Indexed slots
     "color0", "color1", "color2", "color3", "color4", "color5", "color6", "color7",
+    // Animation curves
     "colorOverTime", "colorOverLifetime",
     "colorStart", "colorMid", "colorEnd",
+    // Particle/tint
     "particleColor", "tintColor", "colorTint",
-    "reflectionColor", "emissiveColor", "diffuseColor", "baseColor",
+    // Material
+    "reflectionColor", "reflectionFresnelColor",
+    "emissiveColor", "diffuseColor", "baseColor",
     "edgeColor", "fresnelColor", "rimColor",
-    "mEmissiveColor", "mDiffuseColor",
+    // Bounds
     "colorMin", "colorMax",
 ];
 
@@ -382,8 +389,22 @@ pub struct CopyColorStats {
     pub mismatches: usize,
 }
 
+/// Riot mirrors most VFX bin fields with an `m`-prefixed (member) variant; accept
+/// both forms without duplicating the source list.
 fn color_hash_set() -> std::collections::HashSet<u32> {
-    VFX_COLOR_FIELD_NAMES.iter().map(|n| fnv1a_lower(n)).collect()
+    let mut set = std::collections::HashSet::new();
+    for name in VFX_COLOR_BASE {
+        set.insert(fnv1a_lower(name));
+        let mut prefixed = String::with_capacity(name.len() + 1);
+        prefixed.push('m');
+        let mut chars = name.chars();
+        if let Some(first) = chars.next() {
+            prefixed.extend(first.to_uppercase());
+            prefixed.push_str(chars.as_str());
+        }
+        set.insert(fnv1a_lower(&prefixed));
+    }
+    set
 }
 
 /// Copy whitelisted color values from `src` into `dst`, matching top-level
