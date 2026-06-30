@@ -68,12 +68,18 @@ const BASES: Record<BaseMode, Pick<ThemeTokens,
     },
 };
 
-export function deriveTheme(accent: string, base: BaseMode = 'dark'): ThemeTokens {
+export function deriveTheme(rawAccent: string, base: BaseMode = 'dark'): ThemeTokens {
     const b = BASES[base];
+
+    /* The same accent reads differently on each base. On light surfaces a fully
+       saturated, mid-light accent looks neon and washes out against white, so we
+       darken it a touch and trim saturation for legible contrast. On dark we keep
+       it bright (a hair more saturation) so it pops against near-black. */
+    const accent = base === 'light' ? shade(rawAccent, -0.08, -0.06) : shade(rawAccent, 0, +0.04);
 
     const accent2 = shade(accent, -0.10);
     const accentMuted = shade(accent, -0.29, -0.20);
-    const hover = shade(accent, +0.08);
+    const hover = base === 'light' ? shade(accent, -0.06) : shade(accent, +0.08);
     // Success stays a green keyed slightly to the base so it reads on either.
     const accentGreen = base === 'light' ? '#1a9e44' : '#3FB950';
 

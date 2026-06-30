@@ -84,3 +84,12 @@
     --nav-icon-color: var(--text-secondary);
     --border-radius: var(--radius-sm);
 }
+
+/* Light base: the dark-tuned drop shadows read as heavy smudges on white, so
+   soften them. applyTheme sets data-base from the active surface luminance. */
+:root[data-base="light"] {
+    --glass-shadow: 0 10px 24px rgba(20, 28, 44, 0.12);
+    --dl-shadow-sm: 0 1px 2px rgba(20, 28, 44, 0.10), 0 0 0 1px color-mix(in oklab, var(--border) 60%, transparent);
+    --dl-shadow-md: 0 8px 24px -8px rgba(20, 28, 44, 0.18), 0 2px 4px rgba(20, 28, 44, 0.10);
+    --dl-shadow-lg: 0 24px 48px -16px rgba(20, 28, 44, 0.22), 0 4px 12px rgba(20, 28, 44, 0.12);
+}

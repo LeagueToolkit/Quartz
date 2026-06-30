@@ -18,6 +18,12 @@ function rgbToHex(r: number, g: number, b: number): string {
     const toHex = (v: number) => Math.max(0, Math.min(255, v | 0)).toString(16).padStart(2, '0');
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
+/* Perceived luminance > ~0.6 → treat the surface as light. */
+function isLightColor(hex?: string): boolean {
+    if (!hex || !isHexColor(hex)) return false;
+    const { r, g, b } = hexToRgb(hex);
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
+}
 export function darkenHex(hex: string, amount = 0.2): string {
     if (!isHexColor(hex)) return hex;
     const { r, g, b } = hexToRgb(hex);
@@ -56,13 +62,15 @@ export function normalizeTokens(input: Partial<ThemeTokens>): ThemeTokens {
 
 /* ── application ─────────────────────────────────────────────────────────── */
 
-/* Writes the full Quartz theme variable set to :root. `id` sets data-theme so
-   CSS overrides keyed on a theme can apply. */
+/* Writes the full Quartz theme variable set to :root. `id` mirrors the active
+   theme so the Design Lab window can match it; `data-base` lets CSS adapt to a
+   light vs dark base (e.g. softer shadows on light). */
 export function applyTheme(rawTokens: Partial<ThemeTokens>, id?: string) {
     const t = normalizeTokens(rawTokens);
     const root = document.documentElement;
+    // Light base = light text? No — infer from the surface luminance.
+    root.setAttribute('data-base', isLightColor(t.bg) ? 'light' : 'dark');
     if (id) {
-        root.setAttribute('data-theme', id);
         // Mirror the active theme id so the Design Lab window can match it.
         try { localStorage.setItem('quartz-active-theme', id); } catch { /* ignore */ }
     }
