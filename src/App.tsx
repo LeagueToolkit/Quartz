@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigationStore, useConfigStore, useThemeStore, useUiPrefsStore, applyUiPrefs, type Page } from '@/lib/stores';
 import { applyFont } from '@/lib/fonts/fontManager';
+import { useButtonGlow } from '@/lib/util/useButtonGlow';
 import { TitleBar } from '@/components/layout/TitleBar';
 import { NavRail } from '@/components/layout/NavRail';
 import { Home } from '@/pages/Home';
@@ -74,6 +75,8 @@ export function App() {
     const page = useNavigationStore((s) => s.page);
     const loadConfig = useConfigStore((s) => s.load);
     const initThemes = useThemeStore((s) => s.init);
+
+    useButtonGlow();
 
     useEffect(() => {
         // Load settings first so the theme store can read the saved selection.

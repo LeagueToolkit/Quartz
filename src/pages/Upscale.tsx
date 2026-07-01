@@ -220,6 +220,21 @@ export function Upscale() {
         },
     } as const;
 
+    // Tokenized dropdown paper so the menu matches the app on either base.
+    const ddMenuProps = {
+        PaperProps: { sx: {
+            mt: 0.6, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+            boxShadow: 'var(--dl-shadow-md)', overflow: 'hidden',
+            '& .MuiMenu-list': { py: 0.5 },
+            '& .MuiMenuItem-root': {
+                fontFamily: 'inherit', fontSize: '0.8rem', color: 'var(--text-secondary)', mx: 0.6, borderRadius: 'var(--radius-sm)', minHeight: '32px',
+                '&:hover': { background: 'var(--bg-hover)', color: 'var(--text-primary)' },
+                '&.Mui-selected': { background: 'color-mix(in oklab, var(--accent-primary) 16%, transparent)', color: 'var(--accent-primary)', fontWeight: 700 },
+                '&.Mui-selected:hover': { background: 'color-mix(in oklab, var(--accent-primary) 22%, transparent)' },
+            },
+        } },
+    } as const;
+
     const modePillSx = (active: boolean) => ({
         px: 1.35, py: 0.45,
         borderRadius: 'var(--radius-sm)',
@@ -898,7 +913,7 @@ export function Upscale() {
                         </Typography>
 
                         <FormControl fullWidth size="small" sx={{ mb: 1.5, ...selectSx }}>
-                            <Select value={model} onChange={(e) => setModel(e.target.value)}>
+                            <Select value={model} onChange={(e) => setModel(e.target.value)} MenuProps={ddMenuProps}>
                                 {availableModels.map((m) => (
                                     <MenuItem key={m.value} value={m.value} sx={{ fontSize: '0.8rem', fontFamily: 'inherit' }}>{m.label}</MenuItem>
                                 ))}

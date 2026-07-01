@@ -57,46 +57,49 @@ export const CustomSelect = ({ value, onChange, options, icon, disabled, placeho
                 style={{
                     width: '100%',
                     padding: icon ? '10px 32px 10px 36px' : '10px 32px 10px 12px',
-                    background: 'var(--settings-control-bg, rgba(255, 255, 255, 0.03))',
-                    border: isOpen ? '1px solid var(--accent)' : '1px solid var(--settings-control-border, rgba(255, 255, 255, 0.1))',
+                    background: 'var(--bg-tertiary)',
+                    border: isOpen ? '1px solid var(--accent-primary)' : '1px solid var(--border)',
                     borderRadius: '6px',
-                    color: 'var(--settings-ink, var(--accent))',
+                    color: 'var(--text-primary)',
                     fontSize: '13px', fontFamily: 'inherit', outline: 'none',
                     cursor: disabled ? 'not-allowed' : 'pointer',
                     display: 'flex', alignItems: 'center', textAlign: 'left', position: 'relative',
                 }}
             >
                 {icon && (
-                    <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--accent-2)', pointerEvents: 'none' }}>
+                    <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }}>
                         {icon}
                     </div>
                 )}
                 <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {selected ? (selected.label || selected.value) : placeholder}
                 </span>
-                <ChevronDown size={16} style={{ position: 'absolute', right: '12px', top: '50%', color: 'var(--accent-2)', pointerEvents: 'none', transform: isOpen ? 'translateY(-50%) rotate(180deg)' : 'translateY(-50%)' }} />
+                <ChevronDown size={16} style={{ position: 'absolute', right: '12px', top: '50%', color: 'var(--text-muted)', pointerEvents: 'none', transform: isOpen ? 'translateY(-50%) rotate(180deg)' : 'translateY(-50%)' }} />
             </button>
 
             {isOpen && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#121212', border: '1px solid var(--accent)', borderRadius: '6px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', zIndex: 1000, maxHeight: '250px', overflowY: 'auto' }}>
-                    {options.map((option) => (
+                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', boxShadow: 'var(--dl-shadow-md)', zIndex: 1000, maxHeight: '250px', overflowY: 'auto' }}>
+                    {options.map((option) => {
+                        const isSel = value === option.value;
+                        return (
                         <div
                             key={option.value}
                             onClick={() => { onChange(option.value); setIsOpen(false); }}
                             style={{
                                 padding: '10px 12px', cursor: 'pointer', fontSize: '13px',
-                                color: value === option.value ? 'var(--accent)' : 'var(--text)',
-                                background: value === option.value ? 'rgba(255,255,255,0.05)' : 'transparent',
+                                color: isSel ? 'var(--accent-primary)' : 'var(--text-primary)',
+                                background: isSel ? 'color-mix(in oklab, var(--accent-primary) 14%, transparent)' : 'transparent',
                                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                fontFamily: option.fontFamily || 'inherit', borderBottom: '1px solid rgba(255,255,255,0.03)',
+                                fontFamily: option.fontFamily || 'inherit', borderBottom: '1px solid color-mix(in oklab, var(--border) 60%, transparent)',
                             }}
-                            onMouseEnter={(e) => { if (value !== option.value) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
-                            onMouseLeave={(e) => { if (value !== option.value) e.currentTarget.style.background = 'transparent'; }}
+                            onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                            onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent'; }}
                         >
                             <span>{option.label || option.value}</span>
-                            {value === option.value && <Check size={14} />}
+                            {isSel && <Check size={14} />}
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
         </div>

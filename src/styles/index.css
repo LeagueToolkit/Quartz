@@ -5,7 +5,8 @@
 /* Color tokens live in styles/theme.css (canonical) and are theme-driven by
    applyTheme(). Only non-color layout primitives are kept here. */
 :root {
-    color-scheme: dark;
+    /* color-scheme is set at runtime by applyTheme() from the active base so
+       native controls (radios/checkboxes/dropdowns/scrollbars) match. */
     --titlebar-h: 48px;
     --rail-w: 60px;
 }
@@ -22,6 +23,12 @@ body {
 /* Global icon centering — keep SVGs middle-aligned next to text everywhere so
    icons don't ride slightly high off the baseline. */
 svg { vertical-align: middle; }
+
+/* Native form controls take the accent everywhere; color-scheme (set per base by
+   applyTheme) handles their light/dark chrome so nothing renders dark on light. */
+input[type="range"],
+input[type="checkbox"],
+input[type="radio"] { accent-color: var(--accent-primary); }
 
 /* Atmosphere: soft blue washes that give the background gentle depth. Kept
    low-opacity so it reads as ambient lift, not a glowing field. */

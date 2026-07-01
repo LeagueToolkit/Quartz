@@ -75,7 +75,7 @@ export function deriveTheme(rawAccent: string, base: BaseMode = 'dark'): ThemeTo
        saturated, mid-light accent looks neon and washes out against white, so we
        darken it a touch and trim saturation for legible contrast. On dark we keep
        it bright (a hair more saturation) so it pops against near-black. */
-    const accent = base === 'light' ? shade(rawAccent, -0.08, -0.06) : shade(rawAccent, 0, +0.04);
+    const accent = base === 'light' ? shade(rawAccent, -0.12, -0.12) : shade(rawAccent, 0, +0.05);
 
     const accent2 = shade(accent, -0.10);
     const accentMuted = shade(accent, -0.29, -0.20);

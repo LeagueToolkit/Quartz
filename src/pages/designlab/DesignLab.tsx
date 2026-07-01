@@ -13,6 +13,9 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import './design-lab.css';
+import { BUILTIN_VARIANTS } from '@/lib/theme/builtinThemes';
+import { deriveTheme, type BaseMode } from '@/lib/theme/deriveTheme';
+import { applyTheme } from '@/lib/theme/applyTheme';
 
 // ─── Inline icons (lab-local — keeps file fully standalone) ────────────────
 const I = {
@@ -97,38 +100,12 @@ const Row: React.FC<{ label: string; align?: 'start' | 'center'; children: React
     </div>
 );
 
-// ─── Theme switcher (lab-local) ─────────────────────────────────────────────
-const PALETTES = [
-    { id: 'flint',   color: '#0e639c', name: 'Flint blue' },
-    { id: 'violet',  color: '#7c3aed', name: 'Violet' },
-    { id: 'emerald', color: '#10b981', name: 'Emerald' },
-    { id: 'amber',   color: '#f59e0b', name: 'Amber' },
-    { id: 'crimson', color: '#ef4444', name: 'Crimson' },
-    { id: 'cyan',    color: '#06b6d4', name: 'Cyan' },
-];
+/* Theme switcher — drives the real Quartz theme system so the lab always
+   matches the app (same built-in themes + light/dark base + deriveTheme). */
+const PALETTES = BUILTIN_VARIANTS.map((v) => ({ id: v.id, color: v.accent, name: v.name }));
 
-function applyPalette(color: string) {
-    const root = document.documentElement;
-    if (color === '#0e639c') {
-        root.style.removeProperty('--accent-primary');
-        root.style.removeProperty('--accent-hover');
-        root.style.removeProperty('--accent-secondary');
-        return;
-    }
-    root.style.setProperty('--accent-primary', color);
-    root.style.setProperty('--accent-hover', shade(color, 12));
-    root.style.setProperty('--accent-secondary', shade(color, -10));
-}
-
-function shade(hex: string, pct: number): string {
-    const n = parseInt(hex.slice(1), 16);
-    let r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
-    const t = pct < 0 ? 0 : 255;
-    const p = Math.abs(pct) / 100;
-    r = Math.round((t - r) * p + r);
-    g = Math.round((t - g) * p + g);
-    b = Math.round((t - b) * p + b);
-    return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
+function applyPalette(accent: string, base: BaseMode) {
+    applyTheme(deriveTheme(accent, base));
 }
 
 // ─── Slider with live value bubble ──────────────────────────────────────────
@@ -370,7 +347,8 @@ const Modal: React.FC<{
 
 // ─── Showcase ───────────────────────────────────────────────────────────────
 export const DesignLab: React.FC = () => {
-    const [paletteId, setPaletteId] = useState('flint');
+    const [paletteId, setPaletteId] = useState('quartz');
+    const [labBase, setLabBase] = useState<BaseMode>('dark');
     const [loading, setLoading] = useState(false);
     const [vol, setVol] = useState(64);
     const [hue, setHue] = useState(220);
@@ -405,10 +383,25 @@ export const DesignLab: React.FC = () => {
         return () => document.removeEventListener('mousemove', onMove);
     }, []);
 
+    // Boot with the app's active theme so the lab opens matching the real UI.
+    useEffect(() => {
+        const active = (() => { try { return localStorage.getItem('quartz-active-theme'); } catch { return null; } })();
+        const start = PALETTES.find((p) => p.id === active) ?? PALETTES[0];
+        setPaletteId(start.id);
+        applyPalette(start.color, labBase);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     function pickPalette(id: string) {
         setPaletteId(id);
         const p = PALETTES.find((x) => x.id === id);
-        if (p) applyPalette(p.color);
+        if (p) applyPalette(p.color, labBase);
+    }
+
+    function pickBase(base: BaseMode) {
+        setLabBase(base);
+        const p = PALETTES.find((x) => x.id === paletteId) ?? PALETTES[0];
+        applyPalette(p.color, base);
     }
 
     function fakeLoad() {
@@ -422,12 +415,16 @@ export const DesignLab: React.FC = () => {
                 {/* ─── Header ──────────────────────────────────────────── */}
                 <header className="dl-page-head">
                     <div>
-                        <h1>Flint Design Lab</h1>
-                        <p>New polished primitives — buttons, sliders, dropdowns, modals. Theme-aware, motion-tuned.</p>
+                        <h1>Quartz Design Lab</h1>
+                        <p>Standardized primitives — buttons, sliders, dropdowns, modals. Theme-aware, motion-tuned.</p>
                     </div>
                     <div className="dl-page-head__meta">
-                        <span>v0 · #design-lab</span>
-                        <div className="dl-theme-switch" title="Try a palette">
+                        <div className="dl-tabs" style={{ marginRight: 8 }}>
+                            {(['dark', 'light'] as const).map((b) => (
+                                <button key={b} className={`dl-tab ${labBase === b ? 'dl-tab--active' : ''}`} onClick={() => pickBase(b)} style={{ textTransform: 'capitalize' }}>{b}</button>
+                            ))}
+                        </div>
+                        <div className="dl-theme-switch" title="Try a theme">
                             {PALETTES.map((p) => (
                                 <button
                                     key={p.id}

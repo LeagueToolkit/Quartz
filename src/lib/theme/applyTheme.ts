@@ -68,8 +68,11 @@ export function normalizeTokens(input: Partial<ThemeTokens>): ThemeTokens {
 export function applyTheme(rawTokens: Partial<ThemeTokens>, id?: string) {
     const t = normalizeTokens(rawTokens);
     const root = document.documentElement;
-    // Light base = light text? No — infer from the surface luminance.
-    root.setAttribute('data-base', isLightColor(t.bg) ? 'light' : 'dark');
+    const light = isLightColor(t.bg);
+    root.setAttribute('data-base', light ? 'light' : 'dark');
+    // Drive native form controls (radios, checkboxes, dropdowns, scrollbars) so
+    // they render light-on-light instead of the default dark chrome.
+    root.style.setProperty('color-scheme', light ? 'light' : 'dark');
     if (id) {
         // Mirror the active theme id so the Design Lab window can match it.
         try { localStorage.setItem('quartz-active-theme', id); } catch { /* ignore */ }

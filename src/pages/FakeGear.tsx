@@ -993,7 +993,7 @@ function FakeGear() {
                             <button
                                 className="fakegear-modal-btn"
                                 onClick={() => setShowWarning(false)}
-                                style={{ background: 'var(--color-warning)', color: '#000', width: '100%' }}
+                                style={{ background: 'var(--color-warning)', color: '#fff', fontWeight: 700, width: '100%' }}
                             >
                                 I Understand, Continue
                             </button>
@@ -1364,7 +1364,7 @@ function FakeGear() {
                                                     setShowStencilModal(true);
                                                 }
                                             }}
-                                            style={{ background: 'var(--color-success)', color: '#000', width: '100%' }}
+                                            style={{ background: 'var(--color-success)', color: '#fff', fontWeight: 700, width: '100%' }}
                                         >
                                             Skip Ground Layer Emitters (Recommended)
                                         </button>
@@ -1400,7 +1400,7 @@ function FakeGear() {
                                                     setShowStencilModal(true);
                                                 }
                                             }}
-                                            style={{ background: 'var(--color-success)', color: '#000', width: '100%' }}
+                                            style={{ background: 'var(--color-success)', color: '#fff', fontWeight: 700, width: '100%' }}
                                         >
                                             Skip Ground Layer Emitters (Recommended)
                                         </button>
@@ -1546,7 +1546,7 @@ const ChildParticlesWarningModal = memo(function ChildParticlesWarningModal({ op
                     <button className="fakegear-modal-btn cancel" onClick={onCancel}>
                         Cancel
                     </button>
-                    <button className="fakegear-modal-btn" onClick={onConfirm} style={{ background: 'var(--color-warning)', color: '#000' }}>
+                    <button className="fakegear-modal-btn" onClick={onConfirm} style={{ background: 'var(--color-warning)', color: '#fff', fontWeight: 700 }}>
                         Proceed Anyway
                     </button>
                 </div>
