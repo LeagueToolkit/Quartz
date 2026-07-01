@@ -1,25 +1,13 @@
-import { useState, type ReactNode } from 'react';
-import {
-    Box, Button, Typography, TextField, IconButton, Tooltip, FormControlLabel, Checkbox, CircularProgress,
-} from '@mui/material';
-import {
-    Palette as PaletteIcon, FolderOpen as FolderOpenIcon, PlayArrow as PlayArrowIcon, Clear as ClearIcon,
-} from '@mui/icons-material';
+import { useState } from 'react';
+import { Palette, FolderOpen, Play, X } from 'lucide-react';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import { Button } from '@/components/settings/primitives';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { toolsBinCopyColors } from '@/lib/api/vfxTools';
 import { log } from '@/lib/util/logger';
+import './tools-cards.css';
 
 interface NotifyArg { message: string; severity: 'info' | 'success' | 'error' | 'warning' }
-
-const baseFieldSx = {
-    '& .MuiOutlinedInput-root': {
-        background: 'var(--bg-tertiary)', color: 'var(--text-primary)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem',
-        '& fieldset': { borderColor: 'var(--border)' },
-        '&:hover fieldset': { borderColor: 'color-mix(in oklab, var(--accent-primary) 30%, var(--border))' },
-        '&.Mui-focused fieldset': { borderColor: 'var(--accent-primary)' },
-    },
-    '& .MuiInputBase-input': { py: 1 },
-} as const;
 
 const basename = (p: string) => p.replace(/\\/g, '/').split('/').pop() ?? p;
 const dirname = (p: string) => {
@@ -42,25 +30,15 @@ function PathPicker({ label, value, onChange, onPick }: {
     label: string; value: string; onChange: (v: string) => void; onPick: () => void;
 }) {
     return (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <TextField size="small" fullWidth placeholder={`${label} .bin path…`} value={value} onChange={(e) => onChange(e.target.value)} sx={baseFieldSx} />
-            <Tooltip title={`Browse for ${label.toLowerCase()} bin`}>
-                <IconButton size="small" onClick={onPick} sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--accent-primary)' } }}>
-                    <FolderOpenIcon fontSize="small" />
-                </IconButton>
-            </Tooltip>
-            {value && (
-                <Tooltip title="Clear">
-                    <IconButton size="small" onClick={() => onChange('')} sx={{ color: 'var(--text-muted)', '&:hover': { color: 'var(--color-danger)' } }}>
-                        <ClearIcon fontSize="small" />
-                    </IconButton>
-                </Tooltip>
-            )}
-        </Box>
+        <div className="tc-picker">
+            <input className="dl-input" placeholder={`${label} .bin path…`} value={value} onChange={(e) => onChange(e.target.value)} />
+            <button className="tc-iconbtn" title={`Browse for ${label.toLowerCase()} bin`} onClick={onPick}><FolderOpen size={16} /></button>
+            {value && <button className="tc-iconbtn tc-iconbtn--danger" title="Clear" onClick={() => onChange('')}><X size={16} /></button>}
+        </div>
     );
 }
 
-interface CopyResult { ok: boolean; fieldsCopied?: number; entriesMatched?: number; entriesSkipped?: number; outputPath?: string; error?: string }
+interface CopyResult { fieldsCopied: number; entriesMatched: number; entriesSkipped: number }
 
 export function BinColorCopyCard({ onNotify }: { onNotify?: (a: NotifyArg) => void }) {
     const [sourcePath, setSourcePath] = useState('');
@@ -73,15 +51,11 @@ export function BinColorCopyCard({ onNotify }: { onNotify?: (a: NotifyArg) => vo
     const notify = (message: string, severity: NotifyArg['severity'] = 'info') => onNotify?.({ message, severity });
 
     const handleRun = async () => {
-        if (!sourcePath || !targetPath) {
-            notify('Select both source and target bins first', 'warning');
-            return;
-        }
+        if (!sourcePath || !targetPath) { notify('Select both source and target bins first', 'warning'); return; }
         let outputPath: string | null = null;
         if (!overwriteTarget) {
             const base = basename(targetPath).replace(/\.bin$/i, '');
-            const suggested = `${dirname(targetPath)}/${base}_colored.bin`;
-            outputPath = await pickSaveBinFile(suggested);
+            outputPath = await pickSaveBinFile(`${dirname(targetPath)}/${base}_colored.bin`);
             if (!outputPath) return;
         }
         setBusy(true);
@@ -92,85 +66,56 @@ export function BinColorCopyCard({ onNotify }: { onNotify?: (a: NotifyArg) => vo
                 `Copied ${res.fieldsCopied} color field(s) — ${res.entriesMatched} entr(ies) matched, ${res.entriesSkipped} skipped → ${basename(res.outputPath)}`,
                 res.fieldsCopied > 0 ? 'success' : 'info',
             );
-            setLastResult({
-                ok: true,
-                fieldsCopied: res.fieldsCopied,
-                entriesMatched: res.entriesMatched,
-                entriesSkipped: res.entriesSkipped,
-                outputPath: res.outputPath,
-            });
+            setLastResult({ fieldsCopied: res.fieldsCopied, entriesMatched: res.entriesMatched, entriesSkipped: res.entriesSkipped });
         } catch (e) {
             log.error('bin:copyColors', e);
             notify(`Copy crashed: ${String((e as Error)?.message || e)}`, 'error');
-            setLastResult({ ok: false, error: String((e as Error)?.message || e) });
         } finally {
             setBusy(false);
         }
     };
 
-    const labelSx = {
-        color: 'var(--accent-primary)', fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase',
-        letterSpacing: '0.1em', mb: 0.5,
-    } as const;
-
     return (
-        <Box sx={{
-            background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
-            p: 2, mb: 3, position: 'relative', overflow: 'hidden',
-        }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1.5 }}>
-                <Box sx={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-sm)', background: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)', border: '1px solid color-mix(in oklab, var(--accent-primary) 25%, transparent)', color: 'var(--accent-primary)' }}>
-                    <PaletteIcon fontSize="small" />
-                </Box>
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ color: 'var(--text-primary)', fontSize: '0.88rem', fontWeight: 700, lineHeight: 1.2 }}>Copy BIN Colors</Typography>
-                    <Typography sx={{ color: 'var(--text-muted)', fontSize: '0.7rem', mt: 0.25 }}>
-                        Copy VFX colors (RGBA + named VEC4 fields) from a source bin into a structurally identical target bin. Inspired by ltmao&apos;s hapibin.
-                    </Typography>
-                </Box>
-            </Box>
+        <div className="tc-card">
+            <div className="tc-card__head">
+                <div className="tc-card__icon"><Palette size={20} /></div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <h3 className="tc-card__title">Copy BIN Colors</h3>
+                    <p className="tc-card__desc">Copy VFX colors (RGBA + named VEC4 fields) from a source bin into a structurally identical target bin. Inspired by ltmao&apos;s hapibin.</p>
+                </div>
+            </div>
 
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.25, mb: 1.5 }}>
-                <Box>
-                    <Typography sx={labelSx}>Source (donor colors)</Typography>
-                    <PathPicker label="Source" value={sourcePath} onChange={setSourcePath} onPick={async () => { const p = await pickBinFile('Select source bin (donor)'); if (p) setSourcePath(p); }} />
-                </Box>
-                <Box>
-                    <Typography sx={labelSx}>Target (gets recolored)</Typography>
-                    <PathPicker label="Target" value={targetPath} onChange={setTargetPath} onPick={async () => { const p = await pickBinFile('Select target bin (will be recolored)'); if (p) setTargetPath(p); }} />
-                </Box>
-            </Box>
+            <div className="tc-card__body">
+                <div className="tc-fields">
+                    <div>
+                        <label className="tc-field__label">Source (donor colors)</label>
+                        <PathPicker label="Source" value={sourcePath} onChange={setSourcePath} onPick={async () => { const p = await pickBinFile('Select source bin (donor)'); if (p) setSourcePath(p); }} />
+                    </div>
+                    <div>
+                        <label className="tc-field__label">Target (gets recolored)</label>
+                        <PathPicker label="Target" value={targetPath} onChange={setTargetPath} onPick={async () => { const p = await pickBinFile('Select target bin (will be recolored)'); if (p) setTargetPath(p); }} />
+                    </div>
+                </div>
 
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-                <FormControlLabel
-                    control={<Checkbox size="small" checked={overwriteTarget} onChange={(e) => setOverwriteTarget(e.target.checked)} sx={{ color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent-primary)' }, py: 0.5 }} />}
-                    label={<Typography sx={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Overwrite target in place</Typography>}
-                    sx={{ m: 0 }}
-                />
-                <FormControlLabel
-                    control={<Checkbox size="small" checked={createBackup} disabled={!overwriteTarget} onChange={(e) => setCreateBackup(e.target.checked)} sx={{ color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent-primary)' }, py: 0.5 }} />}
-                    label={<Typography sx={{ fontSize: '0.75rem', color: overwriteTarget ? 'var(--text-secondary)' : 'var(--text-muted)' }}>Create .bak backup</Typography>}
-                    sx={{ m: 0 }}
-                />
-
-                <Box sx={{ flex: 1 }} />
-
-                {lastResult?.ok && (
-                    <Typography sx={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                        Last run: {lastResult.fieldsCopied} field(s), {lastResult.entriesMatched} entries matched, {lastResult.entriesSkipped} skipped
-                    </Typography>
-                )}
-
-                <Button
-                    size="small" variant="contained"
-                    startIcon={(busy ? <CircularProgress size={14} sx={{ color: 'var(--accent-primary)' }} /> : <PlayArrowIcon />) as ReactNode}
-                    disabled={busy || !sourcePath || !targetPath} onClick={handleRun}
-                    sx={{ background: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in oklab, var(--accent-primary) 35%, transparent)', borderRadius: 'var(--radius-sm)', textTransform: 'none', fontSize: '0.75rem', fontWeight: 700, px: 2, boxShadow: 'none', '&:hover': { background: 'color-mix(in oklab, var(--accent-primary) 22%, transparent)', borderColor: 'color-mix(in oklab, var(--accent-primary) 60%, transparent)' }, '&.Mui-disabled': { background: 'var(--bg-tertiary)', color: 'var(--text-muted)' } }}
-                >
-                    {busy ? 'Copying…' : 'Copy Colors'}
-                </Button>
-            </Box>
-        </Box>
+                <div className="tc-foot">
+                    <div className="tc-foot__opts">
+                        <Checkbox label="Overwrite target in place" checked={overwriteTarget} onChange={setOverwriteTarget} />
+                        <Checkbox label="Create .bak backup" checked={createBackup} disabled={!overwriteTarget} onChange={setCreateBackup} />
+                    </div>
+                    <div className="tc-foot__spacer" />
+                    {lastResult && (
+                        <span className="tc-foot__result">
+                            {lastResult.fieldsCopied} field(s) · {lastResult.entriesMatched} matched · {lastResult.entriesSkipped} skipped
+                        </span>
+                    )}
+                    <div className="tc-foot__run">
+                        <Button icon={<Play size={16} />} variant="primary" disabled={busy || !sourcePath || !targetPath} onClick={handleRun}>
+                            {busy ? 'Copying…' : 'Copy Colors'}
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 }
 

@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { Palette, Terminal, HardDrive, Eye, Github, FolderTree, type LucideIcon } from 'lucide-react';
+import { Palette, Terminal, HardDrive, Eye, Github, FolderTree, FlaskConical, type LucideIcon } from 'lucide-react';
 import { AppearanceSection } from '@/components/settings/sections/AppearanceSection';
 import { PathsSection } from '@/components/settings/sections/PathsSection';
 import { ToolsSection } from '@/components/settings/sections/ToolsSection';
 import { WindowsIntegrationSection } from '@/components/settings/sections/WindowsIntegrationSection';
 import { PageVisibilitySection } from '@/components/settings/sections/PageVisibilitySection';
 import { GitHubSection } from '@/components/settings/sections/GitHubSection';
+import { DevSection } from '@/components/settings/sections/DevSection';
 
-type SectionId = 'appearance' | 'paths' | 'tools' | 'windowsIntegration' | 'pages' | 'github';
+type SectionId = 'appearance' | 'paths' | 'tools' | 'windowsIntegration' | 'pages' | 'github' | 'dev';
 
+// The Dev section is only surfaced in development builds.
 const SECTIONS: { id: SectionId; name: string; icon: LucideIcon }[] = [
     { id: 'appearance', name: 'Appearance', icon: Palette },
     { id: 'paths', name: 'League Path', icon: FolderTree },
@@ -16,6 +18,7 @@ const SECTIONS: { id: SectionId; name: string; icon: LucideIcon }[] = [
     { id: 'windowsIntegration', name: 'Windows Integration', icon: HardDrive },
     { id: 'pages', name: 'Page Visibility', icon: Eye },
     { id: 'github', name: 'GitHub Integration', icon: Github },
+    ...(import.meta.env.DEV ? [{ id: 'dev' as const, name: 'Dev', icon: FlaskConical }] : []),
 ];
 
 function SectionContent({ id }: { id: SectionId }) {
@@ -26,6 +29,7 @@ function SectionContent({ id }: { id: SectionId }) {
         case 'windowsIntegration': return <WindowsIntegrationSection />;
         case 'pages': return <PageVisibilitySection />;
         case 'github': return <GitHubSection />;
+        case 'dev': return <DevSection />;
     }
 }
 

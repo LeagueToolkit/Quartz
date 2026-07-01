@@ -15,6 +15,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { toolsExecute } from '@/lib/api/fileOps';
 import { log } from '@/lib/util/logger';
 import './tools/Tools.css';
+import './tools/tools-cards.css';
 import BinColorCopyCard from './tools/BinColorCopyCard';
 import FixVfxShapeCard from './tools/FixVfxShapeCard';
 import { POPULAR_EMOJIS } from './tools/popularEmojis';
@@ -260,15 +261,23 @@ export function Tools() {
     const cardSx = {
         background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
         position: 'relative', overflow: 'hidden', transition: 'all var(--motion-fast)',
+        // Accent hairline down the left edge, matching the built-in tool cards.
+        '&::before': {
+            content: '""', position: 'absolute', left: 0, top: 0, bottom: 0, width: '3px',
+            background: 'linear-gradient(180deg, var(--accent-primary), color-mix(in oklab, var(--accent-primary) 40%, transparent))',
+            opacity: 0.9,
+        },
         '&:hover': {
-            borderColor: 'color-mix(in oklab, var(--accent-primary) 35%, var(--border))', background: 'var(--bg-tertiary)',
+            borderColor: 'color-mix(in oklab, var(--accent-primary) 35%, var(--border))',
             transform: 'translateY(-2px)', boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
         },
     } as const;
     const dropZoneSx = (active: boolean) => ({
         p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, borderRadius: 'var(--radius)',
-        border: active ? '1.5px dashed var(--accent-primary)' : '1.5px dashed var(--border)',
-        background: active ? 'color-mix(in oklab, var(--accent-primary) 8%, transparent)' : 'var(--bg-tertiary)',
+        border: active ? '1.5px dashed var(--accent-primary)' : '1.5px dashed color-mix(in oklab, var(--border) 80%, transparent)',
+        background: active
+            ? 'color-mix(in oklab, var(--accent-primary) 10%, transparent)'
+            : 'color-mix(in oklab, var(--bg-tertiary) 60%, transparent)',
         transition: 'all var(--motion-fast)', cursor: 'pointer',
         '&:hover': { borderColor: 'color-mix(in oklab, var(--accent-primary) 60%, var(--border))', background: 'var(--bg-hover)' },
     } as const);
@@ -305,11 +314,11 @@ export function Tools() {
                     </Box>
                 )}
 
-                <Typography sx={{ color: 'var(--accent-primary)', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', mb: 1 }}>Built-in Tools</Typography>
+                <div className="tc-section-label"><span className="tc-section-label__accent">Built-in Tools</span></div>
                 <BinColorCopyCard onNotify={({ message, severity }) => notify(message, severity)} />
                 <FixVfxShapeCard onNotify={({ message, severity }) => notify(message, severity)} />
 
-                <Typography sx={{ color: 'var(--accent-primary)', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', mb: 1, mt: 2 }}>External Executables</Typography>
+                <div className="tc-section-label" style={{ marginTop: 24 }}><span className="tc-section-label__accent">External Executables</span></div>
 
                 {exes.length === 0 ? (
                     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 8, color: 'var(--text-muted)' }}>

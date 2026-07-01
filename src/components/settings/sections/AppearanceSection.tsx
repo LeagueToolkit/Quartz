@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Type, FolderOpen, RefreshCw, Plus, Trash2, FlaskConical } from 'lucide-react';
+import { Type, FolderOpen, RefreshCw, Plus, Trash2 } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { FormGroup, CustomSelect, Button } from '../primitives';
 import { ThemeCardGrid } from '../ThemeCardGrid';
@@ -41,24 +40,6 @@ function Checkbox({ checked, onChange, children }: { checked: boolean; onChange:
             <span>{children}</span>
         </label>
     );
-}
-
-/* Open the Design Lab in a real separate window. Focuses the existing one if
-   it's already open. */
-async function openDesignLab() {
-    const existing = await WebviewWindow.getByLabel('design-lab');
-    if (existing) {
-        await existing.setFocus();
-        return;
-    }
-    const win = new WebviewWindow('design-lab', {
-        url: 'index.html?lab',
-        title: 'Quartz — Design Lab',
-        width: 1180,
-        height: 860,
-        resizable: true,
-    });
-    win.once('tauri://error', (e) => log.error('Design Lab window failed', String(e)));
 }
 
 export function AppearanceSection() {
@@ -119,12 +100,6 @@ export function AppearanceSection() {
 
             <FormGroup label="Color Theme" description="Pick a base, choose a theme, click its dot to customize the accent">
                 <ThemeCardGrid />
-            </FormGroup>
-
-            <FormGroup label="Design Lab" description="Open a window showcasing every standardized UI element (buttons, inputs, sliders, toggles, modals)">
-                <Button icon={<FlaskConical size={16} />} variant="secondary" onClick={() => openDesignLab().catch((e) => log.error('openDesignLab failed', String(e)))}>
-                    Open Design Lab
-                </Button>
             </FormGroup>
 
             <FormGroup label="Wallpaper" description="Set a background image that covers the entire app">
