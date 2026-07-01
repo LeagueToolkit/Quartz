@@ -402,8 +402,8 @@ export function ParticleRandomizer() {
             )}
 
             {/* ── Floating top-right Load button ── */}
-            <button className="pr-btn pr-btn-small pr-btn-green pr-load-floating" onClick={loadBinFile}>
-                <FolderOpen size={13} /> Load .bin
+            <button className="dl-btn dl-btn--sm dl-btn--primary pr-load-floating" onClick={loadBinFile}>
+                <span className="dl-icon"><FolderOpen size={13} /></span> Load .bin
             </button>
 
             {/* ── Main Content ── */}
@@ -416,7 +416,8 @@ export function ParticleRandomizer() {
                             {/* Search */}
                             <div className="pr-search-bar">
                                 <input
-                                    className="pr-search-input"
+                                    className="dl-input"
+                                    style={{ flex: 1, minWidth: '150px', fontFamily: 'var(--font-mono)' }}
                                     type="text"
                                     placeholder="Search systems or emitters..."
                                     value={searchQuery}
@@ -431,11 +432,11 @@ export function ParticleRandomizer() {
 
                             {/* Selection controls */}
                             <div className="pr-selection-bar">
-                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={selectAll}><CheckSquare size={11} />All</button>
-                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={deselectAll}><Square size={11} />None</button>
-                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={selectVisible}><Eye size={11} />Visible</button>
-                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={expandAll}><ChevronsDown size={11} />Expand</button>
-                                <button className="pr-btn pr-btn-small pr-btn-accent" onClick={collapseAll}><ChevronsUp size={11} />Collapse</button>
+                                <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={selectAll}><span className="dl-icon"><CheckSquare size={11} /></span>All</button>
+                                <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={deselectAll}><span className="dl-icon"><Square size={11} /></span>None</button>
+                                <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={selectVisible}><span className="dl-icon"><Eye size={11} /></span>Visible</button>
+                                <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={expandAll}><span className="dl-icon"><ChevronsDown size={11} /></span>Expand</button>
+                                <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={collapseAll}><span className="dl-icon"><ChevronsUp size={11} /></span>Collapse</button>
                                 <span className="pr-selection-count">
                                     {selected.size > 0 && selectedSystems.size > 0
                                         ? `${selected.size} emitters + ${selectedSystems.size} systems`
@@ -569,7 +570,8 @@ export function ParticleRandomizer() {
                             <div className="pr-number-row">
                                 <label>Number of variants (1–10):</label>
                                 <input
-                                    className="pr-number-input"
+                                    className="dl-input"
+                                    style={{ width: '70px', textAlign: 'center', fontFamily: 'var(--font-mono)' }}
                                     type="number"
                                     min={1}
                                     max={10}
@@ -607,7 +609,8 @@ export function ParticleRandomizer() {
                                         <React.Fragment key={i}>
                                             <label>Variant {i + 1}:</label>
                                             <input
-                                                className="pr-prefix-input"
+                                                className="dl-input"
+                                                style={{ height: '32px', fontFamily: 'var(--font-mono)', background: 'var(--bg-secondary)' }}
                                                 type="text"
                                                 placeholder={`e.g. fire, ice, dark…`}
                                                 value={val}
@@ -650,7 +653,8 @@ export function ParticleRandomizer() {
                                             <React.Fragment key={i}>
                                                 <label>Variant {i + 1}:</label>
                                                 <input
-                                                    className="pr-prefix-input"
+                                                    className="dl-input"
+                                                    style={{ height: '32px', fontFamily: 'var(--font-mono)', background: 'var(--bg-secondary)' }}
                                                     type="text"
                                                     placeholder={`e.g. variant_${i + 1}`}
                                                     value={val}
@@ -693,22 +697,22 @@ export function ParticleRandomizer() {
                     {/* ── Action Bar ── */}
                     <div className="pr-action-bar">
                         <button
-                            className="pr-btn pr-btn-prominent pr-btn-green"
+                            className="dl-btn dl-btn--primary"
                             onClick={handleGenerate}
                             disabled={!pyContent || (selected.size === 0 && selectedSystems.size === 0)}
                         >
-                            <Dices size={15} /> Randomize
+                            <span className="dl-icon"><Dices size={15} /></span> Randomize
                         </button>
                         <button
-                            className="pr-btn pr-btn-prominent pr-btn-amber"
+                            className="dl-btn dl-btn--secondary"
                             onClick={handleSave}
                             disabled={!canSave}
                         >
-                            <Save size={15} /> Save
+                            <span className="dl-icon"><Save size={15} /></span> Save
                         </button>
                         {canCopyAssets && (
-                            <button className="pr-btn pr-btn-prominent pr-btn-blue" onClick={handleCopyAssets}>
-                                <FolderOpen size={15} /> Copy Assets to Folders
+                            <button className="dl-btn dl-btn--secondary" onClick={handleCopyAssets}>
+                                <span className="dl-icon"><FolderOpen size={15} /></span> Copy Assets to Folders
                             </button>
                         )}
                         {statusMessage && (

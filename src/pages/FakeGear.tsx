@@ -15,7 +15,6 @@ import {
     useRef,
     useMemo,
     memo,
-    type CSSProperties,
 } from 'react';
 import {
     Box,
@@ -62,22 +61,6 @@ import {
 import './fakegear/FakeGear.css';
 
 const DEFAULT_STENCIL = '0xe6deedc4';
-
-/* Flat token-driven button. `color` is any CSS color (token or var) used as
-   the accent for border/text; the fill is a low-opacity mix of it. */
-const buttonStyle = (color: string, disabled = false): CSSProperties => ({
-    padding: '8px 14px',
-    background: disabled ? 'var(--bg-tertiary)' : `color-mix(in oklab, ${color} 12%, transparent)`,
-    border: `1px solid ${disabled ? 'var(--border)' : `color-mix(in oklab, ${color} 45%, transparent)`}`,
-    borderRadius: 'var(--radius-sm)',
-    color: disabled ? 'var(--text-muted)' : color,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    fontFamily: 'inherit',
-    fontSize: '13px',
-    fontWeight: 600,
-    opacity: disabled ? 0.5 : 1,
-    transition: 'background 140ms var(--ease-out), border-color 140ms var(--ease-out)',
-});
 
 function basename(p: string): string {
     return p.replace(/\\/g, '/').split('/').pop() || p;
@@ -991,9 +974,9 @@ function FakeGear() {
 
                         <div className="fakegear-modal-actions">
                             <button
-                                className="fakegear-modal-btn"
+                                className="dl-btn"
                                 onClick={() => setShowWarning(false)}
-                                style={{ background: 'var(--color-warning)', color: '#fff', fontWeight: 700, width: '100%' }}
+                                style={{ background: 'var(--color-warning)', borderColor: 'var(--color-warning)', color: '#fff', fontWeight: 700, width: '100%' }}
                             >
                                 I Understand, Continue
                             </button>
@@ -1015,21 +998,21 @@ function FakeGear() {
                     </h1>
 
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={loadBinFile} style={buttonStyle('var(--color-success)')}>
+                        <button className="dl-btn dl-btn--sm" onClick={loadBinFile}>
                             Open
                         </button>
                         <button
+                            className="dl-btn dl-btn--sm dl-btn--secondary"
                             onClick={handleUndo}
                             disabled={!originalContent || pyContent === originalContent}
-                            style={buttonStyle('var(--text-secondary)', !originalContent || pyContent === originalContent)}
                             title="Undo changes (restore original)"
                         >
                             Undo
                         </button>
                         <button
+                            className="dl-btn dl-btn--sm dl-btn--primary"
                             onClick={saveFile}
                             disabled={!hasUnsavedChanges}
-                            style={buttonStyle('var(--accent-primary)', !hasUnsavedChanges)}
                         >
                             Save
                         </button>
@@ -1086,20 +1069,11 @@ function FakeGear() {
                         <SearchIcon style={{ color: 'var(--text-secondary)', fontSize: '18px' }} />
                         <input
                             type="text"
+                            className="dl-input"
                             placeholder="Search systems..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            style={{
-                                flex: 1,
-                                padding: '6px 8px',
-                                background: 'var(--bg-secondary)',
-                                border: '1px solid var(--border)',
-                                borderRadius: 'var(--radius-sm)',
-                                color: 'var(--text-primary)',
-                                fontSize: '12px',
-                                fontFamily: 'inherit',
-                                outline: 'none',
-                            }}
+                            style={{ flex: 1, height: '30px', fontSize: '12px' }}
                         />
                     </div>
 
@@ -1159,21 +1133,9 @@ function FakeGear() {
                         </span>
                         {selectedEmitters.size > 0 ? (
                             <button
+                                className="dl-btn dl-btn--sm dl-btn--primary"
                                 onClick={initiateEmitterDuplication}
                                 disabled={isLoading}
-                                style={{
-                                    padding: '8px 16px',
-                                    fontSize: '12px',
-                                    fontWeight: 600,
-                                    background: 'color-mix(in oklab, var(--accent-secondary) 22%, transparent)',
-                                    border: '1px solid color-mix(in oklab, var(--accent-primary) 45%, transparent)',
-                                    borderRadius: 'var(--radius-sm)',
-                                    color: 'var(--accent-hover)',
-                                    cursor: isLoading ? 'not-allowed' : 'pointer',
-                                    fontFamily: 'inherit',
-                                    opacity: isLoading ? 0.5 : 1,
-                                    transition: 'background 140ms var(--ease-out), border-color 140ms var(--ease-out)',
-                                }}
                             >
                                 ✨ Duplicate {selectedEmitters.size} Emitter{selectedEmitters.size !== 1 ? 's' : ''} as Inline
                             </button>
@@ -1212,16 +1174,18 @@ function FakeGear() {
                             </Typography>
                             <Box sx={{ display: 'flex', gap: 1, flexDirection: 'column' }}>
                                 <button
+                                    className="dl-btn dl-btn--secondary"
+                                    style={{ width: '100%' }}
                                     onClick={handleConvertToVariants}
                                     disabled={selectedSystems.size === 0 || isLoading}
-                                    style={buttonStyle('var(--accent-primary)', selectedSystems.size === 0 || isLoading)}
                                 >
                                     Convert to Child Particles
                                 </button>
                                 <button
+                                    className="dl-btn dl-btn--primary"
+                                    style={{ width: '100%' }}
                                     onClick={handleConvertToInlineVariants}
                                     disabled={selectedSystems.size === 0 || isLoading}
-                                    style={buttonStyle('var(--accent-hover)', selectedSystems.size === 0 || isLoading)}
                                 >
                                     Duplicate as Inline Variants
                                 </button>
@@ -1248,9 +1212,10 @@ function FakeGear() {
                                 </Box>
                             ) : (
                                 <button
+                                    className="dl-btn dl-btn--primary"
+                                    style={{ width: '100%' }}
                                     onClick={handleAddToggleScreen}
                                     disabled={!pyContent}
-                                    style={buttonStyle('var(--color-success)', !pyContent)}
                                 >
                                     Add Toggle Screen
                                 </button>
@@ -1273,9 +1238,10 @@ function FakeGear() {
                                 </Box>
                             ) : (
                                 <button
+                                    className="dl-btn dl-btn--primary"
+                                    style={{ width: '100%' }}
                                     onClick={handleAddAnimationToggle}
                                     disabled={!pyContent}
-                                    style={buttonStyle('var(--accent-primary)', !pyContent)}
                                 >
                                     Add Animation Toggle
                                 </button>
@@ -1353,7 +1319,7 @@ function FakeGear() {
                                 {isEmitterMode ? (
                                     <>
                                         <button
-                                            className="fakegear-modal-btn confirm"
+                                            className="dl-btn"
                                             onClick={() => {
                                                 setShowGroundLayerWarning(false);
                                                 const existingId = extractStencilIdFromToggleScreen(pyContent);
@@ -1364,12 +1330,13 @@ function FakeGear() {
                                                     setShowStencilModal(true);
                                                 }
                                             }}
-                                            style={{ background: 'var(--color-success)', color: '#fff', fontWeight: 700, width: '100%' }}
+                                            style={{ background: 'var(--color-success)', borderColor: 'var(--color-success)', color: '#fff', fontWeight: 700, width: '100%' }}
                                         >
                                             Skip Ground Layer Emitters (Recommended)
                                         </button>
                                         <button
-                                            className="fakegear-modal-btn"
+                                            className="dl-btn dl-btn--danger"
+                                            style={{ width: '100%' }}
                                             onClick={() => {
                                                 setShowGroundLayerWarning(false);
                                                 const existingId = extractStencilIdFromToggleScreen(pyContent);
@@ -1380,7 +1347,6 @@ function FakeGear() {
                                                     setShowStencilModal(true);
                                                 }
                                             }}
-                                            style={{ background: 'color-mix(in oklab, var(--color-danger) 18%, transparent)', border: '1px solid color-mix(in oklab, var(--color-danger) 45%, transparent)', color: 'var(--color-danger)', width: '100%' }}
                                         >
                                             Patch Anyway (May Cause Bugs)
                                         </button>
@@ -1388,7 +1354,7 @@ function FakeGear() {
                                 ) : (
                                     <>
                                         <button
-                                            className="fakegear-modal-btn confirm"
+                                            className="dl-btn"
                                             onClick={() => {
                                                 setShowGroundLayerWarning(false);
                                                 setPendingAction('inlineVariants-skip');
@@ -1400,12 +1366,13 @@ function FakeGear() {
                                                     setShowStencilModal(true);
                                                 }
                                             }}
-                                            style={{ background: 'var(--color-success)', color: '#fff', fontWeight: 700, width: '100%' }}
+                                            style={{ background: 'var(--color-success)', borderColor: 'var(--color-success)', color: '#fff', fontWeight: 700, width: '100%' }}
                                         >
                                             Skip Ground Layer Emitters (Recommended)
                                         </button>
                                         <button
-                                            className="fakegear-modal-btn"
+                                            className="dl-btn dl-btn--danger"
+                                            style={{ width: '100%' }}
                                             onClick={() => {
                                                 setShowGroundLayerWarning(false);
                                                 const existingId = extractStencilIdFromToggleScreen(pyContent);
@@ -1417,14 +1384,13 @@ function FakeGear() {
                                                     setShowStencilModal(true);
                                                 }
                                             }}
-                                            style={{ background: 'color-mix(in oklab, var(--color-danger) 18%, transparent)', border: '1px solid color-mix(in oklab, var(--color-danger) 45%, transparent)', color: 'var(--color-danger)', width: '100%' }}
                                         >
                                             Patch Anyway (May Cause Bugs)
                                         </button>
                                     </>
                                 )}
                                 <button
-                                    className="fakegear-modal-btn cancel"
+                                    className="dl-btn dl-btn--secondary"
                                     onClick={() => setShowGroundLayerWarning(false)}
                                     style={{ width: '100%' }}
                                 >
@@ -1484,7 +1450,8 @@ const StencilModal = memo(function StencilModal({ open, stencilId, onChange, onC
                     <div>
                         <input
                             type="text"
-                            className="fakegear-modal-input"
+                            className="dl-input"
+                            style={{ fontFamily: 'var(--font-mono)' }}
                             placeholder="0xe6deedc4 (Default)"
                             value={localValue}
                             onChange={(e) => setLocalValue(e.target.value)}
@@ -1498,10 +1465,10 @@ const StencilModal = memo(function StencilModal({ open, stencilId, onChange, onC
                 </div>
 
                 <div className="fakegear-modal-actions">
-                    <button className="fakegear-modal-btn cancel" onClick={onClose}>
+                    <button className="dl-btn dl-btn--secondary" onClick={onClose}>
                         Cancel
                     </button>
-                    <button className="fakegear-modal-btn confirm" onClick={handleConfirm}>
+                    <button className="dl-btn dl-btn--primary" onClick={handleConfirm}>
                         Confirm & Proceed
                     </button>
                 </div>
@@ -1543,10 +1510,10 @@ const ChildParticlesWarningModal = memo(function ChildParticlesWarningModal({ op
                 </div>
 
                 <div className="fakegear-modal-actions">
-                    <button className="fakegear-modal-btn cancel" onClick={onCancel}>
+                    <button className="dl-btn dl-btn--secondary" onClick={onCancel}>
                         Cancel
                     </button>
-                    <button className="fakegear-modal-btn" onClick={onConfirm} style={{ background: 'var(--color-warning)', color: '#fff', fontWeight: 700 }}>
+                    <button className="dl-btn" onClick={onConfirm} style={{ background: 'var(--color-warning)', borderColor: 'var(--color-warning)', color: '#fff', fontWeight: 700 }}>
                         Proceed Anyway
                     </button>
                 </div>
@@ -1592,16 +1559,16 @@ const DeleteConfirmModal = memo(function DeleteConfirmModal({ open, systemKey, o
                 </div>
 
                 <div className="fakegear-modal-actions">
-                    <button className="fakegear-modal-btn cancel" onClick={onCancel}>
+                    <button className="dl-btn dl-btn--secondary" onClick={onCancel}>
                         Cancel
                     </button>
                     <button
-                        className="fakegear-modal-btn"
+                        className="dl-btn"
                         onClick={onConfirm}
                         style={{
-                            backgroundColor: 'var(--color-danger)',
+                            background: 'var(--color-danger)',
                             color: 'white',
-                            border: '1px solid var(--color-danger)',
+                            borderColor: 'var(--color-danger)',
                         }}
                     >
                         Revert Variants

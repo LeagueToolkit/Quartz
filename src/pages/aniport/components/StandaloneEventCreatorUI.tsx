@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Select, MenuItem, FormControl, InputLabel } from '@mui/material';
+import { Check } from 'lucide-react';
 import {
     createParticleEvent,
     createSubmeshEvent,
@@ -104,23 +105,24 @@ export default function StandaloneEventCreatorUI({ donorData, setDonorData, crea
                     <div className="event-options">
                         <div className="option-row">
                             <label>Effect Key:</label>
-                            <input type="text" value={particleOptions.effectKey} onChange={(e) => setParticleOptions((p) => ({ ...p, effectKey: e.target.value }))} placeholder="VFX effect name" className="option-input" />
+                            <input type="text" value={particleOptions.effectKey} onChange={(e) => setParticleOptions((p) => ({ ...p, effectKey: e.target.value }))} placeholder="VFX effect name" className="dl-input option-input" />
                         </div>
                         <div className="option-row">
                             <label>Start Frame:</label>
-                            <input type="number" value={particleOptions.startFrame} onChange={(e) => setParticleOptions((p) => ({ ...p, startFrame: parseInt(e.target.value) || 0 }))} className="option-input" />
+                            <input type="number" value={particleOptions.startFrame} onChange={(e) => setParticleOptions((p) => ({ ...p, startFrame: parseInt(e.target.value) || 0 }))} className="dl-input option-input" />
                         </div>
                         <div className="option-row">
                             <label>End Frame (optional):</label>
-                            <input type="number" value={particleOptions.endFrame} onChange={(e) => setParticleOptions((p) => ({ ...p, endFrame: parseInt(e.target.value) || 0 }))} className="option-input" />
+                            <input type="number" value={particleOptions.endFrame} onChange={(e) => setParticleOptions((p) => ({ ...p, endFrame: parseInt(e.target.value) || 0 }))} className="dl-input option-input" />
                         </div>
                         <div className="option-row">
                             <label>Bone Name (optional):</label>
-                            <input type="text" value={particleOptions.boneName} onChange={(e) => setParticleOptions((p) => ({ ...p, boneName: e.target.value }))} placeholder="Bone attachment point" className="option-input" />
+                            <input type="text" value={particleOptions.boneName} onChange={(e) => setParticleOptions((p) => ({ ...p, boneName: e.target.value }))} placeholder="Bone attachment point" className="dl-input option-input" />
                         </div>
                         <div className="option-row">
-                            <label>
+                            <label className="dl-check">
                                 <input type="checkbox" checked={particleOptions.isLoop} onChange={(e) => setParticleOptions((p) => ({ ...p, isLoop: e.target.checked }))} />
+                                <span className="dl-check__box"><span className="dl-check__tick"><span className="dl-icon"><Check size={12} /></span></span></span>
                                 Loop Effect
                             </label>
                         </div>
@@ -131,19 +133,19 @@ export default function StandaloneEventCreatorUI({ donorData, setDonorData, crea
                     <div className="event-options">
                         <div className="option-row">
                             <label>Start Frame:</label>
-                            <input type="number" value={submeshOptions.startFrame} onChange={(e) => setSubmeshOptions((p) => ({ ...p, startFrame: parseInt(e.target.value) || 0 }))} className="option-input" />
+                            <input type="number" value={submeshOptions.startFrame} onChange={(e) => setSubmeshOptions((p) => ({ ...p, startFrame: parseInt(e.target.value) || 0 }))} className="dl-input option-input" />
                         </div>
                         <div className="option-row">
                             <label>End Frame:</label>
-                            <input type="number" value={submeshOptions.endFrame} onChange={(e) => setSubmeshOptions((p) => ({ ...p, endFrame: parseInt(e.target.value) || 30 }))} className="option-input" />
+                            <input type="number" value={submeshOptions.endFrame} onChange={(e) => setSubmeshOptions((p) => ({ ...p, endFrame: parseInt(e.target.value) || 30 }))} className="dl-input option-input" />
                         </div>
                         <div className="option-row">
                             <label>Show Submeshes (comma-separated):</label>
-                            <input type="text" value={submeshOptions.showSubmeshList.join(', ')} onChange={(e) => setSubmeshOptions((p) => ({ ...p, showSubmeshList: e.target.value.split(',').map((s) => s.trim()).filter((s) => s) }))} placeholder="Weapon, Shield, etc." className="option-input" />
+                            <input type="text" value={submeshOptions.showSubmeshList.join(', ')} onChange={(e) => setSubmeshOptions((p) => ({ ...p, showSubmeshList: e.target.value.split(',').map((s) => s.trim()).filter((s) => s) }))} placeholder="Weapon, Shield, etc." className="dl-input option-input" />
                         </div>
                         <div className="option-row">
                             <label>Hide Submeshes (comma-separated):</label>
-                            <input type="text" value={submeshOptions.hideSubmeshList.join(', ')} onChange={(e) => setSubmeshOptions((p) => ({ ...p, hideSubmeshList: e.target.value.split(',').map((s) => s.trim()).filter((s) => s) }))} placeholder="Weapon, Shield, etc." className="option-input" />
+                            <input type="text" value={submeshOptions.hideSubmeshList.join(', ')} onChange={(e) => setSubmeshOptions((p) => ({ ...p, hideSubmeshList: e.target.value.split(',').map((s) => s.trim()).filter((s) => s) }))} placeholder="Weapon, Shield, etc." className="dl-input option-input" />
                         </div>
                     </div>
                 );
@@ -152,21 +154,23 @@ export default function StandaloneEventCreatorUI({ donorData, setDonorData, crea
                     <div className="event-options">
                         <div className="option-row">
                             <label>Sound Name:</label>
-                            <input type="text" value={soundOptions.soundName} onChange={(e) => setSoundOptions((p) => ({ ...p, soundName: e.target.value }))} placeholder="Sound file name" className="option-input" />
+                            <input type="text" value={soundOptions.soundName} onChange={(e) => setSoundOptions((p) => ({ ...p, soundName: e.target.value }))} placeholder="Sound file name" className="dl-input option-input" />
                         </div>
                         <div className="option-row">
                             <label>Start Frame:</label>
-                            <input type="number" value={soundOptions.startFrame} onChange={(e) => setSoundOptions((p) => ({ ...p, startFrame: parseInt(e.target.value) || 0 }))} className="option-input" />
+                            <input type="number" value={soundOptions.startFrame} onChange={(e) => setSoundOptions((p) => ({ ...p, startFrame: parseInt(e.target.value) || 0 }))} className="dl-input option-input" />
                         </div>
                         <div className="option-row">
-                            <label>
+                            <label className="dl-check">
                                 <input type="checkbox" checked={soundOptions.isSelfOnly} onChange={(e) => setSoundOptions((p) => ({ ...p, isSelfOnly: e.target.checked }))} />
+                                <span className="dl-check__box"><span className="dl-check__tick"><span className="dl-icon"><Check size={12} /></span></span></span>
                                 Self Only
                             </label>
                         </div>
                         <div className="option-row">
-                            <label>
+                            <label className="dl-check">
                                 <input type="checkbox" checked={soundOptions.isLoop} onChange={(e) => setSoundOptions((p) => ({ ...p, isLoop: e.target.checked }))} />
+                                <span className="dl-check__box"><span className="dl-check__tick"><span className="dl-icon"><Check size={12} /></span></span></span>
                                 Loop Sound
                             </label>
                         </div>
@@ -177,27 +181,27 @@ export default function StandaloneEventCreatorUI({ donorData, setDonorData, crea
                     <div className="event-options">
                         <div className="option-row">
                             <label>Start Frame:</label>
-                            <input type="number" value={faceTargetOptions.startFrame} onChange={(e) => { setFaceTargetOptions((p) => ({ ...p, startFrame: parseInt(e.target.value) || 0 })); setFaceTargetTouched((p) => ({ ...p, startFrame: true })); }} className="option-input" />
+                            <input type="number" value={faceTargetOptions.startFrame} onChange={(e) => { setFaceTargetOptions((p) => ({ ...p, startFrame: parseInt(e.target.value) || 0 })); setFaceTargetTouched((p) => ({ ...p, startFrame: true })); }} className="dl-input option-input" />
                         </div>
                         <div className="option-row">
                             <label>End Frame (optional):</label>
-                            <input type="number" value={faceTargetOptions.endFrame} onChange={(e) => { setFaceTargetOptions((p) => ({ ...p, endFrame: parseInt(e.target.value) || 0 })); setFaceTargetTouched((p) => ({ ...p, endFrame: true })); }} className="option-input" />
+                            <input type="number" value={faceTargetOptions.endFrame} onChange={(e) => { setFaceTargetOptions((p) => ({ ...p, endFrame: parseInt(e.target.value) || 0 })); setFaceTargetTouched((p) => ({ ...p, endFrame: true })); }} className="dl-input option-input" />
                         </div>
                         <div className="option-row">
                             <label>Face Target (0-255):</label>
-                            <input type="number" min="0" max="255" value={faceTargetOptions.faceTarget} onChange={(e) => { setFaceTargetOptions((p) => ({ ...p, faceTarget: parseInt(e.target.value) || 0 })); setFaceTargetTouched((p) => ({ ...p, faceTarget: true })); }} className="option-input" />
+                            <input type="number" min="0" max="255" value={faceTargetOptions.faceTarget} onChange={(e) => { setFaceTargetOptions((p) => ({ ...p, faceTarget: parseInt(e.target.value) || 0 })); setFaceTargetTouched((p) => ({ ...p, faceTarget: true })); }} className="dl-input option-input" />
                         </div>
                         <div className="option-row">
                             <label>Y Rotation Degrees:</label>
-                            <input type="number" step="0.1" value={faceTargetOptions.yRotationDegrees} onChange={(e) => { setFaceTargetOptions((p) => ({ ...p, yRotationDegrees: parseFloat(e.target.value) || 0.0 })); setFaceTargetTouched((p) => ({ ...p, yRotationDegrees: true })); }} className="option-input" />
+                            <input type="number" step="0.1" value={faceTargetOptions.yRotationDegrees} onChange={(e) => { setFaceTargetOptions((p) => ({ ...p, yRotationDegrees: parseFloat(e.target.value) || 0.0 })); setFaceTargetTouched((p) => ({ ...p, yRotationDegrees: true })); }} className="dl-input option-input" />
                         </div>
                         <div className="option-row">
                             <label>Blend In Time:</label>
-                            <input type="number" step="0.1" value={faceTargetOptions.blendInTime} onChange={(e) => { setFaceTargetOptions((p) => ({ ...p, blendInTime: parseFloat(e.target.value) || 0.0 })); setFaceTargetTouched((p) => ({ ...p, blendInTime: true })); }} className="option-input" />
+                            <input type="number" step="0.1" value={faceTargetOptions.blendInTime} onChange={(e) => { setFaceTargetOptions((p) => ({ ...p, blendInTime: parseFloat(e.target.value) || 0.0 })); setFaceTargetTouched((p) => ({ ...p, blendInTime: true })); }} className="dl-input option-input" />
                         </div>
                         <div className="option-row">
                             <label>Blend Out Time:</label>
-                            <input type="number" step="0.1" value={faceTargetOptions.blendOutTime} onChange={(e) => { setFaceTargetOptions((p) => ({ ...p, blendOutTime: parseFloat(e.target.value) || 0.0 })); setFaceTargetTouched((p) => ({ ...p, blendOutTime: true })); }} className="option-input" />
+                            <input type="number" step="0.1" value={faceTargetOptions.blendOutTime} onChange={(e) => { setFaceTargetOptions((p) => ({ ...p, blendOutTime: parseFloat(e.target.value) || 0.0 })); setFaceTargetTouched((p) => ({ ...p, blendOutTime: true })); }} className="dl-input option-input" />
                         </div>
                     </div>
                 );
@@ -237,9 +241,9 @@ export default function StandaloneEventCreatorUI({ donorData, setDonorData, crea
                         </Select>
                     </FormControl>
 
-                    <input type="text" placeholder="Event name (e.g., MyVFX, HideWeapon)" value={newEventName} onChange={(e) => setNewEventName(e.target.value)} className="event-name-input" />
+                    <input type="text" placeholder="Event name (e.g., MyVFX, HideWeapon)" value={newEventName} onChange={(e) => setNewEventName(e.target.value)} className="dl-input event-name-input" />
 
-                    <button className="create-event-btn" onClick={handleCreateStandaloneEvent} disabled={!newEventName.trim() || isCreating}>
+                    <button className="dl-btn dl-btn--primary create-event-btn" onClick={handleCreateStandaloneEvent} disabled={!newEventName.trim() || isCreating}>
                         {isCreating ? 'Creating...' : '+ Create Event'}
                     </button>
                 </div>

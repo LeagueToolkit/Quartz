@@ -56,7 +56,7 @@ export default function ClipEventsView({ clip, side, onDragStart, onDeleteEvent 
                                 {side === 'target' && onDeleteEvent && (
                                     <div className="event-actions">
                                         <button
-                                            className="delete-button"
+                                            className="dl-btn dl-btn--sm dl-btn--icon dl-btn--danger"
                                             onClick={() => onDeleteEvent(event, clip.name, eventType, index)}
                                             title="Delete this event"
                                         >

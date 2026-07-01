@@ -1560,11 +1560,11 @@ function AniPort() {
             {/* Page Navigation */}
             {donorData && targetData && (
                 <div className="page-navigation">
-                    <div className="page-tabs">
-                        <button className={`page-tab ${currentPage === 'animation' ? 'active' : ''}`} onClick={() => setCurrentPage('animation')}>
+                    <div className="dl-tabs page-tabs">
+                        <button className={`dl-tab ${currentPage === 'animation' ? 'dl-tab--active' : ''}`} onClick={() => setCurrentPage('animation')}>
                             🎬 Animation Editor
                         </button>
-                        <button className={`page-tab ${currentPage === 'mask' ? 'active' : ''}`} onClick={() => setCurrentPage('mask')}>
+                        <button className={`dl-tab ${currentPage === 'mask' ? 'dl-tab--active' : ''}`} onClick={() => setCurrentPage('mask')}>
                             🎭 Mask Viewer
                         </button>
                     </div>
@@ -1580,7 +1580,7 @@ function AniPort() {
                             <h3>Target Files (Destination)</h3>
                             <div className="file-inputs">
                                 <div className="input-group">
-                                    <button className="combined-button" onClick={() => handleCombinedFileSelect('target')}>
+                                    <button className="dl-btn dl-btn--secondary combined-button" onClick={() => handleCombinedFileSelect('target')}>
                                         {targetSelection ? `✓ ${baseName(targetSelection)}` : 'Select Combined File'}
                                     </button>
                                 </div>
@@ -1605,7 +1605,7 @@ function AniPort() {
                             <h3>Donor Files (Source)</h3>
                             <div className="file-inputs">
                                 <div className="input-group">
-                                    <button className="combined-button" onClick={() => handleCombinedFileSelect('donor')}>
+                                    <button className="dl-btn dl-btn--secondary combined-button" onClick={() => handleCombinedFileSelect('donor')}>
                                         {donorSelection ? `✓ ${baseName(donorSelection)}` : 'Select Combined File'}
                                     </button>
                                 </div>
@@ -1628,7 +1628,7 @@ function AniPort() {
 
                     {donorAnimationFile && donorSkinsFile && targetAnimationFile && targetSkinsFile && (
                         <div className="load-section">
-                            <button className="load-button" onClick={loadFiles} disabled={isLoading}>
+                            <button className="dl-btn dl-btn--primary load-button" onClick={loadFiles} disabled={isLoading}>
                                 Load Files
                             </button>
                         </div>
@@ -1647,7 +1647,7 @@ function AniPort() {
                                     <div className="panel-header"></div>
 
                                     <div className="panel-search">
-                                        <input type="text" placeholder="Search target clips..." value={targetSearchTerm} onChange={(e) => setTargetSearchTerm(e.target.value)} className="search-input" />
+                                        <input type="text" placeholder="Search target clips..." value={targetSearchTerm} onChange={(e) => setTargetSearchTerm(e.target.value)} className="dl-input search-input" />
                                         {targetSearchTerm && (
                                             <div className="search-results">
                                                 <span>Showing {getTargetClips().length} of {targetData?.animationData?.clips ? Object.keys(targetData.animationData.clips).length : 0} clips</span>
@@ -1657,15 +1657,15 @@ function AniPort() {
 
                                     {/* Create New Clip Controls */}
                                     <div className="new-clip-controls">
-                                        <input type="text" placeholder="New clip name (e.g., Run_Base)" value={newClipNameInput} onChange={(e) => setNewClipNameInput(e.target.value)} className="new-clip-name-input" />
-                                        <select className="new-clip-type-select" value={newClipType} onChange={(e) => setNewClipType(e.target.value)}>
+                                        <input type="text" placeholder="New clip name (e.g., Run_Base)" value={newClipNameInput} onChange={(e) => setNewClipNameInput(e.target.value)} className="dl-input new-clip-name-input" />
+                                        <select className="dl-select new-clip-type-select" value={newClipType} onChange={(e) => setNewClipType(e.target.value)}>
                                             <option value="AtomicClipData">AtomicClipData</option>
                                             <option value="SequencerClipData">SequencerClipData</option>
                                             <option value="SelectorClipData">SelectorClipData</option>
                                             <option value="ParametricClipData">ParametricClipData</option>
                                             <option value="ConditionFloatClipData">ConditionFloatClipData</option>
                                         </select>
-                                        <button className="new-clip-create-btn" onClick={handleCreateNewClip}>+ New Clip</button>
+                                        <button className="dl-btn dl-btn--primary new-clip-create-btn" onClick={handleCreateNewClip}>+ New Clip</button>
                                     </div>
 
                                     <div className="animation-list">
@@ -1700,18 +1700,18 @@ function AniPort() {
                                                                             onKeyDown={(e) => handleClipNameKeyPress(e, clip.name)}
                                                                             onBlur={() => handleClipNameSave(clip.name, newClipName)}
                                                                             autoFocus
-                                                                            className="clip-name-input"
+                                                                            className="dl-input clip-name-input"
                                                                         />
                                                                         <div className="clip-name-actions">
-                                                                            <button onClick={() => handleClipNameSave(clip.name, newClipName)} className="save-name-btn">✓</button>
-                                                                            <button onClick={handleClipNameCancel} className="cancel-name-btn">✗</button>
+                                                                            <button onClick={() => handleClipNameSave(clip.name, newClipName)} className="dl-btn dl-btn--sm dl-btn--icon dl-btn--primary save-name-btn">✓</button>
+                                                                            <button onClick={handleClipNameCancel} className="dl-btn dl-btn--sm dl-btn--icon dl-btn--danger cancel-name-btn">✗</button>
                                                                         </div>
                                                                     </div>
                                                                 ) : (
                                                                     <div className="clip-name-container">
                                                                         <span className="clip-name">{getClipDisplayName(clip)}</span>
                                                                         <button
-                                                                            className="edit-name-btn"
+                                                                            className="dl-btn dl-btn--sm dl-btn--secondary edit-name-btn"
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
                                                                                 handleClipNameEdit(clip.name);
@@ -1727,7 +1727,7 @@ function AniPort() {
                                                             <div className="clip-stats">
                                                                 <span className="event-count">{totalEvents} events</span>
                                                                 <button
-                                                                    className="clip-delete-btn"
+                                                                    className="dl-btn dl-btn--sm dl-btn--icon dl-btn--danger clip-delete-btn"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         handleDeleteClipClick(clip.name);
@@ -1759,12 +1759,12 @@ function AniPort() {
                                                                                             (e.target as HTMLInputElement).blur();
                                                                                         }
                                                                                     }}
-                                                                                    className="property-input"
+                                                                                    className="dl-input property-input"
                                                                                     placeholder="Enter track data name (e.g., Default, base, 0x12345678)"
                                                                                 />
                                                                                 {Array.isArray(targetData?.animationData?.trackNames) && targetData.animationData.trackNames.length > 0 && (
                                                                                     <select
-                                                                                        className="property-select"
+                                                                                        className="dl-select property-select"
                                                                                         onChange={(e) => {
                                                                                             const v = e.target.value;
                                                                                             if (v) handleTrackDataNameChange(clip.name, v);
@@ -1804,12 +1804,12 @@ function AniPort() {
                                                                                             (e.target as HTMLInputElement).blur();
                                                                                         }
                                                                                     }}
-                                                                                    className="property-input"
+                                                                                    className="dl-input property-input"
                                                                                     placeholder="Enter mask data name (e.g., UpperBody, 0xABCD...)"
                                                                                 />
                                                                                 {Array.isArray(targetData?.animationData?.maskNames) && targetData.animationData.maskNames.length > 0 && (
                                                                                     <select
-                                                                                        className="property-select"
+                                                                                        className="dl-select property-select"
                                                                                         onChange={(e) => {
                                                                                             const v = e.target.value;
                                                                                             if (v) handleMaskDataNameChange(clip.name, v);
@@ -1844,7 +1844,7 @@ function AniPort() {
                                                                                         (e.target as HTMLInputElement).blur();
                                                                                     }
                                                                                 }}
-                                                                                className="property-input animation-path-input"
+                                                                                className="dl-input property-input animation-path-input"
                                                                                 placeholder="Enter animation file path (e.g., ASSETS/.../animations/Orianna_attack1.anm)"
                                                                             />
                                                                             <div className="property-info">{!clip.animationFilePath && <span className="no-value">No animation file path set</span>}</div>
@@ -1871,7 +1871,7 @@ function AniPort() {
                                                                                                     (e.target as HTMLInputElement).blur();
                                                                                                 }
                                                                                             }}
-                                                                                            className="property-input clip-name-input"
+                                                                                            className="dl-input property-input clip-name-input"
                                                                                             placeholder={`Enter clip name (${clipNameEntry.type === 'quoted' ? 'string' : 'hash'})`}
                                                                                         />
                                                                                         <span className="clip-name-type">({clipNameEntry.type})</span>
@@ -1882,7 +1882,7 @@ function AniPort() {
                                                                         <div className="sequencer-add-row">
                                                                             <input
                                                                                 type="text"
-                                                                                className="sequencer-search-input"
+                                                                                className="dl-input sequencer-search-input"
                                                                                 placeholder="Search existing clips to add..."
                                                                                 value={sequencerOpenFor === clip.name ? sequencerSearch : ''}
                                                                                 onChange={(e) => {
@@ -1891,7 +1891,7 @@ function AniPort() {
                                                                                 }}
                                                                             />
                                                                             <select
-                                                                                className="sequencer-select"
+                                                                                className="dl-select sequencer-select"
                                                                                 onChange={(e) => {
                                                                                     const child = e.target.value;
                                                                                     if (child) {
@@ -1912,7 +1912,7 @@ function AniPort() {
                                                                                         <option key={c.name} value={c.name}>{c.name}</option>
                                                                                     ))}
                                                                             </select>
-                                                                            <button className="ensure-eventmap-btn" onClick={() => handleEnsureEventDataMap(clip.name)}>+ EventDataMap</button>
+                                                                            <button className="dl-btn dl-btn--sm dl-btn--secondary ensure-eventmap-btn" onClick={() => handleEnsureEventDataMap(clip.name)}>+ EventDataMap</button>
                                                                         </div>
                                                                     </div>
                                                                 )}
@@ -1935,7 +1935,7 @@ function AniPort() {
                                                                                                         <div className="probability-editor">
                                                                                                             <input
                                                                                                                 type="number"
-                                                                                                                className="probability-edit-input"
+                                                                                                                className="dl-input probability-edit-input"
                                                                                                                 value={editingProbability}
                                                                                                                 onChange={(e) => setEditingProbability(e.target.value)}
                                                                                                                 onKeyDown={(e) => {
@@ -1947,15 +1947,15 @@ function AniPort() {
                                                                                                                 step="0.1"
                                                                                                                 autoFocus
                                                                                                             />
-                                                                                                            <button className="save-probability-btn" onClick={() => handleSaveSelectorPairProbability(clip.name, idx)} title="Save">✓</button>
-                                                                                                            <button className="cancel-probability-btn" onClick={handleCancelEditSelectorPair} title="Cancel">×</button>
+                                                                                                            <button className="dl-btn dl-btn--sm dl-btn--icon dl-btn--primary save-probability-btn" onClick={() => handleSaveSelectorPairProbability(clip.name, idx)} title="Save">✓</button>
+                                                                                                            <button className="dl-btn dl-btn--sm dl-btn--icon dl-btn--danger cancel-probability-btn" onClick={handleCancelEditSelectorPair} title="Cancel">×</button>
                                                                                                         </div>
                                                                                                     ) : (
                                                                                                         <span className="pair-probability editable" onClick={() => handleEditSelectorPairProbability(clip.name, idx, pair.probability)} title="Click to edit probability">
                                                                                                             ({pair.probability})
                                                                                                         </span>
                                                                                                     )}
-                                                                                                    <button className="remove-pair-btn" onClick={() => handleRemoveSelectorPair(clip.name, idx)} title="Remove this pair">×</button>
+                                                                                                    <button className="dl-btn dl-btn--sm dl-btn--icon dl-btn--danger" style={{ marginLeft: 'auto' }} onClick={() => handleRemoveSelectorPair(clip.name, idx)} title="Remove this pair">×</button>
                                                                                                 </div>
                                                                                             );
                                                                                         })}
@@ -1964,7 +1964,7 @@ function AniPort() {
                                                                                 <div className="selector-add-row">
                                                                                     <input
                                                                                         type="text"
-                                                                                        className="selector-search-input"
+                                                                                        className="dl-input selector-search-input"
                                                                                         placeholder="Search clips to add..."
                                                                                         value={selectorOpenFor === clip.name ? selectorSearch : ''}
                                                                                         onChange={(e) => {
@@ -1974,7 +1974,7 @@ function AniPort() {
                                                                                     />
                                                                                     <input
                                                                                         type="number"
-                                                                                        className="probability-input"
+                                                                                        className="dl-input probability-input"
                                                                                         placeholder="1.0"
                                                                                         min="0"
                                                                                         max="1"
@@ -1983,7 +1983,7 @@ function AniPort() {
                                                                                         onChange={(e) => setSelectorProbabilityInput(e.target.value)}
                                                                                     />
                                                                                     <select
-                                                                                        className="selector-select"
+                                                                                        className="dl-select selector-select"
                                                                                         onChange={(e) => {
                                                                                             const child = e.target.value;
                                                                                             const probability = parseFloat(selectorProbabilityInput || '1.0');
@@ -2006,7 +2006,7 @@ function AniPort() {
                                                                                                 <option key={c.name} value={c.name}>{c.name}</option>
                                                                                             ))}
                                                                                     </select>
-                                                                                    <button className="ensure-eventmap-btn" onClick={() => handleEnsureEventDataMap(clip.name)}>+ EventDataMap</button>
+                                                                                    <button className="dl-btn dl-btn--sm dl-btn--secondary ensure-eventmap-btn" onClick={() => handleEnsureEventDataMap(clip.name)}>+ EventDataMap</button>
                                                                                 </div>
                                                                             </div>
                                                                         </div>
@@ -2042,7 +2042,7 @@ function AniPort() {
                                                                             <span className="event-type-name">Condition Float Pairs</span>
                                                                             <span className="event-type-count">({clip.conditionFloatPairs?.length || 0})</span>
                                                                             <button
-                                                                                className="add-pair-btn"
+                                                                                className="dl-btn dl-btn--sm dl-btn--primary add-pair-btn"
                                                                                 onClick={() => {
                                                                                     const childName = prompt('Enter clip name:');
                                                                                     if (childName) {
@@ -2068,7 +2068,7 @@ function AniPort() {
                                                                                             <div className="event-details">{`Clip: ${pair.clipName || 'unknown'} | Value: ${pair.value ?? 'N/A'}`}</div>
                                                                                         </div>
                                                                                         <div className="event-actions">
-                                                                                            <button className="delete-button" onClick={() => handleRemoveConditionFloatPair(clip.name, idx)} title="Delete this condition float pair">🗑️</button>
+                                                                                            <button className="dl-btn dl-btn--sm dl-btn--icon dl-btn--danger" onClick={() => handleRemoveConditionFloatPair(clip.name, idx)} title="Delete this condition float pair">🗑️</button>
                                                                                         </div>
                                                                                     </div>
                                                                                 ))}
@@ -2153,7 +2153,7 @@ function AniPort() {
                                     </div>
 
                                     <div className="panel-search">
-                                        <input type="text" placeholder="Search donor clips..." value={donorSearchTerm} onChange={(e) => setDonorSearchTerm(e.target.value)} className="search-input" />
+                                        <input type="text" placeholder="Search donor clips..." value={donorSearchTerm} onChange={(e) => setDonorSearchTerm(e.target.value)} className="dl-input search-input" />
                                         {donorSearchTerm && (
                                             <div className="search-results">
                                                 <span>Showing {getDonorClips().length} of {donorData?.animationData?.clips ? Object.keys(donorData.animationData.clips).length : 0} clips</span>
@@ -2297,13 +2297,13 @@ function AniPort() {
                                         {maskSelectedJoints.size > 0 && (
                                             <>
                                                 <span className="mask-stat">{maskSelectedJoints.size} selected</span>
-                                                <button className="btn-small" onClick={() => setMaskSelectedJoints(new Set())}>
+                                                <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={() => setMaskSelectedJoints(new Set())}>
                                                     Clear
                                                 </button>
                                             </>
                                         )}
                                         <button
-                                            className="btn-small"
+                                            className="dl-btn dl-btn--sm dl-btn--secondary"
                                             onClick={() => {
                                                 setMaskSkeleton(null);
                                                 void loadMaskSkeleton();
@@ -2329,7 +2329,7 @@ function AniPort() {
                                     <div className="no-clips">
                                         <p>Failed to load skeleton</p>
                                         <p className="mask-error">{maskError}</p>
-                                        <button className="btn-small" onClick={() => void loadMaskSkeleton()}>
+                                        <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={() => void loadMaskSkeleton()}>
                                             Retry
                                         </button>
                                     </div>
@@ -2387,7 +2387,7 @@ function AniPort() {
                     <button
                         onClick={handleUndo}
                         disabled={undoHistory.length === 0}
-                        className={`undo-button ${undoHistory.length === 0 ? 'disabled' : ''}`}
+                        className={`dl-btn dl-btn--secondary undo-button ${undoHistory.length === 0 ? 'disabled' : ''}`}
                         title={undoHistory.length > 0 ? `Undo: ${undoHistory[undoHistory.length - 1]?.action}` : 'Nothing to undo'}
                     >
                         Undo ({undoHistory.length})
@@ -2395,7 +2395,7 @@ function AniPort() {
                     <button
                         onClick={handleSave}
                         disabled={isProcessing || !hasChangesToSave()}
-                        className={`save-button ${hasChangesToSave() ? 'has-changes' : ''} ${isProcessing ? 'processing' : ''}`}
+                        className={`dl-btn dl-btn--primary save-button ${hasChangesToSave() ? 'has-changes' : ''} ${isProcessing ? 'processing' : ''}`}
                         title={hasChangesToSave() ? 'Save changes to file' : 'No changes to save'}
                     >
                         {isProcessing ? 'Saving...' : 'Save'}
@@ -2421,7 +2421,7 @@ function AniPort() {
                 <div className="standalone-slide-content">
                     <div className="standalone-slide-header">
                         <h3>Standalone Events</h3>
-                        <button className="standalone-close-btn" onClick={() => setStandaloneSlideOverOpen(false)} title="Close Standalone Events">×</button>
+                        <button className="dl-btn dl-btn--sm dl-btn--icon dl-btn--ghost standalone-close-btn" onClick={() => setStandaloneSlideOverOpen(false)} title="Close Standalone Events">×</button>
                     </div>
 
                     <div className="standalone-slide-body">

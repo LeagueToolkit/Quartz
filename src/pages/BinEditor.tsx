@@ -169,19 +169,10 @@ const toolbarMenuPaperSx = {
     },
 };
 
-const smallButtonStyle = (color: string, disabled = false): CSSProperties => ({
-    padding: '4px 10px',
-    background: disabled ? 'color-mix(in oklab, var(--text-muted) 20%, transparent)' : `color-mix(in oklab, ${color} 24%, transparent)`,
-    border: `1px solid ${disabled ? 'color-mix(in oklab, var(--text-muted) 30%, transparent)' : color}`,
-    borderRadius: 'var(--border-radius, 4px)',
-    color: disabled ? 'var(--text-muted)' : color,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    fontFamily: 'inherit',
-    fontSize: '11px',
-    fontWeight: 700,
-    opacity: disabled ? 0.5 : 1,
-    transition: 'all 0.15s ease',
-});
+// Tint a dl-btn with a category color by overriding --accent-primary locally,
+// so the shared primary variant adopts the emitter-property color coding.
+const smallButtonStyle = (color: string): CSSProperties =>
+    ({ '--accent-primary': color } as CSSProperties);
 
 type ToolbarTab = 'scale' | 'bindWeight' | 'misc' | 'pass' | 'ground' | 'to';
 
@@ -979,21 +970,8 @@ export function BinEditor() {
                         onMouseEnter={(e) => handleTextureMouseEnter(e, emitter)}
                         onMouseLeave={handleTextureMouseLeave}
                         onContextMenu={(e) => handleTextureContextMenu(e, emitter)}
-                        style={{
-                            width: '24px',
-                            height: '24px',
-                            flexShrink: 0,
-                            background: 'transparent',
-                            border: '1px solid color-mix(in oklab, var(--text-primary) 20%, transparent)',
-                            borderRadius: '4px',
-                            color: 'var(--accent)',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '12px',
-                            transition: 'all 0.15s ease',
-                        }}
+                        className="dl-btn dl-btn--sm dl-btn--icon dl-btn--secondary"
+                        style={{ width: '24px', height: '24px', flexShrink: 0 }}
                         title="Preview texture"
                     >
                         <CropOriginalIcon sx={{ fontSize: 16 }} />
@@ -1110,6 +1088,7 @@ export function BinEditor() {
                         <label style={{ fontSize: '11px', color: 'var(--accent-muted)' }}>{axis.toUpperCase()}</label>
                         <input
                             type="text"
+                            className="dl-input"
                             key={`${selectedEmitter?.name}-${property}-${axis}`}
                             defaultValue={value[axis]}
                             onBlur={(e) => handlePropertyChange(property, axis, e.target.value)}
@@ -1118,16 +1097,7 @@ export function BinEditor() {
                                     (e.target as HTMLInputElement).blur();
                                 }
                             }}
-                            style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                border: '1px solid var(--border)',
-                                borderRadius: '4px',
-                                color: 'var(--text-primary)',
-                                fontFamily: 'JetBrains Mono, monospace',
-                                fontSize: '13px',
-                            }}
+                            style={{ fontFamily: 'JetBrains Mono, monospace' }}
                         />
                     </div>
                 ))}
@@ -1184,20 +1154,12 @@ export function BinEditor() {
                         <div style={{ fontWeight: 600, color: UI_COLORS.bw, marginBottom: '8px' }}>Bind Weight</div>
                         <input
                             type="text"
+                            className="dl-input"
                             key={`${selectedEmitter.name}-bindWeight`}
                             defaultValue={selectedEmitter.bindWeight.constantValue ?? ''}
                             onBlur={(e) => handlePropertyChange('bindWeight', null, e.target.value)}
                             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                border: '1px solid var(--border)',
-                                borderRadius: '4px',
-                                color: 'var(--text-primary)',
-                                fontFamily: 'JetBrains Mono, monospace',
-                                fontSize: '13px',
-                            }}
+                            style={{ fontFamily: 'JetBrains Mono, monospace' }}
                         />
                     </div>
                 )}
@@ -1207,20 +1169,12 @@ export function BinEditor() {
                         <div style={{ fontWeight: 600, color: UI_COLORS.pl, marginBottom: '8px' }}>Particle Lifetime</div>
                         <input
                             type="text"
+                            className="dl-input"
                             key={`${selectedEmitter.name}-particleLifetime`}
                             defaultValue={selectedEmitter.particleLifetime.constantValue}
                             onBlur={(e) => handlePropertyChange('particleLifetime', null, e.target.value)}
                             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
-                                borderRadius: '4px',
-                                color: UI_COLORS.pl,
-                                fontFamily: 'JetBrains Mono, monospace',
-                                fontSize: '13px',
-                            }}
+                            style={{ color: UI_COLORS.pl, fontFamily: 'JetBrains Mono, monospace' }}
                         />
                     </div>
                 )}
@@ -1230,20 +1184,12 @@ export function BinEditor() {
                         <div style={{ fontWeight: 600, color: UI_COLORS.lt, marginBottom: '8px' }}>Emitter Lifetime</div>
                         <input
                             type="text"
+                            className="dl-input"
                             key={`${selectedEmitter.name}-lifetime`}
                             defaultValue={selectedEmitter.lifetime.value}
                             onBlur={(e) => handlePropertyChange('lifetime', null, e.target.value)}
                             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                border: '1px solid color-mix(in oklab, var(--color-success) 30%, transparent)',
-                                borderRadius: '4px',
-                                color: UI_COLORS.lt,
-                                fontFamily: 'JetBrains Mono, monospace',
-                                fontSize: '13px',
-                            }}
+                            style={{ color: UI_COLORS.lt, fontFamily: 'JetBrains Mono, monospace' }}
                         />
                     </div>
                 )}
@@ -1253,20 +1199,12 @@ export function BinEditor() {
                         <div style={{ fontWeight: 600, color: 'var(--accent2)', marginBottom: '8px' }}>Particle Linger</div>
                         <input
                             type="text"
+                            className="dl-input"
                             key={`${selectedEmitter.name}-particleLinger`}
                             defaultValue={selectedEmitter.particleLinger.value}
                             onBlur={(e) => handlePropertyChange('particleLinger', null, e.target.value)}
                             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                border: '1px solid color-mix(in oklab, var(--accent2) 30%, transparent)',
-                                borderRadius: '4px',
-                                color: 'var(--accent2)',
-                                fontFamily: 'JetBrains Mono, monospace',
-                                fontSize: '13px',
-                            }}
+                            style={{ color: 'var(--accent2)', fontFamily: 'JetBrains Mono, monospace' }}
                         />
                     </div>
                 )}
@@ -1276,20 +1214,12 @@ export function BinEditor() {
                         <div style={{ fontWeight: 600, color: 'var(--color-info)', marginBottom: '8px' }}>Emission Rate</div>
                         <input
                             type="text"
+                            className="dl-input"
                             key={`${selectedEmitter.name}-rate`}
                             defaultValue={selectedEmitter.rate.constantValue}
                             onBlur={(e) => handlePropertyChange('rate', null, e.target.value)}
                             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                border: '1px solid color-mix(in oklab, var(--color-info) 30%, transparent)',
-                                borderRadius: '4px',
-                                color: 'var(--color-info)',
-                                fontFamily: 'JetBrains Mono, monospace',
-                                fontSize: '13px',
-                            }}
+                            style={{ color: 'var(--color-info)', fontFamily: 'JetBrains Mono, monospace' }}
                         />
                     </div>
                 )}
@@ -1299,20 +1229,12 @@ export function BinEditor() {
                         <div style={{ fontWeight: 600, color: UI_COLORS.pass, marginBottom: '8px' }}>Render Pass</div>
                         <input
                             type="text"
+                            className="dl-input"
                             key={`${selectedEmitter.name}-pass`}
                             defaultValue={selectedEmitter.pass}
                             onBlur={(e) => handlePropertyChange('pass', null, e.target.value)}
                             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
-                                borderRadius: '4px',
-                                color: UI_COLORS.pass,
-                                fontFamily: 'JetBrains Mono, monospace',
-                                fontSize: '13px',
-                            }}
+                            style={{ color: UI_COLORS.pass, fontFamily: 'JetBrains Mono, monospace' }}
                         />
                     </div>
                 )}
@@ -1322,20 +1244,12 @@ export function BinEditor() {
                         <div style={{ fontWeight: 600, color: 'var(--color-danger)', marginBottom: '8px' }}>Misc Render Flags</div>
                         <input
                             type="text"
+                            className="dl-input"
                             key={`${selectedEmitter.name}-miscRenderFlags`}
                             defaultValue={selectedEmitter.miscRenderFlags}
                             onBlur={(e) => handlePropertyChange('miscRenderFlags', null, e.target.value)}
                             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                border: '1px solid color-mix(in oklab, var(--color-danger) 30%, transparent)',
-                                borderRadius: '4px',
-                                color: 'var(--color-danger)',
-                                fontFamily: 'JetBrains Mono, monospace',
-                                fontSize: '13px',
-                            }}
+                            style={{ color: 'var(--color-danger)', fontFamily: 'JetBrains Mono, monospace' }}
                         />
                     </div>
                 )}
@@ -1344,19 +1258,11 @@ export function BinEditor() {
                     <div style={{ marginBottom: '16px' }}>
                         <div style={{ fontWeight: 600, color: UI_COLORS.ground, marginBottom: '8px' }}>Ground Layer</div>
                         <select
+                            className="dl-select"
                             key={`${selectedEmitter.name}-isGroundLayer`}
                             defaultValue={selectedEmitter.isGroundLayer ? 'true' : 'false'}
                             onChange={(e: ChangeEvent<HTMLSelectElement>) => handlePropertyChange('isGroundLayer', null, e.target.value)}
-                            style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                border: '1px solid color-mix(in oklab, var(--color-success) 35%, transparent)',
-                                borderRadius: '4px',
-                                color: UI_COLORS.ground,
-                                fontFamily: 'JetBrains Mono, monospace',
-                                fontSize: '13px',
-                            }}
+                            style={{ color: UI_COLORS.ground, fontFamily: 'JetBrains Mono, monospace' }}
                         >
                             <option value="false">false</option>
                             <option value="true">true</option>
@@ -1489,21 +1395,21 @@ export function BinEditor() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    <button onClick={loadBinFile} className="bin-editor-action-btn is-load">
-                        {ICONS.folder} Load .bin
+                    <button onClick={loadBinFile} className="dl-btn dl-btn--primary">
+                        Load .bin
                     </button>
                     <button
                         onClick={undoLastChange}
                         disabled={undoHistory.length === 0}
-                        className="bin-editor-action-btn is-undo"
+                        className="dl-btn dl-btn--secondary"
                         title={`Undo (${undoHistory.length} steps available)`}
                     >
-                        {ICONS.undo} Undo{undoHistory.length > 0 ? ` (${undoHistory.length})` : ''}
+                        Undo{undoHistory.length > 0 ? ` (${undoHistory.length})` : ''}
                     </button>
                     <button
                         onClick={restoreOriginal}
                         disabled={!initialContent}
-                        className="bin-editor-action-btn is-restore"
+                        className="dl-btn dl-btn--secondary"
                         title="Restore to original state when file was first loaded"
                     >
                         Restore
@@ -1511,9 +1417,9 @@ export function BinEditor() {
                     <button
                         onClick={saveFile}
                         disabled={!hasUnsavedChanges}
-                        className="bin-editor-action-btn is-save"
+                        className="dl-btn dl-btn--primary"
                     >
-                        {ICONS.save} Save
+                        Save
                     </button>
                 </div>
             </div>
@@ -1559,35 +1465,28 @@ export function BinEditor() {
                             <span style={{ fontSize: '12px', color: 'var(--accent-muted)' }}>Multiplier:</span>
                             <input
                                 type="text"
+                                className="dl-input"
                                 defaultValue={scaleMultiplier}
                                 onBlur={(e) => {
                                     const val = parseLocaleFloat(e.target.value);
                                     setScaleMultiplier(isNaN(val) || val <= 0 ? 1 : val);
                                 }}
                                 onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                style={{
-                                    width: '60px',
-                                    padding: '4px 8px',
-                                    background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                    border: '1px solid var(--border)',
-                                    borderRadius: '4px',
-                                    color: 'var(--text-primary)',
-                                    fontSize: '12px',
-                                }}
+                                style={{ width: '60px', height: '28px' }}
                             />
-                            <button onClick={applyScaleBirthScale} style={smallButtonStyle(UI_COLORS.bs)} title="Scale Birth Scale">
+                            <button onClick={applyScaleBirthScale} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.bs)} title="Scale Birth Scale">
                                 BS x{scaleMultiplier}
                             </button>
-                            <button onClick={applyScaleScale0} style={smallButtonStyle(UI_COLORS.scale)} title="Scale Scale">
+                            <button onClick={applyScaleScale0} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.scale)} title="Scale Scale">
                                 S x{scaleMultiplier}
                             </button>
-                            <button onClick={handleScaleParticleLifetime} style={smallButtonStyle(UI_COLORS.pl)} title="Scale Particle Lifetime">
+                            <button onClick={handleScaleParticleLifetime} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.pl)} title="Scale Particle Lifetime">
                                 PL x{scaleMultiplier}
                             </button>
-                            <button onClick={handleScaleLifetime} style={smallButtonStyle(UI_COLORS.lt)} title="Scale Emitter Lifetime">
+                            <button onClick={handleScaleLifetime} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.lt)} title="Scale Emitter Lifetime">
                                 LT x{scaleMultiplier}
                             </button>
-                            <button onClick={handleScalePass} style={smallButtonStyle(UI_COLORS.pass)} title="Scale pass">
+                            <button onClick={handleScalePass} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.pass)} title="Scale pass">
                                 P x{scaleMultiplier}
                             </button>
                         </div>
@@ -1596,13 +1495,13 @@ export function BinEditor() {
                     {/* BindWeight */}
                     {toolbarTab === 'bindWeight' && (
                         <div style={{ display: 'flex', gap: '4px' }}>
-                            <button onClick={handleAddBindWeight} style={smallButtonStyle(UI_COLORS.bw)} title="Add Bind Weight property">
+                            <button onClick={handleAddBindWeight} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.bw)} title="Add Bind Weight property">
                                 + BindWeight
                             </button>
-                            <button onClick={handleSetBindWeightZero} style={smallButtonStyle(UI_COLORS.bw)} title="Set Bind Weight to 0">
+                            <button onClick={handleSetBindWeightZero} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.bw)} title="Set Bind Weight to 0">
                                 BW=0
                             </button>
-                            <button onClick={handleSetBindWeightOne} style={smallButtonStyle(UI_COLORS.bw)} title="Set Bind Weight to 1">
+                            <button onClick={handleSetBindWeightOne} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.bw)} title="Set Bind Weight to 1">
                                 BW=1
                             </button>
                         </div>
@@ -1611,13 +1510,13 @@ export function BinEditor() {
                     {/* MiscRenderFlags */}
                     {toolbarTab === 'misc' && (
                         <div style={{ display: 'flex', gap: '4px' }}>
-                            <button onClick={handleAddMiscRenderFlags} style={smallButtonStyle('var(--color-danger)')} title="Add Misc Render Flags property">
+                            <button onClick={handleAddMiscRenderFlags} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle('var(--color-danger)')} title="Add Misc Render Flags property">
                                 + MR
                             </button>
-                            <button onClick={handleSetMiscRenderFlagsZero} style={smallButtonStyle('var(--color-danger)')} title="Set Misc Render Flags to 0">
+                            <button onClick={handleSetMiscRenderFlagsZero} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle('var(--color-danger)')} title="Set Misc Render Flags to 0">
                                 MR=0
                             </button>
-                            <button onClick={handleSetMiscRenderFlagsOne} style={smallButtonStyle('var(--color-danger)')} title="Set Misc Render Flags to 1">
+                            <button onClick={handleSetMiscRenderFlagsOne} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle('var(--color-danger)')} title="Set Misc Render Flags to 1">
                                 MR=1
                             </button>
                         </div>
@@ -1626,13 +1525,13 @@ export function BinEditor() {
                     {/* Ground Layer */}
                     {toolbarTab === 'ground' && (
                         <div style={{ display: 'flex', gap: '4px' }}>
-                            <button onClick={handleAddIsGroundLayer} style={smallButtonStyle(UI_COLORS.ground)} title="Add isGroundLayer property">
+                            <button onClick={handleAddIsGroundLayer} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.ground)} title="Add isGroundLayer property">
                                 + Ground
                             </button>
-                            <button onClick={handleSetIsGroundLayerTrue} style={smallButtonStyle(UI_COLORS.ground)} title="Set isGroundLayer to true">
+                            <button onClick={handleSetIsGroundLayerTrue} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.ground)} title="Set isGroundLayer to true">
                                 Ground=true
                             </button>
-                            <button onClick={handleSetIsGroundLayerFalse} style={smallButtonStyle(UI_COLORS.ground)} title="Set isGroundLayer to false">
+                            <button onClick={handleSetIsGroundLayerFalse} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.ground)} title="Set isGroundLayer to false">
                                 Ground=false
                             </button>
                         </div>
@@ -1643,6 +1542,7 @@ export function BinEditor() {
                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                             <input
                                 type="text"
+                                className="dl-input"
                                 defaultValue={passValue}
                                 onBlur={(e) => {
                                     const val = parseLocaleFloat(e.target.value);
@@ -1651,23 +1551,15 @@ export function BinEditor() {
                                 onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                                 placeholder="Pass"
                                 title="Pass value (i16, can be negative)"
-                                style={{
-                                    width: '60px',
-                                    padding: '4px 8px',
-                                    background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                    border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
-                                    borderRadius: '4px',
-                                    color: UI_COLORS.pass,
-                                    fontSize: '12px',
-                                    textAlign: 'center',
-                                }}
+                                style={{ width: '60px', height: '28px', textAlign: 'center' }}
                             />
-                            <button onClick={handleSetPass} style={smallButtonStyle(UI_COLORS.pass)} title="Set pass for selected emitters">
+                            <button onClick={handleSetPass} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.pass)} title="Set pass for selected emitters">
                                 P={passValue}
                             </button>
                             <span style={{ width: '1px', height: '20px', background: 'var(--border)', margin: '0 4px' }} />
                             <input
                                 type="text"
+                                className="dl-input"
                                 defaultValue={passDeltaValue}
                                 onBlur={(e) => {
                                     const val = parseLocaleFloat(e.target.value);
@@ -1676,18 +1568,9 @@ export function BinEditor() {
                                 onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                                 placeholder="+/-"
                                 title="Amount to add to current pass value"
-                                style={{
-                                    width: '60px',
-                                    padding: '4px 8px',
-                                    background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                    border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
-                                    borderRadius: '4px',
-                                    color: UI_COLORS.pass,
-                                    fontSize: '12px',
-                                    textAlign: 'center',
-                                }}
+                                style={{ width: '60px', height: '28px', textAlign: 'center' }}
                             />
-                            <button onClick={handleAddPass} style={smallButtonStyle(UI_COLORS.pass)} title="Add amount to pass for selected emitters">
+                            <button onClick={handleAddPass} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.pass)} title="Add amount to pass for selected emitters">
                                 P+={passDeltaValue}
                             </button>
                         </div>
@@ -1696,11 +1579,12 @@ export function BinEditor() {
                     {/* TranslationOverride */}
                     {toolbarTab === 'to' && (
                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                            <button onClick={handleAddTranslationOverride} style={smallButtonStyle(UI_COLORS.to)} title="Add Translation Override property">
+                            <button onClick={handleAddTranslationOverride} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.to)} title="Add Translation Override property">
                                 + TO
                             </button>
                             <input
                                 type="text"
+                                className="dl-input"
                                 defaultValue={toX}
                                 onBlur={(e) => {
                                     const val = parseLocaleFloat(e.target.value);
@@ -1709,19 +1593,11 @@ export function BinEditor() {
                                 onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                                 placeholder="X"
                                 title="Translation Override X value"
-                                style={{
-                                    width: '50px',
-                                    padding: '4px 6px',
-                                    background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                    border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
-                                    borderRadius: '4px',
-                                    color: UI_COLORS.to,
-                                    fontSize: '11px',
-                                    textAlign: 'center',
-                                }}
+                                style={{ width: '50px', height: '28px', textAlign: 'center' }}
                             />
                             <input
                                 type="text"
+                                className="dl-input"
                                 defaultValue={toY}
                                 onBlur={(e) => {
                                     const val = parseLocaleFloat(e.target.value);
@@ -1730,19 +1606,11 @@ export function BinEditor() {
                                 onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                                 placeholder="Y"
                                 title="Translation Override Y value"
-                                style={{
-                                    width: '50px',
-                                    padding: '4px 6px',
-                                    background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                    border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
-                                    borderRadius: '4px',
-                                    color: UI_COLORS.to,
-                                    fontSize: '11px',
-                                    textAlign: 'center',
-                                }}
+                                style={{ width: '50px', height: '28px', textAlign: 'center' }}
                             />
                             <input
                                 type="text"
+                                className="dl-input"
                                 defaultValue={toZ}
                                 onBlur={(e) => {
                                     const val = parseLocaleFloat(e.target.value);
@@ -1751,18 +1619,9 @@ export function BinEditor() {
                                 onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                                 placeholder="Z"
                                 title="Translation Override Z value"
-                                style={{
-                                    width: '50px',
-                                    padding: '4px 6px',
-                                    background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)',
-                                    border: '1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)',
-                                    borderRadius: '4px',
-                                    color: UI_COLORS.to,
-                                    fontSize: '11px',
-                                    textAlign: 'center',
-                                }}
+                                style={{ width: '50px', height: '28px', textAlign: 'center' }}
                             />
-                            <button onClick={handleSetTranslationOverride} style={smallButtonStyle(UI_COLORS.to)} title="Set Translation Override values for selected emitters">
+                            <button onClick={handleSetTranslationOverride} className="dl-btn dl-btn--sm dl-btn--primary" style={smallButtonStyle(UI_COLORS.to)} title="Set Translation Override values for selected emitters">
                                 Set
                             </button>
                         </div>
@@ -1775,7 +1634,7 @@ export function BinEditor() {
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="Search emitters..."
-                            className="bin-editor-search"
+                            className="dl-input"
                             style={{ width: '240px' }}
                         />
                     </div>
