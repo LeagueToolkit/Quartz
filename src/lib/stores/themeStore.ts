@@ -19,6 +19,9 @@ interface ThemeState {
     tokensFor: (theme: Theme) => ThemeTokens;
     setActive: (id: string) => void;
     setBase: (base: BaseMode) => void;
+    /* Re-apply the active theme without changing selection — used when a
+       non-theme input (wallpaper on/off) changes how surfaces are derived. */
+    reapply: () => void;
     setOverride: (id: string, accent: string | null) => void;
     saveTheme: (theme: Theme) => Promise<void>;
     removeTheme: (id: string) => Promise<void>;
@@ -74,6 +77,11 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
         const active = resolve(get().themes, get().activeId);
         applyTheme(get().tokensFor(active), active.id);
         void useConfigStore.getState().update({ themeBase: base });
+    },
+
+    reapply: () => {
+        const active = resolve(get().themes, get().activeId);
+        applyTheme(get().tokensFor(active), active.id);
     },
 
     setOverride: (id, accent) => {

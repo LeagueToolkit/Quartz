@@ -1,4 +1,5 @@
 import type { ThemeTokens } from './types';
+import { useUiPrefsStore } from '@/lib/stores/uiPrefsStore';
 
 /* ── color helpers (ported from Quartz themeManager) ─────────────────────── */
 
@@ -131,4 +132,38 @@ export function applyTheme(rawTokens: Partial<ThemeTokens>, id?: string) {
     root.style.setProperty('--border', t.muiDivider || t.glassBorder!);
     root.style.setProperty('--color-success', t.accentGreen || '#3FB950');
     // Status warning/danger/info stay theme-independent (defined in theme.css).
+
+    applyWallpaperSurfaces(root, t);
+}
+
+/* When a wallpaper is active, the app surfaces turn translucent so the (blurred)
+   wallpaper reads through as a soft tint instead of a flat opaque wall. Cards
+   keep more opacity than the base so text stays legible; the base work area is
+   the most see-through. With no wallpaper the surfaces stay fully opaque, so the
+   normal solid look is unchanged. The blur amount comes from --glass-blur, which
+   the surface CSS consumes via backdrop-filter — so the Blur slider works. */
+function applyWallpaperSurfaces(root: HTMLElement, t: ThemeTokens) {
+    let wallpaperOn = false;
+    try {
+        const p = useUiPrefsStore.getState();
+        wallpaperOn = p.wallpaperEnabled && !!p.wallpaperPath;
+    } catch { /* store not ready during first paint — treat as off */ }
+
+    root.setAttribute('data-wallpaper', wallpaperOn ? 'on' : 'off');
+
+    if (!wallpaperOn) {
+        // Restore opaque surfaces (undo any prior translucent override).
+        root.style.setProperty('--bg-primary', t.bg);
+        root.style.setProperty('--bg-secondary', t.surface);
+        root.style.setProperty('--bg-tertiary', t.surface2);
+        root.style.setProperty('--bg-hover', t.muiDivider || t.surface2);
+        return;
+    }
+
+    // Higher % = more opaque. Base is most transparent; cards hold contrast.
+    const mix = (hex: string, pct: number) => `color-mix(in oklab, ${hex} ${pct}%, transparent)`;
+    root.style.setProperty('--bg-primary', mix(t.bg, 42));
+    root.style.setProperty('--bg-secondary', mix(t.surface, 74));
+    root.style.setProperty('--bg-tertiary', mix(t.surface2, 78));
+    root.style.setProperty('--bg-hover', mix(t.muiDivider || t.surface2, 86));
 }

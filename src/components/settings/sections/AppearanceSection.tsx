@@ -4,7 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { FormGroup, CustomSelect, Button } from '../primitives';
 import { ThemeCardGrid } from '../ThemeCardGrid';
-import { useUiPrefsStore, applyUiPrefs } from '@/lib/stores';
+import { useUiPrefsStore, applyUiPrefs, useThemeStore } from '@/lib/stores';
 import { CLICK_EFFECT_TYPES, BACKGROUND_EFFECT_TYPES } from '@/lib/theme/behaviors';
 import { refreshFonts, applyFont, openFontsFolder, type FontOption } from '@/lib/fonts/fontManager';
 import {
@@ -65,6 +65,11 @@ export function AppearanceSection() {
     const onFontChange = (v: string) => { set('font', v); applyFont(v); };
     const onBlur = (v: number) => { set('glassBlur', v); applyUiPrefs(); };
 
+    // Whether a wallpaper is showing drives the translucent surface tokens, so
+    // toggling/selecting a wallpaper must re-derive the active theme.
+    const reapplyWallpaper = () => useThemeStore.getState().reapply();
+    const setWallpaperEnabled = (c: boolean) => { set('wallpaperEnabled', c); reapplyWallpaper(); };
+
     const addWallpaper = async () => {
         const picked = await open({ multiple: false, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }] });
         if (typeof picked !== 'string') return;
@@ -74,10 +79,11 @@ export function AppearanceSection() {
     };
     const selectWallpaper = (w: WallpaperItem) => {
         set('wallpaperId', w.id); set('wallpaperPath', w.filePath); set('wallpaperEnabled', true);
+        reapplyWallpaper();
     };
     const removeWallpaper = async (id: string) => {
         await deleteWallpaper(id);
-        if (prefs.wallpaperId === id) { set('wallpaperId', ''); set('wallpaperPath', ''); }
+        if (prefs.wallpaperId === id) { set('wallpaperId', ''); set('wallpaperPath', ''); reapplyWallpaper(); }
         await loadWallpapers();
     };
     return (
@@ -104,7 +110,7 @@ export function AppearanceSection() {
 
             <FormGroup label="Wallpaper" description="Set a background image that covers the entire app">
                 <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <Checkbox checked={prefs.wallpaperEnabled} onChange={(c) => set('wallpaperEnabled', c)}>Enable wallpaper</Checkbox>
+                    <Checkbox checked={prefs.wallpaperEnabled} onChange={setWallpaperEnabled}>Enable wallpaper</Checkbox>
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <Button icon={<Plus size={16} />} variant="secondary" onClick={addWallpaper}>Add Wallpaper</Button>
                         {prefs.wallpaperId && (

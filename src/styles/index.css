@@ -9,6 +9,9 @@
        native controls (radios/checkboxes/dropdowns/scrollbars) match. */
     --titlebar-h: 48px;
     --rail-w: 60px;
+    /* Wallpaper blur radius — driven by the Appearance "UI Blur" slider through
+       applyUiPrefs(). Consumed by frosted surfaces below. */
+    --glass-blur: 6px;
 }
 
 html, body, #app { height: 100%; margin: 0; }
@@ -66,3 +69,18 @@ input[type="radio"] { accent-color: var(--accent-primary); }
     border-radius: var(--radius);
     box-shadow: var(--dl-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.35));
 }
+
+/* ── Wallpaper glass ──────────────────────────────────────────────────────
+   When a wallpaper is active (data-wallpaper=on, set by applyTheme), the
+   surface tokens turn translucent. Frost the major surfaces so the wallpaper
+   reads as a soft blurred tint behind the UI instead of a sharp busy image,
+   and text stays legible. The blur radius comes from --glass-blur (the "UI
+   Blur" slider), so the slider now visibly does something. */
+:root[data-wallpaper="on"] .q-glass,
+:root[data-wallpaper="on"] .q-main {
+    backdrop-filter: blur(var(--glass-blur)) saturate(125%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(125%);
+}
+/* The work area frosts everything behind it once; its own bg stays transparent
+   so page content (which supplies its own translucent surfaces) sits on top. */
+:root[data-wallpaper="on"] .q-main { background: transparent; }
