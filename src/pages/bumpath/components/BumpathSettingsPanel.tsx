@@ -1,34 +1,6 @@
 import React from 'react';
-import { Box, FormControlLabel, Switch, Typography } from '@mui/material';
+import { Box } from '@mui/material';
 import type { SxProps, Theme } from '@mui/material';
-
-const switchSx = {
-    '& .MuiSwitch-switchBase.Mui-checked': {
-        color: 'var(--accent-primary)',
-        '&:hover': {
-            backgroundColor: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
-        },
-    },
-    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-        backgroundColor: 'var(--accent-primary)',
-        opacity: 0.8,
-    },
-    '& .MuiSwitch-track': {
-        backgroundColor: 'var(--bg-hover)',
-        border: '1px solid var(--border)',
-    },
-    '& .MuiSwitch-thumb': {
-        backgroundColor: 'var(--text-primary)',
-        border: '1px solid var(--border)',
-        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
-    },
-};
-
-const labelSx = {
-    color: 'var(--text-secondary)',
-    fontSize: '0.8rem',
-    fontWeight: '500',
-};
 
 interface BumpathSettingsPanelProps {
     panelStyle: SxProps<Theme>;
@@ -41,6 +13,27 @@ interface BumpathSettingsPanelProps {
     setHideDataFolderBins: (value: boolean) => void;
     saveSettings: (key: string, value: boolean) => void;
 }
+
+const toggleRow = (label: string, checked: boolean, onChange: (v: boolean) => void) => (
+    <label
+        style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            cursor: 'pointer',
+            userSelect: 'none',
+        }}
+    >
+        <span className="dl-toggle">
+            <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+            <span className="dl-toggle__track" />
+            <span className="dl-toggle__thumb" />
+        </span>
+        <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500 }}>
+            {label}
+        </span>
+    </label>
+);
 
 const BumpathSettingsPanel = React.memo(function BumpathSettingsPanel({
     panelStyle,
@@ -66,47 +59,18 @@ const BumpathSettingsPanel = React.memo(function BumpathSettingsPanel({
             }}
         >
             <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
-                <FormControlLabel
-                    control={
-                        <Switch
-                            checked={ignoreMissing}
-                            onChange={(e) => {
-                                setIgnoreMissing(e.target.checked);
-                                saveSettings('BumpathIgnoreMissing', e.target.checked);
-                            }}
-                            sx={switchSx}
-                        />
-                    }
-                    label={<Typography variant="body2" sx={labelSx}>Ignore Missing Files</Typography>}
-                />
-
-                <FormControlLabel
-                    control={
-                        <Switch
-                            checked={combineLinked}
-                            onChange={(e) => {
-                                setCombineLinked(e.target.checked);
-                                saveSettings('BumpathCombineLinked', e.target.checked);
-                            }}
-                            sx={switchSx}
-                        />
-                    }
-                    label={<Typography variant="body2" sx={labelSx}>Combine Linked BINs to Source BINs</Typography>}
-                />
-
-                <FormControlLabel
-                    control={
-                        <Switch
-                            checked={hideDataFolderBins}
-                            onChange={(e) => {
-                                setHideDataFolderBins(e.target.checked);
-                                saveSettings('BumpathHideDataFolderBins', e.target.checked);
-                            }}
-                            sx={switchSx}
-                        />
-                    }
-                    label={<Typography variant="body2" sx={labelSx}>Hide path in bin list</Typography>}
-                />
+                {toggleRow('Ignore Missing Files', ignoreMissing, (v) => {
+                    setIgnoreMissing(v);
+                    saveSettings('BumpathIgnoreMissing', v);
+                })}
+                {toggleRow('Combine Linked BINs to Source BINs', combineLinked, (v) => {
+                    setCombineLinked(v);
+                    saveSettings('BumpathCombineLinked', v);
+                })}
+                {toggleRow('Hide path in bin list', hideDataFolderBins, (v) => {
+                    setHideDataFolderBins(v);
+                    saveSettings('BumpathHideDataFolderBins', v);
+                })}
             </Box>
         </Box>
     );

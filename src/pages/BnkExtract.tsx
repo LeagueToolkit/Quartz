@@ -42,7 +42,6 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import {
     containerStyle, headerStyle, mainContentStyle, treeViewStyle, sidebarStyle,
-    buttonStyle, compactButtonStyle, inputStyle,
 } from './bnkextract/styles';
 import type {
     AutoExtractRequest, BnkNode, ContextMenuState, ExtractFormat, GameBanksConfirm, GameBanksSelection,
@@ -1080,7 +1079,6 @@ export function BnkExtract() {
                 open={showInstallModal}
                 isInstalling={isInstalling}
                 installProgress={installProgress}
-                buttonStyle={buttonStyle}
                 onCancel={() => { setShowInstallModal(false); pendingConversion.current = null; }}
                 onInstall={handleInstallWwise}
             />
@@ -1093,15 +1091,11 @@ export function BnkExtract() {
                 gainTargetNodeId={gainTargetNodeId}
                 gainDb={gainDb}
                 setGainDb={setGainDb}
-                compactButtonStyle={compactButtonStyle}
-                buttonStyle={buttonStyle}
                 onApply={handleApplyGain}
             />
 
             <BnkHeaderPanel
                 headerStyle={headerStyle}
-                inputStyle={inputStyle}
-                buttonStyle={buttonStyle}
                 statusMessage={statusMessage}
                 showAudioSplitter={showAudioSplitter}
                 setSplitterInitialFile={setSplitterInitialFile}
@@ -1137,8 +1131,6 @@ export function BnkExtract() {
                 mainContentStyle={mainContentStyle}
                 treeViewStyle={treeViewStyle}
                 sidebarStyle={sidebarStyle}
-                compactButtonStyle={compactButtonStyle}
-                buttonStyle={buttonStyle}
                 viewMode={viewMode}
                 activePane={activePane}
                 leftSearchQuery={leftSearchQuery}

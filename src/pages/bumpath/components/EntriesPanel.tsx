@@ -1,6 +1,6 @@
 import React from 'react';
-import { Box, Checkbox, CircularProgress, IconButton, List, ListItem, Typography } from '@mui/material';
-import { ChevronRight as ChevronRightIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
+import { Box, CircularProgress, List, ListItem, Typography } from '@mui/material';
+import { ChevronRight as ChevronRightIcon, ExpandMore as ExpandMoreIcon, Check as CheckIcon } from '@mui/icons-material';
 import { groupReferencedFiles } from '../utils/referencedFiles';
 import type { ScannedData, ScannedEntry } from '../utils/types';
 
@@ -66,31 +66,29 @@ const EntriesPanel = React.memo(function EntriesPanel({
                             >
                                 <Box sx={{ width: '100%' }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                                        <IconButton
-                                            size="small"
+                                        <button
+                                            type="button"
+                                            className="dl-btn dl-btn--icon dl-btn--sm dl-btn--ghost"
                                             onClick={() => handleEntryExpand(entryHash)}
-                                            sx={{
-                                                color: 'var(--text-secondary)',
-                                                '&:hover': {
-                                                    color: 'var(--accent-primary)',
-                                                    backgroundColor: 'var(--bg-hover)',
-                                                },
-                                            }}
                                         >
-                                            {expandedEntries.has(entryHash) ? <ExpandMoreIcon /> : <ChevronRightIcon />}
-                                        </IconButton>
+                                            <span className="dl-icon">
+                                                {expandedEntries.has(entryHash) ? <ExpandMoreIcon /> : <ChevronRightIcon />}
+                                            </span>
+                                        </button>
 
-                                        <Checkbox
-                                            checked={selectedEntries.has(entryHash)}
-                                            onChange={() => handleEntrySelect(entryHash)}
-                                            disabled={entryData.prefix === 'Uneditable'}
-                                            sx={{
-                                                color: 'var(--text-secondary)',
-                                                '&.Mui-checked': {
-                                                    color: 'var(--accent-primary)',
-                                                },
-                                            }}
-                                        />
+                                        <label className="dl-check">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedEntries.has(entryHash)}
+                                                onChange={() => handleEntrySelect(entryHash)}
+                                                disabled={entryData.prefix === 'Uneditable'}
+                                            />
+                                            <span className="dl-check__box">
+                                                <span className="dl-check__tick">
+                                                    <span className="dl-icon"><CheckIcon /></span>
+                                                </span>
+                                            </span>
+                                        </label>
 
                                         <Box sx={{ flex: 1, minWidth: 0 }}>
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25, flexWrap: 'wrap' }}>
@@ -178,23 +176,16 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                                 }}
                                                                 onClick={() => handleFilePathExpand(missingPath)}
                                                             >
-                                                                <IconButton
-                                                                    size="small"
-                                                                    sx={{
-                                                                        color: 'var(--text-secondary)',
-                                                                        p: 0.25,
-                                                                        '&:hover': {
-                                                                            color: 'var(--accent-primary)',
-                                                                            backgroundColor: 'var(--bg-hover)',
-                                                                        },
-                                                                    }}
+                                                                <span
+                                                                    className="dl-icon"
+                                                                    style={{ color: 'var(--text-secondary)', width: '0.9rem', height: '0.9rem' }}
                                                                 >
                                                                     {isExpanded ? (
                                                                         <ExpandMoreIcon sx={{ fontSize: '0.9rem' }} />
                                                                     ) : (
                                                                         <ChevronRightIcon sx={{ fontSize: '0.9rem' }} />
                                                                     )}
-                                                                </IconButton>
+                                                                </span>
                                                                 <Box
                                                                     sx={{
                                                                         width: 8,

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Button, CircularProgress } from '@mui/material';
+import { Box, CircularProgress } from '@mui/material';
 import {
     Close as CloseIcon,
     Edit as EditIcon,
@@ -10,7 +10,6 @@ import {
     Settings as SettingsIcon,
 } from '@mui/icons-material';
 import DebouncedTextField from './DebouncedTextField';
-import { getActionButtonSx, inputSx } from '../utils/styles';
 import type { ScannedData } from '../utils/types';
 
 interface BumpathBottomControlsProps {
@@ -32,8 +31,6 @@ interface BumpathBottomControlsProps {
     setSettingsExpanded: (expanded: boolean) => void;
     setSettingsAutoOpened: (value: boolean) => void;
 }
-
-const inputInputSx = (inputSx as Record<string, unknown>)['& .MuiInputBase-input'] as Record<string, unknown>;
 
 const BumpathBottomControls = React.memo(function BumpathBottomControls({
     handleReset,
@@ -66,85 +63,89 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
                 minHeight: '70px',
             }}
         >
-            <Button
-                startIcon={<CloseIcon />}
+            <button
+                type="button"
+                className="dl-btn dl-btn--danger"
                 onClick={handleReset}
-                sx={getActionButtonSx('var(--color-danger)')}
             >
-                Reset
-            </Button>
+                <span className="dl-icon"><CloseIcon /></span>
+                <span>Reset</span>
+            </button>
 
             <DebouncedTextField
                 value={prefixText}
                 onValueChange={handlePrefixTextChange}
                 debounceMs={100}
                 data-bumpath-prefix
-                sx={{
-                    width: '110px',
-                    ...inputSx,
-                    '& .MuiInputBase-input': {
-                        ...inputInputSx,
-                        textAlign: 'center',
-                        fontWeight: 600,
-                    },
-                }}
+                style={{ width: '110px', textAlign: 'center', fontWeight: 600 }}
             />
 
-            <Button
-                startIcon={<EditIcon />}
+            <button
+                type="button"
+                className="dl-btn dl-btn--primary"
                 onClick={handleApplyPrefix}
                 disabled={selectedEntriesSize === 0 || !debouncedPrefixText.trim()}
-                sx={getActionButtonSx('var(--accent-primary)')}
             >
-                Apply Prefix
-            </Button>
+                <span className="dl-icon"><EditIcon /></span>
+                <span>Apply Prefix</span>
+            </button>
 
-            <Button
-                startIcon={<FolderIcon />}
+            <button
+                type="button"
+                className="dl-btn dl-btn--secondary"
                 onClick={handleSelectOutputDir}
                 data-bumpath-output
-                color="inherit"
-                sx={getActionButtonSx('var(--color-info)')}
             >
-                Select Output
-            </Button>
+                <span className="dl-icon"><FolderIcon /></span>
+                <span>Select Output</span>
+            </button>
 
-            <Button
-                startIcon={isProcessing ? <CircularProgress size={16} /> : <PlayArrowIcon />}
+            <button
+                type="button"
+                className="dl-btn dl-btn--primary"
                 onClick={handleProcess}
                 disabled={isProcessing || !scannedData || !outputPath}
                 data-bumpath-process
-                sx={getActionButtonSx('var(--color-warning)', { minWidth: '120px', prominent: true })}
+                style={{ minWidth: '120px' }}
             >
-                {isProcessing ? 'Processing...' : 'Bum'}
-            </Button>
-            <Button
-                startIcon={<AutoFixHighIcon />}
+                <span className="dl-icon">
+                    {isProcessing ? <CircularProgress size={16} /> : <PlayArrowIcon />}
+                </span>
+                <span>{isProcessing ? 'Processing...' : 'Bum'}</span>
+            </button>
+            <button
+                type="button"
+                className="dl-btn dl-btn--primary"
                 onClick={handleOpenQuickRepath}
                 disabled={quickRepathDisabled}
-                sx={getActionButtonSx('var(--accent-primary)', { minWidth: '150px', prominent: true })}
+                style={{ minWidth: '150px' }}
             >
-                Quick Repath
-            </Button>
+                <span className="dl-icon"><AutoFixHighIcon /></span>
+                <span>Quick Repath</span>
+            </button>
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, marginLeft: 'auto' }}>
-                <Button
+                <button
+                    type="button"
+                    className="dl-btn dl-btn--icon dl-btn--secondary"
                     onClick={() => setConsoleOpen(true)}
-                    sx={getActionButtonSx('var(--accent-secondary)', { iconOnly: true, height: '36px', px: 0 })}
+                    title="Console"
                 >
-                    <TerminalIcon />
-                </Button>
+                    <span className="dl-icon"><TerminalIcon /></span>
+                </button>
 
-                <Button
+                <button
+                    type="button"
+                    className="dl-btn dl-btn--icon dl-btn--primary"
                     onClick={() => {
                         setSettingsExpanded(!settingsExpanded);
                         setSettingsAutoOpened(false);
                     }}
                     data-bumpath-settings
-                    sx={getActionButtonSx('var(--accent-primary)', { iconOnly: true, height: '36px', px: 0 })}
+                    title="Settings"
                 >
-                    <SettingsIcon />
-                </Button>
+                    <span className="dl-icon"><SettingsIcon /></span>
+                </button>
             </Box>
         </Box>
     );

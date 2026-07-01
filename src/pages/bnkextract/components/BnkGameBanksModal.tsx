@@ -131,7 +131,6 @@ function BnkGameBanksModal({ open, loading = false, progressText = '', onClose, 
 
     const panelStyle: CSSProperties = { borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: 10, display: 'flex', flexDirection: 'column', minHeight: 0 };
     const panelTitle: CSSProperties = { marginBottom: 8, color: 'var(--accent-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' };
-    const inputStyle: CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--accent-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', outline: 'none' };
 
     return (
         <div style={{ position: 'fixed', top: 32, left: 60, right: 0, bottom: 0, zIndex: 5300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -157,11 +156,11 @@ function BnkGameBanksModal({ open, loading = false, progressText = '', onClose, 
 
                 <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
                     <button type="button" onClick={() => setIncludeVoiceover((v) => !v)}
-                        style={{ padding: '6px 10px', borderRadius: 8, border: includeVoiceover ? '1px solid var(--accent-secondary)' : '1px solid var(--border-strong)', background: includeVoiceover ? 'color-mix(in oklab, var(--accent-secondary) 16%, transparent)' : 'var(--bg-tertiary)', color: includeVoiceover ? 'var(--accent-secondary)' : 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', cursor: 'pointer' }}>
+                        className={`dl-btn dl-btn--sm ${includeVoiceover ? 'dl-btn--primary' : 'dl-btn--secondary'}`}>
                         Extract VO
                     </button>
                     <button type="button" onClick={() => setIncludeSfx((v) => !v)}
-                        style={{ padding: '6px 10px', borderRadius: 8, border: includeSfx ? '1px solid var(--accent-primary)' : '1px solid var(--border-strong)', background: includeSfx ? 'color-mix(in oklab, var(--accent-primary) 16%, transparent)' : 'var(--bg-tertiary)', color: includeSfx ? 'var(--accent-primary)' : 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', cursor: 'pointer' }}>
+                        className={`dl-btn dl-btn--sm ${includeSfx ? 'dl-btn--primary' : 'dl-btn--secondary'}`}>
                         Extract SFX
                     </button>
                     <div style={{ marginLeft: 'auto', color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem' }}>
@@ -172,7 +171,7 @@ function BnkGameBanksModal({ open, loading = false, progressText = '', onClose, 
                 <div style={{ padding: 16, display: 'grid', gridTemplateColumns: isNarrow ? '1fr' : '1fr 1fr', gap: 14, flex: 1, minHeight: 0, overflow: 'hidden' }}>
                     <div style={panelStyle}>
                         <div style={panelTitle}>Champions</div>
-                        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search champion..." style={{ ...inputStyle, marginBottom: 10 }} />
+                        <input className="dl-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search champion..." style={{ marginBottom: 10 }} />
                         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                             {loadingChampions ? (
                                 <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>Loading champions...</div>
@@ -198,11 +197,9 @@ function BnkGameBanksModal({ open, loading = false, progressText = '', onClose, 
                     <div style={panelStyle}>
                         <div style={panelTitle}>{selectedChampion ? `Skins: ${selectedChampion.name}` : 'Skins'}</div>
                         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-                            <input value={skinSearch} onChange={(e) => setSkinSearch(e.target.value)} placeholder="Filter selected champion skins..." style={inputStyle} />
-                            <button type="button" onClick={() => setSelectedSkinIds(new Set(filteredSkins.map((s) => s.id)))}
-                                style={{ padding: '0 10px', borderRadius: 8, border: '1px solid var(--border-strong)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', cursor: 'pointer' }}>All</button>
-                            <button type="button" onClick={() => setSelectedSkinIds(new Set())}
-                                style={{ padding: '0 10px', borderRadius: 8, border: '1px solid var(--border-strong)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', cursor: 'pointer' }}>None</button>
+                            <input className="dl-input" value={skinSearch} onChange={(e) => setSkinSearch(e.target.value)} placeholder="Filter selected champion skins..." style={{ flex: 1 }} />
+                            <button type="button" className="dl-btn dl-btn--secondary dl-btn--sm" onClick={() => setSelectedSkinIds(new Set(filteredSkins.map((s) => s.id)))}>All</button>
+                            <button type="button" className="dl-btn dl-btn--secondary dl-btn--sm" onClick={() => setSelectedSkinIds(new Set())}>None</button>
                         </div>
                         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                             {loadingSkins ? (
@@ -240,13 +237,11 @@ function BnkGameBanksModal({ open, loading = false, progressText = '', onClose, 
                 ) : null}
 
                 <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                    <button type="button" onClick={onClose} disabled={loading}
-                        style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.5 : 1 }}>
+                    <button type="button" className="dl-btn dl-btn--secondary" onClick={onClose} disabled={loading}>
                         Cancel
                     </button>
-                    <button type="button" disabled={!canConfirm}
-                        onClick={() => onConfirm({ champion: selectedChampion, skinIds: Array.from(selectedSkinIds), includeVoiceover, includeSfx })}
-                        style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid color-mix(in oklab, var(--accent-secondary) 35%, transparent)', background: 'color-mix(in oklab, var(--accent-secondary) 12%, transparent)', color: 'var(--accent-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem', fontWeight: 700, cursor: canConfirm ? 'pointer' : 'not-allowed', opacity: canConfirm ? 1 : 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <button type="button" className="dl-btn dl-btn--primary" disabled={!canConfirm}
+                        onClick={() => onConfirm({ champion: selectedChampion, skinIds: Array.from(selectedSkinIds), includeVoiceover, includeSfx })}>
                         {loading ? 'Extracting...' : 'Load Banks'}
                     </button>
                 </div>

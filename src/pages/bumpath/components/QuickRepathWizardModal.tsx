@@ -1,22 +1,6 @@
 import React from 'react';
-import {
-    Box,
-    Button,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
-    FormControlLabel,
-    FormControl,
-    InputLabel,
-    MenuItem,
-    Select,
-    Switch,
-    TextField,
-    Typography,
-} from '@mui/material';
-import { AutoFixHigh as AutoFixHighIcon, FolderOpen as FolderOpenIcon } from '@mui/icons-material';
-import { getActionButtonSx } from '../utils/styles';
+import { AutoFixHigh as AutoFixHighIcon, FolderOpen as FolderOpenIcon, Close as CloseIcon } from '@mui/icons-material';
+import { CustomSelect } from '../../../components/settings/primitives';
 import type { QuickBinOption } from '../utils/types';
 
 const stepLabels = [
@@ -46,6 +30,17 @@ interface QuickRepathWizardModalProps {
     isRunning: boolean;
 }
 
+const toggleRow = (label: string, checked: boolean, onChange: (v: boolean) => void) => (
+    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', userSelect: 'none' }}>
+        <span className="dl-toggle">
+            <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+            <span className="dl-toggle__track" />
+            <span className="dl-toggle__thumb" />
+        </span>
+        <span style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>{label}</span>
+    </label>
+);
+
 const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
     open,
     step,
@@ -66,6 +61,8 @@ const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
     onClose,
     isRunning,
 }: QuickRepathWizardModalProps) {
+    if (!open) return null;
+
     const canNextStep1 = Boolean(selectedMainBin);
     const canNextStep2 = Boolean((quickPrefix || '').trim());
     const canRun = Boolean((quickOutputPath || '').trim()) && !isRunning;
@@ -81,176 +78,126 @@ const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
     };
 
     return (
-        <Dialog
-            open={open}
-            onClose={isRunning ? undefined : onClose}
-            maxWidth="sm"
-            fullWidth
-            PaperProps={{
-                sx: {
-                    background: 'var(--bg-secondary)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '14px',
-                },
-            }}
-        >
-            <DialogTitle sx={{ color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }}>
-                Quick Repath Wizard
-            </DialogTitle>
+        <div className="dl-modal-backdrop" onClick={isRunning ? undefined : onClose}>
+            <div className="dl-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="dl-modal__head">
+                    <h2 className="dl-modal__title">Quick Repath Wizard</h2>
+                    {!isRunning && (
+                        <button type="button" className="dl-modal__close" onClick={onClose} title="Close">
+                            <span className="dl-icon"><CloseIcon /></span>
+                        </button>
+                    )}
+                </div>
 
-            <DialogContent>
-                <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-                    {stepLabels.map((label, index) => (
-                        <Box
-                            key={label}
-                            sx={{
-                                px: 1.25,
-                                py: 0.5,
-                                borderRadius: '999px',
-                                fontSize: '0.72rem',
-                                fontFamily: 'JetBrains Mono, monospace',
-                                border: '1px solid',
-                                borderColor: index === step ? 'var(--accent-primary)' : 'var(--border)',
-                                color: index <= step ? 'var(--text-primary)' : 'var(--text-secondary)',
-                                background: index === step
-                                    ? 'color-mix(in oklab, var(--accent-primary) 15%, transparent)'
-                                    : 'transparent',
-                            }}
-                        >
-                            {index + 1}. {label}
-                        </Box>
-                    ))}
-                </Box>
+                <div className="dl-modal__body">
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        {stepLabels.map((label, index) => (
+                            <span
+                                key={label}
+                                style={{
+                                    padding: '4px 10px',
+                                    borderRadius: '999px',
+                                    fontSize: '0.72rem',
+                                    border: '1px solid',
+                                    borderColor: index === step ? 'var(--accent-primary)' : 'var(--border)',
+                                    color: index <= step ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                    background: index === step
+                                        ? 'color-mix(in oklab, var(--accent-primary) 15%, transparent)'
+                                        : 'transparent',
+                                }}
+                            >
+                                {index + 1}. {label}
+                            </span>
+                        ))}
+                    </div>
 
-                {step === 0 && (
-                    <Box>
-                        <Typography sx={{ color: 'var(--text-secondary)', mb: 1.2, fontSize: '0.85rem' }}>
-                            Pick the main BIN file that should drive repathing.
-                        </Typography>
-                        <FormControl fullWidth size="small">
-                            <InputLabel sx={{ color: 'var(--text-secondary)' }}>Main BIN</InputLabel>
-                            <Select
+                    {step === 0 && (
+                        <div>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '10px', fontSize: '0.85rem' }}>
+                                Pick the main BIN file that should drive repathing.
+                            </p>
+                            <CustomSelect
                                 value={selectedMainBin}
-                                label="Main BIN"
-                                onChange={(e) => setSelectedMainBin(e.target.value)}
-                                sx={{
-                                    color: 'var(--text-primary)',
-                                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border)' },
-                                }}
-                            >
-                                {binOptions.map((bin) => (
-                                    <MenuItem key={bin.value} value={bin.value}>
-                                        {bin.label}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    </Box>
-                )}
-
-                {step === 1 && (
-                    <Box>
-                        <Typography sx={{ color: 'var(--text-secondary)', mb: 1.2, fontSize: '0.85rem' }}>
-                            Enter the prefix to apply to all editable entries.
-                        </Typography>
-                        <TextField
-                            value={quickPrefix}
-                            onChange={(e) => setQuickPrefix(e.target.value)}
-                            fullWidth
-                            size="small"
-                            placeholder="e.g. bum"
-                            sx={{
-                                '& .MuiOutlinedInput-root': {
-                                    color: 'var(--text-primary)',
-                                    '& fieldset': { borderColor: 'var(--border)' },
-                                },
-                            }}
-                        />
-                    </Box>
-                )}
-
-                {step === 2 && (
-                    <Box>
-                        <Typography sx={{ color: 'var(--text-secondary)', mb: 1.2, fontSize: '0.85rem' }}>
-                            Select or type an output folder. Missing folders will be created.
-                        </Typography>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                            <TextField
-                                value={quickOutputPath}
-                                onChange={(e) => setQuickOutputPath(e.target.value)}
-                                fullWidth
-                                size="small"
-                                placeholder="Output path"
-                                sx={{
-                                    '& .MuiOutlinedInput-root': {
-                                        color: 'var(--text-primary)',
-                                        '& fieldset': { borderColor: 'var(--border)' },
-                                    },
-                                }}
+                                onChange={setSelectedMainBin}
+                                options={binOptions.map((bin) => ({ value: bin.value, label: bin.label }))}
+                                placeholder="Main BIN"
                             />
-                            <Button
-                                startIcon={<FolderOpenIcon />}
-                                onClick={onSelectOutputDir}
-                                sx={getActionButtonSx('var(--color-info)')}
-                            >
-                                Browse
-                            </Button>
-                        </Box>
-                        <Box sx={{ mt: 1.2, display: 'flex', flexDirection: 'column', gap: 0.4 }}>
-                            <FormControlLabel
-                                control={(
-                                    <Switch
-                                        checked={ignoreMissing}
-                                        onChange={(e) => setIgnoreMissing(e.target.checked)}
-                                        sx={{
-                                            '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--accent-primary)' },
-                                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'var(--accent-primary)' },
-                                        }}
-                                    />
-                                )}
-                                label={<Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>Ignore Missing Files</Typography>}
-                            />
-                            <FormControlLabel
-                                control={(
-                                    <Switch
-                                        checked={combineLinked}
-                                        onChange={(e) => setCombineLinked(e.target.checked)}
-                                        sx={{
-                                            '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--accent-primary)' },
-                                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'var(--accent-primary)' },
-                                        }}
-                                    />
-                                )}
-                                label={<Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>Combine Linked BINs</Typography>}
-                            />
-                        </Box>
-                    </Box>
-                )}
-            </DialogContent>
+                        </div>
+                    )}
 
-            <DialogActions sx={{ p: 2 }}>
-                <Button onClick={onClose} disabled={isRunning} sx={getActionButtonSx('var(--text-secondary)')}>
-                    Cancel
-                </Button>
-                <Button onClick={handleBack} disabled={isRunning || step === 0} sx={getActionButtonSx('var(--accent-secondary)')}>
-                    Back
-                </Button>
-                {step < 2 ? (
-                    <Button onClick={handleNext} disabled={isRunning || (step === 0 ? !canNextStep1 : !canNextStep2)} sx={getActionButtonSx('var(--accent-primary)')}>
-                        Next
-                    </Button>
-                ) : (
-                    <Button
-                        startIcon={<AutoFixHighIcon />}
-                        onClick={onRunQuickRepath}
-                        disabled={!canRun}
-                        sx={getActionButtonSx('var(--color-warning)', { prominent: true })}
-                    >
-                        {isRunning ? 'Running...' : 'Run Quick Repath'}
-                    </Button>
-                )}
-            </DialogActions>
-        </Dialog>
+                    {step === 1 && (
+                        <div>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '10px', fontSize: '0.85rem' }}>
+                                Enter the prefix to apply to all editable entries.
+                            </p>
+                            <input
+                                className="dl-input"
+                                value={quickPrefix}
+                                onChange={(e) => setQuickPrefix(e.target.value)}
+                                placeholder="e.g. bum"
+                            />
+                        </div>
+                    )}
+
+                    {step === 2 && (
+                        <div>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '10px', fontSize: '0.85rem' }}>
+                                Select or type an output folder. Missing folders will be created.
+                            </p>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <input
+                                    className="dl-input"
+                                    value={quickOutputPath}
+                                    onChange={(e) => setQuickOutputPath(e.target.value)}
+                                    placeholder="Output path"
+                                />
+                                <button
+                                    type="button"
+                                    className="dl-btn dl-btn--secondary"
+                                    onClick={onSelectOutputDir}
+                                >
+                                    <span className="dl-icon"><FolderOpenIcon /></span>
+                                    <span>Browse</span>
+                                </button>
+                            </div>
+                            <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {toggleRow('Ignore Missing Files', ignoreMissing, setIgnoreMissing)}
+                                {toggleRow('Combine Linked BINs', combineLinked, setCombineLinked)}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="dl-modal__foot">
+                    <button type="button" className="dl-btn dl-btn--ghost" onClick={onClose} disabled={isRunning}>
+                        Cancel
+                    </button>
+                    <button type="button" className="dl-btn dl-btn--secondary" onClick={handleBack} disabled={isRunning || step === 0}>
+                        Back
+                    </button>
+                    {step < 2 ? (
+                        <button
+                            type="button"
+                            className="dl-btn dl-btn--primary"
+                            onClick={handleNext}
+                            disabled={isRunning || (step === 0 ? !canNextStep1 : !canNextStep2)}
+                        >
+                            Next
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            className="dl-btn dl-btn--primary"
+                            onClick={onRunQuickRepath}
+                            disabled={!canRun}
+                        >
+                            <span className="dl-icon"><AutoFixHighIcon /></span>
+                            <span>{isRunning ? 'Running...' : 'Run Quick Repath'}</span>
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
     );
 });
 

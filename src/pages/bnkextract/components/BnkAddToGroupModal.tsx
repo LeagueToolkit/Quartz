@@ -2,20 +2,6 @@ import { useEffect, type CSSProperties } from 'react';
 import type { BnkNode } from '../types';
 
 const styles: Record<string, CSSProperties> = {
-    overlay: { position: 'fixed', inset: 0, zIndex: 1400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px' },
-    backdrop: { position: 'absolute', inset: 0, background: 'color-mix(in oklab, var(--bg-primary) 75%, transparent)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' },
-    modal: {
-        position: 'relative', width: '100%', maxWidth: 360,
-        background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-        backdropFilter: 'saturate(180%) blur(16px)', WebkitBackdropFilter: 'saturate(180%) blur(16px)',
-        borderRadius: 16, boxShadow: '0 30px 70px color-mix(in oklab, var(--bg-primary) 55%, transparent)',
-        overflow: 'hidden', fontFamily: 'JetBrains Mono, monospace',
-    },
-    accentBar: { height: 3, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' },
-    body: { padding: 24 },
-    header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-    title: { fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)', margin: 0, fontFamily: 'JetBrains Mono, monospace' },
-    subtitle: { fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0 0 14px 0', fontFamily: 'JetBrains Mono, monospace' },
     list: { display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto' },
     groupBtn: {
         display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: 8,
@@ -25,11 +11,6 @@ const styles: Record<string, CSSProperties> = {
     folderIcon: { fontSize: '0.9rem', opacity: 0.6, flexShrink: 0 },
     groupName: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
     childCount: { fontSize: '0.65rem', color: 'var(--text-muted)', flexShrink: 0 },
-    footer: { display: 'flex', justifyContent: 'flex-end', marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' },
-    cancelBtn: {
-        padding: '7px 16px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-tertiary)',
-        color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s ease',
-    },
 };
 
 interface Props {
@@ -53,19 +34,16 @@ export default function BnkAddToGroupModal({ open, count, groups, onConfirm, onC
     if (!open) return null;
 
     return (
-        <div style={styles.overlay}>
-            <div style={styles.backdrop} onClick={onCancel} />
-            <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-                <div style={styles.accentBar} />
-                <div style={styles.body}>
-                    <div style={styles.header}>
-                        <h2 style={styles.title}>Add to Group</h2>
-                        <button
-                            onClick={onCancel}
-                            style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--text-secondary)', border: '1px solid var(--border)', background: 'var(--bg-tertiary)', cursor: 'pointer' }}
-                        >✕</button>
-                    </div>
-                    <p style={styles.subtitle}>{count} file{count !== 1 ? 's' : ''} — pick a group</p>
+        <div className="dl-modal-backdrop" onClick={onCancel}>
+            <div className="dl-modal" style={{ maxWidth: 360 }} onClick={(e) => e.stopPropagation()}>
+                <div className="dl-modal__head">
+                    <h2 className="dl-modal__title">Add to Group</h2>
+                    <button className="dl-modal__close" onClick={onCancel} aria-label="Close">✕</button>
+                </div>
+                <div className="dl-modal__body">
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>
+                        {count} file{count !== 1 ? 's' : ''} — pick a group
+                    </p>
 
                     <div style={styles.list}>
                         {groups.map((group) => (
@@ -90,15 +68,9 @@ export default function BnkAddToGroupModal({ open, count, groups, onConfirm, onC
                             </button>
                         ))}
                     </div>
-
-                    <div style={styles.footer}>
-                        <button
-                            style={styles.cancelBtn}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-tertiary)'; }}
-                            onClick={onCancel}
-                        >Cancel</button>
-                    </div>
+                </div>
+                <div className="dl-modal__foot">
+                    <button className="dl-btn dl-btn--secondary" onClick={onCancel}>Cancel</button>
                 </div>
             </div>
         </div>

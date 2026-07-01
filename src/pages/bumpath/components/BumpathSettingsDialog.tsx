@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, TextField, Typography } from '@mui/material';
+import { Close as CloseIcon } from '@mui/icons-material';
 
 interface BumpathSettingsDialogProps {
     settingsOpen: boolean;
@@ -12,45 +12,58 @@ const BumpathSettingsDialog = React.memo(function BumpathSettingsDialog({
     setSettingsOpen,
     hashesPath,
 }: BumpathSettingsDialogProps) {
+    if (!settingsOpen) return null;
+
     return (
-        <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} maxWidth="sm" fullWidth>
-            <DialogTitle sx={{ color: 'var(--accent-primary)', fontFamily: 'JetBrains Mono, monospace' }}>
-                Bumpath Settings
-            </DialogTitle>
-            <DialogContent>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-                    <TextField
-                        fullWidth
-                        label="Hash Directory (Automatic)"
-                        value={hashesPath}
-                        placeholder="Loading..."
-                        InputProps={{
-                            readOnly: true,
-                        }}
-                        helperText="Hash files are automatically managed. Use Settings page to download/update hash files."
-                        data-bumpath-hash-dir
-                        sx={{
-                            '& .MuiOutlinedInput-root': {
-                                color: 'var(--text-primary)',
-                                backgroundColor: 'var(--bg-tertiary)',
-                            },
-                            '& .MuiInputLabel-root': { color: 'var(--text-secondary)' },
-                            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border)' },
-                            '& .MuiFormHelperText-root': { color: 'var(--text-muted)', fontSize: '0.75rem' },
-                        }}
-                    />
-                    <Typography variant="body2" sx={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+        <div className="dl-modal-backdrop" onClick={() => setSettingsOpen(false)}>
+            <div className="dl-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="dl-modal__head">
+                    <h2 className="dl-modal__title" style={{ color: 'var(--accent-primary)' }}>
+                        Bumpath Settings
+                    </h2>
+                    <button
+                        type="button"
+                        className="dl-modal__close"
+                        onClick={() => setSettingsOpen(false)}
+                        title="Close"
+                    >
+                        <span className="dl-icon"><CloseIcon /></span>
+                    </button>
+                </div>
+
+                <div className="dl-modal__body">
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                            Hash Directory (Automatic)
+                        </span>
+                        <input
+                            className="dl-input"
+                            value={hashesPath}
+                            placeholder="Loading..."
+                            readOnly
+                            data-bumpath-hash-dir
+                        />
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            Hash files are automatically managed. Use Settings page to download/update hash files.
+                        </span>
+                    </label>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: 0 }}>
                         Hash files are downloaded automatically from CommunityDragon.
                         Go to Settings -&gt; Hash Files section to download or update hash files.
-                    </Typography>
-                </Box>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={() => setSettingsOpen(false)} sx={{ color: 'var(--text-secondary)' }}>
-                    Close
-                </Button>
-            </DialogActions>
-        </Dialog>
+                    </p>
+                </div>
+
+                <div className="dl-modal__foot">
+                    <button
+                        type="button"
+                        className="dl-btn dl-btn--secondary"
+                        onClick={() => setSettingsOpen(false)}
+                    >
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 });
 

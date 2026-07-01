@@ -1,4 +1,4 @@
-import { Box, Typography, Tooltip, Button, IconButton, TextField } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import {
     ContentCut, ViewStream, VerticalSplit, FolderOpen, Refresh, Delete, Bookmark, AutoFixHigh, SportsEsports,
 } from '@mui/icons-material';
@@ -7,8 +7,6 @@ import type { Pane, SplitterFile, ViewMode } from '../types';
 
 interface Props {
     headerStyle: SxProps<Theme>;
-    inputStyle: Record<string, unknown>;
-    buttonStyle: Record<string, unknown>;
     statusMessage: string;
     showAudioSplitter: boolean;
     setSplitterInitialFile: (f: SplitterFile | null) => void;
@@ -32,19 +30,8 @@ interface Props {
     onOpenGameBanks: () => void;
 }
 
-const controlShellSx = {
-    background: 'var(--bg)',
-    backdropFilter: 'blur(calc(var(--glass-blur, 10px) + 1px)) saturate(118%)',
-    WebkitBackdropFilter: 'blur(calc(var(--glass-blur, 10px) + 1px)) saturate(118%)',
-    border: '1px solid var(--glass-border)',
-    boxShadow: 'none',
-    transition: 'all 0.15s ease',
-} as const;
-
 export default function BnkHeaderPanel({
     headerStyle,
-    inputStyle,
-    buttonStyle,
     statusMessage,
     showAudioSplitter,
     setSplitterInitialFile,
@@ -80,38 +67,20 @@ export default function BnkHeaderPanel({
                 <Box sx={{ flex: 1 }} />
 
                 <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mr: 2 }}>
-                    <Tooltip title="Audio Splitter - cut audio into segments">
-                        <Button
-                            size="small"
-                            onClick={() => { setSplitterInitialFile(null); setShowAudioSplitter(true); }}
-                            sx={{
-                                minWidth: '32px',
-                                padding: '4px',
-                                background: 'transparent',
-                                color: showAudioSplitter ? 'var(--accent-primary)' : 'var(--text-muted)',
-                                border: '1px solid var(--border)',
-                                '&:hover': { background: 'transparent', color: 'var(--accent-primary)' },
-                            }}
-                        >
-                            <ContentCut sx={{ fontSize: 18 }} />
-                        </Button>
-                    </Tooltip>
-                    <Tooltip title={viewMode === 'normal' ? 'Switch to Split View' : 'Switch to Single View'}>
-                        <Button
-                            size="small"
-                            onClick={() => setViewMode((prev) => (prev === 'normal' ? 'split' : 'normal'))}
-                            sx={{
-                                minWidth: '32px',
-                                padding: '4px',
-                                background: 'transparent',
-                                color: viewMode === 'split' ? 'var(--accent-primary)' : '',
-                                border: '1px solid var(--border)',
-                                '&:hover': { background: 'transparent' },
-                            }}
-                        >
-                            {viewMode === 'normal' ? <ViewStream sx={{ fontSize: 18 }} /> : <VerticalSplit sx={{ fontSize: 18 }} />}
-                        </Button>
-                    </Tooltip>
+                    <button
+                        className={`dl-btn dl-btn--icon dl-btn--sm ${showAudioSplitter ? 'dl-btn--primary' : 'dl-btn--ghost'}`}
+                        onClick={() => { setSplitterInitialFile(null); setShowAudioSplitter(true); }}
+                        title="Audio Splitter - cut audio into segments"
+                    >
+                        <span className="dl-icon"><ContentCut sx={{ fontSize: 18 }} /></span>
+                    </button>
+                    <button
+                        className={`dl-btn dl-btn--icon dl-btn--sm ${viewMode === 'split' ? 'dl-btn--primary' : 'dl-btn--ghost'}`}
+                        onClick={() => setViewMode((prev) => (prev === 'normal' ? 'split' : 'normal'))}
+                        title={viewMode === 'normal' ? 'Switch to Split View' : 'Switch to Single View'}
+                    >
+                        <span className="dl-icon">{viewMode === 'normal' ? <ViewStream sx={{ fontSize: 18 }} /> : <VerticalSplit sx={{ fontSize: 18 }} />}</span>
+                    </button>
                 </Box>
 
                 <Typography sx={{ fontSize: '0.65rem', opacity: 0.6, color: 'var(--text-2)' }}>
@@ -172,72 +141,60 @@ export default function BnkHeaderPanel({
                         ['bnk', bnkPath, setBnkPath, 'Events File (BNK)', 'Select BNK File (Events Structure)'],
                     ] as const).map(([kind, val, setter, placeholder, tip]) => (
                         <Box key={kind} sx={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flex: 1 }}>
-                            <Tooltip title={tip}>
-                                <IconButton
-                                    size="small"
-                                    onClick={() => handleSelectFile(kind)}
-                                    sx={{
-                                        color: val ? 'var(--accent-primary)' : 'var(--text)',
-                                        ...controlShellSx,
-                                        borderRadius: '4px',
-                                        padding: '4px',
-                                        '&:hover': { borderColor: 'var(--accent-primary)' },
-                                    }}
-                                >
-                                    <FolderOpen sx={{ fontSize: 16 }} />
-                                </IconButton>
-                            </Tooltip>
-                            <TextField value={val} onChange={(e) => setter(e.target.value)} placeholder={placeholder} size="small" sx={{ ...inputStyle, flex: 1 }} />
+                            <button
+                                className={`dl-btn dl-btn--icon dl-btn--sm ${val ? 'dl-btn--primary' : 'dl-btn--secondary'}`}
+                                onClick={() => handleSelectFile(kind)}
+                                title={tip}
+                            >
+                                <span className="dl-icon"><FolderOpen sx={{ fontSize: 16 }} /></span>
+                            </button>
+                            <input
+                                className="dl-input"
+                                style={{ flex: 1 }}
+                                value={val}
+                                onChange={(e) => setter(e.target.value)}
+                                placeholder={placeholder}
+                            />
                         </Box>
                     ))}
 
                     <Box sx={{ display: 'flex', gap: '0.35rem', flexShrink: 0 }}>
-                        <Button
-                            variant="contained"
-                            size="small"
+                        <button
+                            className="dl-btn dl-btn--primary dl-btn--sm"
                             onClick={handleParseFiles}
                             disabled={isLoading || (!wpkPath && !bnkPath)}
-                            startIcon={<Refresh sx={{ fontSize: 12 }} />}
-                            sx={{ ...buttonStyle, ...controlShellSx, color: 'var(--accent-primary)', fontWeight: 600 }}
                         >
-                            Parse
-                        </Button>
-                        <Tooltip title="Clear tree">
-                            <IconButton
-                                size="small"
-                                onClick={() => handleClearPane(viewMode === 'split' ? activePane : 'left')}
-                                sx={{ color: 'var(--text-secondary)', ...controlShellSx, borderRadius: '4px', padding: '4px', '&:hover': { color: 'var(--color-danger)', borderColor: 'var(--color-danger)' } }}
-                            >
-                                <Delete sx={{ fontSize: 14 }} />
-                            </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Session Manager">
-                            <IconButton
-                                size="small"
-                                onClick={onSessionClick}
-                                sx={{ color: 'var(--text-secondary)', ...controlShellSx, borderRadius: '4px', padding: '4px', '&:hover': { color: 'var(--accent-primary)', borderColor: 'var(--accent-primary)' } }}
-                            >
-                                <Bookmark style={{ fontSize: 14 }} />
-                            </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Mod Auto-Extract">
-                            <IconButton
-                                size="small"
-                                onClick={() => setAutoExtractOpen(true)}
-                                sx={{ color: 'var(--text-secondary)', ...controlShellSx, borderRadius: '4px', padding: '4px', '&:hover': { color: 'var(--accent-primary)', borderColor: 'var(--accent-primary)' } }}
-                            >
-                                <AutoFixHigh sx={{ fontSize: 14 }} />
-                            </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Load Banks From Game">
-                            <IconButton
-                                size="small"
-                                onClick={onOpenGameBanks}
-                                sx={{ color: 'var(--text-secondary)', ...controlShellSx, borderRadius: '4px', padding: '4px', '&:hover': { color: 'var(--accent-secondary)', borderColor: 'var(--accent-secondary)' } }}
-                            >
-                                <SportsEsports sx={{ fontSize: 14 }} />
-                            </IconButton>
-                        </Tooltip>
+                            <span className="dl-icon"><Refresh sx={{ fontSize: 12 }} /></span>
+                            <span>Parse</span>
+                        </button>
+                        <button
+                            className="dl-btn dl-btn--icon dl-btn--sm dl-btn--danger"
+                            onClick={() => handleClearPane(viewMode === 'split' ? activePane : 'left')}
+                            title="Clear tree"
+                        >
+                            <span className="dl-icon"><Delete sx={{ fontSize: 14 }} /></span>
+                        </button>
+                        <button
+                            className="dl-btn dl-btn--icon dl-btn--sm dl-btn--secondary"
+                            onClick={onSessionClick}
+                            title="Session Manager"
+                        >
+                            <span className="dl-icon"><Bookmark style={{ fontSize: 14 }} /></span>
+                        </button>
+                        <button
+                            className="dl-btn dl-btn--icon dl-btn--sm dl-btn--secondary"
+                            onClick={() => setAutoExtractOpen(true)}
+                            title="Mod Auto-Extract"
+                        >
+                            <span className="dl-icon"><AutoFixHigh sx={{ fontSize: 14 }} /></span>
+                        </button>
+                        <button
+                            className="dl-btn dl-btn--icon dl-btn--sm dl-btn--secondary"
+                            onClick={onOpenGameBanks}
+                            title="Load Banks From Game"
+                        >
+                            <span className="dl-icon"><SportsEsports sx={{ fontSize: 14 }} /></span>
+                        </button>
                     </Box>
                 </Box>
             </Box>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, IconButton, Typography, Alert } from '@mui/material';
+import { Box, Typography, Alert } from '@mui/material';
 import { CheckCircle as CheckCircleIcon, Close as CloseIcon } from '@mui/icons-material';
 
 interface BumpathStatusOverlaysProps {
@@ -69,18 +69,15 @@ const BumpathStatusOverlays = React.memo(function BumpathStatusOverlays({
                     >
                         {success}
                     </Typography>
-                    <IconButton
-                        size="small"
+                    <button
+                        type="button"
+                        className="dl-btn dl-btn--icon dl-btn--sm dl-btn--ghost"
                         onClick={() => setSuccess(null)}
-                        sx={{
-                            color: '#ffffff',
-                            '&:hover': {
-                                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                            },
-                        }}
+                        title="Dismiss"
+                        style={{ color: '#ffffff' }}
                     >
-                        <CloseIcon sx={{ fontSize: '1rem' }} />
-                    </IconButton>
+                        <span className="dl-icon"><CloseIcon sx={{ fontSize: '1rem' }} /></span>
+                    </button>
                 </Box>
             )}
         </>

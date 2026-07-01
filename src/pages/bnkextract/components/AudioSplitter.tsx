@@ -9,7 +9,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import {
-    Box, Typography, Button, IconButton, TextField, Slider, Tooltip, LinearProgress, Popover,
+    Box, Typography, Slider, Tooltip, LinearProgress, Popover,
 } from '@mui/material';
 import {
     Close, PlayArrow, Pause, Stop, FolderOpen, Download, Upload,
@@ -96,7 +96,6 @@ const RegionRow = memo(function RegionRow({
     onSeek, onSetEditingName, onRename, onSetEditingTime, onTimeEdit, onExport, onRemove,
 }: RegionRowProps) {
     const dur = reg.end - reg.start;
-    const editSx = { '& .MuiOutlinedInput-root': { background: 'var(--bg-tertiary)', '& fieldset': { borderColor: 'var(--accent-primary)' } } };
     return (
         <Box
             onClick={() => onSeek(reg)}
@@ -111,13 +110,13 @@ const RegionRow = memo(function RegionRow({
             <Typography sx={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{index + 1}</Typography>
 
             {isEditingName ? (
-                <TextField
-                    autoFocus defaultValue={reg.name} size="small"
+                <input
+                    className="dl-input"
+                    autoFocus defaultValue={reg.name}
                     onBlur={(e) => onRename(reg.id, e.target.value || reg.name)}
                     onKeyDown={(e) => { if (e.key === 'Enter') onRename(reg.id, (e.target as HTMLInputElement).value || reg.name); if (e.key === 'Escape') onSetEditingName(null); }}
                     onClick={(e) => e.stopPropagation()}
-                    inputProps={{ style: { fontSize: '0.72rem', fontFamily: 'JetBrains Mono', padding: '1px 4px', color: 'var(--text-primary)' } }}
-                    sx={editSx}
+                    style={{ fontSize: '0.72rem', padding: '1px 4px', height: 'auto' }}
                 />
             ) : (
                 <Typography
@@ -128,13 +127,13 @@ const RegionRow = memo(function RegionRow({
             )}
 
             {isEditingStart ? (
-                <TextField autoFocus size="small"
+                <input
+                    className="dl-input" autoFocus
                     defaultValue={reg.start.toFixed(3)}
                     onBlur={(e) => onTimeEdit(reg.id, 'start', e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') onTimeEdit(reg.id, 'start', (e.target as HTMLInputElement).value); if (e.key === 'Escape') onSetEditingTime(null); }}
                     onClick={(e) => e.stopPropagation()}
-                    inputProps={{ style: { fontSize: '0.65rem', fontFamily: 'JetBrains Mono', padding: '1px 4px', color: 'var(--text-primary)' } }}
-                    sx={editSx}
+                    style={{ fontSize: '0.65rem', padding: '1px 4px', height: 'auto' }}
                 />
             ) : (
                 <Typography onClick={(e) => { e.stopPropagation(); onSetEditingTime({ id: reg.id, field: 'start' }); }}
@@ -145,13 +144,13 @@ const RegionRow = memo(function RegionRow({
             )}
 
             {isEditingEnd ? (
-                <TextField autoFocus size="small"
+                <input
+                    className="dl-input" autoFocus
                     defaultValue={reg.end.toFixed(3)}
                     onBlur={(e) => onTimeEdit(reg.id, 'end', e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') onTimeEdit(reg.id, 'end', (e.target as HTMLInputElement).value); if (e.key === 'Escape') onSetEditingTime(null); }}
                     onClick={(e) => e.stopPropagation()}
-                    inputProps={{ style: { fontSize: '0.65rem', fontFamily: 'JetBrains Mono', padding: '1px 4px', color: 'var(--text-primary)' } }}
-                    sx={editSx}
+                    style={{ fontSize: '0.65rem', padding: '1px 4px', height: 'auto' }}
                 />
             ) : (
                 <Typography onClick={(e) => { e.stopPropagation(); onSetEditingTime({ id: reg.id, field: 'end' }); }}
@@ -165,14 +164,14 @@ const RegionRow = memo(function RegionRow({
 
             <Box sx={{ display: 'flex', gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
                 <Tooltip title="Export this segment">
-                    <IconButton size="small" onClick={() => onExport(reg)} sx={{ p: 0.25, color: 'var(--text-muted)', '&:hover': { color: 'var(--accent-primary)' } }}>
-                        <Download sx={{ fontSize: 13 }} />
-                    </IconButton>
+                    <button className="dl-btn dl-btn--icon dl-btn--sm dl-btn--ghost" onClick={() => onExport(reg)}>
+                        <span className="dl-icon"><Download sx={{ fontSize: 13 }} /></span>
+                    </button>
                 </Tooltip>
                 <Tooltip title="Delete region (Del)">
-                    <IconButton size="small" onClick={() => onRemove(reg.id)} sx={{ p: 0.25, color: 'color-mix(in oklab, var(--color-danger) 55%, transparent)', '&:hover': { color: 'var(--color-danger)' } }}>
-                        <Delete sx={{ fontSize: 13 }} />
-                    </IconButton>
+                    <button className="dl-btn dl-btn--icon dl-btn--sm dl-btn--danger" onClick={() => onRemove(reg.id)}>
+                        <span className="dl-icon"><Delete sx={{ fontSize: 13 }} /></span>
+                    </button>
                 </Tooltip>
             </Box>
         </Box>
@@ -644,41 +643,38 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                     </Typography>
                 )}
 
-                <Button onClick={handleOpenFile} startIcon={<FolderOpen sx={{ fontSize: 14 }} />}
-                    sx={{ fontSize: '0.72rem', fontFamily: 'inherit', textTransform: 'none', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 1, px: 1, py: 0.4, '&:hover': { borderColor: 'var(--accent-primary)' } }}>
-                    Open File
-                </Button>
+                <button className="dl-btn dl-btn--secondary dl-btn--sm" onClick={handleOpenFile}>
+                    <span className="dl-icon"><FolderOpen sx={{ fontSize: 14 }} /></span>
+                    <span>Open File</span>
+                </button>
 
                 <Box sx={{ flex: 1 }} />
 
                 {regions.length > 0 && (
-                    <Button onClick={handleExportAll} disabled={isExporting || !isReady} startIcon={<Download sx={{ fontSize: 14 }} />} variant="contained"
-                        sx={{ fontSize: '0.72rem', fontFamily: 'inherit', textTransform: 'none', background: 'var(--accent-primary)', borderRadius: 1, px: 1.5, py: 0.4, '&:hover': { background: 'var(--accent-hover)' } }}>
-                        Export All ({regions.length})
-                    </Button>
+                    <button className="dl-btn dl-btn--primary dl-btn--sm" onClick={handleExportAll} disabled={isExporting || !isReady}>
+                        <span className="dl-icon"><Download sx={{ fontSize: 14 }} /></span>
+                        <span>Export All ({regions.length})</span>
+                    </button>
                 )}
 
                 {regions.length > 0 && (
-                    <Button onClick={handleExportSegmentsToRef} disabled={isExporting || !isReady} startIcon={<ViewStream sx={{ fontSize: 14 }} />} variant="contained"
-                        sx={{ fontSize: '0.72rem', fontFamily: 'inherit', textTransform: 'none', background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in oklab, var(--accent-primary) 45%, transparent)', borderRadius: 1, px: 1.5, py: 0.4, ml: 1, '&:hover': { background: 'color-mix(in oklab, var(--accent-primary) 25%, transparent)' } }}>
-                        PUSH TO REF
-                    </Button>
+                    <button className="dl-btn dl-btn--primary dl-btn--sm" onClick={handleExportSegmentsToRef} disabled={isExporting || !isReady}>
+                        <span className="dl-icon"><ViewStream sx={{ fontSize: 14 }} /></span>
+                        <span>PUSH TO REF</span>
+                    </button>
                 )}
 
                 {initialFile?.nodeId && (
-                    <Button onClick={handleReplace} disabled={isExporting || !isReady} startIcon={<Upload sx={{ fontSize: 14 }} />} variant="contained"
-                        sx={{ fontSize: '0.72rem', fontFamily: 'inherit', textTransform: 'none', background: 'color-mix(in oklab, var(--accent-primary) 20%, transparent)', color: 'var(--accent-primary)', border: '1px solid color-mix(in oklab, var(--accent-primary) 45%, transparent)', borderRadius: 1, px: 1.5, py: 0.4, '&:hover': { background: 'color-mix(in oklab, var(--accent-primary) 30%, transparent)' } }}>
-                        REPLACE ORIGINAL
-                    </Button>
+                    <button className="dl-btn dl-btn--primary dl-btn--sm" onClick={handleReplace} disabled={isExporting || !isReady}>
+                        <span className="dl-icon"><Upload sx={{ fontSize: 14 }} /></span>
+                        <span>REPLACE ORIGINAL</span>
+                    </button>
                 )}
 
-                <Button
-                    onClick={onClose}
-                    startIcon={<Close />}
-                    sx={{ ml: 2, color: 'var(--color-danger)', border: '1px solid color-mix(in oklab, var(--color-danger) 35%, transparent)', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', '&:hover': { background: 'color-mix(in oklab, var(--color-danger) 12%, transparent)', borderColor: 'var(--color-danger)' } }}
-                >
-                    CLOSE
-                </Button>
+                <button className="dl-btn dl-btn--danger dl-btn--sm" onClick={onClose} style={{ marginLeft: 8 }}>
+                    <span className="dl-icon"><Close sx={{ fontSize: 14 }} /></span>
+                    <span>CLOSE</span>
+                </button>
             </Box>
 
             {(isExporting || exportProgress) && (
@@ -724,19 +720,19 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                 {isReady && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 0.75, borderTop: '1px solid var(--border)', mt: 0.5 }}>
                         <Tooltip title="Go to start (Home)">
-                            <IconButton onClick={() => wsRef.current?.seekTo(0)} size="small" sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--text-primary)' } }}>
-                                <SkipPrevious sx={{ fontSize: 18 }} />
-                            </IconButton>
+                            <button className="dl-btn dl-btn--icon dl-btn--sm dl-btn--ghost" onClick={() => wsRef.current?.seekTo(0)}>
+                                <span className="dl-icon"><SkipPrevious sx={{ fontSize: 18 }} /></span>
+                            </button>
                         </Tooltip>
                         <Tooltip title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}>
-                            <IconButton onClick={handlePlayPause} size="small" sx={{ color: 'var(--accent-primary)', '&:hover': { color: 'var(--accent-hover)' } }}>
-                                {isPlaying ? <Pause sx={{ fontSize: 22 }} /> : <PlayArrow sx={{ fontSize: 22 }} />}
-                            </IconButton>
+                            <button className="dl-btn dl-btn--icon dl-btn--sm dl-btn--ghost" onClick={handlePlayPause} style={{ color: 'var(--accent-primary)' }}>
+                                <span className="dl-icon">{isPlaying ? <Pause sx={{ fontSize: 22 }} /> : <PlayArrow sx={{ fontSize: 22 }} />}</span>
+                            </button>
                         </Tooltip>
                         <Tooltip title="Stop">
-                            <IconButton onClick={handleStop} size="small" sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--text-primary)' } }}>
-                                <Stop sx={{ fontSize: 18 }} />
-                            </IconButton>
+                            <button className="dl-btn dl-btn--icon dl-btn--sm dl-btn--ghost" onClick={handleStop}>
+                                <span className="dl-icon"><Stop sx={{ fontSize: 18 }} /></span>
+                            </button>
                         </Tooltip>
 
                         <Typography sx={{ fontSize: '0.72rem', color: 'var(--text-secondary)', minWidth: 130, ml: 0.5 }}>
@@ -754,25 +750,24 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                         <Typography sx={{ fontSize: '0.65rem', color: 'var(--text-muted)', minWidth: 36 }}>{zoom}×</Typography>
 
                         <Tooltip title="Add segment at cursor">
-                            <Button size="small" onClick={addRegionAtCursor} startIcon={<Add sx={{ fontSize: 14 }} />}
-                                sx={{ fontSize: '0.65rem', fontFamily: 'inherit', textTransform: 'none', color: 'var(--accent-primary)', border: '1px solid color-mix(in oklab, var(--accent-primary) 30%, transparent)', borderRadius: 1, px: 1, py: 0.25, ml: 1, '&:hover': { borderColor: 'var(--accent-primary)', background: 'color-mix(in oklab, var(--accent-primary) 8%, transparent)' } }}>
-                                Add Segment
-                            </Button>
+                            <button className="dl-btn dl-btn--secondary dl-btn--sm" onClick={addRegionAtCursor} style={{ marginLeft: 8 }}>
+                                <span className="dl-icon"><Add sx={{ fontSize: 14 }} /></span>
+                                <span>Add Segment</span>
+                            </button>
                         </Tooltip>
 
                         <Tooltip title="Auto-split by silence">
-                            <Button size="small" disabled={!isReady} onClick={(e) => setAutoSplitAnchor(e.currentTarget)} startIcon={<AutoFixHigh sx={{ fontSize: 14 }} />}
-                                sx={{ fontSize: '0.65rem', fontFamily: 'inherit', textTransform: 'none', color: 'var(--accent-primary)', border: '1px solid color-mix(in oklab, var(--accent-primary) 30%, transparent)', borderRadius: 1, px: 1, py: 0.25, ml: 1, '&:hover': { borderColor: 'var(--accent-primary)', background: 'color-mix(in oklab, var(--accent-primary) 8%, transparent)' } }}>
-                                Auto-Split
-                            </Button>
+                            <button className="dl-btn dl-btn--secondary dl-btn--sm" disabled={!isReady} onClick={(e) => setAutoSplitAnchor(e.currentTarget)} style={{ marginLeft: 8 }}>
+                                <span className="dl-icon"><AutoFixHigh sx={{ fontSize: 14 }} /></span>
+                                <span>Auto-Split</span>
+                            </button>
                         </Tooltip>
 
                         {regions.length > 0 && (
                             <Tooltip title="Clear all regions">
-                                <Button onClick={removeAllRegions} size="small"
-                                    sx={{ fontSize: '0.65rem', fontFamily: 'inherit', textTransform: 'none', color: 'color-mix(in oklab, var(--color-danger) 75%, transparent)', border: '1px solid color-mix(in oklab, var(--color-danger) 25%, transparent)', borderRadius: 1, px: 1, py: 0.25, ml: 1, '&:hover': { borderColor: 'color-mix(in oklab, var(--color-danger) 60%, transparent)', color: 'var(--color-danger)' } }}>
-                                    Clear all
-                                </Button>
+                                <button className="dl-btn dl-btn--secondary dl-btn--sm" onClick={removeAllRegions} style={{ marginLeft: 8 }}>
+                                    <span>Clear all</span>
+                                </button>
                             </Tooltip>
                         )}
 
@@ -801,10 +796,9 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                             </Typography>
                             <Slider min={0} max={200} step={5} value={splitPad} onChange={(_, v) => setSplitPad(v as number)} sx={{ color: 'var(--accent-primary)', mb: 2, ...slotSx }} />
 
-                            <Button fullWidth variant="contained" onClick={handleAutoSplit}
-                                sx={{ fontFamily: 'inherit', fontSize: '0.72rem', textTransform: 'none', background: 'var(--accent-primary)', '&:hover': { background: 'var(--accent-hover)' } }}>
-                                Split Now
-                            </Button>
+                            <button className="dl-btn dl-btn--primary dl-btn--sm" onClick={handleAutoSplit} style={{ width: '100%' }}>
+                                <span>Split Now</span>
+                            </button>
                         </Popover>
                     </Box>
                 )}

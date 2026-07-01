@@ -1,11 +1,10 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { Box, Typography, TextField, IconButton, Tooltip, Button, Divider, Slider } from '@mui/material';
+import { Box, Typography, Divider, Slider } from '@mui/material';
 import {
     Search, Close, SortByAlpha, Undo, Redo, Download, Upload, VolumeOff, Save, PlayArrow, Stop, VolumeUp, Settings, AutoFixHigh,
 } from '@mui/icons-material';
 import type { SxProps, Theme } from '@mui/material';
 import TreeNode from './TreeNode';
-import { inputStyle } from '../styles';
 import type { BnkNode, DroppedFile, HistoryEntry, LastSelected, Pane, SortMode, ViewMode } from '../types';
 
 const ROW_HEIGHT = 30;
@@ -125,8 +124,6 @@ interface Props {
     mainContentStyle: SxProps<Theme>;
     treeViewStyle: Record<string, unknown>;
     sidebarStyle: SxProps<Theme>;
-    compactButtonStyle: Record<string, unknown>;
-    buttonStyle: Record<string, unknown>;
     viewMode: ViewMode;
     activePane: Pane;
     leftSearchQuery: string;
@@ -180,7 +177,7 @@ interface Props {
 
 export default function BnkMainContent(props: Props) {
     const {
-        mainContentStyle, treeViewStyle, sidebarStyle, compactButtonStyle, buttonStyle,
+        mainContentStyle, treeViewStyle, sidebarStyle,
         viewMode, activePane,
         leftSearchQuery, setLeftSearchQuery, filteredLeftTree,
         selectedNodes, setSelectedNodes, setLastSelectedId, handleNodeSelect, playAudio,
@@ -249,32 +246,33 @@ export default function BnkMainContent(props: Props) {
                 }}
             >
                 <Box sx={{ p: 1.25, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 1, minHeight: 56 }}>
-                    <TextField
-                        value={leftSearchQuery}
-                        onChange={(e) => setLeftSearchQuery(e.target.value)}
-                        placeholder="Filter left..."
-                        size="small"
-                        sx={{ ...inputStyle, flex: 1 }}
-                        InputProps={{
-                            startAdornment: <Search sx={{ fontSize: 18, mr: 0.75, color: 'var(--accent-primary)', opacity: 0.8 }} />,
-                            endAdornment: leftSearchQuery ? (
-                                <IconButton size="small" onClick={() => setLeftSearchQuery('')} sx={{ p: 0.25, ml: 0.5 }}>
-                                    <Close sx={{ fontSize: 14, opacity: 0.7 }} />
-                                </IconButton>
-                            ) : undefined,
-                        }}
-                    />
-                    <Tooltip title={`Sort alphabetically: ${leftSortMode === 'none' ? 'Off' : (leftSortMode === 'name-asc' ? 'A to Z' : 'Z to A')}`}>
-                        <IconButton
-                            size="small"
-                            onClick={() => setLeftSortMode((prev) => prev === 'none' ? 'name-asc' : (prev === 'name-asc' ? 'name-desc' : 'none'))}
-                            sx={{ color: leftSortMode !== 'none' ? 'var(--accent-primary)' : 'var(--text-muted)', background: leftSortMode !== 'none' ? 'color-mix(in oklab, var(--accent-primary) 10%, transparent)' : 'transparent', p: '6px' }}
-                        >
-                            <SortByAlpha sx={{ fontSize: 16, transform: leftSortMode === 'name-desc' ? 'scaleY(-1)' : 'none' }} />
-                        </IconButton>
-                    </Tooltip>
+                    <div className="dl-search" style={{ flex: 1 }}>
+                        <span className="dl-icon"><Search sx={{ fontSize: 18 }} /></span>
+                        <input
+                            className="dl-input"
+                            value={leftSearchQuery}
+                            onChange={(e) => setLeftSearchQuery(e.target.value)}
+                            placeholder="Filter left..."
+                        />
+                    </div>
                     {leftSearchQuery && (
-                        <Typography sx={{ fontSize: '0.55rem', color: 'var(--accent-primary)', opacity: 0.5, fontWeight: 800 }}>{filteredLeftTree.length}</Typography>
+                        <button
+                            className="dl-btn dl-btn--icon dl-btn--sm dl-btn--ghost"
+                            onClick={() => setLeftSearchQuery('')}
+                            title="Clear filter"
+                        >
+                            <span className="dl-icon"><Close sx={{ fontSize: 14 }} /></span>
+                        </button>
+                    )}
+                    <button
+                        className={`dl-btn dl-btn--icon dl-btn--sm ${leftSortMode !== 'none' ? 'dl-btn--primary' : 'dl-btn--ghost'}`}
+                        onClick={() => setLeftSortMode((prev) => prev === 'none' ? 'name-asc' : (prev === 'name-asc' ? 'name-desc' : 'none'))}
+                        title={`Sort alphabetically: ${leftSortMode === 'none' ? 'Off' : (leftSortMode === 'name-asc' ? 'A to Z' : 'Z to A')}`}
+                    >
+                        <span className="dl-icon"><SortByAlpha sx={{ fontSize: 16, transform: leftSortMode === 'name-desc' ? 'scaleY(-1)' : 'none' }} /></span>
+                    </button>
+                    {leftSearchQuery && (
+                        <span className="dl-badge">{filteredLeftTree.length}</span>
                     )}
                 </Box>
 
@@ -321,32 +319,33 @@ export default function BnkMainContent(props: Props) {
                     }}
                 >
                     <Box sx={{ p: 1.25, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 1, minHeight: 56 }}>
-                        <TextField
-                            value={rightSearchQuery}
-                            onChange={(e) => setRightSearchQuery(e.target.value)}
-                            placeholder="Filter right..."
-                            size="small"
-                            sx={{ ...inputStyle, flex: 1 }}
-                            InputProps={{
-                                startAdornment: <Search sx={{ fontSize: 18, mr: 0.75, color: 'var(--accent-primary)', opacity: 0.8 }} />,
-                                endAdornment: rightSearchQuery ? (
-                                    <IconButton size="small" onClick={() => setRightSearchQuery('')} sx={{ p: 0.25, ml: 0.5 }}>
-                                        <Close sx={{ fontSize: 14, opacity: 0.7 }} />
-                                    </IconButton>
-                                ) : undefined,
-                            }}
-                        />
-                        <Tooltip title={`Sort alphabetically: ${rightSortMode === 'none' ? 'Off' : (rightSortMode === 'name-asc' ? 'A to Z' : 'Z to A')}`}>
-                            <IconButton
-                                size="small"
-                                onClick={() => setRightSortMode((prev) => prev === 'none' ? 'name-asc' : (prev === 'name-asc' ? 'name-desc' : 'none'))}
-                                sx={{ color: rightSortMode !== 'none' ? 'var(--accent-primary)' : 'var(--text-muted)', background: rightSortMode !== 'none' ? 'color-mix(in oklab, var(--accent-primary) 10%, transparent)' : 'transparent', p: '6px' }}
-                            >
-                                <SortByAlpha sx={{ fontSize: 16, transform: rightSortMode === 'name-desc' ? 'scaleY(-1)' : 'none' }} />
-                            </IconButton>
-                        </Tooltip>
+                        <div className="dl-search" style={{ flex: 1 }}>
+                            <span className="dl-icon"><Search sx={{ fontSize: 18 }} /></span>
+                            <input
+                                className="dl-input"
+                                value={rightSearchQuery}
+                                onChange={(e) => setRightSearchQuery(e.target.value)}
+                                placeholder="Filter right..."
+                            />
+                        </div>
                         {rightSearchQuery && (
-                            <Typography sx={{ fontSize: '0.55rem', color: 'var(--accent-primary)', opacity: 0.5, fontWeight: 800 }}>{filteredRightTree.length}</Typography>
+                            <button
+                                className="dl-btn dl-btn--icon dl-btn--sm dl-btn--ghost"
+                                onClick={() => setRightSearchQuery('')}
+                                title="Clear filter"
+                            >
+                                <span className="dl-icon"><Close sx={{ fontSize: 14 }} /></span>
+                            </button>
+                        )}
+                        <button
+                            className={`dl-btn dl-btn--icon dl-btn--sm ${rightSortMode !== 'none' ? 'dl-btn--primary' : 'dl-btn--ghost'}`}
+                            onClick={() => setRightSortMode((prev) => prev === 'none' ? 'name-asc' : (prev === 'name-asc' ? 'name-desc' : 'none'))}
+                            title={`Sort alphabetically: ${rightSortMode === 'none' ? 'Off' : (rightSortMode === 'name-asc' ? 'A to Z' : 'Z to A')}`}
+                        >
+                            <span className="dl-icon"><SortByAlpha sx={{ fontSize: 16, transform: rightSortMode === 'name-desc' ? 'scaleY(-1)' : 'none' }} /></span>
+                        </button>
+                        {rightSearchQuery && (
+                            <span className="dl-badge">{filteredRightTree.length}</span>
                         )}
                     </Box>
 
@@ -374,51 +373,64 @@ export default function BnkMainContent(props: Props) {
 
             <Box className="bnk-extract-sidebar" sx={sidebarStyle}>
                 <Box sx={{ display: 'flex', gap: 0.5, mb: 1 }}>
-                    <Tooltip title="Undo (Ctrl+Z)">
-                        <Button fullWidth variant="contained" onClick={handleUndo} disabled={undoStack.length === 0} sx={{ ...compactButtonStyle, flex: 1, justifyContent: 'center', opacity: undoStack.length > 0 ? 1 : 0.3 }}>
-                            <Undo sx={{ fontSize: 16 }} />
-                        </Button>
-                    </Tooltip>
-                    <Tooltip title="Redo (Ctrl+Y)">
-                        <Button fullWidth variant="contained" onClick={handleRedo} disabled={redoStack.length === 0} sx={{ ...compactButtonStyle, flex: 1, justifyContent: 'center', opacity: redoStack.length > 0 ? 1 : 0.3 }}>
-                            <Redo sx={{ fontSize: 16 }} />
-                        </Button>
-                    </Tooltip>
+                    <button
+                        className="dl-btn dl-btn--secondary dl-btn--sm"
+                        style={{ flex: 1, justifyContent: 'center' }}
+                        onClick={handleUndo}
+                        disabled={undoStack.length === 0}
+                        title="Undo (Ctrl+Z)"
+                    >
+                        <span className="dl-icon"><Undo sx={{ fontSize: 16 }} /></span>
+                    </button>
+                    <button
+                        className="dl-btn dl-btn--secondary dl-btn--sm"
+                        style={{ flex: 1, justifyContent: 'center' }}
+                        onClick={handleRedo}
+                        disabled={redoStack.length === 0}
+                        title="Redo (Ctrl+Y)"
+                    >
+                        <span className="dl-icon"><Redo sx={{ fontSize: 16 }} /></span>
+                    </button>
                 </Box>
 
-                <Button variant="contained" onClick={handleExtract} disabled={selectedNodes.size === 0} startIcon={<Download sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--text-primary)' }}>
-                    Extract
-                </Button>
-                <Button variant="contained" onClick={handleReplace} disabled={!hasAudioSelection()} startIcon={<Upload sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--text-primary)' }}>
-                    Replace
-                </Button>
-                <Button
-                    variant="contained"
+                <button className="dl-btn dl-btn--primary" onClick={handleExtract} disabled={selectedNodes.size === 0}>
+                    <span className="dl-icon"><Download sx={{ fontSize: 12 }} /></span>
+                    <span>Extract</span>
+                </button>
+                <button className="dl-btn dl-btn--secondary" onClick={handleReplace} disabled={!hasAudioSelection()}>
+                    <span className="dl-icon"><Upload sx={{ fontSize: 12 }} /></span>
+                    <span>Replace</span>
+                </button>
+                <button
+                    className="dl-btn dl-btn--secondary"
                     onClick={handleAutoMatchByEventName}
                     disabled={!treeData.length || !rightTreeData.length}
-                    startIcon={<AutoFixHigh sx={{ fontSize: 12 }} />}
-                    sx={{ ...buttonStyle, color: 'var(--text-primary)', opacity: (!treeData.length || !rightTreeData.length) ? 0.35 : 1 }}
                 >
-                    Auto Match Names
-                </Button>
-                <Button variant="contained" onClick={handleMakeSilent} disabled={!hasAudioSelection()} startIcon={<VolumeOff sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--text-primary)' }}>
-                    Make Silent
-                </Button>
+                    <span className="dl-icon"><AutoFixHigh sx={{ fontSize: 12 }} /></span>
+                    <span>Auto Match Names</span>
+                </button>
+                <button className="dl-btn dl-btn--secondary" onClick={handleMakeSilent} disabled={!hasAudioSelection()}>
+                    <span className="dl-icon"><VolumeOff sx={{ fontSize: 12 }} /></span>
+                    <span>Make Silent</span>
+                </button>
 
                 <Divider sx={{ borderColor: 'var(--border)', margin: '0.25rem 0' }} />
 
-                <Button variant="contained" onClick={handleSave} disabled={!hasRootSelection()} startIcon={<Save sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--text-primary)' }}>
-                    Save as BNK/WPK
-                </Button>
+                <button className="dl-btn dl-btn--secondary" onClick={handleSave} disabled={!hasRootSelection()}>
+                    <span className="dl-icon"><Save sx={{ fontSize: 12 }} /></span>
+                    <span>Save as BNK/WPK</span>
+                </button>
 
                 <Divider sx={{ borderColor: 'var(--border)', margin: '0.25rem 0' }} />
 
-                <Button variant="contained" onClick={handlePlaySelected} disabled={!hasAudioSelection()} startIcon={<PlayArrow sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--accent-primary)' }}>
-                    Play
-                </Button>
-                <Button variant="contained" onClick={stopAudio} startIcon={<Stop sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--text-secondary)' }}>
-                    Stop
-                </Button>
+                <button className="dl-btn dl-btn--primary" onClick={handlePlaySelected} disabled={!hasAudioSelection()}>
+                    <span className="dl-icon"><PlayArrow sx={{ fontSize: 12 }} /></span>
+                    <span>Play</span>
+                </button>
+                <button className="dl-btn dl-btn--secondary" onClick={stopAudio}>
+                    <span className="dl-icon"><Stop sx={{ fontSize: 12 }} /></span>
+                    <span>Stop</span>
+                </button>
 
                 <Box sx={{ mt: 'auto', pt: 2 }}>
                     <Divider sx={{ borderColor: 'var(--border)', mb: 1.5 }} />
@@ -447,9 +459,10 @@ export default function BnkMainContent(props: Props) {
                 </Box>
 
                 <Divider sx={{ borderColor: 'var(--border)', margin: '0.25rem 0' }} />
-                <Button variant="contained" onClick={() => setShowSettingsModal(true)} startIcon={<Settings sx={{ fontSize: 12 }} />} sx={{ ...buttonStyle, color: 'var(--text-secondary)' }}>
-                    Settings
-                </Button>
+                <button className="dl-btn dl-btn--secondary" onClick={() => setShowSettingsModal(true)}>
+                    <span className="dl-icon"><Settings sx={{ fontSize: 12 }} /></span>
+                    <span>Settings</span>
+                </button>
             </Box>
         </Box>
     );

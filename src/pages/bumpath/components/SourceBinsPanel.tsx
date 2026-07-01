@@ -1,8 +1,7 @@
 import React from 'react';
-import { Box, Button, Checkbox, InputAdornment, List, ListItem, Typography } from '@mui/material';
-import { FormatListBulleted as FormatListBulletedIcon, Search as SearchIcon } from '@mui/icons-material';
+import { Box, List, ListItem, Typography } from '@mui/material';
+import { FormatListBulleted as FormatListBulletedIcon, Search as SearchIcon, Check as CheckIcon } from '@mui/icons-material';
 import DebouncedTextField from './DebouncedTextField';
-import { inputSx, countBadgeSx } from '../utils/styles';
 import type { SourceBin } from '../utils/types';
 
 interface SourceBinsPanelProps {
@@ -40,52 +39,30 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                                 Source BINs:
                             </Typography>
                         </Box>
-                        <Box sx={countBadgeSx}>
+                        <span className="dl-badge">
                             {selectedBinCount} / {totalBinCount} selected
-                        </Box>
+                        </span>
                     </Box>
 
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <DebouncedTextField
-                            placeholder="Filter BIN files..."
-                            value={binFilter}
-                            onValueChange={setBinFilter}
-                            debounceMs={150}
-                            InputProps={{
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        <SearchIcon sx={{ color: 'var(--accent-primary)', fontSize: '1rem', opacity: 0.85 }} />
-                                    </InputAdornment>
-                                ),
-                            }}
-                            sx={{ flex: 1, ...inputSx }}
-                        />
+                        <div className="dl-search" style={{ flex: 1 }}>
+                            <span className="dl-icon"><SearchIcon sx={{ fontSize: '1rem' }} /></span>
+                            <DebouncedTextField
+                                placeholder="Filter BIN files..."
+                                value={binFilter}
+                                onValueChange={setBinFilter}
+                                debounceMs={150}
+                            />
+                        </div>
                         {binFilter && (
-                            <Button
-                                size="small"
+                            <button
+                                type="button"
+                                className="dl-btn dl-btn--icon dl-btn--sm dl-btn--secondary"
                                 onClick={() => setBinFilter('')}
-                                sx={{
-                                    minWidth: '32px',
-                                    height: '32px',
-                                    px: 0,
-                                    py: 0,
-                                    borderRadius: '6px',
-                                    color: 'var(--text-muted)',
-                                    border: '1px solid var(--border)',
-                                    background: 'var(--bg-tertiary)',
-                                    fontFamily: 'JetBrains Mono, monospace',
-                                    fontSize: '0.85rem',
-                                    fontWeight: 600,
-                                    transition: 'all 160ms ease',
-                                    '&:hover': {
-                                        color: 'var(--color-danger)',
-                                        borderColor: 'color-mix(in oklab, var(--color-danger) 50%, transparent)',
-                                        background: 'color-mix(in oklab, var(--color-danger) 10%, transparent)',
-                                    },
-                                }}
+                                title="Clear filter"
                             >
-                                ✕
-                            </Button>
+                                <span className="dl-icon">✕</span>
+                            </button>
                         )}
                     </Box>
 
@@ -141,21 +118,18 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                                         transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                                     }}
                                 >
-                                    <Checkbox
-                                        checked={data.selected}
-                                        onChange={(e) => handleBinSelect(unifyPath, e.target.checked)}
-                                        sx={{
-                                            color: 'var(--text-secondary)',
-                                            '&.Mui-checked': {
-                                                color: 'var(--accent-primary)',
-                                            },
-                                            p: 0.25,
-                                            mr: 1,
-                                            '& .MuiSvgIcon-root': {
-                                                fontSize: '1.1rem',
-                                            },
-                                        }}
-                                    />
+                                    <label className="dl-check" style={{ marginRight: '8px' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={data.selected}
+                                            onChange={(e) => handleBinSelect(unifyPath, e.target.checked)}
+                                        />
+                                        <span className="dl-check__box">
+                                            <span className="dl-check__tick">
+                                                <span className="dl-icon"><CheckIcon /></span>
+                                            </span>
+                                        </span>
+                                    </label>
                                     <Box sx={{ flex: 1, minWidth: 0 }}>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
                                             <Typography

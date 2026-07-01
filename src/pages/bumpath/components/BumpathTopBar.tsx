@@ -1,7 +1,6 @@
 import React from 'react';
-import { Box, Button, FormControlLabel, Switch, Typography } from '@mui/material';
+import { Box } from '@mui/material';
 import { Folder as FolderIcon, CheckBox as CheckBoxIcon, Clear as ClearIcon } from '@mui/icons-material';
-import { getActionButtonSx } from '../utils/styles';
 import type { ScannedData } from '../utils/types';
 
 interface BumpathTopBarProps {
@@ -34,86 +33,68 @@ const BumpathTopBar = React.memo(function BumpathTopBar({
                 minHeight: '60px',
             }}
         >
-            <Button
-                startIcon={<FolderIcon />}
+            <button
+                type="button"
+                className="dl-btn dl-btn--secondary"
                 onClick={handleSelectSourceDir}
-                sx={getActionButtonSx('var(--color-warning)')}
             >
-                Add Source Folders
-            </Button>
+                <span className="dl-icon"><FolderIcon /></span>
+                <span>Add Source Folders</span>
+            </button>
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Button
-                    startIcon={<CheckBoxIcon />}
+                <button
+                    type="button"
+                    className="dl-btn dl-btn--secondary"
                     onClick={handleSelectAll}
                     disabled={!scannedData || Object.keys(scannedData.entries).length === 0}
                     data-bumpath-select-all
-                    sx={getActionButtonSx('var(--color-success)')}
                 >
-                    Select All
-                </Button>
+                    <span className="dl-icon"><CheckBoxIcon /></span>
+                    <span>Select All</span>
+                </button>
 
-                <Button
-                    startIcon={<ClearIcon />}
+                <button
+                    type="button"
+                    className="dl-btn dl-btn--danger"
                     onClick={handleDeselectAll}
                     disabled={!scannedData || selectedEntriesSize === 0}
-                    sx={getActionButtonSx('var(--color-danger)')}
                 >
-                    Deselect All
-                </Button>
+                    <span className="dl-icon"><ClearIcon /></span>
+                    <span>Deselect All</span>
+                </button>
             </Box>
 
-            <FormControlLabel
-                control={
-                    <Switch
-                        size="small"
+            <label
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                }}
+            >
+                <span className="dl-toggle">
+                    <input
+                        type="checkbox"
                         checked={showMissingOnly}
                         onChange={(e) => setShowMissingOnly(e.target.checked)}
-                        sx={{
-                            p: 0.5,
-                            width: 38,
-                            height: 22,
-                            '& .MuiSwitch-switchBase': {
-                                p: '3px',
-                                '&.Mui-checked': {
-                                    color: '#fff',
-                                    transform: 'translateX(16px)',
-                                    '& + .MuiSwitch-track': {
-                                        backgroundColor: 'var(--accent-primary)',
-                                        opacity: 1,
-                                    },
-                                },
-                            },
-                            '& .MuiSwitch-thumb': {
-                                width: 14,
-                                height: 14,
-                                boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
-                            },
-                            '& .MuiSwitch-track': {
-                                borderRadius: 999,
-                                background: 'var(--bg-hover)',
-                                opacity: 1,
-                                transition: 'background 200ms ease',
-                            },
-                        }}
                     />
-                }
-                label={
-                    <Typography
-                        variant="body2"
-                        sx={{
-                            color: showMissingOnly ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                            fontSize: '0.72rem',
-                            fontWeight: 600,
-                            fontFamily: 'JetBrains Mono, monospace',
-                            letterSpacing: '0.02em',
-                            transition: 'color 180ms ease',
-                        }}
-                    >
-                        Show Missing Files Only
-                    </Typography>
-                }
-            />
+                    <span className="dl-toggle__track" />
+                    <span className="dl-toggle__thumb" />
+                </span>
+                <span
+                    style={{
+                        color: showMissingOnly ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        letterSpacing: '0.02em',
+                        transition: 'color 180ms ease',
+                    }}
+                >
+                    Show Missing Files Only
+                </span>
+            </label>
         </Box>
     );
 });

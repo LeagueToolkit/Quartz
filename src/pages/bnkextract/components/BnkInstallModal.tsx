@@ -1,10 +1,9 @@
-import { Backdrop, Box, Typography, LinearProgress, Button } from '@mui/material';
+import { LinearProgress } from '@mui/material';
 
 interface Props {
     open: boolean;
     isInstalling: boolean;
     installProgress: string;
-    buttonStyle: Record<string, unknown>;
     onCancel: () => void;
     onInstall: () => void;
 }
@@ -13,53 +12,43 @@ export default function BnkInstallModal({
     open,
     isInstalling,
     installProgress,
-    buttonStyle,
     onCancel,
     onInstall,
 }: Props) {
-    return (
-        <Backdrop open={open} sx={{ zIndex: 1400, backdropFilter: 'blur(8px)', background: 'color-mix(in oklab, var(--bg-primary) 60%, transparent)' }}>
-            <Box sx={{
-                background: 'var(--bg-secondary)',
-                border: '1px solid color-mix(in oklab, var(--accent-primary) 35%, transparent)',
-                borderRadius: '14px',
-                boxShadow: '0 8px 48px color-mix(in oklab, var(--bg-primary) 70%, transparent)',
-                padding: '2rem 2.5rem',
-                maxWidth: 420,
-                width: '90%',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '1rem',
-                fontFamily: 'JetBrains Mono, monospace',
-            }}>
-                <Typography sx={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent-primary)', letterSpacing: '0.08em' }}>
-                    Audio Conversion Tools
-                </Typography>
-                <Typography sx={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    Converting <strong style={{ color: 'var(--text-primary)' }}>.wav / .mp3 / .ogg</strong> to WEM
-                    requires the Wwise engine (~200 MB). Install it once to your AppData folder.
-                </Typography>
+    if (!open) return null;
 
-                {isInstalling ? (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <LinearProgress sx={{ borderRadius: 4, height: 4, background: 'var(--border)', '& .MuiLinearProgress-bar': { background: 'var(--accent-primary)' } }} />
-                        <Typography sx={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{installProgress}</Typography>
-                    </Box>
-                ) : (
-                    <Box sx={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                        <Button onClick={onCancel} sx={{ ...buttonStyle, fontSize: '0.75rem' }}>
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={onInstall}
-                            variant="contained"
-                            sx={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono, monospace', textTransform: 'none', background: 'var(--accent-primary)', '&:hover': { background: 'var(--accent-hover)' } }}
-                        >
-                            Install Wwise Tools
-                        </Button>
-                    </Box>
+    return (
+        <div className="dl-modal-backdrop">
+            <div className="dl-modal" style={{ maxWidth: 440 }}>
+                <div className="dl-modal__head">
+                    <h2 className="dl-modal__title">Audio Conversion Tools</h2>
+                </div>
+
+                <div className="dl-modal__body">
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                        Converting <strong style={{ color: 'var(--text-primary)' }}>.wav / .mp3 / .ogg</strong> to WEM
+                        requires the Wwise engine (~200 MB). Install it once to your AppData folder.
+                    </p>
+
+                    {isInstalling && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <LinearProgress sx={{ borderRadius: 4, height: 4, background: 'var(--border)', '& .MuiLinearProgress-bar': { background: 'var(--accent-primary)' } }} />
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{installProgress}</span>
+                        </div>
+                    )}
+                </div>
+
+                {!isInstalling && (
+                    <div className="dl-modal__foot">
+                        <button className="dl-btn dl-btn--secondary" onClick={onCancel}>
+                            <span>Cancel</span>
+                        </button>
+                        <button className="dl-btn dl-btn--primary" onClick={onInstall}>
+                            <span>Install Wwise Tools</span>
+                        </button>
+                    </div>
                 )}
-            </Box>
-        </Backdrop>
+            </div>
+        </div>
     );
 }

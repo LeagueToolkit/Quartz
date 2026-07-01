@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react';
-import { Box, Typography, Checkbox, FormControlLabel } from '@mui/material';
 import {
     Save as SaveIcon, Delete as DeleteIcon, FileOpen as FileOpenIcon, Bookmark as BookmarkIcon,
 } from '@mui/icons-material';
@@ -22,16 +21,8 @@ const modalStyles: Record<string, CSSProperties> = {
     closeBtn: { width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--text-secondary)', border: '1px solid var(--border)', background: 'var(--bg-tertiary)', cursor: 'pointer', transition: 'all 0.25s ease', outline: 'none' },
     section: { borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: 14, marginBottom: 12 },
     sectionTitle: { color: 'var(--accent-secondary)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: 0, marginBottom: 10, fontFamily: 'JetBrains Mono, monospace' },
-    input: { width: '100%', boxSizing: 'border-box', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: '8px 12px', fontSize: '0.82rem', color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace', outline: 'none', transition: 'all 0.2s ease' },
     footer: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' },
 };
-
-const btnBase: CSSProperties = {
-    padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'color-mix(in oklab, var(--accent-secondary) 10%, transparent)',
-    color: 'var(--accent-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.25s ease', display: 'inline-flex', alignItems: 'center', gap: 5, outline: 'none',
-};
-const btnGhost: CSSProperties = { ...btnBase, background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' };
-const btnDanger: CSSProperties = { ...btnBase, padding: '6px 12px', minWidth: 36, justifyContent: 'center', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border)' };
 
 interface Props {
     open: boolean;
@@ -91,35 +82,32 @@ export default function BnkSessionManager({
                 <div style={modalStyles.body}>
                     <div style={modalStyles.header}>
                         <h2 style={modalStyles.title}>Session Manager</h2>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                            <FormControlLabel
-                                control={
-                                    <Checkbox
-                                        checked={autoSaveEnabled}
-                                        onChange={(e) => setAutoSaveEnabled(e.target.checked)}
-                                        size="small"
-                                        sx={{ color: 'var(--text-muted)', padding: '4px', '&.Mui-checked': { color: 'var(--accent-primary)' } }}
-                                    />
-                                }
-                                label={<Typography sx={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 500 }}>AUTO-SAVE ON EXIT</Typography>}
-                                sx={{ margin: 0 }}
-                            />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, cursor: 'pointer' }}>
+                                <span className="dl-toggle">
+                                    <input type="checkbox" checked={autoSaveEnabled} onChange={(e) => setAutoSaveEnabled(e.target.checked)} />
+                                    <span className="dl-toggle__track" />
+                                    <span className="dl-toggle__thumb" />
+                                </span>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 500 }}>AUTO-SAVE ON EXIT</span>
+                            </label>
                             <button onClick={onClose} style={modalStyles.closeBtn}>✕</button>
-                        </Box>
+                        </div>
                     </div>
 
                     <div style={modalStyles.section}>
                         <h3 style={modalStyles.sectionTitle}>Manual Backup</h3>
                         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                             <input
+                                className="dl-input"
                                 type="text"
                                 value={sessionName}
                                 onChange={(e) => setSessionName(e.target.value)}
                                 placeholder="Session name…"
-                                style={modalStyles.input}
                             />
-                            <button onClick={handleSaveManual} style={btnBase}>
-                                <SaveIcon style={{ fontSize: 15 }} /> Save
+                            <button className="dl-btn dl-btn--primary" onClick={handleSaveManual}>
+                                <span className="dl-icon"><SaveIcon style={{ fontSize: 15 }} /></span>
+                                <span>Save</span>
                             </button>
                         </div>
                     </div>
@@ -128,26 +116,27 @@ export default function BnkSessionManager({
                         <h3 style={{ ...modalStyles.sectionTitle, padding: '14px 14px 0 14px', marginBottom: 5 }}>Saved Sessions</h3>
                         <div style={{ flex: 1, overflowY: 'auto', padding: '0 14px 14px 14px' }}>
                             {sessions.length === 0 && (
-                                <Typography sx={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center', py: 4 }}>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center', padding: '32px 0' }}>
                                     No sessions found
-                                </Typography>
+                                </div>
                             )}
                             {sessions.map((s, idx) => (
                                 <div key={s.filename} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: idx < sessions.length - 1 ? '1px solid var(--border)' : 'none' }}>
                                     <BookmarkIcon style={{ fontSize: 16, color: 'var(--accent-primary)' }} />
                                     <div style={{ flex: 1, minWidth: 0 }}>
-                                        <Typography sx={{ color: 'var(--text)', fontSize: '0.84rem', fontFamily: 'JetBrains Mono', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        <div style={{ color: 'var(--text)', fontSize: '0.84rem', fontFamily: 'JetBrains Mono', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                             {s.name}
-                                        </Typography>
-                                        <Typography sx={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                                        </div>
+                                        <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
                                             {new Date(s.created).toLocaleString()}
-                                        </Typography>
+                                        </div>
                                     </div>
-                                    <button onClick={() => handleLoad(s.filename)} style={{ ...btnBase, background: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)' }}>
-                                        <FileOpenIcon style={{ fontSize: 14 }} /> Load
+                                    <button className="dl-btn dl-btn--secondary" onClick={() => handleLoad(s.filename)}>
+                                        <span className="dl-icon"><FileOpenIcon style={{ fontSize: 14 }} /></span>
+                                        <span>Load</span>
                                     </button>
-                                    <button onClick={() => handleDelete(s.filename)} style={btnDanger}>
-                                        <DeleteIcon style={{ fontSize: 14 }} />
+                                    <button className="dl-btn dl-btn--icon dl-btn--sm dl-btn--danger" onClick={() => handleDelete(s.filename)} title="Delete">
+                                        <span className="dl-icon"><DeleteIcon style={{ fontSize: 14 }} /></span>
                                     </button>
                                 </div>
                             ))}
@@ -155,7 +144,7 @@ export default function BnkSessionManager({
                     </div>
 
                     <div style={modalStyles.footer}>
-                        <button onClick={onClose} style={btnGhost}>Close</button>
+                        <button className="dl-btn dl-btn--secondary" onClick={onClose}>Close</button>
                     </div>
                 </div>
             </div>

@@ -1,8 +1,4 @@
 import { useState } from 'react';
-import {
-    Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Box, Typography,
-    Divider, IconButton, Switch, FormControlLabel,
-} from '@mui/material';
 import { FolderOpen, AutoFixHigh, Close } from '@mui/icons-material';
 import { open } from '@tauri-apps/plugin-dialog';
 import { log } from '@/lib/util/logger';
@@ -15,17 +11,8 @@ interface Props {
     onProcess: (req: AutoExtractRequest) => void;
 }
 
-const inputStyle = {
-    '& .MuiOutlinedInput-root': {
-        background: 'var(--bg-primary)',
-        color: 'var(--text-primary)',
-        fontSize: '0.8rem',
-        fontFamily: 'JetBrains Mono, monospace',
-        '& fieldset': { borderColor: 'var(--border)' },
-        '&:hover fieldset': { borderColor: 'color-mix(in oklab, var(--accent-primary) 50%, transparent)' },
-        '&.Mui-focused fieldset': { borderColor: 'var(--accent-primary)' },
-    },
-    '& .MuiInputLabel-root': { color: 'var(--text-secondary)', fontSize: '0.8rem' },
+const sectionLabel: React.CSSProperties = {
+    fontSize: '0.7rem', opacity: 0.5, marginBottom: 8, letterSpacing: '0.05em', color: 'var(--text-secondary)',
 };
 
 export default function AutoExtractDialog({ open: isOpen, onClose, onProcess }: Props) {
@@ -75,110 +62,79 @@ export default function AutoExtractDialog({ open: isOpen, onClose, onProcess }: 
         }
     };
 
+    if (!isOpen) return null;
+
     return (
-        <Dialog
-            open={isOpen}
-            onClose={onClose}
-            PaperProps={{
-                sx: {
-                    background: 'var(--bg-secondary)',
-                    color: 'var(--text-primary)',
-                    border: '1px solid var(--border)',
-                    backdropFilter: 'blur(10px)',
-                    maxWidth: '500px',
-                    width: '100%',
-                },
-            }}
-        >
-            <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <AutoFixHigh sx={{ color: 'var(--accent-primary)' }} />
-                    <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 600 }}>Batch Mod Processor</Typography>
-                </Box>
-                <IconButton onClick={onClose} size="small" sx={{ color: 'var(--text-secondary)' }}>
-                    <Close />
-                </IconButton>
-            </DialogTitle>
-            <Divider sx={{ borderColor: 'var(--border)' }} />
-            <DialogContent sx={{ py: 3 }}>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-                    <Box>
-                        <Typography sx={{ fontSize: '0.7rem', opacity: 0.5, mb: 1, letterSpacing: '0.05em' }}>MOD SOURCE FOLDERS ({modPaths.length})</Typography>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                            <TextField
-                                fullWidth
+        <div className="dl-modal-backdrop" onClick={onClose}>
+            <div className="dl-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="dl-modal__head">
+                    <span className="dl-icon"><AutoFixHigh style={{ color: 'var(--accent-primary)' }} /></span>
+                    <h2 className="dl-modal__title">Batch Mod Processor</h2>
+                    <button className="dl-modal__close" onClick={onClose} aria-label="Close">✕</button>
+                </div>
+
+                <div className="dl-modal__body">
+                    <div>
+                        <div style={sectionLabel}>MOD SOURCE FOLDERS ({modPaths.length})</div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <input
+                                className="dl-input"
                                 placeholder="Select one or more mod folders..."
                                 value={modPaths.length > 0 ? `${modPaths.length} folder(s) selected` : ''}
-                                InputProps={{ readOnly: true }}
-                                size="small"
-                                sx={inputStyle}
+                                readOnly
                             />
-                            <Button variant="outlined" onClick={() => handleSelectFolder('mod')} sx={{ minWidth: '40px', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                                <FolderOpen fontSize="small" />
-                            </Button>
+                            <button className="dl-btn dl-btn--secondary dl-btn--icon" onClick={() => handleSelectFolder('mod')} title="Select mod folders">
+                                <span className="dl-icon"><FolderOpen fontSize="small" /></span>
+                            </button>
                             {modPaths.length > 0 && (
-                                <IconButton size="small" onClick={() => setModPaths([])} sx={{ color: 'var(--color-danger)' }}>
-                                    <Close fontSize="small" />
-                                </IconButton>
+                                <button className="dl-btn dl-btn--icon dl-btn--sm dl-btn--danger" onClick={() => setModPaths([])} title="Clear">
+                                    <span className="dl-icon"><Close fontSize="small" /></span>
+                                </button>
                             )}
-                        </Box>
-                    </Box>
+                        </div>
+                    </div>
 
-                    <Box>
-                        <Typography sx={{ fontSize: '0.7rem', opacity: 0.5, mb: 1, letterSpacing: '0.05em' }}>OUTPUT DESTINATION (OPTIONAL)</Typography>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                            <TextField
-                                fullWidth
+                    <div>
+                        <div style={sectionLabel}>OUTPUT DESTINATION (OPTIONAL)</div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <input
+                                className="dl-input"
                                 placeholder="Leave empty to just parse tree"
                                 value={outputPath}
                                 onChange={(e) => setOutputPath(e.target.value)}
-                                size="small"
-                                sx={inputStyle}
                             />
-                            <Button variant="outlined" onClick={() => handleSelectFolder('output')} sx={{ minWidth: '40px', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                                <FolderOpen fontSize="small" />
-                            </Button>
-                        </Box>
-                    </Box>
+                            <button className="dl-btn dl-btn--secondary dl-btn--icon" onClick={() => handleSelectFolder('output')} title="Select output folder">
+                                <span className="dl-icon"><FolderOpen fontSize="small" /></span>
+                            </button>
+                        </div>
+                    </div>
 
-                    <Box>
-                        <Typography sx={{ fontSize: '0.7rem', opacity: 0.5, mb: 1, letterSpacing: '0.05em' }}>SKIN ID (OPTIONAL)</Typography>
-                        <TextField fullWidth placeholder="e.g. 45" value={skinId} onChange={(e) => setSkinId(e.target.value)} size="small" sx={inputStyle} />
-                    </Box>
+                    <div>
+                        <div style={sectionLabel}>SKIN ID (OPTIONAL)</div>
+                        <input className="dl-input" placeholder="e.g. 45" value={skinId} onChange={(e) => setSkinId(e.target.value)} />
+                    </div>
 
-                    <FormControlLabel
-                        control={
-                            <Switch
-                                checked={loadToTree}
-                                onChange={(e) => setLoadToTree(e.target.checked)}
-                                size="small"
-                                sx={{
-                                    '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--accent-primary)' },
-                                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'var(--accent-primary)' },
-                                }}
-                            />
-                        }
-                        label={<Typography sx={{ fontSize: '0.7rem', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono' }}>LOAD INTO TREE VIEW</Typography>}
-                    />
-                </Box>
-            </DialogContent>
-            <DialogActions sx={{ p: 2, background: 'color-mix(in oklab, var(--bg-primary) 20%, transparent)' }}>
-                <Button onClick={onClose} sx={{ color: 'var(--text-secondary)' }}>Cancel</Button>
-                <Button
-                    variant="contained"
-                    onClick={handleRun}
-                    disabled={modPaths.length === 0 || isProcessing}
-                    sx={{
-                        background: outputPath ? 'var(--accent-primary)' : 'var(--text-primary)',
-                        color: 'var(--bg-primary)',
-                        fontWeight: 700,
-                        '&:hover': { background: outputPath ? 'var(--accent-hover)' : 'var(--text-primary)' },
-                        '&.Mui-disabled': { background: 'var(--bg-tertiary)', color: 'var(--text-muted)' },
-                    }}
-                >
-                    {isProcessing ? 'Processing...' : (outputPath ? 'Batch Auto-Extract' : 'Batch Parse Only')}
-                </Button>
-            </DialogActions>
-        </Dialog>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                        <span className="dl-toggle">
+                            <input type="checkbox" checked={loadToTree} onChange={(e) => setLoadToTree(e.target.checked)} />
+                            <span className="dl-toggle__track" />
+                            <span className="dl-toggle__thumb" />
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace' }}>LOAD INTO TREE VIEW</span>
+                    </label>
+                </div>
+
+                <div className="dl-modal__foot">
+                    <button className="dl-btn dl-btn--secondary" onClick={onClose}>Cancel</button>
+                    <button
+                        className="dl-btn dl-btn--primary"
+                        onClick={handleRun}
+                        disabled={modPaths.length === 0 || isProcessing}
+                    >
+                        {isProcessing ? 'Processing...' : (outputPath ? 'Batch Auto-Extract' : 'Batch Parse Only')}
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 }

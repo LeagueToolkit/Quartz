@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { TextField } from '@mui/material';
-import type { TextFieldProps } from '@mui/material';
 
-interface DebouncedTextFieldProps extends Omit<TextFieldProps, 'value' | 'onChange'> {
+interface DebouncedTextFieldProps
+    extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> {
     value: string;
     onValueChange: (value: string) => void;
     debounceMs?: number;
@@ -14,7 +13,8 @@ const DebouncedTextField = React.memo(function DebouncedTextField({
     onValueChange,
     debounceMs = 150,
     onEnter,
-    ...textFieldProps
+    className,
+    ...inputProps
 }: DebouncedTextFieldProps) {
     const [localValue, setLocalValue] = useState(value || '');
     const valueRef = useRef(value || '');
@@ -87,13 +87,13 @@ const DebouncedTextField = React.memo(function DebouncedTextField({
     }, []);
 
     return (
-        <TextField
-            size="small"
+        <input
+            className={`dl-input ${className ?? ''}`}
             value={localValue}
             onChange={handleChange}
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}
-            {...textFieldProps}
+            {...inputProps}
         />
     );
 });

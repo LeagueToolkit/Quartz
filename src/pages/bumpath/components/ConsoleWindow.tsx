@@ -1,15 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    Button,
-    Typography,
-    Box,
-    IconButton,
-    TextField,
-} from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import {
     Close as CloseIcon,
     Clear as ClearIcon,
@@ -101,154 +91,130 @@ const ConsoleWindow: React.FC<ConsoleWindowProps> = ({ open, onClose, logs = [],
         );
     };
 
+    if (!open) return null;
+
     return (
-        <Dialog
-            open={open}
-            onClose={onClose}
-            maxWidth="lg"
-            fullWidth
-            PaperProps={{
-                sx: {
-                    backgroundColor: 'color-mix(in oklab, var(--bg-secondary) 95%, transparent)',
-                    backdropFilter: 'blur(20px)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '16px',
-                    minHeight: '600px',
-                },
-            }}
-        >
-            <DialogTitle
-                sx={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    color: 'var(--text-primary)',
-                    borderBottom: '1px solid var(--border)',
-                    fontFamily: 'JetBrains Mono, monospace',
-                    fontSize: '1.25rem',
-                    fontWeight: 600,
-                }}
+        <div className="dl-modal-backdrop" onClick={onClose}>
+            <div
+                className="dl-modal dl-modal--large"
+                onClick={(e) => e.stopPropagation()}
+                style={{ minHeight: '600px' }}
             >
-                🖥️ Bumpath Console
-                <IconButton onClick={onClose} sx={{ color: 'var(--text-primary)' }}>
-                    <CloseIcon />
-                </IconButton>
-            </DialogTitle>
+                <div className="dl-modal__head">
+                    <h2 className="dl-modal__title" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+                        🖥️ Bumpath Console
+                    </h2>
+                    <button type="button" className="dl-modal__close" onClick={onClose} title="Close">
+                        <span className="dl-icon"><CloseIcon /></span>
+                    </button>
+                </div>
 
-            <DialogContent sx={{ padding: 0 }}>
-                {/* Filter and Controls */}
-                <Box
-                    sx={{
-                        padding: '16px',
-                        borderBottom: '1px solid var(--border)',
-                        backgroundColor: 'var(--bg-tertiary)',
-                    }}
-                >
-                    <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                        <TextField
-                            size="small"
-                            placeholder="Filter logs..."
-                            value={filter}
-                            onChange={(e) => setFilter(e.target.value)}
-                            sx={{
-                                flexGrow: 1,
-                                '& .MuiOutlinedInput-root': {
-                                    backgroundColor: 'var(--bg-tertiary)',
-                                    color: 'var(--text-primary)',
-                                    '& fieldset': {
-                                        borderColor: 'var(--border)',
-                                    },
-                                    '&:hover fieldset': {
-                                        borderColor: 'var(--border-strong)',
-                                    },
-                                    '&.Mui-focused fieldset': {
-                                        borderColor: 'var(--accent-primary)',
-                                    },
-                                },
-                                '& .MuiInputBase-input': {
-                                    color: 'var(--text-primary)',
-                                },
-                            }}
-                        />
-                        <IconButton onClick={handleClear} sx={{ color: 'var(--text-primary)' }}>
-                            <ClearIcon />
-                        </IconButton>
-                        {onRefresh && (
-                            <IconButton onClick={onRefresh} sx={{ color: 'var(--text-primary)' }}>
-                                <RefreshIcon />
-                            </IconButton>
-                        )}
-                        <IconButton onClick={handleDownload} sx={{ color: 'var(--text-primary)' }}>
-                            <DownloadIcon />
-                        </IconButton>
-                    </Box>
-                </Box>
-
-                {/* Log Display */}
-                <Box
-                    ref={logContainerRef}
-                    sx={{
-                        height: '400px',
-                        overflow: 'auto',
-                        backgroundColor: 'var(--bg-primary)',
-                        '&::-webkit-scrollbar': {
-                            width: '8px',
-                        },
-                        '&::-webkit-scrollbar-track': {
-                            backgroundColor: 'var(--bg-secondary)',
-                        },
-                        '&::-webkit-scrollbar-thumb': {
-                            backgroundColor: 'var(--bg-hover)',
-                            borderRadius: '4px',
-                        },
-                        '&::-webkit-scrollbar-thumb:hover': {
-                            backgroundColor: 'var(--border-strong)',
-                        },
-                    }}
-                >
-                    {filteredLogs.length === 0 ? (
-                        <Box
-                            sx={{
-                                padding: '20px',
-                                textAlign: 'center',
-                                color: 'var(--text-muted)',
-                                fontStyle: 'italic',
-                            }}
-                        >
-                            No logs to display
+                <div className="dl-modal__body" style={{ padding: 0, display: 'block' }}>
+                    {/* Filter and Controls */}
+                    <Box
+                        sx={{
+                            padding: '16px',
+                            borderBottom: '1px solid var(--border)',
+                            backgroundColor: 'var(--bg-tertiary)',
+                        }}
+                    >
+                        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+                            <input
+                                className="dl-input"
+                                placeholder="Filter logs..."
+                                value={filter}
+                                onChange={(e) => setFilter(e.target.value)}
+                                style={{ flexGrow: 1 }}
+                            />
+                            <button
+                                type="button"
+                                className="dl-btn dl-btn--icon dl-btn--secondary"
+                                onClick={handleClear}
+                                title="Clear"
+                            >
+                                <span className="dl-icon"><ClearIcon /></span>
+                            </button>
+                            {onRefresh && (
+                                <button
+                                    type="button"
+                                    className="dl-btn dl-btn--icon dl-btn--secondary"
+                                    onClick={onRefresh}
+                                    title="Refresh"
+                                >
+                                    <span className="dl-icon"><RefreshIcon /></span>
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                className="dl-btn dl-btn--icon dl-btn--secondary"
+                                onClick={handleDownload}
+                                title="Download"
+                            >
+                                <span className="dl-icon"><DownloadIcon /></span>
+                            </button>
                         </Box>
-                    ) : (
-                        filteredLogs.map((logLine, index) => formatLogLine(logLine, index))
-                    )}
-                </Box>
+                    </Box>
 
-                {/* Stats */}
-                <Box
-                    sx={{
-                        padding: '12px 16px',
-                        borderTop: '1px solid var(--border)',
-                        backgroundColor: 'var(--bg-tertiary)',
-                    }}
-                >
-                    <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
-                        Showing {filteredLogs.length} of {logs.length} log entries
-                        {filter && ` (filtered by "${filter}")`}
-                    </Typography>
-                </Box>
-            </DialogContent>
+                    {/* Log Display */}
+                    <Box
+                        ref={logContainerRef}
+                        sx={{
+                            height: '400px',
+                            overflow: 'auto',
+                            backgroundColor: 'var(--bg-primary)',
+                            '&::-webkit-scrollbar': {
+                                width: '8px',
+                            },
+                            '&::-webkit-scrollbar-track': {
+                                backgroundColor: 'var(--bg-secondary)',
+                            },
+                            '&::-webkit-scrollbar-thumb': {
+                                backgroundColor: 'var(--bg-hover)',
+                                borderRadius: '4px',
+                            },
+                            '&::-webkit-scrollbar-thumb:hover': {
+                                backgroundColor: 'var(--border-strong)',
+                            },
+                        }}
+                    >
+                        {filteredLogs.length === 0 ? (
+                            <Box
+                                sx={{
+                                    padding: '20px',
+                                    textAlign: 'center',
+                                    color: 'var(--text-muted)',
+                                    fontStyle: 'italic',
+                                }}
+                            >
+                                No logs to display
+                            </Box>
+                        ) : (
+                            filteredLogs.map((logLine, index) => formatLogLine(logLine, index))
+                        )}
+                    </Box>
 
-            <DialogActions
-                sx={{
-                    padding: '16px',
-                    borderTop: '1px solid var(--border)',
-                    backgroundColor: 'var(--bg-tertiary)',
-                }}
-            >
-                <Button onClick={onClose} sx={{ color: 'var(--text-primary)' }}>
-                    Close
-                </Button>
-            </DialogActions>
-        </Dialog>
+                    {/* Stats */}
+                    <Box
+                        sx={{
+                            padding: '12px 16px',
+                            borderTop: '1px solid var(--border)',
+                            backgroundColor: 'var(--bg-tertiary)',
+                        }}
+                    >
+                        <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
+                            Showing {filteredLogs.length} of {logs.length} log entries
+                            {filter && ` (filtered by "${filter}")`}
+                        </Typography>
+                    </Box>
+                </div>
+
+                <div className="dl-modal__foot">
+                    <button type="button" className="dl-btn dl-btn--secondary" onClick={onClose}>
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 };
 
