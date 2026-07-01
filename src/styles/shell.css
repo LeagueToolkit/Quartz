@@ -199,16 +199,14 @@
 }
 
 /* === Work area ===========================================================
-   Flat at the left edge (flows straight out of the rail) and drifts to a faint
-   blue-tinted lift toward the right, so the surface reads smooth, not flat-gray.
+   Transparent so the fixed z-0 layers behind it (atmosphere wash, wallpaper,
+   background effect) show through the work area. The blue-tinted lift lives on
+   ::before at z-0 within this stacking context, painting *under* page content
+   but over the background effect only where a page sets its own surface.
    Cards/panels supply their own contrast on top. */
 .q-main {
-    background:
-        linear-gradient(105deg,
-            var(--bg-primary) 0%,
-            var(--bg-primary) 35%,
-            color-mix(in oklab, var(--accent-primary) 4%, var(--bg-primary)) 78%,
-            color-mix(in oklab, var(--accent-primary) 7%, var(--bg-primary)) 100%);
+    position: relative;
+    background: transparent;
 }
 
 /* Page enter animation — short, no vertical jump that reads as a "glitch". */

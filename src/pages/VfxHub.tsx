@@ -9,6 +9,7 @@
    the hub repo with the token from Settings → GitHub Integration. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FileInput, Globe, Upload, Undo2 } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readBin, writeBin } from '@/lib/api';
 import { useNotificationStore } from '@/lib/stores';
@@ -665,49 +666,19 @@ function Toolbar({ isProcessing, isLoadingCollections, onOpenTargetBin, onOpenHu
     onOpenHub: () => void;
     onUpload: () => void;
 }) {
-    const base: React.CSSProperties = {
-        flex: 1, padding: '0 16px', fontFamily: FONT, fontSize: '13px', fontWeight: 700,
-        height: '36px', borderRadius: '4px', letterSpacing: '0.05em', textTransform: 'uppercase',
-        cursor: 'pointer',
-    };
     return (
-        <div style={{ display: 'flex', gap: '8px', padding: '12px 12px 8px', position: 'relative', zIndex: 1 }}>
-            <button
-                onClick={onOpenTargetBin}
-                disabled={isProcessing}
-                style={{
-                    ...base,
-                    background: 'color-mix(in oklab, var(--accent-primary) 15%, var(--bg-primary))',
-                    border: '1px solid color-mix(in oklab, var(--accent-primary) 30%, transparent)',
-                    color: 'var(--accent)', opacity: isProcessing ? 0.5 : 1,
-                }}
-            >
-                {isProcessing ? 'Processing...' : 'Open Target Bin'}
+        <div className="vfx-hub-toolbar">
+            <button className="dl-btn dl-btn--primary" onClick={onOpenTargetBin} disabled={isProcessing}>
+                <span className="dl-icon"><FileInput size={15} /></span>
+                <span>{isProcessing ? 'Processing…' : 'Open Target Bin'}</span>
             </button>
-            <button
-                onClick={onOpenHub}
-                disabled={isProcessing || isLoadingCollections}
-                style={{
-                    ...base,
-                    background: 'color-mix(in oklab, var(--accent2) 15%, var(--bg-primary))',
-                    border: '1px solid color-mix(in oklab, var(--accent2) 30%, transparent)',
-                    color: 'var(--accent2)', opacity: isProcessing || isLoadingCollections ? 0.5 : 1,
-                }}
-            >
-                VFX Hub
+            <button className="dl-btn vfx-btn-donor" onClick={onOpenHub} disabled={isProcessing || isLoadingCollections}>
+                <span className="dl-icon"><Globe size={15} /></span>
+                <span>VFX Hub</span>
             </button>
-            <button
-                onClick={onUpload}
-                disabled={isProcessing}
-                title="Upload VFX system to VFX Hub"
-                style={{
-                    ...base,
-                    background: 'color-mix(in oklab, var(--accent2) 15%, var(--bg-primary))',
-                    border: '1px solid color-mix(in oklab, var(--accent2) 30%, transparent)',
-                    color: 'var(--accent2)', opacity: isProcessing ? 0.5 : 1,
-                }}
-            >
-                Local Hub
+            <button className="dl-btn vfx-btn-donor" onClick={onUpload} disabled={isProcessing} title="Upload VFX system to VFX Hub">
+                <span className="dl-icon"><Upload size={15} /></span>
+                <span>Local Hub</span>
             </button>
         </div>
     );
@@ -729,51 +700,37 @@ function Footer({ statusMessage, showTrimTargetNames, trimTargetNames, setTrimTa
     const saveDisabled = isProcessing || !hasChangesToSave();
     const undoDisabled = undoHistory.length === 0;
     return (
-        <>
-            <div style={{
-                padding: '6px 20px', borderTop: '1px solid var(--border)', color: 'var(--accent)',
-                fontFamily: FONT, fontSize: '12px', display: 'flex', alignItems: 'center',
-                justifyContent: 'space-between', gap: '20px',
-            }}>
-                <span style={{ flex: 1 }}>{statusMessage}</span>
-                {showTrimTargetNames && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', whiteSpace: 'nowrap', fontSize: '11px', color: 'var(--text-secondary)' }}>
+        <div className="vfx-bottom-bar">
+            <span className="vfx-bottom-bar__status">{statusMessage}</span>
+
+            {showTrimTargetNames && (
+                <div className="vfx-bottom-bar__trims">
+                    <label>
                         <input type="checkbox" checked={trimTargetNames} onChange={(e) => setTrimTargetNames(e.target.checked)} />
                         <span>Trim Target Names</span>
                     </label>
-                )}
-            </div>
-            <div style={{ display: 'flex', gap: '12px', padding: '12px 20px' }}>
+                </div>
+            )}
+
+            <div className="vfx-bottom-bar__actions">
                 <button
+                    className="dl-btn dl-btn--secondary dl-btn--sm dl-btn--icon"
                     onClick={handleUndo}
                     disabled={undoDisabled}
-                    title={undoHistory.length > 0 ? `Undo: ${undoHistory[undoHistory.length - 1]?.action}` : 'Nothing to undo'}
-                    style={{
-                        flex: 1, padding: '0 16px', fontFamily: FONT, fontSize: '13px', fontWeight: 700,
-                        height: '36px', background: 'var(--bg-tertiary)',
-                        border: '1px solid var(--border)', color: 'var(--text-secondary)', borderRadius: '4px',
-                        letterSpacing: '0.05em', textTransform: 'uppercase', cursor: undoDisabled ? 'not-allowed' : 'pointer',
-                        opacity: undoDisabled ? 0.5 : 1,
-                    }}
+                    title={undoHistory.length > 0 ? `Undo: ${undoHistory[undoHistory.length - 1]?.action} (${undoHistory.length})` : 'Nothing to undo'}
                 >
-                    Undo ({undoHistory.length})
+                    <span className="dl-icon"><Undo2 size={15} /></span>
                 </button>
                 <button
+                    className="dl-btn dl-btn--sm vfx-save-btn"
                     onClick={handleSave}
                     disabled={saveDisabled}
                     title={hasChangesToSave() ? 'Save changes to file' : 'No changes to save'}
-                    style={{
-                        flex: 1, padding: '0 16px', fontFamily: FONT, fontSize: '13px', fontWeight: 700,
-                        height: '36px', background: 'color-mix(in oklab, var(--color-success) 15%, var(--bg-primary))',
-                        border: '1px solid color-mix(in oklab, var(--color-success) 30%, transparent)', color: 'var(--color-success)', borderRadius: '4px',
-                        letterSpacing: '0.05em', textTransform: 'uppercase', cursor: saveDisabled ? 'not-allowed' : 'pointer',
-                        opacity: saveDisabled ? 0.5 : 1,
-                    }}
                 >
                     Save
                 </button>
             </div>
-        </>
+        </div>
     );
 }
 
