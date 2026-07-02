@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import './port/Port.css';
 import usePort from './port/usePort';
+import { PortDragProvider, type PortDragPayload } from './port/usePortDrag';
 import type { VfxEmitter, VfxSystem, VfxPath } from './port/model';
 import {
     handleEmitterTextureMouseEnter,
@@ -10,7 +11,8 @@ import {
 } from './port/utils/textureHoverPreview';
 import { getLeaguePath } from '@/lib/api/league';
 import { readBin, writeBin } from '@/lib/api';
-import { portPrepareDonorFromSkin, backupCreate } from '@/lib/api/wad';
+import { useUiPrefsStore } from '@/lib/stores';
+import { portPrepareDonorFromSkin, backupCreate, portCleanupDonorTemp } from '@/lib/api/wad';
 import GlowingSpinner from './port/components/GlowingSpinner';
 import TargetColumn from './port/components/TargetColumn';
 import DonorColumn from './port/components/DonorColumn';
@@ -43,6 +45,7 @@ function Port() {
     const [isPreparingPortDonor, setIsPreparingPortDonor] = useState(false);
     const [portDonorProgress, setPortDonorProgress] = useState('');
     const [showBackupViewer, setShowBackupViewer] = useState(false);
+    const recentPortDonors = useUiPrefsStore((s) => s.recentPortDonors);
 
     const sectionStyle = useMemo<React.CSSProperties>(() => ({ background: 'transparent', border: 'none', borderRadius: '5px' }), []);
 
@@ -131,7 +134,7 @@ function Port() {
     }, []);
 
     const handleConfirmDonorFromGame = useCallback(
-        async (args: { champion: { id: string; name: string }; skin: { id: number; name: string }; portingPrefix: string }) => {
+        async (args: { champion: { id: string; name: string; alias?: string }; skin: { id: number; name: string; tilePath?: string | null }; portingPrefix: string }) => {
             try {
                 setIsPreparingPortDonor(true);
                 setPortDonorProgress('Locating League install...');
@@ -159,6 +162,21 @@ function Port() {
                 setPortDonorProgress('Opening donor session...');
                 p.setDonorTempRoot(result.tempRoot);
                 await p.processDonorBin(result.combinedBinPath);
+
+                const evicted = useUiPrefsStore.getState().pushRecentPortDonor({
+                    championId: args.champion.id,
+                    championName: args.champion.name,
+                    championAlias: args.champion.alias ?? '',
+                    skinId: args.skin.id,
+                    skinName: args.skin.name,
+                    tilePath: args.skin.tilePath ?? null,
+                    tempRoot: result.tempRoot,
+                    lastUsed: new Date().toISOString(),
+                });
+                for (const root of evicted) {
+                    if (root && root !== result.tempRoot) void portCleanupDonorTemp(root).catch(() => { /* best-effort */ });
+                }
+
                 setPortDonorProgress('Donor is ready.');
                 setShowPortDonorModal(false);
             } catch (error) {
@@ -309,6 +327,50 @@ function Port() {
         }
     };
 
+    // ── Pointer-drag drop dispatch (see usePortDrag) ──
+    // Native drag-drop is enabled for OS file drops, which disables HTML5 DnD on
+    // WebView2, so the donor→target drags run on raw pointer events. These take
+    // the dragged payload and route it into the same port actions the old HTML5
+    // drop handlers used.
+    const dropDonorSystem = useCallback((payload: Extract<PortDragPayload, { kind: 'system' }>) => {
+        if (!p.targetModel) {
+            p.setStatusMessage('No target file loaded - please open a target bin first');
+            return;
+        }
+        if (!p.hasResourceResolver) {
+            p.setStatusMessage('Locked: target bin missing ResourceResolver');
+            return;
+        }
+        const sys = p.donorSystems[payload.systemKey];
+        if (!sys) {
+            p.setStatusMessage('Dropped item has no VFX content');
+            return;
+        }
+        const defaultName = sys.particleName || sys.name || 'NewVFXSystem';
+        p.setPendingDrop({ donorSystemPath: sys.path, defaultName });
+        p.setNamePromptValue(defaultName);
+        p.setShowNamePromptModal(true);
+        requestAnimationFrame(() => {
+            if (!p.targetListRef.current) return;
+            try {
+                p.targetListRef.current.scrollTop = 0;
+            } catch {
+                /* noop */
+            }
+        });
+    }, [p]);
+
+    // Drop a donor/target emitter onto a specific target system row.
+    const dropEmitterOnSystem = useCallback(
+        (payload: Extract<PortDragPayload, { kind: 'emitter' }>, targetSystemKey: string) => {
+            const { sourceType, sourceSystemKey, emitterName } = payload;
+            if (!sourceSystemKey || !emitterName || targetSystemKey === sourceSystemKey) return;
+            if (sourceType === 'donor') p.handlePortEmitter(sourceSystemKey, emitterName, undefined, targetSystemKey);
+            else p.handleMoveEmitter?.(sourceSystemKey, emitterName, targetSystemKey);
+        },
+        [p]
+    );
+
     const handleOpenIdleManager = useCallback(() => {
         if (!p.targetModel) {
             p.setStatusMessage('No target file loaded');
@@ -371,6 +433,8 @@ function Port() {
         handleEmitterMouseLeave,
         handleEmitterClick,
         handleEmitterContextMenu,
+        // Pointer-drag drop dispatch (replaces the old HTML5 drop handlers).
+        dropEmitterOnSystem,
     };
 
     const targetColumnProps = {
@@ -388,6 +452,7 @@ function Port() {
         handleTargetDropDragEnter,
         handleTargetDropDragLeave,
         processVfxSystemDrop,
+        dropDonorSystem,
         targetSystems: p.targetSystems,
         targetListRef: p.targetListRef,
         filteredTargetSystems: p.filteredTargetSystems,
@@ -496,6 +561,7 @@ function Port() {
     ];
 
     return (
+        <PortDragProvider>
         <div
             className="port-container"
             style={{ minHeight: '100%', height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
@@ -513,6 +579,7 @@ function Port() {
                 open={showPortDonorModal}
                 loading={isPreparingPortDonor}
                 progressText={portDonorProgress}
+                recentDonors={recentPortDonors}
                 onClose={() => {
                     if (!isPreparingPortDonor) setShowPortDonorModal(false);
                 }}
@@ -668,6 +735,7 @@ function Port() {
                 donorCount={Object.values(p.donorSystems || {}).length}
             />
         </div>
+        </PortDragProvider>
     );
 }
 
