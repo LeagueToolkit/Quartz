@@ -68,17 +68,30 @@ export function extractChampionAssets(
     });
 }
 
+export interface TftExtractOptions {
+    /** Skin-files-only skin-graph extract (default true) — enables repath/finalize. */
+    clean?: boolean;
+    preserveHudIcons2D?: boolean;
+    /** Skip exporting SFX audio banks (default true). */
+    skipSfx?: boolean;
+}
+
 /* Extract a TFT companion (little legend) asset bundle into outputDir. Emits
-   `extract-progress` events as it runs. */
+   `extract-progress` events as it runs. In clean mode this is the same
+   skin-graph extract as champions, so it can be repathed/finalized identically. */
 export function extractTftCompanion(
     petAlias: string,
     tier: number,
     outputDir: string,
+    opts: TftExtractOptions = {},
 ): Promise<ExtractResult> {
     return invokeCommand<ExtractResult>('extract_tft_companion', {
         petAlias,
         tier,
         outputDir,
+        clean: opts.clean,
+        preserveHudIcons2D: opts.preserveHudIcons2D,
+        skipSfx: opts.skipSfx,
     });
 }
 

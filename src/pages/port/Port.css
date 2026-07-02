@@ -20,6 +20,34 @@
     100% { background-position: 200% 50%; }
 }
 
+/* Floating label that follows the cursor during a pointer-based donor drag
+   (see usePortDrag). Native drag-drop is enabled for OS file drops, so the
+   in-app VFX drag can't use HTML5 DnD and renders its own ghost. */
+.port-drag-ghost {
+    padding: 6px 12px;
+    max-width: 260px;
+    border-radius: 6px;
+    background: color-mix(in oklab, var(--accent-primary) 22%, var(--bg-tertiary));
+    border: 1px solid var(--accent-primary);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    transform: rotate(2deg);
+    opacity: 0.95;
+}
+
+/* Highlight applied to a target drop zone while a compatible drag hovers it. */
+.port-drop-active {
+    outline: 2px dashed var(--accent-primary) !important;
+    outline-offset: -2px;
+    background: color-mix(in oklab, var(--accent-primary) 10%, transparent) !important;
+}
+
 /* Override Material-UI styles to match the design-lab surfaces. */
 .port-container .MuiPaper-root {
     background-color: var(--bg-tertiary) !important;

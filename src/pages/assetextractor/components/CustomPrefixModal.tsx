@@ -12,6 +12,10 @@ export interface RepathSkin {
     skinId: number;
     skinName: string;
     chromaId: number | null;
+    /** TFT companion WAD folder alias (e.g. petbunny); undefined for champions. */
+    petAlias?: string;
+    /** TFT skin index (itemId % 1000). */
+    tier?: number;
 }
 
 export interface RepathOptionsPayload {

@@ -79,9 +79,19 @@ pub fn gather_linked(main_path: &Path, main: &Bin) -> Vec<ResolvedLink> {
     main.linked
         .iter()
         .map(|link| {
+            // Try each rel-path candidate first, then fall back to the link's
+            // path-hash: extraction writes BINs whose real path exceeds Windows
+            // MAX_PATH under a flat `<hash>.bin` name (Riot's long synthetic
+            // multi-skin bin names), so the rel path won't be on disk but the
+            // hash-named file is. Without this those linked BINs — and every VFX
+            // system they carry — silently fail to load.
             let path = link_candidates(link)
                 .into_iter()
-                .find_map(|c| index.get(&c).cloned());
+                .find_map(|c| index.get(&c).cloned())
+                .or_else(|| {
+                    let h = crate::wad::path_hash(&link_candidates(link).into_iter().next()?);
+                    index.get(&format!("{h:016x}.bin")).cloned()
+                });
             ResolvedLink {
                 link: link.clone(),
                 path,

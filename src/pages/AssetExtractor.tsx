@@ -635,65 +635,12 @@ export function AssetExtractor() {
         const normalized = getNormalizedSelectedSkins();
         if (normalized.length === 0) return;
 
-        // TFT companions extract straight through (no whole-WAD/clean choice).
-        if (viewMode === 'tft') {
-            await executeTftExtraction(normalized);
-            return;
-        }
-
+        // TFT companions now go through the SAME extraction-mode modal as
+        // champions (skin-files-only + combine/finalize, or whole-pet-folder).
         setPendingExtractionSkins(normalized);
         setShowExtractionModeModal(true);
     };
 
-    const executeTftExtraction = async (normalized: NormalizedSelection[]) => {
-        setIsExtracting(true);
-        cancelRef.current = false;
-        addConsoleLog(`Extracting ${normalized.length} TFT companion(s)...`, 'info');
-
-        try {
-            for (let i = 0; i < normalized.length; i++) {
-                if (cancelRef.current) {
-                    addConsoleLog('Extraction cancelled by user', 'warning');
-                    break;
-                }
-                const { championName, skinId, skinName, petAlias, tier } = normalized[i];
-                const skinKey = `${championName}_${skinId}`;
-                const progress = `${i + 1}/${normalized.length}`;
-                if (!petAlias) {
-                    addConsoleLog(`${progress} Skipped ${skinName} — could not resolve companion alias.`, 'warning');
-                    continue;
-                }
-
-                addConsoleLog(`${progress} Extracting ${skinName} (${petAlias}, tier ${tier ?? 1})...`, 'info');
-                currentSkinKeyRef.current = skinKey;
-                setExtractingSkins((prev) => ({ ...prev, [skinKey]: true }));
-                setExtractionProgress((prev) => ({ ...prev, [skinKey]: 'Starting extraction...' }));
-
-                try {
-                    const result = await extractTftCompanion(petAlias, tier ?? 1, extractionPath);
-                    addRecentOutputPath(extractionPath);
-                    addConsoleLog(
-                        `${progress} Extracted ${skinName}: ${result.files} file(s) → ${result.outputDir}`,
-                        'success',
-                    );
-                } catch (err) {
-                    log.error('extractTftCompanion', err);
-                    addConsoleLog(`${progress} Failed to extract ${skinName}: ${String((err as Error)?.message || err)}`, 'error');
-                    setExtractionProgress((prev) => ({ ...prev, [skinKey]: `Error: ${String((err as Error)?.message || err)}` }));
-                } finally {
-                    setExtractingSkins((prev) => ({ ...prev, [skinKey]: false }));
-                    currentSkinKeyRef.current = null;
-                }
-            }
-            setSelectedSkins([]);
-            addConsoleLog('All extractions completed!', 'success');
-        } catch (error) {
-            log.error('executeTftExtraction', error);
-            addConsoleLog(`Extraction failed: ${String((error as Error)?.message || error)}`, 'error');
-        } finally {
-            setIsExtracting(false);
-        }
-    };
 
     const executeExtraction = async (payload: ExtractionPayload) => {
         const useExtractVoiceover = payload?.options?.extractVoiceover === true;
@@ -719,21 +666,22 @@ export function AssetExtractor() {
                     addConsoleLog('Extraction cancelled by user', 'warning');
                     break;
                 }
-                const { championId, championName, skinId, skinName, chromaId } = normalized[i];
+                const { championId, championName, skinId, skinName, chromaId, petAlias, tier } = normalized[i];
                 const skinKey = `${championName}_${skinId}`;
                 const progress = `${i + 1}/${normalized.length}`;
                 const clean = cleanBySkinKey.get(skinKey) !== false;
+                const isTft = !!petAlias;
                 const outputDir = useOutputOverride
                     ? normalizePathString(outputOverridePerSkin[skinKey] || outputOverrideDefault) || extractionPath
                     : extractionPath;
 
-                if (!championId) {
+                if (!isTft && !championId) {
                     addConsoleLog(`${progress} Skipped ${skinName} (${championName}) — no League WAD found for this champion.`, 'warning');
                     continue;
                 }
 
                 addConsoleLog(
-                    `${progress} Extracting ${skinName} (${championName})${useExtractVoiceover ? ' — Normal & Voiceover WADs' : ' — Normal WAD only'}...`,
+                    `${progress} Extracting ${skinName} (${isTft ? petAlias : championName})${!isTft && useExtractVoiceover ? ' — Normal & Voiceover WADs' : ''}...`,
                     'info',
                 );
 
@@ -742,15 +690,23 @@ export function AssetExtractor() {
                 setExtractionProgress((prev) => ({ ...prev, [skinKey]: 'Starting extraction...' }));
 
                 try {
-                    const result = await extractChampionAssets(championId, skinId, outputDir, useExtractVoiceover, {
-                        clean,
-                        chromaId: chromaId ?? undefined,
-                        preserveHudIcons2D: payload?.options?.preserveHudIcons2D !== false,
-                        skipSfx: payload?.options?.skipSfx !== false,
-                    });
+                    // TFT companions use the Companions WAD but the SAME skin-graph
+                    // clean extract + finalize pipeline; champion id === pet alias.
+                    const result = isTft
+                        ? await extractTftCompanion(petAlias!, tier ?? skinId, outputDir, {
+                              clean,
+                              preserveHudIcons2D: payload?.options?.preserveHudIcons2D !== false,
+                              skipSfx: payload?.options?.skipSfx !== false,
+                          })
+                        : await extractChampionAssets(championId, skinId, outputDir, useExtractVoiceover, {
+                              clean,
+                              chromaId: chromaId ?? undefined,
+                              preserveHudIcons2D: payload?.options?.preserveHudIcons2D !== false,
+                              skipSfx: payload?.options?.skipSfx !== false,
+                          });
                     addRecentOutputPath(outputDir);
                     addConsoleLog(
-                        `${progress} Extracted ${skinName} (${championName}): ${result.files} file(s) → ${result.outputDir}`,
+                        `${progress} Extracted ${skinName} (${isTft ? petAlias : championName}): ${result.files} file(s) → ${result.outputDir}`,
                         'success',
                     );
 
@@ -761,8 +717,9 @@ export function AssetExtractor() {
                         try {
                             const fin = await extractorFinalizeSkinOnly({
                                 contentDir: result.outputDir,
-                                champion: championId,
-                                skinId: chromaId ?? skinId,
+                                // For TFT the "champion" folder is the pet alias.
+                                champion: isTft ? petAlias! : championId,
+                                skinId: isTft ? (tier ?? skinId) : (chromaId ?? skinId),
                                 splitVfx: payload?.options?.splitVfx === true,
                                 splitAnm: payload?.options?.splitAnm === true,
                                 consolidateAssets: payload?.options?.consolidateAssets !== false,
@@ -799,15 +756,15 @@ export function AssetExtractor() {
     /* Repath: open the prefix modal for the selected skins. Wards/emotes/TFT
        are not repathable (they aren't champion skin graphs). */
     const handleRepath = async () => {
-        if (viewMode !== 'champion') {
-            addConsoleLog('Repath is only available for champion skins.', 'warning');
+        if (viewMode !== 'champion' && viewMode !== 'tft') {
+            addConsoleLog('Repath is only available for champion skins and TFT companions.', 'warning');
             return;
         }
         if (!(await ensureSetupReady('repathing'))) return;
         const normalized = getNormalizedSelectedSkins();
         if (normalized.length === 0) return;
         setPendingRepathSkins(
-            normalized.map((n) => ({ championName: n.championName, skinId: n.skinId, skinName: n.skinName, chromaId: n.chromaId })),
+            normalized.map((n) => ({ championName: n.championName, skinId: n.skinId, skinName: n.skinName, chromaId: n.chromaId, petAlias: n.petAlias, tier: n.tier })),
         );
         setShowPrefixModal(true);
     };
@@ -837,12 +794,16 @@ export function AssetExtractor() {
                 }
                 const skin = skins[i];
                 const norm = getNormalizedSelectedSkins().find((n) => n.championName === skin.championName && n.skinId === skin.skinId);
+                const isTft = !!skin.petAlias;
                 const championId = norm?.championId || champions.find((c) => c.name === skin.championName)?.id || '';
+                // For TFT the "champion" folder is the pet alias; skin index is the tier.
+                const repathChampion = isTft ? skin.petAlias! : championId;
+                const repathSkinId = isTft ? (skin.tier ?? skin.skinId) : (skin.chromaId ?? skin.skinId);
                 const progress = `${i + 1}/${skins.length}`;
                 const skinKey = `${skin.championName}_${skin.skinId}`;
                 const prefix = payload.prefixesBySkinId[skin.skinId] || '';
 
-                if (!championId) {
+                if (!isTft && !championId) {
                     addConsoleLog(`${progress} Skipped ${skin.skinName} (${skin.championName}) — no League WAD found.`, 'warning');
                     continue;
                 }
@@ -860,20 +821,26 @@ export function AssetExtractor() {
 
                 try {
                     // 1) Clean-extract this skin (skin files only) into a folder.
-                    addConsoleLog(`${progress} Extracting ${skin.skinName} (${skin.championName})...`, 'info');
-                    const ext = await extractChampionAssets(championId, skin.skinId, outputDir, payload.extractVoiceover, {
-                        clean: true,
-                        chromaId: skin.chromaId ?? undefined,
-                        preserveHudIcons2D: payload.preserveHudIcons2D,
-                        skipSfx: payload.skipSfxRepath,
-                    });
+                    addConsoleLog(`${progress} Extracting ${skin.skinName} (${isTft ? skin.petAlias : skin.championName})...`, 'info');
+                    const ext = isTft
+                        ? await extractTftCompanion(skin.petAlias!, skin.tier ?? skin.skinId, outputDir, {
+                              clean: true,
+                              preserveHudIcons2D: payload.preserveHudIcons2D,
+                              skipSfx: payload.skipSfxRepath,
+                          })
+                        : await extractChampionAssets(championId, skin.skinId, outputDir, payload.extractVoiceover, {
+                              clean: true,
+                              chromaId: skin.chromaId ?? undefined,
+                              preserveHudIcons2D: payload.preserveHudIcons2D,
+                              skipSfx: payload.skipSfxRepath,
+                          });
 
                     // 2) Repath the extracted folder in place -> installable mod.
                     addConsoleLog(`${progress} Repathing ${skin.skinName} with prefix "${prefix}"...`, 'info');
                     const rep = await extractorRepath({
                         contentDir: ext.outputDir,
-                        champion: championId,
-                        skinId: skin.chromaId ?? skin.skinId,
+                        champion: repathChampion,
+                        skinId: repathSkinId,
                         prefix,
                         combineLinked: true,
                         cleanupUnused: false,

@@ -1,7 +1,9 @@
+import { useRef, useState } from 'react';
 import KeyboardDoubleArrowLeftIcon from '@mui/icons-material/KeyboardDoubleArrowLeft';
 import { RenameInput } from '../common/Inputs';
 import SystemActionsButton from '../SystemActionsButton';
 import EmitterItem from './EmitterItem';
+import { usePortDrag, usePortDropZone } from '../../usePortDrag';
 import { getShortSystemName, type VfxSystem } from '../../model';
 import type { ListSharedProps } from './types';
 
@@ -18,9 +20,6 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
         setSelectedTargetSystem,
         pressedSystemKey,
         setPressedSystemKey,
-        dragStartedKey,
-        dragStartedKeyRef,
-        setDragStartedKey,
         handlePortAllEmitters,
         handleRenameSystem,
         renamingSystem,
@@ -29,8 +28,6 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
         trimDonorNames,
         collapsedSystems,
         toggleSystemCollapse,
-        handleMoveEmitter,
-        handlePortEmitter,
         hasResourceResolver,
         hasSkinCharacterData,
         actionsMenuAnchor,
@@ -40,128 +37,54 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
         handleAddIdleParticles,
         handleAddChildParticles,
         handleDeleteAllEmitters,
-        processVfxSystemDrop,
+        dropEmitterOnSystem,
     } = props;
 
+    const { startDrag, dragging } = usePortDrag();
+
+    // Target rows are emitter-drop zones (a donor/target emitter dropped here
+    // ports/moves into this system). Donor rows are drag sources instead.
+    const rowRef = useRef<HTMLDivElement>(null);
+    const [isEmitterDropOver, setIsEmitterDropOver] = useState(false);
+    usePortDropZone(
+        `target-system-${system.key}`,
+        rowRef,
+        (payload) => isTarget && payload.kind === 'emitter' && payload.sourceSystemKey !== system.key,
+        (payload) => {
+            if (payload.kind === 'emitter') dropEmitterOnSystem?.(payload, system.key);
+        },
+        setIsEmitterDropOver
+    );
+
     const isPressed = pressedSystemKey === system.key && !isTarget;
-    const isDragging = dragStartedKey === system.key && !isTarget;
+    const isDragging = dragging?.kind === 'system' && dragging.systemKey === system.key && !isTarget;
+    const particleNameForUi =
+        system && typeof system.particleName === 'string' && system.particleName.trim() ? system.particleName : system.name;
 
     return (
         <div
             key={system.key}
-            draggable={!isTarget}
+            ref={rowRef}
             title={!isTarget ? 'Drag into Target to add full system' : undefined}
-            onMouseDown={(e) => {
+            onPointerDown={(e) => {
+                if (isTarget) return;
+                // The row (including its title header) is the drag handle. Only
+                // bail on genuinely interactive controls — buttons, the collapse
+                // chevron, and the rename input — so grabbing the name still drags.
                 const tgt = e.target as HTMLElement;
-                if (isTarget || tgt.closest('button') || tgt.closest('.port-btn') || tgt.closest('.particle-title-div')) return;
+                if (tgt.closest('button') || tgt.closest('.port-btn') || tgt.closest('input') || tgt.closest('[data-no-drag]')) return;
                 setPressedSystemKey?.(system.key);
-                setDragStartedKey?.(null);
+                startDrag({ kind: 'system', systemKey: system.key, label: particleNameForUi }, e);
             }}
             onMouseUp={() => {
                 if (isTarget) return;
                 if (!isDragging) setPressedSystemKey?.(null);
             }}
-            onDragStart={(e) => {
-                if (isTarget) return;
-                e.stopPropagation();
-                setDragStartedKey?.(system.key);
-                console.log('[port drag] donor-system:dragstart', {
-                    systemKey: system.key,
-                    particleName: system.particleName || system.name,
-                });
-                // Set the payload first and on its own: if the drag-image code
-                // throws, the drag must still carry the system data.
-                try {
-                    const particleNameForUi = system && typeof system.particleName === 'string' && system.particleName.trim() ? system.particleName : system.name;
-                    const payload = { name: particleNameForUi, systemKey: system.key, path: system.path };
-                    e.dataTransfer.effectAllowed = 'copyMove';
-                    e.dataTransfer.setData('text/plain', particleNameForUi);
-                    e.dataTransfer.setData('application/x-vfxsys', JSON.stringify(payload));
-                    console.log('[port drag] donor-system:payload-set', {
-                        systemKey: system.key,
-                        particleName: particleNameForUi,
-                        types: Array.from(e.dataTransfer.types || []),
-                    });
-                } catch {
-                    /* noop */
-                }
-                try {
-                    const el = e.currentTarget;
-                    const dragImage = el.cloneNode(true) as HTMLElement;
-                    dragImage.style.transform = 'rotate(2deg)';
-                    dragImage.style.opacity = '0.9';
-                    document.body.appendChild(dragImage);
-                    dragImage.style.position = 'absolute';
-                    dragImage.style.top = '-1000px';
-                    e.dataTransfer.setDragImage(dragImage, 0, 0);
-                    setTimeout(() => {
-                        try {
-                            if (dragImage.parentNode === document.body) document.body.removeChild(dragImage);
-                        } catch {
-                            /* noop */
-                        }
-                    }, 0);
-                } catch {
-                    /* noop */
-                }
-            }}
-            onDragEnd={() => {
-                if (isTarget) return;
-                console.log('[port drag] donor-system:dragend', {
-                    systemKey: system.key,
-                    particleName: system.particleName || system.name,
-                });
-                setPressedSystemKey?.(null);
-                setDragStartedKey?.(null);
-            }}
-            className={`particle-div ${isTarget && selectedTargetSystem === system.key ? 'selected-system' : ''}`}
+            className={`particle-div ${isTarget && selectedTargetSystem === system.key ? 'selected-system' : ''}${isEmitterDropOver ? ' port-drop-active' : ''}`}
             onClick={(e) => {
                 if (isTarget) {
                     const clickedOnHeader = (e.target as HTMLElement).closest('.particle-title-div');
                     if (clickedOnHeader) setSelectedTargetSystem(selectedTargetSystem === system.key ? null : system.key);
-                }
-            }}
-            onDragOver={(e) => {
-                if (!isTarget) return;
-                const types = e.dataTransfer?.types;
-                const hasEmitterType = types && Array.from(types).includes('application/x-vfxemitter');
-                // System drags bubble up to the column drop zone; detect them
-                // via the payload type or the live drag state (types can be
-                // withheld during dragover in WebView2).
-                const isSystemDrag = (types && Array.from(types).includes('application/x-vfxsys')) || !!dragStartedKeyRef?.current;
-                if (isSystemDrag) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.dataTransfer.dropEffect = 'copy';
-                    return;
-                }
-                if (hasEmitterType) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.dataTransfer.dropEffect = 'move';
-                }
-            }}
-            onDrop={(e) => {
-                if (!isTarget) return;
-                const types = e.dataTransfer?.types;
-                const isSystemDrag = (types && Array.from(types).includes('application/x-vfxsys')) || !!dragStartedKeyRef?.current;
-                if (isSystemDrag) {
-                    processVfxSystemDrop?.(e, 'target system row');
-                    return;
-                }
-                try {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const data = e.dataTransfer.getData('application/x-vfxemitter');
-                    if (!data) return;
-                    const emitterData = JSON.parse(data);
-                    const { sourceType, sourceSystemKey, emitterName } = emitterData;
-                    if (sourceSystemKey && emitterName && system.key !== sourceSystemKey) {
-                        if (sourceType === 'donor') handlePortEmitter(sourceSystemKey, emitterName, undefined, system.key);
-                        else handleMoveEmitter?.(sourceSystemKey, emitterName, system.key);
-                    }
-                } catch {
-                    /* noop */
                 }
             }}
             style={{
@@ -185,6 +108,7 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                 }}
             >
                 <div
+                    data-no-drag
                     onClick={(e) => {
                         e.stopPropagation();
                         toggleSystemCollapse(system.key);

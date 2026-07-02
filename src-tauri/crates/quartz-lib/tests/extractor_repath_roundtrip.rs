@@ -378,6 +378,7 @@ fn finalize_skin_files_only_combines_without_prefix() {
         split_vfx: false,
         split_anm: false,
         consolidate_assets: false, // isolate the combine-no-prefix assertion
+        consolidate_prefix: "",
         wad_folder_override: None,
     })
     .expect("finalize failed");
@@ -481,4 +482,151 @@ fn clean_extract_skip_sfx_excludes_banks() {
         println!("[test] NOTE: {} skin{} ships no SFX banks; toggle is a no-op here", champ, skin);
     }
     println!("[test] PASS — skip_sfx excludes SFX banks from clean extract");
+}
+
+/// Probe: dump a sample of the Companions WAD's internal structure so we know
+/// how TFT pets map to skin bins (folder naming, skin<N>.bin, tier↔N). Ignored
+/// by default; run with `--ignored --nocapture`.
+#[test]
+#[ignore]
+fn probe_companions_wad_structure() {
+    let Some(root) = league_root() else { eprintln!("no league"); return; };
+    let wad = root.join("Game").join("DATA").join("FINAL").join("Companions.wad.client");
+    if !wad.is_file() { eprintln!("no companions wad"); return; }
+
+    let toc = quartz_lib::wad::read_wad_toc(&wad).expect("toc");
+    // Collect resolved character-folder skin bins + character folders.
+    let mut skin_bins: Vec<String> = Vec::new();
+    let mut char_folders: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for e in &toc {
+        if let Some(rel) = &e.resolved_path {
+            let r = rel.replace('\\', "/").to_lowercase();
+            if let Some(i) = r.find("characters/") {
+                let after = &r[i + "characters/".len()..];
+                if let Some(slash) = after.find('/') {
+                    char_folders.insert(after[..slash].to_string());
+                }
+            }
+            if r.contains("/skins/skin") && r.ends_with(".bin") && r.contains("characters/") {
+                skin_bins.push(r);
+            }
+        }
+    }
+    println!("[probe] resolved skin bins under characters/*/skins/: {}", skin_bins.len());
+    for s in skin_bins.iter().take(30) { println!("   {}", s); }
+    println!("[probe] distinct character folders: {}", char_folders.len());
+    for c in char_folders.iter().take(40) { println!("   {}", c); }
+    // Show the full asset tree for one sample pet to see the layout.
+    if let Some(sample) = char_folders.iter().find(|c| skin_bins.iter().any(|s| s.contains(&format!("characters/{}/skins/", c)))) {
+        println!("[probe] SAMPLE pet folder '{}' — its resolved paths:", sample);
+        let mut n = 0;
+        for e in &toc {
+            if let Some(rel) = &e.resolved_path {
+                let r = rel.replace('\\', "/").to_lowercase();
+                if r.contains(&format!("characters/{}/", sample)) {
+                    println!("     {}", r);
+                    n += 1;
+                    if n > 40 { println!("     ..."); break; }
+                }
+            }
+        }
+    }
+}
+
+/// TFT companion parity: clean-extract a pet from Companions.wad (skin-graph,
+/// filtered to the pet), then run the SAME repath as champions. Proves TFT can
+/// be skin-files-only extracted AND repathed. Env: QUARTZ_TFT_PET (default
+/// petbunny), QUARTZ_TFT_SKIN (default 8).
+#[test]
+fn tft_companion_clean_extract_and_repath() {
+    let Some(root) = league_root() else { eprintln!("skipping: no league"); return; };
+    let wad = root.join("Game").join("DATA").join("FINAL").join("Companions.wad.client");
+    if !wad.is_file() { eprintln!("skipping: no Companions WAD"); return; }
+
+    let pet = std::env::var("QUARTZ_TFT_PET").unwrap_or_else(|_| "petbunny".to_string());
+    let skin: u32 = std::env::var("QUARTZ_TFT_SKIN").ok().and_then(|s| s.parse().ok()).unwrap_or(8);
+    println!("[tft] pet={} skin={}", pet, skin);
+
+    let out_root = std::env::temp_dir().join("quartz-tft-test");
+    let _ = std::fs::remove_dir_all(&out_root);
+    std::fs::create_dir_all(&out_root).unwrap();
+
+    // 1) Clean (skin-files-only) extract of the pet.
+    let ext = quartz_lib::extractor::extract_tft(
+        quartz_lib::extractor::TftExtractOptions {
+            league_root: &root,
+            pet_alias: &pet,
+            skin_id: skin,
+            output_dir: &out_root,
+            clean: true,
+            preserve_hud_icons2d: true,
+            skip_sfx: true,
+        },
+        |_p| {},
+    ).expect("tft clean extract failed");
+
+    let content_dir = PathBuf::from(&ext.output_dir);
+    println!("[tft] extracted to {} ({} files)", content_dir.display(), ext.files);
+    let pre_bins = find_files(&content_dir, is_bin);
+    let pre_vfx: usize = pre_bins.iter().map(|b| vfx_system_count(b)).sum();
+    println!("[tft] pre-repath: {} bins, {} VFX", pre_bins.len(), pre_vfx);
+
+    // ONLY the requested pet folder should be present (filter works).
+    let other_pets: Vec<String> = pre_bins.iter().filter_map(|b| character_of(b))
+        .filter(|c| c != &pet).collect();
+    assert!(other_pets.is_empty(), "clean extract pulled in other pets: {:?}", other_pets);
+    // The pet's skin bin must exist.
+    let has_skin = pre_bins.iter().any(|b| {
+        let s = b.to_string_lossy().to_lowercase().replace('\\', "/");
+        s.contains(&format!("/characters/{}/skins/", pet)) && s.contains("skin")
+    });
+    assert!(has_skin, "no skin bin extracted for pet {}", pet);
+
+    // 2) Repath it (same champion pipeline; pet alias as champion).
+    let rep = repath_extracted(RepathOptions {
+        content_dir: &content_dir,
+        champion: &pet,
+        skin_id: skin,
+        creator_name: "testmod",
+        project_name: "",
+        combine_linked: true,
+        cleanup_unused: false,
+        skip_sfx: true,
+        skip_vo: true,
+        split_vfx: false,
+        split_anm: false,
+        consolidate_assets: false,
+        wad_folder_override: None,
+    }).expect("tft repath failed");
+    println!("[tft] repath: binsCombined={} chars={} pathsModified={}", rep.bins_combined, rep.characters_combined, rep.paths_modified);
+
+    let post_bins = find_files(&content_dir, is_bin);
+    let skin_bins: Vec<&PathBuf> = post_bins.iter().filter(|b| {
+        let s = b.to_string_lossy().to_lowercase().replace('\\', "/");
+        s.contains("/skins/") && (s.ends_with(&format!("/skin{}.bin", skin)) || s.ends_with(&format!("/skin{:02}.bin", skin)))
+    }).collect();
+    assert!(!skin_bins.is_empty(), "pet skin bin gone after repath");
+
+    // No _Concat.bin; base <pet>.bin pruned; pet's assets prefixed.
+    for b in &post_bins {
+        let name = b.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+        assert!(!name.contains("_concat"), "TFT repath produced _Concat.bin");
+    }
+    for sb in &skin_bins {
+        let unpref = bin_first_unprefixed_asset(sb, "testmod");
+        assert!(unpref.is_none(), "TFT pet '{}' has UNPREFIXED asset '{}'", pet, unpref.unwrap_or_default());
+    }
+    let loose = content_dir.join("assets").join("characters");
+    if loose.is_dir() {
+        let leftovers = find_files(&loose, |p| {
+            let s = p.to_string_lossy().to_lowercase().replace('\\', "/");
+            !s.contains("/hud/icons2d/")
+        });
+        assert!(leftovers.is_empty(), "{} TFT asset(s) left unprefixed under assets/characters/", leftovers.len());
+    }
+
+    let vfx_after: usize = post_bins.iter().map(|b| vfx_system_count(b)).sum();
+    assert_eq!(vfx_after, pre_vfx, "TFT VFX lost after repath: {} vs {}", vfx_after, pre_vfx);
+
+    println!("[tft] PASS — pet '{}' clean-extracted + repathed like a champion, {} VFX intact", pet, vfx_after);
 }

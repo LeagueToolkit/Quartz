@@ -153,6 +153,7 @@ fn main() {
             commands::bumpath::bumpath_scan_entries,
             commands::file_ops::file_randomize,
             commands::file_ops::file_rename,
+            commands::file_ops::paths_exist,
             commands::file_ops::tools_execute,
             commands::imgrecolor::imgrecolor_decode_texture,
             commands::imgrecolor::imgrecolor_save_texture,

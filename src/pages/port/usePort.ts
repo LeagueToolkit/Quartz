@@ -273,22 +273,41 @@ export default function usePort() {
        donor bin's own folder. */
     const copyDonorAssets = useCallback(
         async (assetPaths: string[]) => {
-            if (!assetPaths || assetPaths.length === 0) return;
-            if (!targetPath || !targetPath.includes('.')) return;
+            console.log('[port assets] copyDonorAssets called', {
+                assetCount: assetPaths?.length ?? 0,
+                assetPaths,
+                targetPath,
+                donorPath,
+                donorTempRoot,
+            });
+            if (!assetPaths || assetPaths.length === 0) {
+                console.warn('[port assets] no asset paths extracted from the ported system — nothing to copy');
+                return;
+            }
+            if (!targetPath || !targetPath.includes('.')) {
+                console.warn('[port assets] no valid target path; skipping asset copy', { targetPath });
+                return;
+            }
             const sourceDirs = new Set<string>();
             if (donorTempRoot) sourceDirs.add(`${donorTempRoot}/combined`);
             const donorDir = donorPath && donorPath.includes('.') ? donorPath.replace(/[/\\][^/\\]*$/, '') : '';
             if (donorDir) sourceDirs.add(donorDir);
-            if (sourceDirs.size === 0) return;
+            if (sourceDirs.size === 0) {
+                console.warn('[port assets] no source dirs (no donorTempRoot and no donorPath); cannot locate assets');
+                return;
+            }
+            console.log('[port assets] invoking backend copy', { sourceDirs: Array.from(sourceDirs), targetBinPath: targetPath });
             try {
                 const res = await portCopyAssetsToTarget({
                     assetPaths,
                     sourceDirs: Array.from(sourceDirs),
                     targetBinPath: targetPath,
                 });
+                console.log('[port assets] backend result', res);
                 if (res.copied > 0) setStatusMessage(`Copied ${res.copied} asset file(s) into the target mod`);
-            } catch {
-                /* asset copy is best-effort */
+                else if (res.missing > 0) setStatusMessage(`No assets copied (${res.missing} not found under donor)`);
+            } catch (err) {
+                console.error('[port assets] backend copy threw', err);
             }
         },
         [targetPath, donorPath, donorTempRoot]
@@ -418,7 +437,9 @@ export default function usePort() {
         }
     }, []);
 
-    const processDonorBin = useCallback(async (filePath: string) => {
+    // `recordRecent` defaults true; donor-from-game passes false because its
+    // path is a throwaway temp extraction that shouldn't pollute recent history.
+    const processDonorBin = useCallback(async (filePath: string, recordRecent = true) => {
         if (!filePath) return;
         try {
             setIsProcessing(true);
@@ -433,7 +454,7 @@ export default function usePort() {
             setDonorModel(model);
             setDonorPath(filePath);
             setCollapsedDonorSystems(new Set(model.systems.map((s) => s.key)));
-            useUiPrefsStore.getState().pushRecentBinFor('donor', filePath);
+            if (recordRecent) useUiPrefsStore.getState().pushRecentBinFor('donor', filePath);
             setStatusMessage(`Donor bin loaded: ${model.systems.length} systems found`);
         } catch (error) {
             setStatusMessage(`Error: ${(error as Error).message}`);

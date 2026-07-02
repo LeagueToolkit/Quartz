@@ -408,7 +408,7 @@ where
 
     // Main archive: whole-WAD (empty selection) or the pruned skin-only graph.
     let main = if opts.clean {
-        extract_skin_clean(&main_wad, &stem, effective_skin_id, opts.preserve_hud_icons2d, opts.skip_sfx, &extract_root, &progress)?
+        extract_skin_clean(&main_wad, &stem, effective_skin_id, opts.preserve_hud_icons2d, opts.skip_sfx, None, &extract_root, &progress)?
     } else {
         extract_archive(&main_wad, &extract_root, "extracting", &progress)?
     };
@@ -618,6 +618,9 @@ fn extract_skin_clean<F>(
     skin_id: u32,
     preserve_hud_icons2d: bool,
     skip_sfx: bool,
+    // When set, only seed from this character folder — used for TFT, where the
+    // Companions WAD holds ~80 pets and `skin<N>.bin` matches many of them.
+    champ_filter: Option<&str>,
     out_dir: &Path,
     progress: &F,
 ) -> Result<wad_explorer::ExtractResult>
@@ -642,11 +645,16 @@ where
         all_hashes.contains(&h).then_some(h)
     };
 
-    // Seed: every skin<N>.bin rel present in the resolved TOC. Prefer the
-    // champion stem as the main seed.
+    // Seed: every skin<N>.bin rel present in the resolved TOC. When a
+    // `champ_filter` is given (TFT), restrict to that character folder so the
+    // Companions WAD's other ~80 pets aren't pulled in.
+    let champ_filter = champ_filter.map(|c| c.to_lowercase());
     let seed_rels: Vec<String> = by_path
         .keys()
-        .filter(|rel| skin_bin_match(rel, skin_id).is_some())
+        .filter(|rel| match skin_bin_match(rel, skin_id) {
+            Some(folder) => champ_filter.as_deref().map(|f| folder == f).unwrap_or(true),
+            None => false,
+        })
         .cloned()
         .collect();
     if seed_rels.is_empty() {
@@ -745,23 +753,34 @@ fn pet_folder_match(rel: &str, pet_alias: &str) -> bool {
     rel.starts_with(&prefix_assets) || rel.starts_with(&prefix_data)
 }
 
-/// Extract a TFT companion's asset folder from `Companions.wad.client`.
-///
-/// The WAD lives next to the champion archives (`Game/DATA/FINAL`); we filter
-/// to the pet's `assets|data/characters/<pet_alias>/` subtree (whole-pet-folder
-/// for MVP) and write it into a `<pet_alias>_tier<N>_extracted/` wrapper.
-pub fn extract_tft<F>(
-    league_root: &Path,
-    pet_alias: &str,
-    tier: u32,
-    output_dir: &Path,
-    progress: F,
-) -> Result<ExtractSummary>
+/// Options for [`extract_tft`].
+pub struct TftExtractOptions<'a> {
+    pub league_root: &'a Path,
+    /// WAD folder name for the pet (e.g. `petbunny`), NOT the display name.
+    pub pet_alias: &'a str,
+    /// Skin index inside the pet folder (`skin<N>.bin`) — derived from `itemId % 1000`.
+    pub skin_id: u32,
+    pub output_dir: &'a Path,
+    /// Skin-files-only: seed the pet's `skin<N>.bin` graph instead of the whole
+    /// pet folder. Enables the same combine/repath/finalize pipeline as champions.
+    pub clean: bool,
+    /// Carry `hud/icons2d/` for the pet (clean mode only).
+    pub preserve_hud_icons2d: bool,
+    /// Skip exporting SFX audio banks (clean mode only).
+    pub skip_sfx: bool,
+}
+
+/// Extract a TFT companion from `Companions.wad.client`. In clean mode this is
+/// the SAME skin-graph extraction as champions (seeded from the pet's
+/// `skin<N>.bin`, filtered to the pet folder), so it can then go through
+/// [`repath_extracted`] / [`finalize_extracted`] exactly like a champion. In
+/// non-clean mode it dumps the whole `characters/<pet_alias>/` subtree.
+pub fn extract_tft<F>(opts: TftExtractOptions<'_>, progress: F) -> Result<ExtractSummary>
 where
     F: Fn(ExtractProgress) + Send + Sync,
 {
     let started = std::time::Instant::now();
-    let companions_dir = champions_dir(league_root)
+    let companions_dir = champions_dir(opts.league_root)
         .parent()
         .map(Path::to_path_buf)
         .ok_or_else(|| Error::InvalidInput("Could not locate DATA/FINAL directory".into()))?;
@@ -773,8 +792,9 @@ where
         )));
     }
 
-    let pet_alias = pet_alias.to_lowercase();
-    let extract_root = unique_dir(output_dir, &format!("{}_tier{}_extracted", pet_alias, tier));
+    let pet_alias = opts.pet_alias.to_lowercase();
+    let suffix = if opts.clean { "_extracted_clean" } else { "_extracted" };
+    let extract_root = unique_dir(opts.output_dir, &format!("{}_tier{}{}", pet_alias, opts.skin_id, suffix));
     std::fs::create_dir_all(&extract_root).map_err(|e| Error::io_with_path(e, &extract_root))?;
 
     progress(ExtractProgress {
@@ -784,31 +804,48 @@ where
         message: format!("Reading {}", file_label(&wad)),
     });
 
-    let (by_path, _by_hex, _all_hashes) = resolve_toc(&wad)?;
-    let selection: Vec<u64> = by_path
-        .iter()
-        .filter(|(rel, _)| pet_folder_match(rel, &pet_alias))
-        .map(|(_, &hash)| hash)
-        .collect();
-    if selection.is_empty() {
-        return Err(Error::InvalidInput(format!(
-            "No assets found for TFT companion '{}' in {}",
-            pet_alias,
-            file_label(&wad)
-        )));
-    }
-
-    let wad_str = wad.to_string_lossy();
-    let out_str = extract_root.to_string_lossy();
-    let cb = |done: u64, total: u64| {
-        progress(ExtractProgress {
-            phase: "extracting".to_string(),
-            current: done,
-            total,
-            message: String::new(),
-        });
+    let res = if opts.clean {
+        // Same skin-graph clean extract as champions, filtered to this pet.
+        extract_skin_clean(
+            &wad,
+            &pet_alias,
+            opts.skin_id,
+            opts.preserve_hud_icons2d,
+            opts.skip_sfx,
+            Some(&pet_alias),
+            &extract_root,
+            &progress,
+        )?
+    } else {
+        // Whole-pet-folder dump (legacy behavior).
+        let (by_path, _by_hex, _all_hashes) = resolve_toc(&wad)?;
+        let selection: Vec<u64> = by_path
+            .iter()
+            .filter(|(rel, _)| pet_folder_match(rel, &pet_alias))
+            .map(|(_, &hash)| hash)
+            .collect();
+        if selection.is_empty() {
+            return Err(Error::InvalidInput(format!(
+                "No assets found for TFT companion '{}' in {}",
+                pet_alias,
+                file_label(&wad)
+            )));
+        }
+        let wad_str = wad.to_string_lossy();
+        let out_str = extract_root.to_string_lossy();
+        let cb = |done: u64, total: u64| {
+            progress(ExtractProgress {
+                phase: "extracting".to_string(),
+                current: done,
+                total,
+                message: String::new(),
+            });
+        };
+        wad_explorer::extract_selected(&wad_str, &selection, &out_str, Some(&cb))?
     };
-    let res = wad_explorer::extract_selected(&wad_str, &selection, &out_str, Some(&cb))?;
+
+    // hashed_files.json parity (mirrors champion extraction).
+    write_hashed_files_json(&extract_root, &wad);
 
     let elapsed_ms = started.elapsed().as_millis() as u64;
     progress(ExtractProgress {
@@ -964,8 +1001,12 @@ pub struct FinalizeOptions<'a> {
     /// Split VFX / ANM out of skin BINs into siblings (old Quartz toggles, off).
     pub split_vfx: bool,
     pub split_anm: bool,
-    /// Consolidate VFX assets into `ASSETS/skin<N>_<champ>_particles/` (default on).
+    /// Consolidate VFX assets into `ASSETS/[<prefix>/]skin<N>_<champ>_particles/`
+    /// (default on).
     pub consolidate_assets: bool,
+    /// Prefix segment for the consolidated folder (`ASSETS/<prefix>/skin…`).
+    /// Empty = no prefix segment (the plain skin-dump layout).
+    pub consolidate_prefix: &'a str,
     pub wad_folder_override: Option<String>,
 }
 
@@ -1005,9 +1046,9 @@ pub fn finalize_extracted(opts: FinalizeOptions<'_>) -> Result<FinalizeSummary> 
     // Prune every base `<char>.bin` (always deleted after combine, old Quartz).
     let base_bins_pruned = prune_base_character_bins(opts.content_dir);
 
-    // Split (if on) THEN consolidate with EMPTY prefix → `ASSETS/skin<N>_<champ>_particles/`.
+    // Split (if on) THEN consolidate → `ASSETS/[<prefix>/]skin<N>_<champ>_particles/`.
     run_split_and_consolidate(
-        opts.content_dir, opts.skin_id, opts.split_vfx, opts.split_anm, opts.consolidate_assets, "",
+        opts.content_dir, opts.skin_id, opts.split_vfx, opts.split_anm, opts.consolidate_assets, opts.consolidate_prefix,
     );
 
     Ok(FinalizeSummary {

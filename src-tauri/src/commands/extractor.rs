@@ -179,14 +179,21 @@ pub async fn extract_champion_assets(
 /// filtered to the given pet's folder, into `output_dir`. Streams
 /// `extract-progress` events while it runs.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn extract_tft_companion(
     app: AppHandle,
     pet_alias: String,
     tier: u32,
     output_dir: String,
+    clean: Option<bool>,
+    preserve_hud_icons2d: Option<bool>,
+    skip_sfx: Option<bool>,
 ) -> Result<ExtractResult, String> {
     let league = get_league_path()
         .ok_or_else(|| "Could not locate a League of Legends install. Set the path in Settings.".to_string())?;
+    let clean = clean.unwrap_or(true);
+    let preserve_hud_icons2d = preserve_hud_icons2d.unwrap_or(true);
+    let skip_sfx = skip_sfx.unwrap_or(true);
 
     let summary = tokio::task::spawn_blocking(move || {
         let root = PathBuf::from(&league);
@@ -195,7 +202,18 @@ pub async fn extract_tft_companion(
         let progress = move |p: ExtractProgress| {
             let _ = app.emit(PROGRESS_EVENT, p);
         };
-        extractor::extract_tft(&root, &pet_alias, tier, &out, progress)
+        extractor::extract_tft(
+            extractor::TftExtractOptions {
+                league_root: &root,
+                pet_alias: &pet_alias,
+                skin_id: tier,
+                output_dir: &out,
+                clean,
+                preserve_hud_icons2d,
+                skip_sfx,
+            },
+            progress,
+        )
     })
     .await
     .map_err(|e| format!("Extraction task failed: {}", e))?
@@ -280,6 +298,7 @@ pub async fn extractor_finalize_skin_only(
             split_vfx: split_vfx.unwrap_or(false),
             split_anm: split_anm.unwrap_or(false),
             consolidate_assets: consolidate_assets.unwrap_or(true),
+            consolidate_prefix: "",
             wad_folder_override,
         })
     })

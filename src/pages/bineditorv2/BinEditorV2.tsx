@@ -9,6 +9,7 @@ import {
 } from '@/lib/api/bineditor';
 import { useNavigationStore, useNotificationStore, useUiPrefsStore } from '@/lib/stores';
 import { useFileDrop } from '@/lib/util/useFileDrop';
+import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
 import { Switch } from '@/components/settings/primitives';
 import {
     cancelTextureHoverClose, removeTextureHoverPreview, scheduleTextureHoverClose, showTextureHoverPreview,
@@ -54,8 +55,10 @@ function relativeTime(iso: string): string {
 function BinEditorV2() {
     const page = useNavigationStore((s) => s.page);
     const notify = useNotificationStore((s) => s.push);
-    const recentBins = useUiPrefsStore((s) => s.recentBins);
+    const storedRecentBins = useUiPrefsStore((s) => s.recentBins);
     const removeRecentBin = useUiPrefsStore((s) => s.removeRecentBin);
+    // Only show recent bins whose file still exists; prune vanished ones.
+    const recentBins = useExistingRecentBins(storedRecentBins, removeRecentBin);
 
     const [model, setModel] = useState<EditorModel | null>(null);
     const [filePath, setFilePath] = useState<string | null>(null);

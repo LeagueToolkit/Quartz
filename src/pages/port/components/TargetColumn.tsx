@@ -1,10 +1,11 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import SearchIcon from '@mui/icons-material/Search';
 import { FolderOpen as FolderOpenIcon, Scissors as ScissorsIcon } from 'lucide-react';
 import { SearchInput } from './common/Inputs';
 import { useBinFileDrop } from './common/binFileDrop';
 import PortRecentBins from './common/PortRecentBins';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
+import { usePortDropZone, type PortDragPayload } from '../usePortDrag';
 import type { VfxSystem, VfxSystemMap } from '../model';
 import type { ListSharedProps } from './ParticleSystemList/types';
 
@@ -22,6 +23,7 @@ interface TargetColumnProps extends ListSharedProps {
     handleTargetDropDragEnter: (e: React.DragEvent) => void;
     handleTargetDropDragLeave: (e: React.DragEvent) => void;
     processVfxSystemDrop: (e: React.DragEvent, source: string) => void;
+    dropDonorSystem?: (payload: Extract<PortDragPayload, { kind: 'system' }>) => void;
     targetSystems: VfxSystemMap;
     targetListRef: React.RefObject<HTMLDivElement>;
     filteredTargetSystems: VfxSystem[];
@@ -44,6 +46,7 @@ export default function TargetColumn(props: TargetColumnProps) {
         handleTargetDropDragEnter,
         handleTargetDropDragLeave,
         processVfxSystemDrop,
+        dropDonorSystem,
         targetSystems,
         targetListRef,
         filteredTargetSystems,
@@ -59,8 +62,28 @@ export default function TargetColumn(props: TargetColumnProps) {
     }, [processTargetBin]);
     const fileDrop = useBinFileDrop(handleFileDrop);
 
+    // Pointer-drag drop zone: the whole target column accepts a donor system
+    // drop (routes to the name-prompt insert flow). Emitter drops are handled
+    // by the individual target system rows, so this zone ignores them. Reuse the
+    // bin-drop hook's element ref (spread via fileDrop.handlers) so we don't add
+    // a second `ref` to the same node.
+    const [isSystemDropOver, setIsSystemDropOver] = useState(false);
+    usePortDropZone(
+        'target-column',
+        fileDrop.zoneRef,
+        (payload) => payload.kind === 'system',
+        (payload) => {
+            if (payload.kind === 'system') dropDonorSystem?.(payload);
+        },
+        setIsSystemDropOver
+    );
+
     return (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }} {...fileDrop.handlers}>
+        <div
+            className={isSystemDropOver ? 'port-drop-active' : undefined}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative', borderRadius: '8px' }}
+            {...fileDrop.handlers}
+        >
             {fileDrop.isOver && (
                 <div
                     style={{

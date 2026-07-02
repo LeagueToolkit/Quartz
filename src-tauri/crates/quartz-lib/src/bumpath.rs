@@ -54,7 +54,7 @@ fn rel_normalize(p: &str) -> String {
 
 /// True for a champion root BIN like `characters/aatrox/aatrox.bin` — these
 /// are never repathed or combined.
-fn is_character_bin(path: &str) -> bool {
+pub(crate) fn is_character_bin(path: &str) -> bool {
     let lower = normalize(path);
     if !(lower.contains("characters/") && lower.ends_with(".bin")) {
         return false;

@@ -80,6 +80,25 @@ export default function PortDonorFromGameModal({
         return () => { cancelled = true; };
     }, [open]);
 
+    // Cursor-following glow on skin cards + champion rows (matches the Asset
+    // Extractor page; the .ae-card/.ae-sb__row ::after glow reads --mx/--my).
+    useEffect(() => {
+        if (!open) return;
+        const onMove = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            for (const sel of ['.ae-card', '.ae-sb__row']) {
+                const el = target.closest<HTMLElement>(sel);
+                if (el) {
+                    const r = el.getBoundingClientRect();
+                    el.style.setProperty('--mx', `${e.clientX - r.left}px`);
+                    el.style.setProperty('--my', `${e.clientY - r.top}px`);
+                }
+            }
+        };
+        document.addEventListener('mousemove', onMove);
+        return () => document.removeEventListener('mousemove', onMove);
+    }, [open]);
+
     // Reset transient state when closed.
     useEffect(() => {
         if (open) return;

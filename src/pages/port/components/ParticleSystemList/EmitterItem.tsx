@@ -2,6 +2,7 @@ import CropOriginalIcon from '@mui/icons-material/CropOriginal';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { RenameInput } from '../common/Inputs';
+import { usePortDrag } from '../../usePortDrag';
 import { isDivineLabChildParticle, type VfxEmitter, type VfxSystem } from '../../model';
 import type { ListSharedProps } from './types';
 
@@ -21,8 +22,6 @@ export default function EmitterItem({
     setRenamingEmitter,
     handleRenameEmitter,
     handlePortEmitter,
-    draggedEmitter,
-    setDraggedEmitter,
     selectedTargetSystem,
     setStatusMessage,
     handleDeleteEmitter,
@@ -33,50 +32,35 @@ export default function EmitterItem({
     handleEmitterContextMenu,
 }: EmitterItemProps) {
     const isQuartzChild = isDivineLabChildParticle(emitter.name);
+    const { startDrag, dragging } = usePortDrag();
+    const isThisDragging =
+        dragging?.kind === 'emitter' && dragging.sourceSystemKey === system.key && dragging.emitterName === emitter.name;
 
     return (
         <div
             className="emitter-div"
-            draggable={!isTarget}
-            onDragStart={(e) => {
-                if (isTarget) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                }
-                e.stopPropagation();
-                if (typeof setDraggedEmitter === 'function') setDraggedEmitter({ sourceSystemKey: system.key, emitterName: emitter.name });
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData(
-                    'application/x-vfxemitter',
-                    JSON.stringify({ sourceType: 'donor', sourceSystemKey: system.key, emitterName: emitter.name })
-                );
-                const el = e.currentTarget;
-                const dragImage = el.cloneNode(true) as HTMLElement;
-                dragImage.style.transform = 'rotate(2deg)';
-                dragImage.style.opacity = '0.9';
-                document.body.appendChild(dragImage);
-                dragImage.style.position = 'absolute';
-                dragImage.style.top = '-1000px';
-                e.dataTransfer.setDragImage(dragImage, 0, 0);
-                setTimeout(() => {
-                    try {
-                        if (dragImage.parentNode === document.body) document.body.removeChild(dragImage);
-                    } catch {
-                        /* noop */
-                    }
-                }, 0);
-            }}
-            onDragEnd={() => {
+            onPointerDown={(e) => {
                 if (isTarget) return;
-                if (typeof setDraggedEmitter === 'function') setDraggedEmitter(null);
+                // Don't start a drag from the row's action buttons.
+                const tgt = e.target as HTMLElement;
+                if (tgt.closest('button')) return;
+                startDrag(
+                    {
+                        kind: 'emitter',
+                        sourceType: 'donor',
+                        sourceSystemKey: system.key,
+                        emitterName: emitter.name,
+                        label: emitter.name || 'emitter',
+                    },
+                    e
+                );
             }}
             style={{
                 border: isQuartzChild ? '2px solid var(--accent-primary)' : undefined,
                 borderRadius: isQuartzChild ? '6px' : undefined,
                 background: isQuartzChild ? 'color-mix(in oklab, var(--accent-primary) 8%, transparent)' : undefined,
                 cursor: isTarget ? 'default' : 'grab',
-                opacity: draggedEmitter && draggedEmitter.sourceSystemKey === system.key && draggedEmitter.emitterName === emitter.name ? 0.5 : 1,
+                opacity: isThisDragging ? 0.5 : 1,
             }}
         >
             {!isTarget && (

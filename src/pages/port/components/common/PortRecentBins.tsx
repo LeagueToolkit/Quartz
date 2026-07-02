@@ -1,5 +1,6 @@
 import { FolderOpen as FolderOpenIcon, X as CloseIcon } from 'lucide-react';
 import { useUiPrefsStore } from '@/lib/stores';
+import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
 // Reuse the shared recent-bins styling (`.paint2-recent`) so Port matches Paint.
 import '../../../paint/Paint.css';
 
@@ -22,8 +23,10 @@ function relativeTime(iso: string): string {
    history (Target vs Donor). Reuses the shared `.paint2-recent` styling so it
    matches Paint and the Bin Editor. Clicking a row loads it via `onOpen`. */
 export default function PortRecentBins({ slot, onOpen }: { slot: 'target' | 'donor'; onOpen: (path: string) => void }) {
-    const recentBins = useUiPrefsStore((s) => (slot === 'target' ? s.recentTargetBins : s.recentDonorBins));
+    const storedBins = useUiPrefsStore((s) => (slot === 'target' ? s.recentTargetBins : s.recentDonorBins));
     const removeRecentBinFor = useUiPrefsStore((s) => s.removeRecentBinFor);
+    // Only show entries whose file still exists; prune vanished ones.
+    const recentBins = useExistingRecentBins(storedBins, (path) => removeRecentBinFor(slot, path));
 
     if (recentBins.length === 0) return null;
 

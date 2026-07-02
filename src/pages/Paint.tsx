@@ -27,6 +27,7 @@ import {
 } from '@/lib/api';
 import { useNotificationStore, usePaintStore, useUiPrefsStore, type HslValues, type PaintState as PaintStoreState } from '@/lib/stores';
 import { useFileDrop } from '@/lib/util/useFileDrop';
+import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
 
 import './paint/Paint.css';
 import ColorHandler from './paint/utils/ColorHandler';
@@ -284,8 +285,10 @@ function Paint() {
     // === TRANSIENT UI STATE (fine to reset on remount) ===
     const [isLoading, setIsLoading] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
-    const recentBins = useUiPrefsStore((s) => s.recentBins);
+    const storedRecentBins = useUiPrefsStore((s) => s.recentBins);
     const removeRecentBin = useUiPrefsStore((s) => s.removeRecentBin);
+    // Only show recent bins whose file still exists; prune vanished ones.
+    const recentBins = useExistingRecentBins(storedRecentBins, removeRecentBin);
     // The BM / color-target row collapses into a toggle to save vertical space.
     const [bmRowOpen, setBmRowOpen] = useState(false);
     const [paletteNameDialogOpen, setPaletteNameDialogOpen] = useState(false);

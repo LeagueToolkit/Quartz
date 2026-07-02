@@ -67,7 +67,17 @@
     justify-content: center;
     background: var(--bg-primary);
 }
-.ae-card__media img { transition: transform 0.3s ease; }
+/* Fill the media box and crop from the top so the character's face stays in
+   frame (splash tiles are wider than the 3:4 card). Without an explicit
+   size/fit the image renders at natural size and gets clipped mid-portrait. */
+.ae-card__media img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    transition: transform 0.3s ease;
+}
 .ae-card:hover .ae-card__media img { transform: scale(1.05); }
 .ae-card__overlay {
     position: absolute;

@@ -1,5 +1,6 @@
 import type React from 'react';
 import type { VfxSystem, VfxEmitter } from '../../model';
+import type { PortDragPayload } from '../../usePortDrag';
 
 export interface ListSharedProps {
     selectedTargetSystem: string | null;
@@ -18,6 +19,9 @@ export interface ListSharedProps {
     handleEmitterClick: (e: React.MouseEvent, emitter: VfxEmitter, system: VfxSystem, isTarget: boolean) => void;
     handleEmitterContextMenu: (e: React.MouseEvent, emitter: VfxEmitter, system: VfxSystem, isTarget: boolean) => void;
     processVfxSystemDrop?: (e: React.DragEvent, source: string) => void;
+    // Pointer-drag dispatch (replaces HTML5 DnD on WebView2; see usePortDrag).
+    dropEmitterOnSystem?: (payload: Extract<PortDragPayload, { kind: 'emitter' }>, targetSystemKey: string) => void;
+    dropDonorSystem?: (payload: Extract<PortDragPayload, { kind: 'system' }>) => void;
 
     // target-only
     renamingSystem?: { systemKey: string; newName: string } | null;

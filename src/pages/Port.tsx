@@ -161,7 +161,9 @@ function Port() {
 
                 setPortDonorProgress('Opening donor session...');
                 p.setDonorTempRoot(result.tempRoot);
-                await p.processDonorBin(result.combinedBinPath);
+                // Donor-from-game bins are throwaway temp extractions — don't
+                // record them in the recent-donor-bin history.
+                await p.processDonorBin(result.combinedBinPath, false);
 
                 const evicted = useUiPrefsStore.getState().pushRecentPortDonor({
                     championId: args.champion.id,
@@ -177,7 +179,14 @@ function Port() {
                     if (root && root !== result.tempRoot) void portCleanupDonorTemp(root).catch(() => { /* best-effort */ });
                 }
 
-                setPortDonorProgress('Donor is ready.');
+                // Surface what the combine/repath pass actually did so it's
+                // clear the linked bins were merged and assets repathed (a cache
+                // hit reports 0/0 because it reused a prior build).
+                const readyMsg = result.cacheHit
+                    ? 'Donor ready (reused cached build).'
+                    : `Donor ready — combined ${result.selectedBinCount} bin(s), repathed ${result.extractedAssetCount} asset(s).`;
+                setPortDonorProgress(readyMsg);
+                p.setStatusMessage(readyMsg);
                 setShowPortDonorModal(false);
             } catch (error) {
                 const msg = (error as Error)?.message || String(error);

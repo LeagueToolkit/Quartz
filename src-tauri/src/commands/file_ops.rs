@@ -248,6 +248,13 @@ pub async fn file_rename(
     .map_err(|e| format!("rename task panicked: {}", e))?
 }
 
+/// Check which of `paths` currently exist on disk. Returns a bool per input, in
+/// order. Used to prune recent-file lists so vanished paths aren't shown.
+#[tauri::command]
+pub fn paths_exist(paths: Vec<String>) -> Vec<bool> {
+    paths.iter().map(|p| Path::new(p).exists()).collect()
+}
+
 /// Run an external EXE. With `open_console` (Windows), launches it detached in
 /// its own console window; otherwise runs it and captures stdout/stderr.
 #[tauri::command]
