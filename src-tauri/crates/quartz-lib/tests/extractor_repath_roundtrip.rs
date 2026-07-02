@@ -16,7 +16,10 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use quartz_lib::bin::read_bin_ltk;
-use quartz_lib::extractor::{extract_skin, repath_extracted, ExtractOptions, RepathOptions};
+use quartz_lib::extractor::{
+    extract_skin, finalize_extracted, repath_extracted, ExtractOptions, FinalizeOptions,
+    RepathOptions,
+};
 
 fn league_root() -> Option<PathBuf> {
     let p = std::env::var("QUARTZ_LEAGUE_ROOT")
@@ -107,6 +110,8 @@ fn extractor_clean_repath_per_character() {
             clean: true,
             chroma_id: None,
             preserve_hud_icons2d: true,
+            // Keep SFX so the repath skip-SFX behavior is observable.
+            skip_sfx: false,
         },
         |_p| {},
     )
@@ -143,6 +148,9 @@ fn extractor_clean_repath_per_character() {
         cleanup_unused: false,
         skip_sfx: true,
         skip_vo: true,
+        split_vfx: std::env::var("QUARTZ_TEST_SPLIT_VFX").is_ok(),
+        split_anm: std::env::var("QUARTZ_TEST_SPLIT_ANM").is_ok(),
+        consolidate_assets: std::env::var("QUARTZ_TEST_CONSOLIDATE").is_ok(),
         wad_folder_override: None,
     })
     .expect("repath failed");
@@ -213,6 +221,37 @@ fn extractor_clean_repath_per_character() {
     let prefixed = skin_bins.iter().any(|sb| bin_has_prefixed_asset(sb, "testmod"));
     assert!(prefixed || rep.paths_modified == 0, "no bumPath-prefixed asset string found in any skin bin");
 
+    // (f) SUBCHARACTER REGRESSION: every character's skin bin (incl. Tibbers)
+    //     must have its `assets/characters/<char>/…` strings PREFIXED. An
+    //     UNPREFIXED `assets/characters/` reference means that character's bin
+    //     was skipped by repath — the bug where subchar assets stayed loose.
+    for sb in &skin_bins {
+        let unprefixed = bin_first_unprefixed_asset(sb, "testmod");
+        assert!(
+            unprefixed.is_none(),
+            "character '{}' skin bin has UNPREFIXED asset string '{}' — subcharacter repath skipped it",
+            character_of(sb).unwrap_or_default(),
+            unprefixed.unwrap_or_default(),
+        );
+    }
+
+    // (g) On disk, no character dir survives directly under `assets/characters/`
+    //     (all should have moved under `assets/testmod/characters/`).
+    let loose_char_dir = content_dir.join("assets").join("characters");
+    if loose_char_dir.is_dir() {
+        // Only icons2d-preserve content may remain; assert no skin/particle assets.
+        let leftovers: Vec<PathBuf> = find_files(&loose_char_dir, |p| {
+            let s = p.to_string_lossy().to_lowercase().replace('\\', "/");
+            !s.contains("/hud/icons2d/") // icons2d is intentionally preserved unprefixed
+        });
+        assert!(
+            leftovers.is_empty(),
+            "{} non-icon asset(s) left unprefixed under assets/characters/ (first: {})",
+            leftovers.len(),
+            leftovers.first().map(|p| p.display().to_string()).unwrap_or_default(),
+        );
+    }
+
     println!("[test] SUMMARY champ={} skin={}: pre_vfx={} vfx_in_skin_bins={} vfx_elsewhere={} total={} chars={}",
         champ, skin, pre_vfx, vfx_in_skin_bins, vfx_elsewhere, total_reachable, post_chars.len());
     assert!(rep.characters_combined >= 1, "repath combined 0 characters");
@@ -239,4 +278,207 @@ fn bin_has_prefixed_asset(bin_path: &Path, prefix: &str) -> bool {
         }
     }
     bin.entries.iter().any(|e| e.fields.values().any(|v| walk(v, &needle)))
+}
+
+/// Returns the first asset string in the BIN that should have been prefixed but
+/// wasn't (`assets/characters/…` or `assets/particles/…` without `/<prefix>/`),
+/// skipping the intentionally-unprefixed classes: sounds (SFX/VO) and hud/icons2d.
+fn bin_first_unprefixed_asset(bin_path: &Path, prefix: &str) -> Option<String> {
+    let pfx = format!("/{}/", prefix.to_lowercase());
+    let bytes = std::fs::read(bin_path).ok()?;
+    let bin = read_bin_ltk(&bytes).ok()?;
+    fn walk(v: &quartz_lib::bin::BinValue, pfx: &str, out: &mut Option<String>) {
+        use quartz_lib::bin::BinValue as V;
+        if out.is_some() {
+            return;
+        }
+        match v {
+            V::String(s) => {
+                let l = s.to_lowercase().replace('\\', "/");
+                let is_asset = l.starts_with("assets/") || l.starts_with("data/");
+                if !is_asset {
+                    return;
+                }
+                // Intentionally-unprefixed: audio banks + preserved HUD icons.
+                if l.contains("/sounds/") || l.contains("/hud/icons2d/") {
+                    return;
+                }
+                // A prefixed path contains `/<prefix>/`; anything else under
+                // characters/ or particles/ that lacks it is a miss.
+                if !l.contains(pfx) && (l.contains("/characters/") || l.contains("/particles/")) {
+                    *out = Some(s.clone());
+                }
+            }
+            V::List { items, .. } => items.iter().for_each(|i| walk(i, pfx, out)),
+            V::Pointer { fields, .. } | V::Embed { fields, .. } => fields.values().for_each(|x| walk(x, pfx, out)),
+            V::Option { value: Some(inner), .. } => walk(inner, pfx, out),
+            V::Map { entries, .. } => entries.iter().for_each(|(k, val)| { walk(k, pfx, out); walk(val, pfx, out); }),
+            _ => {}
+        }
+    }
+    let mut out = None;
+    for e in &bin.entries {
+        for v in e.fields.values() {
+            walk(v, &pfx, &mut out);
+            if out.is_some() {
+                return out;
+            }
+        }
+    }
+    None
+}
+
+/// Skin-files-only finalize: combine linked BINs into each character's skin BIN
+/// with NO repath prefix, prune base `<char>.bin`, keep all VFX reachable, and
+/// leave asset strings UNPREFIXED (no `assets/<mod>/`). Mirrors old Quartz clean mode.
+#[test]
+fn finalize_skin_files_only_combines_without_prefix() {
+    let Some(root) = league_root() else {
+        eprintln!("skipping: no League install (set QUARTZ_LEAGUE_ROOT)");
+        return;
+    };
+
+    let out_root = std::env::temp_dir().join("quartz-finalize-skinonly-test");
+    let _ = std::fs::remove_dir_all(&out_root);
+    std::fs::create_dir_all(&out_root).unwrap();
+
+    let champ = champ();
+    let skin = skin_id();
+    println!("[test] finalize champion={} skin={}", champ, skin);
+
+    let summary = extract_skin(
+        ExtractOptions {
+            league_root: &root,
+            champion: &champ,
+            skin_id: skin,
+            output_dir: &out_root,
+            include_vo: false,
+            clean: true,
+            chroma_id: None,
+            preserve_hud_icons2d: true,
+            // Keep SFX so the repath skip-SFX behavior is observable.
+            skip_sfx: false,
+        },
+        |_p| {},
+    )
+    .expect("clean extract failed");
+
+    let content_dir = PathBuf::from(&summary.output_dir);
+    let pre_bins = find_files(&content_dir, is_bin);
+    let mut pre_vfx = 0usize;
+    for b in &pre_bins {
+        pre_vfx += vfx_system_count(b);
+    }
+    println!("[test] pre-finalize: {} bins, {} VFX", pre_bins.len(), pre_vfx);
+
+    let fin = finalize_extracted(FinalizeOptions {
+        content_dir: &content_dir,
+        champion: &champ,
+        skin_id: skin,
+        split_vfx: false,
+        split_anm: false,
+        consolidate_assets: false, // isolate the combine-no-prefix assertion
+        wad_folder_override: None,
+    })
+    .expect("finalize failed");
+
+    println!(
+        "[test] finalize: ok={} binsCombined={} charactersCombined={} baseBinsPruned={}",
+        fin.ok, fin.bins_combined, fin.characters_combined, fin.base_bins_pruned
+    );
+
+    let post_bins = find_files(&content_dir, is_bin);
+    println!("[test] POST-finalize .bin files ({}):", post_bins.len());
+    for b in &post_bins {
+        let rel = b.strip_prefix(&content_dir).unwrap_or(b);
+        println!("       {}  vfx={}", rel.display(), vfx_system_count(b));
+    }
+
+    // (a) No _Concat.bin — combine merges INTO the skin bin.
+    for b in &post_bins {
+        let name = b.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+        assert!(!name.contains("_concat"), "finalize produced a _Concat.bin: {}", name);
+    }
+
+    // (b) Base <char>.bin roots pruned.
+    for b in &post_bins {
+        let s = b.to_string_lossy().to_lowercase().replace('\\', "/");
+        let name = b.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+        let folder = character_of(b);
+        let is_base_root = !s.contains("/skins/") && !s.contains("/animations/")
+            && folder.as_deref().map(|f| name == format!("{}.bin", f)).unwrap_or(false);
+        assert!(!is_base_root, "base character BIN not pruned: {}", s);
+    }
+
+    // (c) VFX all still present (merged into skin bins), none lost.
+    let vfx_after: usize = post_bins.iter().map(|b| vfx_system_count(b)).sum();
+    assert_eq!(vfx_after, pre_vfx, "VFX lost: {} after finalize vs {} extracted", vfx_after, pre_vfx);
+
+    // (d) NO repath prefix applied: no skin bin should contain `assets/<mod>/` —
+    //     asset strings stay at their original `assets/characters/...` form.
+    let skin_bins: Vec<&PathBuf> = post_bins.iter().filter(|b| {
+        let s = b.to_string_lossy().to_lowercase().replace('\\', "/");
+        s.contains("/skins/")
+    }).collect();
+    for sb in &skin_bins {
+        assert!(!bin_has_prefixed_asset(sb, "testmod"), "finalize must NOT repath-prefix strings in {}", sb.display());
+    }
+
+    assert!(fin.characters_combined >= 1, "finalize combined 0 characters");
+    println!("[test] PASS — skin-files-only: combined into skin bins (no prefix), base pruned, {} VFX intact", vfx_after);
+}
+
+/// skip_sfx in clean extraction must export ZERO SFX audio banks, while the same
+/// extract with skip_sfx=false DOES include them. Proves the toggle works.
+#[test]
+fn clean_extract_skip_sfx_excludes_banks() {
+    let Some(root) = league_root() else {
+        eprintln!("skipping: no League install (set QUARTZ_LEAGUE_ROOT)");
+        return;
+    };
+
+    let champ = champ();
+    let skin = skin_id();
+
+    let count_sfx = |dir: &Path| -> usize {
+        find_files(dir, |p| {
+            let s = p.to_string_lossy().to_lowercase().replace('\\', "/");
+            s.contains("/sounds/wwise2016/sfx/")
+                && (s.ends_with(".bnk") || s.ends_with(".wpk") || s.ends_with(".wem"))
+        })
+        .len()
+    };
+
+    // With SFX (skip_sfx=false).
+    let with_root = std::env::temp_dir().join("quartz-sfx-with");
+    let _ = std::fs::remove_dir_all(&with_root);
+    std::fs::create_dir_all(&with_root).unwrap();
+    let with = extract_skin(
+        ExtractOptions {
+            league_root: &root, champion: &champ, skin_id: skin, output_dir: &with_root,
+            include_vo: false, clean: true, chroma_id: None, preserve_hud_icons2d: true, skip_sfx: false,
+        }, |_p| {},
+    ).expect("extract with sfx failed");
+    let with_sfx = count_sfx(&PathBuf::from(&with.output_dir));
+
+    // Without SFX (skip_sfx=true).
+    let without_root = std::env::temp_dir().join("quartz-sfx-without");
+    let _ = std::fs::remove_dir_all(&without_root);
+    std::fs::create_dir_all(&without_root).unwrap();
+    let without = extract_skin(
+        ExtractOptions {
+            league_root: &root, champion: &champ, skin_id: skin, output_dir: &without_root,
+            include_vo: false, clean: true, chroma_id: None, preserve_hud_icons2d: true, skip_sfx: true,
+        }, |_p| {},
+    ).expect("extract without sfx failed");
+    let without_sfx = count_sfx(&PathBuf::from(&without.output_dir));
+
+    println!("[test] SFX banks: with_skip_off={} with_skip_on={}", with_sfx, without_sfx);
+    assert_eq!(without_sfx, 0, "skip_sfx=true still exported {} SFX bank(s)", without_sfx);
+    // Sanity: this champion actually ships SFX, so skip_sfx=false includes them.
+    // (If a champ genuinely has 0 SFX the toggle is a no-op — don't hard-fail.)
+    if with_sfx == 0 {
+        println!("[test] NOTE: {} skin{} ships no SFX banks; toggle is a no-op here", champ, skin);
+    }
+    println!("[test] PASS — skip_sfx excludes SFX banks from clean extract");
 }

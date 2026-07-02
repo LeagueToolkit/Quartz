@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Info as InfoIcon, X as CloseIcon, Check } from 'lucide-react';
 
-/* Restored from the old FrogChanger CustomPrefixModal — the "Repath Mode" step.
-   Steps through each selected skin so the user can set a per-skin prefix, then
-   Start Repath runs the extract -> combine -> repath -> (split) -> consolidate
-   pipeline. Options mirror the old modal; output path override + recent paths
-   included. Styled to match ExtractionModeModal. */
+/* The "Repath Mode" step. Steps through each selected skin so the user can set a
+   per-skin prefix, then Start Repath runs the extract -> combine -> repath ->
+   (split) -> consolidate pipeline. Options mirror the old modal; output path
+   override + recent paths included. */
 
 export interface RepathSkin {
     championName: string;
@@ -36,6 +37,19 @@ interface Props {
 
 const sanitizePrefix = (v: string) => String(v || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
 const skinKeyOf = (s: RepathSkin) => `${s.championName}_${s.skinId}`;
+
+/* A Design Lab styled checkbox row. */
+function DlCheck({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+    return (
+        <label className="dl-check">
+            <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+            <span className="dl-check__box">
+                <span className="dl-check__tick"><span className="dl-icon"><Check size={12} /></span></span>
+            </span>
+            <span>{label}</span>
+        </label>
+    );
+}
 
 export function CustomPrefixModal({
     open,
@@ -104,6 +118,9 @@ export function CustomPrefixModal({
         skipSfxRepath,
         extractVoiceover,
         preserveHudIcons2D,
+        splitVfx,
+        splitAnm,
+        consolidateAssets,
         outputOverride: { enabled: outputOverrideEnabled, keepForAll: outputKeepForAll, path: outputPath, perSkinPaths: paths },
     });
 
@@ -152,120 +169,89 @@ export function CustomPrefixModal({
         }
     };
 
-    const styles: Record<string, React.CSSProperties> = {
-        overlay: { position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px' },
-        backdrop: { position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' },
-        modal: { position: 'relative', width: '100%', maxWidth: 480, maxHeight: '88vh', overflowY: 'auto', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'saturate(180%) blur(16px)', WebkitBackdropFilter: 'saturate(180%) blur(16px)', borderRadius: 16, boxShadow: '0 30px 70px rgba(0,0,0,0.55), 0 0 30px color-mix(in srgb, var(--accent2), transparent 82%)' },
-        accentBar: { height: 3, background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' },
-        body: { padding: 24 },
-        title: { fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)', margin: 0 },
-        subtitle: { fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', marginTop: 4, marginBottom: 0 },
-        section: { borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', padding: 14, marginTop: 16 },
-        sectionTitle: { color: 'var(--accent2)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: 0, marginBottom: 8 },
-        infoBtn: { width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent2)', border: '1px solid color-mix(in srgb, var(--accent2), transparent 60%)', background: 'color-mix(in srgb, var(--accent2), transparent 90%)', cursor: 'pointer', marginLeft: 8 },
-        infoSection: { marginTop: 12, padding: 12, borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.74rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.4 },
-        input: { borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', padding: '8px 10px', fontSize: '0.8rem', color: 'var(--text)', fontFamily: 'inherit', width: '100%' },
-    };
-    const btnBase: React.CSSProperties = { padding: '7px 16px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', background: 'color-mix(in srgb, var(--accent2), transparent 90%)', color: 'var(--accent2)', fontFamily: 'inherit', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.25s ease' };
-    const btnGhost: React.CSSProperties = { ...btnBase, background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.15)' };
-    const btnPrimary: React.CSSProperties = { ...btnBase, background: 'color-mix(in srgb, var(--accent), transparent 80%)', color: 'var(--accent)', border: '1px solid color-mix(in srgb, var(--accent), transparent 60%)', opacity: isPrefixValid ? 1 : 0.5, cursor: isPrefixValid ? 'pointer' : 'not-allowed' };
-    const checkRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' };
-    const checkbox: React.CSSProperties = { width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' };
+    const sectionStyle: React.CSSProperties = { borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: 14, marginTop: 16 };
+    const sectionTitle: React.CSSProperties = { color: 'var(--accent-primary)', fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '0 0 8px' };
 
-    return (
-        <div style={styles.overlay}>
-            <div style={styles.backdrop} onClick={onCancel} />
-            <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-                <div style={styles.accentBar} />
-                <div style={styles.body}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <h2 style={styles.title}>{multiSkin ? `Repath Skin ${currentIndex + 1} of ${total}` : 'Repath Mode'}</h2>
-                            <button style={styles.infoBtn} onClick={() => setInfoOpen(!infoOpen)} title="Help Info">i</button>
-                        </div>
-                        <button
-                            onClick={onCancel}
-                            style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', cursor: 'pointer' }}
-                        >
-                            {'✕'}
-                        </button>
-                    </div>
+    return createPortal(
+        <div className="dl-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+            <div className="dl-modal">
+                <div className="dl-modal__head">
+                    <h3 className="dl-modal__title">
+                        {multiSkin ? `Repath Skin ${currentIndex + 1} of ${total}` : 'Repath Mode'}
+                    </h3>
+                    <button className="dl-btn dl-btn--icon dl-btn--ghost dl-btn--sm" onClick={() => setInfoOpen(!infoOpen)} title="Help Info">
+                        <span className="dl-icon"><InfoIcon size={15} /></span>
+                    </button>
+                    <button className="dl-modal__close" onClick={onCancel} aria-label="Close">
+                        <span className="dl-icon"><CloseIcon size={16} /></span>
+                    </button>
+                </div>
 
+                <div className="dl-modal__body">
                     {infoOpen && (
-                        <div style={styles.infoSection}>
+                        <div style={{ padding: 12, borderRadius: 10, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
                             <div style={{ marginBottom: 6 }}>
-                                <strong style={{ color: 'var(--accent2)' }}>Entry Prefix:</strong> the segment inserted into every file path (e.g. `myskin`). Pick something unique so your mod does not collide with the base game or other mods.
+                                <strong style={{ color: 'var(--accent-primary)' }}>Entry Prefix:</strong> the segment inserted into every file path (e.g. myskin). Pick something unique so your mod does not collide with the base game or other mods.
                             </div>
                             <div>
-                                <strong style={{ color: 'var(--accent2)' }}>Skip SFX Repath:</strong> leave sound paths untouched. Keep on unless you actually changed sounds.
+                                <strong style={{ color: 'var(--accent-primary)' }}>Skip SFX Repath:</strong> leave sound paths untouched. Keep on unless you actually changed sounds.
                             </div>
                         </div>
                     )}
 
-                    <p style={styles.subtitle}>{current.championName} — {current.skinName}</p>
+                    <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>{current.championName} — {current.skinName}</p>
 
-                    <div style={styles.section}>
-                        <h3 style={styles.sectionTitle}>Entry Prefix</h3>
+                    <div style={sectionStyle}>
+                        <h4 style={sectionTitle}>Entry Prefix</h4>
                         <input
+                            className="dl-input"
                             value={prefixInput}
                             onChange={(e) => setPrefixInput(e.target.value)}
                             placeholder="e.g. myskin_v2"
-                            style={styles.input}
                             autoFocus
                         />
                         {prefixInput && sanitized !== prefixInput.trim().toLowerCase() && (
-                            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', marginTop: 6 }}>
-                                Will be used as: <strong style={{ color: 'var(--accent2)' }}>{sanitized || '(empty — required)'}</strong>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                                Will be used as: <strong style={{ color: 'var(--accent-primary)' }}>{sanitized || '(empty, required)'}</strong>
                             </div>
                         )}
                         {multiSkin && (
-                            <label style={{ ...checkRow, marginTop: 10 }}>
-                                <input type="checkbox" checked={applyToAll} onChange={(e) => setApplyToAll(e.target.checked)} style={checkbox} />
-                                Use this prefix for all remaining skins
-                            </label>
+                            <div style={{ marginTop: 10 }}>
+                                <DlCheck checked={applyToAll} onChange={setApplyToAll} label="Use this prefix for all remaining skins" />
+                            </div>
                         )}
                     </div>
 
-                    <div style={styles.section}>
-                        <h3 style={styles.sectionTitle}>Options</h3>
+                    <div style={sectionStyle}>
+                        <h4 style={sectionTitle}>Options</h4>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                            <label style={checkRow}>
-                                <input type="checkbox" checked={skipSfxRepath} onChange={(e) => setSkipSfxRepath(e.target.checked)} style={checkbox} />
-                                Skip SFX Repath
-                            </label>
-                            <label style={checkRow}>
-                                <input type="checkbox" checked={extractVoiceover} onChange={(e) => setExtractVoiceover(e.target.checked)} style={checkbox} />
-                                Extract Voiceover
-                            </label>
-                            <label style={checkRow}>
-                                <input type="checkbox" checked={preserveHudIcons2D} onChange={(e) => setPreserveHudIcons2D(e.target.checked)} style={checkbox} />
-                                Preserve HUD ability icons
-                            </label>
+                            <DlCheck checked={skipSfxRepath} onChange={setSkipSfxRepath} label="Skip SFX Repath" />
+                            <DlCheck checked={extractVoiceover} onChange={setExtractVoiceover} label="Extract Voiceover" />
+                            <DlCheck checked={preserveHudIcons2D} onChange={setPreserveHudIcons2D} label="Preserve HUD ability icons" />
+                            <DlCheck checked={splitVfx} onChange={setSplitVfx} label="Split VFX into a separate bin" />
+                            <DlCheck checked={splitAnm} onChange={setSplitAnm} label="Split animations into a separate bin" />
+                            <DlCheck checked={consolidateAssets} onChange={setConsolidateAssets} label="Consolidate VFX assets into per-skin folders" />
 
-                            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 4, paddingTop: 8 }}>
-                                <label style={checkRow}>
-                                    <input type="checkbox" checked={outputOverrideEnabled} onChange={(e) => setOutputOverrideEnabled(e.target.checked)} style={checkbox} />
-                                    Override Output Path
-                                </label>
+                            <div style={{ borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 8 }}>
+                                <DlCheck checked={outputOverrideEnabled} onChange={setOutputOverrideEnabled} label="Override Output Path" />
                             </div>
                             {outputOverrideEnabled && multiSkin && (
-                                <label style={{ ...checkRow, marginLeft: 20, color: 'rgba(255,255,255,0.8)' }}>
-                                    <input type="checkbox" checked={outputKeepForAll} onChange={(e) => setOutputKeepForAll(e.target.checked)} style={checkbox} />
-                                    Keep same output path for all skins
-                                </label>
+                                <div style={{ marginLeft: 20 }}>
+                                    <DlCheck checked={outputKeepForAll} onChange={setOutputKeepForAll} label="Keep same output path for all skins" />
+                                </div>
                             )}
                             {outputOverrideEnabled && (
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, marginTop: 4 }}>
                                     <input
+                                        className="dl-input"
                                         list="ae-recent-paths-repath"
                                         value={outputPath}
                                         onChange={(e) => setOutputPath(e.target.value)}
                                         placeholder={defaultOutputPath || 'Select output path...'}
-                                        style={styles.input}
                                     />
                                     <button
                                         type="button"
-                                        style={{ ...btnBase, minWidth: 72 }}
+                                        className="dl-btn dl-btn--secondary"
                                         onClick={async () => {
                                             const picked = await onBrowseOutputPath?.();
                                             if (picked) setOutputPath(String(picked));
@@ -282,20 +268,21 @@ export function CustomPrefixModal({
                             )}
                         </div>
                     </div>
+                </div>
 
-                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 20, paddingTop: 16, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                        <button style={btnGhost} onClick={onCancel}>Cancel</button>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                            {multiSkin && currentIndex > 0 && (
-                                <button style={btnGhost} onClick={handlePrevious}>Previous</button>
-                            )}
-                            <button style={btnPrimary} onClick={handleNextOrStart} disabled={!isPrefixValid}>
-                                {isLast || applyToAll ? 'Start Repath' : 'Next'}
-                            </button>
-                        </div>
+                <div className="dl-modal__foot" style={{ justifyContent: 'space-between' }}>
+                    <button className="dl-btn dl-btn--secondary" onClick={onCancel}>Cancel</button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        {multiSkin && currentIndex > 0 && (
+                            <button className="dl-btn dl-btn--secondary" onClick={handlePrevious}>Previous</button>
+                        )}
+                        <button className="dl-btn dl-btn--primary" onClick={handleNextOrStart} disabled={!isPrefixValid}>
+                            {isLast || applyToAll ? 'Start Repath' : 'Next'}
+                        </button>
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

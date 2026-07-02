@@ -61,21 +61,9 @@ function EmitterGroup(props: EmitterGroupProps) {
 
     return (
         <div
-            style={{
-                marginBottom: 8,
-                borderRadius: 'var(--dl-radius-sm)',
-                overflow: 'hidden',
-                background: 'var(--bg-tertiary)',
-                border: selected
-                    ? '1px solid color-mix(in oklab, var(--accent-primary) 45%, var(--border))'
-                    : '1px solid var(--border)',
-                boxShadow: selected
-                    ? 'inset 3px 0 0 var(--accent-primary)'
-                    : 'inset 3px 0 0 transparent',
-                transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
-            }}
+            className={`biev2-emitter${selected ? ' is-selected' : ''}${open ? ' is-open' : ''}`}
         >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px' }}>
                 <span
                     onClick={(e) => {
                         e.stopPropagation();

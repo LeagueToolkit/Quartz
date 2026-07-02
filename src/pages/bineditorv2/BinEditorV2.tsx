@@ -316,13 +316,10 @@ function BinEditorV2() {
 
     // ── Selection ──
 
+    /* Single-select: choosing a system opens only that one. Clicking the already
+       selected system deselects it (back to the empty hint). */
     const toggleSystem = useCallback((key: string) => {
-        setSelectedSystems((prev) => {
-            const next = new Set(prev);
-            if (next.has(key)) next.delete(key);
-            else next.add(key);
-            return next;
-        });
+        setSelectedSystems((prev) => (prev.has(key) && prev.size === 1 ? new Set() : new Set([key])));
     }, []);
 
     /* Keep emitter checks scoped to currently selected systems. Choosing a

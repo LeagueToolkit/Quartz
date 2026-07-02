@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
-import './assetextractor/AssetExtractor.css';
+import './assetextractor/assetextractor.css';
 import {
     getLeaguePath,
     extractChampionAssets,
     extractTftCompanion,
     extractorRepath,
+    extractorFinalizeSkinOnly,
     getSettings,
     type ExtractProgress,
 } from '@/lib/api';
@@ -40,7 +41,7 @@ import { ChampionSidebar } from './assetextractor/components/ChampionSidebar';
 import { TopControls } from './assetextractor/components/TopControls';
 import { ChampionSkinsPanel } from './assetextractor/components/ChampionSkinsPanel';
 import { SkinlineResultsPanel } from './assetextractor/components/SkinlineResultsPanel';
-import { SelectionSummaryBar } from './assetextractor/components/SelectionSummaryBar';
+import { SelectionActionBar } from './assetextractor/components/SelectionActionBar';
 import { SearchHelpModal } from './assetextractor/components/SearchHelpModal';
 import { ExtractionModeModal, type ExtractionPayload } from './assetextractor/components/ExtractionModeModal';
 import { CustomPrefixModal, type RepathSkin, type RepathOptionsPayload } from './assetextractor/components/CustomPrefixModal';
@@ -139,6 +140,11 @@ export function AssetExtractor() {
     const resizeStartWidthRef = useRef(260);
 
     const isSetupValid = Boolean(leaguePath && extractionPath);
+    // Only surface status in the bottom bar while an operation is running, so the
+    // resting bar isn't cluttered with the startup "League folder: ..." log line.
+    const latestStatus = (isExtracting || isRepathing) && consoleLogs.length > 0
+        ? consoleLogs[consoleLogs.length - 1].message
+        : '';
 
     const addConsoleLog = (message: string, type: LogType = 'info') => {
         const timestamp = new Date().toLocaleTimeString();
@@ -161,6 +167,28 @@ export function AssetExtractor() {
         loadSettings();
         loadChampions();
         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    /* Cursor-following glow: set --mx/--my on the hovered skin card (relative to
+       its media) and champion row, matching the Design Lab button glow. */
+    useEffect(() => {
+        const onMove = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            const card = target.closest<HTMLElement>('.ae-card');
+            if (card) {
+                const r = card.getBoundingClientRect();
+                card.style.setProperty('--mx', `${e.clientX - r.left}px`);
+                card.style.setProperty('--my', `${e.clientY - r.top}px`);
+            }
+            const row = target.closest<HTMLElement>('.ae-sb__row');
+            if (row) {
+                const r = row.getBoundingClientRect();
+                row.style.setProperty('--mx', `${e.clientX - r.left}px`);
+                row.style.setProperty('--my', `${e.clientY - r.top}px`);
+            }
+        };
+        document.addEventListener('mousemove', onMove);
+        return () => document.removeEventListener('mousemove', onMove);
     }, []);
 
     useEffect(() => {
@@ -717,13 +745,36 @@ export function AssetExtractor() {
                     const result = await extractChampionAssets(championId, skinId, outputDir, useExtractVoiceover, {
                         clean,
                         chromaId: chromaId ?? undefined,
-                        preserveHudIcons2D: true,
+                        preserveHudIcons2D: payload?.options?.preserveHudIcons2D !== false,
+                        skipSfx: payload?.options?.skipSfx !== false,
                     });
                     addRecentOutputPath(outputDir);
                     addConsoleLog(
                         `${progress} Extracted ${skinName} (${championName}): ${result.files} file(s) → ${result.outputDir}`,
                         'success',
                     );
+
+                    // Skin Files Only: run the old-Quartz clean-mode pipeline —
+                    // combine linked BINs into each skin BIN (no repath prefix),
+                    // prune base <char>.bin, then optional split VFX/ANM + consolidate.
+                    if (clean) {
+                        try {
+                            const fin = await extractorFinalizeSkinOnly({
+                                contentDir: result.outputDir,
+                                champion: championId,
+                                skinId: chromaId ?? skinId,
+                                splitVfx: payload?.options?.splitVfx === true,
+                                splitAnm: payload?.options?.splitAnm === true,
+                                consolidateAssets: payload?.options?.consolidateAssets !== false,
+                            });
+                            addConsoleLog(
+                                `${progress} Finalized ${skinName}: combined ${fin.binsCombined} BINs across ${fin.charactersCombined} character(s), pruned ${fin.baseBinsPruned} base BIN(s)`,
+                                'success',
+                            );
+                        } catch (finErr) {
+                            addConsoleLog(`${progress} Finalize warning for ${skinName}: ${String((finErr as Error)?.message || finErr)}`, 'warning');
+                        }
+                    }
                 } catch (err) {
                     log.error('extractChampionAssets', err);
                     addConsoleLog(`${progress} Failed to extract ${skinName}: ${String((err as Error)?.message || err)}`, 'error');
@@ -814,6 +865,7 @@ export function AssetExtractor() {
                         clean: true,
                         chromaId: skin.chromaId ?? undefined,
                         preserveHudIcons2D: payload.preserveHudIcons2D,
+                        skipSfx: payload.skipSfxRepath,
                     });
 
                     // 2) Repath the extracted folder in place -> installable mod.
@@ -827,6 +879,9 @@ export function AssetExtractor() {
                         cleanupUnused: false,
                         skipSfx: payload.skipSfxRepath,
                         extractVoiceover: payload.extractVoiceover,
+                        splitVfx: payload.splitVfx,
+                        splitAnm: payload.splitAnm,
+                        consolidateAssets: payload.consolidateAssets,
                     });
                     addRecentOutputPath(outputDir);
                     addConsoleLog(
@@ -879,7 +934,8 @@ export function AssetExtractor() {
         <>
             <SearchHelpModal open={showSearchInfo} onClose={() => setShowSearchInfo(false)} />
 
-            <div className="flex h-screen" style={{ userSelect: isResizingRef.current ? 'none' : 'auto' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', userSelect: isResizingRef.current ? 'none' : 'auto' }}>
+              <div className="flex" style={{ flex: 1, minHeight: 0 }}>
                 <ChampionSidebar
                     searchTerm={searchTerm}
                     onSearchTermChange={setSearchTerm}
@@ -892,6 +948,10 @@ export function AssetExtractor() {
                     selectedChampion={selectedChampion}
                     onSelectChampion={handleChampionSelect}
                     onYouTubeChampion={handleYouTubeChampion}
+                    viewMode={viewMode}
+                    onViewModeChange={handleViewModeChange}
+                    showSearchInfo={showSearchInfo}
+                    onToggleSearchInfo={() => setShowSearchInfo(!showSearchInfo)}
                     offlineMode={offlineMode}
                     sidebarWidth={sidebarWidth}
                 />
@@ -912,23 +972,24 @@ export function AssetExtractor() {
                     }}
                 />
 
-                <main className="flex-1 p-6 overflow-y-auto relative" style={{ minWidth: 0, paddingBottom: selectedSkins.length > 0 ? 120 : 24 }}>
+                <main className="flex-1 overflow-y-auto relative" style={{ minWidth: 0, padding: '12px 16px 16px' }}>
                     {offlineMode && (
-                        <div className="mb-4 px-3 py-2 rounded-md border border-yellow-600/40 bg-yellow-500/10 text-yellow-300 text-sm">
+                        <div
+                            style={{
+                                marginBottom: 16, padding: '8px 12px', borderRadius: 6, fontSize: 14,
+                                border: '1px solid color-mix(in oklab, var(--color-warning) 40%, transparent)',
+                                background: 'color-mix(in oklab, var(--color-warning) 12%, transparent)',
+                                color: 'var(--color-warning)',
+                            }}
+                        >
                             No internet connection detected. Splash art and metadata may be unavailable.
                         </div>
                     )}
 
                     <TopControls
-                        consoleLogs={consoleLogs}
-                        showSearchInfo={showSearchInfo}
-                        onToggleSearchInfo={() => setShowSearchInfo(!showSearchInfo)}
                         isExtracting={isExtracting}
                         isCancelling={isCancelling}
                         onCancelOperations={cancelOperations}
-                        onOpenSettings={() => goToSettings('settings')}
-                        viewMode={viewMode}
-                        onViewModeChange={handleViewModeChange}
                     />
 
                     {showSkinlineSearch ? (
@@ -965,17 +1026,19 @@ export function AssetExtractor() {
                         <NoChampionSelectedView loading={loading} />
                     )}
                 </main>
-            </div>
+              </div>
 
-            <SelectionSummaryBar
-                selectedSkins={selectedSkins}
-                isExtracting={isExtracting}
-                isRepathing={isRepathing}
-                isSetupValid={isSetupValid}
-                onExtract={handleExtractWad}
-                onRepath={handleRepath}
-                onClearAll={() => setSelectedSkins([])}
-            />
+              <SelectionActionBar
+                  selectedSkins={selectedSkins}
+                  statusMessage={latestStatus}
+                  isExtracting={isExtracting}
+                  isRepathing={isRepathing}
+                  isSetupValid={isSetupValid}
+                  onExtract={handleExtractWad}
+                  onRepath={handleRepath}
+                  onClearAll={() => setSelectedSkins([])}
+              />
+            </div>
 
             <ExtractionModeModal
                 open={showExtractionModeModal}
@@ -1006,11 +1069,14 @@ export function AssetExtractor() {
     );
 }
 
-/* Wrap every render branch in the scoped wrapper so the ported utility CSS
-   (and theme vars) apply consistently. */
+/* Wrap every render branch in the scoped wrapper. Background is transparent so
+   the app's global background (wallpaper / effects layer) shows through. */
 function wrap(children: React.ReactNode) {
     return (
-        <div className="assetextractor-wrapper h-screen bg-black text-white relative overflow-hidden">
+        <div
+            className="assetextractor-wrapper"
+            style={{ height: '100%', background: 'transparent', color: 'var(--text-primary)', position: 'relative', overflow: 'hidden' }}
+        >
             {children}
         </div>
     );

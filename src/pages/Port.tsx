@@ -57,6 +57,19 @@ function Port() {
         });
     }, [p.dragStartedKeyRef]);
 
+    /* Cursor-following glow: set --mx/--my on the hovered system header row. */
+    useEffect(() => {
+        const onMove = (e: MouseEvent) => {
+            const row = (e.target as HTMLElement).closest<HTMLElement>('.particle-title-div');
+            if (!row) return;
+            const r = row.getBoundingClientRect();
+            row.style.setProperty('--mx', `${e.clientX - r.left}px`);
+            row.style.setProperty('--my', `${e.clientY - r.top}px`);
+        };
+        document.addEventListener('mousemove', onMove);
+        return () => document.removeEventListener('mousemove', onMove);
+    }, []);
+
     useEffect(() => {
         const logNativeDrag = (stage: string, event: DragEvent) => {
             const target = event.target as HTMLElement | null;

@@ -5,7 +5,7 @@
    stored `settings.json` path on top of quartz-lib's common-path scan.
    Extraction streams `extract-progress` events to the frontend. */
 
-use quartz_lib::extractor::{self, ExtractOptions, ExtractProgress, RepathOptions, RepathSummary};
+use quartz_lib::extractor::{self, ExtractOptions, ExtractProgress, FinalizeOptions, FinalizeSummary, RepathOptions, RepathSummary};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
@@ -129,12 +129,15 @@ pub async fn extract_champion_assets(
     clean: Option<bool>,
     chroma_id: Option<u32>,
     preserve_hud_icons2d: Option<bool>,
+    skip_sfx: Option<bool>,
 ) -> Result<ExtractResult, String> {
     let league = get_league_path()
         .ok_or_else(|| "Could not locate a League of Legends install. Set the path in Settings.".to_string())?;
     let include_vo = include_vo.unwrap_or(false);
     let clean = clean.unwrap_or(true);
     let preserve_hud_icons2d = preserve_hud_icons2d.unwrap_or(true);
+    // Skip exporting SFX banks by default in clean mode (rarely modded).
+    let skip_sfx = skip_sfx.unwrap_or(true);
 
     let summary = tokio::task::spawn_blocking(move || {
         let root = PathBuf::from(&league);
@@ -153,6 +156,7 @@ pub async fn extract_champion_assets(
                 clean,
                 chroma_id,
                 preserve_hud_icons2d,
+                skip_sfx,
             },
             progress,
         )
@@ -222,6 +226,9 @@ pub async fn extractor_repath(
     cleanup_unused: Option<bool>,
     skip_sfx: Option<bool>,
     extract_voiceover: Option<bool>,
+    split_vfx: Option<bool>,
+    split_anm: Option<bool>,
+    consolidate_assets: Option<bool>,
     wad_folder_override: Option<String>,
 ) -> Result<RepathSummary, String> {
     tokio::task::spawn_blocking(move || {
@@ -237,10 +244,46 @@ pub async fn extractor_repath(
             skip_sfx: skip_sfx.unwrap_or(true),
             // Skip VO unless the user is extracting voiceover.
             skip_vo: !extract_voiceover.unwrap_or(false),
+            // Old Quartz repath defaults: split off, consolidate on.
+            split_vfx: split_vfx.unwrap_or(false),
+            split_anm: split_anm.unwrap_or(false),
+            consolidate_assets: consolidate_assets.unwrap_or(true),
             wad_folder_override,
         })
     })
     .await
     .map_err(|e| format!("Repath task failed: {}", e))?
+    .map_err(|e| e.to_string())
+}
+
+/// Finalize a "Skin Files Only" extraction (1:1 old Quartz clean mode): combine
+/// each character's linked BINs into its skin BIN with NO repath prefix, prune
+/// base `<char>.bin`, then optionally split VFX/ANM and consolidate VFX assets.
+/// `contentDir` is the folder a prior clean extract wrote.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn extractor_finalize_skin_only(
+    content_dir: String,
+    champion: String,
+    skin_id: u32,
+    split_vfx: Option<bool>,
+    split_anm: Option<bool>,
+    consolidate_assets: Option<bool>,
+    wad_folder_override: Option<String>,
+) -> Result<FinalizeSummary, String> {
+    tokio::task::spawn_blocking(move || {
+        extractor::finalize_extracted(FinalizeOptions {
+            content_dir: Path::new(&content_dir),
+            champion: &champion,
+            skin_id,
+            // Old Quartz clean-mode defaults: split off, consolidate on.
+            split_vfx: split_vfx.unwrap_or(false),
+            split_anm: split_anm.unwrap_or(false),
+            consolidate_assets: consolidate_assets.unwrap_or(true),
+            wad_folder_override,
+        })
+    })
+    .await
+    .map_err(|e| format!("Finalize task failed: {}", e))?
     .map_err(|e| e.to_string())
 }

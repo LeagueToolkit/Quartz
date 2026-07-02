@@ -533,6 +533,13 @@ fn split_one(bin_path: &Path, out_dir: &Path, kind: &str) -> Result<Option<SkinS
     }))
 }
 
+/// Split one class ("vfx" or "anm") out of a skin BIN into a sibling
+/// `<champ>_<kind>_<stem>.bin` under the derived `data/` folder and link it.
+/// Public entry point for the repath pipeline (old Quartz `splitOne`).
+pub fn split_one_kind(bin_path: &Path, kind: &str) -> Result<Option<SkinSplitFile>> {
+    split_one(bin_path, Path::new(""), kind)
+}
+
 /// Split a skin BIN into separate VFX and ANM sibling files. Returns the list
 /// of files that were actually written (empty if nothing matched).
 pub fn split_skin_bin(bin_path: &Path, out_dir: &Path) -> Result<Vec<SkinSplitFile>> {
@@ -653,16 +660,17 @@ fn asset_path_to_abs(project_dir: &Path, asset_path: &str) -> PathBuf {
     out
 }
 
-/// Build the consolidated target path: `<ASSETS>/<champ>_particles/<basename>`,
-/// preserving the original `assets`/`ASSETS` casing.
-fn build_new_path(original: &str, basename: &str) -> Option<String> {
+/// Build the consolidated target path, preserving the original `assets`/`ASSETS`
+/// casing: `<ASSETS>/<folder_segments>/<basename>`. `folder_segments` is the
+/// pre-joined middle (e.g. `portedparticles` or `mymod/skin0_annie_particles`).
+fn build_new_path_with(original: &str, folder_segments: &str, basename: &str) -> Option<String> {
     let norm = original.replace('\\', "/");
     let parts: Vec<&str> = norm.split('/').filter(|s| !s.is_empty()).collect();
     let i = parts
         .iter()
         .position(|p| p.eq_ignore_ascii_case("assets"))?;
     let assets_literal = parts[i];
-    Some(format!("{}/portedparticles/{}", assets_literal, basename))
+    Some(format!("{}/{}/{}", assets_literal, folder_segments, basename))
 }
 
 /// Ensure a unique basename within a single consolidation run, suffixing
@@ -688,12 +696,36 @@ fn unique_basename(name: &str, used: &mut HashSet<String>) -> String {
     }
 }
 
-/// Gather every asset string referenced by the `VfxSystemDefinitionData`
-/// entries of a single BIN, move the underlying files into a shared
-/// `portedparticles` folder under `project_dir`, rewrite the strings, and save
-/// the BIN. VFX-exclusive paths only — anything also referenced by a non-VFX
-/// entry is left in place so meshes keep their textures.
+/// Standalone consolidate (bin-editor command): moves VFX assets into a shared
+/// `<ASSETS>/portedparticles/` folder.
 pub fn consolidate_assets(bin_path: &Path, project_dir: &Path) -> Result<ConsolidateResult> {
+    consolidate_assets_core(bin_path, project_dir, "portedparticles")
+}
+
+/// Repath consolidate (1:1 old Quartz `consolidateForSkin`): moves VFX assets
+/// into `<ASSETS>/<prefix>/skin<N>_<champ_lower>_particles/`.
+pub fn consolidate_assets_repath(
+    bin_path: &Path,
+    project_dir: &Path,
+    prefix: &str,
+    champ: &str,
+    skin_num: u32,
+) -> Result<ConsolidateResult> {
+    let folder = format!("skin{}_{}_particles", skin_num, champ.to_lowercase());
+    let segments = if prefix.is_empty() {
+        folder
+    } else {
+        format!("{}/{}", prefix, folder)
+    };
+    consolidate_assets_core(bin_path, project_dir, &segments)
+}
+
+/// Gather every asset string referenced by the `VfxSystemDefinitionData`
+/// entries of a single BIN, move the underlying files into
+/// `<ASSETS>/<folder_segments>/` under `project_dir`, rewrite the strings, and
+/// save the BIN. VFX-exclusive paths only — anything also referenced by a
+/// non-VFX entry is left in place so meshes keep their textures.
+fn consolidate_assets_core(bin_path: &Path, project_dir: &Path, folder_segments: &str) -> Result<ConsolidateResult> {
     let vfx_class = fnv1a_lower("VfxSystemDefinitionData");
 
     let data = std::fs::read(bin_path).map_err(|e| Error::io_with_path(e, bin_path))?;
@@ -752,59 +784,72 @@ pub fn consolidate_assets(bin_path: &Path, project_dir: &Path) -> Result<Consoli
             _ => continue,
         };
         let final_name = unique_basename(&base, &mut used_names);
-        if let Some(new_path) = build_new_path(original, &final_name) {
+        if let Some(new_path) = build_new_path_with(original, folder_segments, &final_name) {
             path_map.insert(original.to_lowercase(), new_path);
         }
     }
 
-    // Pass 3: move files on disk, clamped to project_dir.
-    let project_abs =
-        std::fs::canonicalize(project_dir).unwrap_or_else(|_| project_dir.to_path_buf());
+    // Pass 3: move files on disk, clamped to project_dir. `dst` is built by
+    // joining onto `project_dir` (see `asset_path_to_abs`), so compare against
+    // that same base — NOT a canonicalized form, which on Windows gains a
+    // `\\?\` verbatim prefix that a freshly-joined (non-existent) dst lacks,
+    // making `starts_with` spuriously false.
     let is_inside = |p: &Path| -> bool {
-        let abs = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
-        abs != project_abs && abs.starts_with(&project_abs)
+        p != project_dir && p.starts_with(project_dir)
     };
 
+    // Only rewrite strings for files that actually ended up at the destination.
+    // A string whose source file can't be found must NOT be rewritten, or the
+    // VFX reference would dangle (points to a file that was never moved there).
     let mut moved = 0usize;
+    let mut rewrite_map: HashMap<String, String> = HashMap::new();
     for (old_lower, new_path) in path_map.iter() {
         let src = asset_path_to_abs(project_dir, old_lower);
         let dst = asset_path_to_abs(project_dir, new_path);
-        if !src.exists() {
-            continue;
-        }
         if !is_inside(&dst) {
             continue;
         }
         if src == dst {
+            // Already at the destination path — safe to keep the string as-is
+            // (no rewrite needed, no move needed).
+            continue;
+        }
+        if !src.exists() {
+            // Source file missing: leave the string pointing at the original
+            // location (do not rewrite) so the reference stays valid.
             continue;
         }
         if let Some(parent) = dst.parent() {
             std::fs::create_dir_all(parent).map_err(|e| Error::io_with_path(e, parent))?;
         }
-        if dst.exists() {
+        let ok = if dst.exists() {
+            // Destination already populated (dedup collision) — drop the source
+            // copy and still rewrite the string to the shared destination.
             let _ = std::fs::remove_file(&src);
-            continue;
-        }
-        match std::fs::rename(&src, &dst) {
-            Ok(_) => moved += 1,
-            Err(_) => {
-                // Cross-device fallback: copy + delete.
-                if std::fs::copy(&src, &dst).is_ok() {
+            true
+        } else {
+            match std::fs::rename(&src, &dst) {
+                Ok(_) => true,
+                Err(_) => std::fs::copy(&src, &dst).is_ok() && {
                     let _ = std::fs::remove_file(&src);
-                    moved += 1;
-                }
+                    true
+                },
             }
+        };
+        if ok {
+            moved += 1;
+            rewrite_map.insert(old_lower.clone(), new_path.clone());
         }
     }
 
-    // Pass 4: rewrite the VFX entries' strings.
+    // Pass 4: rewrite ONLY the strings whose files we relocated.
     let mut touched = false;
     for entry in bin.entries.iter_mut() {
         if entry.class_hash != vfx_class {
             continue;
         }
         for (_, value) in entry.fields.iter_mut() {
-            touched |= rewrite_asset_strings(value, &path_map);
+            touched |= rewrite_asset_strings(value, &rewrite_map);
         }
     }
 

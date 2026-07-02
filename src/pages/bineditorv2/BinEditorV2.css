@@ -39,6 +39,138 @@
 .bineditorv2-sidebar ::-webkit-scrollbar { width: 4px; }
 .bineditorv2-sidebar ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
 
+/* System list — same rail styling as the Asset Extractor champion list
+   (Settings-rail: no card fill, accent-tinted active with inset edge + glow,
+   subtle hover lift). Flush list so systems don't read as separated boxes. */
+/* Faded divider between the search bar and the system list. */
+.biev2-syslist-divider {
+    flex-shrink: 0;
+    height: 1px;
+    margin: 10px 0;
+    background: linear-gradient(90deg, transparent, var(--border) 20%, var(--border) 80%, transparent);
+}
+
+/* Side padding absorbs the rows' hover/active scale so nothing overflows the
+   sidebar horizontally (which was showing a stray bottom scrollbar). */
+.biev2-syslist {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0 2px;
+}
+/* Solid, crisp rows to match Port (not washed-out): full-strength surface + text,
+   real border, accent rail + tint when active. */
+.biev2-row {
+    position: relative;
+    transform-origin: center;
+    width: 100%;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    transition: transform var(--motion-fast), background-color var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast), box-shadow var(--motion-fast);
+}
+.biev2-row:hover:not(.is-active) {
+    background: var(--bg-hover);
+    border-color: color-mix(in oklab, var(--accent-primary) 35%, var(--border));
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.25);
+}
+.biev2-row.is-active {
+    background: color-mix(in oklab, var(--accent-primary) 16%, var(--bg-tertiary));
+    color: var(--accent-primary);
+    border-color: color-mix(in oklab, var(--accent-primary) 45%, var(--border));
+    box-shadow:
+        inset 3px 0 0 var(--accent-primary),
+        0 0 24px -6px color-mix(in srgb, var(--accent-primary) 55%, transparent);
+}
+/* Cursor-following glow (--mx/--my set via JS). Under content. */
+.biev2-row::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background: radial-gradient(
+        140px circle at var(--mx, 50%) var(--my, 50%),
+        color-mix(in oklab, var(--accent-primary) 30%, transparent) 0%,
+        color-mix(in oklab, var(--accent-primary) 10%, transparent) 40%,
+        transparent 65%);
+    opacity: 0;
+    transition: opacity var(--motion-base);
+}
+.biev2-row:hover::after { opacity: 1; }
+.biev2-row > * { position: relative; z-index: 1; }
+.biev2-row__name {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    font-size: 13px;
+    color: inherit;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.biev2-row__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    flex-shrink: 0;
+}
+.biev2-row__count {
+    margin-left: auto;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 12px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    flex-shrink: 0;
+}
+.biev2-row.is-active .biev2-row__count {
+    background: color-mix(in oklab, var(--accent-primary) 20%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 40%, var(--border));
+    color: var(--accent-primary);
+}
+
+/* Emitter row — flush by default (no card fill/border) so the list doesn't read
+   as separated boxes; gains a subtle surface only when open, and the accent rail
+   + tint when selected. */
+.biev2-emitter {
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid transparent;
+    background: transparent;
+    box-shadow: inset 3px 0 0 transparent;
+    transition: background var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+.biev2-emitter + .biev2-emitter { margin-top: 2px; }
+/* Hover feedback only on the COLLAPSED header row. When the emitter is open the
+   whole field panel must not change brightness/opacity on hover. */
+.biev2-emitter:hover:not(.is-selected):not(.is-open) {
+    background: rgba(255, 255, 255, 0.04);
+}
+.biev2-emitter.is-open {
+    background: var(--bg-tertiary);
+    border-color: var(--border);
+}
+.biev2-emitter.is-selected {
+    background: color-mix(in oklab, var(--accent-primary) 12%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 40%, var(--border));
+    box-shadow: inset 3px 0 0 var(--accent-primary);
+}
+
 /* Main: BulkBar + CategoryTabs pinned, emitter list scrolls. */
 .bineditorv2-main {
     flex: 1;

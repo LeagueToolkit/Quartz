@@ -55,7 +55,9 @@ pub struct RepathResult {
 pub fn repath_project(
     content_base: &Path,
     config: &RepathConfig,
-    path_mappings: &HashMap<String, String>,
+    // Kept for signature parity with the organizer; repath now walks all BINs
+    // on disk (post-combine) so no hash→path indirection is needed here.
+    _path_mappings: &HashMap<String, String>,
 ) -> Result<RepathResult> {
     tracing::info!(
         "Starting repathing for project with prefix: ASSETS/{}",
@@ -83,54 +85,26 @@ pub fn repath_project(
 
     let mut result = RepathResult::default();
 
-    let main_bin_path = if !config.champion.is_empty() {
-        find_main_skin_bin(file_base, &config.champion, config.target_skin_id)
-    } else {
-        None
-    };
+    // Repath EVERY BIN under the output — not just the primary champion's
+    // linked graph. After the per-character combine, the remaining BINs are the
+    // seed skin BINs of ALL characters (main champ AND subcharacters like
+    // AnnieTibbers) plus their kept character/animation/split siblings. Missing
+    // a subcharacter's BIN here is exactly why its `assets/characters/<sub>/…`
+    // strings (and files) were left unprefixed under `assets/characters/`.
+    // Old Quartz's `bum.process` likewise repaths every source BIN in the dir.
+    let bin_files: Vec<PathBuf> = WalkDir::new(file_base)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map(|ext| ext.eq_ignore_ascii_case("bin"))
+                .unwrap_or(false)
+        })
+        .map(|e| e.path().to_path_buf())
+        .collect();
 
-    let mut bin_files: Vec<PathBuf> = Vec::new();
-
-    if let Some(ref main_path) = main_bin_path {
-        tracing::info!("Found main skin BIN: {}", main_path.display());
-        bin_files.push(main_path.clone());
-
-        if let Ok(data) = fs::read(main_path) {
-            if let Ok(bin) = read_bin(&data) {
-                tracing::info!("Main skin BIN has {} dependencies", bin.linked.len());
-
-                for dep_path in &bin.linked {
-                    let normalized_path = dep_path.to_lowercase().replace('\\', "/");
-
-                    let actual_path = path_mappings.get(&normalized_path)
-                        .cloned()
-                        .unwrap_or_else(|| normalized_path.clone());
-                    
-                    let full_path = file_base.join(&actual_path);
-                    if full_path.exists() {
-                        bin_files.push(full_path);
-                    } else {
-                        tracing::warn!("Linked BIN not found: {}", normalized_path);
-                    }
-                }
-            }
-        }
-    } else {
-        tracing::warn!("No main skin BIN found, falling back to scanning all BINs");
-        bin_files = WalkDir::new(file_base)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .map(|ext| ext.eq_ignore_ascii_case("bin"))
-                    .unwrap_or(false)
-            })
-            .map(|e| e.path().to_path_buf())
-            .collect();
-    }
-
-    tracing::info!("Processing {} BIN files", bin_files.len());
+    tracing::info!("Processing {} BIN files (all characters)", bin_files.len());
 
     let all_asset_paths_set: DashSet<String> = DashSet::new();
     bin_files.par_iter().for_each(|bin_path| {
@@ -644,46 +618,6 @@ fn cleanup_empty_dirs(dir: &Path) -> Result<()> {
     }
     Ok(())
 }
-
-fn find_main_skin_bin(content_base: &Path, champion: &str, skin_id: u32) -> Option<PathBuf> {
-    let champion_lower = champion.to_lowercase();
-    
-    let patterns = vec![
-        format!("data/characters/{}/skins/skin{}.bin", champion_lower, skin_id),
-        format!("data/characters/{}/skins/skin{:02}.bin", champion_lower, skin_id),
-    ];
-    
-    for pattern in &patterns {
-        let direct_path = content_base.join(pattern);
-        if direct_path.exists() {
-            return Some(direct_path);
-        }
-    }
-
-    for entry in WalkDir::new(content_base)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .map(|ext| ext.eq_ignore_ascii_case("bin"))
-                .unwrap_or(false)
-        })
-    {
-        let path = entry.path();
-        if let Ok(rel_path) = path.strip_prefix(content_base) {
-            let rel_str = rel_path.to_string_lossy().to_lowercase().replace('\\', "/");
-            for pattern in &patterns {
-                if rel_str == *pattern {
-                    return Some(path.to_path_buf());
-                }
-            }
-        }
-    }
-
-    None
-}
-
 
 #[cfg(test)]
 mod tests {

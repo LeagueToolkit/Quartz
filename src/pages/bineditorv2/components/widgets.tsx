@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties } from 'react';
+import { type CSSProperties } from 'react';
 import type { EditorNode } from '@/lib/api/bineditor';
 import { enumLabelsFor } from '../model/widgets';
 
@@ -48,38 +48,11 @@ interface NumberWidgetProps {
 }
 
 export function NumberWidget({ node, onCommit }: NumberWidgetProps) {
-    const v = Number(node.value);
-    // Aggressive range anchored at the mount-time value: scale up to ~10x with the slider.
-    const rangeRef = useRef<{ min: number; max: number; step: number } | null>(null);
-    if (!rangeRef.current) {
-        const b = Number.isFinite(v) ? v : 0;
-        const span = Math.max(Math.abs(b) * 10, 10);
-        rangeRef.current = { min: b < 0 ? -span : 0, max: span, step: Math.max(span / 500, 0.001) };
-    }
-    const range = rangeRef.current;
-
-    // While dragging, track the value locally so the thumb moves smoothly WITHOUT
-    // committing on every tick (each commit re-renders the whole field tree).
-    // Commit once on release. `drag === null` means "follow the node value".
-    const [drag, setDrag] = useState<number | null>(null);
-    const shown = drag ?? v;
-
+    // Clean number box only — the old auto-ranged native slider was removed (its
+    // guessed value*10 range was meaningless and it dominated every row).
     return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
-            <NumInput value={node.value} onCommit={onCommit} width={80} />
-            {Number.isFinite(v) && (
-                <input
-                    type="range"
-                    min={range.min}
-                    max={Math.max(range.max, shown)}
-                    step={range.step}
-                    value={shown}
-                    onChange={(e) => setDrag(parseFloat(e.target.value))}
-                    onMouseUp={(e) => { onCommit(parseFloat((e.target as HTMLInputElement).value)); setDrag(null); }}
-                    onKeyUp={(e) => { onCommit(parseFloat((e.target as HTMLInputElement).value)); setDrag(null); }}
-                    style={{ flex: 1, accentColor: 'var(--accent-primary)', minWidth: 80 }}
-                />
-            )}
+        <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+            <NumInput value={node.value} onCommit={onCommit} width={140} />
         </div>
     );
 }

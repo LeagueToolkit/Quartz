@@ -115,6 +115,27 @@
     background: var(--bg-hover);
 }
 
+/* Cursor-following accent glow on the system header row (--mx/--my set via JS).
+   Matches the BinEditor list glow, tuned brighter to fit Port's surfaces. */
+.port-container .particle-title-div { position: relative; }
+.port-container .particle-title-div::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background: radial-gradient(
+        160px circle at var(--mx, 50%) var(--my, 50%),
+        color-mix(in oklab, var(--accent-primary) 42%, transparent) 0%,
+        color-mix(in oklab, var(--accent-primary) 15%, transparent) 35%,
+        transparent 65%);
+    opacity: 0;
+    transition: opacity var(--motion-base);
+}
+.port-container .particle-title-div:hover::after { opacity: 1; }
+/* Keep the header content above the glow layer. */
+.port-container .particle-title-div > * { position: relative; z-index: 1; }
+
 /* Flex Utilities */
 .port-container .flex { display: flex; }
 .port-container .flex-col { display: flex; flex-direction: column; }
@@ -155,10 +176,20 @@
     transition: background-color var(--motion-fast);
 }
 
-/* Selection */
+/* Selection — matches the BinEditor / Asset Extractor active row: accent tint,
+   inset accent rail, and an outer accent glow. */
 .port-container .selected-system {
-    border-color: var(--accent-primary) !important;
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent-primary) 30%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 45%, var(--border)) !important;
+    box-shadow:
+        inset 3px 0 0 var(--accent-primary),
+        0 0 24px -6px color-mix(in srgb, var(--accent-primary) 55%, transparent);
+}
+.port-container .selected-system .particle-title-div,
+.port-container .selected-system .particle-title-div:hover {
+    background: color-mix(in oklab, var(--accent-primary) 16%, var(--bg-tertiary));
+}
+.port-container .selected-system .particle-title-div .label {
+    color: var(--accent-primary);
 }
 
 /* Emitter Row */

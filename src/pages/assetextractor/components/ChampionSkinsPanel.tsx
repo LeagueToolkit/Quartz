@@ -36,69 +36,65 @@ export function ChampionSkinsPanel({
 }: Props) {
     return (
         <div>
-            <div className="mb-6">
-                <h2 className="text-3xl font-bold mb-2 text-white">{selectedChampion.name}</h2>
-            </div>
-
             {loadingSkins[selectedChampion.name] || championSkins.length === 0 ? (
-                <div className="col-span-full flex items-center justify-center py-12">
-                    <div className="text-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4" />
-                        <p className="text-green-400">{`Loading ${selectedChampion.name} skins...`}</p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div
+                            style={{
+                                width: 48, height: 48, margin: '0 auto 16px',
+                                borderRadius: '50%',
+                                border: '3px solid var(--border)',
+                                borderTopColor: 'var(--accent-primary)',
+                                animation: 'dl-spin 0.9s linear infinite',
+                            }}
+                        />
+                        <p style={{ color: 'var(--text-secondary)', margin: 0 }}>{`Loading ${selectedChampion.name} skins...`}</p>
                     </div>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div className="ae-grid">
                     {championSkins.map((skin) => {
                         const isSelected = selectedSkins.some((s) => s.name === skin.name);
                         const skinKey = `${selectedChampion.name}_${skin.id}`;
                         const chromas = chromaData[skinKey] || [];
+                        const iconOnly = Boolean(skin.iconUrl && !skin.centeredSplashPath);
 
                         return (
                             <div
                                 key={`${selectedChampion.name}-${skin.full_id || skin.id}`}
                                 onClick={() => onSkinClick(skin.name)}
-                                className={`skin-card group relative rounded-lg overflow-visible border cursor-pointer transition-all duration-150 ${isSelected ? '' : 'border-gray-700 bg-gray-900 hover:border-white/25 hover:shadow-lg'}`}
-                                style={isSelected
-                                    ? {
-                                        borderColor: 'color-mix(in srgb, var(--accent), transparent 42%)',
-                                        background: 'linear-gradient(160deg, color-mix(in srgb, var(--accent2), transparent 94%), color-mix(in srgb, var(--accent), transparent 95%))',
-                                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px color-mix(in srgb, var(--accent), transparent 72%), 0 12px 28px rgba(0,0,0,0.35)',
-                                        transform: 'scale(1.028)',
-                                        zIndex: 3,
-                                    }
-                                    : { transform: 'scale(1)', zIndex: 1 }}
+                                className={`ae-card ${isSelected ? 'ae-card--selected' : ''}`}
                             >
-                                <div className={`relative overflow-hidden ${skin.iconUrl && !skin.centeredSplashPath ? 'aspect-square flex items-center justify-center bg-gray-950' : 'aspect-[3/4]'}`}>
+                                <div className={`ae-card__media ${iconOnly ? 'ae-card__media--icon' : ''}`}>
                                     {!offlineMode ? (
                                         <img
                                             src={skin.iconUrl || skin.centeredSplashPath || `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${selectedChampion.alias}_${skin.id}.jpg`}
                                             alt={skin.name}
-                                            className={skin.iconUrl && !skin.centeredSplashPath
-                                                ? 'w-4/5 h-4/5 object-contain transition-transform duration-300 group-hover:scale-105'
-                                                : 'w-full h-full object-cover transition-transform duration-300 group-hover:scale-110'}
+                                            style={iconOnly
+                                                ? { width: '80%', height: '80%', objectFit: 'contain' }
+                                                : { width: '100%', height: '100%', objectFit: 'cover' }}
                                             draggable={false}
                                             loading="lazy"
                                             decoding="async"
                                         />
                                     ) : (
-                                        <div className="w-full h-full bg-gray-800 text-gray-300 text-xs flex items-center justify-center px-2 text-center">
+                                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px', textAlign: 'center', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', fontSize: 12 }}>
                                             Image unavailable offline
                                         </div>
                                     )}
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                                    <div className="ae-card__overlay" />
 
                                     {!skin.hideRarityIcon && (
-                                        <div className="absolute top-2 left-2">
+                                        <div style={{ position: 'absolute', top: 8, left: 8 }}>
                                             {!offlineMode ? (
                                                 <img
                                                     src={getRarityIconUrl(skin)}
                                                     alt={skin.rarity || 'No Rarity'}
-                                                    className="w-6 h-6 rounded"
+                                                    style={{ width: 24, height: 24, borderRadius: 4 }}
                                                     title={skin.rarity || 'No Rarity'}
                                                 />
                                             ) : (
-                                                <div className="bg-gray-900/80 text-white px-2 py-1 rounded text-[10px] font-semibold" title={skin.rarity || 'No Rarity'}>
+                                                <div style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600 }} title={skin.rarity || 'No Rarity'}>
                                                     {skin.rarity || 'Base'}
                                                 </div>
                                             )}
@@ -106,27 +102,19 @@ export function ChampionSkinsPanel({
                                     )}
 
                                     {isSelected && (
-                                        <div
-                                            className="absolute top-2 right-2 px-2 py-1 rounded text-xs font-bold"
-                                            style={{
-                                                color: 'var(--accent)',
-                                                border: '1px solid color-mix(in srgb, var(--accent), transparent 48%)',
-                                                background: 'color-mix(in srgb, var(--accent), transparent 84%)',
-                                                boxShadow: '0 0 10px color-mix(in srgb, var(--accent), transparent 70%)',
-                                            }}
-                                        >
-                                            SELECTED
-                                        </div>
+                                        <span className="dl-badge" style={{ position: 'absolute', top: 8, right: 8 }}>
+                                            <span className="dl-badge__dot" />SELECTED
+                                        </span>
                                     )}
 
                                     {extractingSkins[skinKey] && (
-                                        <div className="absolute top-10 left-2 bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold shadow-lg border border-white/10">
-                                            EXTRACTING...
-                                        </div>
+                                        <span className="dl-badge dl-badge--warn" style={{ position: 'absolute', top: 40, left: 8 }}>
+                                            <span className="dl-badge__dot" />Extracting
+                                        </span>
                                     )}
 
                                     {extractionProgress[skinKey] && !extractingSkins[skinKey] && (
-                                        <div className="absolute bottom-2 left-2 right-2 bg-black/80 text-white px-2 py-1 rounded text-xs font-bold backdrop-blur-md border border-white/20 shadow-lg text-center">
+                                        <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8, background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 6px', fontSize: 11, fontWeight: 600, textAlign: 'center' }}>
                                             {extractionProgress[skinKey]}
                                         </div>
                                     )}
@@ -137,12 +125,15 @@ export function ChampionSkinsPanel({
                                                 e.stopPropagation();
                                                 onDownloadSplashArt(selectedChampion, skin);
                                             }}
-                                            className="absolute bottom-2 right-2 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-full transition-colors duration-200 opacity-0 group-hover:opacity-100"
+                                            className="dl-btn dl-btn--icon dl-btn--ghost dl-btn--sm ae-card__action"
+                                            style={{ position: 'absolute', bottom: 8, right: 8 }}
                                             title="Download Splash Art"
                                         >
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                            </svg>
+                                            <span className="dl-icon">
+                                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                </svg>
+                                            </span>
                                         </button>
                                     )}
 
@@ -151,30 +142,26 @@ export function ChampionSkinsPanel({
                                             e.stopPropagation();
                                             onYouTubeSkin?.(selectedChampion.name, skin.name);
                                         }}
-                                        className="absolute bottom-2 left-2 text-white p-2 rounded-full transition-colors duration-200 opacity-0 group-hover:opacity-100"
-                                        style={{
-                                            border: '1px solid rgba(255, 77, 77, 0.55)',
-                                            background: 'color-mix(in srgb, #ff2c2c, transparent 84%)',
-                                            color: '#ff2c2c',
-                                        }}
+                                        className="dl-btn dl-btn--icon dl-btn--ghost dl-btn--sm ae-card__action"
+                                        style={{ position: 'absolute', bottom: 8, left: 8 }}
                                         title="Search skin spotlight on YouTube"
                                     >
-                                        <Youtube size={14} color="#ff2c2c" />
+                                        <span className="dl-icon"><Youtube size={14} /></span>
                                     </button>
                                 </div>
 
-                                <div className="p-3">
-                                    <h3 className="font-medium transition-colors" style={{ color: isSelected ? 'var(--accent)' : 'var(--text)' }}>
+                                <div className="ae-card__body">
+                                    <h3 style={{ fontWeight: 500, margin: 0, color: isSelected ? 'var(--accent-primary)' : 'var(--text-primary)' }}>
                                         {skin.name}
                                     </h3>
-                                    <p className="text-xs text-gray-400 mt-1">ID: {skin.id}</p>
+                                    <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>ID: {skin.id}</p>
 
                                     {chromas.length > 0 && (
                                         <div className="chroma-container">
                                             {chromas.map((chroma, index) => {
                                                 const chromaSelected = selectedChromas[skinKey]?.id === chroma.id;
                                                 return (
-                                                    <div key={chroma.id} className="relative">
+                                                    <div key={chroma.id} style={{ position: 'relative' }}>
                                                         <div
                                                             className={`chroma-dot ${chromaSelected ? 'selected' : ''}`}
                                                             style={{ backgroundColor: chroma.color || getDefaultChromaColor(index) }}
@@ -189,18 +176,18 @@ export function ChampionSkinsPanel({
                                                                         <img
                                                                             src={chroma.image_url}
                                                                             alt={chroma.name || `Chroma ${index + 1}`}
-                                                                            className="w-32 h-32 object-cover rounded"
+                                                                            style={{ width: 128, height: 128, objectFit: 'cover', borderRadius: 4 }}
                                                                             onError={(e) => { e.currentTarget.style.display = 'none'; }}
                                                                         />
                                                                     ) : (
-                                                                        <div className="w-32 h-32 rounded bg-gray-800 text-gray-300 text-xs flex items-center justify-center text-center px-2">
+                                                                        <div style={{ width: 128, height: 128, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '0 8px', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', fontSize: 12 }}>
                                                                             No image (offline)
                                                                         </div>
                                                                     )}
                                                                 </div>
                                                                 <div className="chroma-preview-name">{chroma.name || `Chroma ${index + 1}`}</div>
                                                                 <div className="chroma-preview-ids">
-                                                                    <div className="text-xs text-gray-300">Chroma ID: {String(chroma.id).slice(-2)}</div>
+                                                                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Chroma ID: {String(chroma.id).slice(-2)}</div>
                                                                 </div>
                                                             </div>
                                                         </div>

@@ -1,281 +1,242 @@
-/* AssetExtractor styles — ported 1:1 from the Electron Quartz FrogChanger.css.
-   Tailwind-like utility classes recreated so the markup ported from
-   FrogChanger renders identically without a Tailwind build step. Scoped under
-   .assetextractor-wrapper and bumped with !important to win over global CSS. */
+/* Asset Extractor — scoped styles for what the .dl-* primitives don't cover:
+   the splash-art skin grid, chroma dots/tooltip, and the bottom action bar
+   (mirrors port-bottom-bar). Everything else uses .dl-* + theme tokens. */
 
-.assetextractor-wrapper {
-    /* Locally define the secondary accent + green-muted the old theme assumed.
-       --accent2 falls back to --accent-2 then --accent like the other ports. */
-    --accent2: var(--accent-2, var(--accent));
-    --accent-green: var(--accent-green, #22c55e);
-    --accent-green-muted: var(--accent-green-muted, rgba(34, 197, 94, 0.18));
+/* ── Skin grid ─────────────────────────────────────────────────────────── */
+.ae-grid {
+    display: grid;
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+    gap: 16px;
 }
+@media (min-width: 768px)  { .ae-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .ae-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1280px) { .ae-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
-/* Layout / sizing utilities */
-.assetextractor-wrapper .min-h-screen { min-height: 100% !important; }
-.assetextractor-wrapper .h-screen { height: 100% !important; }
-.assetextractor-wrapper .bg-black { background-color: var(--bg, #000000) !important; }
-.assetextractor-wrapper .text-white { color: var(--text, #ffffff) !important; }
-
-.assetextractor-wrapper button.bg-green-600,
-.assetextractor-wrapper button.bg-green-700,
-.assetextractor-wrapper button[class*="bg-green"],
-.assetextractor-wrapper button.bg-blue-600,
-.assetextractor-wrapper button.bg-blue-700,
-.assetextractor-wrapper button[class*="bg-blue"] {
-    color: #ffffff !important;
-}
-.assetextractor-wrapper .text-gray-400 { color: var(--text-2, #9ca3af) !important; }
-.assetextractor-wrapper .text-gray-300 { color: var(--text-2, #d1d5db) !important; }
-.assetextractor-wrapper .text-green-400 { color: #4ade80 !important; }
-.assetextractor-wrapper .text-green-500 { color: #22c55e !important; }
-.assetextractor-wrapper .text-blue-400 { color: var(--accent2, #60a5fa) !important; }
-.assetextractor-wrapper .text-red-400 { color: #f87171 !important; }
-.assetextractor-wrapper .text-red-500 { color: #ef4444 !important; }
-.assetextractor-wrapper .text-yellow-300 { color: #fde047 !important; }
-.assetextractor-wrapper .text-yellow-400 { color: #facc15 !important; }
-.assetextractor-wrapper .text-orange-400 { color: #fb923c !important; }
-.assetextractor-wrapper .text-pink-400 { color: #f472b6 !important; }
-.assetextractor-wrapper .text-cyan-400 { color: #22d3ee !important; }
-.assetextractor-wrapper .text-purple-400 { color: #c084fc !important; }
-.assetextractor-wrapper .text-black { color: var(--bg, #000000) !important; }
-
-.assetextractor-wrapper .flex { display: flex; }
-.assetextractor-wrapper .inline-flex { display: inline-flex; }
-.assetextractor-wrapper .items-center { align-items: center; }
-.assetextractor-wrapper .items-start { align-items: flex-start; }
-.assetextractor-wrapper .justify-center { justify-content: center; }
-.assetextractor-wrapper .justify-between { justify-content: space-between; }
-.assetextractor-wrapper .justify-end { justify-content: flex-end; }
-.assetextractor-wrapper .flex-1 { flex: 1 1 0%; }
-.assetextractor-wrapper .flex-shrink-0 { flex-shrink: 0; }
-.assetextractor-wrapper .flex-col { flex-direction: column; }
-.assetextractor-wrapper .flex-wrap { flex-wrap: wrap; }
-.assetextractor-wrapper .gap-2 { gap: 0.5rem; }
-.assetextractor-wrapper .gap-3 { gap: 0.75rem; }
-.assetextractor-wrapper .gap-4 { gap: 1rem; }
-
-.assetextractor-wrapper .w-4 { width: 1rem; }
-.assetextractor-wrapper .w-6 { width: 1.5rem; }
-.assetextractor-wrapper .w-8 { width: 2rem; }
-.assetextractor-wrapper .w-12 { width: 3rem; }
-.assetextractor-wrapper .w-16 { width: 4rem; }
-.assetextractor-wrapper .w-32 { width: 8rem; }
-.assetextractor-wrapper .w-full { width: 100%; }
-
-.assetextractor-wrapper .h-1 { height: 0.25rem; }
-.assetextractor-wrapper .h-4 { height: 1rem; }
-.assetextractor-wrapper .h-6 { height: 1.5rem; }
-.assetextractor-wrapper .h-8 { height: 2rem; }
-.assetextractor-wrapper .h-12 { height: 3rem; }
-.assetextractor-wrapper .h-32 { height: 8rem; }
-.assetextractor-wrapper .h-full { height: 100%; }
-
-.assetextractor-wrapper .max-w-md { max-width: 28rem; }
-
-.assetextractor-wrapper .p-2 { padding: 0.5rem; }
-.assetextractor-wrapper .p-3 { padding: 0.75rem; }
-.assetextractor-wrapper .p-4 { padding: 1rem; }
-.assetextractor-wrapper .p-6 { padding: 1.5rem; }
-.assetextractor-wrapper .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
-.assetextractor-wrapper .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
-.assetextractor-wrapper .px-4 { padding-left: 1rem; padding-right: 1rem; }
-.assetextractor-wrapper .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
-.assetextractor-wrapper .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
-.assetextractor-wrapper .py-12 { padding-top: 3rem; padding-bottom: 3rem; }
-.assetextractor-wrapper .pl-4 { padding-left: 1rem; }
-.assetextractor-wrapper .pr-24 { padding-right: 6rem; }
-
-.assetextractor-wrapper .mb-1 { margin-bottom: 0.25rem; }
-.assetextractor-wrapper .mb-2 { margin-bottom: 0.5rem; }
-.assetextractor-wrapper .mb-4 { margin-bottom: 1rem; }
-.assetextractor-wrapper .mb-6 { margin-bottom: 1.5rem; }
-.assetextractor-wrapper .mt-1 { margin-top: 0.25rem; }
-.assetextractor-wrapper .mt-2 { margin-top: 0.5rem; }
-.assetextractor-wrapper .mr-2 { margin-right: 0.5rem; }
-.assetextractor-wrapper .ml-2 { margin-left: 0.5rem; }
-.assetextractor-wrapper .ml-4 { margin-left: 1rem; }
-.assetextractor-wrapper .mx-4 { margin-left: 1rem; margin-right: 1rem; }
-.assetextractor-wrapper .mx-auto { margin-left: auto; margin-right: auto; }
-
-.assetextractor-wrapper .text-\[9px\] { font-size: 9px; }
-.assetextractor-wrapper .text-\[10px\] { font-size: 10px; }
-.assetextractor-wrapper .text-xs { font-size: 0.75rem; line-height: 1rem; }
-.assetextractor-wrapper .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
-.assetextractor-wrapper .text-lg { font-size: 1.125rem; line-height: 1.75rem; }
-.assetextractor-wrapper .text-xl { font-size: 1.25rem; line-height: 1.75rem; }
-.assetextractor-wrapper .text-2xl { font-size: 1.5rem; line-height: 2rem; }
-.assetextractor-wrapper .text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
-
-.assetextractor-wrapper .font-bold { font-weight: 700; }
-.assetextractor-wrapper .font-medium { font-weight: 500; }
-.assetextractor-wrapper .font-semibold { font-weight: 600; }
-.assetextractor-wrapper .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
-
-.assetextractor-wrapper .rounded { border-radius: 0.25rem; }
-.assetextractor-wrapper .rounded-md { border-radius: 0.375rem; }
-.assetextractor-wrapper .rounded-lg { border-radius: 0.5rem; }
-.assetextractor-wrapper .rounded-full { border-radius: 9999px; }
-
-.assetextractor-wrapper .border { border-width: 1px; border-style: solid; }
-.assetextractor-wrapper .border-b-2 { border-bottom-width: 2px; border-bottom-style: solid; }
-.assetextractor-wrapper .border-l-4 { border-left-width: 4px; border-left-style: solid; }
-.assetextractor-wrapper .border-transparent { border-color: transparent !important; }
-.assetextractor-wrapper .border-gray-600 { border-color: var(--mui-divider, #4b5563) !important; }
-.assetextractor-wrapper .border-gray-700 { border-color: var(--surface-2, #374151) !important; }
-.assetextractor-wrapper .border-gray-800 { border-color: var(--bg-2, #1f2937) !important; }
-.assetextractor-wrapper .border-green-400 { border-color: #4ade80 !important; }
-.assetextractor-wrapper .border-green-500 { border-color: #22c55e !important; }
-
-.assetextractor-wrapper .bg-gray-700 { background-color: var(--surface-2, #374151) !important; }
-.assetextractor-wrapper .bg-gray-800 { background-color: var(--surface-2, #1f2937) !important; }
-.assetextractor-wrapper .bg-gray-900 { background-color: var(--surface, #111827) !important; }
-.assetextractor-wrapper .bg-green-500 { background-color: #22c55e !important; }
-.assetextractor-wrapper .bg-green-600 { background-color: #16a34a !important; }
-.assetextractor-wrapper .bg-blue-600 { background-color: #2563eb !important; color: #fff !important; }
-.assetextractor-wrapper .bg-blue-700 { background-color: #1d4ed8 !important; }
-.assetextractor-wrapper .hover\:bg-blue-700:hover { background-color: #1d4ed8 !important; }
-.assetextractor-wrapper .bg-black\/80 { background-color: rgba(0, 0, 0, 0.8); }
-.assetextractor-wrapper .bg-black\/60 { background-color: rgba(0, 0, 0, 0.6); }
-.assetextractor-wrapper .bg-black\/50 { background-color: rgba(0, 0, 0, 0.5); }
-.assetextractor-wrapper .bg-yellow-500\/10 { background-color: rgba(234, 179, 8, 0.1); }
-.assetextractor-wrapper .border-yellow-600\/40 { border-color: rgba(202, 138, 4, 0.4); }
-
-.assetextractor-wrapper .hover\:bg-gray-800:hover { background-color: var(--surface-2, #1f2937) !important; }
-.assetextractor-wrapper .hover\:bg-green-700:hover { background-color: #15803d !important; }
-.assetextractor-wrapper .hover\:bg-blue-900\/20:hover { background-color: rgba(30, 58, 138, 0.2); }
-.assetextractor-wrapper .hover\:bg-red-900\/20:hover { background-color: rgba(127, 29, 29, 0.2); }
-.assetextractor-wrapper .hover\:text-green-300:hover { color: #86efac !important; }
-.assetextractor-wrapper .hover\:text-blue-300:hover { color: #93c5fd !important; }
-.assetextractor-wrapper .hover\:text-red-300:hover { color: #fca5a5 !important; }
-.assetextractor-wrapper .hover\:text-purple-400:hover { color: #c084fc !important; }
-.assetextractor-wrapper .hover\:text-white:hover { color: var(--text, #ffffff) !important; }
-.assetextractor-wrapper .hover\:border-gray-600\/50:hover { border-color: rgba(75, 85, 99, 0.5) !important; }
-.assetextractor-wrapper .hover\:border-white\/25:hover { border-color: rgba(255, 255, 255, 0.25) !important; }
-.assetextractor-wrapper .hover\:shadow-lg:hover { box-shadow: var(--glass-shadow, 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)); }
-.assetextractor-wrapper .hover\:scale-110:hover { transform: scale(1.1); }
-
-.assetextractor-wrapper .placeholder-gray-400::placeholder { color: var(--text-2, #9ca3af); }
-
-.assetextractor-wrapper .focus\:outline-none:focus { outline: 2px solid transparent; outline-offset: 2px; }
-
-.assetextractor-wrapper .transition-all { transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
-.assetextractor-wrapper .transition-colors { transition-property: color, background-color, border-color; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
-.assetextractor-wrapper .transition-transform { transition-property: transform; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
-.assetextractor-wrapper .transition-opacity { transition-property: opacity; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
-.assetextractor-wrapper .duration-150 { transition-duration: 150ms; }
-.assetextractor-wrapper .duration-200 { transition-duration: 200ms; }
-.assetextractor-wrapper .duration-300 { transition-duration: 300ms; }
-
-.assetextractor-wrapper .animate-spin { animation: ae-spin 1s linear infinite; }
-.assetextractor-wrapper .animate-pulse { animation: ae-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-
-.assetextractor-wrapper .relative { position: relative; }
-.assetextractor-wrapper .absolute { position: absolute; }
-.assetextractor-wrapper .fixed { position: fixed; }
-.assetextractor-wrapper .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
-.assetextractor-wrapper .top-2 { top: 0.5rem; }
-.assetextractor-wrapper .top-10 { top: 2.5rem; }
-.assetextractor-wrapper .left-2 { left: 0.5rem; }
-.assetextractor-wrapper .right-2 { right: 0.5rem; }
-.assetextractor-wrapper .bottom-2 { bottom: 0.5rem; }
-.assetextractor-wrapper .right-1\.5 { right: 0.375rem; }
-.assetextractor-wrapper .top-1\/2 { top: 50%; }
-.assetextractor-wrapper .-translate-y-1\/2 { transform: translateY(-50%); }
-.assetextractor-wrapper .z-50 { z-index: 50; }
-
-.assetextractor-wrapper .overflow-hidden { overflow: hidden; }
-.assetextractor-wrapper .overflow-visible { overflow: visible; }
-.assetextractor-wrapper .overflow-x-auto { overflow-x: auto; }
-.assetextractor-wrapper .overflow-y-auto { overflow-y: auto; }
-.assetextractor-wrapper .overflow-y-hidden { overflow-y: hidden; }
-
-.assetextractor-wrapper .cursor-pointer { cursor: pointer; }
-.assetextractor-wrapper .object-cover { object-fit: cover; }
-.assetextractor-wrapper .backdrop-blur-md { backdrop-filter: blur(12px); }
-.assetextractor-wrapper .whitespace-nowrap { white-space: nowrap; }
-.assetextractor-wrapper .text-center { text-align: center; }
-.assetextractor-wrapper .text-left { text-align: left; }
-
-.assetextractor-wrapper .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
-
-.assetextractor-wrapper .space-y-1 > * + * { margin-top: 0.25rem; }
-.assetextractor-wrapper .space-y-4 > * + * { margin-top: 1rem; }
-
-.assetextractor-wrapper .grid { display: grid; }
-.assetextractor-wrapper .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
-.assetextractor-wrapper .col-span-full { grid-column: 1 / -1; }
-
-.assetextractor-wrapper .aspect-\[3\/4\] { aspect-ratio: 3 / 4; }
-
-.assetextractor-wrapper .bg-gradient-to-t { background-image: linear-gradient(to top, var(--ae-grad-from), var(--ae-grad-via, transparent), var(--ae-grad-to, transparent)); }
-.assetextractor-wrapper .from-black\/60 { --ae-grad-from: rgba(0, 0, 0, 0.6); }
-.assetextractor-wrapper .via-transparent { --ae-grad-via: transparent; }
-.assetextractor-wrapper .to-transparent { --ae-grad-to: transparent; }
-
-.assetextractor-wrapper .opacity-0 { opacity: 0; }
-.assetextractor-wrapper .group:hover .group-hover\:opacity-100 { opacity: 1; }
-.assetextractor-wrapper .group:hover .group-hover\:scale-110 { transform: scale(1.1); }
-
-@keyframes ae-spin { to { transform: rotate(360deg); } }
-@keyframes ae-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-
-@media (min-width: 768px) {
-    .assetextractor-wrapper .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (min-width: 1024px) {
-    .assetextractor-wrapper .lg\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-@media (min-width: 1280px) {
-    .assetextractor-wrapper .xl\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
-
-/* Chroma dots — ported verbatim from FrogChanger.css */
-.assetextractor-wrapper .chroma-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    cursor: pointer;
-    transition: all 0.2s ease;
+/* Skin card — built on the dl-card look (theme-tokened, hover-lift, accent
+   border) but with the splash media + overlay the grid needs. */
+.ae-card {
     position: relative;
-    display: inline-block;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--dl-radius, 10px);
+    overflow: visible;
+    cursor: pointer;
+    transition: border-color var(--dl-fast), transform var(--dl-fast), box-shadow var(--dl-fast);
 }
-.assetextractor-wrapper .chroma-dot::before {
+.ae-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in oklab, var(--accent-primary) 35%, var(--border));
+    box-shadow: var(--dl-shadow-md);
+    z-index: 60;
+}
+.ae-card--selected {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent-primary) 40%, transparent), var(--dl-shadow-md);
+}
+/* Cursor-following glow over the WHOLE card (--mx/--my set via JS on the card).
+   Fades to transparent before the edges so no clipping is needed (the card is
+   overflow: visible for chroma tooltips). Sits below content via z-index. */
+.ae-card::after {
     content: '';
     position: absolute;
-    top: -2px;
-    left: -2px;
-    right: -2px;
-    bottom: -2px;
-    border-radius: 50%;
-    background: transparent;
-    transition: all 0.2s ease;
-    z-index: -1;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    border-radius: inherit;
+    background: radial-gradient(
+        260px circle at var(--mx, 50%) var(--my, 50%),
+        color-mix(in oklab, var(--accent-primary) 22%, transparent) 0%,
+        transparent 60%);
+    opacity: 0;
+    transition: opacity var(--dl-base);
 }
-.assetextractor-wrapper .chroma-dot:hover {
-    transform: scale(1.25);
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+.ae-card:hover::after { opacity: 1; }
+/* Keep card content (media, body) above the glow layer. */
+.ae-card > * { position: relative; z-index: 1; }
+
+.ae-card__media {
+    position: relative;
+    overflow: hidden;
+    aspect-ratio: 3 / 4;
+    border-radius: var(--dl-radius, 10px) var(--dl-radius, 10px) 0 0;
 }
-.assetextractor-wrapper .chroma-dot:active { transform: scale(1.1); }
-.assetextractor-wrapper .chroma-dot.selected {
-    transform: scale(1.25);
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
-}
-.assetextractor-wrapper .chroma-dot.selected::before { background: rgba(255, 255, 255, 0.1); }
-.assetextractor-wrapper .chroma-container {
+.ae-card__media--icon {
+    aspect-ratio: 1 / 1;
     display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-    margin-top: 8px;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-primary);
 }
-.assetextractor-wrapper .chroma-tooltip {
+.ae-card__media img { transition: transform 0.3s ease; }
+.ae-card:hover .ae-card__media img { transform: scale(1.05); }
+.ae-card__overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.55), transparent 55%);
+    opacity: 0;
+    transition: opacity var(--dl-base);
+    pointer-events: none;
+}
+.ae-card:hover .ae-card__overlay { opacity: 1; }
+.ae-card__body { padding: 12px; }
+
+/* Hover-revealed corner actions (download / youtube). */
+.ae-card__action { opacity: 0; transition: opacity var(--dl-base); }
+.ae-card:hover .ae-card__action { opacity: 1; }
+
+/* ── Champion sidebar ──────────────────────────────────────────────────── */
+.ae-sb {
+    border-right: 1px solid var(--border);
+    padding: 16px;
+    overflow-y: auto;
+    flex-shrink: 0;
+}
+/* Category tabs above the search bar. Full-width segmented control. */
+.ae-sb__tabs {
+    display: flex;
+    width: 100%;
+    margin-bottom: 12px;
+}
+.ae-sb__tabs .dl-tab { flex: 1; text-align: center; padding: 6px 8px; }
+
+.ae-sb__search { position: relative; margin-bottom: 16px; }
+/* Info + mode toggle cluster, pinned inside the input on the right. Scoped +
+   !important so .dl-btn's own position/transform (loaded later) can't shift it. */
+.ae-sb__search .ae-sb__search-actions {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    z-index: 2;
+}
+.ae-sb__search .ae-sb__search-actions .dl-btn { position: relative !important; }
+
+.ae-sb__list { display: flex; flex-direction: column; gap: 6px; padding: 0 2px; }
+
+/* Solid, crisp rows to match the BinEditor system list (not washed-out):
+   full-strength surface + text, real border, accent rail + tint when active. */
+.ae-sb__row {
+    position: relative;
+    transform-origin: center;
+    width: 100%;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    text-align: left;
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    cursor: pointer;
+    font: inherit;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    -webkit-appearance: none;
+    appearance: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform var(--motion-fast), background-color var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast), box-shadow var(--motion-fast);
+}
+.ae-sb__row:focus,
+.ae-sb__row:focus-visible,
+.ae-sb__row:active { outline: none; }
+.ae-sb__row:hover:not(.is-active) {
+    background: var(--bg-hover);
+    border-color: color-mix(in oklab, var(--accent-primary) 35%, var(--border));
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.25);
+}
+.ae-sb__row.is-active {
+    background: color-mix(in oklab, var(--accent-primary) 16%, var(--bg-tertiary));
+    color: var(--accent-primary);
+    border-color: color-mix(in oklab, var(--accent-primary) 45%, var(--border));
+    box-shadow:
+        inset 3px 0 0 var(--accent-primary),
+        0 0 24px -6px color-mix(in srgb, var(--accent-primary) 55%, transparent);
+}
+/* Cursor-following glow (--mx/--my set via JS on the row). Sits under content. */
+.ae-sb__row::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background: radial-gradient(
+        140px circle at var(--mx, 50%) var(--my, 50%),
+        color-mix(in oklab, var(--accent-primary) 30%, transparent) 0%,
+        color-mix(in oklab, var(--accent-primary) 10%, transparent) 40%,
+        transparent 65%);
+    opacity: 0;
+    transition: opacity var(--motion-fast);
+}
+.ae-sb__row:hover::after { opacity: 1; }
+.ae-sb__row > * { position: relative; z-index: 1; }
+
+.ae-sb__avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    object-fit: cover;
+}
+.ae-sb__row.is-active .ae-sb__avatar {
+    border: 1px solid color-mix(in oklab, var(--accent-primary) 60%, transparent);
+}
+.ae-sb__avatar--fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+    font-size: 9px;
+}
+
+/* Name inherits the row color (primary, then accent when active). Alias stays a
+   muted sub-line. */
+.ae-sb__meta { display: flex; flex-direction: column; min-width: 0; }
+.ae-sb__name { font-size: 13px; font-weight: 600; color: inherit; }
+.ae-sb__alias { font-size: 11px; color: var(--text-muted); }
+.ae-sb__row.is-active .ae-sb__alias { color: color-mix(in oklab, var(--accent-primary) 70%, var(--text-muted)); }
+
+.ae-sb__yt {
+    margin-left: auto;
+    flex-shrink: 0;
+    width: 26px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 140ms, color 140ms;
+}
+.ae-sb__yt:hover { background: var(--bg-hover); color: var(--accent-primary); }
+
+/* ── Chroma dots + tooltip (ported, re-tokened) ────────────────────────── */
+.chroma-container { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+.chroma-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    cursor: pointer;
+    position: relative;
+    display: inline-block;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.chroma-dot:hover { transform: scale(1.25); box-shadow: 0 0 8px rgba(255,255,255,0.3); }
+.chroma-dot:active { transform: scale(1.1); }
+.chroma-dot.selected { transform: scale(1.25); box-shadow: 0 0 0 2px var(--accent-primary); }
+.chroma-tooltip {
     position: absolute;
     bottom: 100%;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.95);
-    color: white;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
     padding: 12px;
     border-radius: 8px;
     font-size: 12px;
@@ -284,26 +245,71 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--border);
+    box-shadow: var(--dl-shadow-lg);
     min-width: 150px;
     text-align: center;
 }
-.assetextractor-wrapper .chroma-preview-image { margin-bottom: 4px; }
-.assetextractor-wrapper .chroma-preview-name { font-weight: 500; color: #10b981; }
-.assetextractor-wrapper .chroma-preview-ids {
-    margin-top: 4px;
-    padding-top: 4px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+.chroma-dot:hover .chroma-tooltip { opacity: 1; }
+.chroma-preview-image { margin-bottom: 4px; }
+.chroma-preview-name { font-weight: 500; color: var(--accent-primary); }
+.chroma-preview-ids { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
+
+/* ── Bottom action bar (mirrors port-bottom-bar) ───────────────────────── */
+.ae-bottom-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 48px;
+    padding: 8px 16px;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    box-sizing: border-box;
 }
-.assetextractor-wrapper .chroma-dot:hover .chroma-tooltip { opacity: 1; }
-
-/* Lift the hovered skin card above its siblings so the chroma tooltip is not
-   painted over by adjacent cards (matches FrogChanger). */
-.assetextractor-wrapper .skin-card:hover { z-index: 60 !important; }
-
-@keyframes liquidSheen {
-    0% { transform: translateX(-24%); opacity: 0.2; }
-    50% { transform: translateX(24%); opacity: 0.34; }
-    100% { transform: translateX(-24%); opacity: 0.2; }
+.ae-bottom-bar__status {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 40%;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    pointer-events: none;
+}
+.ae-bottom-bar__group {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.ae-bottom-bar__names {
+    font-size: 12px;
+    color: var(--text-secondary);
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* Extract = success-green dl-btn variant (matches Port's Save). */
+.ae-extract-btn {
+    --_bg: color-mix(in oklab, var(--color-success) 14%, var(--bg-secondary));
+    --_fg: var(--color-success);
+    --_border: color-mix(in oklab, var(--color-success) 40%, var(--border));
+}
+.ae-extract-btn:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--color-success) 24%, var(--bg-secondary));
+    border-color: color-mix(in oklab, var(--color-success) 70%, var(--border));
+}
+.ae-extract-btn::after {
+    background: radial-gradient(160px circle at var(--mx, 50%) var(--my, 50%),
+        color-mix(in oklab, var(--color-success) 30%, transparent) 0%, transparent 60%);
 }

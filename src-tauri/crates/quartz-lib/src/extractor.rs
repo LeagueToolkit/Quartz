@@ -324,6 +324,9 @@ pub struct ExtractOptions<'a> {
     pub chroma_id: Option<u32>,
     /// In clean mode, also carry every `hud/icons2d/` asset for the champion.
     pub preserve_hud_icons2d: bool,
+    /// Skip exporting SFX audio banks (`sounds/wwise2016/sfx/*.{bnk,wpk,wem}`)
+    /// in clean mode — they're rarely modded and bloat the dump. Default on.
+    pub skip_sfx: bool,
 }
 
 impl ExtractOptions<'_> {
@@ -405,7 +408,7 @@ where
 
     // Main archive: whole-WAD (empty selection) or the pruned skin-only graph.
     let main = if opts.clean {
-        extract_skin_clean(&main_wad, &stem, effective_skin_id, opts.preserve_hud_icons2d, &extract_root, &progress)?
+        extract_skin_clean(&main_wad, &stem, effective_skin_id, opts.preserve_hud_icons2d, opts.skip_sfx, &extract_root, &progress)?
     } else {
         extract_archive(&main_wad, &extract_root, "extracting", &progress)?
     };
@@ -598,14 +601,23 @@ fn skin_bin_match<'a>(rel: &'a str, n: u32) -> Option<&'a str> {
     Some(champ)
 }
 
+/// True for a WAD-relative SFX audio bank (`sounds/wwise2016/sfx/*.{bnk,wpk,wem}`).
+/// `rel` is already normalized (lowercase, `/`-separated).
+fn is_sfx_audio_rel(rel: &str) -> bool {
+    let in_sfx = rel.contains("/sounds/wwise2016/sfx/") || rel.starts_with("sounds/wwise2016/sfx/");
+    in_sfx && (rel.ends_with(".bnk") || rel.ends_with(".wpk") || rel.ends_with(".wem"))
+}
+
 /// Skin-files-only ("clean") extraction: seed from `skin<N>.bin`, follow the
 /// linked-BIN graph, gather referenced assets, and write only those chunks.
 /// This is the native reimplementation of the old Electron `fastSkinOnly`.
+#[allow(clippy::too_many_arguments)]
 fn extract_skin_clean<F>(
     wad_path: &Path,
     stem: &str,
     skin_id: u32,
     preserve_hud_icons2d: bool,
+    skip_sfx: bool,
     out_dir: &Path,
     progress: &F,
 ) -> Result<wad_explorer::ExtractResult>
@@ -689,6 +701,12 @@ where
     for asset in &referenced {
         let rel = normalize_rel(asset);
         if rel.ends_with(".bin") {
+            continue;
+        }
+        // Skip exporting SFX audio banks when requested (they're rarely modded
+        // and bloat the dump). VFX/meshes never reference these, so dropping
+        // them from the selection can't orphan a needed asset.
+        if skip_sfx && is_sfx_audio_rel(&rel) {
             continue;
         }
         if let Some(&hash) = by_path.get(&rel) {
@@ -846,6 +864,14 @@ pub struct RepathOptions<'a> {
     pub skip_sfx: bool,
     /// Leave VO audio banks untouched (don't prefix/relocate them).
     pub skip_vo: bool,
+    /// Split `VfxSystemDefinitionData` out of each skin BIN into a sibling
+    /// `<champ>_vfx_<stem>.bin` (old Quartz toggle, default off).
+    pub split_vfx: bool,
+    /// Split `AnimationGraphData` out into `<champ>_anm_<stem>.bin` (default off).
+    pub split_anm: bool,
+    /// Move VFX-referenced assets into a per-skin particles folder and rewrite
+    /// the VFX strings (old Quartz toggle, default on).
+    pub consolidate_assets: bool,
     /// WAD-folder-name override (e.g. `Companions.wad.client` for TFT); when
     /// None the organizer derives `<champion>.wad.client`.
     pub wad_folder_override: Option<String>,
@@ -891,6 +917,17 @@ pub fn repath_extracted(opts: RepathOptions<'_>) -> Result<RepathSummary> {
         .map(|r| (r.paths_modified, r.files_relocated, r.files_removed, r.missing_paths.len()))
         .unwrap_or((0, 0, 0, 0));
 
+    // Post-repath, per old Quartz FrogChanger: split (if enabled) THEN
+    // consolidate (if enabled), over EVERY seed skin BIN (all characters).
+    let repath_prefix = if opts.project_name.is_empty() {
+        opts.creator_name.replace(' ', "-")
+    } else {
+        format!("{}/{}", opts.creator_name.replace(' ', "-"), opts.project_name.replace(' ', "-"))
+    };
+    run_split_and_consolidate(
+        opts.content_dir, opts.skin_id, opts.split_vfx, opts.split_anm, opts.consolidate_assets, &repath_prefix,
+    );
+
     Ok(RepathSummary {
         ok: result.repath_result.is_some(),
         output_dir: opts.content_dir.to_string_lossy().into_owned(),
@@ -902,6 +939,221 @@ pub fn repath_extracted(opts: RepathOptions<'_>) -> Result<RepathSummary> {
         characters_combined,
         elapsed_ms: started.elapsed().as_millis() as u64,
     })
+}
+
+/// Result of [`finalize_extracted`].
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FinalizeSummary {
+    pub ok: bool,
+    pub output_dir: String,
+    /// Linked BINs merged into skin BINs across all characters.
+    pub bins_combined: usize,
+    /// Independent character roots combined (main + subcharacters).
+    pub characters_combined: usize,
+    /// Base `<char>.bin` roots pruned.
+    pub base_bins_pruned: usize,
+    pub elapsed_ms: u64,
+}
+
+/// Options for [`finalize_extracted`].
+pub struct FinalizeOptions<'a> {
+    pub content_dir: &'a Path,
+    pub champion: &'a str,
+    pub skin_id: u32,
+    /// Split VFX / ANM out of skin BINs into siblings (old Quartz toggles, off).
+    pub split_vfx: bool,
+    pub split_anm: bool,
+    /// Consolidate VFX assets into `ASSETS/skin<N>_<champ>_particles/` (default on).
+    pub consolidate_assets: bool,
+    pub wad_folder_override: Option<String>,
+}
+
+/// Finalize a "Skin Files Only" extraction, 1:1 with old Quartz's fast-skin
+/// path: COMBINE each character's linked BINs into its own skin BIN (NO repath
+/// prefix), prune every base `<char>.bin`, then optionally split VFX/ANM and
+/// consolidate VFX assets. Produces a clean, self-contained skin dump without
+/// the `ASSETS/<prefix>/` repathing that the installable-mod flow applies.
+pub fn finalize_extracted(opts: FinalizeOptions<'_>) -> Result<FinalizeSummary> {
+    use crate::flint_repath::organizer::{organize_project, OrganizerConfig};
+
+    let started = std::time::Instant::now();
+    if !opts.content_dir.is_dir() {
+        return Err(Error::InvalidInput(format!(
+            "Extracted folder not found: {}",
+            opts.content_dir.display()
+        )));
+    }
+
+    // Combine only — no repath prefix (old Quartz `bum.process(.., null, ..)`).
+    let config = OrganizerConfig {
+        enable_concat: true,
+        enable_repath: false,
+        creator_name: String::new(),
+        project_name: String::new(),
+        champion: opts.champion.to_string(),
+        target_skin_id: opts.skin_id,
+        cleanup_unused: false,
+        skip_sfx: false,
+        skip_vo: false,
+        wad_folder_override: opts.wad_folder_override.clone(),
+    };
+    let result = organize_project(opts.content_dir, &config, &HashMap::new())?;
+    let bins_combined: usize = result.concat_results.iter().map(|c| c.source_count).sum();
+    let characters_combined = result.concat_results.len();
+
+    // Prune every base `<char>.bin` (always deleted after combine, old Quartz).
+    let base_bins_pruned = prune_base_character_bins(opts.content_dir);
+
+    // Split (if on) THEN consolidate with EMPTY prefix → `ASSETS/skin<N>_<champ>_particles/`.
+    run_split_and_consolidate(
+        opts.content_dir, opts.skin_id, opts.split_vfx, opts.split_anm, opts.consolidate_assets, "",
+    );
+
+    Ok(FinalizeSummary {
+        ok: true,
+        output_dir: opts.content_dir.to_string_lossy().into_owned(),
+        bins_combined,
+        characters_combined,
+        base_bins_pruned,
+        elapsed_ms: started.elapsed().as_millis() as u64,
+    })
+}
+
+/// Delete every base character root BIN (`data/characters/<char>/<char>.bin`)
+/// under `content_dir` — redundant after combine. Returns the count removed.
+fn prune_base_character_bins(content_dir: &Path) -> usize {
+    let mut removed = 0;
+    let mut stack = vec![content_dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            let s = p.to_string_lossy().to_lowercase().replace('\\', "/");
+            let name = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+            let folder = p.parent().and_then(|d| d.file_name()).map(|n| n.to_string_lossy().to_lowercase());
+            let is_base_root = s.contains("/characters/")
+                && !s.contains("/skins/")
+                && !s.contains("/animations/")
+                && folder.as_deref().map(|f| name == format!("{}.bin", f)).unwrap_or(false);
+            if is_base_root && std::fs::remove_file(&p).is_ok() {
+                removed += 1;
+                tracing::debug!("Pruned base character BIN: {}", s);
+            }
+        }
+    }
+    removed
+}
+
+/// Split + consolidate, 1:1 with old Quartz FrogChanger: for every seed skin
+/// BIN in the output (all characters), split VFX/ANM into sibling BINs (if
+/// enabled) THEN consolidate VFX assets (if enabled). `prefix` is the consolidate
+/// folder prefix — the repath prefix in repath mode, or "" in skin-files-only
+/// mode (target then `ASSETS/skin<N>_<champ>_particles/`). Fail-open.
+fn run_split_and_consolidate(
+    content_dir: &Path,
+    skin_id: u32,
+    split_vfx: bool,
+    split_anm: bool,
+    consolidate: bool,
+    prefix: &str,
+) {
+    if !split_vfx && !split_anm && !consolidate {
+        return;
+    }
+
+    let skin_bins = find_skin_bins(content_dir);
+    if skin_bins.is_empty() {
+        return;
+    }
+
+    if split_vfx || split_anm {
+        for bin in &skin_bins {
+            if split_vfx {
+                if let Err(e) = crate::bin::bin_editor::split_one_kind(bin, "vfx") {
+                    tracing::warn!("VFX split failed for {}: {}", bin.display(), e);
+                }
+            }
+            if split_anm {
+                if let Err(e) = crate::bin::bin_editor::split_one_kind(bin, "anm") {
+                    tracing::warn!("ANM split failed for {}: {}", bin.display(), e);
+                }
+            }
+        }
+    }
+
+    if consolidate {
+        for (champ, skin_num, targets) in consolidate_targets(&skin_bins, content_dir, skin_id) {
+            for target in targets {
+                match crate::bin::bin_editor::consolidate_assets_repath(
+                    &target, content_dir, prefix, &champ, skin_num,
+                ) {
+                    Ok(r) => tracing::info!(
+                        "Consolidated {} VFX assets (of {} referenced) for '{}'",
+                        r.moved, r.referenced, champ
+                    ),
+                    Err(e) => tracing::warn!("Consolidate failed for {}: {}", target.display(), e),
+                }
+            }
+        }
+    }
+}
+
+/// Every `data/characters/*/skins/skin*.bin` under `root` (old Quartz `findSkinBins`).
+fn find_skin_bins(root: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            let s = p.to_string_lossy().to_lowercase().replace('\\', "/");
+            let name = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+            let is_skin = name.starts_with("skin")
+                && name.ends_with(".bin")
+                && name["skin".len()..name.len() - 4].chars().all(|c| c.is_ascii_digit())
+                && !name["skin".len()..name.len() - 4].is_empty();
+            if is_skin && s.contains("/characters/") && s.contains("/skins/") {
+                out.push(p);
+            }
+        }
+    }
+    out
+}
+
+/// For each character, the BIN(s) consolidate should scan for this skin id:
+/// the skin BIN and its `<champ>_vfx_skin<N>.bin` sibling (old Quartz's
+/// `candidateBins`). Returns `(champ, skin_num, existing_bins)` per character.
+fn consolidate_targets(
+    skin_bins: &[PathBuf],
+    content_dir: &Path,
+    skin_id: u32,
+) -> Vec<(String, u32, Vec<PathBuf>)> {
+    let mut out = Vec::new();
+    for sb in skin_bins {
+        let s = sb.to_string_lossy().replace('\\', "/").to_lowercase();
+        let Some(i) = s.find("/characters/") else { continue };
+        let after = &s[i + "/characters/".len()..];
+        let Some(slash) = after.find('/') else { continue };
+        let champ = after[..slash].to_string();
+        let vfx_sibling = content_dir
+            .join("data")
+            .join(format!("{}_vfx_skin{}.bin", champ, skin_id));
+        let mut bins = vec![sb.clone()];
+        if vfx_sibling.is_file() {
+            bins.push(vfx_sibling);
+        }
+        out.push((champ, skin_id, bins));
+    }
+    out
 }
 
 /// Find `<stem>.<lang>.wad.client` voiceover archives next to the main WAD.
@@ -1018,6 +1270,7 @@ mod tests {
             clean: false,
             chroma_id,
             preserve_hud_icons2d: false,
+            skip_sfx: true,
         }
     }
 

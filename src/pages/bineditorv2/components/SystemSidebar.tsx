@@ -3,7 +3,8 @@ import type { EditorSystem } from '@/lib/api/bineditor';
 import { getShortSystemName } from '@/pages/port/utils/nameUtils';
 
 /* Left sidebar: system search + the multi-selectable system list with emitter
-   counts and dirty dots. */
+   counts and dirty dots. Rows use the shared Settings-rail styling (matches the
+   Asset Extractor champion list). */
 
 interface SystemSidebarProps {
     systems: EditorSystem[];
@@ -12,6 +13,15 @@ interface SystemSidebarProps {
     search: string;
     onSearch: (q: string) => void;
     onToggleSystem: (key: string) => void;
+}
+
+/* Cursor-following glow: set --mx/--my on the hovered row. */
+function onRowMove(e: React.MouseEvent<HTMLDivElement>) {
+    const row = (e.target as HTMLElement).closest<HTMLElement>('.biev2-row');
+    if (!row) return;
+    const r = row.getBoundingClientRect();
+    row.style.setProperty('--mx', `${e.clientX - r.left}px`);
+    row.style.setProperty('--my', `${e.clientY - r.top}px`);
 }
 
 export default function SystemSidebar({
@@ -38,78 +48,26 @@ export default function SystemSidebar({
                 value={search}
                 onChange={(e) => onSearch(e.target.value)}
                 placeholder="Search systems…"
-                style={{ marginBottom: 10, flexShrink: 0 }}
+                style={{ flexShrink: 0 }}
             />
 
-            <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+            <div className="biev2-syslist-divider" />
+
+            <div className="biev2-syslist" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }} onMouseMove={onRowMove}>
                 {filtered.map((sys) => {
                     const selected = selectedKeys.has(sys.key);
                     const dirty = dirtyKeys.has(sys.key);
                     return (
-                        <div key={sys.key} style={{ marginBottom: 8 }}>
-                            <div
-                                onClick={() => onToggleSystem(sys.key)}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 8,
-                                    height: 42,
-                                    padding: '0 12px',
-                                    borderRadius: 'var(--dl-radius-sm)',
-                                    cursor: 'pointer',
-                                    userSelect: 'none',
-                                    overflow: 'hidden',
-                                    background: 'var(--bg-tertiary)',
-                                    border: selected
-                                        ? '1px solid color-mix(in oklab, var(--accent-primary) 45%, var(--border))'
-                                        : '1px solid var(--border)',
-                                    boxShadow: selected ? 'inset 3px 0 0 var(--accent-primary)' : 'inset 3px 0 0 transparent',
-                                    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
-                                }}
-                            >
-                                <span
-                                    style={{
-                                        flex: 1,
-                                        fontWeight: 600,
-                                        color: selected ? 'var(--accent-primary)' : 'var(--text-primary)',
-                                        fontSize: 13,
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap',
-                                    }}
-                                    title={sys.name}
-                                >
-                                    {getShortSystemName(sys.name)}
-                                </span>
-                                {dirty && (
-                                    <span
-                                        title="Modified"
-                                        style={{
-                                            width: 7,
-                                            height: 7,
-                                            borderRadius: '50%',
-                                            background: 'var(--accent-primary)',
-                                            flexShrink: 0,
-                                        }}
-                                    />
-                                )}
-                                <span
-                                    style={{
-                                        marginLeft: 'auto',
-                                        opacity: 1,
-                                        fontSize: '12px',
-                                        background: 'var(--bg-hover)',
-                                        padding: '1px 7px',
-                                        borderRadius: '12px',
-                                        color: 'var(--text-primary)',
-                                        border: '1px solid var(--border)',
-                                        fontWeight: 600,
-                                        flexShrink: 0,
-                                    }}
-                                >
-                                    {sys.emitters.length}
-                                </span>
-                            </div>
+                        <div
+                            key={sys.key}
+                            className={`biev2-row${selected ? ' is-active' : ''}`}
+                            onClick={() => onToggleSystem(sys.key)}
+                        >
+                            <span className="biev2-row__name" title={sys.name}>
+                                {getShortSystemName(sys.name)}
+                            </span>
+                            {dirty && <span className="biev2-row__dot" title="Modified" />}
+                            <span className="biev2-row__count">{sys.emitters.length}</span>
                         </div>
                     );
                 })}

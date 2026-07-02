@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Info as InfoIcon, X as CloseIcon, Check } from 'lucide-react';
 
 export interface ExtractionDecision {
     skinKey: string;
@@ -9,6 +11,13 @@ export interface ExtractionPayload {
     decisions: ExtractionDecision[];
     options: {
         extractVoiceover: boolean;
+        /* Skip exporting SFX audio banks (default true). */
+        skipSfx: boolean;
+        /* Skin Files Only finalize options (used when clean === true). */
+        preserveHudIcons2D: boolean;
+        splitVfx: boolean;
+        splitAnm: boolean;
+        consolidateAssets: boolean;
         outputOverride: {
             enabled: boolean;
             keepForAll: boolean;
@@ -34,11 +43,22 @@ interface Props {
     onCancel: () => void;
 }
 
-/* Ported from FrogChanger ExtractionModeModal.js. The Rust backend
-   extract_champion_assets supports voiceover + output dir; the Electron-only
-   "Skin Files Only" clean mode and bin split/consolidate are not yet wired.
-   The clean flag is still carried through for when a backend lands.
-   TODO(backend): clean/skin-files-only mode, bin split, asset consolidation. */
+/* A Design Lab styled checkbox row. */
+function DlCheck({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+    return (
+        <label className="dl-check">
+            <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+            <span className="dl-check__box">
+                <span className="dl-check__tick"><span className="dl-icon"><Check size={12} /></span></span>
+            </span>
+            <span>{label}</span>
+        </label>
+    );
+}
+
+/* The Rust backend extract_champion_assets supports voiceover + output dir; the
+   Electron-only "Skin Files Only" clean mode and bin split/consolidate are not
+   yet wired. The clean flag is still carried through for when a backend lands. */
 export function ExtractionModeModal({
     open,
     skins = [],
@@ -51,6 +71,11 @@ export function ExtractionModeModal({
     const [currentIndex, setCurrentIndex] = useState(0);
     const [decisions, setDecisions] = useState<ExtractionDecision[]>([]);
     const [extractVoiceover, setExtractVoiceover] = useState(false);
+    const [skipSfx, setSkipSfx] = useState(true);
+    const [preserveHudIcons2D, setPreserveHudIcons2D] = useState(true);
+    const [splitVfx, setSplitVfx] = useState(false);
+    const [splitAnm, setSplitAnm] = useState(false);
+    const [consolidateAssets, setConsolidateAssets] = useState(true);
     const [outputOverrideEnabled, setOutputOverrideEnabled] = useState(false);
     const [outputKeepForAll, setOutputKeepForAll] = useState(true);
     const [outputPath, setOutputPath] = useState('');
@@ -63,6 +88,11 @@ export function ExtractionModeModal({
             setCurrentIndex(0);
             setDecisions([]);
             setExtractVoiceover(false);
+            setSkipSfx(true);
+            setPreserveHudIcons2D(true);
+            setSplitVfx(false);
+            setSplitAnm(false);
+            setConsolidateAssets(true);
             setOutputOverrideEnabled(false);
             setOutputKeepForAll(true);
             setOutputPath(String(defaultOutputPath || ''));
@@ -79,10 +109,12 @@ export function ExtractionModeModal({
     const current = skins[currentIndex];
     const skinKey = (s: PendingSkin) => `${s.championName}_${s.skinId}`;
 
+    const finalizeOptions = { extractVoiceover, skipSfx, preserveHudIcons2D, splitVfx, splitAnm, consolidateAssets };
+
     const resolvePayload = (nextDecisions: ExtractionDecision[]): ExtractionPayload => ({
         decisions: nextDecisions,
         options: {
-            extractVoiceover,
+            ...finalizeOptions,
             outputOverride: { enabled: outputOverrideEnabled, keepForAll: outputKeepForAll, path: outputPath, perSkinPaths: outputPathsBySkin },
         },
     });
@@ -102,7 +134,7 @@ export function ExtractionModeModal({
             onDecide({
                 decisions: finalDecisions,
                 options: {
-                    extractVoiceover,
+                    ...finalizeOptions,
                     outputOverride: { enabled: outputOverrideEnabled, keepForAll: outputKeepForAll, path: outputPath, perSkinPaths: finalPathsBySkin },
                 },
             });
@@ -129,102 +161,80 @@ export function ExtractionModeModal({
         }
     };
 
-    const styles: Record<string, React.CSSProperties> = {
-        overlay: { position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px' },
-        backdrop: { position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' },
-        modal: { position: 'relative', width: '100%', maxWidth: 480, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'saturate(180%) blur(16px)', WebkitBackdropFilter: 'saturate(180%) blur(16px)', borderRadius: 16, boxShadow: '0 30px 70px rgba(0,0,0,0.55), 0 0 30px color-mix(in srgb, var(--accent2), transparent 82%)', overflow: 'hidden' },
-        accentBar: { height: 3, background: 'linear-gradient(90deg, var(--accent), var(--accent2), var(--accent))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' },
-        body: { padding: 24 },
-        title: { fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)', margin: 0 },
-        subtitle: { fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', marginTop: 4, marginBottom: 0 },
-        section: { borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', padding: 14, marginTop: 16 },
-        sectionTitle: { color: 'var(--accent2)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: 0, marginBottom: 8 },
-        divider: { borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 20, paddingTop: 16 },
-        infoBtn: { width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent2)', border: '1px solid color-mix(in srgb, var(--accent2), transparent 60%)', background: 'color-mix(in srgb, var(--accent2), transparent 90%)', cursor: 'pointer', transition: 'all 0.2s ease', marginLeft: 8 },
-        infoSection: { marginTop: 12, padding: 12, borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.74rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.4 },
-    };
+    const sectionStyle: React.CSSProperties = { borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: 14, marginTop: 16 };
+    const sectionTitle: React.CSSProperties = { color: 'var(--accent-primary)', fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '0 0 8px' };
 
-    const btnBase: React.CSSProperties = { padding: '7px 16px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', background: 'color-mix(in srgb, var(--accent2), transparent 90%)', color: 'var(--accent2)', fontFamily: 'inherit', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.25s ease' };
-    const btnGhost: React.CSSProperties = { ...btnBase, background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.15)' };
-    const btnPrimary: React.CSSProperties = { ...btnBase, background: 'color-mix(in srgb, var(--accent), transparent 80%)', color: 'var(--accent)', border: '1px solid color-mix(in srgb, var(--accent), transparent 60%)' };
-    const btnBrowse: React.CSSProperties = { ...btnBase, minWidth: 72 };
+    return createPortal(
+        <div className="dl-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+            <div className="dl-modal">
+                <div className="dl-modal__head">
+                    <h3 className="dl-modal__title">
+                        {multiSkin ? `Extraction Skin ${currentIndex + 1} of ${total}` : 'Extraction Mode'}
+                    </h3>
+                    <button className="dl-btn dl-btn--icon dl-btn--ghost dl-btn--sm" onClick={() => setInfoOpen(!infoOpen)} title="Help Info">
+                        <span className="dl-icon"><InfoIcon size={15} /></span>
+                    </button>
+                    <button className="dl-modal__close" onClick={onCancel} aria-label="Close">
+                        <span className="dl-icon"><CloseIcon size={16} /></span>
+                    </button>
+                </div>
 
-    const checkRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' };
-    const checkbox: React.CSSProperties = { width: 14, height: 14, accentColor: 'var(--accent2)', cursor: 'pointer' };
-
-    return (
-        <div style={styles.overlay}>
-            <div style={styles.backdrop} onClick={onCancel} />
-            <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-                <div style={styles.accentBar} />
-                <div style={styles.body}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <h2 style={styles.title}>{multiSkin ? `Extraction Skin ${currentIndex + 1} of ${total}` : 'Extraction Mode'}</h2>
-                            <button style={styles.infoBtn} onClick={() => setInfoOpen(!infoOpen)} title="Help Info">i</button>
-                        </div>
-                        <button
-                            onClick={onCancel}
-                            style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', cursor: 'pointer', transition: 'all 0.25s ease' }}
-                        >
-                            {'✕'}
-                        </button>
-                    </div>
-
+                <div className="dl-modal__body">
                     {infoOpen && (
-                        <div style={styles.infoSection}>
+                        <div style={{ padding: 12, borderRadius: 10, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
                             <div style={{ marginBottom: 6 }}>
-                                <strong style={{ color: 'var(--accent2)' }}>Whole WAD:</strong> Extracts everything as-is. Best for finding missing assets.
+                                <strong style={{ color: 'var(--accent-primary)' }}>Whole WAD:</strong> Extracts everything as-is. Best for finding missing assets.
                             </div>
                             <div>
-                                <strong style={{ color: 'var(--accent2)' }}>Skin Files Only:</strong> Only extracts models/skins (recommended).
+                                <strong style={{ color: 'var(--accent-primary)' }}>Skin Files Only:</strong> Only extracts models and skins (recommended).
                             </div>
                         </div>
                     )}
 
-                    <p style={styles.subtitle}>{current.championName} — {current.skinName}</p>
+                    <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>{current.championName} — {current.skinName}</p>
 
-                    <div style={styles.section}>
-                        <h3 style={styles.sectionTitle}>Options</h3>
+                    <div style={sectionStyle}>
+                        <h4 style={sectionTitle}>Options</h4>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                             {multiSkin && (
-                                <label style={checkRow}>
-                                    <input type="checkbox" checked={applyToAll} onChange={(e) => setApplyToAll(e.target.checked)} style={checkbox} />
-                                    Apply mode to all remaining skins
-                                </label>
+                                <DlCheck checked={applyToAll} onChange={setApplyToAll} label="Apply mode to all remaining skins" />
                             )}
-                            <label style={checkRow}>
-                                <input type="checkbox" checked={extractVoiceover} onChange={(e) => setExtractVoiceover(e.target.checked)} style={checkbox} />
-                                Extract Voiceover
-                            </label>
+                            <DlCheck checked={extractVoiceover} onChange={setExtractVoiceover} label="Extract Voiceover" />
+                            <DlCheck checked={skipSfx} onChange={setSkipSfx} label="Skip SFX export" />
 
-                            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 4, paddingTop: 8 }}>
-                                <div style={{ fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', marginBottom: 6 }}>
+                            <div style={{ borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                                    Skin Files Only
+                                </div>
+                                <DlCheck checked={preserveHudIcons2D} onChange={setPreserveHudIcons2D} label="Preserve HUD ability icons" />
+                                <DlCheck checked={consolidateAssets} onChange={setConsolidateAssets} label="Consolidate VFX assets into per-skin folders" />
+                                <DlCheck checked={splitVfx} onChange={setSplitVfx} label="Split VFX into a separate bin" />
+                                <DlCheck checked={splitAnm} onChange={setSplitAnm} label="Split animations into a separate bin" />
+                            </div>
+
+                            <div style={{ borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 8 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 6 }}>
                                     Output
                                 </div>
-                                <label style={checkRow}>
-                                    <input type="checkbox" checked={outputOverrideEnabled} onChange={(e) => setOutputOverrideEnabled(e.target.checked)} style={checkbox} />
-                                    Override Output Path
-                                </label>
+                                <DlCheck checked={outputOverrideEnabled} onChange={setOutputOverrideEnabled} label="Override Output Path" />
                             </div>
                             {outputOverrideEnabled && multiSkin && (
-                                <label style={{ ...checkRow, marginLeft: 20, color: 'rgba(255,255,255,0.8)' }}>
-                                    <input type="checkbox" checked={outputKeepForAll} onChange={(e) => setOutputKeepForAll(e.target.checked)} style={checkbox} />
-                                    Keep same output path for all selected skins
-                                </label>
+                                <div style={{ marginLeft: 20 }}>
+                                    <DlCheck checked={outputKeepForAll} onChange={setOutputKeepForAll} label="Keep same output path for all selected skins" />
+                                </div>
                             )}
                             {outputOverrideEnabled && (
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, marginTop: 4 }}>
                                     <input
+                                        className="dl-input"
                                         list="ae-recent-paths-extract"
                                         value={outputPath}
                                         onChange={(e) => setOutputPath(e.target.value)}
                                         placeholder={defaultOutputPath || 'Select output path...'}
-                                        style={{ borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', padding: '8px 10px', fontSize: '0.75rem', color: 'var(--text)', fontFamily: 'inherit' }}
                                     />
                                     <button
                                         type="button"
-                                        style={btnBrowse}
+                                        className="dl-btn dl-btn--secondary"
                                         onClick={async () => {
                                             const picked = await onBrowseOutputPath?.();
                                             if (picked) setOutputPath(String(picked));
@@ -243,13 +253,14 @@ export function ExtractionModeModal({
                             )}
                         </div>
                     </div>
+                </div>
 
-                    <div style={{ ...styles.divider, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                        <button style={btnGhost} onClick={() => handleDecision(false)}>Whole WAD</button>
-                        <button style={btnPrimary} onClick={() => handleDecision(true)}>Skin Files Only</button>
-                    </div>
+                <div className="dl-modal__foot">
+                    <button className="dl-btn dl-btn--secondary" onClick={() => handleDecision(false)}>Whole WAD</button>
+                    <button className="dl-btn dl-btn--primary" onClick={() => handleDecision(true)}>Skin Files Only</button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

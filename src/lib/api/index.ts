@@ -35,6 +35,7 @@ export {
     extractChampionAssets,
     extractTftCompanion,
     extractorRepath,
+    extractorFinalizeSkinOnly,
     type SkinEntry,
     type Champion,
     type ExtractChampionOptions,
@@ -42,6 +43,8 @@ export {
     type ExtractProgress,
     type RepathSummary,
     type RepathParams,
+    type FinalizeSummary,
+    type FinalizeParams,
 } from './extractor';
 export { bumpathRepath, type BumpathOptions, type BumpathResult } from './bumpath';
 export {

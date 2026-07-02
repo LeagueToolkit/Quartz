@@ -1,12 +1,33 @@
-/* Loading / error / empty state views — ported from FrogChanger's
-   LoadingStateView, ErrorStateView and NoChampionSelectedView. */
+import React from 'react';
+
+/* Loading / error / empty state views — theme-tokened, Design Lab styling. */
+
+const centerWrap: React.CSSProperties = {
+    minHeight: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'var(--text-primary)',
+};
+
+const spinner = (
+    <div
+        style={{
+            width: 48, height: 48, margin: '0 auto 16px',
+            borderRadius: '50%',
+            border: '3px solid var(--border)',
+            borderTopColor: 'var(--accent-primary)',
+            animation: 'dl-spin 0.9s linear infinite',
+        }}
+    />
+);
 
 export function LoadingStateView() {
     return (
-        <div className="min-h-screen bg-black text-white flex items-center justify-center">
-            <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4" />
-                <p className="text-green-400">Loading Asset Extractor...</p>
+        <div style={centerWrap}>
+            <div style={{ textAlign: 'center' }}>
+                {spinner}
+                <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Loading Asset Extractor...</p>
             </div>
         </div>
     );
@@ -14,17 +35,12 @@ export function LoadingStateView() {
 
 export function ErrorStateView({ error, onRetry }: { error: string; onRetry: () => void }) {
     return (
-        <div className="min-h-screen bg-black text-white flex items-center justify-center">
-            <div className="text-center">
-                <div className="w-16 h-16 text-red-500 mx-auto mb-4">!</div>
-                <h2 className="text-2xl font-bold mb-2 text-red-400">Connection Error</h2>
-                <p className="text-gray-400 mb-4">{error}</p>
-                <button
-                    onClick={onRetry}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all duration-200"
-                >
-                    Retry
-                </button>
+        <div style={centerWrap}>
+            <div style={{ textAlign: 'center', maxWidth: 360 }}>
+                <div style={{ fontSize: 40, lineHeight: 1, color: 'var(--color-danger)', marginBottom: 12 }}>!</div>
+                <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 8px', color: 'var(--color-danger)' }}>Connection Error</h2>
+                <p style={{ color: 'var(--text-muted)', margin: '0 0 16px' }}>{error}</p>
+                <button className="dl-btn dl-btn--primary" onClick={onRetry}>Retry</button>
             </div>
         </div>
     );
@@ -32,11 +48,11 @@ export function ErrorStateView({ error, onRetry }: { error: string; onRetry: () 
 
 export function NoChampionSelectedView({ loading }: { loading: boolean }) {
     return (
-        <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-                <h2 className="text-2xl font-bold mb-2 text-white">Select a Champion</h2>
-                <p className="text-gray-400">Choose a champion from the sidebar to view their skins</p>
-                {loading && <p className="text-green-400 mt-2">Loading champions...</p>}
+        <div style={{ ...centerWrap, height: '100%' }}>
+            <div style={{ textAlign: 'center' }}>
+                <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 8px', color: 'var(--text-primary)' }}>Select a Champion</h2>
+                <p style={{ color: 'var(--text-muted)', margin: 0 }}>Choose a champion from the sidebar to view their skins</p>
+                {loading && <p style={{ color: 'var(--accent-primary)', marginTop: 8 }}>Loading champions...</p>}
             </div>
         </div>
     );

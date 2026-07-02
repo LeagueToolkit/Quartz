@@ -86,6 +86,7 @@ fn main() {
             commands::extractor::extract_champion_assets,
             commands::extractor::extract_tft_companion,
             commands::extractor::extractor_repath,
+            commands::extractor::extractor_finalize_skin_only,
             commands::bin_editor::bin_scale_params,
             commands::bin_editor::bin_split_skin,
             commands::bin_editor::bin_consolidate_assets,

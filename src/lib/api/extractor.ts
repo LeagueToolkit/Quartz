@@ -43,6 +43,8 @@ export interface ExtractChampionOptions {
     clean?: boolean;
     chromaId?: number;
     preserveHudIcons2D?: boolean;
+    /** Skip exporting SFX audio banks in clean mode (default true). */
+    skipSfx?: boolean;
 }
 
 /* Extract a champion skin's asset bundle into outputDir. Emits
@@ -62,6 +64,7 @@ export function extractChampionAssets(
         clean: opts.clean,
         chromaId: opts.chromaId,
         preserveHudIcons2D: opts.preserveHudIcons2D,
+        skipSfx: opts.skipSfx,
     });
 }
 
@@ -104,6 +107,12 @@ export interface RepathParams {
     skipSfx?: boolean;
     /** Repath voiceover banks too (default false = VO left in place). */
     extractVoiceover?: boolean;
+    /** Split VfxSystemDefinitionData into a sibling bin (default false). */
+    splitVfx?: boolean;
+    /** Split AnimationGraphData into a sibling bin (default false). */
+    splitAnm?: boolean;
+    /** Consolidate VFX assets into per-skin particle folders (default true). */
+    consolidateAssets?: boolean;
     /** WAD folder name override, e.g. "Companions.wad.client" for TFT. */
     wadFolderOverride?: string;
 }
@@ -121,6 +130,44 @@ export function extractorRepath(params: RepathParams): Promise<RepathSummary> {
         cleanupUnused: params.cleanupUnused,
         skipSfx: params.skipSfx,
         extractVoiceover: params.extractVoiceover,
+        splitVfx: params.splitVfx,
+        splitAnm: params.splitAnm,
+        consolidateAssets: params.consolidateAssets,
+        wadFolderOverride: params.wadFolderOverride,
+    });
+}
+
+export interface FinalizeSummary {
+    ok: boolean;
+    outputDir: string;
+    binsCombined: number;
+    charactersCombined: number;
+    baseBinsPruned: number;
+    elapsedMs: number;
+}
+
+export interface FinalizeParams {
+    contentDir: string;
+    champion: string;
+    skinId: number;
+    splitVfx?: boolean;
+    splitAnm?: boolean;
+    /** Default true. */
+    consolidateAssets?: boolean;
+    wadFolderOverride?: string;
+}
+
+/* Finalize a "Skin Files Only" extraction: combine each character's linked BINs
+   into its skin BIN (NO repath prefix), prune base <char>.bin, then optionally
+   split VFX/ANM + consolidate. Produces a clean self-contained skin dump. */
+export function extractorFinalizeSkinOnly(params: FinalizeParams): Promise<FinalizeSummary> {
+    return invokeCommand<FinalizeSummary>('extractor_finalize_skin_only', {
+        contentDir: params.contentDir,
+        champion: params.champion,
+        skinId: params.skinId,
+        splitVfx: params.splitVfx,
+        splitAnm: params.splitAnm,
+        consolidateAssets: params.consolidateAssets,
         wadFolderOverride: params.wadFolderOverride,
     });
 }
