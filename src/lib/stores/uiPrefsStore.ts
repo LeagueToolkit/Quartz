@@ -47,7 +47,19 @@ export interface RecentBin {
     lastOpened: string; // ISO timestamp
 }
 
+export interface RecentPortDonor {
+    championId: string;
+    championName: string;
+    championAlias: string;
+    skinId: number;
+    skinName: string;
+    tilePath: string | null;
+    tempRoot: string | null;
+    lastUsed: string; // ISO timestamp
+}
+
 const RECENT_BINS_MAX = 12;
+const RECENT_PORT_DONORS_MAX = 8;
 
 interface UiPrefs {
     // Appearance
@@ -87,6 +99,8 @@ interface UiPrefs {
     // Port keeps a separate recent list per column.
     recentTargetBins: RecentBin[];
     recentDonorBins: RecentBin[];
+    // Port "Load Donor From Game" recent selections.
+    recentPortDonors: RecentPortDonor[];
 
     set: <K extends keyof UiPrefs>(key: K, value: UiPrefs[K]) => void;
     setPageVisible: (page: Page, visible: boolean) => void;
@@ -95,6 +109,11 @@ interface UiPrefs {
     /* Slot-scoped variants for Port's Target / Donor columns. */
     pushRecentBinFor: (slot: 'target' | 'donor', path: string) => void;
     removeRecentBinFor: (slot: 'target' | 'donor', path: string) => void;
+    /* Push a recent donor to the front (dedup by championId_skinId, cap 8).
+       Returns the temp roots of evicted entries (dupe + over-cap), excluding
+       the incoming entry's own tempRoot, so the caller can clean them up. */
+    pushRecentPortDonor: (entry: RecentPortDonor) => string[];
+    removeRecentPortDonor: (key: string) => void;
 }
 
 const RECENT_KEY = { target: 'recentTargetBins', donor: 'recentDonorBins' } as const;
@@ -130,6 +149,7 @@ export const useUiPrefsStore = create<UiPrefs>()(
             recentBins: [],
             recentTargetBins: [],
             recentDonorBins: [],
+            recentPortDonors: [],
             set: (key, value) => set({ [key]: value } as Pick<UiPrefs, typeof key>),
             setPageVisible: (page, visible) =>
                 set((s) => ({ pageVisibility: { ...s.pageVisibility, [page]: visible } })),
@@ -159,6 +179,29 @@ export const useUiPrefsStore = create<UiPrefs>()(
                     const key = RECENT_KEY[slot];
                     return { [key]: s[key].filter((b) => b.path !== path) } as Pick<UiPrefs, (typeof RECENT_KEY)[typeof slot]>;
                 }),
+            pushRecentPortDonor: (entry) => {
+                const key = `${entry.championId}_${entry.skinId}`;
+                let evicted: string[] = [];
+                set((s) => {
+                    const prev = s.recentPortDonors;
+                    const dupes = prev.filter((d) => `${d.championId}_${d.skinId}` === key);
+                    const deduped = prev.filter((d) => `${d.championId}_${d.skinId}` !== key);
+                    const combined = [entry, ...deduped];
+                    const next = combined.slice(0, RECENT_PORT_DONORS_MAX);
+                    const overCap = combined.slice(RECENT_PORT_DONORS_MAX);
+                    evicted = [...dupes, ...overCap]
+                        .map((d) => d.tempRoot)
+                        .filter((r): r is string => typeof r === 'string' && r.trim().length > 0 && r !== entry.tempRoot);
+                    return { recentPortDonors: next };
+                });
+                return [...new Set(evicted)];
+            },
+            removeRecentPortDonor: (key) =>
+                set((s) => ({
+                    recentPortDonors: s.recentPortDonors.filter(
+                        (d) => `${d.championId}_${d.skinId}` !== key,
+                    ),
+                })),
         }),
         { name: 'quartz-ui-prefs' },
     ),
