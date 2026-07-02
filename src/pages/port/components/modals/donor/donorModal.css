@@ -1,151 +1,172 @@
-/* Scoped styles for the Port "Load Donor From Game" modal. Reuses global
-   design tokens; does not depend on Asset-Extractor CSS being loaded. */
+/* Port "Load Donor From Game" modal — only the bits the shared dl-* / ae-*
+   primitives don't already cover: the two-column body layout and the recent-
+   donor chip strip. Everything else reuses .dl-modal, .ae-sb, .ae-card. */
 
-.donor-modal {
-    position: relative;
-    width: min(920px, calc(100% - 32px));
-    height: min(720px, calc(100% - 32px));
-    display: flex;
+/* Two-column body: champion sidebar (fixed) + skin panel (fills). Lives inside
+   .dl-modal__body, which we override to a flex column so the columns can own
+   their own scroll. */
+.donor-body {
+    padding: 0 !important;
+    display: flex !important;
     flex-direction: column;
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    backdrop-filter: saturate(180%) blur(16px);
-    -webkit-backdrop-filter: saturate(180%) blur(16px);
-    border-radius: 16px;
-    box-shadow: 0 24px 48px -16px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.3);
-    overflow: hidden;
+    min-height: 0;
+    gap: 0 !important;
 }
 
-.donor-modal__cols {
+.donor-cols {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    grid-template-columns: 300px 1fr;
+    gap: 0;
     flex: 1;
     min-height: 0;
-    padding: 12px 16px;
-    overflow: hidden;
 }
 
-.donor-modal__col {
+.donor-cols__side {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: color-mix(in oklab, var(--bg-tertiary) 40%, transparent);
-    padding: 10px;
+    padding: 16px;
+    border-right: 1px solid var(--border);
 }
 
-.donor-modal__list {
+.donor-cols__main {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+/* Give the champion list room to scroll within the fixed sidebar. */
+.donor-cols__side .ae-sb__list {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
 }
 
-.donor-modal__row {
+/* Skin grid inside a modal wants tighter cards than the full page. */
+.donor-cols__main .ae-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+.donor-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 40px 0;
+}
+
+/* Recent-donor strip (sits between head and body). */
+.donor-recent {
+    flex: none;
     display: flex;
     align-items: center;
     gap: 10px;
-    width: 100%;
-    padding: 6px 8px;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    text-align: left;
-    font-size: 0.8rem;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklab, var(--bg-tertiary) 30%, transparent);
+    overflow-x: auto;
 }
 
-.donor-modal__row:hover {
-    background: color-mix(in oklab, var(--accent-primary) 8%, transparent);
+.donor-recent__label {
+    flex: none;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
 }
 
-.donor-modal__row.is-active {
-    border-color: color-mix(in oklab, var(--accent-secondary) 55%, transparent);
-    background: color-mix(in oklab, var(--accent-secondary) 14%, transparent);
-    color: var(--accent-secondary);
-}
-
-.donor-modal__row img {
-    width: 30px;
-    height: 30px;
-    border-radius: 6px;
-    object-fit: cover;
-    flex-shrink: 0;
-}
-
-.donor-modal__skingrid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 8px;
-    align-content: start;
-}
-
-.donor-modal__skincard {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid var(--border);
-    border-radius: 10px;
+.donor-recent__chip {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
     overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
     cursor: pointer;
-    background: var(--bg-tertiary);
+    transition: border-color var(--dl-fast), transform var(--dl-fast);
 }
 
-.donor-modal__skincard.is-active {
-    border-color: var(--accent-secondary);
-    box-shadow: 0 0 0 1px var(--accent-secondary);
+.donor-recent__chip:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in oklab, var(--accent-primary) 45%, var(--border));
 }
 
-.donor-modal__skincard-media {
-    position: relative;
-    aspect-ratio: 4 / 3;
-    background: var(--bg-tertiary);
+.donor-recent__chip.is-active {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-primary) 40%, transparent);
 }
 
-.donor-modal__skincard-media img {
+.donor-recent__chip img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
 }
 
-.donor-modal__skincard-body {
-    padding: 6px 8px;
-    font-size: 0.72rem;
-    color: var(--text-primary);
-}
-
-.donor-modal__recent {
+/* Prefix field row — sits in the head area. */
+.donor-prefix {
+    flex: none;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
+    gap: 12px;
+    padding: 12px 22px;
     border-bottom: 1px solid var(--border);
-    overflow-x: auto;
+    position: relative;
 }
 
-.donor-modal__recent-chip {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
+.donor-prefix__label {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.donor-prefix__hint {
+    flex: none;
+    min-width: 150px;
+    text-align: right;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+}
+
+.donor-prefix__hint--missing {
+    color: var(--color-warning);
+}
+
+.donor-prefix__info {
+    position: absolute;
+    top: 100%;
+    left: 22px;
+    right: 22px;
+    z-index: 10;
+    margin-top: 6px;
+    padding: 12px 14px;
+    border-radius: var(--dl-radius-sm);
+    background: var(--bg-secondary);
     border: 1px solid var(--border);
-    background: var(--bg-tertiary);
-    padding: 0;
-    cursor: pointer;
-    overflow: hidden;
-    flex-shrink: 0;
+    box-shadow: var(--dl-shadow-md);
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
 }
 
-.donor-modal__recent-chip.is-active {
-    border-color: var(--accent-secondary);
+.donor-progress {
+    flex: none;
+    padding: 10px 22px;
+    font-size: 12px;
+    border-top: 1px solid var(--border);
 }
-
-.donor-modal__recent-chip img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
+.donor-progress--error { color: var(--color-danger); }
+.donor-progress--info { color: var(--accent-primary); }

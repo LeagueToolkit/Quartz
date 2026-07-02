@@ -14,6 +14,9 @@ import DonorSkinList from './donor/DonorSkinList';
 import RecentDonorsRow from './donor/RecentDonorsRow';
 import DonorPrefixField from './donor/DonorPrefixField';
 import type { DonorChampion, DonorSkin, DonorConfirmArgs } from './donor/types';
+// Reuse the Asset Extractor's ae-* card/sidebar styles + the dl-* primitives so
+// this modal reads as the same design system.
+import '@/pages/assetextractor/assetextractor.css';
 import './donor/donorModal.css';
 
 const PREFIX_KEY = 'port_donor_porting_prefix';
@@ -165,14 +168,13 @@ export default function PortDonorFromGameModal({
 
     // In skinline mode with results, the right column shows the flat result list
     // as skin cards; otherwise it shows the selected champion's skins.
-    const rightSkins: DonorSkin[] = searchMode === 'skinline' && skinlineResults.length > 0
-        ? skinlineResults.map((r) => r.skin)
-        : skins;
-    const rightHasChampion = searchMode === 'skinline' ? skinlineResults.length > 0 : !!selectedChampion;
+    const showSkinlineResults = searchMode === 'skinline' && skinlineResults.length > 0;
+    const rightSkins: DonorSkin[] = showSkinlineResults ? skinlineResults.map((r) => r.skin) : skins;
+    const rightHasChampion = showSkinlineResults || !!selectedChampion;
     const rightSelectedId = selectedSkin?.id ?? null;
-    const rightChampionName = searchMode === 'skinline' ? 'Skinline results' : (selectedChampion?.name ?? '');
+    const emptyLabel = searchMode === 'skinline' ? 'Search a skinline, then pick a skin' : 'Select a champion first';
     const onRightSelect = (skin: DonorSkin) => {
-        if (searchMode === 'skinline') {
+        if (showSkinlineResults) {
             const entry = skinlineResults.find((r) => r.skin.id === skin.id && r.skin.name === skin.name);
             if (entry) { handleSelectSkinlineResult(entry); return; }
         }
@@ -180,24 +182,12 @@ export default function PortDonorFromGameModal({
     };
 
     return createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 5300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-            <div
-                style={{ position: 'absolute', inset: 0, background: 'color-mix(in oklab, black 65%, transparent)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
-                onClick={() => !loading && onClose()}
-            />
-            <div className="donor-modal" onClick={(e) => e.stopPropagation()}>
-                <div style={{ height: 3, flexShrink: 0, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' }} />
-
-                <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h2 style={{ margin: 0, fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        Load Donor From Game
-                    </h2>
-                    <button
-                        onClick={() => !loading && onClose()}
-                        className="dl-btn dl-btn--icon dl-btn--ghost dl-btn--sm"
-                        title="Close"
-                    >
-                        <span className="dl-icon"><CloseIcon size={15} /></span>
+        <div className="dl-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget && !loading) onClose(); }}>
+            <div className="dl-modal dl-modal--large" style={{ height: 'min(760px, calc(100vh - 48px))' }}>
+                <div className="dl-modal__head">
+                    <h3 className="dl-modal__title">Load Donor From Game</h3>
+                    <button className="dl-modal__close" onClick={() => !loading && onClose()} aria-label="Close">
+                        <span className="dl-icon"><CloseIcon size={16} /></span>
                     </button>
                 </div>
 
@@ -205,38 +195,40 @@ export default function PortDonorFromGameModal({
 
                 <RecentDonorsRow recentDonors={recentDonors} activeKey={activeRecentKey} onSelect={handleSelectRecent} />
 
-                <div className="donor-modal__cols">
-                    <DonorChampionList
-                        champions={filteredChampions}
-                        loading={loadingChampions}
-                        selectedChampionId={selectedChampion?.id ?? null}
-                        searchMode={searchMode}
-                        searchValue={search}
-                        onSearchChange={setSearch}
-                        onToggleMode={handleToggleMode}
-                        onSubmitSkinline={runSkinlineSearch}
-                        onSelect={handleSelectChampion}
-                        onYouTubeChampion={(c) => openYouTube(`ALL ${c.name} SKINS SPOTLIGHT League of Legends`)}
-                    />
-                    <DonorSkinList
-                        skins={rightSkins}
-                        loading={loadingSkins}
-                        hasChampion={rightHasChampion}
-                        selectedSkinId={rightSelectedId}
-                        championName={rightChampionName}
-                        onSelect={onRightSelect}
-                        onYouTubeSkin={(skinName) => openYouTube(`${selectedChampion?.name ?? ''} ${skinName} skin spotlight League of Legends`)}
-                    />
+                <div className="dl-modal__body donor-body">
+                    <div className="donor-cols">
+                        <DonorChampionList
+                            champions={filteredChampions}
+                            loading={loadingChampions}
+                            selectedChampionId={selectedChampion?.id ?? null}
+                            searchMode={searchMode}
+                            searchValue={search}
+                            onSearchChange={setSearch}
+                            onToggleMode={handleToggleMode}
+                            onSubmitSkinline={runSkinlineSearch}
+                            onSelect={handleSelectChampion}
+                            onYouTubeChampion={(c) => openYouTube(`ALL ${c.name} SKINS SPOTLIGHT League of Legends`)}
+                        />
+                        <DonorSkinList
+                            skins={rightSkins}
+                            loading={loadingSkins}
+                            hasChampion={rightHasChampion}
+                            selectedSkinId={rightSelectedId}
+                            emptyLabel={emptyLabel}
+                            onSelect={onRightSelect}
+                            onYouTubeSkin={(skinName) => openYouTube(`${selectedChampion?.name ?? ''} ${skinName} skin spotlight League of Legends`)}
+                        />
+                    </div>
                 </div>
 
                 {(errorText || progressText) && (
-                    <div style={{ padding: '0 16px 8px', color: errorText ? 'var(--color-error, #ff7a7a)' : 'var(--accent-primary)', fontSize: '0.74rem' }}>
+                    <div className={`donor-progress ${errorText ? 'donor-progress--error' : 'donor-progress--info'}`}>
                         {errorText || progressText}
                     </div>
                 )}
 
-                <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                    <button type="button" onClick={onClose} disabled={loading} className="dl-btn dl-btn--ghost dl-btn--sm">
+                <div className="dl-modal__foot">
+                    <button type="button" onClick={onClose} disabled={loading} className="dl-btn dl-btn--secondary">
                         Cancel
                     </button>
                     <button
@@ -250,10 +242,9 @@ export default function PortDonorFromGameModal({
                                 portingPrefix: sanitized,
                             });
                         }}
-                        className="dl-btn dl-btn--sm"
-                        style={{ opacity: canConfirm ? 1 : 0.5, cursor: canConfirm ? 'pointer' : 'not-allowed' }}
+                        className={`dl-btn dl-btn--primary ${loading ? 'dl-btn--loading' : ''}`}
                     >
-                        {loading ? 'Preparing…' : 'Use As Donor'}
+                        {loading ? 'Preparing' : 'Use As Donor'}
                     </button>
                 </div>
             </div>

@@ -13,8 +13,8 @@ export default function DonorPrefixField({ value, sanitized, onChange, disabled 
     const ok = sanitized.length > 0;
 
     return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--border)', position: 'relative' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)', fontSize: '0.72rem', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+        <div className="donor-prefix">
+            <span className="donor-prefix__label">
                 Porting prefix
                 <button
                     type="button"
@@ -27,21 +27,20 @@ export default function DonorPrefixField({ value, sanitized, onChange, disabled 
                 </button>
             </span>
             <input
-                className="dl-input"
+                className={`dl-input ${ok ? '' : 'dl-input--error'}`}
                 type="text"
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 placeholder="e.g. mymod, sera_kda"
                 disabled={disabled}
                 spellCheck={false}
-                style={{ flex: 1, borderColor: ok ? undefined : 'color-mix(in oklab, var(--color-warning, #ff7766) 55%, transparent)' }}
             />
-            <span style={{ fontSize: '0.66rem', color: ok ? 'var(--text-muted)' : 'var(--color-warning, #ff7766)', minWidth: 150, textAlign: 'right' }}>
+            <span className={`donor-prefix__hint ${ok ? '' : 'donor-prefix__hint--missing'}`}>
                 {ok ? `assets/${sanitized}/…` : 'required'}
             </span>
 
             {showInfo && (
-                <div style={{ position: 'absolute', top: '100%', left: 16, right: 16, zIndex: 10, marginTop: 6, padding: 12, borderRadius: 10, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', color: 'var(--text-secondary)', fontSize: '0.72rem', lineHeight: 1.5, boxShadow: '0 12px 32px -12px rgba(0,0,0,0.6)' }}>
+                <div className="donor-prefix__info">
                     The porting prefix folds every VFX asset the donor references into a single
                     predictable folder (<code>assets/&lt;prefix&gt;/…</code>). This keeps emitters you
                     port into your target bin from colliding with the target's own asset paths.
