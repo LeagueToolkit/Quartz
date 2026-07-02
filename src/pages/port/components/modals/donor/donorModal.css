@@ -1,0 +1,151 @@
+/* Scoped styles for the Port "Load Donor From Game" modal. Reuses global
+   design tokens; does not depend on Asset-Extractor CSS being loaded. */
+
+.donor-modal {
+    position: relative;
+    width: min(920px, calc(100% - 32px));
+    height: min(720px, calc(100% - 32px));
+    display: flex;
+    flex-direction: column;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: saturate(180%) blur(16px);
+    -webkit-backdrop-filter: saturate(180%) blur(16px);
+    border-radius: 16px;
+    box-shadow: 0 24px 48px -16px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+.donor-modal__cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+    padding: 12px 16px;
+    overflow: hidden;
+}
+
+.donor-modal__col {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: color-mix(in oklab, var(--bg-tertiary) 40%, transparent);
+    padding: 10px;
+}
+
+.donor-modal__list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.donor-modal__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.8rem;
+}
+
+.donor-modal__row:hover {
+    background: color-mix(in oklab, var(--accent-primary) 8%, transparent);
+}
+
+.donor-modal__row.is-active {
+    border-color: color-mix(in oklab, var(--accent-secondary) 55%, transparent);
+    background: color-mix(in oklab, var(--accent-secondary) 14%, transparent);
+    color: var(--accent-secondary);
+}
+
+.donor-modal__row img {
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.donor-modal__skingrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+    align-content: start;
+}
+
+.donor-modal__skincard {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--bg-tertiary);
+}
+
+.donor-modal__skincard.is-active {
+    border-color: var(--accent-secondary);
+    box-shadow: 0 0 0 1px var(--accent-secondary);
+}
+
+.donor-modal__skincard-media {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    background: var(--bg-tertiary);
+}
+
+.donor-modal__skincard-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.donor-modal__skincard-body {
+    padding: 6px 8px;
+    font-size: 0.72rem;
+    color: var(--text-primary);
+}
+
+.donor-modal__recent {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+}
+
+.donor-modal__recent-chip {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    padding: 0;
+    cursor: pointer;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.donor-modal__recent-chip.is-active {
+    border-color: var(--accent-secondary);
+}
+
+.donor-modal__recent-chip img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
