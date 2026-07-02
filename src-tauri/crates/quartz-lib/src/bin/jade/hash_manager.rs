@@ -1,6 +1,6 @@
+use crate::hash::{downloader::get_hash_dir, get_bin_env};
 use parking_lot::RwLock;
 use std::sync::OnceLock;
-use crate::hash::{get_bin_env, downloader::get_hash_dir};
 
 /// High-performance hash manager with sorted arrays and binary search.
 /// Matches the C# HashManager design: packed offset+length in a single
@@ -36,7 +36,6 @@ impl HashManager {
         let length = (dat & 0xFFFF) as usize;
         std::str::from_utf8(&self.string_storage[offset..offset + length]).ok()
     }
-
 }
 
 fn sort_parallel(keys: &mut Vec<u32>, data: &mut Vec<u64>) {
@@ -60,7 +59,10 @@ fn load_from_lmdb() -> HashManager {
     let env = match get_bin_env(&hash_dir) {
         Some(e) => e,
         None => {
-            tracing::warn!("[jade::hash_manager] hashes-bin.lmdb not found at {}", hash_dir);
+            tracing::warn!(
+                "[jade::hash_manager] hashes-bin.lmdb not found at {}",
+                hash_dir
+            );
             return HashManager::new();
         }
     };
@@ -102,7 +104,8 @@ fn load_from_lmdb() -> HashManager {
             let str_offset = mgr.string_storage.len();
             mgr.string_storage.extend_from_slice(name_bytes);
             mgr.fnv_keys.push(hash);
-            mgr.fnv_data.push(((str_offset as u64) << 16) | (name_bytes.len() as u64 & 0xFFFF));
+            mgr.fnv_data
+                .push(((str_offset as u64) << 16) | (name_bytes.len() as u64 & 0xFFFF));
             count += 1;
         }
     }

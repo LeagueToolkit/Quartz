@@ -11,7 +11,7 @@ pub enum LogLevel {
 }
 
 /* Frontend pipes its logs here so everything lands in the same tracing
-   sink (stdout + the rolling file under the app home). */
+sink (stdout + the rolling file under the app home). */
 #[tauri::command]
 pub fn log_message(level: LogLevel, message: String) {
     match level {

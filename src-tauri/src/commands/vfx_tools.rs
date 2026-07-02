@@ -1,8 +1,8 @@
 /* VFX bin tools backend: the "Fix VFX Shape" and "Copy BIN Colors" Tools
-   cards. Ports the Electron `bin:fixVfxShape` and `bin:copyColors` IPC
-   handlers. Heavy bin walking lives in quartz-lib's vfx_tools module; these
-   commands handle recursive folder collection, backups, and IO on a blocking
-   thread. */
+cards. Ports the Electron `bin:fixVfxShape` and `bin:copyColors` IPC
+handlers. Heavy bin walking lives in quartz-lib's vfx_tools module; these
+commands handle recursive folder collection, backups, and IO on a blocking
+thread. */
 
 use quartz_lib::vfx_tools::{self, FixShapeStats};
 use serde::Serialize;
@@ -88,8 +88,7 @@ fn fix_one_bin(path: &Path, create_backup: bool) -> Result<(bool, FixShapeStats)
     if create_backup {
         let bak = bak_path(path);
         if !bak.exists() {
-            std::fs::copy(path, &bak)
-                .map_err(|e| format!("backup {}: {}", bak.display(), e))?;
+            std::fs::copy(path, &bak).map_err(|e| format!("backup {}: {}", bak.display(), e))?;
         }
     }
 
@@ -205,10 +204,8 @@ pub async fn tools_bin_copy_colors(
             return Err("Target bin not found".to_string());
         }
 
-        let src_data =
-            std::fs::read(&src_p).map_err(|e| format!("read {}: {}", source_path, e))?;
-        let dst_data =
-            std::fs::read(&dst_p).map_err(|e| format!("read {}: {}", target_path, e))?;
+        let src_data = std::fs::read(&src_p).map_err(|e| format!("read {}: {}", source_path, e))?;
+        let dst_data = std::fs::read(&dst_p).map_err(|e| format!("read {}: {}", target_path, e))?;
         let src_bin = quartz_lib::bin::read_bin_ltk(&src_data).map_err(|e| e.to_string())?;
         let mut dst_bin = quartz_lib::bin::read_bin_ltk(&dst_data).map_err(|e| e.to_string())?;
 
@@ -225,8 +222,7 @@ pub async fn tools_bin_copy_colors(
         }
 
         let bytes = quartz_lib::bin::write_bin_ltk(&dst_bin).map_err(|e| e.to_string())?;
-        std::fs::write(&write_path, &bytes)
-            .map_err(|e| format!("write {}: {}", write_path, e))?;
+        std::fs::write(&write_path, &bytes).map_err(|e| format!("write {}: {}", write_path, e))?;
 
         Ok(CopyColorsResult {
             output_path: write_path,

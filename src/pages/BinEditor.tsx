@@ -23,7 +23,7 @@ import CropOriginalIcon from '@mui/icons-material/CropOriginal';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 
 import { readBin, writeBin } from '@/lib/api';
-import { useNotificationStore } from '@/lib/stores';
+import { useNavigationStore, useNotificationStore } from '@/lib/stores';
 
 import {
     parsePyFile,
@@ -105,7 +105,7 @@ const parseLocaleFloat = (value: string | number): number => {
 };
 
 const toolbarSelectStyle = {
-    fontFamily: 'JetBrains Mono, monospace',
+    fontFamily: 'var(--font-mono)',
     fontSize: '0.82rem',
     color: 'var(--text)',
     height: '34px',
@@ -147,7 +147,7 @@ const toolbarMenuPaperSx = {
     overflow: 'hidden',
     '& .MuiMenu-list': { py: 0.5 },
     '& .MuiMenuItem-root': {
-        fontFamily: 'JetBrains Mono, monospace',
+        fontFamily: 'var(--font-mono)',
         fontSize: '0.82rem',
         color: 'var(--text-2)',
         mx: 0.6,
@@ -197,6 +197,7 @@ function emitterHasTexture(emitter: Emitter): boolean {
 }
 
 export function BinEditor() {
+    const page = useNavigationStore((s) => s.page);
     const notify = useNotificationStore((s) => s.push);
 
     // ============ STATE ============
@@ -240,6 +241,19 @@ export function BinEditor() {
     const MAX_UNDO_HISTORY = 20;
     const isOverRef = useRef(false);
     const [isOver, setIsOver] = useState(false);
+
+    /* If the shell keeps this page alive between navigation changes, always
+       return to BinEditor with the VFX tree collapsed instead of replaying a
+       stale expanded system set. */
+    const prevPageRef = useRef<string | null>(null);
+    useEffect(() => {
+        const prev = prevPageRef.current;
+        prevPageRef.current = page;
+        if (page === 'bineditor' && prev !== 'bineditor') {
+            setExpandedSystems(new Set());
+            setSelectedEmitters(new Set());
+        }
+    }, [page]);
 
     // ============ COMPUTED VALUES ============
     const filteredSystems = useMemo<VfxSystem[]>(() => {
@@ -1097,7 +1111,7 @@ export function BinEditor() {
                                     (e.target as HTMLInputElement).blur();
                                 }
                             }}
-                            style={{ fontFamily: 'JetBrains Mono, monospace' }}
+                            style={{ fontFamily: 'var(--font-mono)' }}
                         />
                     </div>
                 ))}
@@ -1159,7 +1173,7 @@ export function BinEditor() {
                             defaultValue={selectedEmitter.bindWeight.constantValue ?? ''}
                             onBlur={(e) => handlePropertyChange('bindWeight', null, e.target.value)}
                             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            style={{ fontFamily: 'JetBrains Mono, monospace' }}
+                            style={{ fontFamily: 'var(--font-mono)' }}
                         />
                     </div>
                 )}
@@ -1174,7 +1188,7 @@ export function BinEditor() {
                             defaultValue={selectedEmitter.particleLifetime.constantValue}
                             onBlur={(e) => handlePropertyChange('particleLifetime', null, e.target.value)}
                             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            style={{ color: UI_COLORS.pl, fontFamily: 'JetBrains Mono, monospace' }}
+                            style={{ color: UI_COLORS.pl, fontFamily: 'var(--font-mono)' }}
                         />
                     </div>
                 )}
@@ -1189,7 +1203,7 @@ export function BinEditor() {
                             defaultValue={selectedEmitter.lifetime.value}
                             onBlur={(e) => handlePropertyChange('lifetime', null, e.target.value)}
                             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            style={{ color: UI_COLORS.lt, fontFamily: 'JetBrains Mono, monospace' }}
+                            style={{ color: UI_COLORS.lt, fontFamily: 'var(--font-mono)' }}
                         />
                     </div>
                 )}
@@ -1204,7 +1218,7 @@ export function BinEditor() {
                             defaultValue={selectedEmitter.particleLinger.value}
                             onBlur={(e) => handlePropertyChange('particleLinger', null, e.target.value)}
                             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            style={{ color: 'var(--accent2)', fontFamily: 'JetBrains Mono, monospace' }}
+                            style={{ color: 'var(--accent2)', fontFamily: 'var(--font-mono)' }}
                         />
                     </div>
                 )}
@@ -1219,7 +1233,7 @@ export function BinEditor() {
                             defaultValue={selectedEmitter.rate.constantValue}
                             onBlur={(e) => handlePropertyChange('rate', null, e.target.value)}
                             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            style={{ color: 'var(--color-info)', fontFamily: 'JetBrains Mono, monospace' }}
+                            style={{ color: 'var(--color-info)', fontFamily: 'var(--font-mono)' }}
                         />
                     </div>
                 )}
@@ -1234,7 +1248,7 @@ export function BinEditor() {
                             defaultValue={selectedEmitter.pass}
                             onBlur={(e) => handlePropertyChange('pass', null, e.target.value)}
                             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            style={{ color: UI_COLORS.pass, fontFamily: 'JetBrains Mono, monospace' }}
+                            style={{ color: UI_COLORS.pass, fontFamily: 'var(--font-mono)' }}
                         />
                     </div>
                 )}
@@ -1249,7 +1263,7 @@ export function BinEditor() {
                             defaultValue={selectedEmitter.miscRenderFlags}
                             onBlur={(e) => handlePropertyChange('miscRenderFlags', null, e.target.value)}
                             onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            style={{ color: 'var(--color-danger)', fontFamily: 'JetBrains Mono, monospace' }}
+                            style={{ color: 'var(--color-danger)', fontFamily: 'var(--font-mono)' }}
                         />
                     </div>
                 )}
@@ -1262,7 +1276,7 @@ export function BinEditor() {
                             key={`${selectedEmitter.name}-isGroundLayer`}
                             defaultValue={selectedEmitter.isGroundLayer ? 'true' : 'false'}
                             onChange={(e: ChangeEvent<HTMLSelectElement>) => handlePropertyChange('isGroundLayer', null, e.target.value)}
-                            style={{ color: UI_COLORS.ground, fontFamily: 'JetBrains Mono, monospace' }}
+                            style={{ color: UI_COLORS.ground, fontFamily: 'var(--font-mono)' }}
                         >
                             <option value="false">false</option>
                             <option value="true">true</option>
@@ -1352,7 +1366,7 @@ export function BinEditor() {
                     <div style={{
                         padding: '10px 16px', borderRadius: '6px',
                         border: '1px dashed var(--accent)', color: 'var(--accent)',
-                        fontFamily: 'JetBrains Mono, monospace', fontSize: '13px',
+                        fontFamily: 'var(--font-mono)', fontSize: '13px',
                         background: 'color-mix(in oklab, var(--accent) 20%, transparent)',
                     }}>
                         Drop .bin or .py to load

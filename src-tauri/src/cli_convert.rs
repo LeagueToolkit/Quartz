@@ -1,8 +1,8 @@
 /* Headless convert dispatcher for the Windows Explorer right-click menu.
-   When the app exe is launched with a convert verb + path (registered by
-   context_menu.rs), we run the conversion and exit BEFORE Tauri starts — no
-   window, no sidecar binary. Output goes to the parent console (attached on
-   Windows) so the user sees success/errors. */
+When the app exe is launched with a convert verb + path (registered by
+context_menu.rs), we run the conversion and exit BEFORE Tauri starts — no
+window, no sidecar binary. Output goes to the parent console (attached on
+Windows) so the user sees success/errors. */
 
 use std::path::{Path, PathBuf};
 
@@ -119,7 +119,11 @@ fn ritobin_dir(dir: &Path, from_ext: &str) -> Result<String, String> {
     }
     let (mut ok, mut failed) = (0usize, 0usize);
     for f in &files {
-        let r = if from_ext == "bin" { bin_to_py(f) } else { py_to_bin(f) };
+        let r = if from_ext == "bin" {
+            bin_to_py(f)
+        } else {
+            py_to_bin(f)
+        };
         match r {
             Ok(_) => ok += 1,
             Err(e) => {
@@ -137,21 +141,33 @@ fn separate_vfx(bin_path: &Path) -> Result<String, String> {
     use std::collections::HashSet;
     let data = std::fs::read(bin_path).map_err(|e| e.to_string())?;
     let tree = ltk_bridge::read_bin(&data).map_err(|e| e.to_string())?;
-    let vfx: HashSet<u32> = quartz_lib::bin::split::classify_vfx_objects(&tree).into_iter().collect();
+    let vfx: HashSet<u32> = quartz_lib::bin::split::classify_vfx_objects(&tree)
+        .into_iter()
+        .collect();
     if vfx.is_empty() {
         return Ok(format!("no VFX systems in {}", name(bin_path)));
     }
     let root = find_root_dir(bin_path);
-    let stem = bin_path.file_stem().map(|s| s.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let stem = bin_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
     let out_name = format!("{stem}_vfx.bin");
     let res = quartz_lib::bin::split::split_bin(bin_path, &root, &out_name, &vfx)
         .map_err(|e| e.to_string())?;
-    Ok(format!("moved {} VFX systems → {} (link {})", res.moved, out_name, res.link_added))
+    Ok(format!(
+        "moved {} VFX systems → {} (link {})",
+        res.moved, out_name, res.link_added
+    ))
 }
 
 fn batch_split_vfx(target: &Path) -> Result<String, String> {
     // Run separate-vfx on every .bin in the folder (or the file's folder).
-    let dir = if target.is_dir() { target.to_path_buf() } else { target.parent().map(Path::to_path_buf).unwrap_or_default() };
+    let dir = if target.is_dir() {
+        target.to_path_buf()
+    } else {
+        target.parent().map(Path::to_path_buf).unwrap_or_default()
+    };
     let mut files = Vec::new();
     walk_ext(&dir, "bin", &mut files);
     let (mut done, mut skipped) = (0usize, 0usize);
@@ -197,17 +213,26 @@ fn texture_dir(dir: &Path, from_ext: &str, out_ext: &str, fmt: &str) -> Result<S
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 
 fn name(p: &Path) -> String {
-    p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string())
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| p.display().to_string())
 }
 
 /// Walk `dir` recursively, collecting files whose extension matches `ext`.
 fn walk_ext(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let p = e.path();
         if p.is_dir() {
             walk_ext(&p, ext, out);
-        } else if p.extension().and_then(|x| x.to_str()).map(|x| x.eq_ignore_ascii_case(ext)).unwrap_or(false) {
+        } else if p
+            .extension()
+            .and_then(|x| x.to_str())
+            .map(|x| x.eq_ignore_ascii_case(ext))
+            .unwrap_or(false)
+        {
             out.push(p);
         }
     }
@@ -219,7 +244,10 @@ fn walk_ext(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
 fn find_root_dir(bin_path: &Path) -> PathBuf {
     let mut cur = bin_path.parent();
     while let Some(dir) = cur {
-        let lower = dir.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let lower = dir
+            .file_name()
+            .map(|n| n.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
         if lower == "data" {
             if let Some(parent) = dir.parent() {
                 return parent.to_path_buf();
@@ -230,12 +258,15 @@ fn find_root_dir(bin_path: &Path) -> PathBuf {
         }
         cur = dir.parent();
     }
-    bin_path.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
+    bin_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 /* On Windows, GUI subsystem exes have no console. When invoked from Explorer's
-   right-click we attach to the launching console (if any) so prints are visible.
-   No-op when there's no parent console (double-click). */
+right-click we attach to the launching console (if any) so prints are visible.
+No-op when there's no parent console (double-click). */
 #[cfg(windows)]
 fn attach_console() {
     use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};

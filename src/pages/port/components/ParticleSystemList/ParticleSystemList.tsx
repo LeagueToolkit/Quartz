@@ -1,5 +1,5 @@
 import ParticleSystemItem from './ParticleSystemItem';
-import type { VfxSystem } from '../../utils/vfxEmitterParser';
+import type { VfxSystem } from '../../model';
 import type { ListSharedProps } from './types';
 
 interface ParticleSystemListProps extends ListSharedProps {
@@ -9,8 +9,10 @@ interface ParticleSystemListProps extends ListSharedProps {
 
 export default function ParticleSystemList({ systems, isTarget, ...otherProps }: ParticleSystemListProps) {
     if (!systems || systems.length === 0) {
+        // Reached only when a bin is loaded but the filter matches nothing —
+        // the no-bin empty state lives in the column components.
         return (
-            <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)' }}>{isTarget ? 'No target bin loaded' : 'No donor bin loaded'}</div>
+            <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)' }}>No matching particles</div>
         );
     }
 

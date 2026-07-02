@@ -1,40 +1,41 @@
-import { FormGroup, ToggleSwitch } from '../primitives';
+import { FormGroup, CardList, CardRow, Switch } from '../primitives';
 import { useUiPrefsStore } from '@/lib/stores';
-import { PAGE_LABELS, PAGE_DEFAULTS } from '@/lib/stores/uiPrefsStore';
+import { PAGE_DEFAULTS } from '@/lib/stores/uiPrefsStore';
+import { ITEMS, ALWAYS_VISIBLE } from '@/components/layout/NavRail';
 
-const PAGES = PAGE_LABELS.map((p) => ({ id: p.page, label: p.label }));
-
-const Divider = () => <div style={{ height: '1px', background: 'var(--border)', margin: '8px 0' }} />;
+// Use the nav rail's order + icons so this list mirrors the main nav exactly.
+// Paint/Port are always-visible, so they lead and can't be toggled off.
+const ALWAYS = new Set<string>(ALWAYS_VISIBLE);
+const PAGES = [
+    ...ITEMS.filter((i) => ALWAYS.has(i.id)),
+    ...ITEMS.filter((i) => !ALWAYS.has(i.id)),
+];
 
 export function PageVisibilitySection() {
     const pageVisibility = useUiPrefsStore((s) => s.pageVisibility);
     const setPageVisible = useUiPrefsStore((s) => s.setPageVisible);
-    const autoLoad = useUiPrefsStore((s) => s.autoLoadEnabled);
-    const expand = useUiPrefsStore((s) => s.expandSystemsOnLoad);
-    const set = useUiPrefsStore((s) => s.set);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <FormGroup label="Navigation">
-                <ToggleSwitch label="Auto-Load Last Bin Files" checked={autoLoad} onChange={(c) => set('autoLoadEnabled', c)} />
-                <Divider />
-                <ToggleSwitch label="Expand VFX Systems When Loading Bins" checked={expand} onChange={(c) => set('expandSystemsOnLoad', c)} />
-            </FormGroup>
-
             <FormGroup label="Available Pages">
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {PAGES.map((p, i) => (
-                        <div key={p.id}>
-                            {i > 0 && <Divider />}
-                            <ToggleSwitch
-                                label={p.label}
-                                checked={pageVisibility[p.id] ?? PAGE_DEFAULTS[p.id] ?? true}
-                                onChange={(c) => setPageVisible(p.id, c)}
-                                compact
+                <CardList>
+                    {PAGES.map(({ id, label, icon: Icon }) => {
+                        const locked = ALWAYS.has(id);
+                        const on = locked || (pageVisibility[id] ?? PAGE_DEFAULTS[id] ?? true);
+                        return (
+                            <CardRow
+                                key={id}
+                                icon={<Icon size={17} />}
+                                label={label}
+                                onActivate={locked ? undefined : () => setPageVisible(id, !on)}
+                                control={<Switch
+                                    checked={on}
+                                    disabled={locked}
+                                    onChange={(c) => setPageVisible(id, c)} />}
                             />
-                        </div>
-                    ))}
-                </div>
+                        );
+                    })}
+                </CardList>
             </FormGroup>
         </div>
     );

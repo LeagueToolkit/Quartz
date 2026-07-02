@@ -203,11 +203,11 @@ mod tests {
         fn returns_result() -> Result<i32> {
             Ok(42)
         }
-        
+
         fn returns_error() -> Result<i32> {
             Err(Error::InvalidInput("test".to_string()))
         }
-        
+
         assert_eq!(returns_result().unwrap(), 42);
         assert!(returns_error().is_err());
     }

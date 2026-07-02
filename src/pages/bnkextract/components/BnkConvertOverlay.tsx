@@ -20,10 +20,10 @@ export default function BnkConvertOverlay({ open, convertStatus }: Props) {
                 },
             }}>
                 <CircularProgress size={48} sx={{ color: 'var(--accent-primary)', animation: 'wwise-pulse 1.6s ease-in-out infinite' }} />
-                <Typography sx={{ fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--accent-primary)', letterSpacing: '0.1em', fontWeight: 600 }}>
+                <Typography sx={{ fontSize: '0.85rem', fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)', letterSpacing: '0.1em', fontWeight: 600 }}>
                     Synthesizing WEM from Audio Source...
                 </Typography>
-                <Typography sx={{ fontSize: '0.7rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)' }}>
+                <Typography sx={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
                     {convertStatus}
                 </Typography>
             </Box>

@@ -29,7 +29,7 @@ const makeBtn = (color: string, disabled: boolean): React.CSSProperties => ({
 });
 
 interface VfxFloatingActionsProps {
-    targetPyContent: string;
+    hasTarget: boolean;
     isProcessing: boolean;
     handleOpenBackupViewer: () => void;
     handleOpenPersistent: () => void;
@@ -48,7 +48,7 @@ interface VfxFloatingActionsProps {
 }
 
 function VfxFloatingActions({
-    targetPyContent,
+    hasTarget,
     isProcessing,
     handleOpenBackupViewer,
     handleOpenPersistent,
@@ -74,7 +74,7 @@ function VfxFloatingActions({
             return next;
         });
 
-    if (!targetPyContent || isProcessing) return null;
+    if (!hasTarget || isProcessing) return null;
 
     const pDis = !hasResourceResolver || !hasSkinCharacterData;
     const nDis = !hasResourceResolver;

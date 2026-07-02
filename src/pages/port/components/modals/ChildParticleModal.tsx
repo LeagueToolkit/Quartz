@@ -1,7 +1,7 @@
 import React from 'react';
 import { Add as AddIcon, Edit as EditIcon } from '@mui/icons-material';
 import { MemoizedInput } from '../common/Inputs';
-import type { AvailableVfxSystem } from '../../utils/childParticlesManager';
+import type { AvailableVfxSystem } from '../../model';
 
 const inputStyle: React.CSSProperties = {
     width: '100%',
@@ -11,7 +11,7 @@ const inputStyle: React.CSSProperties = {
     border: '1px solid var(--border)',
     borderRadius: 8,
     fontSize: '0.85rem',
-    fontFamily: 'JetBrains Mono, monospace',
+    fontFamily: 'var(--font-mono)',
     outline: 'none',
     boxSizing: 'border-box',
 };
@@ -30,7 +30,7 @@ const selectStyle: React.CSSProperties = {
 const btnBase: React.CSSProperties = {
     padding: '7px 18px',
     borderRadius: 6,
-    fontFamily: 'JetBrains Mono, monospace',
+    fontFamily: 'var(--font-mono)',
     fontSize: '0.78rem',
     fontWeight: 700,
     cursor: 'pointer',
@@ -102,7 +102,7 @@ export default function ChildParticleModal(props: ChildParticleModalProps) {
     } = props;
     if (!open) return null;
 
-    const labelSx: React.CSSProperties = { fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' };
+    const labelSx: React.CSSProperties = { fontFamily: 'var(--font-mono)', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' };
 
     return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
@@ -131,7 +131,7 @@ export default function ChildParticleModal(props: ChildParticleModalProps) {
                         <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             {isEdit ? <EditIcon sx={{ color: 'var(--accent-primary)', fontSize: 18 }} /> : <AddIcon sx={{ color: 'var(--accent-primary)', fontSize: 18 }} />}
                         </div>
-                        <h2 style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        <h2 style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>
                             {isEdit ? 'Edit Child Particle' : 'Add Child Particle'}
                         </h2>
                     </div>
@@ -144,11 +144,11 @@ export default function ChildParticleModal(props: ChildParticleModalProps) {
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <div style={{ padding: '10px 14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        <div style={{ padding: '10px 14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                             Parent System: <span style={{ color: 'var(--accent-primary)', fontWeight: 700 }}>{targetSystem?.name || 'N/A'}</span>
                         </div>
                         {isEdit && (
-                            <div style={{ padding: '10px 14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                            <div style={{ padding: '10px 14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                                 Emitter: <span style={{ color: 'var(--accent-secondary)', fontWeight: 700 }}>{emitterName}</span>
                             </div>
                         )}
@@ -200,7 +200,7 @@ export default function ChildParticleModal(props: ChildParticleModalProps) {
                         <div style={{ display: 'flex', gap: 10 }}>
                             {(['X', 'Y', 'Z'] as const).map((axis) => (
                                 <div key={axis} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', color: 'var(--accent-primary)' }}>{axis}</span>
+                                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--accent-primary)' }}>{axis}</span>
                                     <MemoizedInput
                                         type="number"
                                         value={axis === 'X' ? translationOverrideX : axis === 'Y' ? translationOverrideY : translationOverrideZ}
@@ -233,7 +233,7 @@ export default function ChildParticleModal(props: ChildParticleModalProps) {
                         >
                             {isSingle && <div style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--bg-primary)' }} />}
                         </div>
-                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: isSingle ? 'var(--text-primary)' : 'var(--text-muted)' }}>Is Single Particle</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: isSingle ? 'var(--text-primary)' : 'var(--text-muted)' }}>Is Single Particle</span>
                     </div>
                 </div>
                 <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>

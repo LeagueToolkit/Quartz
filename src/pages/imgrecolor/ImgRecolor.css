@@ -1,98 +1,161 @@
-/* Img Recolor Page Styles */
+/* ==========================================================================
+   Image Recolor — layout modeled on Upscale's shell (flex column root, flex
+   body with min-0 children) so nothing overflows the work area. Transparent
+   root; the adjustments panel's border is the seam to the image area.
+   ========================================================================== */
 
-.img-recolor-container {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+.imgrecolor-root {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    background: transparent;
+    color: var(--text-primary);
+    overflow: hidden;
+    position: relative;
 }
 
-.img-recolor-canvas {
-  max-width: 100%;
-  max-height: 100%;
-  image-rendering: pixelated;
-  border: 1px solid var(--border);
-  cursor: crosshair;
+/* Body: adjustments panel + image area side by side. min-height/width:0 lets the
+   flex children shrink instead of forcing a page scrollbar. */
+.imgrecolor-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
 }
 
-.img-recolor-canvas:hover {
-  border-color: var(--accent-primary);
+/* Left: Color Adjustments panel (Upscale-sidebar styling). Slim, 1px divider. */
+.imgrecolor-adjust {
+    width: 260px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-right: 1px solid var(--border);
+    transition: opacity var(--motion-base);
+}
+.imgrecolor-adjust.is-dim { opacity: 0.4; pointer-events: none; }
+
+.imgrecolor-adjust__scroll {
+    flex: 1;
+    min-height: 0;
+    padding: 16px 22px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+.imgrecolor-adjust__scroll::-webkit-scrollbar { width: 4px; }
+.imgrecolor-adjust__scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+
+/* Right: the image grid / preview / empty-state area. */
+.imgrecolor-images {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.imgrecolor-images__scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px;
+}
+.imgrecolor-images__scroll::-webkit-scrollbar { width: 8px; }
+.imgrecolor-images__scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+
+.imgrecolor-grid {
+    display: grid;
+    gap: 12px;
+}
+.imgrecolor-grid--select { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.imgrecolor-grid--preview { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+
+.imgrecolor-empty {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
 }
 
-/* Color pair card animations */
-.color-pair-card {
-  transition: transform var(--motion-fast), box-shadow var(--motion-fast);
+/* Footer — full-width bottom action bar (Paint-consistent, fixed 48px). */
+.imgrecolor-footer {
+    height: 48px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border);
+}
+.imgrecolor-footer__spacer { flex: 1; min-width: 0; }
+.imgrecolor-footer__actions { display: flex; gap: 8px; }
+
+.imgrecolor-subfolders {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    white-space: nowrap;
 }
 
-.color-pair-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+/* Drag overlay */
+.imgrecolor-drag {
+    position: absolute;
+    inset: 16px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: color-mix(in oklab, var(--bg-primary) 85%, transparent);
+    backdrop-filter: blur(8px);
+    border: 3px dashed var(--accent-primary);
+    border-radius: var(--radius-lg);
+    pointer-events: none;
+    animation: imgrecolor-pulse 1.5s ease-in-out infinite;
+}
+@keyframes imgrecolor-pulse {
+    0%, 100% { border-color: var(--accent-primary); }
+    50% { border-color: color-mix(in oklab, var(--accent-primary) 55%, var(--border)); }
+}
+@keyframes imgrecolor-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+@keyframes imgrecolor-toast-in {
+    from { transform: translateY(12px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
 }
 
-/* Color input styling */
-input[type="color"] {
-  cursor: pointer;
-  transition: transform var(--motion-fast);
-}
-
-input[type="color"]:hover {
-  transform: scale(1.05);
-}
-
-/* Scrollbar styling for color pairs list */
-.color-pairs-list::-webkit-scrollbar {
-  width: 8px;
-}
-
-.color-pairs-list::-webkit-scrollbar-track {
-  background: var(--bg-primary);
-  border-radius: 4px;
-}
-
-.color-pairs-list::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 4px;
-}
-
-.color-pairs-list::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-primary);
-}
-
-/* Loading state */
-.img-recolor-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 16px;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-}
-
-/* Empty state */
-.img-recolor-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 16px;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  padding: 40px;
-  text-align: center;
-}
-
-.img-recolor-empty svg {
-  font-size: 64px;
-  opacity: 0.5;
-}
-
-/* Color picker eyedropper mode */
-.eyedropper-active {
-  cursor: crosshair !important;
-}
-
-.eyedropper-active * {
-  cursor: crosshair !important;
+/* Toast */
+.imgrecolor-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 200;
+    max-width: 360px;
+    padding: 14px 20px;
+    background: color-mix(in oklab, var(--color-success) 18%, var(--bg-secondary));
+    border: 1px solid color-mix(in oklab, var(--color-success) 40%, var(--border));
+    border-radius: var(--radius);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(10px);
+    animation: imgrecolor-toast-in 0.3s ease-out;
 }

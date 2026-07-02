@@ -1,9 +1,9 @@
 /* Port "load donor from game" + asset-copy commands.
 
-   `port_prepare_donor_from_skin` runs the WAD extraction / combine / consolidate
-   pipeline in `quartz_lib::port_donor` and hands back donor ritobin text. The
-   asset-copy commands move emitter-referenced asset files into the target mod
-   tree so a ported system's textures/meshes ship alongside the bin. */
+`port_prepare_donor_from_skin` runs the WAD extraction / combine / consolidate
+pipeline in `quartz_lib::port_donor` and hands back donor ritobin text. The
+asset-copy commands move emitter-referenced asset files into the target mod
+tree so a ported system's textures/meshes ship alongside the bin. */
 
 use quartz_lib::port_donor::{self, DonorResult};
 use std::path::{Path, PathBuf};
@@ -44,13 +44,16 @@ pub struct AssetCopyResult {
 }
 
 fn normalize_rel(value: &str) -> String {
-    value.replace('\\', "/").trim_start_matches('/').to_lowercase()
+    value
+        .replace('\\', "/")
+        .trim_start_matches('/')
+        .to_lowercase()
 }
 
 /* Copy each asset in `asset_paths` from the first source dir that contains it
-   into `target_root`, preserving its relative path. The target root is derived
-   from the target bin: assets live beside the bin's `data/` or `assets/` root,
-   so we walk up from the bin path to that mod root. */
+into `target_root`, preserving its relative path. The target root is derived
+from the target bin: assets live beside the bin's `data/` or `assets/` root,
+so we walk up from the bin path to that mod root. */
 #[tauri::command]
 pub fn port_copy_assets_to_target(
     asset_paths: Vec<String>,
@@ -108,33 +111,93 @@ pub fn port_copy_assets_to_target(
 }
 
 /* Resolve a texture/asset rel path (as stored in a bin) to a disk file under
-   the bin's mod tree. Used by the emitter texture-hover preview to find a file
-   it can decode + reveal. Returns null when nothing matches. */
+the bin's mod tree. Used by the emitter texture-hover preview to find a file
+it can decode + reveal.
+
+Mirrors the old Quartz `findActualTexturePath`: bin asset strings come in as
+`ASSETS/...` or `assets/...` (case varies per mod), so we strip that prefix
+and try both the raw rel and the prefix-stripped rel under the project root,
+an explicit `assets`/`ASSETS` subdir, and the bin's own dir. A bounded
+case-insensitive descent handles roots whose real casing differs from the
+stored path. Returns null when nothing matches. */
 #[tauri::command]
 pub fn port_resolve_asset_path(asset_path: String, bin_path: String) -> Option<String> {
     let rel = normalize_rel(&asset_path);
     if rel.is_empty() {
         return None;
     }
-    let root = mod_root_for_bin(Path::new(&bin_path))?;
-    let direct = root.join(&rel);
-    if direct.is_file() {
-        return Some(direct.to_string_lossy().into_owned());
+    // `assets/foo/bar.tex` -> `foo/bar.tex` (either case).
+    let rel_no_assets = rel
+        .strip_prefix("assets/")
+        .map(str::to_string)
+        .unwrap_or_else(|| rel.clone());
+
+    let bin = Path::new(&bin_path);
+    let mut bases: Vec<PathBuf> = Vec::new();
+    if let Some(root) = mod_root_for_bin(bin) {
+        bases.push(root);
     }
-    // Donor-from-game assets keep their original rel path under the temp root's
-    // `combined` dir; also try the bin's own directory as a last resort.
-    let beside = Path::new(&bin_path).parent().map(|p| p.join(&rel));
-    if let Some(p) = beside {
-        if p.is_file() {
-            return Some(p.to_string_lossy().into_owned());
+    if let Some(dir) = bin.parent() {
+        let dir = dir.to_path_buf();
+        if !bases.contains(&dir) {
+            bases.push(dir);
+        }
+    }
+
+    for base in &bases {
+        // Priority order matches old Quartz: raw rel, prefix-stripped, then an
+        // explicit assets/ subdir (both casings), then bare filename.
+        let mut candidates = vec![
+            base.join(&rel),
+            base.join(&rel_no_assets),
+            base.join("assets").join(&rel_no_assets),
+            base.join("ASSETS").join(&rel_no_assets),
+        ];
+        if let Some(name) = Path::new(&rel).file_name() {
+            candidates.push(base.join(name));
+        }
+        for c in candidates {
+            if c.is_file() {
+                return Some(c.to_string_lossy().into_owned());
+            }
+        }
+        // Case-insensitive descent as a last resort (bounded: one directory
+        // read per path segment, no full-tree walk).
+        if let Some(hit) = resolve_case_insensitive(base, &rel_no_assets) {
+            return Some(hit.to_string_lossy().into_owned());
         }
     }
     None
 }
 
+/* Resolve `rel` under `base` matching each path segment case-insensitively.
+Reads one directory per segment (bounded), never a recursive tree walk, so a
+hover can never trigger a Desktop-wide scan. */
+fn resolve_case_insensitive(base: &Path, rel: &str) -> Option<PathBuf> {
+    let mut current = base.to_path_buf();
+    for segment in rel.split('/').filter(|s| !s.is_empty()) {
+        let exact = current.join(segment);
+        if exact.exists() {
+            current = exact;
+            continue;
+        }
+        let seg_lower = segment.to_lowercase();
+        let entries = std::fs::read_dir(&current).ok()?;
+        let mut matched = None;
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().to_lowercase() == seg_lower {
+                matched = Some(entry.path());
+                break;
+            }
+        }
+        current = matched?;
+    }
+    current.is_file().then_some(current)
+}
+
 /* Find the mod root (the dir that holds the `data`/`assets` tree) for a bin.
-   Riot bins live under `<root>/data/characters/...` or `<root>/assets/...`, so
-   we walk up until we find the parent of a `data`/`assets` segment. */
+Riot bins live under `<root>/data/characters/...` or `<root>/assets/...`, so
+we walk up until we find the parent of a `data`/`assets` segment. */
 fn mod_root_for_bin(bin_path: &Path) -> Option<PathBuf> {
     let mut current = bin_path.parent();
     while let Some(dir) = current {

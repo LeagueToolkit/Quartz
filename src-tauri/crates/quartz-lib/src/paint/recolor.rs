@@ -30,7 +30,10 @@ impl RecolorMode {
         })
     }
     fn is_random(self) -> bool {
-        matches!(self, RecolorMode::Random | RecolorMode::RandomKeyframe | RecolorMode::Materials)
+        matches!(
+            self,
+            RecolorMode::Random | RecolorMode::RandomKeyframe | RecolorMode::Materials
+        )
     }
 }
 
@@ -107,7 +110,9 @@ pub fn recolor_emitters(
     let mut modified = 0;
 
     for emitter_key in emitter_keys {
-        let Some(slot_map) = index.emitter_colors.get(emitter_key) else { continue };
+        let Some(slot_map) = index.emitter_colors.get(emitter_key) else {
+            continue;
+        };
         for sel in targets {
             for slot in sel.slots() {
                 if let Some(target) = slot_map.get(slot) {
@@ -157,7 +162,11 @@ fn recolor_one(
             continue;
         }
         let nc = &new_colors[i];
-        let alpha = if opts.preserve_alpha { original[3] } else { nc[3] };
+        let alpha = if opts.preserve_alpha {
+            original[3]
+        } else {
+            nc[3]
+        };
         let finalc = [nc[0], nc[1], nc[2], alpha];
         if finalc != original {
             if let Some(BinValue::Vec4(v)) = path.resolve_mut(bin) {
@@ -222,7 +231,11 @@ fn compute_new_colors(
                             single.unwrap()
                         }
                     } else {
-                        let t = if count <= 1 { 0.0 } else { i as f32 / (count - 1) as f32 };
+                        let t = if count <= 1 {
+                            0.0
+                        } else {
+                            i as f32 / (count - 1) as f32
+                        };
                         sample_palette_at(palette, t)
                     }
                 })
@@ -246,7 +259,11 @@ pub fn recolor_material_param(
     if ignore_black_white && is_black_or_white(&original) {
         return false;
     }
-    let alpha = if preserve_alpha { original[3] } else { new_color[3] };
+    let alpha = if preserve_alpha {
+        original[3]
+    } else {
+        new_color[3]
+    };
     let finalc = [new_color[0], new_color[1], new_color[2], alpha];
     if finalc == original {
         return false;
@@ -275,7 +292,11 @@ fn to_hsl(rgba: [f32; 4]) -> (f32, f32, f32) {
     if delta == 0.0 {
         return (0.0, 0.0, l);
     }
-    let s = if l > 0.5 { delta / (2.0 - max - min) } else { delta / (max + min) };
+    let s = if l > 0.5 {
+        delta / (2.0 - max - min)
+    } else {
+        delta / (max + min)
+    };
     let mut h = if max == r {
         let mut hue = ((g - b) / delta) % 6.0;
         if g < b {
@@ -295,7 +316,11 @@ fn from_hsl(h: f32, s: f32, l: f32) -> [f32; 4] {
     if s == 0.0 {
         return [l, l, l, 1.0];
     }
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
     let p = 2.0 * l - q;
     let conv = |t: f32| -> f32 {
         let mut t = t;
@@ -355,7 +380,11 @@ fn sample_palette_at(palette: &[PaletteStop], t_in: f32) -> [f32; 4] {
         }
     }
     let range = right.time - left.time;
-    let local = if range == 0.0 { 0.0 } else { (t - left.time) / range };
+    let local = if range == 0.0 {
+        0.0
+    } else {
+        (t - left.time) / range
+    };
     [
         left.vec4[0] + (right.vec4[0] - left.vec4[0]) * local,
         left.vec4[1] + (right.vec4[1] - left.vec4[1]) * local,
@@ -416,8 +445,14 @@ mod tests {
     #[test]
     fn palette_endpoints_and_midpoint() {
         let pal = [
-            PaletteStop { vec4: [0.0, 0.0, 0.0, 1.0], time: 0.0 },
-            PaletteStop { vec4: [1.0, 1.0, 1.0, 1.0], time: 1.0 },
+            PaletteStop {
+                vec4: [0.0, 0.0, 0.0, 1.0],
+                time: 0.0,
+            },
+            PaletteStop {
+                vec4: [1.0, 1.0, 1.0, 1.0],
+                time: 1.0,
+            },
         ];
         assert_eq!(sample_palette_at(&pal, 0.0), [0.0, 0.0, 0.0, 1.0]);
         assert_eq!(sample_palette_at(&pal, 1.0), [1.0, 1.0, 1.0, 1.0]);

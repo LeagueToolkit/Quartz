@@ -1,6 +1,6 @@
 import React from 'react';
 import { MemoizedInput } from '../common/Inputs';
-import type { EffectKeyOption, PersistentPreset, PersistentVfxItem, PersistentCondition } from '../../utils/persistentEffectsManager';
+import type { EffectKeyOption, PersistentPreset, PersistentVfxItem, PersistentCondition } from '../../model';
 
 interface TypeOption {
     value: string;
@@ -51,7 +51,7 @@ const fieldInputStyle: React.CSSProperties = {
     borderRadius: 6,
     color: 'var(--accent-primary)',
     fontSize: '0.9rem',
-    fontFamily: 'JetBrains Mono, monospace',
+    fontFamily: 'var(--font-mono)',
 };
 
 export default function PersistentEffectsModal(props: PersistentEffectsModalProps) {
@@ -118,7 +118,7 @@ export default function PersistentEffectsModal(props: PersistentEffectsModalProp
             >
                 <div style={{ height: 3, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite', flexShrink: 0 }} />
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                    <h2 style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>Persistent Effects</h2>
+                    <h2 style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>Persistent Effects</h2>
                     <button
                         onClick={() => setShowPersistentModal(false)}
                         style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--text-muted)', border: '1px solid var(--border)', background: 'var(--bg-tertiary)', cursor: 'pointer', outline: 'none' }}
@@ -320,7 +320,7 @@ export default function PersistentEffectsModal(props: PersistentEffectsModalProp
                                             onChange={(e) => setCustomInput(e.target.value)}
                                             onKeyPress={(e) => e.key === 'Enter' && handleAdd()}
                                             placeholder={`Type custom submesh name to ${kind}...`}
-                                            style={{ flex: 1, padding: '6px 10px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--accent-primary)', fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}
+                                            style={{ flex: 1, padding: '6px 10px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--accent-primary)', fontSize: '0.85rem', fontFamily: 'var(--font-mono)' }}
                                         />
                                         <button
                                             onClick={handleAdd}
@@ -393,7 +393,7 @@ export default function PersistentEffectsModal(props: PersistentEffectsModalProp
                                                         setVfxDropdownOpen((prev) => ({ ...prev, [idx]: true }));
                                                     }}
                                                     onFocus={() => setVfxDropdownOpen((prev) => ({ ...prev, [idx]: true }))}
-                                                    style={{ padding: '8px 12px', paddingRight: 32, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--accent-primary)', fontSize: '0.85rem', width: '100%', fontFamily: 'JetBrains Mono, monospace' }}
+                                                    style={{ padding: '8px 12px', paddingRight: 32, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--accent-primary)', fontSize: '0.85rem', width: '100%', fontFamily: 'var(--font-mono)' }}
                                                 />
                                                 <button
                                                     onClick={() => setVfxDropdownOpen((prev) => ({ ...prev, [idx]: !prev[idx] }))}
@@ -433,7 +433,7 @@ export default function PersistentEffectsModal(props: PersistentEffectsModalProp
                                                 placeholder="C_Buffbone_Glb_Layout_Loc"
                                                 value={v.boneName || ''}
                                                 onChange={(e) => setPersistentVfx((list) => list.map((x, i) => (i === idx ? { ...x, boneName: e.target.value } : x)))}
-                                                style={{ padding: '8px 12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--accent-primary)', fontSize: '0.85rem', fontFamily: 'JetBrains Mono, monospace' }}
+                                                style={{ padding: '8px 12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--accent-primary)', fontSize: '0.85rem', fontFamily: 'var(--font-mono)' }}
                                             />
                                         </div>
 
@@ -481,7 +481,7 @@ export default function PersistentEffectsModal(props: PersistentEffectsModalProp
                                 e.stopPropagation();
                                 setShowExistingConditions(!showExistingConditions);
                             }}
-                            style={{ padding: '6px 14px', background: 'color-mix(in oklab, var(--accent-secondary) 10%, transparent)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--accent-secondary)', cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, outline: 'none' }}
+                            style={{ padding: '6px 14px', background: 'color-mix(in oklab, var(--accent-secondary) 10%, transparent)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--accent-secondary)', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, outline: 'none' }}
                         >
                             📂 Load Existing ({existingConditions.length})
                         </button>
@@ -491,7 +491,7 @@ export default function PersistentEffectsModal(props: PersistentEffectsModalProp
                                 style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 8, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 12, minWidth: 300, maxHeight: 200, overflow: 'auto', zIndex: 10000, backdropFilter: 'saturate(180%) blur(12px)', WebkitBackdropFilter: 'saturate(180%) blur(12px)', boxShadow: '0 20px 48px rgba(0,0,0,0.5)' }}
                             >
                                 {existingConditions.length === 0 ? (
-                                    <div style={{ padding: '12px 16px', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.82rem' }}>No existing conditions found</div>
+                                    <div style={{ padding: '12px 16px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>No existing conditions found</div>
                                 ) : (
                                     existingConditions.map((condition, idx) => (
                                         <div
@@ -499,7 +499,7 @@ export default function PersistentEffectsModal(props: PersistentEffectsModalProp
                                             onClick={() => handleLoadExistingCondition(condition)}
                                             style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: idx < existingConditions.length - 1 ? '1px solid var(--border)' : 'none' }}
                                         >
-                                            <div style={{ color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.84rem', fontWeight: 500 }}>{condition.label}</div>
+                                            <div style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontSize: '0.84rem', fontWeight: 500 }}>{condition.label}</div>
                                             <div style={{ color: 'var(--text-secondary)', fontSize: '0.76rem', marginTop: 3 }}>
                                                 {condition.vfx.length} VFX · {condition.submeshesShow.length} Show · {condition.submeshesHide.length} Hide
                                             </div>
@@ -512,13 +512,13 @@ export default function PersistentEffectsModal(props: PersistentEffectsModalProp
 
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         {editingConditionIndex !== null && (
-                            <div style={{ padding: '6px 12px', background: 'color-mix(in oklab, var(--color-warning) 12%, transparent)', border: '1px solid color-mix(in oklab, var(--color-warning) 25%, transparent)', borderRadius: 6, color: 'var(--color-warning)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ padding: '6px 12px', background: 'color-mix(in oklab, var(--color-warning) 12%, transparent)', border: '1px solid color-mix(in oklab, var(--color-warning) 25%, transparent)', borderRadius: 6, color: 'var(--color-warning)', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                                 ✏️ Editing Condition {editingConditionIndex + 1}
                             </div>
                         )}
                         <button
                             onClick={handleApplyPersistent}
-                            style={{ padding: '6px 14px', background: 'color-mix(in oklab, var(--accent-secondary) 10%, transparent)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--accent-secondary)', fontWeight: 700, cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', outline: 'none' }}
+                            style={{ padding: '6px 14px', background: 'color-mix(in oklab, var(--accent-secondary) 10%, transparent)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--accent-secondary)', fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', outline: 'none' }}
                         >
                             {editingConditionIndex !== null ? 'Update' : 'Apply'}
                         </button>

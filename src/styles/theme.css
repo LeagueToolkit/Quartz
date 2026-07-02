@@ -44,9 +44,13 @@
     --glass-border: rgba(255, 255, 255, 0.10);
     --glass-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
 
-    /* ── Typography ─────────────────────────────────────────────────────── */
-    --font-sans: 'JetBrains Mono', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    /* ── Typography ─────────────────────────────────────────────────────────
+       Both follow the user-selected theme font (--app-font, set by applyFont).
+       Pages that hardcode --font-mono/--font-sans therefore respect the setting
+       too. --app-font falls back to Segoe UI until applyFont runs on boot. */
+    --app-font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-sans: var(--app-font);
+    --font-mono: var(--app-font);
 
     /* ── Radii ──────────────────────────────────────────────────────────── */
     --radius-sm: 7px;

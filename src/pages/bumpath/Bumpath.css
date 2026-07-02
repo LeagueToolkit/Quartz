@@ -1,0 +1,98 @@
+/* Bumpath layout chrome. Mirrors the Port bottom bar 1:1 so the page shares the
+   fixed status/action bar look. */
+
+.bumpath-bottom-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 56px;
+    padding: 0 16px;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+.bumpath-bottom-bar__group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+/* Uniform toolbar cells: the labeled buttons + the prefix field are the exact
+   same box. !important beats the .dl-btn / .dl-btn--sm width+height rules, and
+   border-box keeps their padding inside the cell so nothing bloats past 132px.
+   Icon-only buttons (the folder re-select) keep their square shape. */
+.bumpath-bottom-bar__cells {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.bumpath-bottom-bar__cells > .dl-btn:not(.dl-btn--icon),
+.bumpath-bottom-bar__cells > .dl-input {
+    box-sizing: border-box !important;
+    width: 132px !important;
+    min-width: 132px !important;
+    max-width: 132px !important;
+    height: 34px !important;
+    flex: 0 0 132px !important;
+    padding: 0 10px !important;
+}
+.bumpath-bottom-bar__cells > .dl-btn--icon {
+    box-sizing: border-box !important;
+    width: 34px !important;
+    min-width: 34px !important;
+    height: 34px !important;
+    flex: 0 0 34px !important;
+    padding: 0 !important;
+}
+/* Truncate long labels instead of widening the button. */
+.bumpath-bottom-bar__cells > .dl-btn > span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Dim the content region while nothing is loaded (mirrors BinEditorV2). The
+   empty-state CTA stays live. */
+.bumpath-dimmable.is-dim {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+/* Centered empty state, mirrors .bineditorv2-emptywrap / .bineditorv2-empty. */
+.bumpath-emptywrap {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    padding: 16px;
+    overflow: hidden;
+}
+.bumpath-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    flex-shrink: 0;
+}
+.bumpath-empty__title {
+    color: var(--text-secondary);
+    font-weight: 700;
+    font-size: 1rem;
+    margin-bottom: 4px;
+}
+.bumpath-empty__sub {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    margin-bottom: 18px;
+}

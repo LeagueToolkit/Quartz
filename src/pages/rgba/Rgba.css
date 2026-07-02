@@ -1,0 +1,159 @@
+/* ==========================================================================
+   RGBA color tool — rebuilt on the Design-Lab primitives (dl-btn, dl-input,
+   dl-slider, dl-card). Transparent root so the app background shows through;
+   no outer gutter (the page fills the work area edge-to-edge).
+   ========================================================================== */
+
+.rgba-root {
+    position: relative;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    padding: 16px;
+    box-sizing: border-box;
+}
+
+.rgba-cols {
+    flex: 1;
+    display: flex;
+    gap: 16px;
+    min-height: 0;
+    position: relative;
+    z-index: 1;
+}
+
+.rgba-col {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 8px;
+}
+
+.rgba-divider {
+    width: 1px;
+    flex-shrink: 0;
+    background: var(--border);
+    margin: 0 8px;
+}
+
+.rgba-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+    font-weight: 700;
+    font-size: 1rem;
+}
+.rgba-head svg { color: var(--accent-primary); }
+
+.rgba-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+/* Color selection row */
+.rgba-selrow {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+}
+
+.rgba-swatch {
+    position: relative;
+    width: 50px;
+    height: 50px;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    transition: transform var(--motion-fast), box-shadow var(--motion-fast);
+    padding: 0;
+}
+.rgba-swatch:hover { transform: scale(1.05); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); }
+.rgba-swatch__badge {
+    position: absolute;
+    top: -5px; right: -5px;
+    width: 18px; height: 18px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    color: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.rgba-alpha { margin-top: -4px; }
+
+.rgba-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+}
+
+/* Color information cards */
+.rgba-infogrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+.rgba-infocard {
+    padding: 12px 14px;
+}
+.rgba-infoval {
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    color: var(--accent-primary);
+    word-break: break-all;
+}
+
+/* Color preview */
+.rgba-previewgrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    flex: 1;
+    min-height: 0;
+}
+.rgba-preview {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    overflow: hidden;
+    position: relative;
+}
+.rgba-preview--checker {
+    background:
+        linear-gradient(45deg, #ccc 25%, transparent 25%),
+        linear-gradient(-45deg, #ccc 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #ccc 75%),
+        linear-gradient(-45deg, transparent 75%, #ccc 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+.rgba-preview__fill {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+}

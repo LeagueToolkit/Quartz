@@ -1,61 +1,72 @@
+import type { ReactNode } from 'react';
+import { Tooltip } from '@mui/material';
 import { Undo2 as UndoIcon } from 'lucide-react';
-import type { UndoEntry } from '../usePort';
+
+export interface PortActionButton {
+    id: string;
+    title: string;
+    color: string;
+    icon: ReactNode;
+    onClick?: () => void;
+    disabled?: boolean;
+}
 
 interface PortBottomControlsProps {
     statusMessage: string;
-    targetPyContent: string;
-    trimTargetNames: boolean;
-    setTrimTargetNames: (v: boolean) => void;
-    trimDonorNames: boolean;
-    setTrimDonorNames: (v: boolean) => void;
+    hasTarget: boolean;
     handleUndo: () => void;
-    undoHistory: UndoEntry[];
+    canUndo: boolean;
     handleSave: () => void;
     isProcessing: boolean;
     hasChangesToSave: () => boolean;
+    /* VFX action buttons (formerly the floating island) — rendered at the left. */
+    actions?: PortActionButton[];
 }
 
-/* Single compact bottom bar (mirrors Paint): status/info on the left, the trim
-   toggles in the middle, icon Undo + small Save on the right. */
+/* Single compact bottom bar: VFX action buttons on the left, the status/console
+   output truly centered, Undo/Save on the right. (Trim toggles moved into each
+   column's search bar as a scissor toggle.) */
 export default function PortBottomControls({
     statusMessage,
-    targetPyContent,
-    trimTargetNames,
-    setTrimTargetNames,
-    trimDonorNames,
-    setTrimDonorNames,
+    hasTarget,
     handleUndo,
-    undoHistory,
+    canUndo,
     handleSave,
     isProcessing,
     hasChangesToSave,
+    actions = [],
 }: PortBottomControlsProps) {
-    const canUndo = undoHistory.length > 0;
     const canSave = !isProcessing && hasChangesToSave();
+    const showActions = hasTarget && !isProcessing && actions.length > 0;
 
     return (
         <div className="port-bottom-bar">
-            <span className="port-bottom-bar__status">{statusMessage}</span>
+            <div className="port-bottom-bar__actions port-bottom-bar__actions--left">
+                {showActions &&
+                    actions.map(({ id, title, color, icon, onClick, disabled }) => (
+                        <Tooltip key={id} title={title} arrow placement="top" componentsProps={{ tooltip: { sx: { fontFamily: 'var(--font-mono)', fontSize: '0.72rem' } } }}>
+                            <span>
+                                <button
+                                    className="port-action-btn"
+                                    onClick={disabled ? undefined : onClick}
+                                    disabled={disabled}
+                                    style={{ '--action-color': color } as React.CSSProperties}
+                                >
+                                    {icon}
+                                </button>
+                            </span>
+                        </Tooltip>
+                    ))}
+            </div>
 
-            {targetPyContent && (
-                <div className="port-bottom-bar__trims">
-                    <label>
-                        <input type="checkbox" checked={trimTargetNames} onChange={(e) => setTrimTargetNames(e.target.checked)} />
-                        <span>Trim Target Names</span>
-                    </label>
-                    <label>
-                        <input type="checkbox" checked={trimDonorNames} onChange={(e) => setTrimDonorNames(e.target.checked)} />
-                        <span>Trim Donor Names</span>
-                    </label>
-                </div>
-            )}
+            <span className="port-bottom-bar__status">{statusMessage}</span>
 
             <div className="port-bottom-bar__actions">
                 <button
                     className="dl-btn dl-btn--secondary dl-btn--sm dl-btn--icon"
                     onClick={handleUndo}
                     disabled={!canUndo}
-                    title={canUndo ? `Undo: ${undoHistory[undoHistory.length - 1]?.action} (${undoHistory.length})` : 'Nothing to undo'}
+                    title={canUndo ? 'Undo last change' : 'Nothing to undo'}
                 >
                     <span className="dl-icon"><UndoIcon size={15} /></span>
                 </button>

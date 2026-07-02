@@ -626,7 +626,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
             sx={{
                 position: 'fixed', top: '48px', left: '60px', right: 0, bottom: 0, zIndex: 9500,
                 background: 'color-mix(in oklab, var(--bg-primary) 97%, transparent)', display: 'flex', flexDirection: 'column',
-                fontFamily: 'JetBrains Mono, monospace',
+                fontFamily: 'var(--font-mono)',
                 outline: isDragOver ? '2px solid var(--accent-primary)' : '2px solid transparent', outlineOffset: '-3px',
                 transition: 'outline-color 0.1s',
             }}
@@ -777,7 +777,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                             onClose={() => setAutoSplitAnchor(null)}
                             anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
                             transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-                            PaperProps={{ sx: { background: 'color-mix(in oklab, var(--bg-secondary) 98%, transparent)', border: '1px solid var(--border)', backdropFilter: 'blur(12px)', p: 2, minWidth: 260, fontFamily: 'JetBrains Mono, monospace' } }}
+                            PaperProps={{ sx: { background: 'color-mix(in oklab, var(--bg-secondary) 98%, transparent)', border: '1px solid var(--border)', backdropFilter: 'blur(12px)', p: 2, minWidth: 260, fontFamily: 'var(--font-mono)' } }}
                         >
                             <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent-primary)', mb: 1.5, letterSpacing: '0.08em' }}>AUTO-SPLIT SETTINGS</Typography>
 

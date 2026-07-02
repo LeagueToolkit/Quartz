@@ -81,9 +81,9 @@ export default function BackupViewerModal({ open, filePath, component, onClose }
                 <div style={{ height: 3, flexShrink: 0, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' }} />
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <h2 style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '1.05rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>Backup History</h2>
+                        <h2 style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '1.05rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>Backup History</h2>
                         {component && (
-                            <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: '0.7rem', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, background: `color-mix(in oklab, ${compColor(component)} 15%, transparent)`, border: `1px solid color-mix(in oklab, ${compColor(component)} 40%, transparent)`, color: compColor(component) }}>{component}</span>
+                            <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: '0.7rem', fontFamily: 'var(--font-mono)', fontWeight: 700, background: `color-mix(in oklab, ${compColor(component)} 15%, transparent)`, border: `1px solid color-mix(in oklab, ${compColor(component)} 40%, transparent)`, color: compColor(component) }}>{component}</span>
                         )}
                     </div>
                     <button
@@ -96,20 +96,20 @@ export default function BackupViewerModal({ open, filePath, component, onClose }
 
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                     {error && (
-                        <div style={{ margin: '12px 16px', padding: '10px 14px', background: 'color-mix(in oklab, var(--color-danger) 10%, transparent)', border: '1px solid color-mix(in oklab, var(--color-danger) 28%, transparent)', borderRadius: 8, color: 'var(--color-danger)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem' }}>{error}</div>
+                        <div style={{ margin: '12px 16px', padding: '10px 14px', background: 'color-mix(in oklab, var(--color-danger) 10%, transparent)', border: '1px solid color-mix(in oklab, var(--color-danger) 28%, transparent)', borderRadius: 8, color: 'var(--color-danger)', fontFamily: 'var(--font-mono)', fontSize: '0.78rem' }}>{error}</div>
                     )}
 
                     {loading && (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
-                            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: 'var(--accent-secondary)' }}>Loading backups…</span>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--accent-secondary)' }}>Loading backups…</span>
                         </div>
                     )}
 
                     {!loading && !error && backups.length === 0 && (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 48, gap: 12 }}>
                             <InfoIcon sx={{ fontSize: 40, color: 'var(--text-muted)' }} />
-                            <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.88rem', color: 'var(--text-muted)', fontWeight: 600 }}>No backups found</div>
-                            <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem', color: 'var(--text-muted)', textAlign: 'center', maxWidth: 320, lineHeight: 1.6 }}>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.88rem', color: 'var(--text-muted)', fontWeight: 600 }}>No backups found</div>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.74rem', color: 'var(--text-muted)', textAlign: 'center', maxWidth: 320, lineHeight: 1.6 }}>
                                 Backups are created automatically when you load or save .py files in {component || 'this component'}.
                             </div>
                         </div>
@@ -121,14 +121,14 @@ export default function BackupViewerModal({ open, filePath, component, onClose }
                         return (
                             <div key={backup.path} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: i < backups.length - 1 ? '1px solid var(--border)' : 'none', background: i % 2 === 0 ? 'color-mix(in oklab, var(--bg-tertiary) 60%, transparent)' : 'transparent' }}>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                         {backup.name.length > 42 ? backup.name.slice(0, 39) + '…' : backup.name}
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', color: 'var(--text-muted)' }}>{new Date(backup.modified).toLocaleString()}</span>
-                                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.76rem', color: 'var(--text-muted)' }}>·</span>
-                                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', color: 'var(--text-muted)' }}>{formatSize(backup.size)}</span>
-                                        <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: '0.65rem', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, background: `color-mix(in oklab, ${col} 15%, transparent)`, border: `1px solid color-mix(in oklab, ${col} 35%, transparent)`, color: col }}>{backup.component}</span>
+                                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--text-muted)' }}>{new Date(backup.modified).toLocaleString()}</span>
+                                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>·</span>
+                                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--text-muted)' }}>{formatSize(backup.size)}</span>
+                                        <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: '0.65rem', fontFamily: 'var(--font-mono)', fontWeight: 700, background: `color-mix(in oklab, ${col} 15%, transparent)`, border: `1px solid color-mix(in oklab, ${col} 35%, transparent)`, color: col }}>{backup.component}</span>
                                     </div>
                                 </div>
                                 <button
@@ -145,7 +145,7 @@ export default function BackupViewerModal({ open, filePath, component, onClose }
                 </div>
 
                 {backups.length > 0 && (
-                    <div style={{ padding: '10px 20px', borderTop: '1px solid var(--border)', background: 'color-mix(in oklab, var(--accent-secondary) 5%, transparent)', flexShrink: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                    <div style={{ padding: '10px 20px', borderTop: '1px solid var(--border)', background: 'color-mix(in oklab, var(--accent-secondary) 5%, transparent)', flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
                         Only the 10 most recent backups are kept. Older backups are automatically deleted.
                     </div>
                 )}

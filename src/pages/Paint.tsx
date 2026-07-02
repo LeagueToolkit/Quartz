@@ -11,21 +11,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Box, Typography, Button, TextField, Checkbox, Slider, IconButton,
-    Select, MenuItem, Menu, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
+    Select, MenuItem, Menu, Dialog, DialogTitle, DialogContent, DialogActions,
     type SelectChangeEvent,
 } from '@mui/material';
 import PaletteIcon from '@mui/icons-material/Palette';
 import TuneIcon from '@mui/icons-material/Tune';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
-import { FolderOpen as FolderOpenIcon, Undo2 as UndoIcon, Redo2 as RedoIcon, SlidersHorizontal as SlidersIcon, ChevronDown as ChevronDownIcon } from 'lucide-react';
+import { FolderOpen as FolderOpenIcon, Undo2 as UndoIcon, Redo2 as RedoIcon, SlidersHorizontal as SlidersIcon, ChevronDown as ChevronDownIcon, X as CloseIcon } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
     paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintUndo, paintRedo, paintSave,
     type VfxEmitter, type ColorTargetId,
     type PaletteStopInput, type RecolorOptionsInput,
 } from '@/lib/api';
-import { useNotificationStore, usePaintStore, type HslValues, type PaintState as PaintStoreState } from '@/lib/stores';
+import { useNotificationStore, usePaintStore, useUiPrefsStore, type HslValues, type PaintState as PaintStoreState } from '@/lib/stores';
 import { useFileDrop } from '@/lib/util/useFileDrop';
 
 import './paint/Paint.css';
@@ -79,6 +79,21 @@ const ddTriggerSx = {
     '&.Mui-focused': { borderColor: 'var(--accent-primary)', boxShadow: '0 0 0 2px color-mix(in oklab, var(--accent-primary) 55%, transparent)' },
     '& fieldset': { border: 'none' }, '&:hover fieldset': { border: 'none' }, '&.Mui-focused fieldset': { border: 'none' },
 } as const;
+
+/* "3m ago" / "2h ago" / "5d ago" style stamp for the recent bins list. */
+function relativeTime(iso: string): string {
+    const then = new Date(iso).getTime();
+    if (Number.isNaN(then)) return '';
+    const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
+    if (secs < 60) return 'just now';
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 30) return `${days}d ago`;
+    return new Date(iso).toLocaleDateString();
+}
 
 /* Mode picker — lives in the sub-toolbar so it's reachable from every mode
    (it used to sit inside PaletteManager, which unmounts in HSL/Shift modes and
@@ -269,6 +284,8 @@ function Paint() {
     // === TRANSIENT UI STATE (fine to reset on remount) ===
     const [isLoading, setIsLoading] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
+    const recentBins = useUiPrefsStore((s) => s.recentBins);
+    const removeRecentBin = useUiPrefsStore((s) => s.removeRecentBin);
     // The BM / color-target row collapses into a toggle to save vertical space.
     const [bmRowOpen, setBmRowOpen] = useState(false);
     const [paletteNameDialogOpen, setPaletteNameDialogOpen] = useState(false);
@@ -317,6 +334,8 @@ function Paint() {
                 setExpandedSystems(new Set());
                 setExpandedMaterials(new Set());
             }
+
+            useUiPrefsStore.getState().pushRecentBin(selectedPath);
 
             setStatusMessage(`Loaded ${newModel.stats.systemCount} systems and ${newModel.stats.emitterCount} emitters`);
         } catch (error) {
@@ -508,7 +527,17 @@ function Paint() {
             if (emitterKeys.length > 0) {
                 const result = await paintRecolor(sessionId, emitterKeys, colorTargets, paletteData, options);
                 changed += result.changed;
-                nextModel = result.model;
+                // The command returns refreshed colors for just the touched
+                // emitters — patch them into the resident model instead of
+                // swallowing a whole-model reprojection.
+                if (result.changed > 0) {
+                    nextModel = {
+                        ...nextModel,
+                        emitters: nextModel.emitters.map((e) =>
+                            result.colors[e.key] ? { ...e, colors: result.colors[e.key] } : e,
+                        ),
+                    };
+                }
             }
 
             // Materials have no model-refetch command; patch the local model optimistically.
@@ -902,7 +931,9 @@ function Paint() {
                 display: 'flex',
                 flexDirection: 'column',
                 height: '100%',
-                background: isMinecraftStyle ? '#2a2a2a' : 'var(--bg-primary)',
+                // Transparent so the app background (atmosphere/wallpaper) shows through.
+                // Minecraft skin keeps its own opaque backdrop.
+                background: isMinecraftStyle ? '#2a2a2a' : 'transparent',
                 color: 'var(--text-primary)',
                 overflow: 'hidden',
                 position: 'relative',
@@ -910,9 +941,11 @@ function Paint() {
         >
             <ColorPickerHost />
 
-            {/* All recolor chrome only matters once a bin is loaded — hide it
-               otherwise so the empty state isn't buried under toolbar rows. */}
-            {model && (<>
+            {/* Recolor chrome renders always so the page reads as the full editor;
+               when no bin is loaded it's dimmed + non-interactive (the canvas below
+               shows the drop card). */}
+            <div style={model ? undefined : { opacity: 0.4, pointerEvents: 'none', userSelect: 'none' }} aria-disabled={!model}>
+            {(<>
             {mode === 'shift-hue' && (
                 <ShiftHueControl value={hueTarget} onCommit={setHueTarget} onStatus={setStatusMessage} />
             )}
@@ -1189,6 +1222,7 @@ function Paint() {
                 </Menu>
             </Box>
             </>)}
+            </div>
 
             {/* Main List */}
             <Box className="paint2-main-list-wrap" sx={{ flex: 1, overflow: 'hidden' }}>
@@ -1221,19 +1255,21 @@ function Paint() {
                         onColorClick={importColorsToPalette}
                     />
                 ) : (
-                    /* Empty state: nothing but a drop zone + open button. */
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 4 }}>
+                    /* Empty state: the drop zone is centered in the available space
+                       (the always-on toolbar sits above), with the recent-bins list
+                       anchored below it. */
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', padding: 4, overflow: 'hidden', minHeight: 0 }}>
                         <Box
                             onClick={handleFileOpen}
                             sx={{
                                 width: 'min(560px, 90%)',
+                                flexShrink: 0,
+                                margin: 'auto 0',
                                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2.5,
-                                padding: '52px 40px',
+                                padding: '44px 40px',
                                 borderRadius: 'var(--radius-lg)',
-                                border: `2px dashed ${isDragOver ? 'var(--accent-primary)' : 'var(--border-strong)'}`,
                                 background: isDragOver ? 'color-mix(in oklab, var(--accent-primary) 10%, transparent)' : 'transparent',
                                 cursor: 'pointer', transition: 'all var(--motion-base)',
-                                '&:hover': { borderColor: 'var(--accent-primary)', background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' },
                             }}
                         >
                             <FolderOpenIcon size={40} color="var(--accent-primary)" strokeWidth={1.5} />
@@ -1245,32 +1281,59 @@ function Paint() {
                                 <span>Open Bin</span>
                             </button>
                         </Box>
+
+                        {recentBins.length > 0 && (
+                            <div className="paint2-recent">
+                                <div className="paint2-recent__title">
+                                    <span>Recent Bins</span>
+                                </div>
+                                <div className="paint2-recent__list">
+                                    {recentBins.map((bin) => (
+                                        <div
+                                            key={bin.path}
+                                            className="paint2-recent__item"
+                                            onClick={() => loadBinFile(bin.path)}
+                                            title={bin.path}
+                                        >
+                                            <div className="paint2-recent__info">
+                                                <FolderOpenIcon size={15} className="paint2-recent__icon" />
+                                                <span className="paint2-recent__name">{bin.name}</span>
+                                            </div>
+                                            <div className="paint2-recent__actions">
+                                                <span className="paint2-recent__date">{relativeTime(bin.lastOpened)}</span>
+                                                <button
+                                                    className="paint2-recent__delete"
+                                                    title="Remove from recent"
+                                                    onClick={(e) => { e.stopPropagation(); removeRecentBin(bin.path); }}
+                                                >
+                                                    <CloseIcon size={13} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </Box>
                 )}
             </Box>
 
-            {/* Footer — bottom action bar. Only shown once a bin is loaded; the
-               empty state is just the drop zone. */}
-            {model && (
+            {/* Footer — bottom action bar, always shown so the page reads as the
+               full editor. Its buttons already self-disable when there's nothing
+               to act on (empty selection / unsaved), and Open Bin stays usable. */}
             <Box className="paint2-footer" sx={{
-                padding: '8px 16px', background: isMinecraftStyle ? '#2f2f2f' : 'var(--bg-primary)',
+                height: '48px', padding: '0 16px', boxSizing: 'border-box',
+                background: isMinecraftStyle ? '#2f2f2f' : 'var(--bg-primary)',
                 borderTop: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)',
                 display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0,
             }}>
-                {/* Left: open a different bin + current file */}
-                <button onClick={handleFileOpen} disabled={isLoading} className="dl-btn dl-btn--primary dl-btn--sm dl-btn--icon" title="Open Bin">
-                    <span className="dl-icon"><FolderOpenIcon size={15} /></span>
-                </button>
-
-                <Tooltip title={filePath || 'No file loaded'}>
-                    <Typography sx={{
-                        fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'default',
-                        maxWidth: '240px', flexShrink: 0,
-                    }}>
-                        {filePath ? filePath.split(/[\\/]/).pop() : 'No file loaded'}
-                    </Typography>
-                </Tooltip>
+                {/* Left: open a different bin — hidden when no bin is loaded (the empty
+                    state shows the main Open Bin button instead). */}
+                {model && (
+                    <button onClick={handleFileOpen} disabled={isLoading} className="dl-btn dl-btn--primary dl-btn--sm dl-btn--icon" title="Open Bin">
+                        <span className="dl-icon"><FolderOpenIcon size={15} /></span>
+                    </button>
+                )}
 
                 {/* Compact status readout */}
                 {statusMessage && (
@@ -1298,7 +1361,6 @@ function Paint() {
                     </button>
                 </Box>
             </Box>
-            )}
 
             {/* Save Palette Dialog */}
             <Dialog

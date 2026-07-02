@@ -53,6 +53,23 @@
     line-height: 1;
 }
 
+/* Right cluster: collapsed-mode Settings (+ separator) sits left of the
+   window controls, so Settings anchors next to close rather than trailing the
+   scrollable nav. */
+.q-titlebar-right {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    height: 100%;
+}
+
+.q-topnav-settings {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 100%;
+}
+
 .q-winbtns {
     display: flex;
     align-items: center;
@@ -72,6 +89,166 @@
 .q-winbtn--close:hover {
     background: color-mix(in oklab, var(--color-danger) 20%, transparent);
     color: var(--color-danger);
+}
+
+/* === Collapsed topbar nav ================================================
+   When the rail is collapsed, its items move inline into the titlebar. Mirrors
+   the rail's active-accent + tooltip language, scaled down to titlebar height.
+   Overflows into a horizontally scrollable strip; arrows appear only when there
+   is more to reveal. */
+.q-topnav {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    height: 100%;
+}
+
+.q-topnav-sep {
+    flex-shrink: 0;
+    width: 1px;
+    height: 18px;
+    margin: 0 6px;
+    background: color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+/* Scrollable strip — scrollbar hidden so it never reserves height. Reveal on
+   hover via the arrow buttons (or wheel/trackpad). */
+.q-topnav-strip {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.q-topnav-strip::-webkit-scrollbar { height: 0; width: 0; display: none; }
+
+.q-topnav-arrow {
+    flex-shrink: 0;
+    width: 20px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    transition: background-color var(--motion-fast), color var(--motion-fast);
+}
+.q-topnav-arrow:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.q-topnavbtn {
+    position: relative;
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-sm);
+    background-color: transparent;
+    transition: background-color var(--motion-fast);
+}
+.q-topnavbtn svg {
+    width: 17px;
+    height: 17px;
+    color: var(--text-muted);
+    transition: color var(--motion-fast), transform var(--motion-fast);
+    pointer-events: none;
+}
+.q-topnavbtn:hover {
+    background: color-mix(in oklab, var(--accent-primary) 10%, transparent);
+}
+.q-topnavbtn:hover svg {
+    color: var(--text-secondary);
+    transform: scale(1.08);
+}
+.q-topnavbtn.is-active {
+    background: color-mix(in oklab, var(--accent-primary) 14%, transparent);
+}
+.q-topnavbtn.is-active svg {
+    color: var(--accent-primary);
+}
+/* Active marker sits on the bottom edge here (the rail uses a left pill; a
+   horizontal strip reads better with an underline). */
+.q-topnavbtn.is-active::before {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 18px;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--accent-primary);
+}
+
+/* Tooltip below on hover (rail tooltips point right; titlebar points down). */
+.q-topnavbtn[data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    top: 38px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 100004;
+    box-shadow: var(--dl-shadow-md, 0 8px 20px rgba(0, 0, 0, 0.35));
+}
+
+/* === Community popover (titlebar globe) =================================
+   Anchored under the globe button; mirrors the design-lab menu surface. */
+.q-community-pop {
+    position: fixed;
+    z-index: 100005;
+    min-width: 200px;
+    padding: 6px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--dl-shadow-md, 0 12px 30px rgba(0, 0, 0, 0.45));
+    animation: q-community-pop-in 140ms ease-out;
+}
+@keyframes q-community-pop-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.q-community-pop__item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--motion-fast), color var(--motion-fast);
+}
+.q-community-pop__item:hover {
+    background: color-mix(in oklab, var(--accent-primary) 10%, transparent);
+    color: var(--text-primary);
+}
+.q-community-pop__icon { flex-shrink: 0; }
+.q-community-pop__item:hover .q-community-pop__icon { color: var(--accent-primary); }
+.q-community-pop__sep {
+    height: 1px;
+    margin: 5px 8px;
+    background: color-mix(in oklab, var(--border) 70%, transparent);
 }
 
 /* === Nav rail ============================================================

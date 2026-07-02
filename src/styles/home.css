@@ -1,167 +1,161 @@
 /* ==========================================================================
-   Home — hero + tool grid. Clean, flat, design-lab aesthetic. Logo sits beside
-   the title; no giant shimmer text or pulsing glow orbs.
+   Home — workflow rail + featured stage. Categorized tool list on the left;
+   the right panel features the hovered/selected tool with a media slot reserved
+   for a per-tool tutorial. Brand + external links live in the global titlebar.
    ========================================================================== */
 
 .q-home {
     height: 100%;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 264px 1fr;
     color: var(--text-primary);
     overflow: hidden;
 }
 
-/* ----------------------------------------------------------------- HERO
-   Brand pinned left, CTAs pinned right. */
-.q-home__hero {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 32px;
-    padding: 40px 40px 34px;
+/* ----------------------------------------------------------------- RAIL */
+.q-home__rail {
+    height: 100%;
+    padding: 14px 8px 18px;
+    overflow: hidden;
+    border-right: 1px solid var(--border);
+    background: color-mix(in oklab, var(--bg-primary) 60%, transparent);
 }
 
-.q-home__brand {
-    display: flex;
-    align-items: center;
-    gap: 22px;
-    min-width: 0;
-}
-.q-home__logo {
-    width: 88px;
-    height: 88px;
-    object-fit: contain;
-    flex-shrink: 0;
-    filter: drop-shadow(0 6px 20px color-mix(in oklab, var(--accent-primary) 26%, transparent));
-}
-.q-home__titles {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-}
-.q-home__title {
-    margin: 0;
-    font-size: 64px;
-    font-weight: 800;
-    line-height: 0.95;
-    letter-spacing: -0.025em;
-    background: linear-gradient(120deg,
-        var(--text-primary) 0%,
-        color-mix(in oklab, var(--accent-primary) 70%, var(--text-primary)) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-}
-.q-home__subtitle {
-    margin: 0;
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 0.24em;
+.q-home__group { margin-bottom: 6px; }
+
+.q-home__eyebrow {
+    padding: 12px 12px 6px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
     text-transform: uppercase;
     color: var(--text-muted);
 }
 
-.q-home__mc {
-    width: min(46vw, 520px);
-    aspect-ratio: 16 / 5;
-    max-height: 150px;
-    image-rendering: pixelated;
-    background: url("/quartzminecraft.WEBP") center / cover no-repeat;
-}
-
-.q-home__cta {
+.q-home__item {
     display: flex;
-    gap: 12px;
-    flex-shrink: 0;
+    align-items: center;
+    gap: 11px;
+    width: calc(100% - 8px);
+    margin: 1px 4px;
+    padding: 9px 11px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--motion-fast), color var(--motion-fast);
 }
-.q-home__cta .dl-btn { font-size: 15px; padding: 0 22px; }
+.q-home__item:hover {
+    background: color-mix(in oklab, var(--accent-primary) 8%, transparent);
+    color: var(--text-primary);
+}
+.q-home__item.is-active {
+    background: color-mix(in oklab, var(--accent-primary) 14%, transparent);
+    color: var(--text-primary);
+    box-shadow: inset 3px 0 0 var(--accent-primary);
+}
+.q-home__item-ic { flex-shrink: 0; color: var(--text-muted); }
+.q-home__item:hover .q-home__item-ic,
+.q-home__item.is-active .q-home__item-ic { color: var(--accent-primary); }
 
-/* ------------------------------------------------------------ TOOL GRID */
-.q-home__grid {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    grid-auto-rows: 1fr;
-    gap: 12px;
-    padding: 4px 28px 28px;
+/* ---------------------------------------------------------------- STAGE */
+.q-home__stage {
+    height: 100%;
+    padding: 34px 40px;
     overflow-y: auto;
 }
 
-/* Cards reuse the ghost-button aesthetic: transparent base, accent-tint on
-   hover. Matches .dl-btn--ghost. */
-.q-tool-card {
+.q-home__feat {
+    height: 100%;
     display: flex;
     flex-direction: column;
-    justify-content: flex-start;
-    text-align: left;
-    padding: 15px 17px;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--radius);
-    cursor: pointer;
-    font-family: inherit;
-    overflow: hidden;
-    transition:
-        background var(--motion-fast),
-        border-color var(--motion-fast),
-        transform var(--motion-fast);
+    background: color-mix(in oklab, var(--bg-secondary) 55%, transparent);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    animation: q-feat-in 180ms var(--ease-out);
 }
-.q-tool-card:hover {
-    background: color-mix(in oklab, var(--accent-primary) 10%, transparent);
-    border-color: color-mix(in oklab, var(--accent-primary) 25%, transparent);
-    transform: translateY(-2px);
+@keyframes q-feat-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
-.q-tool-card__head {
+/* Tutorial media slot — placeholder now, video later. Grows to fill the stage;
+   title/desc/Open sit beneath it. */
+.q-home__media {
+    flex: 1 1 auto;
+    min-height: 240px;
     display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
-}
-.q-tool-card__icon {
-    display: inline-flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 10px;
+    border-radius: var(--radius);
+    background:
+        radial-gradient(120% 120% at 50% 0%, color-mix(in oklab, var(--accent-primary) 8%, transparent), transparent 70%),
+        var(--bg-primary);
+    border: 1px dashed color-mix(in oklab, var(--border-strong) 80%, transparent);
+    color: var(--text-muted);
+}
+.q-home__media-play {
     color: var(--accent-primary);
-    flex-shrink: 0;
+    opacity: 0.85;
 }
-.q-tool-card__title {
-    font-size: 13.5px;
-    font-weight: 700;
-    color: var(--text-primary);
-    line-height: 1.2;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.q-tool-card__badge {
-    margin-left: auto;
-    font-size: 9px;
-    font-weight: 800;
-    letter-spacing: 0.06em;
-    color: var(--accent-primary);
-    background: color-mix(in oklab, var(--accent-primary) 16%, transparent);
-    border: 1px solid color-mix(in oklab, var(--accent-primary) 40%, transparent);
-    border-radius: 4px;
-    padding: 1px 5px;
-}
-.q-tool-card--new {
-    border-color: color-mix(in oklab, var(--accent-primary) 35%, var(--border));
+.q-home__media-hint {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
 }
 
-.q-tool-card__desc {
-    margin: 0;
-    font-size: 11px;
-    line-height: 1.45;
-    color: var(--text-muted);
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+.q-home__feat-head {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    margin: 22px 0 10px;
 }
+.q-home__feat-ic {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius);
+    color: var(--accent-primary);
+    background: color-mix(in oklab, var(--accent-primary) 12%, transparent);
+    border: 1px solid color-mix(in oklab, var(--accent-primary) 26%, transparent);
+}
+.q-home__feat-title {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+.q-home__feat-desc {
+    margin: 0 0 22px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.q-home__open {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 24px;
+    border: 0;
+    border-radius: var(--radius);
+    background: var(--accent-primary);
+    color: #fff;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background var(--motion-fast), transform var(--motion-fast);
+}
+.q-home__open:hover { background: var(--accent-hover); }
+.q-home__open:active { transform: scale(0.98); }

@@ -1,122 +1,130 @@
-import { useEffect, useState } from 'react';
-import { ArrowRight, ExternalLink } from 'lucide-react';
-import {
-    Brush as PaintIcon,
-    ArrowLeftRight as PortIcon,
-    Github as VFXHubIcon,
-    Pipette as RGBAIcon,
-    Image as ImgIcon,
-    Code as BinEditorIcon,
-    Wrench as ToolsIcon,
-    Settings as SettingsIcon,
-    Maximize as UpscaleIcon,
-    FileDigit as FileHandlerIcon,
-    Waypoints as BumpathIcon,
-    Music as BnkExtractIcon,
-    Sparkles as FakeGearIcon,
-    Dices as ParticleRandIcon,
-    type LucideIcon,
-} from 'lucide-react';
-import { openUrl } from '@tauri-apps/plugin-opener';
+import { useMemo, useState } from 'react';
+import { ArrowRight, Play, type LucideIcon } from 'lucide-react';
 import { useNavigationStore, type Page } from '@/lib/stores';
+import { ITEMS, SETTINGS_ITEM, type NavItem } from '@/components/layout/NavRail';
 
-interface ToolCard {
-    title: string;
+/* Home — workflow rail. Tools grouped by workflow on the left; the right panel
+   features the hovered/selected tool with a media slot reserved for a per-tool
+   tutorial video (placeholder until those land). Rail selects (previews); the
+   Open button navigates. Honors the same pageVisibility as the nav rail. */
+
+interface ToolMeta {
     description: string;
-    icon: LucideIcon;
-    page: Page;
-    isNew?: boolean;
+    category: CategoryKey;
 }
 
-const TOOL_CARDS: ToolCard[] = [
-    { title: 'Paint', description: 'Customize your particles with ease. Choose from Random Colors, apply a Hue Shift, or generate a range of Shades.', icon: PaintIcon, page: 'paint' },
-    { title: 'Port', description: 'Bring particles from different champions or skins into your own custom skin!', icon: PortIcon, page: 'port' },
-    { title: 'VFX Hub', description: 'Community-powered VFX sharing exclusively for Divine members.', icon: VFXHubIcon, page: 'vfxhub' },
-    { title: 'Image Recolor', description: 'Automatically batch recolor DDS or TEX files by simply selecting a folder and clicking "Batch Apply".', icon: ImgIcon, page: 'imgrecolor' },
-    { title: 'Bin Editor', description: 'Primarily designed for editing parameters like birthscale directly within Quartz.', icon: BinEditorIcon, page: 'bineditor' },
-    { title: 'Sound Banks', description: 'Extract, edit, and repack audio bank files for custom sound mods.', icon: BnkExtractIcon, page: 'soundbanks' },
-    { title: 'Upscale', description: 'AI-powered image upscaling for DDS and PNG texture files.', icon: UpscaleIcon, page: 'upscale' },
-    { title: 'FakeGear', description: 'Enables a Ctrl+5 in-game toggle to swap between VFX variants on your custom skin.', icon: FakeGearIcon, page: 'fakegear' },
-    { title: 'Randomizer', description: 'Randomize VFX particle parameters across your entire skin at once.', icon: ParticleRandIcon, page: 'particlerandomizer' },
-    { title: 'RGBA', description: 'Adjust RGBA color channels on DDS and TEX texture files.', icon: RGBAIcon, page: 'rgba' },
-    { title: 'Bumpath', description: 'Repath League of Legends file references across your skin files.', icon: BumpathIcon, page: 'bumpath' },
-    { title: 'File Handler', description: 'Universal file processing and randomization utility for bulk operations.', icon: FileHandlerIcon, page: 'filehandler' },
-    { title: 'Tools', description: 'Add your own executables and drag-and-drop them with your folder to apply the fixes.', icon: ToolsIcon, page: 'tools' },
-    { title: 'Settings', description: 'Select your preferred font and configure the Ritobin CLI path.', icon: SettingsIcon, page: 'settings' },
-];
+type CategoryKey = 'create' | 'textures' | 'audio' | 'utility';
 
-function openExternal(url: string) {
-    openUrl(url).catch(() => { window.open(url, '_blank'); });
+const CATEGORY_LABELS: Record<CategoryKey, string> = {
+    create: 'Create',
+    textures: 'Textures & Color',
+    audio: 'Audio',
+    utility: 'Utility',
+};
+
+const CATEGORY_ORDER: CategoryKey[] = ['create', 'textures', 'audio', 'utility'];
+
+// Per-page description + workflow bucket. Icons/labels come from NavRail.ITEMS
+// so the home page and the nav stay in sync automatically.
+const META: Partial<Record<Page, ToolMeta>> = {
+    paint: { category: 'create', description: 'Customize your particles with ease. Random colors, hue shift, or shade ranges.' },
+    port: { category: 'create', description: 'Bring particles from different champions or skins into your own custom skin.' },
+    bineditor: { category: 'create', description: 'Edit parameters like birthscale directly within Quartz.' },
+    aniport: { category: 'create', description: 'Port animations between skins and champions.' },
+    imgrecolor: { category: 'textures', description: 'Batch recolor DDS or TEX files from a folder in one click.' },
+    upscale: { category: 'textures', description: 'AI-powered image upscaling for DDS and PNG textures.' },
+    rgba: { category: 'textures', description: 'Adjust RGBA color channels on DDS and TEX textures.' },
+    bumpath: { category: 'textures', description: 'Repath League of Legends file references across your skin files.' },
+    soundbanks: { category: 'audio', description: 'Extract, edit, and repack audio banks for custom sound mods.' },
+    fakegear: { category: 'utility', description: 'A Ctrl+5 in-game toggle to swap between VFX variants on your custom skin.' },
+    particlerandomizer: { category: 'utility', description: 'Randomize VFX particle parameters across your entire skin at once.' },
+    filehandler: { category: 'utility', description: 'Universal file processing and randomization for bulk operations.' },
+    tools: { category: 'utility', description: 'Add your own executables and drag-drop folders to apply fixes.' },
+    settings: { category: 'utility', description: 'Preferences, theme font, page visibility, and Ritobin CLI configuration.' },
+};
+
+interface HomeTool extends NavItem {
+    description: string;
+    category: CategoryKey;
 }
 
 function Home() {
     const setPage = useNavigationStore((s) => s.setPage);
-    const [isMinecraftTheme, setIsMinecraftTheme] = useState(false);
 
-    useEffect(() => {
-        const getStyle = () => (
-            document.documentElement?.getAttribute('data-style') ||
-            document.body?.getAttribute('data-style') ||
-            ''
-        ).toLowerCase();
-        const update = () => setIsMinecraftTheme(getStyle() === 'minecraft');
-        update();
-        const observer = new MutationObserver(update);
-        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-style'] });
-        if (document.body) observer.observe(document.body, { attributes: true, attributeFilter: ['data-style'] });
-        return () => observer.disconnect();
+    // Home lists the full catalog regardless of nav-rail page visibility — it's
+    // the launcher, so every tool is reachable here. Bucketed into categories.
+    const grouped = useMemo(() => {
+        const all: HomeTool[] = [...ITEMS, SETTINGS_ITEM]
+            .map((i) => {
+                const m = META[i.id];
+                return m ? { ...i, description: m.description, category: m.category } : null;
+            })
+            .filter((t): t is HomeTool => t !== null);
+
+        return CATEGORY_ORDER.map((cat) => ({
+            key: cat,
+            label: CATEGORY_LABELS[cat],
+            tools: all.filter((t) => t.category === cat),
+        })).filter((g) => g.tools.length > 0);
     }, []);
+
+    const firstTool = grouped[0]?.tools[0] ?? null;
+    const [activeId, setActiveId] = useState<Page | null>(firstTool?.id ?? null);
+
+    const active =
+        grouped.flatMap((g) => g.tools).find((t) => t.id === activeId) ?? firstTool;
 
     return (
         <div className="q-home">
-            {/* ----------------------------------------------------------- HERO
-                Brand on the left, call-to-action buttons on the right. */}
-            <header className="q-home__hero">
-                {isMinecraftTheme ? (
-                    <div className="q-home__mc" />
-                ) : (
-                    <div className="q-home__brand">
-                        <img src="/quartz-logo.png" alt="" className="q-home__logo" />
-                        <div className="q-home__titles">
-                            <h1 className="q-home__title">Quartz</h1>
-                            <p className="q-home__subtitle">League of Legends Toolkit</p>
-                        </div>
+            <aside className="q-home__rail">
+                {grouped.map((group) => (
+                    <div key={group.key} className="q-home__group">
+                        <div className="q-home__eyebrow">{group.label}</div>
+                        {group.tools.map((tool) => {
+                            const Icon = tool.icon;
+                            return (
+                                <button
+                                    key={tool.id}
+                                    className={`q-home__item ${active?.id === tool.id ? 'is-active' : ''}`}
+                                    onClick={() => setActiveId(tool.id)}
+                                    onDoubleClick={() => setPage(tool.id)}
+                                >
+                                    <Icon size={18} className="q-home__item-ic" />
+                                    <span>{tool.label}</span>
+                                </button>
+                            );
+                        })}
                     </div>
-                )}
+                ))}
+            </aside>
 
-                <div className="q-home__cta">
-                    <button className="dl-btn dl-btn--primary dl-btn--lg" onClick={() => openExternal('https://divineskins.gg')}>
-                        <span className="dl-icon"><ExternalLink size={16} /></span>
-                        <span>Website</span>
-                    </button>
-                    <button className="dl-btn dl-btn--secondary dl-btn--lg" onClick={() => openExternal('https://wiki.divineskins.gg')}>
-                        <span>Wiki</span>
-                        <span className="dl-icon"><ArrowRight size={16} /></span>
-                    </button>
-                </div>
-            </header>
+            <section className="q-home__stage">
+                {active && <Featured tool={active} onOpen={() => setPage(active.id)} />}
+            </section>
+        </div>
+    );
+}
 
-            {/* ------------------------------------------------------- TOOL GRID */}
-            <div className="q-home__grid">
-                {TOOL_CARDS.map((tool) => {
-                    const Icon = tool.icon;
-                    return (
-                        <button
-                            key={tool.title}
-                            className={`q-tool-card${tool.isNew ? ' q-tool-card--new' : ''}`}
-                            onClick={() => setPage(tool.page)}
-                            title={tool.description}
-                        >
-                            <div className="q-tool-card__head">
-                                <span className="q-tool-card__icon"><Icon size={18} /></span>
-                                <span className="q-tool-card__title">{tool.title}</span>
-                                {tool.isNew && <span className="q-tool-card__badge">NEW</span>}
-                            </div>
-                            <p className="q-tool-card__desc">{tool.description}</p>
-                        </button>
-                    );
-                })}
+function Featured({ tool, onOpen }: { tool: HomeTool; onOpen: () => void }) {
+    const Icon: LucideIcon = tool.icon;
+    return (
+        <div className="q-home__feat">
+            {/* Media slot — reserved for a per-tool tutorial video (16:9). */}
+            <div className="q-home__media" aria-hidden>
+                <Play size={26} className="q-home__media-play" />
+                <span className="q-home__media-hint">Tutorial coming soon</span>
             </div>
+
+            <div className="q-home__feat-head">
+                <span className="q-home__feat-ic"><Icon size={22} /></span>
+                <h2 className="q-home__feat-title">{tool.label}</h2>
+            </div>
+            <p className="q-home__feat-desc">{tool.description}</p>
+
+            <button className="q-home__open" onClick={onOpen}>
+                <span>Open</span>
+                <ArrowRight size={16} />
+            </button>
         </div>
     );
 }

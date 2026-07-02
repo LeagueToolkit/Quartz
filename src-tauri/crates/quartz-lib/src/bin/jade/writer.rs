@@ -1,6 +1,6 @@
 use super::types::*;
-use std::io::{Cursor, Seek, SeekFrom, Write};
 use std::fmt;
+use std::io::{Cursor, Seek, SeekFrom, Write};
 
 #[derive(Debug)]
 pub struct WriteError(pub String);
@@ -23,7 +23,9 @@ struct BinWriter {
 
 impl BinWriter {
     fn new() -> Self {
-        Self { cursor: Cursor::new(Vec::new()) }
+        Self {
+            cursor: Cursor::new(Vec::new()),
+        }
     }
 
     fn into_bytes(self) -> Vec<u8> {
@@ -38,15 +40,33 @@ impl BinWriter {
         self.cursor.write_all(bytes).map_err(|e| err(e.to_string()))
     }
 
-    fn write_u8(&mut self, v: u8) -> Result<()> { self.write_bytes(&[v]) }
-    fn write_i8(&mut self, v: i8) -> Result<()> { self.write_bytes(&(v as u8).to_le_bytes()) }
-    fn write_u16(&mut self, v: u16) -> Result<()> { self.write_bytes(&v.to_le_bytes()) }
-    fn write_i16(&mut self, v: i16) -> Result<()> { self.write_bytes(&v.to_le_bytes()) }
-    fn write_u32(&mut self, v: u32) -> Result<()> { self.write_bytes(&v.to_le_bytes()) }
-    fn write_i32(&mut self, v: i32) -> Result<()> { self.write_bytes(&v.to_le_bytes()) }
-    fn write_u64(&mut self, v: u64) -> Result<()> { self.write_bytes(&v.to_le_bytes()) }
-    fn write_i64(&mut self, v: i64) -> Result<()> { self.write_bytes(&v.to_le_bytes()) }
-    fn write_f32(&mut self, v: f32) -> Result<()> { self.write_bytes(&v.to_le_bytes()) }
+    fn write_u8(&mut self, v: u8) -> Result<()> {
+        self.write_bytes(&[v])
+    }
+    fn write_i8(&mut self, v: i8) -> Result<()> {
+        self.write_bytes(&(v as u8).to_le_bytes())
+    }
+    fn write_u16(&mut self, v: u16) -> Result<()> {
+        self.write_bytes(&v.to_le_bytes())
+    }
+    fn write_i16(&mut self, v: i16) -> Result<()> {
+        self.write_bytes(&v.to_le_bytes())
+    }
+    fn write_u32(&mut self, v: u32) -> Result<()> {
+        self.write_bytes(&v.to_le_bytes())
+    }
+    fn write_i32(&mut self, v: i32) -> Result<()> {
+        self.write_bytes(&v.to_le_bytes())
+    }
+    fn write_u64(&mut self, v: u64) -> Result<()> {
+        self.write_bytes(&v.to_le_bytes())
+    }
+    fn write_i64(&mut self, v: i64) -> Result<()> {
+        self.write_bytes(&v.to_le_bytes())
+    }
+    fn write_f32(&mut self, v: f32) -> Result<()> {
+        self.write_bytes(&v.to_le_bytes())
+    }
 
     fn write_string(&mut self, s: &str) -> Result<()> {
         let bytes = s.as_bytes();
@@ -55,7 +75,9 @@ impl BinWriter {
     }
 
     fn seek_to(&mut self, pos: u64) -> Result<()> {
-        self.cursor.seek(SeekFrom::Start(pos)).map_err(|e| err(e.to_string()))?;
+        self.cursor
+            .seek(SeekFrom::Start(pos))
+            .map_err(|e| err(e.to_string()))?;
         Ok(())
     }
 
@@ -88,11 +110,32 @@ impl BinWriter {
             BinValue::I64(v) => self.write_i64(*v)?,
             BinValue::U64(v) => self.write_u64(*v)?,
             BinValue::F32(v) => self.write_f32(*v)?,
-            BinValue::Vec2(v) => { self.write_f32(v[0])?; self.write_f32(v[1])?; }
-            BinValue::Vec3(v) => { self.write_f32(v[0])?; self.write_f32(v[1])?; self.write_f32(v[2])?; }
-            BinValue::Vec4(v) => { self.write_f32(v[0])?; self.write_f32(v[1])?; self.write_f32(v[2])?; self.write_f32(v[3])?; }
-            BinValue::Mtx44(m) => { for v in m { self.write_f32(*v)?; } }
-            BinValue::Rgba(r, g, b, a) => { self.write_u8(*r)?; self.write_u8(*g)?; self.write_u8(*b)?; self.write_u8(*a)?; }
+            BinValue::Vec2(v) => {
+                self.write_f32(v[0])?;
+                self.write_f32(v[1])?;
+            }
+            BinValue::Vec3(v) => {
+                self.write_f32(v[0])?;
+                self.write_f32(v[1])?;
+                self.write_f32(v[2])?;
+            }
+            BinValue::Vec4(v) => {
+                self.write_f32(v[0])?;
+                self.write_f32(v[1])?;
+                self.write_f32(v[2])?;
+                self.write_f32(v[3])?;
+            }
+            BinValue::Mtx44(m) => {
+                for v in m {
+                    self.write_f32(*v)?;
+                }
+            }
+            BinValue::Rgba(r, g, b, a) => {
+                self.write_u8(*r)?;
+                self.write_u8(*g)?;
+                self.write_u8(*b)?;
+                self.write_u8(*a)?;
+            }
             BinValue::String(s) => self.write_string(s)?,
             BinValue::Hash(h) => self.write_u32(h.hash)?,
             BinValue::File(f) => self.write_u64(f.hash)?,
@@ -103,7 +146,9 @@ impl BinWriter {
                 self.write_u8(*value_type as u8)?;
                 let placeholder = self.write_size_placeholder()?;
                 self.write_u32(items.len() as u32)?;
-                for item in items { self.write_value(item)?; }
+                for item in items {
+                    self.write_value(item)?;
+                }
                 self.fill_size(placeholder)?;
             }
 
@@ -111,13 +156,17 @@ impl BinWriter {
                 self.write_u8(*value_type as u8)?;
                 let placeholder = self.write_size_placeholder()?;
                 self.write_u32(items.len() as u32)?;
-                for item in items { self.write_value(item)?; }
+                for item in items {
+                    self.write_value(item)?;
+                }
                 self.fill_size(placeholder)?;
             }
 
             BinValue::Pointer { name, fields } => {
                 self.write_u32(name.hash)?;
-                if name.hash == 0 { return Ok(()); }
+                if name.hash == 0 {
+                    return Ok(());
+                }
                 let placeholder = self.write_size_placeholder()?;
                 self.write_u16(fields.len() as u16)?;
                 for field in fields {
@@ -148,7 +197,11 @@ impl BinWriter {
                 }
             }
 
-            BinValue::Map { key_type, value_type, items } => {
+            BinValue::Map {
+                key_type,
+                value_type,
+                items,
+            } => {
                 self.write_u8(*key_type as u8)?;
                 self.write_u8(*value_type as u8)?;
                 let placeholder = self.write_size_placeholder()?;
@@ -169,8 +222,16 @@ pub fn write(bin: &Bin) -> Result<Vec<u8>> {
     let mut w = BinWriter::new();
 
     // Type
-    let type_str = bin.sections.get("type")
-        .and_then(|v| if let BinValue::String(s) = v { Some(s.as_str()) } else { None })
+    let type_str = bin
+        .sections
+        .get("type")
+        .and_then(|v| {
+            if let BinValue::String(s) = v {
+                Some(s.as_str())
+            } else {
+                None
+            }
+        })
         .ok_or_else(|| err("Missing 'type' section"))?;
 
     let is_patch = type_str == "PTCH";
@@ -183,8 +244,16 @@ pub fn write(bin: &Bin) -> Result<Vec<u8>> {
     w.write_bytes(b"PROP")?;
 
     // Version
-    let version = bin.sections.get("version")
-        .and_then(|v| if let BinValue::U32(n) = v { Some(*n) } else { None })
+    let version = bin
+        .sections
+        .get("version")
+        .and_then(|v| {
+            if let BinValue::U32(n) = v {
+                Some(*n)
+            } else {
+                None
+            }
+        })
         .ok_or_else(|| err("Missing 'version' section"))?;
     w.write_u32(version)?;
 
@@ -265,12 +334,26 @@ pub fn write(bin: &Bin) -> Result<Vec<u8>> {
                 w.write_u32(key_hash)?;
 
                 if let BinValue::Embed { fields, .. } = val {
-                    let path = fields.iter()
-                        .find(|f| f.key.string.as_deref() == Some("path") || f.key.hash == FNV1a::calculate("path"))
-                        .and_then(|f| if let BinValue::String(s) = &f.value { Some(s.as_str()) } else { None })
+                    let path = fields
+                        .iter()
+                        .find(|f| {
+                            f.key.string.as_deref() == Some("path")
+                                || f.key.hash == FNV1a::calculate("path")
+                        })
+                        .and_then(|f| {
+                            if let BinValue::String(s) = &f.value {
+                                Some(s.as_str())
+                            } else {
+                                None
+                            }
+                        })
                         .ok_or_else(|| err("Patch missing 'path' field"))?;
-                    let value_field = fields.iter()
-                        .find(|f| f.key.string.as_deref() == Some("value") || f.key.hash == FNV1a::calculate("value"))
+                    let value_field = fields
+                        .iter()
+                        .find(|f| {
+                            f.key.string.as_deref() == Some("value")
+                                || f.key.hash == FNV1a::calculate("value")
+                        })
                         .ok_or_else(|| err("Patch missing 'value' field"))?;
 
                     let placeholder = w.write_size_placeholder()?;

@@ -11,8 +11,8 @@
 //! Everything operates on `ritoshark::bin::Bin` trees from the `ltk_bridge`
 //! reader/writer.
 
-use ritoshark::bin::{Bin, BinType, BinValue};
 use indexmap::IndexMap;
+use ritoshark::bin::{Bin, BinType, BinValue};
 
 /// FNV-1a 32-bit over the lowercased input — the BIN field/class hash rule.
 fn fnv1a_lower(s: &str) -> u32 {
@@ -167,18 +167,13 @@ fn fix_shape_attribute(
                     emit_offset_constant_vec3 = Some(*v);
                 }
                 if let Some(dynamics) = ef.get(&f_dynamics) {
-                    scan_key_values(
-                        dynamics,
-                        f_probability_tables,
-                        f_key_values,
-                        |a, b| {
-                            if a == 0.0 && b >= 1.0 {
-                                facts.flags = true;
-                            } else if a == -1.0 && b == 1.0 {
-                                facts.keep_it_as_legacy = true;
-                            }
-                        },
-                    );
+                    scan_key_values(dynamics, f_probability_tables, f_key_values, |a, b| {
+                        if a == 0.0 && b >= 1.0 {
+                            facts.flags = true;
+                        } else if a == -1.0 && b == 1.0 {
+                            facts.keep_it_as_legacy = true;
+                        }
+                    });
                 }
             }
             continue;
@@ -256,7 +251,13 @@ fn fix_shape_attribute(
         if facts.flags {
             nf.insert(f_flags, BinValue::U8(1));
         }
-        replace_shape(emitter_fields, f_shape, f_spawn_shape, HASH_TYPE_RADIUS_SHAPE, nf);
+        replace_shape(
+            emitter_fields,
+            f_shape,
+            f_spawn_shape,
+            HASH_TYPE_RADIUS_SHAPE,
+            nf,
+        );
         stats.shapes_rewritten_radius += 1;
         return;
     }
@@ -266,7 +267,13 @@ fn fix_shape_attribute(
         if let Some(v) = emit_offset_constant_vec3 {
             let mut nf: IndexMap<u32, BinValue> = IndexMap::new();
             nf.insert(f_emit_offset, BinValue::Vec3(v));
-            replace_shape(emitter_fields, f_shape, f_spawn_shape, HASH_TYPE_VEC3_SHAPE, nf);
+            replace_shape(
+                emitter_fields,
+                f_shape,
+                f_spawn_shape,
+                HASH_TYPE_VEC3_SHAPE,
+                nf,
+            );
             stats.shapes_rewritten_vec3 += 1;
             return;
         }
@@ -363,21 +370,44 @@ fn as_f32(value: &BinValue) -> Option<f32> {
 /// and scales).
 const VFX_COLOR_BASE: &[&str] = &[
     // Lifecycle colors
-    "color", "startColor", "endColor", "peakColor", "lingerColor",
-    "birthColor", "deathColor",
+    "color",
+    "startColor",
+    "endColor",
+    "peakColor",
+    "lingerColor",
+    "birthColor",
+    "deathColor",
     // Indexed slots
-    "color0", "color1", "color2", "color3", "color4", "color5", "color6", "color7",
+    "color0",
+    "color1",
+    "color2",
+    "color3",
+    "color4",
+    "color5",
+    "color6",
+    "color7",
     // Animation curves
-    "colorOverTime", "colorOverLifetime",
-    "colorStart", "colorMid", "colorEnd",
+    "colorOverTime",
+    "colorOverLifetime",
+    "colorStart",
+    "colorMid",
+    "colorEnd",
     // Particle/tint
-    "particleColor", "tintColor", "colorTint",
+    "particleColor",
+    "tintColor",
+    "colorTint",
     // Material
-    "reflectionColor", "reflectionFresnelColor",
-    "emissiveColor", "diffuseColor", "baseColor",
-    "edgeColor", "fresnelColor", "rimColor",
+    "reflectionColor",
+    "reflectionFresnelColor",
+    "emissiveColor",
+    "diffuseColor",
+    "baseColor",
+    "edgeColor",
+    "fresnelColor",
+    "rimColor",
     // Bounds
-    "colorMin", "colorMax",
+    "colorMin",
+    "colorMax",
 ];
 
 /// Counters returned by [`copy_bin_colors`].
@@ -435,7 +465,13 @@ pub fn copy_bin_colors(src: &Bin, dst: &mut Bin) -> CopyColorStats {
             continue;
         }
         stats.entries_matched += 1;
-        copy_container(&src_entry.fields, &mut dst_entry.fields, &color_hashes, false, &mut stats);
+        copy_container(
+            &src_entry.fields,
+            &mut dst_entry.fields,
+            &color_hashes,
+            false,
+            &mut stats,
+        );
     }
 
     stats
@@ -451,8 +487,7 @@ fn copy_container(
 ) {
     // Snapshot source values so we can look them up by field hash while holding
     // a mutable borrow of the destination map.
-    let src_pairs: Vec<(u32, BinValue)> =
-        src_fields.iter().map(|(&h, v)| (h, v.clone())).collect();
+    let src_pairs: Vec<(u32, BinValue)> = src_fields.iter().map(|(&h, v)| (h, v.clone())).collect();
     let src_map: std::collections::HashMap<u32, &BinValue> =
         src_pairs.iter().map(|(h, v)| (*h, v)).collect();
 
@@ -503,8 +538,16 @@ fn copy_field(
             }
         }
         (
-            BinValue::List { item: si, items: sa, .. },
-            BinValue::List { item: di, items: da, .. },
+            BinValue::List {
+                item: si,
+                items: sa,
+                ..
+            },
+            BinValue::List {
+                item: di,
+                items: da,
+                ..
+            },
         ) => {
             if si != di {
                 stats.mismatches += 1;
@@ -539,7 +582,11 @@ fn copy_field(
             }
         }
         (
-            BinValue::Map { value: svt, entries: se, .. },
+            BinValue::Map {
+                value: svt,
+                entries: se,
+                ..
+            },
             BinValue::Map { entries: de, .. },
         ) => {
             // Match map values by key. Snapshot source keyed by its serialized key.
@@ -561,8 +608,13 @@ fn copy_field(
             }
         }
         (
-            BinValue::Option { item: svt, value: Some(sv) },
-            BinValue::Option { value: Some(dv), .. },
+            BinValue::Option {
+                item: svt,
+                value: Some(sv),
+            },
+            BinValue::Option {
+                value: Some(dv), ..
+            },
         ) => match *svt {
             BinType::Rgba => {
                 if let (BinValue::Rgba(s), BinValue::Rgba(d)) = (sv.as_ref(), dv.as_mut()) {
@@ -606,5 +658,11 @@ fn copy_struct_value(
         BinValue::Pointer { fields, .. } | BinValue::Embed { fields, .. } => fields,
         _ => return,
     };
-    copy_container(src_fields, dst_fields, color_hashes, in_color_context, stats);
+    copy_container(
+        src_fields,
+        dst_fields,
+        color_hashes,
+        in_color_context,
+        stats,
+    );
 }

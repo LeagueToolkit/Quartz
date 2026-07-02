@@ -1,9 +1,9 @@
 /* League of Legends install detection.
 
-   Order: stored setting → Windows registry (uninstall keys) → common install
-   paths. Panels that pull assets from the live game (Port, Sound Banks) and the
-   League Path settings section read this. Thin layer over
-   `quartz_lib::extractor`'s path helpers. */
+Order: stored setting → Windows registry (uninstall keys) → common install
+paths. Panels that pull assets from the live game (Port, Sound Banks) and the
+League Path settings section read this. Thin layer over
+`quartz_lib::extractor`'s path helpers. */
 
 use quartz_lib::extractor;
 use std::path::{Path, PathBuf};

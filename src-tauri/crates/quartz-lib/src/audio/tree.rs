@@ -118,7 +118,11 @@ fn to_audio_data(entry: &AudioEntry) -> AudioData {
 }
 
 /// Build the tree from audio entries + event mappings (port of groupAudioFiles).
-fn group_audio_files(entries: &[AudioEntry], mappings: &[EventMapping], root_name: &str) -> BnkNode {
+fn group_audio_files(
+    entries: &[AudioEntry],
+    mappings: &[EventMapping],
+    root_name: &str,
+) -> BnkNode {
     let mut root = BnkNode::dir(root_name.to_string());
 
     for entry in entries {
@@ -211,7 +215,11 @@ fn scope_ids(node: &mut BnkNode, scope_key: &str, trail: &[String]) {
             });
             let count = counts.entry(child_token.clone()).or_insert(0);
             *count += 1;
-            scope_ids(child, scope_key, &scoped_trail_with(&scoped_trail, &child_token, *count));
+            scope_ids(
+                child,
+                scope_key,
+                &scoped_trail_with(&scoped_trail, &child_token, *count),
+            );
         }
     }
 }
@@ -302,7 +310,11 @@ fn infer_bin_candidates(audio_path: &str) -> Vec<String> {
     };
 
     let root = PathBuf::from(root);
-    let data_skins = root.join("data").join("characters").join(&champ).join("skins");
+    let data_skins = root
+        .join("data")
+        .join("characters")
+        .join(&champ)
+        .join("skins");
     let data_champion = root.join("data").join("characters").join(&champ);
 
     if let Some(n) = skin_num {
@@ -385,7 +397,11 @@ pub fn load_banks(
     };
 
     // Build the ordered, de-duplicated list of BIN candidates.
-    let source_audio = if !wpk_path.is_empty() { wpk_path } else { bnk_path };
+    let source_audio = if !wpk_path.is_empty() {
+        wpk_path
+    } else {
+        bnk_path
+    };
     let mut bin_candidates: Vec<String> = Vec::new();
     let mut push_bin = |c: &str| {
         if !c.is_empty() && Path::new(c).exists() && !bin_candidates.contains(&c.to_string()) {
@@ -432,7 +448,11 @@ pub fn load_banks(
     // Pick the audio source — WPK preferred, else BNK.
     let (entries, final_type) = if let Some(data) = read(wpk_path) {
         let entries = read_entries(&data)?;
-        let kind = if !bnk_path.is_empty() { "bnk+wpk" } else { "wpk" };
+        let kind = if !bnk_path.is_empty() {
+            "bnk+wpk"
+        } else {
+            "wpk"
+        };
         (entries, kind.to_string())
     } else if let Some(data) = read(bnk_path) {
         (read_entries(&data)?, "bnk".to_string())
@@ -451,7 +471,11 @@ pub fn load_banks(
     } else {
         "root".to_string()
     };
-    let original_path = if !wpk_path.is_empty() { wpk_path } else { bnk_path };
+    let original_path = if !wpk_path.is_empty() {
+        wpk_path
+    } else {
+        bnk_path
+    };
 
     let scope_key = sanitize_scope(if !original_path.is_empty() {
         original_path
@@ -505,8 +529,14 @@ mod tests {
     #[test]
     fn groups_unmapped_audio_under_root() {
         let entries = vec![
-            AudioEntry { id: 10, data: vec![1, 2, 3] },
-            AudioEntry { id: 20, data: vec![4, 5] },
+            AudioEntry {
+                id: 10,
+                data: vec![1, 2, 3],
+            },
+            AudioEntry {
+                id: 20,
+                data: vec![4, 5],
+            },
         ];
         let tree = group_audio_files(&entries, &[], "root");
         assert_eq!(tree.children.as_ref().unwrap().len(), 2);

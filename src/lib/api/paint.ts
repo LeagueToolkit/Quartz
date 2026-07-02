@@ -96,7 +96,9 @@ export interface RecolorOptionsInput {
 
 export interface RecolorResult {
     changed: number;
-    model: VfxModel;
+    /** Refreshed colors for the touched emitters only — patch these into the
+     *  resident model instead of replacing it wholesale. */
+    colors: Record<string, EmitterColors>;
 }
 
 /** Open a bin/py/ritobin file into a resident session. */
@@ -109,7 +111,8 @@ export function paintClose(sessionId: number): Promise<boolean> {
     return invokeCommand<boolean>('paint_close', { sessionId });
 }
 
-/** Recolor selected emitters' selected color slots. Returns the refreshed model. */
+/** Recolor selected emitters' selected color slots. Returns the count changed
+ *  plus refreshed colors for just the touched emitters. */
 export function paintRecolor(
     sessionId: number,
     emitterKeys: string[],

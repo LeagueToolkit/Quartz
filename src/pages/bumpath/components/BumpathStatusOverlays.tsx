@@ -25,7 +25,7 @@ const BumpathStatusOverlays = React.memo(function BumpathStatusOverlays({
                         zIndex: 1000,
                         background: 'var(--bg-secondary)',
                         border: '1px solid color-mix(in oklab, var(--color-danger) 35%, var(--border))',
-                        '& .MuiAlert-message': { color: 'var(--color-danger)', fontFamily: 'JetBrains Mono, monospace' },
+                        '& .MuiAlert-message': { color: 'var(--color-danger)', fontFamily: 'var(--font-mono)' },
                         '& .MuiAlert-icon': { color: 'var(--color-danger)' },
                     }}
                 >
@@ -63,7 +63,7 @@ const BumpathStatusOverlays = React.memo(function BumpathStatusOverlays({
                             color: '#ffffff',
                             fontSize: '0.8rem',
                             fontWeight: '500',
-                            fontFamily: 'JetBrains Mono, monospace',
+                            fontFamily: 'var(--font-mono)',
                             flex: 1,
                         }}
                     >

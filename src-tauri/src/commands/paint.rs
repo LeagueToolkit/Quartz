@@ -1,13 +1,14 @@
 /* Paint commands — open a `.bin`/`.py`/`.ritobin` into a resident in-memory
-   tree, recolor / edit it natively via ritoshark, and save it back in its
-   original format. The heavy lifting lives in `quartz_lib::paint`; these
-   commands stay thin and translate to/from the camelCase shapes the frontend
-   consumes. */
+tree, recolor / edit it natively via ritoshark, and save it back in its
+original format. The heavy lifting lives in `quartz_lib::paint`; these
+commands stay thin and translate to/from the camelCase shapes the frontend
+consumes. */
 
-use quartz_lib::paint::model::VfxModel;
+use quartz_lib::paint::model::{EmitterColors, VfxModel};
 use quartz_lib::paint::recolor::{ColorTargetSel, PaletteStop, RecolorMode, RecolorOptions};
 use quartz_lib::paint::session;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,7 +24,10 @@ pub async fn paint_open(path: String) -> Result<PaintOpenResult, String> {
     tokio::task::spawn_blocking(move || session::open(&path))
         .await
         .map_err(|e| format!("Open task failed to join: {}", e))?
-        .map(|r| PaintOpenResult { session_id: r.session_id, model: r.model })
+        .map(|r| PaintOpenResult {
+            session_id: r.session_id,
+            model: r.model,
+        })
         .map_err(|e| e.to_string())
 }
 
@@ -66,7 +70,10 @@ fn default_true() -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct RecolorResult {
     pub changed: usize,
-    pub model: VfxModel,
+    /// Refreshed colors for the touched emitters only — the UI patches its
+    /// resident model in place instead of swallowing a whole-model
+    /// reprojection over IPC.
+    pub colors: HashMap<String, EmitterColors>,
 }
 
 fn parse_targets(targets: &[String]) -> Vec<ColorTargetSel> {
@@ -101,9 +108,15 @@ pub async fn paint_recolor(
     }
     let palette: Vec<PaletteStop> = palette
         .into_iter()
-        .map(|p| PaletteStop { vec4: p.vec4, time: p.time })
+        .map(|p| PaletteStop {
+            vec4: p.vec4,
+            time: p.time,
+        })
         .collect();
-    let (hr, hs, hl) = options.hsl_shift.map(|a| (a[0], a[1], a[2])).unwrap_or((0.0, 0.0, 0.0));
+    let (hr, hs, hl) = options
+        .hsl_shift
+        .map(|a| (a[0], a[1], a[2]))
+        .unwrap_or((0.0, 0.0, 0.0));
     let opts = RecolorOptions {
         mode,
         ignore_black_white: options.ignore_black_white,
@@ -114,9 +127,10 @@ pub async fn paint_recolor(
     };
 
     tokio::task::spawn_blocking(move || {
-        let changed = session::recolor_emitters(session_id, &emitter_keys, &targets, &palette, &opts)?;
-        let model = session::model_of(session_id)?;
-        Ok::<_, quartz_lib::error::Error>(RecolorResult { changed, model })
+        let changed =
+            session::recolor_emitters(session_id, &emitter_keys, &targets, &palette, &opts)?;
+        let colors = session::emitter_colors_of(session_id, &emitter_keys)?;
+        Ok::<_, quartz_lib::error::Error>(RecolorResult { changed, colors })
     })
     .await
     .map_err(|e| format!("Recolor task failed to join: {}", e))?
@@ -142,8 +156,13 @@ pub async fn paint_set_material_param(
     values: [f32; 4],
     preserve_alpha: Option<bool>,
 ) -> Result<bool, String> {
-    session::set_material_param(session_id, &selection_key, values, preserve_alpha.unwrap_or(false))
-        .map_err(|e| e.to_string())
+    session::set_material_param(
+        session_id,
+        &selection_key,
+        values,
+        preserve_alpha.unwrap_or(false),
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Undo the last edit. Returns the refreshed model, or null if nothing to undo.

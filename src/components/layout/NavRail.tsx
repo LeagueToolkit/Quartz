@@ -1,25 +1,25 @@
 import {
-    Brush, ArrowLeftRight, Github, Code, Image,
+    Brush, ArrowLeftRight, Code, Image, PackageOpen,
     Waypoints, Shuffle, Maximize, Pipette, FileDigit, Wrench, Music, Sparkles, Dices,
     Settings as SettingsIcon, type LucideIcon,
 } from 'lucide-react';
 import { useNavigationStore, useUiPrefsStore, type Page } from '@/lib/stores';
 
 // Paint and Port always appear, like the original Quartz nav.
-const ALWAYS_VISIBLE: Page[] = ['paint', 'port'];
+export const ALWAYS_VISIBLE: Page[] = ['paint', 'port'];
 
-interface NavItem {
+export interface NavItem {
     id: Page;
     label: string;
     icon: LucideIcon;
 }
 
 // Order + icons mirror the original Quartz nav rail.
-const ITEMS: NavItem[] = [
+export const ITEMS: NavItem[] = [
     { id: 'paint', label: 'Paint', icon: Brush },
     { id: 'port', label: 'Port', icon: ArrowLeftRight },
-    { id: 'vfxhub', label: 'VFX Hub', icon: Github },
     { id: 'bineditor', label: 'Bin Editor', icon: Code },
+    { id: 'assetextractor', label: 'Asset Extractor', icon: PackageOpen },
     { id: 'imgrecolor', label: 'Image Recolor', icon: Image },
     { id: 'soundbanks', label: 'Sound Banks', icon: Music },
     { id: 'bumpath', label: 'Bumpath', icon: Waypoints },
@@ -31,6 +31,16 @@ const ITEMS: NavItem[] = [
     { id: 'particlerandomizer', label: 'Randomizer', icon: Dices },
     { id: 'tools', label: 'Tools', icon: Wrench },
 ];
+
+// Settings is always the bottom-anchored item, shared by the rail and the
+// collapsed topbar so both surfaces expose it identically.
+export const SETTINGS_ITEM: NavItem = { id: 'settings', label: 'Settings', icon: SettingsIcon };
+
+// The rail's resolved visible list (honoring pageVisibility) — reused by the
+// collapsed topbar so both surfaces show the exact same items in the same order.
+export function visibleNavItems(pageVisibility: Partial<Record<Page, boolean>>): NavItem[] {
+    return ITEMS.filter((i) => ALWAYS_VISIBLE.includes(i.id) || pageVisibility[i.id] !== false);
+}
 
 function NavBtn({ item }: { item: NavItem }) {
     const page = useNavigationStore((s) => s.page);
@@ -49,7 +59,7 @@ function NavBtn({ item }: { item: NavItem }) {
 
 export function NavRail() {
     const pageVisibility = useUiPrefsStore((s) => s.pageVisibility);
-    const visible = ITEMS.filter((i) => ALWAYS_VISIBLE.includes(i.id) || pageVisibility[i.id] !== false);
+    const visible = visibleNavItems(pageVisibility);
 
     return (
         <nav className="q-rail shrink-0">
@@ -57,7 +67,7 @@ export function NavRail() {
                 {visible.map((item) => <NavBtn key={item.id} item={item} />)}
             </div>
             <div className="q-rail-group q-rail-bottom">
-                <NavBtn item={{ id: 'settings', label: 'Settings', icon: SettingsIcon }} />
+                <NavBtn item={SETTINGS_ITEM} />
             </div>
         </nav>
     );

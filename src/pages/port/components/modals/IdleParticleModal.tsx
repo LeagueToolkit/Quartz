@@ -1,12 +1,12 @@
 import React from 'react';
 import { Add as AddIcon } from '@mui/icons-material';
-import { BONE_NAMES } from '../../utils/idleParticlesManager';
+import { BONE_NAMES } from '../../model';
 import type { IdleBoneItem } from '../../usePort';
 
 const btnBase: React.CSSProperties = {
     padding: '7px 18px',
     borderRadius: 6,
-    fontFamily: 'JetBrains Mono, monospace',
+    fontFamily: 'var(--font-mono)',
     fontSize: '0.78rem',
     fontWeight: 700,
     cursor: 'pointer',
@@ -26,7 +26,7 @@ const inputStyle: React.CSSProperties = {
     border: '1px solid var(--border)',
     borderRadius: 6,
     fontSize: '0.8rem',
-    fontFamily: 'JetBrains Mono, monospace',
+    fontFamily: 'var(--font-mono)',
     outline: 'none',
     boxSizing: 'border-box',
 };
@@ -101,7 +101,7 @@ export default function IdleParticleModal({
             >
                 <div style={{ height: 3, flexShrink: 0, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' }} />
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                    <h2 style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    <h2 style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>
                         {isEditingIdle ? 'Edit Idle Particles' : 'Add Idle Particles'}
                     </h2>
                     <button
@@ -112,30 +112,30 @@ export default function IdleParticleModal({
                     </button>
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    <div style={{ padding: '10px 14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    <div style={{ padding: '10px 14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                         VFX System: <span style={{ color: 'var(--accent-primary)', fontWeight: 700 }}>{selectedSystemForIdle?.name}</span>
                     </div>
-                    <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                         {isEditingIdle ? `Edit idle particles (${idleBonesList.length})` : 'Idle particle bones'}
                     </div>
                     {idleBonesList.length === 0 && (
-                        <div style={{ padding: '28px 16px', border: '1px dashed var(--border)', borderRadius: 8, textAlign: 'center', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        <div style={{ padding: '28px 16px', border: '1px dashed var(--border)', borderRadius: 8, textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                             No bones yet. Click "Add Bone" below to get started.
                         </div>
                     )}
                     {idleBonesList.map((item, index) => (
                         <div key={item.id} style={{ padding: '14px 16px', background: 'color-mix(in oklab, var(--bg-tertiary) 60%, transparent)', border: '1px solid var(--border)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Bone #{index + 1}</span>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Bone #{index + 1}</span>
                                 <button
                                     onClick={() => setIdleBonesList(idleBonesList.filter((b) => b.id !== item.id))}
-                                    style={{ padding: '3px 10px', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-danger)', border: '1px solid color-mix(in oklab, var(--color-danger) 30%, transparent)', background: 'color-mix(in oklab, var(--color-danger) 8%, transparent)', cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace' }}
+                                    style={{ padding: '3px 10px', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-danger)', border: '1px solid color-mix(in oklab, var(--color-danger) 30%, transparent)', background: 'color-mix(in oklab, var(--color-danger) 8%, transparent)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
                                 >
                                     Remove
                                 </button>
                             </div>
                             <div>
-                                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6 }}>Select bone</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6 }}>Select bone</div>
                                 <select value={item.boneName} onChange={(e) => setIdleBonesList(idleBonesList.map((b) => (b.id === item.id ? { ...b, boneName: e.target.value } : b)))} style={selectStyle}>
                                     {BONE_NAMES.map((bone) => (
                                         <option key={bone} value={bone} style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
@@ -145,7 +145,7 @@ export default function IdleParticleModal({
                                 </select>
                             </div>
                             <div>
-                                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6 }}>Or custom bone name</div>
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6 }}>Or custom bone name</div>
                                 <input
                                     type="text"
                                     value={item.customBoneName}

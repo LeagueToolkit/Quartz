@@ -1,10 +1,10 @@
 /* Texture decode/encode for the Image Recolor panel. Wraps ritoshark's rs_tex so the
-   frontend can pull RGBA pixels out of a League .tex / .dds for the canvas and write the
-   recolored result back in the file's original container and block format.
+frontend can pull RGBA pixels out of a League .tex / .dds for the canvas and write the
+recolored result back in the file's original container and block format.
 
-   The `format` string round-trips through the frontend: decode hands it back, save passes
-   it in unchanged so the re-encode preserves the original on-disk format. Shape is
-   "<container>:<fmt>", e.g. "tex:bc3", "dds:bgra8". */
+The `format` string round-trips through the frontend: decode hands it back, save passes
+it in unchanged so the re-encode preserves the original on-disk format. Shape is
+"<container>:<fmt>", e.g. "tex:bc3", "dds:bgra8". */
 
 use image::RgbaImage;
 use ritoshark::prelude::*;
@@ -36,9 +36,9 @@ fn tex_format_tag(format: TexFormat) -> &'static str {
 const PNG_MAGIC: &[u8; 4] = b"\x89PNG";
 
 /* Decode any supported texture input to RGBA8. PNG/JPEG go through the image
-   crate; .tex/.dds go through `decode_texture`. The engine decoders only know
-   TEX/DDS magic, so standard images must be handled separately (used by the
-   right-click "convert to .tex/.dds" verbs that take a PNG/JPG source). */
+crate; .tex/.dds go through `decode_texture`. The engine decoders only know
+TEX/DDS magic, so standard images must be handled separately (used by the
+right-click "convert to .tex/.dds" verbs that take a PNG/JPG source). */
 pub fn decode_any(bytes: &[u8]) -> Result<DecodedTexture, String> {
     if bytes.len() < 4 {
         return Err("File too small to be an image".into());
@@ -49,15 +49,20 @@ pub fn decode_any(bytes: &[u8]) -> Result<DecodedTexture, String> {
             .map_err(|e| format!("Failed to read image: {e}"))?
             .to_rgba8();
         let (width, height) = (img.width(), img.height());
-        Ok(DecodedTexture { width, height, format: "png:rgba".into(), rgba: img.into_raw() })
+        Ok(DecodedTexture {
+            width,
+            height,
+            format: "png:rgba".into(),
+            rgba: img.into_raw(),
+        })
     } else {
         decode_texture(bytes)
     }
 }
 
 /* Decode a .tex or .dds buffer into RGBA8 plus a tag describing its container and format.
-   The container is taken from the magic bytes; DDS surfaces with no .tex equivalent (e.g.
-   BC7) are decoded straight from the DDS reader and reported as "dds:rgba". */
+The container is taken from the magic bytes; DDS surfaces with no .tex equivalent (e.g.
+BC7) are decoded straight from the DDS reader and reported as "dds:rgba". */
 pub fn decode_texture(bytes: &[u8]) -> Result<DecodedTexture, String> {
     if bytes.len() < 4 {
         return Err("File too small to be a texture".into());
@@ -90,7 +95,8 @@ pub fn decode_texture(bytes: &[u8]) -> Result<DecodedTexture, String> {
             }
         }
     } else {
-        let texture = Texture::from_bytes(bytes).map_err(|e| format!("Failed to parse TEX: {e:?}"))?;
+        let texture =
+            Texture::from_bytes(bytes).map_err(|e| format!("Failed to parse TEX: {e:?}"))?;
         let img = texture
             .decode_rgba()
             .map_err(|e| format!("Failed to decode TEX: {e:?}"))?;
@@ -125,9 +131,9 @@ fn tag_to_tex_format(tag: &str) -> Option<TexFormat> {
 }
 
 /* Encode RGBA8 pixels back into the container/format named by `format` (as produced by
-   decode_texture). TEX uncompressed (bgra8) is written directly; BC1/BC3/BC5/BC7 are block
-   compressed. DDS mirrors this with rs_tex's DDS writers. Formats rs_tex can't re-encode
-   (ETC, RGBA16_SNORM) fall back to BC3, the safe DXT5 equivalent the Electron build used. */
+decode_texture). TEX uncompressed (bgra8) is written directly; BC1/BC3/BC5/BC7 are block
+compressed. DDS mirrors this with rs_tex's DDS writers. Formats rs_tex can't re-encode
+(ETC, RGBA16_SNORM) fall back to BC3, the safe DXT5 equivalent the Electron build used. */
 pub fn encode_texture(
     rgba: Vec<u8>,
     width: u32,

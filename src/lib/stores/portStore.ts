@@ -1,18 +1,26 @@
 import { create } from 'zustand';
-import type { VfxSystemMap } from '@/pages/port/utils/vfxEmitterParser';
+import type { VfxPortModel } from '@/lib/api/vfxSession';
 
-/* Holds the Port page's loaded-bin state so swapping pages (App remounts each
-   page via <div key={page}>) doesn't nuke the target/donor bins. usePort seeds
-   its local state from here and mirrors changes back. Mirrors paintStore. */
+/* Holds the Port page's loaded-session state so swapping pages (App remounts
+   each page via <div key={page}>) doesn't nuke the target/donor bins. The
+   resident Rust sessions stay alive in the background; usePort seeds its local
+   state from here and mirrors changes back. Mirrors paintStore. */
 
 export interface PortResidentState {
     targetPath: string;
     donorPath: string;
-    targetPyContent: string;
-    donorPyContent: string;
-    targetSystems: VfxSystemMap;
-    donorSystems: VfxSystemMap;
+    targetSessionId: number | null;
+    donorSessionId: number | null;
+    targetModel: VfxPortModel | null;
+    donorModel: VfxPortModel | null;
+    donorTempRoot: string | null;
     fileSaved: boolean;
+    canUndo: boolean;
+    canRedo: boolean;
+    /* Collapse state survives page swaps (stored as key arrays; Sets don't
+       round-trip through the mirror as cleanly). */
+    collapsedTargetKeys: string[];
+    collapsedDonorKeys: string[];
 }
 
 interface PortStore extends PortResidentState {
@@ -23,11 +31,16 @@ interface PortStore extends PortResidentState {
 export const PORT_DEFAULTS: PortResidentState = {
     targetPath: 'This will show target bin',
     donorPath: 'This will show donor bin',
-    targetPyContent: '',
-    donorPyContent: '',
-    targetSystems: {},
-    donorSystems: {},
+    targetSessionId: null,
+    donorSessionId: null,
+    targetModel: null,
+    donorModel: null,
+    donorTempRoot: null,
     fileSaved: true,
+    canUndo: false,
+    canRedo: false,
+    collapsedTargetKeys: [],
+    collapsedDonorKeys: [],
 };
 
 export const usePortStore = create<PortStore>((set) => ({

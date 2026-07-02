@@ -1,7 +1,7 @@
 /* Hash database management — ported from Flint. Hashes are prebuilt LMDB databases
-   pulled from the `RitoShark/lmdb-hashes` GitHub releases and stored in the shared
-   RitoShark hash dir (%APPDATA%/RitoShark/Requirements/Hashes). No ritobin, no
-   CommunityDragon text files. */
+pulled from the `RitoShark/lmdb-hashes` GitHub releases and stored in the shared
+RitoShark hash dir (%APPDATA%/RitoShark/Requirements/Hashes). No ritobin, no
+CommunityDragon text files. */
 
 use quartz_lib::hash::{
     download_hashes as core_download_hashes, drop_lmdb_cache, get_hash_dir, get_wad_env,
@@ -30,7 +30,11 @@ pub struct DownloadResult {
 
 impl From<DownloadStats> for DownloadResult {
     fn from(s: DownloadStats) -> Self {
-        DownloadResult { downloaded: s.downloaded, skipped: s.skipped, errors: s.errors }
+        DownloadResult {
+            downloaded: s.downloaded,
+            skipped: s.skipped,
+            errors: s.errors,
+        }
     }
 }
 
@@ -50,12 +54,14 @@ pub fn get_hash_status() -> Result<HashStatus, String> {
         .ok()
         .and_then(|m| m.modified().ok())
         .and_then(|time| {
-            time.duration_since(std::time::SystemTime::UNIX_EPOCH).ok().map(|d| {
-                chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
-                    .unwrap_or_default()
-                    .format("%Y-%m-%dT%H:%M:%SZ")
-                    .to_string()
-            })
+            time.duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .ok()
+                .map(|d| {
+                    chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
+                        .unwrap_or_default()
+                        .format("%Y-%m-%dT%H:%M:%SZ")
+                        .to_string()
+                })
         });
 
     Ok(HashStatus {
@@ -67,8 +73,8 @@ pub fn get_hash_status() -> Result<HashStatus, String> {
 }
 
 /* Download (or refresh) the prebuilt LMDB hash databases. `force` re-downloads
-   regardless of the cached release tag. Large (~50-80 MB each), so it's an
-   explicit user action. */
+regardless of the cached release tag. Large (~50-80 MB each), so it's an
+explicit user action. */
 #[tauri::command]
 pub async fn download_hashes(force: bool) -> Result<DownloadResult, String> {
     let hash_dir = get_hash_dir().map_err(|e| e.to_string())?;

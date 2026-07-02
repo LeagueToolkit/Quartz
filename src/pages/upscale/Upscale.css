@@ -1,31 +1,413 @@
-/* Ported from the Electron Upscale page. The original injected these keyframes at
-   runtime via a <style> tag in a useEffect; we keep that behavior for parity and
-   also declare them here so the animations exist before the component mounts. */
+/* ==========================================================================
+   AI Image Upscaler — uses the shared Design-Lab tokens + dl-* primitives
+   (dl-btn, dl-input) for a consistent look with the rest of Quartz. The
+   before/after comparison locks both images to one measured rectangle so the
+   overlay stays pixel-aligned at any window size, zoom, or output resolution.
+   ========================================================================== */
 
 @keyframes pulse {
-    0% {
-        opacity: 1;
-        transform: scale(1);
-    }
-    50% {
-        opacity: 0.5;
-        transform: scale(1.05);
-    }
-    100% {
-        opacity: 1;
-        transform: scale(1);
-    }
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.05); }
+    100% { opacity: 1; transform: scale(1); }
 }
-
-@keyframes spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
-}
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.upscale-spin { animation: spin 1.6s linear infinite; }
 
 .upscale-root {
-    --accent-bright: var(--accent-hover);
+    height: 100%;
+    min-height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    /* transparent so the app background (atmosphere/wallpaper) shows through */
+    background: transparent;
+    color: var(--text-primary);
+    overflow: hidden;
+    position: relative;
+}
+
+.upscale-pills {
+    display: flex;
+    gap: 3px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+}
+.upscale-pill {
+    padding: 5px 13px;
+    border-radius: var(--radius-sm);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: color var(--motion-fast), background-color var(--motion-fast), border-color var(--motion-fast);
+}
+.upscale-pill:hover { color: var(--text-secondary); }
+.upscale-pill.is-active {
+    background: color-mix(in oklab, var(--accent-primary) 14%, transparent);
+    color: var(--accent-primary);
+    border-color: color-mix(in oklab, var(--accent-primary) 28%, transparent);
+}
+
+.upscale-iconbtn {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    background: transparent;
+    cursor: pointer;
+    transition: color var(--motion-fast), background-color var(--motion-fast);
+}
+.upscale-iconbtn:hover { color: var(--accent-primary); background: color-mix(in oklab, var(--accent-primary) 8%, transparent); }
+.upscale-iconbtn--sm { width: 30px; height: 30px; }
+.upscale-iconbtn.is-warn { color: var(--color-warning); }
+.upscale-dot {
+    position: absolute;
+    top: 5px; right: 5px;
+    width: 6px; height: 6px;
+    background: var(--color-warning);
+    border-radius: 50%;
+    border: 1px solid var(--bg-secondary);
+    animation: pulse 2s infinite;
+}
+
+/* === Body / sidebar ===================================================== */
+.upscale-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
+    position: relative;
+    z-index: 1;
+}
+
+.upscale-sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 14px 12px;
+    background: transparent;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+}
+.upscale-sidebar::-webkit-scrollbar { width: 4px; }
+.upscale-sidebar::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+
+/* "Install in Settings" pill shown when the Upscayl binary isn't installed —
+   clicking it navigates to Settings, External Tools. */
+.upscale-install-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--color-warning);
+    background: color-mix(in oklab, var(--color-warning) 12%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-warning) 35%, transparent);
+    transition: background-color var(--motion-fast), border-color var(--motion-fast);
+    /* Pulsing glow so the user notices they need to install. */
+    animation: upscale-install-pulse 1.8s ease-in-out infinite;
+}
+.upscale-install-link:hover {
+    background: color-mix(in oklab, var(--color-warning) 20%, transparent);
+    border-color: var(--color-warning);
+}
+.upscale-install-link__dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--color-warning);
+    animation: upscale-dot-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes upscale-install-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-warning) 45%, transparent);
+        border-color: color-mix(in oklab, var(--color-warning) 35%, transparent);
+    }
+    50% {
+        box-shadow: 0 0 12px 2px color-mix(in oklab, var(--color-warning) 55%, transparent);
+        border-color: var(--color-warning);
+    }
+}
+@keyframes upscale-dot-pulse {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.25); }
+}
+
+.upscale-pathchip {
+    margin-top: 2px;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    word-break: break-all;
+    line-height: 1.3;
+}
+
+.upscale-rowlabel {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.upscale-rowvalue { color: var(--accent-primary); font-weight: 700; }
+
+/* Range slider — accent-tinted native range (matches AppearanceSection). */
+.upscale-range {
+    width: 100%;
+    accent-color: var(--accent-primary);
+    cursor: pointer;
+}
+
+.upscale-error {
+    margin-top: 12px;
+    font-size: 0.65rem;
+    color: var(--color-danger);
+    background: color-mix(in oklab, var(--color-danger) 12%, transparent);
+    padding: 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in oklab, var(--color-danger) 30%, var(--border));
+    line-height: 1.4;
+}
+
+/* === Preview area ======================================================= */
+.upscale-preview {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background: transparent;
+    overflow: hidden;
+}
+
+.upscale-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: transparent;
+    z-index: 5;
+}
+.upscale-zoom {
+    min-width: 45px;
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+}
+.upscale-dims {
+    font-size: 0.68rem;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+}
+.upscale-dims__arrow { color: var(--accent-primary); font-weight: 700; }
+.upscale-badge {
+    font-size: 0.65rem;
+    color: var(--accent-primary);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    background: color-mix(in oklab, var(--accent-primary) 15%, transparent);
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+}
+
+/* Empty-state prompt overlay — centered over the entire preview column so the
+   console/toolbar don't push it off-center. Non-interactive so drops still hit
+   the stage beneath it. */
+.upscale-emptystate {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    pointer-events: none;
+}
+
+/* The measured stage: its content box drives fitRect. */
+.upscale-stage {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: auto;
+    padding: 12px;
+    min-height: 0;
+}
+.upscale-stage::-webkit-scrollbar { width: 6px; height: 6px; }
+.upscale-stage::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+
+/* Drag-over highlight: accent-tinted inset ring inviting the drop. */
+.upscale-stage.is-dragover {
+    outline: 2px dashed color-mix(in oklab, var(--accent-primary) 55%, transparent);
+    outline-offset: -10px;
+    background: color-mix(in oklab, var(--accent-primary) 7%, transparent);
+}
+
+/* Comparison box: exact fitRect size, both images fill it → always aligned. */
+.upscale-compare {
+    position: relative;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+    cursor: col-resize;
+    /* checker backdrop shows transparency without affecting the fill sizing */
+    background:
+        repeating-conic-gradient(color-mix(in oklab, var(--bg-tertiary) 60%, transparent) 0% 25%, transparent 0% 50%) 50% / 20px 20px;
+}
+.upscale-divider {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: var(--accent-primary);
+    transform: translateX(-50%);
+    z-index: 3;
+    pointer-events: none;
+}
+.upscale-divider__grip {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    border: 2px solid var(--bg-primary);
+}
+
+/* Batch grid */
+.upscale-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+}
+.upscale-gridcard {
+    background: var(--bg-secondary);
+    padding: 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    transition: border-color var(--motion-fast), transform var(--motion-fast);
+}
+.upscale-gridcard:hover {
+    border-color: color-mix(in oklab, var(--accent-primary) 35%, var(--border));
+    transform: translateY(-2px);
+}
+.upscale-gridcard__ph {
+    width: 100%; height: 100px;
+    display: grid; place-items: center;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    color: var(--text-muted);
+}
+.upscale-gridcard__name {
+    margin-top: 6px;
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* === Modals ============================================================ */
+.upscale-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: color-mix(in oklab, black 60%, transparent);
+    backdrop-filter: blur(6px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+.upscale-modal {
+    width: 100%;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: 0 24px 48px -16px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+.upscale-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-tertiary);
+}
+.upscale-modal-title {
+    font-weight: 800;
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+    color: var(--accent-primary);
+}
+
+.upscale-spinner {
+    width: 84px; height: 84px;
+    margin: 0 auto 28px;
+    position: relative;
+    display: grid;
+    place-items: center;
+}
+.upscale-spinner__halo {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    /* Static tinted disc — no pulse (the blinking) and no bright glow gradient. */
+    background: color-mix(in oklab, var(--accent-primary) 12%, transparent);
+    opacity: 1;
+}
+.upscale-spinner::before {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    border: 2.5px solid color-mix(in oklab, var(--accent-primary) 25%, transparent);
+    border-top-color: var(--accent-primary);
+    animation: spin 1.2s linear infinite;
+}
+
+.upscale-bar {
+    height: 6px;
+    background: var(--bg-tertiary);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.upscale-bar__fill {
+    height: 100%;
+    background: var(--accent-primary);
+    border-radius: 999px;
+    transition: width 0.4s var(--ease-out);
 }

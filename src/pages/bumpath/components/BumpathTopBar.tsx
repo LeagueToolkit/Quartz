@@ -1,10 +1,9 @@
 import React from 'react';
 import { Box } from '@mui/material';
-import { Folder as FolderIcon, CheckBox as CheckBoxIcon, Clear as ClearIcon } from '@mui/icons-material';
+import { CheckBox as CheckBoxIcon, Clear as ClearIcon } from '@mui/icons-material';
 import type { ScannedData } from '../utils/types';
 
 interface BumpathTopBarProps {
-    handleSelectSourceDir: () => void;
     handleSelectAll: () => void;
     handleDeselectAll: () => void;
     scannedData: ScannedData | null;
@@ -14,7 +13,6 @@ interface BumpathTopBarProps {
 }
 
 const BumpathTopBar = React.memo(function BumpathTopBar({
-    handleSelectSourceDir,
     handleSelectAll,
     handleDeselectAll,
     scannedData,
@@ -33,15 +31,6 @@ const BumpathTopBar = React.memo(function BumpathTopBar({
                 minHeight: '60px',
             }}
         >
-            <button
-                type="button"
-                className="dl-btn dl-btn--secondary"
-                onClick={handleSelectSourceDir}
-            >
-                <span className="dl-icon"><FolderIcon /></span>
-                <span>Add Source Folders</span>
-            </button>
-
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <button
                     type="button"

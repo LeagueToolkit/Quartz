@@ -1,8 +1,8 @@
 /* ParticleRandomizer asset-copy command. Ported from Quartz's
-   copyAssetsToFolders in ParticleRandomizer.js: resolves the project root by
-   walking up from the source BIN to the `data` folder, then copies each
-   detected asset into projectRoot/ASSETS/<folder>/ (including a _backup folder
-   of originals), trying the same candidate source paths the JS did. */
+copyAssetsToFolders in ParticleRandomizer.js: resolves the project root by
+walking up from the source BIN to the `data` folder, then copies each
+detected asset into projectRoot/ASSETS/<folder>/ (including a _backup folder
+of originals), trying the same candidate source paths the JS did. */
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

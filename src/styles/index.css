@@ -33,6 +33,18 @@ input[type="range"],
 input[type="checkbox"],
 input[type="radio"] { accent-color: var(--accent-primary); }
 
+/* Deep-link flash: briefly rings + tints a settings card that was navigated to
+   (e.g. the Upscaler's "Install in Settings"). Fades out on its own. */
+.settings-flash {
+    border-radius: var(--radius);
+    animation: settings-flash 2s ease-out;
+}
+@keyframes settings-flash {
+    0% { box-shadow: 0 0 0 2px var(--accent-primary), 0 0 24px -2px color-mix(in oklab, var(--accent-primary) 70%, transparent); }
+    70% { box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-primary) 60%, transparent), 0 0 24px -2px color-mix(in oklab, var(--accent-primary) 40%, transparent); }
+    100% { box-shadow: 0 0 0 0 transparent, 0 0 0 0 transparent; }
+}
+
 /* Atmosphere: soft blue washes that give the background gentle depth. Kept
    low-opacity so it reads as ambient lift, not a glowing field. */
 .q-atmosphere {

@@ -120,7 +120,7 @@ export default function AutoExtractDialog({ open: isOpen, onClose, onProcess }: 
                             <span className="dl-toggle__track" />
                             <span className="dl-toggle__thumb" />
                         </span>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace' }}>LOAD INTO TREE VIEW</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>LOAD INTO TREE VIEW</span>
                     </label>
                 </div>
 

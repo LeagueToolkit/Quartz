@@ -1,11 +1,7 @@
-import { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { Box, Typography, Button, Slider, Checkbox, Switch, Menu, IconButton } from '@mui/material';
-import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import SaveIcon from '@mui/icons-material/Save';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import SettingsIcon from '@mui/icons-material/Settings';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
-import GlowingSpinner from './GlowingSpinner';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import { Image as ImageIcon } from 'lucide-react';
 import {
     loadFolder,
     loadSingleImage,
@@ -16,6 +12,11 @@ import {
     type RecolorParams,
 } from './utils/imgRecolorLogic';
 import { useFileDrop } from '@/lib/util/useFileDrop';
+import { thumbnailQueue } from './components/thumbnailQueue';
+import { ImageThumbnail } from './components/ImageThumbnail';
+import { ProcessedImageCard } from './components/ProcessedImageCard';
+import { AdjustmentsPanel } from './components/AdjustmentsPanel';
+import { RecolorFooter } from './components/RecolorFooter';
 import './ImgRecolor.css';
 
 // File extensions ImgRecolor can decode; anything else dropped is treated as a folder.
@@ -32,502 +33,45 @@ function baseName(p: string): string {
     return m ? m[0] : p;
 }
 
-// Flat design-lab toolbar button
-const celestialButtonStyle = {
-    background: 'var(--bg-tertiary)',
-    border: '1px solid var(--border)',
-    color: 'var(--text-primary)',
-    borderRadius: 'var(--radius-sm)',
-    transition: 'background 140ms var(--ease-out), border-color 140ms var(--ease-out), transform 140ms var(--ease-out)',
-    textTransform: 'none' as const,
-    fontFamily: 'var(--font-mono)',
-    '&:hover': {
-        background: 'var(--bg-hover)',
-        borderColor: 'color-mix(in oklab, var(--accent-primary) 45%, var(--border))',
-        transform: 'translateY(-1px)',
-    },
-    '&:disabled': {
-        background: 'var(--bg-tertiary)',
-        borderColor: 'var(--border)',
-        color: 'var(--text-muted)',
-        opacity: 0.45,
-        cursor: 'not-allowed',
-    },
-    '&:active': {
-        transform: 'translateY(1px)',
-    },
-};
-
-const sliderSx = {
-    width: '100%',
-    height: '8px',
-    color: 'var(--accent-primary)',
-    '& .MuiSlider-track': {
-        background: 'linear-gradient(90deg, color-mix(in oklab, var(--accent-primary) 70%, var(--accent-secondary)), var(--accent-primary))',
-        border: 'none',
-        height: '6px',
-        borderRadius: '999px',
-    },
-    '& .MuiSlider-rail': {
-        backgroundColor: 'var(--bg-tertiary)',
-        height: '6px',
-        borderRadius: '999px',
-    },
-    '& .MuiSlider-thumb': {
-        width: '16px',
-        height: '16px',
-        backgroundColor: '#fff',
-        border: '2px solid var(--accent-primary)',
-        boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
-        transition: 'box-shadow 140ms var(--ease-out)',
-        '&:hover, &.Mui-active': {
-            boxShadow: '0 2px 6px rgba(0,0,0,0.35), 0 0 0 6px color-mix(in oklab, var(--accent-primary) 22%, transparent)',
-        },
-    },
-};
-
 interface LoadedImage {
     original: ImageData;
     preview: ImageData;
     adjustedPreview: ImageData;
 }
 
-// Thumbnail loading queue with scroll-aware scheduling + cache.
-// Keeps scrolling responsive in large folders.
-interface QueueJob {
-    key: string;
-    task: () => Promise<string | null>;
-    promiseHandlers: { resolve: (v: string | null) => void; reject: (e: unknown) => void };
-}
-
-const thumbnailQueue = {
-    queue: [] as QueueJob[],
-    activeCount: 0,
-    maxConcurrent: Math.max(2, Math.min(4, Math.floor(((typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : 8) || 8) / 3))),
-    pausedUntil: 0,
-    scrollListenerAttached: false,
-    inflight: new Map<string, Promise<string | null>>(),
-    cache: new Map<string, string>(),
-    maxCacheSize: 600,
-
-    attachScrollTracking() {
-        if (this.scrollListenerAttached || typeof document === 'undefined') return;
-        this.scrollListenerAttached = true;
-
-        const markScrolling = () => {
-            const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-            this.pausedUntil = now + 140;
-            setTimeout(() => this.process(), 150);
-        };
-
-        document.addEventListener('scroll', markScrolling, true);
-        document.addEventListener('wheel', markScrolling, { passive: true });
-        document.addEventListener('touchmove', markScrolling, { passive: true });
-    },
-
-    getCached(key: string): string | null {
-        if (!this.cache.has(key)) return null;
-        const cached = this.cache.get(key)!;
-        // touch for LRU
-        this.cache.delete(key);
-        this.cache.set(key, cached);
-        return cached;
-    },
-
-    setCached(key: string, objectUrl: string | null) {
-        if (!objectUrl) return;
-        if (this.cache.has(key)) {
-            const prev = this.cache.get(key);
-            if (prev && prev !== objectUrl) URL.revokeObjectURL(prev);
-            this.cache.delete(key);
-        }
-        this.cache.set(key, objectUrl);
-
-        while (this.cache.size > this.maxCacheSize) {
-            const oldestKey = this.cache.keys().next().value as string;
-            const oldestUrl = this.cache.get(oldestKey);
-            if (oldestUrl) URL.revokeObjectURL(oldestUrl);
-            this.cache.delete(oldestKey);
-        }
-    },
-
-    clearCache() {
-        for (const objectUrl of this.cache.values()) {
-            if (objectUrl) URL.revokeObjectURL(objectUrl);
-        }
-        this.cache.clear();
-        this.inflight.clear();
-        this.queue = [];
-        this.activeCount = 0;
-    },
-
-    add(key: string, task: () => Promise<string | null>): Promise<string | null> {
-        this.attachScrollTracking();
-        const cached = this.getCached(key);
-        if (cached) return Promise.resolve(cached);
-        if (this.inflight.has(key)) return this.inflight.get(key)!;
-
-        const managedPromise = new Promise<string | null>((resolve, reject) => {
-            this.queue.push({ key, task, promiseHandlers: { resolve, reject } });
-            this.process();
-        }).then((result) => {
-            if (result) this.setCached(key, result);
-            return result;
-        }).finally(() => {
-            this.inflight.delete(key);
-        });
-
-        this.inflight.set(key, managedPromise);
-        return managedPromise;
-    },
-
-    process() {
-        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-        if (now < this.pausedUntil) return;
-
-        while (this.activeCount < this.maxConcurrent && this.queue.length > 0) {
-            const job = this.queue.shift()!;
-            this.activeCount += 1;
-
-            Promise.resolve()
-                .then(() => (job.task ? job.task() : null))
-                .then((result) => {
-                    job.promiseHandlers?.resolve(result);
-                    return result;
-                })
-                .catch((e) => {
-                    job.promiseHandlers?.reject(e);
-                })
-                .finally(() => {
-                    this.activeCount -= 1;
-                    if (this.queue.length > 0) {
-                        if (typeof requestAnimationFrame === 'function') {
-                            requestAnimationFrame(() => this.process());
-                        } else {
-                            setTimeout(() => this.process(), 0);
-                        }
-                    }
-                });
-        }
-    },
-};
-
-// Image Thumbnail Component - Memoized for performance
-interface ImageThumbnailProps {
-    image: ImageEntry;
-    isSelected: boolean;
-    onImageClick: (path: string) => void;
-}
-
-const ImageThumbnail = memo(({ image, isSelected, onImageClick }: ImageThumbnailProps) => {
-    const [thumbnail, setThumbnail] = useState<string | null>(null);
-    const [isVisible, setIsVisible] = useState(false);
-    const ref = useRef<HTMLDivElement>(null);
-
-    // Lazy load with Intersection Observer
-    useEffect(() => {
-        const observer = new IntersectionObserver(
-            ([entry]) => {
-                if (entry.isIntersecting) {
-                    setIsVisible(true);
-                    observer.unobserve(entry.target);
-                }
-            },
-            { rootMargin: '180px 0px', threshold: 0.01 },
-        );
-
-        if (ref.current) {
-            observer.observe(ref.current);
-        }
-
-        return () => observer.disconnect();
-    }, []);
-
-    // Load thumbnail only when visible - queued with UI yielding and downscaled
-    useEffect(() => {
-        if (!isVisible) return;
-
-        let cancelled = false;
-
-        const cached = thumbnailQueue.getCached(image.path);
-        if (cached) {
-            setThumbnail(cached);
-            return;
-        }
-
-        thumbnailQueue.add(image.path, async () => {
-            if (cancelled) return null;
-
-            const imageData = await loadSingleImage(image.path);
-            if (!imageData || cancelled) return null;
-
-            const { width, height } = imageData;
-            const maxSize = 128; // Small thumbnail size
-
-            const scale = Math.min(maxSize / width, maxSize / height, 1);
-            const newWidth = Math.round(width * scale);
-            const newHeight = Math.round(height * scale);
-
-            const fullCanvas = document.createElement('canvas');
-            fullCanvas.width = width;
-            fullCanvas.height = height;
-            const fullCtx = fullCanvas.getContext('2d');
-            if (!fullCtx) return null;
-            fullCtx.putImageData(imageData, 0, 0);
-
-            const thumbCanvas = document.createElement('canvas');
-            thumbCanvas.width = newWidth;
-            thumbCanvas.height = newHeight;
-            const thumbCtx = thumbCanvas.getContext('2d');
-            if (!thumbCtx) return null;
-            thumbCtx.drawImage(fullCanvas, 0, 0, newWidth, newHeight);
-
-            const blob = await new Promise<Blob | null>((resolve) => thumbCanvas.toBlob(resolve, 'image/png'));
-            if (!blob) return null;
-            return URL.createObjectURL(blob);
-        }).then((dataUrl) => {
-            if (dataUrl && !cancelled) {
-                setThumbnail(dataUrl);
-            }
-        }).catch(() => {
-            // Ignore errors for cancelled loads
-        });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [isVisible, image.path]);
-
-    return (
-        <Box
-            ref={ref}
-            onClick={() => onImageClick(image.path)}
-            data-image-path={image.path}
-            sx={{
-                position: 'relative',
-                background: 'var(--bg-tertiary)',
-                borderRadius: 'var(--radius-sm)',
-                overflow: 'hidden',
-                border: isSelected ? '2px solid var(--accent-primary)' : '1px solid var(--border)',
-                cursor: 'pointer',
-                transition: 'border-color 140ms var(--ease-out), box-shadow 140ms var(--ease-out)',
-                aspectRatio: '1',
-                display: 'flex',
-                flexDirection: 'column',
-                boxShadow: 'none',
-                '&:hover': {
-                    border: isSelected
-                        ? '2px solid var(--accent-primary)'
-                        : '1px solid color-mix(in oklab, var(--accent-primary) 45%, var(--border))',
-                },
-            }}
-        >
-            {/* Checkbox overlay */}
-            <Box sx={{
-                position: 'absolute',
-                top: 8,
-                right: 8,
-                zIndex: 2,
-            }}>
-                <Checkbox
-                    checked={isSelected}
-                    sx={{
-                        color: 'var(--text-muted)',
-                        background: 'var(--bg-primary)',
-                        borderRadius: 'var(--radius-sm)',
-                        padding: '4px',
-                        '&.Mui-checked': {
-                            color: 'var(--accent-primary)',
-                            background: 'var(--bg-primary)',
-                        },
-                        '&:hover': {
-                            background: 'var(--bg-tertiary)',
-                        },
-                    }}
-                />
-            </Box>
-
-            {/* Image */}
-            {thumbnail ? (
-                <Box sx={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                    p: 1,
-                }}>
-                    <img
-                        src={thumbnail}
-                        alt={image.name}
-                        style={{
-                            maxWidth: '100%',
-                            maxHeight: '100%',
-                            objectFit: 'contain',
-                            imageRendering: 'pixelated',
-                        }}
-                    />
-                </Box>
-            ) : (
-                <Box sx={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                }}>
-                    <Typography sx={{
-                        color: 'var(--text-muted)',
-                        fontSize: '0.7rem',
-                        fontFamily: 'var(--font-mono)',
-                    }}>
-                        Loading...
-                    </Typography>
-                </Box>
-            )}
-
-            {/* Filename */}
-            <Box sx={{
-                p: 0.5,
-            }}>
-                <Typography sx={{
-                    color: 'var(--text-primary)',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '0.65rem',
-                    textAlign: 'center',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                }}>
-                    {image.name}
-                </Typography>
-            </Box>
-        </Box>
-    );
-}, (prevProps, nextProps) => (
-    // Only re-render if selection state or image path changes
-    prevProps.isSelected === nextProps.isSelected &&
-    prevProps.image.path === nextProps.image.path &&
-    prevProps.image.name === nextProps.image.name &&
-    prevProps.onImageClick === nextProps.onImageClick
-));
-
-interface ProcessedImageCardProps {
-    imagePath: string;
-    displayImage: ImageData | null;
-}
-
-const ProcessedImageCard = memo(({ imagePath, displayImage }: ProcessedImageCardProps) => {
-    const [src, setSrc] = useState('');
-
-    useEffect(() => {
-        if (!displayImage) {
-            setSrc('');
-            return;
-        }
-
-        let cancelled = false;
-        let objectUrl = '';
-
-        const canvas = document.createElement('canvas');
-        canvas.width = displayImage.width;
-        canvas.height = displayImage.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        ctx.putImageData(displayImage, 0, 0);
-
-        canvas.toBlob((blob) => {
-            if (cancelled || !blob) return;
-            objectUrl = URL.createObjectURL(blob);
-            setSrc(objectUrl);
-        }, 'image/png');
-
-        return () => {
-            cancelled = true;
-            if (objectUrl) URL.revokeObjectURL(objectUrl);
-        };
-    }, [displayImage]);
-
-    return (
-        <Box
-            sx={{
-                borderRadius: '8px',
-                overflow: 'hidden',
-                position: 'relative',
-            }}
-        >
-            {src && (
-                <img
-                    src={src}
-                    alt={imagePath}
-                    style={{
-                        width: '100%',
-                        height: 'auto',
-                        display: 'block',
-                        imageRendering: 'pixelated',
-                    }}
-                />
-            )}
-            <Typography sx={{
-                p: 1,
-                color: 'var(--text-secondary)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.7rem',
-                textAlign: 'center',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-            }}>
-                {imagePath.split(/[\\/]/).pop()}
-            </Typography>
-        </Box>
-    );
-}, (prev, next) => prev.imagePath === next.imagePath && prev.displayImage === next.displayImage);
-
 function ImgRecolor() {
-    // State
-    const [folderPath, setFolderPath] = useState('');
+    // ── Library / selection state ──
+    const [, setFolderPath] = useState('');
     const [allImages, setAllImages] = useState<ImageEntry[]>([]);
     const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
-    const [recursiveScan, setRecursiveScan] = useState(false); // Include subfolders toggle
+    const [recursiveScan, setRecursiveScan] = useState(false);
     const [showingSelection, setShowingSelection] = useState(true);
-    const [loadedImages, setLoadedImages] = useState<Map<string, LoadedImage>>(new Map()); // path -> { original, adjusted }
+    const [loadedImages, setLoadedImages] = useState<Map<string, LoadedImage>>(new Map());
 
-    // Color adjustment sliders
+    // ── Color adjustment sliders ──
     const [hueShift, setHueShift] = useState(0);
     const [saturationBoost, setSaturationBoost] = useState(0);
     const [lightnessAdjust, setLightnessAdjust] = useState(0);
     const [opacity, setOpacity] = useState(100);
     const [preserveOriginalColors, setPreserveOriginalColors] = useState(false);
 
-    // Save result toast
+    // ── Toast + async guards ──
     const [showToast, setShowToast] = useState(false);
     const [toastMessage, setToastMessage] = useState('');
+    const [, setIsLoading] = useState(false); // re-entrancy guard (no UI overlay)
 
-    // Options menu state
-    const [optionsAnchor, setOptionsAnchor] = useState<HTMLElement | null>(null);
-    const optionsOpen = Boolean(optionsAnchor);
-
-    // Loading state
-    const [isLoading, setIsLoading] = useState(false);
-
-    // Drag and drop state
+    // ── Drag state ──
     const [isDragging, setIsDragging] = useState(false);
     const dragCounterRef = useRef(0);
 
-    // Debounce for live preview
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    useEffect(() => () => {
-        thumbnailQueue.clearCache();
-    }, []);
+    useEffect(() => () => { thumbnailQueue.clearCache(); }, []);
 
-    // Create a downscaled preview for fast processing
+    // Downscaled preview for fast live processing.
     const createPreview = useCallback((imageData: ImageData, maxSize = 256): { preview: ImageData; scale: number } => {
         const { width, height } = imageData;
-
-        if (width <= maxSize && height <= maxSize) {
-            return { preview: imageData, scale: 1 };
-        }
+        if (width <= maxSize && height <= maxSize) return { preview: imageData, scale: 1 };
 
         const scale = Math.min(maxSize / width, maxSize / height);
         const newWidth = Math.round(width * scale);
@@ -545,42 +89,29 @@ function ImgRecolor() {
         const smallCtx = smallCanvas.getContext('2d')!;
         smallCtx.drawImage(canvas, 0, 0, newWidth, newHeight);
 
-        return {
-            preview: smallCtx.getImageData(0, 0, newWidth, newHeight),
-            scale,
-        };
+        return { preview: smallCtx.getImageData(0, 0, newWidth, newHeight), scale };
     }, []);
 
-    // Debounced color adjustment - uses small preview for fast UI updates
+    // Debounced adjustment applied to the loaded previews.
     const updateColorAdjustments = useCallback((hue: number, sat: number, light: number, opac: number, preserveColors: boolean) => {
         if (loadedImages.size === 0) return;
-
-        if (debounceTimerRef.current) {
-            clearTimeout(debounceTimerRef.current);
-        }
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
 
         debounceTimerRef.current = setTimeout(() => {
             const params: RecolorParams = {
-                targetHue: hue,
-                saturationBoost: sat,
-                lightnessAdjust: light,
-                opacity: opac,
-                preserveOriginalColors: preserveColors,
+                targetHue: hue, saturationBoost: sat, lightnessAdjust: light, opacity: opac, preserveOriginalColors: preserveColors,
             };
-
             setLoadedImages((prev) => {
                 const newMap = new Map(prev);
                 for (const [imagePath, data] of newMap.entries()) {
                     const sourceImage = data.preview || data.original;
-                    const adjustedPreview = applyAdjustment(sourceImage, params);
-                    newMap.set(imagePath, { ...data, adjustedPreview });
+                    newMap.set(imagePath, { ...data, adjustedPreview: applyAdjustment(sourceImage, params) });
                 }
                 return newMap;
             });
-        }, 50); // 50ms debounce
+        }, 50);
     }, [loadedImages]);
 
-    // Load folder
     const handleLoadFolder = async () => {
         setIsLoading(true);
         try {
@@ -597,81 +128,55 @@ function ImgRecolor() {
         }
     };
 
-    // Toggle image selection - Memoized with useCallback to prevent re-renders
     const toggleImageSelection = useCallback((imagePath: string) => {
         setSelectedImages((prev) => {
-            const newSelected = new Set(prev);
-            if (newSelected.has(imagePath)) {
-                newSelected.delete(imagePath);
-            } else {
-                newSelected.add(imagePath);
-            }
-            return newSelected;
+            const next = new Set(prev);
+            if (next.has(imagePath)) next.delete(imagePath); else next.add(imagePath);
+            return next;
         });
     }, []);
 
-    // Select every image, or clear the selection if all are already selected.
     const toggleSelectAll = useCallback(() => {
         setSelectedImages((prev) => (
-            prev.size === allImages.length
-                ? new Set<string>()
-                : new Set(allImages.map((img) => img.path))
+            prev.size === allImages.length ? new Set<string>() : new Set(allImages.map((img) => img.path))
         ));
     }, [allImages]);
 
-    // Confirm selection and load images
     const handleConfirmSelection = async () => {
         if (selectedImages.size === 0) return;
-
         setShowingSelection(false);
         setIsLoading(true);
         try {
-            // Reset sliders to cyan baseline (like GIMP)
-            setHueShift(180); // Cyan is at 180 degrees
-            setSaturationBoost(50); // Boost saturation for visibility
-            setLightnessAdjust(0); // Keep original lightness
+            // Cyan baseline (like GIMP) so the recolor is visible immediately.
+            setHueShift(180);
+            setSaturationBoost(50);
+            setLightnessAdjust(0);
 
             const newLoadedImages = new Map<string, LoadedImage>();
-
-            // Load only first 6 images for preview (rest will be processed in background)
-            const imagePaths = Array.from(selectedImages);
-            const previewPaths = imagePaths.slice(0, 6);
-
+            const previewPaths = Array.from(selectedImages).slice(0, 6);
             for (const imagePath of previewPaths) {
                 const imageData = await loadSingleImage(imagePath);
                 if (imageData) {
                     const { preview } = createPreview(imageData, 256);
-                    newLoadedImages.set(imagePath, {
-                        original: imageData,
-                        preview,
-                        adjustedPreview: preview,
-                    });
+                    newLoadedImages.set(imagePath, { original: imageData, preview, adjustedPreview: preview });
                 }
             }
-
             setLoadedImages(newLoadedImages);
         } finally {
             setIsLoading(false);
         }
     };
 
-    // Apply adjustments when images are loaded
+    // Re-apply adjustments when images load or sliders change.
     useEffect(() => {
-        if (loadedImages.size > 0) {
-            updateColorAdjustments(hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors);
-        }
+        if (loadedImages.size > 0) updateColorAdjustments(hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [loadedImages.size]);
-
-    // Apply adjustments when sliders change
     useEffect(() => {
-        if (loadedImages.size > 0) {
-            updateColorAdjustments(hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors);
-        }
+        if (loadedImages.size > 0) updateColorAdjustments(hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors]);
 
-    // Reset
     const handleReset = () => {
         setHueShift(0);
         setSaturationBoost(0);
@@ -680,41 +185,27 @@ function ImgRecolor() {
         setPreserveOriginalColors(false);
     };
 
-    // Back to selection
     const handleBackToSelection = () => {
         setShowingSelection(true);
         setLoadedImages(new Map());
     };
 
-    // Filter out grayscale images from all loaded images
     const handleFilterGrayscale = async () => {
         const isDistortionName = (name = '') => {
             const n = String(name).toLowerCase();
-            return n.includes('distortion')
-                || n.includes('distort')
-                || n.includes('distord')
+            return n.includes('distortion') || n.includes('distort') || n.includes('distord')
                 || /(^|[_\-\s.])dist([_\-\s.]|$)/i.test(n);
         };
 
         setIsLoading(true);
-
-        // Give React time to render the spinner
         await new Promise((resolve) => setTimeout(resolve, 50));
-
         try {
             const newSelected = new Set<string>();
-
             for (const image of allImages) {
-                if (isDistortionName(image.name)) {
-                    continue;
-                }
-
+                if (isDistortionName(image.name)) continue;
                 const imageData = await loadSingleImage(image.path);
-                if (imageData && !isGrayscaleImage(imageData)) {
-                    newSelected.add(image.path);
-                }
+                if (imageData && !isGrayscaleImage(imageData)) newSelected.add(image.path);
             }
-
             setSelectedImages(newSelected);
             setToastMessage(`✅ Selected ${newSelected.size} colored image${newSelected.size !== 1 ? 's' : ''}`);
             setShowToast(true);
@@ -724,127 +215,72 @@ function ImgRecolor() {
         }
     };
 
-    // Process full-resolution image for saving
-    const processFullResolution = useCallback((original: ImageData, params: RecolorParams): ImageData => (
-        applyAdjustment(original, params)
-    ), []);
-
-    // Save all selected images (not just previewed ones)
     const handleSaveAll = async () => {
         setIsLoading(true);
         let savedCount = 0;
         let failedCount = 0;
-
         try {
-            const params: RecolorParams = {
-                targetHue: hueShift,
-                saturationBoost,
-                lightnessAdjust,
-                opacity,
-                preserveOriginalColors,
-            };
-
+            const params: RecolorParams = { targetHue: hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors };
             for (const imagePath of selectedImages) {
-                let original: ImageData | null;
-
-                if (loadedImages.has(imagePath)) {
-                    original = loadedImages.get(imagePath)!.original;
-                } else {
-                    original = await loadSingleImage(imagePath);
-                }
-
+                const original = loadedImages.has(imagePath) ? loadedImages.get(imagePath)!.original : await loadSingleImage(imagePath);
                 if (original) {
-                    const adjusted = processFullResolution(original, params);
-                    const success = await saveImageFile(adjusted, imagePath);
-                    if (success) {
-                        savedCount++;
-                    } else {
-                        failedCount++;
-                    }
+                    const ok = await saveImageFile(applyAdjustment(original, params), imagePath);
+                    if (ok) savedCount++; else failedCount++;
                 } else {
                     failedCount++;
                 }
             }
-
-            if (failedCount === 0) {
-                setToastMessage(`✅ Saved ${savedCount} image${savedCount !== 1 ? 's' : ''}`);
-            } else {
-                setToastMessage(`⚠️ Saved ${savedCount}, failed ${failedCount}`);
-            }
+            setToastMessage(failedCount === 0
+                ? `✅ Saved ${savedCount} image${savedCount !== 1 ? 's' : ''}`
+                : `⚠️ Saved ${savedCount}, failed ${failedCount}`);
             setShowToast(true);
-
             setTimeout(() => setShowToast(false), 3000);
         } finally {
             setIsLoading(false);
         }
     };
 
-    // Drag and drop handlers
+    // ── Drag + drop ──
     const handleDragEnter = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         dragCounterRef.current++;
-        if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-            setIsDragging(true);
-        }
+        if (e.dataTransfer.items && e.dataTransfer.items.length > 0) setIsDragging(true);
     }, []);
-
     const handleDragLeave = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         dragCounterRef.current--;
-        if (dragCounterRef.current === 0) {
-            setIsDragging(false);
-        }
+        if (dragCounterRef.current === 0) setIsDragging(false);
     }, []);
-
-    const handleDragOver = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-    }, []);
-
+    const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); }, []);
     const handleDrop = useCallback((e: React.DragEvent) => {
-        // The OS drag-drop event (below) carries the absolute paths; just swallow
-        // the browser event so it doesn't navigate.
-        e.preventDefault();
-        e.stopPropagation();
+        // The native webview drag-drop event carries the real paths; swallow the DOM one.
+        e.preventDefault(); e.stopPropagation();
         setIsDragging(false);
         dragCounterRef.current = 0;
     }, []);
 
-    // Resolve dropped absolute paths from the native drag-drop event: image files
-    // load directly, dropped folders are scanned on the backend.
     const loadDroppedPaths = useCallback(async (paths: string[]) => {
         if (paths.length === 0) return;
         setIsLoading(true);
         try {
             const fileEntries: ImageEntry[] = [];
             let scannedFolder: string | null = null;
-
             for (const p of paths) {
                 if (hasImageExt(p)) {
                     const ext = p.slice(p.lastIndexOf('.')).toLowerCase().replace('.', '');
                     fileEntries.push({ path: p, name: baseName(p), type: ext });
                 } else {
-                    // Treat as a directory and enumerate its images on the backend.
                     const result = await loadFolder(p, recursiveScan);
-                    if (result) {
-                        scannedFolder = result.folderPath;
-                        fileEntries.push(...result.images);
-                    }
+                    if (result) { scannedFolder = result.folderPath; fileEntries.push(...result.images); }
                 }
             }
-
             if (fileEntries.length === 0) return;
 
-            // Deduplicate while preserving order.
             const seen = new Set<string>();
             const images = fileEntries.filter((img) => (seen.has(img.path) ? false : seen.add(img.path)));
-
-            const folder = scannedFolder || images[0].path.replace(/[/\\][^/\\]*$/, '');
-            setFolderPath(folder);
+            setFolderPath(scannedFolder || images[0].path.replace(/[/\\][^/\\]*$/, ''));
             setAllImages(images);
-            setSelectedImages(new Set(images.map((img) => img.path))); // Auto-select dropped files
+            setSelectedImages(new Set()); // Load unselected — user picks what to recolor.
             setShowingSelection(true);
             setLoadedImages(new Map());
         } catch (error) {
@@ -857,275 +293,52 @@ function ImgRecolor() {
     useFileDrop({
         onEnter: () => setIsDragging(true),
         onLeave: () => setIsDragging(false),
-        onDrop: (paths) => {
-            setIsDragging(false);
-            dragCounterRef.current = 0;
-            void loadDroppedPaths(paths);
-        },
+        onDrop: (paths) => { setIsDragging(false); dragCounterRef.current = 0; void loadDroppedPaths(paths); },
     });
 
+    // Dim the editor chrome until images are loaded (via .is-dim on the panel).
+    const nothingLoaded = allImages.length === 0;
+
     return (
-        <Box
-            className="img-recolor-container"
-            sx={{
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                background: 'var(--bg-primary)',
-                position: 'relative',
-                overflow: 'hidden',
-            }}
+        <div
+            className="imgrecolor-root"
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
-            {/* Drag Overlay */}
+            {/* Drag overlay */}
             {isDragging && (
-                <Box sx={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    zIndex: 100,
-                    background: 'color-mix(in oklab, var(--bg-primary) 85%, transparent)',
-                    backdropFilter: 'blur(8px)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 2,
-                    border: '3px dashed var(--accent-primary)',
-                    borderRadius: 'var(--radius-lg)',
-                    margin: '16px',
-                    animation: 'pulse-border 1.5s ease-in-out infinite',
-                    pointerEvents: 'none',
-                }}>
-                    <CloudUploadIcon sx={{
-                        fontSize: '4rem',
-                        color: 'var(--accent-primary)',
-                        animation: 'float 2s ease-in-out infinite',
-                    }} />
-                    <Typography sx={{
-                        color: 'var(--accent-primary)',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '1.2rem',
-                        fontWeight: 600,
-                    }}>
+                <div className="imgrecolor-drag">
+                    <CloudUploadIcon sx={{ fontSize: '4rem', color: 'var(--accent-primary)', animation: 'imgrecolor-float 2s ease-in-out infinite' }} />
+                    <div style={{ color: 'var(--accent-primary)', fontFamily: 'var(--font-mono)', fontSize: '1.2rem', fontWeight: 600 }}>
                         Drop images or folder here
-                    </Typography>
-                    <Typography sx={{
-                        color: 'var(--text-secondary)',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '0.85rem',
-                    }}>
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>
                         Supports TEX, DDS, PNG, JPG files
-                    </Typography>
-                </Box>
+                    </div>
+                </div>
             )}
 
-            {/* Drag overlay animations */}
-            <style>{`
-        @keyframes pulse-border {
-          0%, 100% { border-color: var(--accent-primary); }
-          50% { border-color: color-mix(in oklab, var(--accent-primary) 55%, var(--border)); }
-        }
-        @keyframes float {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-10px); }
-        }
-      `}</style>
-            {/* Main Content */}
-            <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', flex: 1, overflow: 'hidden', gap: 'clamp(0.5rem, 1vw, 0.75rem)', p: 'clamp(0.5rem, 1vw, 0.75rem)' }}>
-                {/* Left Panel - Image List/Preview */}
-                <Box sx={{
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 'clamp(0.5rem, 1vw, 0.75rem)',
-                }}>
-                    {/* Toolbar */}
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                            <Button
-                                startIcon={<FolderOpenIcon />}
-                                onClick={handleLoadFolder}
-                                sx={{ ...celestialButtonStyle, fontSize: '0.8rem', height: '34px', padding: '0 12px' }}
-                            >
-                                Load Folder
-                            </Button>
-                            {!showingSelection && (
-                                <>
-                                    <Button
-                                        onClick={handleBackToSelection}
-                                        sx={{ ...celestialButtonStyle, fontSize: '0.8rem', height: '34px', padding: '0 12px' }}
-                                    >
-                                        Back to Selection
-                                    </Button>
-                                    <Button
-                                        startIcon={<SaveIcon />}
-                                        onClick={handleSaveAll}
-                                        disabled={loadedImages.size === 0}
-                                        sx={{ ...celestialButtonStyle, fontSize: '0.8rem', height: '34px', padding: '0 12px' }}
-                                    >
-                                        Save All
-                                    </Button>
-                                    <Button
-                                        startIcon={<RefreshIcon />}
-                                        onClick={handleReset}
-                                        sx={{ ...celestialButtonStyle, fontSize: '0.8rem', height: '34px', padding: '0 12px' }}
-                                    >
-                                        Reset
-                                    </Button>
-                                </>
-                            )}
-                            {showingSelection && allImages.length > 0 && (
-                                <>
-                                    <Button
-                                        onClick={handleFilterGrayscale}
-                                        sx={{ ...celestialButtonStyle, fontSize: '0.8rem', height: '34px', padding: '0 12px' }}
-                                    >
-                                        Filter Grayscale
-                                    </Button>
-                                    <Button
-                                        onClick={toggleSelectAll}
-                                        sx={{ ...celestialButtonStyle, fontSize: '0.8rem', height: '34px', padding: '0 12px' }}
-                                    >
-                                        {selectedImages.size === allImages.length ? 'Deselect All' : 'Select All'}
-                                    </Button>
-                                    {selectedImages.size > 0 && (
-                                        <Button
-                                            onClick={handleConfirmSelection}
-                                            sx={{
-                                                ...celestialButtonStyle,
-                                                fontSize: '0.8rem',
-                                                height: '34px',
-                                                padding: '0 12px',
-                                                fontWeight: 700,
-                                            }}
-                                        >
-                                            Load {selectedImages.size} Images
-                                        </Button>
-                                    )}
-                                </>
-                            )}
-                        </Box>
-                        {/* Right side - Status text and Settings */}
-                        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-                            <Typography sx={{
-                                color: 'var(--text-secondary)',
-                                fontFamily: 'var(--font-mono)',
-                                fontSize: '0.85rem',
-                            }}>
-                                {folderPath ? `${allImages.length} images found` : 'No folder loaded'}
-                            </Typography>
-                            {/* Options Menu Button */}
-                            <IconButton
-                                onClick={(e) => setOptionsAnchor(e.currentTarget)}
-                                sx={{
-                                    ...celestialButtonStyle,
-                                    width: '34px',
-                                    height: '34px',
-                                    padding: 0,
-                                    minWidth: 'unset',
-                                    color: optionsOpen ? 'var(--accent-primary)' : 'var(--text-primary)',
-                                    borderColor: optionsOpen ? 'var(--accent-primary)' : 'var(--border)',
-                                }}
-                            >
-                                <SettingsIcon sx={{ fontSize: '1.1rem' }} />
-                            </IconButton>
-                            {/* Options Dropdown Menu */}
-                            <Menu
-                                anchorEl={optionsAnchor}
-                                open={optionsOpen}
-                                onClose={() => setOptionsAnchor(null)}
-                                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-                                slotProps={{
-                                    paper: {
-                                        sx: {
-                                            background: 'var(--bg-secondary)',
-                                            border: '1px solid var(--border)',
-                                            borderRadius: 'var(--radius)',
-                                            boxShadow: '0 8px 24px -8px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.25)',
-                                            minWidth: '200px',
-                                            mt: 0.5,
-                                        },
-                                    },
-                                }}
-                            >
-                                {/* Include Subfolders Option */}
-                                <Box
-                                    onClick={() => setRecursiveScan(!recursiveScan)}
-                                    sx={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        padding: '8px 16px',
-                                        cursor: 'pointer',
-                                        transition: 'background 140ms var(--ease-out)',
-                                        '&:hover': {
-                                            background: 'var(--bg-hover)',
-                                        },
-                                    }}
-                                >
-                                    <Typography sx={{
-                                        color: 'var(--text-primary)',
-                                        fontFamily: 'var(--font-mono)',
-                                        fontSize: '0.85rem',
-                                        userSelect: 'none',
-                                    }}>
-                                        Include Subfolders
-                                    </Typography>
-                                    <Switch
-                                        checked={recursiveScan}
-                                        onChange={(e) => {
-                                            e.stopPropagation();
-                                            setRecursiveScan(e.target.checked);
-                                        }}
-                                        size="small"
-                                        sx={{
-                                            '& .MuiSwitch-switchBase': {
-                                                color: 'var(--text-muted)',
-                                            },
-                                            '& .MuiSwitch-switchBase.Mui-checked': {
-                                                color: 'var(--accent-primary)',
-                                            },
-                                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                                backgroundColor: 'var(--accent-primary)',
-                                            },
-                                            '& .MuiSwitch-track': {
-                                                backgroundColor: 'var(--bg-hover)',
-                                            },
-                                        }}
-                                    />
-                                </Box>
-                            </Menu>
-                        </Box>
-                    </Box>
+            {/* Body: adjustments panel (left) + image area (right) */}
+            <div className="imgrecolor-body">
+                <div className={`imgrecolor-adjust${nothingLoaded ? ' is-dim' : ''}`}>
+                    <div className="imgrecolor-adjust__scroll">
+                        <AdjustmentsPanel
+                            disabled={loadedImages.size === 0}
+                            hueShift={hueShift} setHueShift={setHueShift}
+                            saturationBoost={saturationBoost} setSaturationBoost={setSaturationBoost}
+                            lightnessAdjust={lightnessAdjust} setLightnessAdjust={setLightnessAdjust}
+                            opacity={opacity} setOpacity={setOpacity}
+                            preserveOriginalColors={preserveOriginalColors} setPreserveOriginalColors={setPreserveOriginalColors}
+                        />
+                    </div>
+                </div>
 
-                    {/* Horizontal Divider */}
-                    <Box sx={{
-                        height: '1px',
-                        width: '100%',
-                        background: 'var(--border)',
-                        flexShrink: 0,
-                    }} />
-
-                    {/* Content Container */}
-                    <Box sx={{
-                        flex: 1,
-                        overflow: 'auto',
-                        p: 2,
-                    }}>
-                        {/* Image Selection Grid */}
+                <div className="imgrecolor-images">
+                    <div className="imgrecolor-images__scroll">
                         {showingSelection && allImages.length > 0 && (
-                            <Box sx={{
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(6, 1fr)',
-                                gap: 2,
-                            }}>
+                            <div className="imgrecolor-grid imgrecolor-grid--select">
                                 {allImages.map((image) => (
                                     <ImageThumbnail
                                         key={image.path}
@@ -1134,307 +347,60 @@ function ImgRecolor() {
                                         onImageClick={toggleImageSelection}
                                     />
                                 ))}
-                            </Box>
+                            </div>
                         )}
 
-                        {/* Image Preview Grid */}
                         {!showingSelection && loadedImages.size > 0 && (
-                            <Box sx={{
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                                gap: 2,
-                            }}>
-                                {Array.from(loadedImages.entries()).map(([imagePath, data]) => {
-                                    // Use adjustedPreview for display (small, fast)
-                                    const displayImage = data.adjustedPreview || data.preview || data.original;
-                                    return (
-                                        <ProcessedImageCard
-                                            key={imagePath}
-                                            imagePath={imagePath}
-                                            displayImage={displayImage}
-                                        />
-                                    );
-                                })}
-                            </Box>
+                            <div className="imgrecolor-grid imgrecolor-grid--preview">
+                                {Array.from(loadedImages.entries()).map(([imagePath, data]) => (
+                                    <ProcessedImageCard
+                                        key={imagePath}
+                                        imagePath={imagePath}
+                                        displayImage={data.adjustedPreview || data.preview || data.original}
+                                    />
+                                ))}
+                            </div>
                         )}
 
-                        {/* Empty State */}
                         {allImages.length === 0 && (
-                            <Box sx={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                height: '100%',
-                            }}>
-                                <Typography sx={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>
-                                    Load a folder to start
-                                </Typography>
-                            </Box>
+                            <div className="imgrecolor-empty">
+                                <ImageIcon size={48} color="var(--accent-primary)" strokeWidth={1.5} style={{ display: 'block', marginBottom: 16 }} />
+                                <div style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '1rem', marginBottom: 4 }}>
+                                    {isDragging ? 'Drop to load' : 'No Image Selected'}
+                                </div>
+                                <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: 18 }}>
+                                    Drop an image or folder here
+                                </div>
+                                <button className="dl-btn dl-btn--primary" onClick={handleLoadFolder}>
+                                    <span className="dl-icon"><FolderOpenIcon sx={{ fontSize: 16 }} /></span>
+                                    <span>Load Folder</span>
+                                </button>
+                            </div>
                         )}
-                    </Box>
-                </Box>
-
-                {/* Vertical Divider */}
-                <Box sx={{
-                    width: '1px',
-                    background: 'var(--border)',
-                    flexShrink: 0,
-                    margin: '0 clamp(0.5rem, 1vw, 0.75rem)',
-                }} />
-
-                {/* Right Panel - Color Adjustments */}
-                <Box sx={{
-                    flex: '0 0 clamp(280px, 22vw, 320px)',
-                    minWidth: 'clamp(260px, 20vw, 300px)',
-                    maxWidth: 'clamp(300px, 25vw, 350px)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    overflow: 'hidden',
-                }}>
-                    <Box sx={{
-                        padding: '20px',
-                        flex: 1,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        overflow: 'hidden',
-                        minHeight: 0,
-                    }}>
-                        {/* Header */}
-                        <Typography sx={{
-                            fontSize: 'clamp(1rem, 1.2vw, 1.1rem)',
-                            fontWeight: '700',
-                            color: 'var(--text-primary)',
-                            fontFamily: 'var(--font-mono)',
-                            marginBottom: '20px',
-                        }}>
-                            Color Adjustments
-                        </Typography>
-
-                        {/* Target Hue Slider */}
-                        <Box sx={{ marginBottom: '20px', flexShrink: 0 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                <Typography sx={{
-                                    color: 'var(--text-secondary)',
-                                    fontWeight: '600',
-                                    fontSize: '14px',
-                                    fontFamily: 'var(--font-mono)',
-                                }}>
-                                    Target Hue
-                                </Typography>
-                                <Typography sx={{
-                                    color: 'var(--accent-primary)',
-                                    fontWeight: '600',
-                                    fontSize: '14px',
-                                    fontFamily: 'var(--font-mono)',
-                                    background: 'var(--bg-tertiary)',
-                                    border: '1px solid var(--border)',
-                                    padding: '4px 8px',
-                                    borderRadius: 'var(--radius-sm)',
-                                    minWidth: '50px',
-                                    textAlign: 'center',
-                                }}>
-                                    {hueShift}°
-                                </Typography>
-                            </Box>
-                            <Slider
-                                value={hueShift}
-                                onChange={(_, value) => setHueShift(value as number)}
-                                min={0}
-                                max={360}
-                                disabled={loadedImages.size === 0}
-                                sx={sliderSx}
-                            />
-                        </Box>
-
-                        {/* Saturation Slider */}
-                        <Box sx={{ marginBottom: '20px', flexShrink: 0 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                <Typography sx={{
-                                    color: 'var(--text-secondary)',
-                                    fontWeight: '600',
-                                    fontSize: '14px',
-                                    fontFamily: 'var(--font-mono)',
-                                }}>
-                                    Saturation
-                                </Typography>
-                                <Typography sx={{
-                                    color: 'var(--accent-primary)',
-                                    fontWeight: '600',
-                                    fontSize: '14px',
-                                    fontFamily: 'var(--font-mono)',
-                                    background: 'var(--bg-tertiary)',
-                                    border: '1px solid var(--border)',
-                                    padding: '4px 8px',
-                                    borderRadius: 'var(--radius-sm)',
-                                    minWidth: '50px',
-                                    textAlign: 'center',
-                                }}>
-                                    {saturationBoost}%
-                                </Typography>
-                            </Box>
-                            <Slider
-                                value={saturationBoost}
-                                onChange={(_, value) => setSaturationBoost(value as number)}
-                                min={0}
-                                max={100}
-                                disabled={loadedImages.size === 0}
-                                sx={sliderSx}
-                            />
-                        </Box>
-
-                        {/* Lightness Slider */}
-                        <Box sx={{ marginBottom: '20px', flexShrink: 0 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                <Typography sx={{
-                                    color: 'var(--text-secondary)',
-                                    fontWeight: '600',
-                                    fontSize: '14px',
-                                    fontFamily: 'var(--font-mono)',
-                                }}>
-                                    Lightness
-                                </Typography>
-                                <Typography sx={{
-                                    color: 'var(--accent-primary)',
-                                    fontWeight: '600',
-                                    fontSize: '14px',
-                                    fontFamily: 'var(--font-mono)',
-                                    background: 'var(--bg-tertiary)',
-                                    border: '1px solid var(--border)',
-                                    padding: '4px 8px',
-                                    borderRadius: 'var(--radius-sm)',
-                                    minWidth: '50px',
-                                    textAlign: 'center',
-                                }}>
-                                    {lightnessAdjust}%
-                                </Typography>
-                            </Box>
-                            <Slider
-                                value={lightnessAdjust}
-                                onChange={(_, value) => setLightnessAdjust(value as number)}
-                                min={-100}
-                                max={100}
-                                disabled={loadedImages.size === 0}
-                                sx={sliderSx}
-                            />
-                        </Box>
-
-                        {/* Opacity Slider */}
-                        <Box sx={{ marginBottom: '20px', flexShrink: 0 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                <Typography sx={{
-                                    color: 'var(--text-secondary)',
-                                    fontWeight: '600',
-                                    fontSize: '14px',
-                                    fontFamily: 'var(--font-mono)',
-                                }}>
-                                    Opacity
-                                </Typography>
-                                <Typography sx={{
-                                    color: 'var(--accent-primary)',
-                                    fontWeight: '600',
-                                    fontSize: '14px',
-                                    fontFamily: 'var(--font-mono)',
-                                    background: 'var(--bg-tertiary)',
-                                    border: '1px solid var(--border)',
-                                    padding: '4px 8px',
-                                    borderRadius: 'var(--radius-sm)',
-                                    minWidth: '50px',
-                                    textAlign: 'center',
-                                }}>
-                                    {opacity}%
-                                </Typography>
-                            </Box>
-                            <Slider
-                                value={opacity}
-                                onChange={(_, value) => setOpacity(value as number)}
-                                min={0}
-                                max={100}
-                                disabled={loadedImages.size === 0}
-                                sx={sliderSx}
-                            />
-                        </Box>
-
-                        {/* Preserve Original Colors Checkbox */}
-                        <Box sx={{
-                            marginBottom: '20px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            paddingLeft: '4px',
-                        }}>
-                            <Checkbox
-                                checked={preserveOriginalColors}
-                                onChange={(e) => setPreserveOriginalColors(e.target.checked)}
-                                sx={{
-                                    color: 'var(--text-muted)',
-                                    padding: '4px',
-                                    marginRight: '4px',
-                                    '&.Mui-checked': {
-                                        color: 'var(--accent-primary)',
-                                    },
-                                    '&:hover': {
-                                        background: 'var(--bg-hover)',
-                                    },
-                                }}
-                            />
-                            <Typography
-                                sx={{
-                                    color: 'var(--text-primary)',
-                                    fontSize: '13px',
-                                    fontFamily: 'var(--font-mono)',
-                                    cursor: 'pointer',
-                                    userSelect: 'none',
-                                }}
-                                onClick={() => setPreserveOriginalColors(!preserveOriginalColors)}
-                            >
-                                Preserve original colors
-                            </Typography>
-                        </Box>
-                    </Box>
-                </Box>
-            </Box>
-
-            {/* Toast Notification */}
-            {showToast && (
-                <div style={{
-                    position: 'fixed',
-                    bottom: '24px',
-                    right: '24px',
-                    zIndex: 200,
-                    animation: 'slideIn 0.3s ease-out',
-                }}>
-                    <div style={{
-                        background: 'color-mix(in oklab, var(--color-success) 18%, var(--bg-secondary))',
-                        border: '1px solid color-mix(in oklab, var(--color-success) 40%, var(--border))',
-                        borderRadius: 'var(--radius)',
-                        padding: '16px 24px',
-                        color: 'var(--text-primary)',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        boxShadow: '0 12px 28px rgba(0, 0, 0, 0.45)',
-                        backdropFilter: 'blur(10px)',
-                    }}>
-                        {toastMessage}
                     </div>
                 </div>
-            )}
+            </div>
 
-            <style>{`
-        @keyframes slideIn {
-          from {
-            transform: translateX(400px);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-      `}</style>
+            <RecolorFooter
+                nothingLoaded={nothingLoaded}
+                showingSelection={showingSelection}
+                allImagesCount={allImages.length}
+                selectedCount={selectedImages.size}
+                allSelected={selectedImages.size === allImages.length}
+                loadedCount={loadedImages.size}
+                recursiveScan={recursiveScan}
+                setRecursiveScan={setRecursiveScan}
+                onLoadFolder={handleLoadFolder}
+                onFilterGrayscale={handleFilterGrayscale}
+                onToggleSelectAll={toggleSelectAll}
+                onConfirmSelection={handleConfirmSelection}
+                onBackToSelection={handleBackToSelection}
+                onReset={handleReset}
+                onSaveAll={handleSaveAll}
+            />
 
-            {/* Loading Spinner */}
-            {isLoading && <GlowingSpinner text="Loading images..." />}
-        </Box>
+            {showToast && <div className="imgrecolor-toast">{toastMessage}</div>}
+        </div>
     );
 }
 

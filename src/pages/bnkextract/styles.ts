@@ -7,7 +7,7 @@ export const containerStyle: SxProps<Theme> = {
     overflow: 'hidden',
     background: 'transparent',
     color: 'var(--text)',
-    fontFamily: 'JetBrains Mono, monospace',
+    fontFamily: 'var(--font-mono)',
 };
 
 export const headerStyle: SxProps<Theme> = {

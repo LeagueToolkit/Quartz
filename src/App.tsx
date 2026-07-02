@@ -1,13 +1,16 @@
 import { useEffect } from 'react';
 import { useNavigationStore, useConfigStore, useThemeStore, useUiPrefsStore, applyUiPrefs, type Page } from '@/lib/stores';
 import { applyFont } from '@/lib/fonts/fontManager';
+import { getLeaguePath } from '@/lib/api/league';
+import { log } from '@/lib/util/logger';
 import { useButtonGlow } from '@/lib/util/useButtonGlow';
 import { TitleBar } from '@/components/layout/TitleBar';
 import { NavRail } from '@/components/layout/NavRail';
 import { Home } from '@/pages/Home';
 import { Settings } from '@/pages/Settings';
 import { Rgba } from '@/pages/Rgba';
-import BinEditor from '@/pages/BinEditor';
+import BinEditorV2 from '@/pages/BinEditorV2';
+import AssetExtractor from '@/pages/AssetExtractor';
 import FileRandomizer from '@/pages/FileRandomizer';
 import Paint from '@/pages/Paint';
 import Port from '@/pages/Port';
@@ -29,6 +32,7 @@ const TITLES: Record<Page, string> = {
     port: 'Port',
     vfxhub: 'VFX Hub',
     bineditor: 'Bin Editor',
+    assetextractor: 'Asset Extractor',
     imgrecolor: 'Image Recolor',
     upscale: 'Upscale',
     rgba: 'RGBA',
@@ -46,7 +50,7 @@ const TITLES: Record<Page, string> = {
    should fill the work area with no outer frame. Content/card pages keep the
    default p-6 gutter. */
 const FULL_BLEED_PAGES = new Set<Page>([
-    'home', 'paint', 'bineditor', 'port', 'vfxhub', 'soundbanks', 'fakegear', 'aniport', 'particlerandomizer',
+    'home', 'paint', 'bineditor', 'assetextractor', 'port', 'vfxhub', 'soundbanks', 'fakegear', 'aniport', 'particlerandomizer', 'upscale', 'rgba', 'imgrecolor', 'bumpath',
 ]);
 
 function PageView({ page }: { page: Page }) {
@@ -54,7 +58,8 @@ function PageView({ page }: { page: Page }) {
         case 'home': return <Home />;
         case 'settings': return <Settings />;
         case 'rgba': return <Rgba />;
-        case 'bineditor': return <BinEditor />;
+        case 'bineditor': return <BinEditorV2 />;
+        case 'assetextractor': return <AssetExtractor />;
         case 'filehandler': return <FileRandomizer />;
         case 'paint': return <Paint />;
         case 'port': return <Port />;
@@ -73,6 +78,7 @@ function PageView({ page }: { page: Page }) {
 
 export function App() {
     const page = useNavigationStore((s) => s.page);
+    const sidebarCollapsed = useUiPrefsStore((s) => s.sidebarCollapsed);
     const loadConfig = useConfigStore((s) => s.load);
     const initThemes = useThemeStore((s) => s.init);
 
@@ -80,7 +86,15 @@ export function App() {
 
     useEffect(() => {
         // Load settings first so the theme store can read the saved selection.
-        loadConfig().then(initThemes);
+        loadConfig().then(async () => {
+            initThemes();
+            // Auto-detect the League install path on boot if none is saved yet.
+            const { settings, update } = useConfigStore.getState();
+            if (!settings.leaguePath) {
+                const detected = await getLeaguePath().catch((e) => { log.error('boot league auto-detect', e); return null; });
+                if (detected) await update({ leaguePath: detected });
+            }
+        });
         applyUiPrefs();
         applyFont(useUiPrefsStore.getState().font);
     }, [loadConfig, initThemes]);
@@ -89,9 +103,9 @@ export function App() {
         <div className="relative flex h-full flex-col">
             <div className="q-atmosphere" />
             <EffectsLayer />
-            <TitleBar />
+            <TitleBar collapsed={sidebarCollapsed} />
             <div className="relative z-[1] flex min-h-0 flex-1">
-                <NavRail />
+                {!sidebarCollapsed && <NavRail />}
                 <main className="q-main min-w-0 flex-1 overflow-y-auto">
                     <div key={page} className={`q-page h-full ${FULL_BLEED_PAGES.has(page) ? '' : 'p-6'}`}>
                         <PageView page={page} />

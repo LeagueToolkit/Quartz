@@ -4,11 +4,75 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Quartz</title>
+    <style>
+      /* Native loading screen — ported from the original Quartz. Shows
+         immediately before React mounts; main.tsx removes #loading-screen
+         once the app is ready. */
+      .native-loading-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.98);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 999999;
+        font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+      }
+
+      .native-loading-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        animation: quartz-loading-pulse 1.5s ease-in-out infinite;
+      }
+
+      .native-loading-logo {
+        height: 80px;
+        width: auto;
+        display: block;
+        margin: 0 auto 16px auto;
+        filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.5));
+      }
+
+      .native-loading-title {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #c084fc;
+        margin-bottom: 8px;
+      }
+
+      .native-loading-subtitle {
+        font-size: 1rem;
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      @keyframes quartz-loading-pulse {
+        0%,
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.8;
+          transform: scale(0.98);
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="app">
-      <div id="loading-screen" style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#aaa;background:#0d0d12;">
-        Loading Quartz…
+      <!-- Native loading screen - shows immediately before React loads -->
+      <div id="loading-screen" class="native-loading-screen">
+        <div class="native-loading-content">
+          <img src="/your-logo.gif" alt="Quartz Logo" class="native-loading-logo" />
+          <div class="native-loading-title">Loading Quartz...</div>
+          <div class="native-loading-subtitle">Initializing components</div>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

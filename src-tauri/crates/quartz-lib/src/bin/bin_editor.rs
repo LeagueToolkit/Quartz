@@ -9,8 +9,8 @@
 //! `scale0` value subtree and multiplies the vec3 constant + dynamics values.
 
 use crate::error::{Error, Result};
-use ritoshark::bin::{Bin, BinEntry, BinValue};
 use indexmap::IndexMap;
+use ritoshark::bin::{Bin, BinEntry, BinValue};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -121,8 +121,15 @@ fn visit_emitter_list(
         // A single emitter directly (defensive — usually a list).
         BinValue::Embed { .. } | BinValue::Pointer { .. } => {
             scale_one_emitter(
-                value, f_birth_scale, f_scale0, scale_birth, scale_scale0, birth_mult,
-                scale_mult, modified, system_touched,
+                value,
+                f_birth_scale,
+                f_scale0,
+                scale_birth,
+                scale_scale0,
+                birth_mult,
+                scale_mult,
+                modified,
+                system_touched,
             );
             return;
         }
@@ -131,8 +138,15 @@ fn visit_emitter_list(
 
     for item in items.iter_mut() {
         scale_one_emitter(
-            item, f_birth_scale, f_scale0, scale_birth, scale_scale0, birth_mult, scale_mult,
-            modified, system_touched,
+            item,
+            f_birth_scale,
+            f_scale0,
+            scale_birth,
+            scale_scale0,
+            birth_mult,
+            scale_mult,
+            modified,
+            system_touched,
         );
     }
 }
@@ -291,8 +305,8 @@ fn fix_one_emitter_shape(emitter: &mut BinValue) -> usize {
     let mut emit_offset_vec3: Option<[f32; 3]> = None;
     let mut birth_translation: Option<BinValue> = None;
 
-    if let Some(BinValue::Pointer { fields: sf, .. })
-    | Some(BinValue::Embed { fields: sf, .. }) = fields.get(&f_shape)
+    if let Some(BinValue::Pointer { fields: sf, .. }) | Some(BinValue::Embed { fields: sf, .. }) =
+        fields.get(&f_shape)
     {
         for (&sub_hash, sub_val) in sf.iter() {
             if sub_hash == f_birth_translation {
@@ -428,12 +442,18 @@ fn split_one(bin_path: &Path, out_dir: &Path, kind: &str) -> Result<Option<SkinS
     let class_hash = match kind {
         "vfx" => fnv1a_lower("VfxSystemDefinitionData"),
         "anm" => fnv1a_lower("AnimationGraphData"),
-        other => return Err(Error::InvalidInput(format!("unknown split kind: {}", other))),
+        other => {
+            return Err(Error::InvalidInput(format!(
+                "unknown split kind: {}",
+                other
+            )))
+        }
     };
 
     let data = std::fs::read(bin_path).map_err(|e| Error::io_with_path(e, bin_path))?;
-    let mut bin = crate::bin::read_bin(&data)
-        .map_err(|e| Error::InvalidInput(format!("Failed to parse {}: {}", bin_path.display(), e)))?;
+    let mut bin = crate::bin::read_bin(&data).map_err(|e| {
+        Error::InvalidInput(format!("Failed to parse {}: {}", bin_path.display(), e))
+    })?;
 
     if bin.entries.is_empty() {
         return Ok(None);
@@ -561,7 +581,9 @@ fn collect_asset_strings(value: &BinValue, out: &mut Vec<String>) {
                 collect_asset_strings(it, out);
             }
         }
-        BinValue::Option { value: Some(inner), .. } => collect_asset_strings(inner, out),
+        BinValue::Option {
+            value: Some(inner), ..
+        } => collect_asset_strings(inner, out),
         BinValue::Map { entries, .. } => {
             for (k, v) in entries {
                 collect_asset_strings(k, out);
@@ -579,7 +601,7 @@ fn collect_asset_strings(value: &BinValue, out: &mut Vec<String>) {
 
 /// Rewrite every asset string in a value tree via `map` (lowercased key →
 /// replacement). Returns true if anything changed.
-fn rewrite_asset_strings(value: &mut BinValue, map: &HashMap<String, String>) -> bool {
+pub(crate) fn rewrite_asset_strings(value: &mut BinValue, map: &HashMap<String, String>) -> bool {
     match value {
         BinValue::String(s) => {
             if let Some(repl) = map.get(&s.to_lowercase()) {
@@ -596,7 +618,9 @@ fn rewrite_asset_strings(value: &mut BinValue, map: &HashMap<String, String>) ->
             }
             changed
         }
-        BinValue::Option { value: Some(inner), .. } => rewrite_asset_strings(inner, map),
+        BinValue::Option {
+            value: Some(inner), ..
+        } => rewrite_asset_strings(inner, map),
         BinValue::Map { entries, .. } => {
             let mut changed = false;
             for (k, v) in entries.iter_mut() {
@@ -619,7 +643,11 @@ fn rewrite_asset_strings(value: &mut BinValue, map: &HashMap<String, String>) ->
 /// Resolve a posix asset path string to an absolute path under `project_dir`.
 fn asset_path_to_abs(project_dir: &Path, asset_path: &str) -> PathBuf {
     let mut out = project_dir.to_path_buf();
-    for seg in asset_path.replace('\\', "/").split('/').filter(|s| !s.is_empty()) {
+    for seg in asset_path
+        .replace('\\', "/")
+        .split('/')
+        .filter(|s| !s.is_empty())
+    {
         out.push(seg);
     }
     out
@@ -630,7 +658,9 @@ fn asset_path_to_abs(project_dir: &Path, asset_path: &str) -> PathBuf {
 fn build_new_path(original: &str, basename: &str) -> Option<String> {
     let norm = original.replace('\\', "/");
     let parts: Vec<&str> = norm.split('/').filter(|s| !s.is_empty()).collect();
-    let i = parts.iter().position(|p| p.eq_ignore_ascii_case("assets"))?;
+    let i = parts
+        .iter()
+        .position(|p| p.eq_ignore_ascii_case("assets"))?;
     let assets_literal = parts[i];
     Some(format!("{}/portedparticles/{}", assets_literal, basename))
 }
@@ -667,8 +697,9 @@ pub fn consolidate_assets(bin_path: &Path, project_dir: &Path) -> Result<Consoli
     let vfx_class = fnv1a_lower("VfxSystemDefinitionData");
 
     let data = std::fs::read(bin_path).map_err(|e| Error::io_with_path(e, bin_path))?;
-    let mut bin = crate::bin::read_bin(&data)
-        .map_err(|e| Error::InvalidInput(format!("Failed to parse {}: {}", bin_path.display(), e)))?;
+    let mut bin = crate::bin::read_bin(&data).map_err(|e| {
+        Error::InvalidInput(format!("Failed to parse {}: {}", bin_path.display(), e))
+    })?;
 
     // Pass 1: collect VFX vs protected (non-VFX) asset references.
     let mut vfx_refs: Vec<String> = Vec::new();
@@ -727,7 +758,8 @@ pub fn consolidate_assets(bin_path: &Path, project_dir: &Path) -> Result<Consoli
     }
 
     // Pass 3: move files on disk, clamped to project_dir.
-    let project_abs = std::fs::canonicalize(project_dir).unwrap_or_else(|_| project_dir.to_path_buf());
+    let project_abs =
+        std::fs::canonicalize(project_dir).unwrap_or_else(|_| project_dir.to_path_buf());
     let is_inside = |p: &Path| -> bool {
         let abs = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
         abs != project_abs && abs.starts_with(&project_abs)

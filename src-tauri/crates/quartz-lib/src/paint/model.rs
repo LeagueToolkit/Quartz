@@ -30,7 +30,10 @@ impl NodePath {
     fn child(&self, step: Step) -> NodePath {
         let mut steps = self.steps.clone();
         steps.push(step);
-        NodePath { entry: self.entry, steps }
+        NodePath {
+            entry: self.entry,
+            steps,
+        }
     }
 
     /// Resolve to a mutable reference into `bin`, or `None` if the path no longer
@@ -219,7 +222,10 @@ impl Hashes {
                 ),
                 (
                     ColorSlot::LingerColor,
-                    vec![fnv1a_lower("lingerColor"), fnv1a_lower("SeparateLingerColor")],
+                    vec![
+                        fnv1a_lower("lingerColor"),
+                        fnv1a_lower("SeparateLingerColor"),
+                    ],
                 ),
             ],
             textures: vec![
@@ -282,13 +288,15 @@ fn project_system(
 ) {
     let entry = &bin.entries[entry_idx];
     let system_key = entry_key(bin, entry_idx);
-    let base = NodePath { entry: entry_idx, steps: Vec::new() };
+    let base = NodePath {
+        entry: entry_idx,
+        steps: Vec::new(),
+    };
 
-    let particle_name = entry
-        .fields
-        .get(&h.particle_name)
-        .and_then(string_of);
-    let display_name = particle_name.clone().unwrap_or_else(|| short_name(&system_key));
+    let particle_name = entry.fields.get(&h.particle_name).and_then(string_of);
+    let display_name = particle_name
+        .clone()
+        .unwrap_or_else(|| short_name(&system_key));
 
     let mut system = VfxSystem {
         key: system_key.clone(),
@@ -307,9 +315,14 @@ fn project_system(
         if let BinValue::List { items, .. } = field_val {
             for (i, item) in items.iter().enumerate() {
                 let emitter_path = list_path.child(Step::Index(i));
-                if let Some(emitter) =
-                    project_emitter(item, &emitter_path, &system_key, system.emitter_keys.len(), h, index)
-                {
+                if let Some(emitter) = project_emitter(
+                    item,
+                    &emitter_path,
+                    &system_key,
+                    system.emitter_keys.len(),
+                    h,
+                    index,
+                ) {
                     system.emitter_keys.push(emitter.key.clone());
                     model.emitters.push(emitter);
                 }
@@ -347,14 +360,22 @@ fn project_emitter(
         _ => 0,
     };
     if fields.contains_key(&h.blend_mode) {
-        index.blend_modes.insert(key.clone(), path.child(Step::Field(h.blend_mode)));
+        index
+            .blend_modes
+            .insert(key.clone(), path.child(Step::Field(h.blend_mode)));
     }
 
     let mut textures = Vec::new();
     for (tex_hash, label) in &h.textures {
         if let Some(p) = fields.get(tex_hash).and_then(string_of) {
-            if !textures.iter().any(|t: &EmitterTexture| t.path == p && t.label == *label) {
-                textures.push(EmitterTexture { label: label.to_string(), path: p });
+            if !textures
+                .iter()
+                .any(|t: &EmitterTexture| t.path == p && t.label == *label)
+            {
+                textures.push(EmitterTexture {
+                    label: label.to_string(),
+                    path: p,
+                });
             }
         }
     }
@@ -397,22 +418,92 @@ fn project_emitter(
     })
 }
 
+/// Rebuild one color view from its edit target against the live tree — the
+/// partial-refresh path after a recolor. Mirrors `project_color`'s shape: the
+/// constant contributes a t=0 keyframe and list times are synthesized evenly.
+pub(crate) fn color_data_from_target(tree: &mut Bin, target: &ColorTarget) -> Option<ColorData> {
+    let mut keyframes = Vec::new();
+    if let Some(p) = &target.constant {
+        if let Some(BinValue::Vec4(v)) = p.resolve_mut(tree) {
+            keyframes.push(ColorKeyframe {
+                rgba: *v,
+                time: 0.0,
+            });
+        }
+    }
+    let count = target.keyframes.len();
+    for (i, p) in target.keyframes.iter().enumerate() {
+        if let Some(BinValue::Vec4(v)) = p.resolve_mut(tree) {
+            let time = if count <= 1 {
+                0.0
+            } else {
+                i as f32 / (count - 1) as f32
+            };
+            keyframes.push(ColorKeyframe { rgba: *v, time });
+        }
+    }
+    if keyframes.is_empty() {
+        return None;
+    }
+    Some(ColorData {
+        keyframes,
+        is_constant: target.keyframes.is_empty(),
+    })
+}
+
+/// Assemble a full per-emitter color view from its slot map (partial refresh).
+pub(crate) fn emitter_colors_from_targets(
+    tree: &mut Bin,
+    slots: &HashMap<ColorSlot, ColorTarget>,
+) -> EmitterColors {
+    let mut get = |slot: ColorSlot| -> Option<ColorData> {
+        slots
+            .get(&slot)
+            .and_then(|t| color_data_from_target(tree, t))
+    };
+    EmitterColors {
+        color: get(ColorSlot::Color),
+        birth_color: get(ColorSlot::BirthColor),
+        fresnel_color: get(ColorSlot::FresnelColor),
+        linger_color: get(ColorSlot::LingerColor),
+    }
+}
+
 /// Parse a color field, which is either a `ValueColor` embed (constantValue +
 /// values/times) or a bare vec4. Returns the view data and the edit target.
-fn project_color(field: &BinValue, path: &NodePath, h: &Hashes) -> Option<(ColorData, ColorTarget)> {
+fn project_color(
+    field: &BinValue,
+    path: &NodePath,
+    h: &Hashes,
+) -> Option<(ColorData, ColorTarget)> {
     match field {
         // Simple vec4 color (fresnelColor/outlineColor/lingerColor: vec4 = {...}).
         BinValue::Vec4(v) => Some((
-            ColorData { keyframes: vec![ColorKeyframe { rgba: *v, time: 0.0 }], is_constant: true },
-            ColorTarget { constant: Some(path.clone()), keyframes: Vec::new() },
+            ColorData {
+                keyframes: vec![ColorKeyframe {
+                    rgba: *v,
+                    time: 0.0,
+                }],
+                is_constant: true,
+            },
+            ColorTarget {
+                constant: Some(path.clone()),
+                keyframes: Vec::new(),
+            },
         )),
         // ValueColor embed/pointer.
         BinValue::Embed { fields, .. } | BinValue::Pointer { fields, .. } => {
             let mut keyframes = Vec::new();
-            let mut target = ColorTarget { constant: None, keyframes: Vec::new() };
+            let mut target = ColorTarget {
+                constant: None,
+                keyframes: Vec::new(),
+            };
 
             if let Some(BinValue::Vec4(v)) = fields.get(&h.constant_value) {
-                keyframes.push(ColorKeyframe { rgba: *v, time: 0.0 });
+                keyframes.push(ColorKeyframe {
+                    rgba: *v,
+                    time: 0.0,
+                });
                 target.constant = Some(path.child(Step::Field(h.constant_value)));
             }
 
@@ -421,7 +512,11 @@ fn project_color(field: &BinValue, path: &NodePath, h: &Hashes) -> Option<(Color
                 let count = items.len();
                 for (i, item) in items.iter().enumerate() {
                     if let BinValue::Vec4(v) = item {
-                        let time = if count <= 1 { 0.0 } else { i as f32 / (count - 1) as f32 };
+                        let time = if count <= 1 {
+                            0.0
+                        } else {
+                            i as f32 / (count - 1) as f32
+                        };
                         keyframes.push(ColorKeyframe { rgba: *v, time });
                         target.keyframes.push(values_path.child(Step::Index(i)));
                     }
@@ -432,7 +527,13 @@ fn project_color(field: &BinValue, path: &NodePath, h: &Hashes) -> Option<(Color
                 return None;
             }
             let is_constant = target.keyframes.is_empty();
-            Some((ColorData { keyframes, is_constant }, target))
+            Some((
+                ColorData {
+                    keyframes,
+                    is_constant,
+                },
+                target,
+            ))
         }
         _ => None,
     }
@@ -447,7 +548,10 @@ fn project_material(
 ) {
     let entry = &bin.entries[entry_idx];
     let material_key = entry_key(bin, entry_idx);
-    let base = NodePath { entry: entry_idx, steps: Vec::new() };
+    let base = NodePath {
+        entry: entry_idx,
+        steps: Vec::new(),
+    };
 
     let mut color_params = Vec::new();
 
@@ -470,7 +574,11 @@ fn project_material(
                     .child(Step::Index(i))
                     .child(Step::Field(h.param_value));
                 index.material_params.insert(selection_key, value_path);
-                color_params.push(MaterialParam { name, values: *v, is_color: true });
+                color_params.push(MaterialParam {
+                    name,
+                    values: *v,
+                    is_color: true,
+                });
                 model.stats.color_param_count += 1;
             }
         }
@@ -549,8 +657,20 @@ mod tests {
         let mut emitter_fields = IndexMap::new();
         emitter_fields.insert(h_emitter_name, BinValue::String("Sparkles".into()));
         emitter_fields.insert(h_blend, BinValue::U8(3));
-        emitter_fields.insert(h_color, BinValue::Embed { class: 0xAABB, fields: color_fields });
-        emitter_fields.insert(h_birth, BinValue::Embed { class: 0xAABB, fields: birth_fields });
+        emitter_fields.insert(
+            h_color,
+            BinValue::Embed {
+                class: 0xAABB,
+                fields: color_fields,
+            },
+        );
+        emitter_fields.insert(
+            h_birth,
+            BinValue::Embed {
+                class: 0xAABB,
+                fields: birth_fields,
+            },
+        );
 
         let mut system_fields = IndexMap::new();
         system_fields.insert(
@@ -558,7 +678,10 @@ mod tests {
             BinValue::List {
                 is_list2: false,
                 item: BinType::Embed,
-                items: vec![BinValue::Embed { class: 0xCCDD, fields: emitter_fields }],
+                items: vec![BinValue::Embed {
+                    class: 0xCCDD,
+                    fields: emitter_fields,
+                }],
             },
         );
 
@@ -589,7 +712,10 @@ mod tests {
         assert_eq!(birth.keyframes.len(), 2);
 
         // Edit index has both colors + the blend mode for this emitter.
-        let slots = index.emitter_colors.get(&emitter.key).expect("color targets");
+        let slots = index
+            .emitter_colors
+            .get(&emitter.key)
+            .expect("color targets");
         assert!(slots.contains_key(&ColorSlot::Color));
         assert!(slots.contains_key(&ColorSlot::BirthColor));
         assert!(index.blend_modes.contains_key(&emitter.key));

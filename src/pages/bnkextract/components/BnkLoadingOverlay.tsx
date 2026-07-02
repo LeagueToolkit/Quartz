@@ -22,7 +22,7 @@ export default function BnkLoadingOverlay({ isLoading, autoExtractOpen, statusMe
                 open={isLoading && autoExtractOpen === false}
             >
                 <CircularProgress color="inherit" />
-                <Typography sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
                     {statusMessage}
                 </Typography>
             </Backdrop>

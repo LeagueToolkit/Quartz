@@ -2,8 +2,7 @@ import CropOriginalIcon from '@mui/icons-material/CropOriginal';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { RenameInput } from '../common/Inputs';
-import { isDivineLabChildParticle } from '../../utils/childParticlesManager';
-import type { VfxEmitter, VfxSystem } from '../../utils/vfxEmitterParser';
+import { isDivineLabChildParticle, type VfxEmitter, type VfxSystem } from '../../model';
 import type { ListSharedProps } from './types';
 
 interface EmitterItemProps extends ListSharedProps {
@@ -117,7 +116,7 @@ export default function EmitterItem({
                     className="label flex-1 ellipsis"
                     style={{
                         minWidth: 0,
-                        color: isTarget ? 'var(--accent-primary)' : 'var(--accent-secondary)',
+                        color: 'var(--text-secondary)',
                         fontWeight: 600,
                         fontSize: '0.95rem',
                     }}

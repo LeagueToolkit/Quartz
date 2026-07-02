@@ -1,8 +1,7 @@
 import React from 'react';
 import { IconButton, Menu, MenuItem } from '@mui/material';
 import { MoreHoriz as MoreHorizIcon, Delete as DeleteIcon, AddCircleOutline as AddIcon, GridOn as MatrixIcon } from '@mui/icons-material';
-import { parseSystemMatrix } from '../utils/matrixUtils';
-import type { VfxSystem } from '../utils/vfxEmitterParser';
+import type { VfxSystem } from '../model';
 
 interface SystemActionsButtonProps {
     system: VfxSystem;
@@ -150,17 +149,11 @@ const SystemActionsButton = React.memo(
 
                         <MenuItem
                             onClick={handleAction(() => {
-                                try {
-                                    const sysText = system.rawContent || '';
-                                    const parsed = parseSystemMatrix(sysText);
-                                    setMatrixModalState?.({
-                                        systemKey: system.key,
-                                        initial: parsed.matrix || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-                                    });
-                                    setShowMatrixModal?.(true);
-                                } catch {
-                                    /* noop */
-                                }
+                                setMatrixModalState?.({
+                                    systemKey: system.key,
+                                    initial: system.transform && system.transform.length >= 16 ? system.transform.slice(0, 16) : [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+                                });
+                                setShowMatrixModal?.(true);
                             })}
                             sx={menuItemSx()}
                         >

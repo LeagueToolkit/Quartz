@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Type, FolderOpen, RefreshCw, Plus, Trash2 } from 'lucide-react';
+import { Type, FolderOpen, RefreshCw, Plus, Trash2, Palette, Image, MousePointerClick, Sparkles } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { FormGroup, CustomSelect, Button } from '../primitives';
+import { FormGroup, CustomSelect, Button, cardSurface } from '../primitives';
 import { ThemeCardGrid } from '../ThemeCardGrid';
 import { useUiPrefsStore, applyUiPrefs, useThemeStore } from '@/lib/stores';
 import { CLICK_EFFECT_TYPES, BACKGROUND_EFFECT_TYPES } from '@/lib/theme/behaviors';
@@ -13,10 +13,7 @@ import {
 } from '@/lib/api';
 import { log } from '@/lib/util/logger';
 
-const card: React.CSSProperties = {
-    background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-sm)', padding: '16px',
-};
+const card = cardSurface;
 
 function Range({ value, min, max, step, onChange }: { value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
     return (
@@ -88,7 +85,7 @@ export function AppearanceSection() {
     };
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <FormGroup label="Font Family" description="Select the interface font">
+            <FormGroup label="Font Family" icon={<Type size={15} />}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                     <div style={{ flex: 1 }}>
                         <CustomSelect value={prefs.font} onChange={onFontChange} icon={<Type size={16} />} options={fonts} />
@@ -98,17 +95,11 @@ export function AppearanceSection() {
                 </div>
             </FormGroup>
 
-            <FormGroup label="Performance Mode" description="Reduce heavy visual effects on weaker hardware">
-                <Checkbox checked={prefs.performanceMode} onChange={(c) => { set('performanceMode', c); applyUiPrefs(); }}>
-                    Reduce blur, glow, and animations
-                </Checkbox>
-            </FormGroup>
-
-            <FormGroup label="Color Theme" description="Pick a base, choose a theme, click its dot to customize the accent">
+            <FormGroup label="Color Theme" icon={<Palette size={15} />}>
                 <ThemeCardGrid />
             </FormGroup>
 
-            <FormGroup label="Wallpaper" description="Set a background image that covers the entire app">
+            <FormGroup label="Wallpaper" icon={<Image size={15} />}>
                 <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <Checkbox checked={prefs.wallpaperEnabled} onChange={setWallpaperEnabled}>Enable wallpaper</Checkbox>
                     <div style={{ display: 'flex', gap: '8px' }}>
@@ -147,7 +138,7 @@ export function AppearanceSection() {
                 </div>
             </FormGroup>
 
-            <FormGroup label="Click Effect" description="Show interactive visual effects on click">
+            <FormGroup label="Click Effect" icon={<MousePointerClick size={15} />}>
                 <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <Checkbox checked={prefs.clickEffectEnabled} onChange={(c) => set('clickEffectEnabled', c)}>Enable click effect</Checkbox>
                     <CustomSelect value={prefs.clickEffectType} onChange={(v) => set('clickEffectType', v)}
@@ -156,7 +147,7 @@ export function AppearanceSection() {
                 </div>
             </FormGroup>
 
-            <FormGroup label="Background Effect" description="Show animated background effects">
+            <FormGroup label="Background Effect" icon={<Sparkles size={15} />}>
                 <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <Checkbox checked={prefs.backgroundEffectEnabled} onChange={(c) => set('backgroundEffectEnabled', c)}>Enable background effect</Checkbox>
                     <CustomSelect value={prefs.backgroundEffectType} onChange={(v) => set('backgroundEffectType', v)}

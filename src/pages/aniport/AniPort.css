@@ -11,7 +11,7 @@
   flex-direction: column;
   background: var(--surface-gradient);
   color: var(--text);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: small;
   position: relative;
 }
@@ -109,7 +109,7 @@
   margin-bottom: 20px;
   font-size: 1.2rem;
   text-align: center;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-weight: 700;
 }
 
@@ -145,7 +145,7 @@
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   font-size: 14px;
   text-align: center;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
   backdrop-filter: saturate(180%) blur(16px);
   -webkit-backdrop-filter: saturate(180%) blur(16px);
@@ -284,7 +284,7 @@
   font-size: 1rem;
   margin-bottom: 3px;
   color: var(--accent);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .target-panel .panel-header h3 {
@@ -299,7 +299,7 @@
   color: var(--accent-muted);
   font-size: 0.8rem;
   margin: 0;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Panel Search Bars */
@@ -319,7 +319,7 @@
   font-size: small;
   outline: none;
   transition: all 0.3s ease;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .search-input:focus {
@@ -337,7 +337,7 @@
   font-size: 0.7rem;
   color: var(--accent-muted);
   text-align: right;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .animation-list {
@@ -408,7 +408,7 @@
   font-weight: bold;
   font-size: 0.9rem;
   color: var(--text);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .clip-type {
@@ -418,7 +418,7 @@
   padding: 1px 6px;
   border-radius: 0.2rem;
   width: fit-content;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .clip-stats {
@@ -431,7 +431,7 @@
   color: var(--accent);
   font-weight: 500;
   font-size: 0.8rem;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Clip Delete Button */
@@ -509,13 +509,13 @@
   color: var(--accent);
   text-transform: capitalize;
   font-size: 0.8rem;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .event-type-count {
   color: var(--accent-muted);
   font-size: 0.7rem;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .event-item {
@@ -610,7 +610,7 @@
   color: var(--text);
   text-transform: capitalize;
   font-size: 0.8rem;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .drag-hint {
@@ -618,13 +618,13 @@
   color: var(--accent2);
   font-size: 0.7rem;
   font-weight: 500;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .event-details {
   color: var(--accent);
   font-size: 0.7rem;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   background: var(--surface);
   padding: 4px 6px;
   border-radius: 0.2rem;
@@ -670,7 +670,7 @@
 .drop-zone-text {
   color: var(--accent-muted);
   font-size: 0.8rem;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 /* No clips message */
@@ -683,7 +683,7 @@
 .no-clips p {
   margin: 10px 0;
   font-size: 0.9rem;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .no-clips p:first-child {
@@ -704,7 +704,7 @@
   flex: 1;
   padding: 8px 16px;
   border-radius: 0.4rem;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: small;
   font-weight: 600;
   cursor: pointer;
@@ -761,7 +761,7 @@
   font-size: 0.7rem;
   color: var(--accent-muted);
   text-align: center;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Processing Overlay */
@@ -789,7 +789,7 @@
   font-size: 1.1rem;
   margin-bottom: 15px;
   color: var(--accent);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Responsive Design */
@@ -868,7 +868,7 @@
   border-radius: 3px;
   padding: 2px 4px;
   font-size: 8px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   color: var(--accent);
   transition: all 0.2s ease;
 }
@@ -902,7 +902,7 @@
   padding: 2px 6px;
   border-radius: 3px;
   border: 1px solid var(--border);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .no-value {
@@ -931,7 +931,7 @@
 .clip-name-input {
   flex: 1;
   margin: 0;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
@@ -942,13 +942,13 @@
   padding: 2px 6px;
   border-radius: 3px;
   border: 1px solid var(--border);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   white-space: nowrap;
 }
 
 /* Animation File Path Input Styles */
 .animation-path-input {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   min-width: 400px;
   max-width: 600px;
@@ -970,7 +970,7 @@
   padding: 4px 8px;
   font-size: 11px;
   color: var(--accent);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .new-clip-type-select {
@@ -980,7 +980,7 @@
   padding: 4px 6px;
   border-radius: 3px;
   font-size: 11px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .new-clip-create-btn {
@@ -1014,7 +1014,7 @@
   padding: 4px 6px;
   font-size: 11px;
   color: var(--accent);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .sequencer-select {
@@ -1024,7 +1024,7 @@
   padding: 4px 6px;
   border-radius: 3px;
   font-size: 11px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .ensure-eventmap-btn {
@@ -1102,7 +1102,7 @@
   padding: 2px 4px;
   font-size: 10px;
   color: var(--accent);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .save-probability-btn {
@@ -1174,7 +1174,7 @@
   padding: 4px 6px;
   font-size: 11px;
   color: var(--accent);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .probability-input {
@@ -1185,7 +1185,7 @@
   padding: 4px 6px;
   font-size: 11px;
   color: var(--accent);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .selector-select {
@@ -1195,7 +1195,7 @@
   padding: 4px 6px;
   border-radius: 3px;
   font-size: 11px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   min-width: 150px;
 }
 
@@ -1217,7 +1217,7 @@
   transition: all 0.2s ease;
   opacity: 0.8;
   font-weight: 500;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .edit-name-btn:hover {
@@ -1246,7 +1246,7 @@
   font-weight: 500;
   min-width: 100px;
   outline: none;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .clip-name-input:focus {
@@ -1269,7 +1269,7 @@
   padding: 1px 4px;
   border-radius: 2px;
   transition: all 0.2s ease;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .save-name-btn {
@@ -1688,7 +1688,7 @@
   background: transparent;
   border: none;
   color: var(--accent-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;

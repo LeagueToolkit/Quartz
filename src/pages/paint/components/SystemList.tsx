@@ -7,8 +7,9 @@
  * only the rows whose own state changed, not the whole list.
  */
 
-import React, { useMemo, useRef, useState, useEffect, type CSSProperties } from 'react';
-import { Box, Typography, Checkbox, IconButton, Tooltip } from '@mui/material';
+import React, { useMemo, type CSSProperties } from 'react';
+import { List, type RowComponentProps } from 'react-window';
+import { Box, Typography, Checkbox, IconButton } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
@@ -142,11 +143,9 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                     {isExpanded ? <ExpandMoreIcon sx={{ fontSize: '1.4rem' }} /> : <ChevronRightIcon sx={{ fontSize: '1.4rem' }} />}
                 </Box>
                 <PaletteIcon sx={{ fontSize: 22, color: 'var(--accent-primary)', opacity: 0.8 }} />
-                <Tooltip title={row.material?.name}>
-                    <Typography sx={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: '1rem', fontWeight: 700, color: 'var(--accent-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {row.material?.name || 'Material'}
-                    </Typography>
-                </Tooltip>
+                <Typography title={row.material?.name} sx={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: '1rem', fontWeight: 700, color: 'var(--accent-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {row.material?.name || 'Material'}
+                </Typography>
                 <Typography sx={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                     {colorParams.length} colors{allParams.length > colorParams.length && ` / ${allParams.length} total`}
                 </Typography>
@@ -263,11 +262,9 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                 <Box sx={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)', mr: -0.5 }}>
                     {isExpanded ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
                 </Box>
-                <Tooltip title={systemName}>
-                    <Typography sx={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: '0.9rem', fontWeight: 600, color: isLocked ? 'var(--text-muted)' : 'var(--accent-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {displaySystemName}
-                    </Typography>
-                </Tooltip>
+                <Typography title={systemName} sx={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: '0.9rem', fontWeight: 600, color: isLocked ? 'var(--text-muted)' : 'var(--accent-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {displaySystemName}
+                </Typography>
                 <Typography sx={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', mr: 2 }}>
                     {row.matchingCount} emitters
                 </Typography>
@@ -463,87 +460,66 @@ function SystemList(props: SystemListProps) {
         });
     }, [rows, selection, lockedSystems, expandedSystems, expandedMaterials]);
 
+    /* Everything a row needs, in ONE memo-stable object. react-window re-renders
+       rows only when a value in rowProps changes; keeping this reference stable
+       (and its members either memoized arrays or useCallback'd handlers) is what
+       lets the memoized Row skip re-rendering on pure scroll. */
+    const rowProps = useMemo<RwRowProps>(() => ({
+        rows,
+        rowStates,
+        showBirthColor: props.showBirthColor,
+        showOC: props.showOC,
+        showLingerColor: props.showLingerColor,
+        showBaseColor,
+        onToggleEmitter: props.onToggleEmitter,
+        onToggleSystem: props.onToggleSystem,
+        onToggleLock: props.onToggleLock,
+        onToggleExpand: props.onToggleExpand,
+        onToggleMaterialExpand: props.onToggleMaterialExpand,
+        onToggleMaterialParam: props.onToggleMaterialParam,
+        onMaterialParamValueChange: props.onMaterialParamValueChange,
+        onColorClick: props.onColorClick,
+        onSetBlendMode: props.onSetBlendMode,
+        onTextureHover: props.onTextureHover,
+        onTextureLeave: props.onTextureLeave,
+        onTextureClick: props.onTextureClick,
+    }), [
+        rows, rowStates, showBaseColor,
+        props.showBirthColor, props.showOC, props.showLingerColor,
+        props.onToggleEmitter, props.onToggleSystem, props.onToggleLock, props.onToggleExpand,
+        props.onToggleMaterialExpand, props.onToggleMaterialParam, props.onMaterialParamValueChange,
+        props.onColorClick, props.onSetBlendMode, props.onTextureHover, props.onTextureLeave, props.onTextureClick,
+    ]);
+
+    /* react-window List: fills its parent, scrolls on the compositor thread (the
+       GPU-composited scroll the old paint2 had — smooth even while React mounts
+       new rows on the main thread), and recycles the row DOM. This is the fix
+       for the thumb outrunning content on a fast fling. */
     return (
-        <VirtualList
-            className="paint2-system-scroll"
+        <List
+            className="paint2-system-scroll react-window-list"
             rowCount={rows.length}
             rowHeight={ROW_HEIGHT}
-            renderRow={(index, style) => {
-                const row = rows[index];
-                return (
-                    <Row
-                        key={row.key}
-                        row={row}
-                        state={rowStates[index]}
-                        style={style}
-                        showBirthColor={props.showBirthColor}
-                        showOC={props.showOC}
-                        showLingerColor={props.showLingerColor}
-                        showBaseColor={showBaseColor}
-                        onToggleEmitter={props.onToggleEmitter}
-                        onToggleSystem={props.onToggleSystem}
-                        onToggleLock={props.onToggleLock}
-                        onToggleExpand={props.onToggleExpand}
-                        onToggleMaterialExpand={props.onToggleMaterialExpand}
-                        onToggleMaterialParam={props.onToggleMaterialParam}
-                        onMaterialParamValueChange={props.onMaterialParamValueChange}
-                        onColorClick={props.onColorClick}
-                        onSetBlendMode={props.onSetBlendMode}
-                        onTextureHover={props.onTextureHover}
-                        onTextureLeave={props.onTextureLeave}
-                        onTextureClick={props.onTextureClick}
-                    />
-                );
-            }}
+            rowComponent={RwRow}
+            rowProps={rowProps}
+            overscanCount={8}
+            style={{ height: '100%', width: '100%' }}
         />
     );
 }
 
-/* Fixed-height row virtualizer — only the visible window (plus overscan) mounts.
-   Same pattern as the WAD explorer's VirtualList. */
-interface VirtualListProps {
-    rowCount: number;
-    rowHeight: number;
-    className?: string;
-    renderRow: (index: number, style: CSSProperties) => React.ReactNode;
-}
+/* Adapter between react-window's (index, style, ...rowProps) row API and the
+   memoized Row above (which takes row/state/style + handlers). Kept out of the
+   Row component so Row's memo comparison stays on plain props. */
+type RwRowProps = {
+    rows: ListRow[];
+    rowStates: RowState[];
+} & RowHandlers;
 
-function VirtualList({ rowCount, rowHeight, className, renderRow }: VirtualListProps) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const [scrollTop, setScrollTop] = useState(0);
-    const [height, setHeight] = useState(0);
-
-    useEffect(() => {
-        const el = containerRef.current;
-        if (!el) return;
-        const obs = new ResizeObserver((entries) => {
-            const e = entries[0];
-            if (e) setHeight(e.contentRect.height);
-        });
-        obs.observe(el);
-        return () => obs.disconnect();
-    }, []);
-
-    const overscan = 8;
-    const start = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
-    const visibleCount = Math.ceil((height || 0) / rowHeight) + overscan * 2;
-    const end = Math.min(rowCount, start + visibleCount);
-
-    const out: React.ReactNode[] = [];
-    for (let i = start; i < end; i++) {
-        out.push(renderRow(i, { position: 'absolute', top: i * rowHeight, left: 0, right: 0, height: rowHeight }));
-    }
-
-    return (
-        <div
-            ref={containerRef}
-            className={className}
-            onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
-            style={{ width: '100%', height: '100%', overflowY: 'auto', overflowX: 'hidden', position: 'relative' }}
-        >
-            <div style={{ height: rowCount * rowHeight, position: 'relative' }}>{out}</div>
-        </div>
-    );
+function RwRow({ index, style, rows, rowStates, ...handlers }: RowComponentProps<RwRowProps>) {
+    const row = rows[index];
+    if (!row) return null;
+    return <Row row={row} state={rowStates[index]} style={style} {...handlers} />;
 }
 
 export default React.memo(SystemList);

@@ -29,7 +29,9 @@ pub struct ResolvedHashes {
 }
 
 impl ResolvedHashes {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Pre-size both the index and the arena. `entries` should be the
     /// expected number of hits; `arena_bytes` an estimate of total UTF-8.
@@ -59,7 +61,9 @@ impl ResolvedHashes {
         Some(unsafe { std::str::from_utf8_unchecked(&self.arena[start..end]) })
     }
 
-    pub fn contains_key(&self, hash: &u64) -> bool { self.index.contains_key(hash) }
+    pub fn contains_key(&self, hash: &u64) -> bool {
+        self.index.contains_key(hash)
+    }
 
     pub fn iter(&self) -> impl Iterator<Item = (u64, &str)> + '_ {
         let arena = &self.arena;
@@ -67,12 +71,18 @@ impl ResolvedHashes {
             let start = *off as usize;
             let end = start + *len as usize;
             // SAFETY: same invariant as `get`.
-            (*h, unsafe { std::str::from_utf8_unchecked(&arena[start..end]) })
+            (*h, unsafe {
+                std::str::from_utf8_unchecked(&arena[start..end])
+            })
         })
     }
 
-    pub fn len(&self) -> usize { self.index.len() }
-    pub fn is_empty(&self) -> bool { self.index.is_empty() }
+    pub fn len(&self) -> usize {
+        self.index.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.index.is_empty()
+    }
 
     /// Merge another arena into this one, rewriting offsets.
     pub fn extend_arena(&mut self, other: ResolvedHashes) {
@@ -126,10 +136,15 @@ fn open_env(lmdb_dir: &Path) -> Option<heed::Env> {
 
     // 1 GB virtual address reservation — actual RAM use is only what's touched.
     // `max_dbs(2)` so we can open the named DB by name.
+    // `max_readers` well above LMDB's default 126: `resolve_hashes_lmdb_bulk`
+    // fans read txns across the whole rayon pool, and callers that loop it (the
+    // Asset Extractor scans ~170 champion WADs back to back) otherwise exhaust
+    // the reader-slot table, which on Windows surfaced as heap corruption.
     match unsafe {
         EnvOpenOptions::new()
             .map_size(1024 * 1024 * 1024)
             .max_dbs(2)
+            .max_readers(1024)
             .open(lmdb_dir)
     } {
         Ok(e) => Some(e),
@@ -140,10 +155,7 @@ fn open_env(lmdb_dir: &Path) -> Option<heed::Env> {
     }
 }
 
-fn get_cached_env(
-    slot: &Mutex<Option<EnvCache>>,
-    lmdb_dir: &Path,
-) -> Option<Arc<heed::Env>> {
+fn get_cached_env(slot: &Mutex<Option<EnvCache>>, lmdb_dir: &Path) -> Option<Arc<heed::Env>> {
     let key = lmdb_dir.to_string_lossy().into_owned();
     let mut g = slot.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -156,7 +168,10 @@ fn get_cached_env(
     tracing::info!("Opening LMDB env: {}", lmdb_dir.display());
     let env = open_env(lmdb_dir)?;
     let arc = Arc::new(env);
-    *g = Some(EnvCache { key, env: Arc::clone(&arc) });
+    *g = Some(EnvCache {
+        key,
+        env: Arc::clone(&arc),
+    });
     Some(arc)
 }
 
@@ -207,7 +222,10 @@ fn open_read_db<'a>(
     name: &str,
 ) -> Option<(heed::RoTxn<'a>, Database<Bytes, Str>)> {
     let rtxn = env.read_txn().ok()?;
-    let db = env.open_database::<Bytes, Str>(&rtxn, Some(name)).ok().flatten()?;
+    let db = env
+        .open_database::<Bytes, Str>(&rtxn, Some(name))
+        .ok()
+        .flatten()?;
     Some((rtxn, db))
 }
 
@@ -247,10 +265,7 @@ pub fn resolve_hashes_lmdb(hashes: &[u64], env: &heed::Env) -> Vec<String> {
 /// readers — every thread opens its own short-lived `RoTxn` and walks its
 /// own slice. With 720K lookups, single-threaded was page-fault-bound at
 /// ~14s cold; the parallel version pipelines those faults across cores.
-pub fn resolve_hashes_lmdb_bulk(
-    hashes: &[u64],
-    env: &heed::Env,
-) -> ResolvedHashes {
+pub fn resolve_hashes_lmdb_bulk(hashes: &[u64], env: &heed::Env) -> ResolvedHashes {
     use rayon::prelude::*;
 
     if hashes.is_empty() {
@@ -277,10 +292,8 @@ pub fn resolve_hashes_lmdb_bulk(
             let Some((rtxn, db)) = open_read_db(env, "wad") else {
                 return ResolvedHashes::default();
             };
-            let mut local = ResolvedHashes::with_capacity(
-                chunk.len() / 2,
-                chunk.len() * ARENA_GUESS_PER_HASH,
-            );
+            let mut local =
+                ResolvedHashes::with_capacity(chunk.len() / 2, chunk.len() * ARENA_GUESS_PER_HASH);
             for h in chunk {
                 let key = h.to_be_bytes();
                 if let Ok(Some(s)) = db.get(&rtxn, &key[..]) {

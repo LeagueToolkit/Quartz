@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { Box, Tooltip } from '@mui/material';
+import { Box } from '@mui/material';
 
 interface ColorKeyframe {
     rgba: number[];
@@ -72,36 +72,35 @@ function ColorBlock({ colors, title, variant = 'standard', onClick }: ColorBlock
         : `${title}: ${colors.length} keyframes`;
 
     return (
-        <Tooltip title={tooltipContent} placement="top">
+        <Box
+            onClick={onClick}
+            title={tooltipContent}
+            sx={{
+                ...dimensions,
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                // Solid backing behind the data-color swatch so alpha doesn't bleed.
+                backgroundColor: 'var(--bg-primary)',
+                cursor: 'pointer',
+                flexShrink: 0,
+                overflow: 'hidden',
+                position: 'relative',
+                transition: 'transform 0.1s, border-color 0.1s',
+                '&:hover': {
+                    transform: 'translateY(-1px)',
+                    borderColor: 'var(--accent-primary)',
+                },
+            }}
+        >
             <Box
-                onClick={onClick}
                 sx={{
-                    ...dimensions,
-                    borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--border)',
-                    // Solid backing behind the data-color swatch so alpha doesn't bleed.
-                    backgroundColor: 'var(--bg-primary)',
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                    overflow: 'hidden',
-                    position: 'relative',
-                    transition: 'transform 0.1s, border-color 0.1s',
-                    '&:hover': {
-                        transform: 'translateY(-1px)',
-                        borderColor: 'var(--accent-primary)',
-                    },
+                    position: 'absolute',
+                    inset: 0,
+                    background,
+                    borderRadius: '3px',
                 }}
-            >
-                <Box
-                    sx={{
-                        position: 'absolute',
-                        inset: 0,
-                        background,
-                        borderRadius: '3px',
-                    }}
-                />
-            </Box>
-        </Tooltip>
+            />
+        </Box>
     );
 }
 

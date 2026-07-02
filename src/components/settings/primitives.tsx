@@ -4,19 +4,77 @@ import { Check, AlertTriangle, Eye, EyeOff, ChevronDown } from 'lucide-react';
 /* Ported 1:1 from the original Quartz SettingsPrimitives — plain React +
    inline styles driven by the theme CSS variables. */
 
-export const FormGroup = ({ label, description, children }: {
-    label: string; description?: string; children: ReactNode;
+/* Shared card surface used by every settings section — matches the Design Lab
+   toggle rows (--bg-tertiary + --border). */
+export const cardSurface: CSSProperties = {
+    background: 'var(--bg-tertiary)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    padding: '16px',
+};
+
+/* Celestial-style grid: separate bordered cards, two per row (wraps to one on
+   narrow widths). */
+export const CardList = ({ children }: { children: ReactNode }) => (
+    <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+        gap: '10px',
+    }}>{children}</div>
+);
+
+/* A single setting card — reuses the Design Lab's `.dl-toggle-row` chrome so
+   settings match the rest of the app. Optional accent `icon`, label/description
+   left, `control` right. `fullWidth` spans every column in a CardList grid.
+   `onActivate` makes the whole row clickable (e.g. to toggle its switch); the
+   control keeps its own click so tapping it directly doesn't double-fire. */
+export const CardRow = ({ icon, label, description, control, fullWidth, onActivate }: {
+    icon?: ReactNode; label: string; description?: string; control: ReactNode; fullWidth?: boolean;
+    onActivate?: () => void;
 }) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <div>
-            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--settings-subtle-ink, var(--accent-2))', display: 'block' }}>
-                {label}
-            </label>
-            {description && (
-                <span style={{ fontSize: '11px', color: 'var(--settings-muted, var(--text))', display: 'block', marginTop: '2px' }}>
-                    {description}
+    <div
+        className="dl-toggle-row"
+        onClick={onActivate}
+        style={{
+            cursor: onActivate ? 'pointer' : undefined,
+            ...(fullWidth ? { gridColumn: '1 / -1' } : {}),
+        }}
+    >
+        {icon && (
+            <span style={{ color: 'var(--accent-primary)', display: 'inline-flex', flexShrink: 0 }}>{icon}</span>
+        )}
+        <div className="dl-toggle-row__text">
+            <span className="dl-toggle-row__label">{label}</span>
+            {description && <span className="dl-toggle-row__desc">{description}</span>}
+        </div>
+        <div style={{ flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>{control}</div>
+    </div>
+);
+
+export const FormGroup = ({ label, icon, children }: {
+    label: string; icon?: ReactNode; children: ReactNode;
+}) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {/* Celestial-style section header: optional accent-tinted icon tile +
+           uppercase, letter-spaced label with a trailing divider rule. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {icon && (
+                <span style={{
+                    display: 'grid', placeItems: 'center', flexShrink: 0,
+                    width: '28px', height: '28px', borderRadius: 'var(--radius-sm)',
+                    color: 'var(--accent-primary)',
+                    background: 'color-mix(in srgb, var(--accent-primary) 16%, transparent)',
+                }}>
+                    {icon}
                 </span>
             )}
+            <span style={{
+                fontSize: '12px', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+                color: 'color-mix(in srgb, var(--accent-primary) 70%, white 28%)', whiteSpace: 'nowrap',
+            }}>
+                {label}
+            </span>
+            <div style={{ flex: 1, height: '1px', background: 'var(--border)' }} />
         </div>
         {children}
     </div>
@@ -143,16 +201,22 @@ export const InputWithToggle = ({ showValue, onToggle, ...props }: InputProps & 
     </div>
 );
 
+/* Bare toggle switch — no text label/padding. Wrapped in a <label> so the whole
+   control area toggles the input natively. Used as a CardRow control. */
+export const Switch = ({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
+    <label className="dl-toggle" style={{ cursor: disabled ? 'not-allowed' : 'pointer' }}>
+        <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+        <span className="dl-toggle__track" />
+        <span className="dl-toggle__thumb" />
+    </label>
+);
+
 export const ToggleSwitch = ({ label, checked, onChange, compact }: {
     label: string; checked: boolean; onChange: (v: boolean) => void; compact?: boolean;
 }) => (
     <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', cursor: 'pointer', padding: compact ? '6px 0' : '10px 0', userSelect: 'none' }}>
         {label && <span style={{ fontSize: compact ? '12px' : '13px', color: 'var(--text-secondary)', flex: 1 }}>{label}</span>}
-        <span className="dl-toggle">
-            <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-            <span className="dl-toggle__track" />
-            <span className="dl-toggle__thumb" />
-        </span>
+        <Switch checked={checked} onChange={onChange} />
     </label>
 );
 

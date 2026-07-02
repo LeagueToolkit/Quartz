@@ -1,10 +1,11 @@
 import React, { useCallback } from 'react';
 import SearchIcon from '@mui/icons-material/Search';
-import { FolderOpen as FolderOpenIcon } from 'lucide-react';
+import { FolderOpen as FolderOpenIcon, Scissors as ScissorsIcon } from 'lucide-react';
 import { SearchInput } from './common/Inputs';
 import { useBinFileDrop } from './common/binFileDrop';
+import PortRecentBins from './common/PortRecentBins';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
-import type { VfxSystem, VfxSystemMap } from '../utils/vfxEmitterParser';
+import type { VfxSystem, VfxSystemMap } from '../model';
 import type { ListSharedProps } from './ParticleSystemList/types';
 
 interface TargetColumnProps extends ListSharedProps {
@@ -24,6 +25,8 @@ interface TargetColumnProps extends ListSharedProps {
     targetSystems: VfxSystemMap;
     targetListRef: React.RefObject<HTMLDivElement>;
     filteredTargetSystems: VfxSystem[];
+    trimTargetNames: boolean;
+    setTrimTargetNames: (v: boolean) => void;
 }
 
 export default function TargetColumn(props: TargetColumnProps) {
@@ -44,9 +47,12 @@ export default function TargetColumn(props: TargetColumnProps) {
         targetSystems,
         targetListRef,
         filteredTargetSystems,
+        trimTargetNames,
+        setTrimTargetNames,
     } = props;
 
     const safeTargetSystems = targetSystems || {};
+    const hasBin = Object.keys(safeTargetSystems).length > 0;
 
     const handleFileDrop = useCallback((filePath: string) => {
         if (typeof processTargetBin === 'function') processTargetBin(filePath);
@@ -89,30 +95,43 @@ export default function TargetColumn(props: TargetColumnProps) {
             {/* One row: open + filter + emitter-search toggle (mirrors Donor). */}
             <div className="port-toolbar-row">
                 <button
-                    className="port-open-btn"
+                    className="dl-btn dl-btn--secondary dl-btn--icon"
                     onClick={handleOpenTargetBin}
                     disabled={isProcessing}
                     title={isProcessing ? 'Processing...' : 'Open Target Bin'}
-                    style={{ '--port-accent': 'var(--accent-primary)' } as React.CSSProperties}
                 >
                     <FolderOpenIcon size={16} />
                 </button>
-                <SearchInput
-                    initialValue={targetFilterInput}
-                    placeholder={enableTargetEmitterSearch ? 'Filter by Particle or Emitter Name' : 'Filter by Particle Name Only'}
-                    onChange={filterTargetParticles}
-                    accentVar="var(--accent-primary)"
-                    style={{ color: 'var(--accent-primary)', height: '40px', padding: '0 14px' }}
-                    className="port-target-search"
-                />
-                <button
-                    className={`port-search-toggle-btn${enableTargetEmitterSearch ? ' is-active' : ''}`}
-                    onClick={() => setEnableTargetEmitterSearch(!enableTargetEmitterSearch)}
-                    title={enableTargetEmitterSearch ? 'Disable emitter search (faster)' : 'Enable emitter search'}
-                    style={{ '--port-accent': 'var(--accent-primary)' } as React.CSSProperties}
+                {/* Filter + emitter-search dim out until a bin is loaded (the open
+                   button stays live so you can still load one). */}
+                <div
+                    className="port-toolbar-filters"
+                    style={hasBin ? undefined : { opacity: 0.4, pointerEvents: 'none' }}
+                    aria-disabled={!hasBin}
                 >
-                    <SearchIcon sx={{ fontSize: 16 }} />
-                </button>
+                    <SearchInput
+                        initialValue={targetFilterInput}
+                        placeholder={enableTargetEmitterSearch ? 'Filter by Particle or Emitter Name' : 'Filter by Particle Name Only'}
+                        onChange={filterTargetParticles}
+                        trailing={
+                            <button
+                                type="button"
+                                className={`port-search-scissor${trimTargetNames ? ' is-active' : ''}`}
+                                onClick={() => setTrimTargetNames(!trimTargetNames)}
+                                title={trimTargetNames ? 'Show full target names' : 'Trim target names'}
+                            >
+                                <ScissorsIcon size={15} />
+                            </button>
+                        }
+                    />
+                    <button
+                        className={`dl-btn dl-btn--secondary dl-btn--icon${enableTargetEmitterSearch ? ' dl-btn--active' : ''}`}
+                        onClick={() => setEnableTargetEmitterSearch(!enableTargetEmitterSearch)}
+                        title={enableTargetEmitterSearch ? 'Disable emitter search (faster)' : 'Enable emitter search'}
+                    >
+                        <SearchIcon sx={{ fontSize: 16 }} />
+                    </button>
+                </div>
             </div>
 
             <div
@@ -120,7 +139,7 @@ export default function TargetColumn(props: TargetColumnProps) {
                 style={{
                     flex: 1,
                     ...sectionStyle,
-                    border: isDragOverVfx ? '1px solid var(--accent-primary)' : '1px solid var(--border)',
+                    border: isDragOverVfx ? '1px solid var(--accent-primary)' : '1px solid transparent',
                     borderRadius: '8px',
                     padding: 0,
                     overflow: 'hidden',
@@ -129,6 +148,10 @@ export default function TargetColumn(props: TargetColumnProps) {
                     justifyContent: 'stretch',
                     position: 'relative',
                 }}
+                onDragOverCapture={handleTargetDropDragOver}
+                onDragEnterCapture={handleTargetDropDragEnter}
+                onDragLeaveCapture={handleTargetDropDragLeave}
+                onDropCapture={(e) => processVfxSystemDrop(e, 'target container capture')}
                 onDragOver={handleTargetDropDragOver}
                 onDragEnter={handleTargetDropDragEnter}
                 onDragLeave={handleTargetDropDragLeave}
@@ -168,27 +191,33 @@ export default function TargetColumn(props: TargetColumnProps) {
                 {Object.keys(safeTargetSystems).length > 0 ? (
                     <div
                         ref={targetListRef}
-                        style={{ width: '100%', height: '100%', overflow: 'auto', background: 'var(--bg-secondary)' }}
+                        style={{ width: '100%', height: '100%', overflow: 'auto', background: 'transparent' }}
+                        onDragOverCapture={handleTargetDropDragOver}
+                        onDragEnterCapture={handleTargetDropDragEnter}
+                        onDragLeaveCapture={handleTargetDropDragLeave}
+                        onDropCapture={(e) => processVfxSystemDrop(e, 'target list container capture')}
                         onDragOver={handleTargetDropDragOver}
                         onDrop={(e) => processVfxSystemDrop(e, 'target list container')}
                     >
                         <ParticleSystemList systems={filteredTargetSystems} isTarget {...props} />
                     </div>
                 ) : (
-                    <div
-                        style={{
-                            color: 'var(--text-muted)',
-                            fontSize: '16px',
-                            fontFamily: 'var(--font-mono)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '100%',
-                            height: '100%',
-                            textAlign: 'center',
-                        }}
-                    >
-                        No target bin loaded
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '28px', width: '100%', height: '100%', padding: '2rem', overflow: 'hidden', minHeight: 0 }}>
+                        <div style={{
+                            width: 'min(360px, 90%)',
+                            flexShrink: 0,
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px',
+                        }}>
+                            <FolderOpenIcon size={36} color="var(--accent-primary)" strokeWidth={1.5} />
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
+                                Drag Target <b style={{ color: 'var(--text-primary)' }}>.bin</b> here
+                            </div>
+                            <button onClick={handleOpenTargetBin} disabled={isProcessing} className="dl-btn dl-btn--primary dl-btn--sm">
+                                <span className="dl-icon"><FolderOpenIcon size={14} /></span>
+                                <span>Open Bin</span>
+                            </button>
+                        </div>
+                        <PortRecentBins slot="target" onOpen={processTargetBin} />
                     </div>
                 )}
             </div>

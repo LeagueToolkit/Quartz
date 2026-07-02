@@ -20,8 +20,7 @@ use std::time::Duration;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
-const RELEASE_API_URL: &str =
-    "https://api.github.com/repos/RitoShark/lmdb-hashes/releases/latest";
+const RELEASE_API_URL: &str = "https://api.github.com/repos/RitoShark/lmdb-hashes/releases/latest";
 const META_FILE_NAME: &str = "hashes-meta.json";
 const USER_AGENT: &str = "flint-hash-manager";
 
@@ -36,8 +35,16 @@ struct Asset {
 }
 
 const ASSETS: &[Asset] = &[
-    Asset { release_name: "lol-hashes-wad.zst", lmdb_dir: "hashes-wad.lmdb", label: "WAD hashes" },
-    Asset { release_name: "lol-hashes-bin.zst", lmdb_dir: "hashes-bin.lmdb", label: "BIN hashes" },
+    Asset {
+        release_name: "lol-hashes-wad.zst",
+        lmdb_dir: "hashes-wad.lmdb",
+        label: "WAD hashes",
+    },
+    Asset {
+        release_name: "lol-hashes-bin.zst",
+        lmdb_dir: "hashes-bin.lmdb",
+        label: "BIN hashes",
+    },
 ];
 
 /// Statistics about a hash download operation.
@@ -80,7 +87,10 @@ pub fn get_hash_dir() -> Result<PathBuf> {
     let appdata = std::env::var("APPDATA")
         .map_err(|_| Error::Hash("APPDATA environment variable not found".to_string()))?;
 
-    Ok(PathBuf::from(appdata).join("RitoShark").join("Requirements").join("Hashes"))
+    Ok(PathBuf::from(appdata)
+        .join("RitoShark")
+        .join("Requirements")
+        .join("Hashes"))
 }
 
 /// Legacy alias for [`get_hash_dir`]. Kept for compatibility with existing callers.
@@ -90,7 +100,9 @@ pub fn get_ritoshark_hash_dir() -> Result<PathBuf> {
 
 /// Check whether both LMDB `data.mdb` files are already present on disk.
 pub fn hashes_present(hash_dir: &Path) -> bool {
-    ASSETS.iter().all(|a| hash_dir.join(a.lmdb_dir).join("data.mdb").exists())
+    ASSETS
+        .iter()
+        .all(|a| hash_dir.join(a.lmdb_dir).join("data.mdb").exists())
 }
 
 /// Download hash databases from `lmdb-hashes` GitHub releases.
@@ -112,7 +124,11 @@ pub async fn download_hashes(output_dir: impl AsRef<Path>, force: bool) -> Resul
 
     tracing::debug!("Hash dir: {}", output_dir.display());
     fs::create_dir_all(output_dir).await.map_err(|e| {
-        tracing::error!("Failed to create hash dir '{}': {}", output_dir.display(), e);
+        tracing::error!(
+            "Failed to create hash dir '{}': {}",
+            output_dir.display(),
+            e
+        );
         e
     })?;
 
@@ -127,7 +143,11 @@ pub async fn download_hashes(output_dir: impl AsRef<Path>, force: bool) -> Resul
         }
     }
 
-    let mut stats = DownloadStats { downloaded: 0, skipped: 0, errors: 0 };
+    let mut stats = DownloadStats {
+        downloaded: 0,
+        skipped: 0,
+        errors: 0,
+    };
 
     // Fast path: LMDBs already on disk and caller didn't force a refresh.
     // Skip the GitHub API entirely — a startup that finds its hashes should
@@ -200,7 +220,9 @@ pub async fn download_hashes(output_dir: impl AsRef<Path>, force: bool) -> Resul
 
     tracing::info!(
         "Hash download complete: {} downloaded, {} skipped, {} errors",
-        stats.downloaded, stats.skipped, stats.errors
+        stats.downloaded,
+        stats.skipped,
+        stats.errors
     );
 
     Ok(stats)
@@ -223,7 +245,10 @@ async fn fetch_latest_release(client: &Client) -> Result<GitHubRelease> {
         )));
     }
 
-    response.json::<GitHubRelease>().await.map_err(Error::Network)
+    response
+        .json::<GitHubRelease>()
+        .await
+        .map_err(Error::Network)
 }
 
 async fn download_and_extract(
@@ -243,7 +268,8 @@ async fn download_and_extract(
     if !response.status().is_success() {
         return Err(Error::Hash(format!(
             "Download {} failed: HTTP {}",
-            release_asset.name, response.status()
+            release_asset.name,
+            response.status()
         )));
     }
 
@@ -281,17 +307,23 @@ async fn download_and_extract(
     // rename over a file that recently had open handles even after drop.
     if data_mdb.exists() {
         if let Err(e) = fs::remove_file(&data_mdb).await {
-            tracing::warn!("Could not remove old data.mdb (will attempt rename anyway): {}", e);
+            tracing::warn!(
+                "Could not remove old data.mdb (will attempt rename anyway): {}",
+                e
+            );
         }
     }
 
-    fs::rename(&tmp_path, &data_mdb).await
+    fs::rename(&tmp_path, &data_mdb)
+        .await
         .map_err(|e| Error::Hash(format!("Failed to rename data.mdb.tmp -> data.mdb: {}", e)))?;
 
-    tracing::info!("Successfully installed new data.mdb at {}", data_mdb.display());
+    tracing::info!(
+        "Successfully installed new data.mdb at {}",
+        data_mdb.display()
+    );
     Ok(())
 }
-
 
 async fn read_meta(hash_dir: &Path) -> HashesMeta {
     let path = hash_dir.join(META_FILE_NAME);
@@ -320,7 +352,11 @@ mod tests {
 
     #[test]
     fn test_download_stats_creation() {
-        let stats = DownloadStats { downloaded: 5, skipped: 2, errors: 1 };
+        let stats = DownloadStats {
+            downloaded: 5,
+            skipped: 2,
+            errors: 1,
+        };
         assert_eq!(stats.downloaded, 5);
         assert_eq!(stats.skipped, 2);
         assert_eq!(stats.errors, 1);

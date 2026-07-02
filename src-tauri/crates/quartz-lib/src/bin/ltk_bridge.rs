@@ -5,11 +5,11 @@
 //! application. Hash-name resolution for the text form goes through a globally
 //! cached `HashMapper` populated from the `hashes-bin.lmdb` dictionary.
 
-use std::sync::OnceLock;
 use parking_lot::RwLock;
 use ritoshark::bin::Bin;
 use ritoshark::hash::HashMapper;
 use ritoshark::prelude::{Parse as _, Serialize as _};
+use std::sync::OnceLock;
 
 /// Maximum allowed BIN file size (50MB - no legitimate BIN should be larger)
 pub const MAX_BIN_SIZE: usize = 50 * 1024 * 1024;
@@ -76,7 +76,10 @@ pub fn read_bin(data: &[u8]) -> Result<Bin> {
             )));
         }
     } else {
-        tracing::error!("BIN file too small: {} bytes (minimum 4 bytes for magic)", data.len());
+        tracing::error!(
+            "BIN file too small: {} bytes (minimum 4 bytes for magic)",
+            data.len()
+        );
         return Err(BinError(format!(
             "BIN file too small ({} bytes, minimum 4 bytes for magic)",
             data.len()
@@ -84,9 +87,7 @@ pub fn read_bin(data: &[u8]) -> Result<Bin> {
     }
 
     // catch_unwind to handle OOM panics from the parser
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        Bin::from_bytes(data)
-    }));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Bin::from_bytes(data)));
 
     match result {
         Ok(Ok(tree)) => {
@@ -168,7 +169,10 @@ pub fn load_bin_hashes() -> HashMapper {
     let env = match get_bin_env(&hash_dir) {
         Some(e) => e,
         None => {
-            tracing::warn!("BIN LMDB not found at {}/hashes-bin.lmdb — BIN hashes unavailable", hash_dir);
+            tracing::warn!(
+                "BIN LMDB not found at {}/hashes-bin.lmdb — BIN hashes unavailable",
+                hash_dir
+            );
             return hashes;
         }
     };
@@ -207,7 +211,10 @@ pub fn load_bin_hashes() -> HashMapper {
             Ok((key_bytes, path_str)) => {
                 if key_bytes.len() == 4 {
                     let hash = u32::from_be_bytes([
-                        key_bytes[0], key_bytes[1], key_bytes[2], key_bytes[3],
+                        key_bytes[0],
+                        key_bytes[1],
+                        key_bytes[2],
+                        key_bytes[3],
                     ]);
                     hashes.insert(hash as u64, path_str.to_string());
                     count += 1;
@@ -235,7 +242,10 @@ pub fn get_cached_bin_hashes() -> &'static RwLock<HashMapper> {
     BIN_HASHES_CACHE.get_or_init(|| {
         tracing::info!("Initializing global BIN hash cache...");
         let hashes = load_bin_hashes();
-        tracing::info!("Global BIN hash cache initialized with {} hashes", hashes.len());
+        tracing::info!(
+            "Global BIN hash cache initialized with {} hashes",
+            hashes.len()
+        );
         RwLock::new(hashes)
     })
 }

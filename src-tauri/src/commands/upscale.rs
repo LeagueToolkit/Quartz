@@ -1,16 +1,16 @@
 /* AI image upscaling via the Upscayl NCNN binary. Ported from Quartz's
-   upscale.js IPC channels.
+upscale.js IPC channels.
 
-   - Downloads the upscayl-bin release zip + Real-ESRGAN model files into a
-     cache under the Quartz app home, with progress events.
-   - Spawns upscayl-bin.exe for single-file and batch upscaling, streaming
-     stdout/stderr lines back as log events and parsing the `NN%` progress.
-   - A managed UpscaleState holds the running child so it can be cancelled.
+- Downloads the upscayl-bin release zip + Real-ESRGAN model files into a
+  cache under the Quartz app home, with progress events.
+- Spawns upscayl-bin.exe for single-file and batch upscaling, streaming
+  stdout/stderr lines back as log events and parsing the `NN%` progress.
+- A managed UpscaleState holds the running child so it can be cancelled.
 
-   Tauri command names can't contain ':', so the original colon-style channel
-   names became underscores (e.g. upscayl:stream -> upscayl_stream). Tauri
-   *event* names may keep the colons, so the emitted events match the Electron
-   build 1:1 (upscayl:log, upscayl:progress, upscale:progress, etc.). */
+Tauri command names can't contain ':', so the original colon-style channel
+names became underscores (e.g. upscayl:stream -> upscayl_stream). Tauri
+*event* names may keep the colons, so the emitted events match the Electron
+build 1:1 (upscayl:log, upscayl:progress, upscale:progress, etc.). */
 
 use crate::commands::settings::get_quartz_home;
 use serde::Serialize;
@@ -30,12 +30,11 @@ const BINARY_URL: &str = "https://github.com/upscayl/upscayl-ncnn/releases/downl
 const BINARY_DIR_NAME: &str = "upscayl-bin-20240601-103425-windows";
 const EXE_NAME: &str = "upscayl-bin.exe";
 
-const SUPPORTED_EXTENSIONS: &[&str] =
-    &["png", "jpg", "jpeg", "jfif", "bmp", "tif", "tiff"];
+const SUPPORTED_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "jfif", "bmp", "tif", "tiff"];
 
 /* Models mirror the UPSCALE_DOWNLOADS.models list from upscale.js. Each entry
-   ships a .bin + .param pair pulled from the upscayl resources repo. The first
-   two are required; the rest are optional but still downloaded by download-all. */
+ships a .bin + .param pair pulled from the upscayl resources repo. The first
+two are required; the rest are optional but still downloaded by download-all. */
 struct ModelDef {
     name: &'static str,
     files: &'static [&'static str],
@@ -45,13 +44,34 @@ const MODEL_BASE_URL: &str =
     "https://raw.githubusercontent.com/upscayl/upscayl/main/resources/models/";
 
 const MODELS: &[ModelDef] = &[
-    ModelDef { name: "Upscayl Standard 4x", files: &["upscayl-standard-4x.bin", "upscayl-standard-4x.param"] },
-    ModelDef { name: "Upscayl Lite 4x", files: &["upscayl-lite-4x.bin", "upscayl-lite-4x.param"] },
-    ModelDef { name: "Digital Art 4x", files: &["digital-art-4x.bin", "digital-art-4x.param"] },
-    ModelDef { name: "High Fidelity 4x", files: &["high-fidelity-4x.bin", "high-fidelity-4x.param"] },
-    ModelDef { name: "Ultrasharp 4x", files: &["ultrasharp-4x.bin", "ultrasharp-4x.param"] },
-    ModelDef { name: "Remacri 4x", files: &["remacri-4x.bin", "remacri-4x.param"] },
-    ModelDef { name: "Ultramix Balanced 4x", files: &["ultramix-balanced-4x.bin", "ultramix-balanced-4x.param"] },
+    ModelDef {
+        name: "Upscayl Standard 4x",
+        files: &["upscayl-standard-4x.bin", "upscayl-standard-4x.param"],
+    },
+    ModelDef {
+        name: "Upscayl Lite 4x",
+        files: &["upscayl-lite-4x.bin", "upscayl-lite-4x.param"],
+    },
+    ModelDef {
+        name: "Digital Art 4x",
+        files: &["digital-art-4x.bin", "digital-art-4x.param"],
+    },
+    ModelDef {
+        name: "High Fidelity 4x",
+        files: &["high-fidelity-4x.bin", "high-fidelity-4x.param"],
+    },
+    ModelDef {
+        name: "Ultrasharp 4x",
+        files: &["ultrasharp-4x.bin", "ultrasharp-4x.param"],
+    },
+    ModelDef {
+        name: "Remacri 4x",
+        files: &["remacri-4x.bin", "remacri-4x.param"],
+    },
+    ModelDef {
+        name: "Ultramix Balanced 4x",
+        files: &["ultramix-balanced-4x.bin", "ultramix-balanced-4x.param"],
+    },
 ];
 
 // Holds the currently running upscayl child so upscayl_cancel can kill it.
@@ -106,7 +126,9 @@ fn write_prefs(map: &serde_json::Map<String, serde_json::Value>) -> Result<(), S
 
 #[tauri::command]
 pub fn prefs_get(key: String) -> Result<Option<String>, String> {
-    Ok(read_prefs().get(&key).and_then(|v| v.as_str().map(String::from)))
+    Ok(read_prefs()
+        .get(&key)
+        .and_then(|v| v.as_str().map(String::from)))
 }
 
 #[tauri::command]
@@ -153,7 +175,10 @@ pub fn upscale_check_status() -> Result<DownloadStatus, String> {
             installed: exe.exists(),
             path: exe.to_string_lossy().into_owned(),
         },
-        models: ModelsStatus { installed, total: MODELS.len() },
+        models: ModelsStatus {
+            installed,
+            total: MODELS.len(),
+        },
     })
 }
 
@@ -205,7 +230,9 @@ fn extract_zip(zip_path: &Path, out_dir: &Path) -> Result<(), String> {
     let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
-        let Some(rel) = entry.enclosed_name() else { continue };
+        let Some(rel) = entry.enclosed_name() else {
+            continue;
+        };
         let out_path = out_dir.join(rel);
         if entry.is_dir() {
             std::fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
@@ -258,11 +285,19 @@ pub async fn upscale_download_all(app: AppHandle) -> Result<String, String> {
         }
     }
 
-    emit_progress(&app, "complete", "All components downloaded successfully!", 100.0);
+    emit_progress(
+        &app,
+        "complete",
+        "All components downloaded successfully!",
+        100.0,
+    );
 
     let exe_str = exe.to_string_lossy().into_owned();
     let mut prefs = read_prefs();
-    prefs.insert("RealesrganExePath".into(), serde_json::Value::String(exe_str.clone()));
+    prefs.insert(
+        "RealesrganExePath".into(),
+        serde_json::Value::String(exe_str.clone()),
+    );
     write_prefs(&prefs)?;
     Ok(exe_str)
 }
@@ -277,7 +312,10 @@ pub fn realesrgan_ensure() -> Result<Option<String>, String> {
     if exe.exists() {
         let s = exe.to_string_lossy().into_owned();
         let mut prefs = read_prefs();
-        prefs.insert("RealesrganExePath".into(), serde_json::Value::String(s.clone()));
+        prefs.insert(
+            "RealesrganExePath".into(),
+            serde_json::Value::String(s.clone()),
+        );
         write_prefs(&prefs)?;
         return Ok(Some(s));
     }
@@ -389,7 +427,11 @@ pub async fn upscayl_stream(
         None => -1, // cancelled out from under us
     };
 
-    Ok(StreamResult { code, stdout: stdout_text, stderr: stderr_text })
+    Ok(StreamResult {
+        code,
+        stdout: stdout_text,
+        stderr: stderr_text,
+    })
 }
 
 #[tauri::command]
@@ -479,16 +521,34 @@ pub async fn upscayl_batch_process(
             total_files: total,
             files: images
                 .iter()
-                .map(|p| p.file_name().unwrap_or_default().to_string_lossy().into_owned())
+                .map(|p| {
+                    p.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned()
+                })
                 .collect(),
         },
     );
 
-    let mut results = BatchResults { total, successful: 0, failed: 0, errors: Vec::new() };
+    let mut results = BatchResults {
+        total,
+        successful: 0,
+        failed: 0,
+        errors: Vec::new(),
+    };
 
     for (i, input) in images.iter().enumerate() {
-        let file_name = input.file_name().unwrap_or_default().to_string_lossy().into_owned();
-        let stem = input.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+        let file_name = input
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        let stem = input
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
         let ext = input
             .extension()
             .map(|e| format!(".{}", e.to_string_lossy()))
@@ -525,11 +585,15 @@ pub async fn upscayl_batch_process(
             Ok(0) => results.successful += 1,
             Ok(code) => {
                 results.failed += 1;
-                results.errors.push(format!("Failed to process {file_name}: exit {code}"));
+                results
+                    .errors
+                    .push(format!("Failed to process {file_name}: exit {code}"));
             }
             Err(e) => {
                 results.failed += 1;
-                results.errors.push(format!("Error processing {file_name}: {e}"));
+                results
+                    .errors
+                    .push(format!("Error processing {file_name}: {e}"));
             }
         }
 
@@ -605,7 +669,10 @@ fn run_batch_file(
 
     let child = state.child.lock().unwrap().take();
     match child {
-        Some(mut c) => c.wait().map(|s| s.code().unwrap_or(-1)).map_err(|e| e.to_string()),
+        Some(mut c) => c
+            .wait()
+            .map(|s| s.code().unwrap_or(-1))
+            .map_err(|e| e.to_string()),
         None => Err("cancelled".into()),
     }
 }

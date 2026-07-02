@@ -29,7 +29,23 @@ interface ThemeState {
 
 function seedAccent(theme: Theme): string {
     const variant = BUILTIN_VARIANTS.find((v) => v.id === theme.id);
-    return variant?.accent ?? theme.tokens.accent;
+    // theme.tokens can be missing on legacy custom themes loaded from disk;
+    // normalizeTheme should have backfilled it, but guard here too so a stray
+    // un-normalized theme never hard-crashes the settings grid.
+    return variant?.accent ?? theme.tokens?.accent ?? BUILTIN_THEMES[0].tokens.accent;
+}
+
+/* Custom themes saved by older Quartz versions carry a legacy `colors` object
+   instead of `tokens`. Backfill `tokens` from `colors` (the field names line up)
+   so the rest of the store can assume every theme has a valid token set. When
+   neither exists, derive a full set from any accent we can find. */
+function normalizeTheme(theme: Theme): Theme {
+    if (theme.tokens?.accent) return theme;
+    const legacy = (theme as unknown as { colors?: Partial<ThemeTokens> }).colors;
+    if (legacy?.accent) {
+        return { ...theme, tokens: { ...deriveTheme(legacy.accent, 'dark'), ...legacy } as ThemeTokens };
+    }
+    return { ...theme, tokens: deriveTheme(BUILTIN_THEMES[0].tokens.accent, 'dark') };
 }
 
 function resolve(themes: Theme[], id: string): Theme {
@@ -52,7 +68,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     init: async () => {
         let custom: Theme[] = [];
         try {
-            custom = await listCustomThemes();
+            custom = (await listCustomThemes()).map(normalizeTheme);
         } catch (e) {
             log.error('Failed to load custom themes', e);
         }

@@ -137,8 +137,8 @@ pub fn split_bin(
     }
 
     // 1. Read parent.
-    let parent_data = std::fs::read(parent_bin_path)
-        .map_err(|e| Error::io_with_path(e, parent_bin_path))?;
+    let parent_data =
+        std::fs::read(parent_bin_path).map_err(|e| Error::io_with_path(e, parent_bin_path))?;
     let mut parent = crate::bin::read_bin(&parent_data)
         .map_err(|e| Error::InvalidInput(format!("Failed to parse parent BIN: {}", e)))?;
 
@@ -162,7 +162,10 @@ pub fn split_bin(
     let moved_count = moved_objects.len();
 
     // 3. Build the new sibling BIN (objects only, empty dependencies).
-    let new_bin = Bin { entries: moved_objects, ..Bin::new() };
+    let new_bin = Bin {
+        entries: moved_objects,
+        ..Bin::new()
+    };
 
     // 4. Always write the new BIN under `<wad_root>/data/`. This matches
     //    Riot's convention for linked/concat BINs (engine load-paths look
@@ -170,8 +173,7 @@ pub fn split_bin(
     //    file is never co-located with the source skin BIN, where it would
     //    get tangled with character-specific assets.
     let data_dir = project_root.join("data");
-    std::fs::create_dir_all(&data_dir)
-        .map_err(|e| Error::io_with_path(e, &data_dir))?;
+    std::fs::create_dir_all(&data_dir).map_err(|e| Error::io_with_path(e, &data_dir))?;
     let new_full_path: PathBuf = data_dir.join(output_filename);
 
     if new_full_path.exists() {
@@ -205,7 +207,11 @@ pub fn split_bin(
         .map_err(|e| Error::io_with_path(e, &new_full_path))?;
 
     // 7. Append link to parent.linked (skip duplicates).
-    if !parent.linked.iter().any(|d| d.eq_ignore_ascii_case(&link_rel)) {
+    if !parent
+        .linked
+        .iter()
+        .any(|d| d.eq_ignore_ascii_case(&link_rel))
+    {
         parent.linked.push(link_rel.clone());
     }
 
@@ -243,7 +249,11 @@ pub fn analyze_multi(bin_paths: &[PathBuf]) -> MultiAnalysis {
         let bin = match crate::bin::read_bin(&data) {
             Ok(b) => b,
             Err(e) => {
-                tracing::warn!("analyze_multi: skip {} (parse error): {}", path.display(), e);
+                tracing::warn!(
+                    "analyze_multi: skip {} (parse error): {}",
+                    path.display(),
+                    e
+                );
                 continue;
             }
         };
@@ -306,9 +316,13 @@ pub fn split_bin_multi(
     let mut sources: Vec<Source> = Vec::with_capacity(source_paths.len());
     for path in source_paths {
         let data = std::fs::read(path).map_err(|e| Error::io_with_path(e, path))?;
-        let bin = crate::bin::read_bin(&data)
-            .map_err(|e| Error::InvalidInput(format!("Failed to parse {}: {}", path.display(), e)))?;
-        sources.push(Source { path: path.clone(), bin });
+        let bin = crate::bin::read_bin(&data).map_err(|e| {
+            Error::InvalidInput(format!("Failed to parse {}: {}", path.display(), e))
+        })?;
+        sources.push(Source {
+            path: path.clone(),
+            bin,
+        });
     }
 
     // 2. Pull matching objects out of each source. Track which paths
@@ -338,7 +352,10 @@ pub fn split_bin_multi(
     let moved_count = moved_objects.len();
 
     // 3. Build the consolidated output BIN.
-    let new_bin = Bin { entries: moved_objects, ..Bin::new() };
+    let new_bin = Bin {
+        entries: moved_objects,
+        ..Bin::new()
+    };
 
     // 4. Always write the new BIN under `<project_root>/data/`.
     let data_dir = project_root.join("data");
@@ -367,7 +384,8 @@ pub fn split_bin_multi(
     // 5. Write the new BIN first.
     let new_bytes = crate::bin::write_bin(&new_bin)
         .map_err(|e| Error::InvalidInput(format!("Failed to serialize new BIN: {}", e)))?;
-    std::fs::write(&new_full_path, &new_bytes).map_err(|e| Error::io_with_path(e, &new_full_path))?;
+    std::fs::write(&new_full_path, &new_bytes)
+        .map_err(|e| Error::io_with_path(e, &new_full_path))?;
 
     // 6. Update the owner BIN's dependencies, then write back every changed
     //    source. The owner is identified by path equality with one of the
@@ -384,28 +402,46 @@ pub fn split_bin_multi(
             if !bin.linked.iter().any(|d| d.eq_ignore_ascii_case(&link_rel)) {
                 bin.linked.push(link_rel.clone());
             }
-            let bytes = crate::bin::write_bin(&bin)
-                .map_err(|e| Error::InvalidInput(format!("Failed to serialize owner BIN: {}", e)))?;
+            let bytes = crate::bin::write_bin(&bin).map_err(|e| {
+                Error::InvalidInput(format!("Failed to serialize owner BIN: {}", e))
+            })?;
             std::fs::write(owner_path, &bytes).map_err(|e| Error::io_with_path(e, owner_path))?;
             // continue to write the other sources below
             for (idx, src) in sources.iter().enumerate() {
-                if !sources_changed[idx] { continue; }
+                if !sources_changed[idx] {
+                    continue;
+                }
                 let bytes = crate::bin::write_bin(&src.bin).map_err(|e| {
-                    Error::InvalidInput(format!("Failed to serialize {}: {}", src.path.display(), e))
+                    Error::InvalidInput(format!(
+                        "Failed to serialize {}: {}",
+                        src.path.display(),
+                        e
+                    ))
                 })?;
                 std::fs::write(&src.path, &bytes).map_err(|e| Error::io_with_path(e, &src.path))?;
             }
-            return Ok(SplitResult { moved: moved_count, link_added: link_rel });
+            return Ok(SplitResult {
+                moved: moved_count,
+                link_added: link_rel,
+            });
         }
     };
-    if !owner_bin.linked.iter().any(|d| d.eq_ignore_ascii_case(&link_rel)) {
+    if !owner_bin
+        .linked
+        .iter()
+        .any(|d| d.eq_ignore_ascii_case(&link_rel))
+    {
         owner_bin.linked.push(link_rel.clone());
     }
-    if let Some(i) = owner_idx { sources_changed[i] = true; }
+    if let Some(i) = owner_idx {
+        sources_changed[i] = true;
+    }
 
     // 7. Write back every changed source.
     for (idx, src) in sources.iter().enumerate() {
-        if !sources_changed[idx] { continue; }
+        if !sources_changed[idx] {
+            continue;
+        }
         let bytes = crate::bin::write_bin(&src.bin).map_err(|e| {
             Error::InvalidInput(format!("Failed to serialize {}: {}", src.path.display(), e))
         })?;
@@ -478,10 +514,15 @@ pub fn organize_vfx_in_folder(
     let mut sources: Vec<Source> = Vec::with_capacity(source_paths.len());
     for path in source_paths {
         let data = std::fs::read(path).map_err(|e| Error::io_with_path(e, path))?;
-        let bin = crate::bin::read_bin(&data)
-            .map_err(|e| Error::InvalidInput(format!("Failed to parse {}: {}", path.display(), e)))?;
+        let bin = crate::bin::read_bin(&data).map_err(|e| {
+            Error::InvalidInput(format!("Failed to parse {}: {}", path.display(), e))
+        })?;
         let is_owner = paths_match(path, owner_path);
-        sources.push(Source { path: path.clone(), bin, is_owner });
+        sources.push(Source {
+            path: path.clone(),
+            bin,
+            is_owner,
+        });
     }
     if !sources.iter().any(|s| s.is_owner) {
         return Err(Error::InvalidInput(format!(
@@ -523,8 +564,12 @@ pub fn organize_vfx_in_folder(
     //    Vec, so we track the owner's existing path hashes in a HashSet to
     //    keep the collision check O(1) instead of scanning the Vec per push.
     let owner_idx = sources.iter().position(|s| s.is_owner).unwrap();
-    let mut owner_hashes: HashSet<u32> =
-        sources[owner_idx].bin.entries.iter().map(|e| e.path_hash).collect();
+    let mut owner_hashes: HashSet<u32> = sources[owner_idx]
+        .bin
+        .entries
+        .iter()
+        .map(|e| e.path_hash)
+        .collect();
     for entry in main_bucket {
         if owner_hashes.insert(entry.path_hash) {
             sources[owner_idx].bin.entries.push(entry);
@@ -568,7 +613,9 @@ pub fn organize_vfx_in_folder(
     let mut to_delete: Vec<PathBuf> = Vec::new();
     let mut deleted_links: HashSet<String> = HashSet::new();
     for src in sources.iter() {
-        if src.is_owner { continue; }
+        if src.is_owner {
+            continue;
+        }
         if src.bin.entries.is_empty() {
             to_delete.push(src.path.clone());
             if let Ok(rel) = src.path.strip_prefix(project_root) {
@@ -596,7 +643,10 @@ pub fn organize_vfx_in_folder(
 
     // 7. Write the consolidated VFX BIN first (only if non-empty).
     if vfx_count > 0 {
-        let vfx_bin = Bin { entries: vfx_bucket, ..Bin::new() };
+        let vfx_bin = Bin {
+            entries: vfx_bucket,
+            ..Bin::new()
+        };
         let vfx_bytes = crate::bin::write_bin(&vfx_bin)
             .map_err(|e| Error::InvalidInput(format!("Failed to serialize VFX BIN: {}", e)))?;
         std::fs::write(&vfx_path, &vfx_bytes).map_err(|e| Error::io_with_path(e, &vfx_path))?;
@@ -613,8 +663,12 @@ pub fn organize_vfx_in_folder(
     // 9. Write any non-empty non-owner sources (in case any of them had
     //    only some objects move out). Then delete the empty ones.
     for src in sources.iter() {
-        if src.is_owner { continue; }
-        if src.bin.entries.is_empty() { continue; } // gets deleted below
+        if src.is_owner {
+            continue;
+        }
+        if src.bin.entries.is_empty() {
+            continue;
+        } // gets deleted below
         let bytes = crate::bin::write_bin(&src.bin).map_err(|e| {
             Error::InvalidInput(format!("Failed to serialize {}: {}", src.path.display(), e))
         })?;
@@ -622,7 +676,11 @@ pub fn organize_vfx_in_folder(
     }
     for path in &to_delete {
         if let Err(e) = std::fs::remove_file(path) {
-            tracing::warn!("organize_vfx: failed to delete empty {}: {}", path.display(), e);
+            tracing::warn!(
+                "organize_vfx: failed to delete empty {}: {}",
+                path.display(),
+                e
+            );
         }
     }
 
@@ -631,7 +689,11 @@ pub fn organize_vfx_in_folder(
         main_objects_merged: main_count,
         sources_deleted: to_delete,
         links_pruned,
-        vfx_link_added: if vfx_count > 0 { vfx_link_rel } else { String::new() },
+        vfx_link_added: if vfx_count > 0 {
+            vfx_link_rel
+        } else {
+            String::new()
+        },
     })
 }
 

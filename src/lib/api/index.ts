@@ -15,8 +15,13 @@ export {
 } from './assets';
 export {
     binScaleParams, binSplitSkin, binConsolidateAssets,
+    binEditorOpen, binEditorModel, binEditorApply, binEditorInsert, binEditorRemove,
+    binEditorUndo, binEditorRedo, binEditorRestore, binEditorSave, binEditorClose,
     type ScaleParamsResult, type SplitFile, type ConsolidateResult,
-} from './binEditor';
+    type EditorModel, type EditorSystem, type EditorEmitter, type EditorNode,
+    type NodePath, type Step, type JsonBinValue, type BinNumType, type EditOp,
+    type BinEditorOpenResult, type BinEditorApplyResult,
+} from './bineditor';
 export {
     paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintUndo, paintRedo, paintSave,
     type VfxModel, type VfxSystem, type VfxEmitter, type VfxMaterial, type MaterialParam,
@@ -24,6 +29,20 @@ export {
     type PaintOpenResult, type RecolorResult, type RecolorModeId, type ColorTargetId,
     type PaletteStopInput, type RecolorOptionsInput,
 } from './paint';
+export * from './vfxSession';
+export {
+    discoverChampions,
+    extractChampionAssets,
+    extractTftCompanion,
+    extractorRepath,
+    type SkinEntry,
+    type Champion,
+    type ExtractChampionOptions,
+    type ExtractResult as AssetExtractResult,
+    type ExtractProgress,
+    type RepathSummary,
+    type RepathParams,
+} from './extractor';
 export { bumpathRepath, type BumpathOptions, type BumpathResult } from './bumpath';
 export {
     fileRandomize, fileRename, toolsExecute,

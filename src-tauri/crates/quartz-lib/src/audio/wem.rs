@@ -300,7 +300,8 @@ impl BitOggWriter {
         let crc = ogg_checksum(&self.page_buffer[..page_size]);
         write_u32_le(&mut self.page_buffer, 22, crc);
 
-        self.output.extend_from_slice(&self.page_buffer[..page_size]);
+        self.output
+            .extend_from_slice(&self.page_buffer[..page_size]);
 
         self.seqno += 1;
         self.first = false;
@@ -359,7 +360,10 @@ impl CodebookLibrary {
 
     fn get_codebook(&self, id: usize) -> Result<&[u8], String> {
         if id >= self.codebook_count {
-            return Err(format!("Invalid codebook id: {id} (max {})", self.codebook_count - 1));
+            return Err(format!(
+                "Invalid codebook id: {id} (max {})",
+                self.codebook_count - 1
+            ));
         }
         let start = self.codebook_offsets[id] as usize;
         let end = self.codebook_offsets[id + 1] as usize;
@@ -582,7 +586,11 @@ impl PacketHeader {
             }
             (6, read_u32_le(data, offset + 2))
         };
-        Ok(Self { header_size, size, granule })
+        Ok(Self {
+            header_size,
+            size,
+            granule,
+        })
     }
 
     /// Old 8-byte header
@@ -912,8 +920,7 @@ impl<'a> WwiseRiffVorbis<'a> {
                             let mut next_ss =
                                 BitReader::new(self.data, next_packet.payload_offset(next_offset));
                             let next_mode = next_ss.read_bits(mode_bits)?;
-                            next_blockflag =
-                                mbf.get(next_mode as usize).copied().unwrap_or(false);
+                            next_blockflag = mbf.get(next_mode as usize).copied().unwrap_or(false);
                         }
                     }
 
@@ -965,10 +972,7 @@ impl<'a> WwiseRiffVorbis<'a> {
         output
     }
 
-    fn generate_ogg_header(
-        &self,
-        os: &mut BitOggWriter,
-    ) -> Result<(Vec<bool>, u32), String> {
+    fn generate_ogg_header(&self, os: &mut BitOggWriter) -> Result<(Vec<bool>, u32), String> {
         self.write_vorbis_packet_header(os, 1);
 
         os.write_bits(0, 32); // version
@@ -1024,8 +1028,8 @@ impl<'a> WwiseRiffVorbis<'a> {
             return Err("Setup packet granule != 0".into());
         }
 
-        let setup_payload = setup_packet
-            .payload_offset(self.data_offset + self.setup_packet_offset as usize);
+        let setup_payload =
+            setup_packet.payload_offset(self.data_offset + self.setup_packet_offset as usize);
         let mut ss = BitReader::new(self.data, setup_payload);
 
         let codebook_count_less1 = ss.read_bits(8)?;
@@ -1034,7 +1038,8 @@ impl<'a> WwiseRiffVorbis<'a> {
 
         for _ in 0..codebook_count {
             let codebook_id = ss.read_bits(10)?;
-            self.codebook_lib.rebuild_from_id(codebook_id as usize, os)?;
+            self.codebook_lib
+                .rebuild_from_id(codebook_id as usize, os)?;
         }
 
         // Time domain transforms

@@ -1,7 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BONE_NAMES, extractExistingIdleParticles, type ExistingIdleEntry } from '../../utils/idleParticlesManager';
-import type { VfxSystemMap } from '../../utils/vfxEmitterParser';
-import type { BoneConfig } from '../../utils/idleParticlesManager';
+import {
+    BONE_NAMES,
+    idleEntriesFromModel,
+    resolverMapFromModel,
+    type BoneConfig,
+    type ExistingIdleEntry,
+    type VfxPortModel,
+    type VfxSystemMap,
+} from '../../model';
 
 const btn = (color: string): React.CSSProperties => ({
     padding: '6px 10px',
@@ -13,7 +19,7 @@ const btn = (color: string): React.CSSProperties => ({
     fontWeight: 700,
     cursor: 'pointer',
     transition: 'all 0.2s ease',
-    fontFamily: 'JetBrains Mono, monospace',
+    fontFamily: 'var(--font-mono)',
 });
 
 interface ManagerBone {
@@ -23,34 +29,6 @@ interface ManagerBone {
 }
 
 const mkBone = (value = 'head', customValue = ''): ManagerBone => ({ id: Date.now() + Math.random(), boneName: value, customBoneName: customValue });
-
-function parseResolverMap(pyContent: string): Map<string, string> {
-    const map = new Map<string, string>();
-    if (!pyContent) return map;
-    const lines = pyContent.split('\n');
-    let inResourceMap = false;
-    let depth = 0;
-    for (let i = 0; i < lines.length; i++) {
-        const line = (lines[i] || '').trim();
-        if (!inResourceMap && line.includes('resourceMap: map[hash,link] = {')) {
-            inResourceMap = true;
-            depth = 1;
-            continue;
-        }
-        if (!inResourceMap) continue;
-        const open = (line.match(/\{/g) || []).length;
-        const close = (line.match(/\}/g) || []).length;
-        depth += open - close;
-        const m = line.match(/^(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*=\s*"([^"]+)"/);
-        if (m) {
-            const key = m[1] || m[2];
-            const value = m[3];
-            if (key && value && !map.has(key)) map.set(key, value);
-        }
-        if (depth <= 0) break;
-    }
-    return map;
-}
 
 interface DropdownOption {
     value: string;
@@ -87,7 +65,7 @@ function CustomDropdown({ value, options, onChange, placeholder = 'Select system
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     transition: 'all 0.18s ease',
-                    fontFamily: 'JetBrains Mono, monospace',
+                    fontFamily: 'var(--font-mono)',
                 }}
             >
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 10 }}>{selectedLabel}</span>
@@ -130,7 +108,7 @@ function CustomDropdown({ value, options, onChange, placeholder = 'Select system
                                     padding: '8px 10px',
                                     fontSize: '0.72rem',
                                     cursor: 'pointer',
-                                    fontFamily: 'JetBrains Mono, monospace',
+                                    fontFamily: 'var(--font-mono)',
                                 }}
                             >
                                 {opt.label}
@@ -147,17 +125,17 @@ interface IdleParticlesManagerModalProps {
     open: boolean;
     onClose: () => void;
     targetSystems: VfxSystemMap;
-    targetPyContent: string;
+    model: VfxPortModel | null;
     onUpsertSystem: (systemKey: string, systemName: string, boneConfigs: BoneConfig[]) => void;
     onRemoveEffectKey: (effectKey: string) => void;
 }
 
-export default function IdleParticlesManagerModal({ open, onClose, targetSystems, targetPyContent, onUpsertSystem, onRemoveEffectKey }: IdleParticlesManagerModalProps) {
+export default function IdleParticlesManagerModal({ open, onClose, targetSystems, model, onUpsertSystem, onRemoveEffectKey }: IdleParticlesManagerModalProps) {
     const [search, setSearch] = useState('');
     const [selectedSystemKey, setSelectedSystemKey] = useState('');
     const [boneList, setBoneList] = useState<ManagerBone[]>([mkBone('head')]);
 
-    const existing = useMemo(() => (open ? extractExistingIdleParticles(targetPyContent || '') : []), [open, targetPyContent]);
+    const existing = useMemo(() => (open ? idleEntriesFromModel(model) : []), [open, model]);
 
     const systemOptions = useMemo(() => {
         if (!open) return [];
@@ -170,17 +148,25 @@ export default function IdleParticlesManagerModal({ open, onClose, targetSystems
             .filter((x): x is DropdownOption => x !== null);
     }, [open, targetSystems]);
 
+    // Index systems by every alias an effect key or resolver value may use:
+    // particle path, particle name, display name and the hex entry hash.
     const systemsByKeyLower = useMemo(() => {
         const m = new Map<string, { systemKey: string; label: string }>();
         for (const [key, sys] of Object.entries(targetSystems || {})) {
             const label = (sys?.particleName || sys?.name || '').trim();
             if (!label || /^0x[0-9a-fA-F]+$/.test(label)) continue;
-            m.set(String(key).toLowerCase(), { systemKey: key, label });
+            const entry = { systemKey: key, label };
+            const aliases = [key, `0x${key.split('@')[0]}`, sys.particlePath, sys.particleName, sys.name];
+            for (const alias of aliases) {
+                if (!alias) continue;
+                const lower = String(alias).toLowerCase();
+                if (!m.has(lower)) m.set(lower, entry);
+            }
         }
         return m;
     }, [targetSystems]);
 
-    const resolverMap = useMemo(() => (open ? parseResolverMap(targetPyContent || '') : new Map<string, string>()), [open, targetPyContent]);
+    const resolverMap = useMemo(() => (open ? resolverMapFromModel(model) : new Map<string, string>()), [open, model]);
 
     const effectKeyToSystem = useMemo(() => {
         const m = new Map<string, { systemKey: string; label: string }>();
@@ -259,7 +245,7 @@ export default function IdleParticlesManagerModal({ open, onClose, targetSystems
             >
                 <div style={{ height: 3, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite', flexShrink: 0 }} />
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                    <h2 style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    <h2 style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>
                         Idle Particles Manager
                     </h2>
                     <button
@@ -276,10 +262,10 @@ export default function IdleParticlesManagerModal({ open, onClose, targetSystems
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             placeholder="Search particle name or bone..."
-                            style={{ width: '100%', padding: '9px 11px', marginBottom: 10, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--accent-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', outline: 'none', boxSizing: 'border-box' }}
+                            style={{ width: '100%', padding: '9px 11px', marginBottom: 10, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--accent-primary)', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', outline: 'none', boxSizing: 'border-box' }}
                         />
                         {filteredExisting.length === 0 && (
-                            <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 12, color: 'var(--text-muted)', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }}>
+                            <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 12, color: 'var(--text-muted)', fontSize: '0.78rem', fontFamily: 'var(--font-mono)' }}>
                                 No idle particles found.
                             </div>
                         )}
@@ -322,7 +308,7 @@ export default function IdleParticlesManagerModal({ open, onClose, targetSystems
                                     value={item.customBoneName}
                                     onChange={(e) => setBoneList((prev) => prev.map((b) => (b.id === item.id ? { ...b, customBoneName: e.target.value } : b)))}
                                     placeholder="Custom bone (optional)"
-                                    style={{ padding: '8px 10px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--accent-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', outline: 'none' }}
+                                    style={{ padding: '8px 10px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--accent-primary)', fontFamily: 'var(--font-mono)', fontSize: '0.78rem', outline: 'none' }}
                                 />
                                 <button style={btn('var(--color-danger)')} onClick={() => setBoneList((prev) => prev.filter((b) => b.id !== item.id))}>
                                     Remove

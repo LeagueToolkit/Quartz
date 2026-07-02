@@ -1,7 +1,7 @@
 /* Skinned mesh (.skn) editing for the FakeGearSkin animation toggle. The toggle
-   needs a tiny "MinimalMesh" submesh that the animation graph can show/hide, so we
-   parse the .skn, append a degenerate triangle bound to a single bone, and write it
-   back. Mirrors the Electron jsritofile addMinimalSubmesh. */
+needs a tiny "MinimalMesh" submesh that the animation graph can show/hide, so we
+parse the .skn, append a degenerate triangle bound to a single bone, and write it
+back. Mirrors the Electron jsritofile addMinimalSubmesh. */
 
 use std::path::Path;
 
@@ -30,7 +30,11 @@ pub fn add_minimal_mesh(skn_path: &Path, bone_index: u8, scale: f32) -> Result<M
     let mut skn = SkinnedMesh::from_bytes(&bytes)
         .map_err(|e| Error::InvalidInput(format!("failed to parse skn: {e:?}")))?;
 
-    if skn.ranges.iter().any(|r| r.name.eq_ignore_ascii_case("minimalmesh")) {
+    if skn
+        .ranges
+        .iter()
+        .any(|r| r.name.eq_ignore_ascii_case("minimalmesh"))
+    {
         return Ok(MinimalMeshResult::AlreadyPresent);
     }
 
@@ -52,7 +56,10 @@ pub fn add_minimal_mesh(skn_path: &Path, bone_index: u8, scale: f32) -> Result<M
             Vec2::new(0.0, 0.0),
         );
         // Match the on-disk vertex layout so the buffer stays consistent.
-        if matches!(skn.vertex_type, SkinnedMeshVertexType::Color | SkinnedMeshVertexType::Tangent) {
+        if matches!(
+            skn.vertex_type,
+            SkinnedMeshVertexType::Color | SkinnedMeshVertexType::Tangent
+        ) {
             v.color = Some([0, 0, 0, 0]);
         }
         if matches!(skn.vertex_type, SkinnedMeshVertexType::Tangent) {
@@ -65,7 +72,13 @@ pub fn add_minimal_mesh(skn_path: &Path, bone_index: u8, scale: f32) -> Result<M
     skn.indices.push((base_vertex + 1) as u16);
     skn.indices.push((base_vertex + 2) as u16);
 
-    skn.ranges.push(SkinnedMeshRange::new("MinimalMesh", base_vertex, 3, base_index, 3));
+    skn.ranges.push(SkinnedMeshRange::new(
+        "MinimalMesh",
+        base_vertex,
+        3,
+        base_index,
+        3,
+    ));
 
     skn.to_path(skn_path)
         .map_err(|e| Error::InvalidInput(format!("failed to write skn: {e:?}")))?;

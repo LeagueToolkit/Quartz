@@ -1,6 +1,6 @@
 /* AniPort commands — backing the mask viewer. The Electron build read the target
-   skeleton through a league-toolkit reader behind a Flask backend; here we parse
-   the .skl directly with quartz-lib and hand the joint list to the React UI. */
+skeleton through a league-toolkit reader behind a Flask backend; here we parse
+the .skl directly with quartz-lib and hand the joint list to the React UI. */
 
 use quartz_lib::skeleton::{self, SkeletonInfo};
 use serde::Serialize;

@@ -1,9 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import './port/Port.css';
 import usePort from './port/usePort';
-import { parseVfxEmitters, type VfxEmitter, type VfxSystem, type VfxSystemMap } from './port/utils/vfxEmitterParser';
-import { insertVFXSystemIntoFile, insertVFXSystemWithPreservedNames } from './port/utils/vfxInsertSystem';
-import { findAssetFiles } from './port/utils/assetCopier';
+import type { VfxEmitter, VfxSystem, VfxPath } from './port/model';
 import {
     handleEmitterTextureMouseEnter,
     handleEmitterTextureMouseLeave,
@@ -11,12 +9,20 @@ import {
     closeTextureHoverPreview,
 } from './port/utils/textureHoverPreview';
 import { getLeaguePath } from '@/lib/api/league';
-import { portPrepareDonorFromSkin, portCopyAssetsToTarget, backupCreate } from '@/lib/api/wad';
+import { readBin, writeBin } from '@/lib/api';
+import { portPrepareDonorFromSkin, backupCreate } from '@/lib/api/wad';
 import GlowingSpinner from './port/components/GlowingSpinner';
 import TargetColumn from './port/components/TargetColumn';
 import DonorColumn from './port/components/DonorColumn';
-import PortBottomControls from './port/components/PortBottomControls';
-import VfxFloatingActions from './port/components/VfxFloatingActions';
+import PortBottomControls, { type PortActionButton } from './port/components/PortBottomControls';
+import { CircularProgress } from '@mui/material';
+import {
+    Apps as AppsIcon,
+    BubbleChart as BubbleChartIcon,
+    Add as AddIcon,
+    Folder as FolderIcon,
+    ArrowBack as ArrowBackIcon,
+} from '@mui/icons-material';
 import NewVfxSystemModal from './port/components/modals/NewVfxSystemModal';
 import VfxSystemNamePromptModal from './port/components/modals/VfxSystemNamePromptModal';
 import PortAllModeModal from './port/components/modals/PortAllModeModal';
@@ -37,9 +43,48 @@ function Port() {
     const [isPreparingPortDonor, setIsPreparingPortDonor] = useState(false);
     const [portDonorProgress, setPortDonorProgress] = useState('');
     const [showBackupViewer, setShowBackupViewer] = useState(false);
-    const [donorTempRoot, setDonorTempRoot] = useState<string | null>(null);
 
-    const sectionStyle = useMemo<React.CSSProperties>(() => ({ background: 'transparent', border: '1px solid var(--border)', borderRadius: '5px' }), []);
+    const sectionStyle = useMemo<React.CSSProperties>(() => ({ background: 'transparent', border: 'none', borderRadius: '5px' }), []);
+
+    const logVfxDrag = useCallback((stage: string, event?: React.DragEvent, extra?: Record<string, unknown>) => {
+        const types = event?.dataTransfer?.types ? Array.from(event.dataTransfer.types) : [];
+        console.log('[port drag]', stage, {
+            types,
+            dragStartedKey: p.dragStartedKeyRef.current,
+            dropEffect: event?.dataTransfer?.dropEffect,
+            effectAllowed: event?.dataTransfer?.effectAllowed,
+            ...extra,
+        });
+    }, [p.dragStartedKeyRef]);
+
+    useEffect(() => {
+        const logNativeDrag = (stage: string, event: DragEvent) => {
+            const target = event.target as HTMLElement | null;
+            const types = event.dataTransfer?.types ? Array.from(event.dataTransfer.types) : [];
+            console.log('[port drag native]', stage, {
+                targetTag: target?.tagName,
+                targetClass: target?.className,
+                types,
+                dragStartedKey: p.dragStartedKeyRef.current,
+                dropEffect: event.dataTransfer?.dropEffect,
+                effectAllowed: event.dataTransfer?.effectAllowed,
+            });
+        };
+
+        const onDragEnter = (event: DragEvent) => logNativeDrag('document:dragenter', event);
+        const onDragOver = (event: DragEvent) => logNativeDrag('document:dragover', event);
+        const onDrop = (event: DragEvent) => logNativeDrag('document:drop', event);
+
+        document.addEventListener('dragenter', onDragEnter, true);
+        document.addEventListener('dragover', onDragOver, true);
+        document.addEventListener('drop', onDrop, true);
+
+        return () => {
+            document.removeEventListener('dragenter', onDragEnter, true);
+            document.removeEventListener('dragover', onDragOver, true);
+            document.removeEventListener('drop', onDrop, true);
+        };
+    }, [p.dragStartedKeyRef]);
 
     // Debounced filter inputs mirroring the original filterTargetParticles/filterDonorParticles.
     const filterTargetParticles = useCallback((v: string) => p.setTargetFilter(v), [p]);
@@ -92,19 +137,16 @@ function Port() {
                     portingPrefix: args.portingPrefix,
                 });
 
-                if (!result.donorPyContent) {
+                if (!result.combinedBinPath) {
                     setPortDonorProgress('No donor content was produced.');
                     p.setStatusMessage('Load donor from game produced no content');
                     return;
                 }
 
-                const systems = parseVfxEmitters(result.donorPyContent) || {};
-                p.setDonorPyContent(result.donorPyContent);
-                p.setDonorSystems(systems);
-                p.setDonorPath(`${result.championFileName} skin${result.skinId} (from game)`);
-                setDonorTempRoot(result.tempRoot);
+                setPortDonorProgress('Opening donor session...');
+                p.setDonorTempRoot(result.tempRoot);
+                await p.processDonorBin(result.combinedBinPath);
                 setPortDonorProgress('Donor is ready.');
-                p.setStatusMessage(`Loaded donor from game: ${Object.keys(systems).length} VFX systems`);
                 setShowPortDonorModal(false);
             } catch (error) {
                 const msg = (error as Error)?.message || String(error);
@@ -129,68 +171,46 @@ function Port() {
                 p.setStatusMessage('Locked: target bin missing ResourceResolver');
                 return;
             }
-
-            p.saveStateToHistory(`Add VFX system "${chosen}"`);
-
-            const { fullContent, defaultName } = p.pendingDrop;
-            const prevKeys = new Set(Object.keys(p.targetSystems || {}));
-
+            const { donorSystemPath, defaultName } = p.pendingDrop;
             const isPreservationMode = chosen === defaultName;
-            let updatedPy: string;
-            if (isPreservationMode) updatedPy = insertVFXSystemWithPreservedNames(p.targetPyContent || '', fullContent, chosen, p.donorPyContent);
-            else updatedPy = insertVFXSystemIntoFile(p.targetPyContent || '', fullContent, chosen);
-
-            p.setTargetPyContent(updatedPy);
-            p.setFileSaved(false);
-            const systems = parseVfxEmitters(updatedPy);
-            const nowTs = Date.now();
-
-            const systemsWithDeletedEmitters: VfxSystemMap = Object.fromEntries(
-                Object.entries(systems).map(([key, sys]) => {
-                    if (sys.emitters) {
-                        const filteredEmitters = sys.emitters.filter((emitter) => !p.deletedEmitters.has(`${key}:${emitter.name}`));
-                        return [key, { ...sys, emitters: filteredEmitters }];
-                    }
-                    return [key, sys];
-                })
-            );
-
-            const entries = Object.entries(systemsWithDeletedEmitters).map(([key, sys]): [string, VfxSystem] =>
-                !prevKeys.has(key) ? [key, { ...sys, ported: true, portedAt: nowTs }] : [key, sys]
-            );
-            const newEntries = entries.filter(([key]) => !prevKeys.has(key));
-            const oldEntries = entries.filter(([key]) => prevKeys.has(key));
-            const ordered = Object.fromEntries([...newEntries, ...oldEntries]);
-            p.setTargetSystems(ordered);
-
-            const modeText = isPreservationMode ? 'with preserved ResourceResolver names' : 'with updated names';
-            p.setStatusMessage(`Added VFX system "${chosen}" to target ${modeText}`);
-        } catch {
-            p.setStatusMessage('Failed to add VFX system');
+            void p.handleInsertDonorSystem(donorSystemPath, chosen, isPreservationMode);
         } finally {
             p.setShowNamePromptModal(false);
             p.setPendingDrop(null);
         }
     };
 
+    // WebView2 does not reliably expose custom dataTransfer types during
+    // dragover, so also trust the live drag state set on the donor dragstart.
     const isVfxSystemDrag = (event: React.DragEvent) => {
+        if (p.dragStartedKeyRef.current) {
+            logVfxDrag('isVfxSystemDrag:ref-true', event);
+            return true;
+        }
         const types = event?.dataTransfer?.types;
         if (!types) return false;
-        return Array.from(types).includes('application/x-vfxsys');
+        const result = Array.from(types).includes('application/x-vfxsys');
+        if (result) logVfxDrag('isVfxSystemDrag:type-true', event);
+        return result;
     };
 
-    const processVfxSystemDrop = (event: React.DragEvent) => {
+    const processVfxSystemDrop = (event: React.DragEvent, _source = 'unknown') => {
         try {
+            logVfxDrag('processVfxSystemDrop:start', event, { source: _source });
             event.preventDefault();
             event.stopPropagation();
 
             const data = event.dataTransfer.getData('application/x-vfxsys');
-            if (!data) return;
+            const draggedKey = p.dragStartedKeyRef.current;
 
             p.setIsDragOverVfx(false);
             p.dragEnterCounter.current = 0;
+            if (!data && !draggedKey) {
+                logVfxDrag('processVfxSystemDrop:no-data', event, { source: _source });
+                return;
+            }
 
-            if (!p.targetPyContent) {
+            if (!p.targetModel) {
                 p.setStatusMessage('No target file loaded - please open a target bin first');
                 return;
             }
@@ -199,15 +219,35 @@ function Port() {
                 return;
             }
 
-            const payload = JSON.parse(data);
-            const { name, fullContent } = payload || {};
-            if (!fullContent) {
+            let name: string | undefined;
+            let path: VfxPath | undefined;
+            if (data) {
+                try {
+                    const payload = JSON.parse(data) as { name?: string; path?: VfxPath };
+                    name = payload?.name;
+                    path = payload?.path;
+                } catch {
+                    /* fall through to drag-state lookup */
+                }
+            }
+            // Fallback: the payload can be empty when the engine withholds
+            // dataTransfer contents; recover the system from the drag state.
+            if (!path && draggedKey) {
+                const sys = p.donorSystems[draggedKey];
+                if (sys) {
+                    path = sys.path;
+                    name = name || sys.particleName || sys.name;
+                }
+            }
+            if (!path) {
+                logVfxDrag('processVfxSystemDrop:no-path', event, { source: _source, dataPresent: !!data, draggedKey });
                 p.setStatusMessage('Dropped item has no VFX content');
                 return;
             }
 
             const defaultName = name && typeof name === 'string' ? name : 'NewVFXSystem';
-            p.setPendingDrop({ fullContent, defaultName });
+            logVfxDrag('processVfxSystemDrop:accepted', event, { source: _source, defaultName, draggedKey });
+            p.setPendingDrop({ donorSystemPath: path, defaultName });
             p.setNamePromptValue(defaultName);
             p.setShowNamePromptModal(true);
 
@@ -219,36 +259,16 @@ function Port() {
                     /* noop */
                 }
             });
-
-            // Copy the dropped system's referenced assets into the target mod
-            // tree so its textures/meshes ship beside the bin. The donor temp
-            // root (when the donor came from the game) and the donor bin's own
-            // folder are the candidate sources.
-            const assetPaths = findAssetFiles(fullContent);
-            if (assetPaths.length > 0 && p.targetPath && p.targetPath.includes('.')) {
-                const sourceDirs = new Set<string>();
-                if (donorTempRoot) sourceDirs.add(`${donorTempRoot}/combined`);
-                const donorDir = p.donorPath && p.donorPath.includes('.') ? p.donorPath.replace(/[/\\][^/\\]*$/, '') : '';
-                if (donorDir) sourceDirs.add(donorDir);
-                if (sourceDirs.size > 0) {
-                    void portCopyAssetsToTarget({
-                        assetPaths,
-                        sourceDirs: Array.from(sourceDirs),
-                        targetBinPath: p.targetPath,
-                    })
-                        .then((res) => {
-                            if (res.copied > 0) p.setStatusMessage(`Copied ${res.copied} asset file(s) into the target mod`);
-                        })
-                        .catch(() => {});
-                }
-            }
         } catch {
+            logVfxDrag('processVfxSystemDrop:error', event, { source: _source });
             p.setStatusMessage('Failed to add VFX system');
         }
     };
 
     const handleTargetDropDragOver = (event: React.DragEvent) => {
-        if (!isVfxSystemDrag(event)) return;
+        const accepted = isVfxSystemDrag(event);
+        logVfxDrag('target:dragover', event, { accepted });
+        if (!accepted) return;
         event.preventDefault();
         event.stopPropagation();
         event.dataTransfer.dropEffect = 'copy';
@@ -258,7 +278,9 @@ function Port() {
     const handleTargetDropDragEnter = (event: React.DragEvent) => {
         event.preventDefault();
         event.stopPropagation();
-        if (!isVfxSystemDrag(event)) return;
+        const accepted = isVfxSystemDrag(event);
+        logVfxDrag('target:dragenter', event, { accepted });
+        if (!accepted) return;
         p.dragEnterCounter.current += 1;
         if (!p.isDragOverVfx) p.setIsDragOverVfx(true);
     };
@@ -266,6 +288,7 @@ function Port() {
     const handleTargetDropDragLeave = (event: React.DragEvent) => {
         event.preventDefault();
         event.stopPropagation();
+        logVfxDrag('target:dragleave', event, { counter: p.dragEnterCounter.current });
         p.dragEnterCounter.current -= 1;
         if (p.dragEnterCounter.current <= 0) {
             p.setIsDragOverVfx(false);
@@ -274,7 +297,7 @@ function Port() {
     };
 
     const handleOpenIdleManager = useCallback(() => {
-        if (!p.targetPyContent) {
+        if (!p.targetModel) {
             p.setStatusMessage('No target file loaded');
             return;
         }
@@ -301,17 +324,27 @@ function Port() {
         setShowBackupViewer(true);
     }, [p]);
 
-    // Save wrapper: snapshot the current target into zbackups before writing,
-    // matching the original's create-on-save backups.
+    // Save wrapper: snapshot the current on-disk target into zbackups before
+    // writing, matching the original's create-on-save backups. The session has
+    // no text form, so the backup reads the bin through the ritobin bridge.
     const handleSaveWithBackup = useCallback(async () => {
         try {
-            if (p.targetPath && p.targetPath.includes('.') && p.targetPyContent) {
-                await backupCreate(p.targetPath, p.targetPyContent, 'port').catch(() => {});
+            if (p.targetPath && p.targetPath.includes('.')) {
+                const text = await readBin(p.targetPath).catch(() => null);
+                if (text) await backupCreate(p.targetPath, text, 'port').catch(() => {});
             }
         } finally {
             await p.handleSave();
         }
     }, [p]);
+
+    // Old-Quartz behavior: systems are collapsed by default, but an active
+    // filter expands every (matching) system; clearing the search collapses them
+    // again. Passing an empty set = "expand all" without touching the manual
+    // toggle state underneath, so it's restored the moment the query clears.
+    const EXPAND_ALL: Set<string> = new Set();
+    const targetCollapsed = p.targetFilter ? EXPAND_ALL : p.collapsedTargetSystems;
+    const donorCollapsed = p.donorFilter ? EXPAND_ALL : p.collapsedDonorSystems;
 
     const sharedListProps = {
         selectedTargetSystem: p.selectedTargetSystem,
@@ -345,7 +378,7 @@ function Port() {
         targetSystems: p.targetSystems,
         targetListRef: p.targetListRef,
         filteredTargetSystems: p.filteredTargetSystems,
-        collapsedSystems: p.collapsedTargetSystems,
+        collapsedSystems: targetCollapsed,
         toggleSystemCollapse: p.handleToggleTargetCollapse,
         renamingSystem: p.renamingSystem,
         setRenamingSystem: p.setRenamingSystem,
@@ -356,6 +389,10 @@ function Port() {
         renamingEmitter: p.renamingEmitter,
         setRenamingEmitter: p.setRenamingEmitter,
         handleDeleteAllEmitters: p.handleDeleteAllEmitters,
+        // Lets target rows recognize an in-progress donor system drag and pass
+        // it through to the column drop zone.
+        dragStartedKey: p.dragStartedKey,
+        dragStartedKeyRef: p.dragStartedKeyRef,
         hasResourceResolver: p.hasResourceResolver,
         hasSkinCharacterData: p.hasSkinCharacterData,
         actionsMenuAnchor: p.actionsMenuAnchor,
@@ -365,6 +402,7 @@ function Port() {
         handleAddIdleParticles: p.handleAddIdleParticles,
         handleAddChildParticles: p.handleAddChildParticles,
         trimTargetNames: p.trimTargetNames,
+        setTrimTargetNames: p.setTrimTargetNames,
     };
 
     const donorColumnProps = {
@@ -381,18 +419,68 @@ function Port() {
         donorSystems: p.donorSystems,
         donorListRef: p.donorListRef,
         filteredDonorSystems: p.filteredDonorSystems,
-        collapsedSystems: p.collapsedDonorSystems,
+        collapsedSystems: donorCollapsed,
         toggleSystemCollapse: p.handleToggleDonorCollapse,
         pressedSystemKey: p.pressedSystemKey,
         setPressedSystemKey: p.setPressedSystemKey,
         dragStartedKey: p.dragStartedKey,
+        dragStartedKeyRef: p.dragStartedKeyRef,
         setDragStartedKey: p.setDragStartedKey,
-        donorPyContent: p.donorPyContent,
         handlePortAllEmitters: p.handlePortAllEmitters,
         draggedEmitter: p.draggedEmitter,
         setDraggedEmitter: p.setDraggedEmitter,
         trimDonorNames: p.trimDonorNames,
+        setTrimDonorNames: p.setTrimDonorNames,
     };
+
+    // VFX action buttons for the bottom bar (formerly the floating island).
+    // Same enable/disable rules and order as the old cluster.
+    const pDis = !p.hasResourceResolver || !p.hasSkinCharacterData;
+    const nDis = !p.hasResourceResolver;
+    const portAllDisabled = !p.hasResourceResolver || Object.values(p.donorSystems).length === 0 || p.isPortAllLoading;
+    const portActions: PortActionButton[] = [
+        ...(p.targetModel && p.donorModel
+            ? [{
+                id: 'portAll',
+                color: 'var(--accent-primary)',
+                title: p.isPortAllLoading ? 'Porting…' : 'Port All VFX Systems',
+                icon: p.isPortAllLoading ? <CircularProgress size={15} sx={{ color: 'var(--accent-primary)' }} /> : <ArrowBackIcon sx={{ fontSize: 16 }} />,
+                onClick: () => setShowPortAllModeModal(true),
+                disabled: portAllDisabled,
+            }]
+            : []),
+        {
+            id: 'newSystem',
+            color: 'var(--color-warning)',
+            title: nDis ? 'New VFX System (needs ResourceResolver)' : 'New VFX System',
+            icon: <AddIcon sx={{ fontSize: 18 }} />,
+            onClick: p.handleOpenNewSystemModal,
+            disabled: nDis,
+        },
+        {
+            id: 'persistent',
+            color: 'var(--color-success)',
+            title: pDis ? 'Persistent Effects (needs ResourceResolver + SkinData)' : 'Persistent Effects',
+            icon: <AppsIcon sx={{ fontSize: 16 }} />,
+            onClick: p.handleOpenPersistent,
+            disabled: pDis,
+        },
+        {
+            id: 'idleParticles',
+            color: 'var(--color-info)',
+            title: pDis ? 'Idle Particles (needs ResourceResolver + SkinData)' : 'Idle Particles',
+            icon: <BubbleChartIcon sx={{ fontSize: 16 }} />,
+            onClick: handleOpenIdleManager,
+            disabled: pDis,
+        },
+        {
+            id: 'backup',
+            color: 'var(--accent-secondary)',
+            title: 'Backup History',
+            icon: <FolderIcon sx={{ fontSize: 16 }} />,
+            onClick: handleOpenBackupViewer,
+        },
+    ];
 
     return (
         <div
@@ -403,6 +491,8 @@ function Port() {
 
             <div className="port-main-content" style={{ display: 'flex', flex: 1, gap: '20px', padding: '12px', overflow: 'hidden', position: 'relative', zIndex: 1 }}>
                 <TargetColumn {...targetColumnProps} />
+                {/* Single center divider splitting the two halves. */}
+                <div style={{ width: '1px', alignSelf: 'stretch', background: 'var(--border)', flexShrink: 0 }} />
                 <DonorColumn {...donorColumnProps} />
             </div>
 
@@ -423,9 +513,17 @@ function Port() {
                 onClose={(restored) => {
                     setShowBackupViewer(false);
                     if (restored) {
-                        p.setTargetPyContent(restored.content);
-                        p.setTargetSystems(parseVfxEmitters(restored.content) || {});
-                        p.setStatusMessage('Restored target from backup');
+                        // The backup is ritobin text; write it back as a proper
+                        // .bin, then reload the session from disk.
+                        void (async () => {
+                            try {
+                                await writeBin(restored.content, p.targetPath);
+                                await p.processTargetBin(p.targetPath);
+                                p.setStatusMessage('Restored target from backup');
+                            } catch (e) {
+                                p.setStatusMessage(`Failed to restore backup: ${(e as Error).message}`);
+                            }
+                        })();
                     }
                 }}
             />
@@ -505,7 +603,7 @@ function Port() {
                 open={showIdleManagerModal}
                 onClose={() => setShowIdleManagerModal(false)}
                 targetSystems={p.targetSystems}
-                targetPyContent={p.targetPyContent}
+                model={p.targetModel}
                 onUpsertSystem={p.handleUpsertIdleParticlesForSystem}
                 onRemoveEffectKey={p.handleRemoveIdleParticlesByEffectKey}
             />
@@ -541,32 +639,13 @@ function Port() {
 
             <PortBottomControls
                 statusMessage={p.statusMessage}
-                targetPyContent={p.targetPyContent}
-                trimTargetNames={p.trimTargetNames}
-                setTrimTargetNames={p.setTrimTargetNames}
-                trimDonorNames={p.trimDonorNames}
-                setTrimDonorNames={p.setTrimDonorNames}
+                hasTarget={!!p.targetModel}
                 handleUndo={p.handleUndo}
-                undoHistory={p.undoHistory}
+                canUndo={p.canUndo}
                 handleSave={handleSaveWithBackup}
                 isProcessing={p.isProcessing}
                 hasChangesToSave={p.hasChangesToSave}
-            />
-
-            <VfxFloatingActions
-                targetPyContent={p.targetPyContent}
-                isProcessing={p.isProcessing}
-                handleOpenBackupViewer={handleOpenBackupViewer}
-                handleOpenPersistent={p.handleOpenPersistent}
-                handleOpenIdleParticles={handleOpenIdleManager}
-                handleOpenNewSystemModal={p.handleOpenNewSystemModal}
-                hasResourceResolver={p.hasResourceResolver}
-                hasSkinCharacterData={p.hasSkinCharacterData}
-                showIdleParticlesButton
-                showPortAllButton={!!(p.targetPyContent && p.donorPyContent)}
-                onPortAll={() => setShowPortAllModeModal(true)}
-                isPortAllLoading={p.isPortAllLoading}
-                disablePortAll={!p.hasResourceResolver || Object.values(p.donorSystems).length === 0}
+                actions={portActions}
             />
 
             <PortAllModeModal

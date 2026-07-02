@@ -1,6 +1,6 @@
 /* Bumpath repath command — repaths a mod folder by inserting a user prefix
-   into every asset/data reference, copying assets, and optionally combining
-   linked BINs. Ported from Quartz's bumpath:repath IPC + bumpathCore.js. */
+into every asset/data reference, copying assets, and optionally combining
+linked BINs. Ported from Quartz's bumpath:repath IPC + bumpathCore.js. */
 
 use quartz_lib::bumpath::{
     enumerate_source_bins, repath, scan_entries, RepathOptions, RepathResult,

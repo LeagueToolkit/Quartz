@@ -1,5 +1,5 @@
 /* BIN reading/writing via Flint's ritoshark bridge. Hash names are resolved from
-   the cached hashes-bin.lmdb dictionary (loaded lazily on first use). */
+the cached hashes-bin.lmdb dictionary (loaded lazily on first use). */
 
 use quartz_lib::bin::{read_bin_ltk, text_to_tree, tree_to_text_cached, write_bin_ltk};
 

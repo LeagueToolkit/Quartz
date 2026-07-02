@@ -38,7 +38,7 @@ export default function BnkSettingsModal({
     const sectionLabel: React.CSSProperties = {
         fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)',
         letterSpacing: '0.15em', textTransform: 'uppercase', margin: 0,
-        fontFamily: 'JetBrains Mono',
+        fontFamily: 'var(--font-mono)',
     };
 
     return (
@@ -82,10 +82,10 @@ export default function BnkSettingsModal({
                                         transition: 'all 0.2s ease',
                                     }}
                                 >
-                                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: checked ? 'var(--accent-primary)' : 'var(--text-secondary)', fontFamily: 'JetBrains Mono', transition: 'color 0.2s ease' }}>
+                                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: checked ? 'var(--accent-primary)' : 'var(--text-secondary)', fontFamily: 'var(--font-mono)', transition: 'color 0.2s ease' }}>
                                         {fmt.label}
                                     </span>
-                                    <span style={{ fontSize: '0.6rem', color: checked ? 'var(--text-secondary)' : 'var(--text-muted)', fontFamily: 'JetBrains Mono', marginTop: 3 }}>
+                                    <span style={{ fontSize: '0.6rem', color: checked ? 'var(--text-secondary)' : 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 3 }}>
                                         {desc}
                                     </span>
                                 </div>
@@ -115,7 +115,7 @@ export default function BnkSettingsModal({
                                             transition: 'all 0.15s ease',
                                         }}
                                     >
-                                        <span style={{ fontSize: '0.65rem', fontWeight: 600, color: mp3Bitrate === rate ? 'var(--accent-primary)' : 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>
+                                        <span style={{ fontSize: '0.65rem', fontWeight: 600, color: mp3Bitrate === rate ? 'var(--accent-primary)' : 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
                                             {rate}
                                         </span>
                                     </div>
@@ -127,7 +127,7 @@ export default function BnkSettingsModal({
                     <p style={sectionLabel}>General</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', cursor: 'pointer', userSelect: 'none' }}>
-                            <span style={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono', color: 'var(--text-secondary)' }}>Autoplay on click</span>
+                            <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>Autoplay on click</span>
                             <span className="dl-toggle">
                                 <input type="checkbox" checked={autoPlay} onChange={(e) => setAutoPlay(e.target.checked)} />
                                 <span className="dl-toggle__track" />
@@ -135,7 +135,7 @@ export default function BnkSettingsModal({
                             </span>
                         </label>
                         <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', cursor: 'pointer', userSelect: 'none' }}>
-                            <span style={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono', color: 'var(--text-secondary)' }}>Multi-select enabled</span>
+                            <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>Multi-select enabled</span>
                             <span className="dl-toggle">
                                 <input type="checkbox" checked={multiSelect} onChange={(e) => setMultiSelect(e.target.checked)} />
                                 <span className="dl-toggle__track" />
@@ -146,7 +146,7 @@ export default function BnkSettingsModal({
                 </div>
 
                 <div className="dl-modal__foot" style={{ justifyContent: 'center' }}>
-                    <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono', textAlign: 'center' }}>
+                    <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textAlign: 'center' }}>
                         {extractFormats.size === 0 ? 'No formats selected — extraction disabled' : `Extracting as: ${[...extractFormats].map((f) => '.' + f).join(', ')}`}
                     </span>
                 </div>

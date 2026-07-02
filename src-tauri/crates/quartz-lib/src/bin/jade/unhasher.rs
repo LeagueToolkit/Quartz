@@ -1,5 +1,5 @@
-use super::types::*;
 use super::hash_manager::HashManager;
+use super::types::*;
 
 /// Resolve numeric hashes to their string names using the hash manager.
 pub fn unhash(bin: &mut Bin, hashes: &HashManager) {

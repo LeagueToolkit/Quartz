@@ -5,7 +5,7 @@ const styles: Record<string, CSSProperties> = {
     list: { display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto' },
     groupBtn: {
         display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: 8,
-        border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace',
+        border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)',
         fontSize: '0.82rem', cursor: 'pointer', transition: 'all 0.15s ease',
     },
     folderIcon: { fontSize: '0.9rem', opacity: 0.6, flexShrink: 0 },

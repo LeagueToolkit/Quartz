@@ -1,12 +1,13 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Box } from '@mui/material';
+import { FolderOpen } from 'lucide-react';
+import { log } from '@/lib/util/logger';
+import './bumpath/Bumpath.css';
 import { open } from '@tauri-apps/plugin-dialog';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import ConsoleWindow from './bumpath/components/ConsoleWindow';
 import CelestiaGuide from './bumpath/components/CelestiaGuide';
 import SourceBinsPanel from './bumpath/components/SourceBinsPanel';
 import EntriesPanel from './bumpath/components/EntriesPanel';
-import BumpathTopBar from './bumpath/components/BumpathTopBar';
 import BumpathBottomControls from './bumpath/components/BumpathBottomControls';
 import BumpathSettingsPanel from './bumpath/components/BumpathSettingsPanel';
 import BumpathStatusOverlays from './bumpath/components/BumpathStatusOverlays';
@@ -62,8 +63,6 @@ export function Bumpath() {
     const [binFilter, setBinFilter] = useState('');
     const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
     const [expandedFilePaths, setExpandedFilePaths] = useState<Set<string>>(new Set()); // Track expanded file paths (for missing file headers)
-    const [consoleOpen, setConsoleOpen] = useState(false);
-    const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
     const [settingsExpanded, setSettingsExpanded] = useState(false);
     const [showCelestiaGuide, setShowCelestiaGuide] = useState(false);
     const [celestiaStepIndex, setCelestiaStepIndex] = useState(0);
@@ -168,17 +167,14 @@ export function Bumpath() {
         return undefined;
     }, [showCelestiaGuide, celestiaStepIndex, settingsAutoOpened, settingsExpanded]);
 
-    // Add log to console
+    // Progress/status sink for the repath flow. The console UI was removed, so
+    // these route to the app log instead of an in-page buffer.
     const addLog = useCallback((message: string) => {
-        const timestamp = new Date().toLocaleTimeString();
-        setConsoleLogs((prev) => [...prev, `[${timestamp}] ${message}`]);
+        log.info(`[bumpath] ${message}`);
     }, []);
 
-    /* Fetch logs - native implementation keeps logs in consoleLogs via addLog.
-       Kept for compatibility but does nothing. */
-    const fetchLogs = useCallback(async () => {
-        // Native implementation - logs are already in consoleLogs via addLog
-    }, []);
+    /* Kept for the hook contract; the native flow logs via addLog directly. */
+    const fetchLogs = useCallback(async () => {}, []);
 
     // Load settings on mount
     useEffect(() => {
@@ -280,7 +276,6 @@ export function Bumpath() {
         handleApplyPrefix,
         handleProcess,
         handleSelectOutputDir,
-        handleReset,
     } = useBumpathActions({
         apiCall,
         selectedEntries,
@@ -536,15 +531,20 @@ export function Bumpath() {
         });
     }, [sourceBins, hideDataFolderBins, binFilter]);
 
+    // Nothing loaded yet: no source folders, no scanned bins, no scan result.
+    const isEmpty = sourceDirs.length === 0
+        && Object.keys(sourceBins || {}).length === 0
+        && !scannedData;
+
     return (
         <Box className="bumpath-container" sx={{
             width: '100%',
             height: '100%',
             minHeight: '100%',
             overflow: 'hidden',
-            background: 'var(--bg-primary)',
+            background: 'transparent',
             color: 'var(--text-primary)',
-            fontFamily: 'JetBrains Mono, monospace',
+            fontFamily: 'var(--font-mono)',
             display: 'flex',
             flexDirection: 'column',
             position: 'relative',
@@ -570,7 +570,7 @@ export function Bumpath() {
                         border: '1px solid color-mix(in oklab, var(--accent-primary) 55%, transparent)',
                         background: 'var(--bg-secondary)',
                         color: 'var(--text-primary)',
-                        fontFamily: 'JetBrains Mono, monospace',
+                        fontFamily: 'var(--font-mono)',
                         fontSize: '0.82rem',
                     }}>
                         Drop source folder to add it
@@ -579,61 +579,79 @@ export function Bumpath() {
             )}
 
             <Box sx={{ position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
-                {/* Top Bar */}
-                <BumpathTopBar
-                    handleSelectSourceDir={handleSelectSourceDir}
-                    handleSelectAll={handleSelectAll}
-                    handleDeselectAll={handleDeselectAll}
-                    scannedData={scannedData}
-                    selectedEntriesSize={selectedEntries.size}
-                    showMissingOnly={showMissingOnly}
-                    setShowMissingOnly={setShowMissingOnly}
-                />
                 {/* Main Content Area */}
-                <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
-                    <SourceBinsPanel
-                        binFilter={binFilter}
-                        setBinFilter={setBinFilter}
-                        filteredBins={filteredBins}
-                        selectedBinCount={selectedBinCount}
-                        totalBinCount={totalBinCount}
-                        handleBinSelect={handleBinSelect}
-                    />
-                    <EntriesPanel
-                        isScanning={isScanning}
-                        scannedData={scannedData}
-                        filteredEntries={filteredEntries}
-                        expandedEntries={expandedEntries}
-                        selectedEntries={selectedEntries}
-                        expandedFilePaths={expandedFilePaths}
-                        appliedPrefixes={appliedPrefixes}
-                        showMissingOnly={showMissingOnly}
-                        getEntryDisplayName={getEntryDisplayName}
-                        handleEntryExpand={handleEntryExpand}
-                        handleEntrySelect={handleEntrySelect}
-                        handleFilePathExpand={handleFilePathExpand}
-                    />
-                </Box>
+                {isEmpty ? (
+                    <div className="bumpath-emptywrap">
+                        <div className="bumpath-empty">
+                            <FolderOpen
+                                size={48}
+                                color="var(--accent-primary)"
+                                strokeWidth={1.5}
+                                style={{ display: 'block', marginBottom: 16 }}
+                            />
+                            <div className="bumpath-empty__title">No Source Folders</div>
+                            <div className="bumpath-empty__sub">Drop a source folder here, or add one</div>
+                            <button
+                                type="button"
+                                className="dl-btn dl-btn--primary"
+                                onClick={handleSelectSourceDir}
+                            >
+                                <span className="dl-icon"><FolderOpen size={14} /></span>
+                                <span>Add Source Folder</span>
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+                        <SourceBinsPanel
+                            binFilter={binFilter}
+                            setBinFilter={setBinFilter}
+                            filteredBins={filteredBins}
+                            selectedBinCount={selectedBinCount}
+                            totalBinCount={totalBinCount}
+                            handleBinSelect={handleBinSelect}
+                        />
+                        <EntriesPanel
+                            isScanning={isScanning}
+                            scannedData={scannedData}
+                            filteredEntries={filteredEntries}
+                            expandedEntries={expandedEntries}
+                            selectedEntries={selectedEntries}
+                            expandedFilePaths={expandedFilePaths}
+                            appliedPrefixes={appliedPrefixes}
+                            showMissingOnly={showMissingOnly}
+                            setShowMissingOnly={setShowMissingOnly}
+                            selectedEntriesSize={selectedEntries.size}
+                            handleSelectAll={handleSelectAll}
+                            handleDeselectAll={handleDeselectAll}
+                            getEntryDisplayName={getEntryDisplayName}
+                            handleEntryExpand={handleEntryExpand}
+                            handleEntrySelect={handleEntrySelect}
+                            handleFilePathExpand={handleFilePathExpand}
+                        />
+                    </Box>
+                )}
                 {/* Bottom Controls */}
-                <BumpathBottomControls
-                    handleReset={handleReset}
-                    prefixText={prefixText}
-                    handlePrefixTextChange={handlePrefixTextChange}
-                    handleApplyPrefix={handleApplyPrefix}
-                    selectedEntriesSize={selectedEntries.size}
-                    debouncedPrefixText={debouncedPrefixText}
-                    handleSelectOutputDir={handleSelectOutputDir}
-                    isProcessing={isProcessing}
-                    handleProcess={handleProcess}
-                    handleOpenQuickRepath={openQuickWizard}
-                    quickRepathDisabled={isProcessing || Object.keys(sourceBins || {}).length === 0}
-                    scannedData={scannedData}
-                    outputPath={outputPath}
-                    setConsoleOpen={setConsoleOpen}
-                    settingsExpanded={settingsExpanded}
-                    setSettingsExpanded={setSettingsExpanded}
-                    setSettingsAutoOpened={setSettingsAutoOpened}
-                />
+                <div className={`bumpath-dimmable${isEmpty ? ' is-dim' : ''}`}>
+                    <BumpathBottomControls
+                        handleSelectSourceDir={handleSelectSourceDir}
+                        prefixText={prefixText}
+                        handlePrefixTextChange={handlePrefixTextChange}
+                        handleApplyPrefix={handleApplyPrefix}
+                        selectedEntriesSize={selectedEntries.size}
+                        debouncedPrefixText={debouncedPrefixText}
+                        handleSelectOutputDir={handleSelectOutputDir}
+                        isProcessing={isProcessing}
+                        handleProcess={handleProcess}
+                        handleOpenQuickRepath={openQuickWizard}
+                        quickRepathDisabled={isProcessing || Object.keys(sourceBins || {}).length === 0}
+                        scannedData={scannedData}
+                        outputPath={outputPath}
+                        settingsExpanded={settingsExpanded}
+                        setSettingsExpanded={setSettingsExpanded}
+                        setSettingsAutoOpened={setSettingsAutoOpened}
+                    />
+                </div>
                 {/* Collapsible Settings Panel */}
                 <BumpathSettingsPanel
                     panelStyle={panelStyle}
@@ -685,14 +703,6 @@ export function Bumpath() {
                 onNormal={handleChooseNormalRepath}
                 onClose={handleChooseNormalRepath}
             />
-            {/* Console Window */}
-            <ConsoleWindow
-                open={consoleOpen}
-                onClose={() => setConsoleOpen(false)}
-                logs={consoleLogs}
-                onRefresh={fetchLogs}
-            />
-
             <CelestiaTriggerButton
                 showCelestiaGuide={showCelestiaGuide}
                 setShowCelestiaGuide={setShowCelestiaGuide}

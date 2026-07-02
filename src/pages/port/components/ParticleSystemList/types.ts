@@ -1,5 +1,5 @@
 import type React from 'react';
-import type { VfxSystem, VfxEmitter } from '../../utils/vfxEmitterParser';
+import type { VfxSystem, VfxEmitter } from '../../model';
 
 export interface ListSharedProps {
     selectedTargetSystem: string | null;
@@ -17,6 +17,7 @@ export interface ListSharedProps {
     handleEmitterMouseLeave: (e: React.MouseEvent) => void;
     handleEmitterClick: (e: React.MouseEvent, emitter: VfxEmitter, system: VfxSystem, isTarget: boolean) => void;
     handleEmitterContextMenu: (e: React.MouseEvent, emitter: VfxEmitter, system: VfxSystem, isTarget: boolean) => void;
+    processVfxSystemDrop?: (e: React.DragEvent, source: string) => void;
 
     // target-only
     renamingSystem?: { systemKey: string; newName: string } | null;
@@ -41,8 +42,8 @@ export interface ListSharedProps {
     pressedSystemKey?: string | null;
     setPressedSystemKey?: (k: string | null) => void;
     dragStartedKey?: string | null;
+    dragStartedKeyRef?: React.MutableRefObject<string | null>;
     setDragStartedKey?: (k: string | null) => void;
-    donorPyContent?: string;
     handlePortAllEmitters?: (donorSystemKey: string) => void;
     draggedEmitter?: { sourceSystemKey: string; emitterName: string } | null;
     setDraggedEmitter?: (v: { sourceSystemKey: string; emitterName: string } | null) => void;

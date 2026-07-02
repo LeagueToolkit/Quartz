@@ -41,6 +41,14 @@ export const PAGE_LABELS: { page: Page; label: string }[] = [
 
 export const TOGGLEABLE_PAGES: Page[] = PAGE_LABELS.map((p) => p.page);
 
+export interface RecentBin {
+    path: string;
+    name: string;
+    lastOpened: string; // ISO timestamp
+}
+
+const RECENT_BINS_MAX = 12;
+
 interface UiPrefs {
     // Appearance
     font: string;
@@ -61,6 +69,7 @@ interface UiPrefs {
     // Navigation / pages
     autoLoadEnabled: boolean;
     expandSystemsOnLoad: boolean;
+    sidebarCollapsed: boolean;
     pageVisibility: Partial<Record<Page, boolean>>;
     // External tools
     useNativeFileBrowser: boolean;
@@ -73,10 +82,22 @@ interface UiPrefs {
     githubToken: string;
     githubRepoUrl: string;
     showGithubToken: boolean;
+    // Recently opened bins (Paint / Bin Editor share this list)
+    recentBins: RecentBin[];
+    // Port keeps a separate recent list per column.
+    recentTargetBins: RecentBin[];
+    recentDonorBins: RecentBin[];
 
     set: <K extends keyof UiPrefs>(key: K, value: UiPrefs[K]) => void;
     setPageVisible: (page: Page, visible: boolean) => void;
+    pushRecentBin: (path: string) => void;
+    removeRecentBin: (path: string) => void;
+    /* Slot-scoped variants for Port's Target / Donor columns. */
+    pushRecentBinFor: (slot: 'target' | 'donor', path: string) => void;
+    removeRecentBinFor: (slot: 'target' | 'donor', path: string) => void;
 }
+
+const RECENT_KEY = { target: 'recentTargetBins', donor: 'recentDonorBins' } as const;
 
 export const useUiPrefsStore = create<UiPrefs>()(
     persist(
@@ -96,6 +117,7 @@ export const useUiPrefsStore = create<UiPrefs>()(
             backgroundEffectType: 'fireflies',
             autoLoadEnabled: false,
             expandSystemsOnLoad: false,
+            sidebarCollapsed: true,
             pageVisibility: {},
             useNativeFileBrowser: false,
             communicateWithJade: true,
@@ -105,9 +127,38 @@ export const useUiPrefsStore = create<UiPrefs>()(
             githubToken: '',
             githubRepoUrl: 'https://github.com/FrogCsLoL/VFXHub',
             showGithubToken: false,
+            recentBins: [],
+            recentTargetBins: [],
+            recentDonorBins: [],
             set: (key, value) => set({ [key]: value } as Pick<UiPrefs, typeof key>),
             setPageVisible: (page, visible) =>
                 set((s) => ({ pageVisibility: { ...s.pageVisibility, [page]: visible } })),
+            pushRecentBin: (path) =>
+                set((s) => {
+                    const name = path.split(/[\\/]/).pop() || path;
+                    const next = [
+                        { path, name, lastOpened: new Date().toISOString() },
+                        ...s.recentBins.filter((b) => b.path !== path),
+                    ].slice(0, RECENT_BINS_MAX);
+                    return { recentBins: next };
+                }),
+            removeRecentBin: (path) =>
+                set((s) => ({ recentBins: s.recentBins.filter((b) => b.path !== path) })),
+            pushRecentBinFor: (slot, path) =>
+                set((s) => {
+                    const key = RECENT_KEY[slot];
+                    const name = path.split(/[\\/]/).pop() || path;
+                    const next = [
+                        { path, name, lastOpened: new Date().toISOString() },
+                        ...s[key].filter((b) => b.path !== path),
+                    ].slice(0, RECENT_BINS_MAX);
+                    return { [key]: next } as Pick<UiPrefs, (typeof RECENT_KEY)[typeof slot]>;
+                }),
+            removeRecentBinFor: (slot, path) =>
+                set((s) => {
+                    const key = RECENT_KEY[slot];
+                    return { [key]: s[key].filter((b) => b.path !== path) } as Pick<UiPrefs, (typeof RECENT_KEY)[typeof slot]>;
+                }),
         }),
         { name: 'quartz-ui-prefs' },
     ),

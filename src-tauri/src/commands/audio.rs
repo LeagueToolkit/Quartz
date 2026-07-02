@@ -1,9 +1,9 @@
 /* Sound Banks (BnkExtract) backend.
 
-   Pure-Rust BNK/WPK parsing, HIRC event mapping and WEM->OGG/WAV decoding live in
-   quartz-lib::audio. WEM encoding and MP3 decoding need external tools
-   (WwiseConsole.exe + vgmstream-cli.exe) fetched from the tarngaina/LtMAO repo into
-   %APPDATA%/RitoShark/AudioTools, mirroring the original Electron handler. */
+Pure-Rust BNK/WPK parsing, HIRC event mapping and WEM->OGG/WAV decoding live in
+quartz-lib::audio. WEM encoding and MP3 decoding need external tools
+(WwiseConsole.exe + vgmstream-cli.exe) fetched from the tarngaina/LtMAO repo into
+%APPDATA%/RitoShark/AudioTools, mirroring the original Electron handler. */
 
 use quartz_lib::audio::tree::{self, LoadBanksResult};
 use quartz_lib::audio::wem;
@@ -39,7 +39,9 @@ fn wwise_wproj() -> Result<PathBuf, String> {
 }
 
 fn vgmstream_exe() -> Result<PathBuf, String> {
-    Ok(audio_tools_root()?.join("Decoders").join("vgmstream-cli.exe"))
+    Ok(audio_tools_root()?
+        .join("Decoders")
+        .join("vgmstream-cli.exe"))
 }
 
 fn wwise_temp_dir() -> Result<PathBuf, String> {
@@ -69,7 +71,9 @@ fn run_hidden(exe: &Path, args: &[&str], cwd: Option<&Path>) -> Result<(), Strin
         let stderr = String::from_utf8_lossy(&output.stderr);
         Err(format!(
             "{} exited with {}: {}",
-            exe.file_name().and_then(|n| n.to_str()).unwrap_or("process"),
+            exe.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("process"),
             output.status,
             stderr.trim()
         ))
@@ -202,7 +206,11 @@ fn write_node_formats(
         }
         if formats.iter().any(|f| f == "ogg") {
             if let Ok(decoded) = wem::decode_wem(&audio.data) {
-                let ext = if decoded.format == "wav" { "wav" } else { "ogg" };
+                let ext = if decoded.format == "wav" {
+                    "wav"
+                } else {
+                    "ogg"
+                };
                 let _ = std::fs::write(cur_dir.join(format!("{base}.{ext}")), &decoded.data);
                 *count += 1;
             }
@@ -216,7 +224,11 @@ fn write_node_formats(
         if formats.iter().any(|f| f == "mp3") {
             // No native MP3 encoder; emit the decoded container so a file still lands.
             if let Ok(decoded) = wem::decode_wem(&audio.data) {
-                let ext = if decoded.format == "wav" { "wav" } else { "ogg" };
+                let ext = if decoded.format == "wav" {
+                    "wav"
+                } else {
+                    "ogg"
+                };
                 let _ = std::fs::write(cur_dir.join(format!("{base}.{ext}")), &decoded.data);
                 *count += 1;
             }
@@ -225,8 +237,7 @@ fn write_node_formats(
         for child in children {
             let target = cur_dir.join(sanitize_segment(&child.name));
             if child.audio_data.is_none() {
-                std::fs::create_dir_all(&target)
-                    .map_err(|e| format!("mkdir failed: {e}"))?;
+                std::fs::create_dir_all(&target).map_err(|e| format!("mkdir failed: {e}"))?;
                 write_node_formats(child, &target, formats, count)?;
             } else {
                 write_node_formats(child, cur_dir, formats, count)?;
@@ -418,11 +429,16 @@ pub async fn wwise_install(app: AppHandle) -> Result<InstallResult, String> {
                 .map_err(|e| format!("write failed for {}: {e}", dest_path.display()))?;
 
             done += 1;
-            progress(&format!("Installing audio tools ({done} / {total} files)..."));
+            progress(&format!(
+                "Installing audio tools ({done} / {total} files)..."
+            ));
         }
 
         if !wwise_console_exe()?.exists() {
-            return Err("WwiseConsole.exe not found after install — repo structure may have changed.".into());
+            return Err(
+                "WwiseConsole.exe not found after install — repo structure may have changed."
+                    .into(),
+            );
         }
 
         progress("Done!");
@@ -431,8 +447,14 @@ pub async fn wwise_install(app: AppHandle) -> Result<InstallResult, String> {
     .await;
 
     match result {
-        Ok(()) => Ok(InstallResult { success: true, error: None }),
-        Err(e) => Ok(InstallResult { success: false, error: Some(e) }),
+        Ok(()) => Ok(InstallResult {
+            success: true,
+            error: None,
+        }),
+        Err(e) => Ok(InstallResult {
+            success: false,
+            error: Some(e),
+        }),
     }
 }
 
@@ -756,10 +778,7 @@ pub async fn bnk_scan_mod_folder(
         };
 
         // Bin selection: prefer skin-matching bins.
-        let bins: Vec<&PathBuf> = all
-            .iter()
-            .filter(|p| lower(p).ends_with(".bin"))
-            .collect();
+        let bins: Vec<&PathBuf> = all.iter().filter(|p| lower(p).ends_with(".bin")).collect();
         let selected_bin = bins
             .iter()
             .find(|p| skin_matches(p))
@@ -913,9 +932,7 @@ fn normalize_rel_lower(value: &str) -> String {
 fn extract_skin_segment(rel_lower: &str) -> String {
     if let Some(idx) = rel_lower.find("/skins/") {
         let rest = &rel_lower[idx + "/skins/".len()..];
-        let end = rest
-            .find(|c| c == '/' || c == '.')
-            .unwrap_or(rest.len());
+        let end = rest.find(|c| c == '/' || c == '.').unwrap_or(rest.len());
         rest[..end].to_string()
     } else {
         String::new()
@@ -1060,9 +1077,7 @@ fn group_banks(files: &[(PathBuf, String)]) -> Vec<GameBankGroup> {
 /// (plus voiceover WADs), read the resolved TOC, filter sfx/vo banks and skin
 /// bins for the requested skins, extract them to a temp cache, then group them.
 #[tauri::command]
-pub async fn bnk_extract_banks_from_game(
-    args: GameBanksArgs,
-) -> Result<GameBanksResult, String> {
+pub async fn bnk_extract_banks_from_game(args: GameBanksArgs) -> Result<GameBanksResult, String> {
     tokio::task::spawn_blocking(move || extract_banks_from_game_blocking(args))
         .await
         .map_err(|e| format!("game bank extraction task failed: {e}"))?
@@ -1114,9 +1129,7 @@ fn extract_banks_from_game_blocking(args: GameBanksArgs) -> Result<GameBanksResu
         .as_deref()
         .filter(|s| !s.trim().is_empty())
         .map(PathBuf::from)
-        .or_else(|| {
-            quartz_lib::extractor::detect_league_path_by_common_paths()
-        })
+        .or_else(|| quartz_lib::extractor::detect_league_path_by_common_paths())
         .ok_or_else(|| "League install not found. Set the League path in settings.".to_string())?;
 
     let champ_file = wad::normalize_champion(&champion_name);
@@ -1266,8 +1279,7 @@ fn extract_banks_from_game_blocking(args: GameBanksArgs) -> Result<GameBanksResu
             .filter_map(|h| u64::from_str_radix(h, 16).ok())
             .map(|path_hash| wad::ChunkSel { path_hash })
             .collect();
-        wad::extract_selected(wad_path, &selected, &output_dir, true)
-            .map_err(|e| e.to_string())?;
+        wad::extract_selected(wad_path, &selected, &output_dir, true).map_err(|e| e.to_string())?;
     }
 
     let mut produced: Vec<PathBuf> = Vec::new();
@@ -1415,8 +1427,9 @@ fn normalize_wav_to_s16(buf: &[u8]) -> Option<Vec<u8>> {
     } else if audio_format == 1 && bits == 24 {
         let n = data.len() / 3;
         for i in 0..n {
-            let mut s =
-                (data[i * 3] as i32) | ((data[i * 3 + 1] as i32) << 8) | ((data[i * 3 + 2] as i32) << 16);
+            let mut s = (data[i * 3] as i32)
+                | ((data[i * 3 + 1] as i32) << 8)
+                | ((data[i * 3 + 2] as i32) << 16);
             if s & 0x80_0000 != 0 {
                 s |= !0xFF_FFFF;
             }

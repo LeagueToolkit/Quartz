@@ -1,8 +1,8 @@
 /* BIN editor backend: parameter scaling (birthScale0/scale0 + optional VFX
-   shape fix), skin-bin splitting by class (VFX/ANM), and VFX asset
-   consolidation. The heavy lifting lives in quartz-lib's bin_editor module;
-   these commands handle IO on a blocking thread and shape the results for the
-   frontend. */
+shape fix), skin-bin splitting by class (VFX/ANM), and VFX asset
+consolidation. The heavy lifting lives in quartz-lib's bin_editor module;
+these commands handle IO on a blocking thread and shape the results for the
+frontend. */
 
 use quartz_lib::bin::bin_editor;
 use serde::Serialize;

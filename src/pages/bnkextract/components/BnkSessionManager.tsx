@@ -17,10 +17,10 @@ const modalStyles: Record<string, CSSProperties> = {
     accentBar: { height: 3, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' },
     body: { padding: 20, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: 0 },
     header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
-    title: { fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)', margin: 0, fontFamily: 'JetBrains Mono, monospace' },
+    title: { fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)', margin: 0, fontFamily: 'var(--font-mono)' },
     closeBtn: { width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--text-secondary)', border: '1px solid var(--border)', background: 'var(--bg-tertiary)', cursor: 'pointer', transition: 'all 0.25s ease', outline: 'none' },
     section: { borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: 14, marginBottom: 12 },
-    sectionTitle: { color: 'var(--accent-secondary)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: 0, marginBottom: 10, fontFamily: 'JetBrains Mono, monospace' },
+    sectionTitle: { color: 'var(--accent-secondary)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: 0, marginBottom: 10, fontFamily: 'var(--font-mono)' },
     footer: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' },
 };
 
@@ -89,7 +89,7 @@ export default function BnkSessionManager({
                                     <span className="dl-toggle__track" />
                                     <span className="dl-toggle__thumb" />
                                 </span>
-                                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 500 }}>AUTO-SAVE ON EXIT</span>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontWeight: 500 }}>AUTO-SAVE ON EXIT</span>
                             </label>
                             <button onClick={onClose} style={modalStyles.closeBtn}>✕</button>
                         </div>
@@ -124,7 +124,7 @@ export default function BnkSessionManager({
                                 <div key={s.filename} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: idx < sessions.length - 1 ? '1px solid var(--border)' : 'none' }}>
                                     <BookmarkIcon style={{ fontSize: 16, color: 'var(--accent-primary)' }} />
                                     <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ color: 'var(--text)', fontSize: '0.84rem', fontFamily: 'JetBrains Mono', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        <div style={{ color: 'var(--text)', fontSize: '0.84rem', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                             {s.name}
                                         </div>
                                         <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>

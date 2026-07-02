@@ -243,7 +243,11 @@ fn read_sound(c: &mut Cursor<&[u8]>, version: u32) -> HircSound {
         skip(c, 4);
     }
     let file_id = read_u32(c);
-    HircSound { self_id, file_id, is_streamed }
+    HircSound {
+        self_id,
+        file_id,
+        is_streamed,
+    }
 }
 
 fn read_event_action(c: &mut Cursor<&[u8]>) -> HircEventAction {
@@ -290,7 +294,10 @@ fn read_event(c: &mut Cursor<&[u8]>, version: u32) -> HircEvent {
     for _ in 0..event_amount {
         action_ids.push(read_u32(c));
     }
-    HircEvent { self_id, action_ids }
+    HircEvent {
+        self_id,
+        action_ids,
+    }
 }
 
 fn read_random_container(c: &mut Cursor<&[u8]>, version: u32) -> HircRandomContainer {
@@ -302,7 +309,11 @@ fn read_random_container(c: &mut Cursor<&[u8]>, version: u32) -> HircRandomConta
     for _ in 0..count {
         sound_ids.push(read_u32(c));
     }
-    HircRandomContainer { self_id, parent_id, sound_ids }
+    HircRandomContainer {
+        self_id,
+        parent_id,
+        sound_ids,
+    }
 }
 
 fn read_switch_container(c: &mut Cursor<&[u8]>, version: u32) -> HircSwitchContainer {
@@ -319,7 +330,13 @@ fn read_switch_container(c: &mut Cursor<&[u8]>, version: u32) -> HircSwitchConta
     for _ in 0..num_children {
         children.push(read_u32(c));
     }
-    HircSwitchContainer { self_id, parent_id, group_type, group_id, children }
+    HircSwitchContainer {
+        self_id,
+        parent_id,
+        group_type,
+        group_id,
+        children,
+    }
 }
 
 fn read_music_container(c: &mut Cursor<&[u8]>, version: u32) -> HircMusicContainer {
@@ -331,7 +348,11 @@ fn read_music_container(c: &mut Cursor<&[u8]>, version: u32) -> HircMusicContain
     for _ in 0..track_count {
         track_ids.push(read_u32(c));
     }
-    HircMusicContainer { self_id, parent_id, track_ids }
+    HircMusicContainer {
+        self_id,
+        parent_id,
+        track_ids,
+    }
 }
 
 fn read_music_track(c: &mut Cursor<&[u8]>, version: u32) -> HircMusicTrack {
@@ -466,8 +487,12 @@ pub fn parse_hirc_from_bnk(bnk_data: &[u8]) -> Result<Option<HircData>, String> 
     let mut offset = 0usize;
     while offset + 8 <= bnk_data.len() {
         let magic = &bnk_data[offset..offset + 4];
-        let section_len =
-            u32::from_le_bytes([bnk_data[offset + 4], bnk_data[offset + 5], bnk_data[offset + 6], bnk_data[offset + 7]]) as usize;
+        let section_len = u32::from_le_bytes([
+            bnk_data[offset + 4],
+            bnk_data[offset + 5],
+            bnk_data[offset + 6],
+            bnk_data[offset + 7],
+        ]) as usize;
 
         if magic == b"HIRC" {
             return parse_hirc_section(&bnk_data[offset + 8..offset + 8 + section_len], version)
@@ -501,12 +526,20 @@ pub fn parse_hirc_section(hirc_data: &[u8], version: u32) -> Result<HircData, St
             2 => data.sounds.push(read_sound(&mut c, version)),
             3 => data.event_actions.push(read_event_action(&mut c)),
             4 => data.events.push(read_event(&mut c, version)),
-            5 => data.random_containers.push(read_random_container(&mut c, version)),
-            6 => data.switch_containers.push(read_switch_container(&mut c, version)),
-            10 => data.music_segments.push(read_music_container(&mut c, version)),
+            5 => data
+                .random_containers
+                .push(read_random_container(&mut c, version)),
+            6 => data
+                .switch_containers
+                .push(read_switch_container(&mut c, version)),
+            10 => data
+                .music_segments
+                .push(read_music_container(&mut c, version)),
             11 => data.music_tracks.push(read_music_track(&mut c, version)),
             12 => data.music_switches.push(read_music_switch(&mut c, version)),
-            13 => data.music_playlists.push(read_music_container(&mut c, version)),
+            13 => data
+                .music_playlists
+                .push(read_music_container(&mut c, version)),
             _ => {}
         }
 

@@ -101,7 +101,7 @@ const ConsoleWindow: React.FC<ConsoleWindowProps> = ({ open, onClose, logs = [],
                 style={{ minHeight: '600px' }}
             >
                 <div className="dl-modal__head">
-                    <h2 className="dl-modal__title" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+                    <h2 className="dl-modal__title" style={{ fontFamily: 'var(--font-mono)' }}>
                         🖥️ Bumpath Console
                     </h2>
                     <button type="button" className="dl-modal__close" onClick={onClose} title="Close">

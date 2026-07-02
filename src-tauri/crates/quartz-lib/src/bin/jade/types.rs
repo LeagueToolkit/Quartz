@@ -175,7 +175,10 @@ impl XXH64 {
     }
 
     pub fn with_string(hash: u64, s: String) -> Self {
-        Self { hash, string: Some(s) }
+        Self {
+            hash,
+            string: Some(s),
+        }
     }
 }
 
@@ -193,7 +196,9 @@ impl Bin {
 
 impl Default for Bin {
     fn default() -> Self {
-        Self { sections: IndexMap::new() }
+        Self {
+            sections: IndexMap::new(),
+        }
     }
 }
 
@@ -226,13 +231,32 @@ pub enum BinValue {
     String(String),
     Hash(FNV1a),
     File(XXH64),
-    List { value_type: BinType, items: Vec<BinValue> },
-    List2 { value_type: BinType, items: Vec<BinValue> },
-    Pointer { name: FNV1a, fields: Vec<BinField> },
-    Embed { name: FNV1a, fields: Vec<BinField> },
+    List {
+        value_type: BinType,
+        items: Vec<BinValue>,
+    },
+    List2 {
+        value_type: BinType,
+        items: Vec<BinValue>,
+    },
+    Pointer {
+        name: FNV1a,
+        fields: Vec<BinField>,
+    },
+    Embed {
+        name: FNV1a,
+        fields: Vec<BinField>,
+    },
     Link(FNV1a),
-    Option { value_type: BinType, items: Vec<BinValue> },
-    Map { key_type: BinType, value_type: BinType, items: Vec<(BinValue, BinValue)> },
+    Option {
+        value_type: BinType,
+        items: Vec<BinValue>,
+    },
+    Map {
+        key_type: BinType,
+        value_type: BinType,
+        items: Vec<(BinValue, BinValue)>,
+    },
     Flag(bool),
 }
 

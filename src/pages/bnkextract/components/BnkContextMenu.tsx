@@ -55,7 +55,7 @@ export default function BnkContextMenu({
                     borderRadius: '10px',
                     '& .MuiMenuItem-root': {
                         fontSize: '0.75rem',
-                        fontFamily: 'JetBrains Mono, monospace',
+                        fontFamily: 'var(--font-mono)',
                         color: 'var(--text-primary)',
                         '&:hover': {
                             background: 'color-mix(in oklab, var(--accent-primary) 16%, transparent)',

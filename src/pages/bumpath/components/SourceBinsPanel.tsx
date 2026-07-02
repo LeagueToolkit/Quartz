@@ -138,7 +138,7 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                                                     color: 'var(--text-secondary)',
                                                     fontSize: '0.65rem',
                                                     opacity: 0.7,
-                                                    fontFamily: 'JetBrains Mono, monospace',
+                                                    fontFamily: 'var(--font-mono)',
                                                 }}
                                             >
                                                 {pathWithoutFile}
@@ -151,7 +151,7 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                                                     color: 'var(--text-primary)',
                                                     fontSize: '0.75rem',
                                                     fontWeight: '600',
-                                                    fontFamily: 'JetBrains Mono, monospace',
+                                                    fontFamily: 'var(--font-mono)',
                                                 }}
                                             >
                                                 {fileName.replace(`.${fileExtension}`, '')}
@@ -163,7 +163,7 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                                                         color: 'var(--accent-primary)',
                                                         fontSize: '0.7rem',
                                                         fontWeight: '700',
-                                                        fontFamily: 'JetBrains Mono, monospace',
+                                                        fontFamily: 'var(--font-mono)',
                                                         backgroundColor: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
                                                         px: 0.5,
                                                         py: 0.25,

@@ -19,7 +19,7 @@ import { extractVFXSystem } from './vfxhub/lib/vfxSystemParser';
 import { insertVFXSystemIntoFile, addToResourceResolver } from './vfxhub/lib/vfxInsertSystem';
 import './vfxhub/VfxHub.css';
 
-const FONT = 'JetBrains Mono, monospace';
+const FONT = 'var(--font-mono)';
 const CATEGORIES = ['All', 'Missiles', 'Auras', 'Explosions', 'Target', 'Shield', 'Buf'];
 const SYSTEMS_PER_PAGE = 8;
 

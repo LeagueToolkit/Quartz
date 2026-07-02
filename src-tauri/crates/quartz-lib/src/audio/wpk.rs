@@ -80,10 +80,7 @@ impl WpkFile {
                 filename.push(lo as char);
             }
 
-            let id: u32 = filename
-                .trim_end_matches(".wem")
-                .parse()
-                .unwrap_or(0);
+            let id: u32 = filename.trim_end_matches(".wem").parse().unwrap_or(0);
 
             entries.push(WpkEntry {
                 id,
@@ -224,8 +221,10 @@ pub fn write_wpk(entries: &[AudioEntry]) -> Vec<u8> {
     for (i, layout) in layouts.iter().enumerate() {
         w.set_position(layout.info_pos as u64);
         w.write_u32::<LittleEndian>(data_offsets[i] as u32).unwrap();
-        w.write_u32::<LittleEndian>(entries[i].data.len() as u32).unwrap();
-        w.write_u32::<LittleEndian>(layout.filename.len() as u32).unwrap();
+        w.write_u32::<LittleEndian>(entries[i].data.len() as u32)
+            .unwrap();
+        w.write_u32::<LittleEndian>(layout.filename.len() as u32)
+            .unwrap();
 
         for ch in layout.filename.bytes() {
             w.write_u8(ch).unwrap();
@@ -269,8 +268,14 @@ mod tests {
     use super::*;
 
     fn make_test_wpk() -> Vec<u8> {
-        let e1 = AudioEntry { id: 100, data: vec![0xAA; 32] };
-        let e2 = AudioEntry { id: 200, data: vec![0xBB; 16] };
+        let e1 = AudioEntry {
+            id: 100,
+            data: vec![0xAA; 32],
+        };
+        let e2 = AudioEntry {
+            id: 200,
+            data: vec![0xBB; 16],
+        };
         write_wpk(&[e1, e2])
     }
 

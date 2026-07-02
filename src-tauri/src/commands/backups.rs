@@ -1,9 +1,9 @@
 /* Backup backend for Port/Paint/VFXHub .py files.
 
-   Mirrors the original Quartz `backupManager.js`: backups live in a `zbackups/`
-   folder next to the source file, named `{basename}_backup_{ISO}_{component}.py`.
-   Only the 10 newest per file are kept. Duplicate content is skipped so loading
-   a file twice doesn't spam backups. */
+Mirrors the original Quartz `backupManager.js`: backups live in a `zbackups/`
+folder next to the source file, named `{basename}_backup_{ISO}_{component}.py`.
+Only the 10 newest per file are kept. Duplicate content is skipped so loading
+a file twice doesn't spam backups. */
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -134,9 +134,8 @@ pub fn backup_list(file_path: String) -> Result<Vec<BackupInfo>, String> {
 /// the restored content for the caller to load into the editor.
 #[tauri::command]
 pub fn backup_restore(backup_path: String, original_path: String) -> Result<String, String> {
-    let content = fs::read_to_string(&backup_path)
-        .map_err(|e| format!("Failed to read backup: {e}"))?;
-    fs::write(&original_path, &content)
-        .map_err(|e| format!("Failed to restore backup: {e}"))?;
+    let content =
+        fs::read_to_string(&backup_path).map_err(|e| format!("Failed to read backup: {e}"))?;
+    fs::write(&original_path, &content).map_err(|e| format!("Failed to restore backup: {e}"))?;
     Ok(content)
 }

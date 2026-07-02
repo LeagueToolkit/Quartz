@@ -182,7 +182,7 @@ const TreeNode = React.memo<TreeNodeProps>(({
                 <Typography
                     sx={{
                         fontSize: '0.8rem',
-                        fontFamily: 'JetBrains Mono, monospace',
+                        fontFamily: 'var(--font-mono)',
                         color: isAudioFile ? 'var(--accent-primary)' : (isSelected ? 'var(--text-primary)' : 'var(--text-secondary)'),
                         marginLeft: '8px',
                         userSelect: 'none',
@@ -203,7 +203,7 @@ const TreeNode = React.memo<TreeNodeProps>(({
                             color: 'var(--text-muted)',
                             ml: 1,
                             mr: 1,
-                            fontFamily: 'JetBrains Mono, monospace',
+                            fontFamily: 'var(--font-mono)',
                             whiteSpace: 'nowrap',
                         }}
                     >

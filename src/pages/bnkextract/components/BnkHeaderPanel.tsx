@@ -117,7 +117,7 @@ export default function BnkHeaderPanel({
                                     onClick={() => setActivePane(p)}
                                     sx={{
                                         fontSize: '0.65rem',
-                                        fontFamily: 'JetBrains Mono',
+                                        fontFamily: 'var(--font-mono)',
                                         fontWeight: activePane === p ? 'bold' : 'normal',
                                         py: '4px',
                                         px: '12px',

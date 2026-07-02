@@ -1,15 +1,15 @@
 /*! WAD-reading backend.
 
-   The foundation for pulling assets straight out of a live League install:
-   locate a champion's WAD, read its table of contents (resolving chunk path
-   hashes to real paths via the WAD-hash LMDB), decompress individual chunks,
-   and extract a selected subset to disk.
+The foundation for pulling assets straight out of a live League install:
+locate a champion's WAD, read its table of contents (resolving chunk path
+hashes to real paths via the WAD-hash LMDB), decompress individual chunks,
+and extract a selected subset to disk.
 
-   Built on `ritoshark::wad` (rev d6af5ac). That crate parses the archive and
-   decompresses chunks (stored / gzip / zstd / zstd-multi) but exposes no
-   `from_path` and no path-hash resolution, so the file IO, hash resolution
-   (reusing `crate::hash`'s WAD LMDB), and the find/list/extract orchestration
-   live here. */
+Built on `ritoshark::wad` (rev d6af5ac). That crate parses the archive and
+decompresses chunks (stored / gzip / zstd / zstd-multi) but exposes no
+`from_path` and no path-hash resolution, so the file IO, hash resolution
+(reusing `crate::hash`'s WAD LMDB), and the find/list/extract orchestration
+live here. */
 
 use crate::error::{Error, Result};
 use crate::hash::{get_hash_dir, get_wad_env, resolve_hashes_lmdb_bulk, ResolvedHashes};
@@ -258,7 +258,12 @@ pub fn extract_selected(
             }
         };
 
-        let out_path = output_path_for(out_dir, chunk.path_hash, resolved.get(&chunk.path_hash), preserve_paths);
+        let out_path = output_path_for(
+            out_dir,
+            chunk.path_hash,
+            resolved.get(&chunk.path_hash),
+            preserve_paths,
+        );
 
         if let Some(parent) = out_path.parent() {
             if let Err(e) = fs::create_dir_all(parent) {
@@ -361,13 +366,26 @@ mod tests {
 
     #[test]
     fn flat_output_keeps_extension() {
-        let p = output_path_for(Path::new("/out"), 0x1a2b3c4d5e6f7a8b, Some("data/x.bin"), false);
+        let p = output_path_for(
+            Path::new("/out"),
+            0x1a2b3c4d5e6f7a8b,
+            Some("data/x.bin"),
+            false,
+        );
         assert!(p.to_string_lossy().ends_with("1a2b3c4d5e6f7a8b.bin"));
     }
 
     #[test]
     fn preserve_output_uses_resolved_path() {
-        let p = output_path_for(Path::new("/out"), 1, Some("data/characters/aatrox/aatrox.bin"), true);
-        assert!(p.to_string_lossy().replace('\\', "/").ends_with("data/characters/aatrox/aatrox.bin"));
+        let p = output_path_for(
+            Path::new("/out"),
+            1,
+            Some("data/characters/aatrox/aatrox.bin"),
+            true,
+        );
+        assert!(p
+            .to_string_lossy()
+            .replace('\\', "/")
+            .ends_with("data/characters/aatrox/aatrox.bin"));
     }
 }

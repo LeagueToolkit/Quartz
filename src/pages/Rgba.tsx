@@ -1,15 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { Box, Typography, Chip, TextField, Slider, IconButton, Tooltip, Grid, Paper, Button as MuiButton, Fade } from '@mui/material';
-import {
-    Palette as PaletteIcon,
-    ContentCopy as CopyIcon,
-    Refresh as RefreshIcon,
-    Colorize as ColorizeIcon,
-    Opacity as OpacityIcon,
-    Visibility as VisibilityIcon,
-    VisibilityOff as VisibilityOffIcon,
-} from '@mui/icons-material';
+import { Copy, RotateCcw, Pipette, Eye, EyeOff } from 'lucide-react';
 import { ColorPickerHost, openColorPicker, cleanupColorPickers } from './paint/components/ColorPicker';
+import './rgba/Rgba.css';
 
 type Vec4 = [number, number, number, number];
 
@@ -20,28 +12,13 @@ function vec4ToHex(vec: Vec4): string {
     return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
-const celestialButtonStyle = {
-    background: 'var(--bg-tertiary)',
-    border: '1px solid var(--border)',
-    color: 'var(--text-primary)',
-    borderRadius: 'var(--radius-sm)',
-    transition: 'background 140ms var(--ease-out), border-color 140ms var(--ease-out), transform 140ms var(--ease-out)',
-    textTransform: 'none' as const,
-    fontFamily: 'var(--font-mono)',
-    boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
-    '&:hover': {
-        background: 'var(--bg-hover)',
-        borderColor: 'color-mix(in oklab, var(--accent-primary) 45%, var(--border))',
-    },
-    '&:active': { transform: 'translateY(1px)' },
-};
-
 function Rgba() {
     const [vec4, setVec4] = useState<Vec4>([1, 0, 0, 1]);
     const [alphaPercent, setAlphaPercent] = useState(100);
     const [alphaPreview, setAlphaPreview] = useState(1);
     const [showAlpha, setShowAlpha] = useState(true);
     const [rgbaInput, setRgbaInput] = useState('{ 1.000, 0.000, 0.000, 1.000 }');
+    const [copied, setCopied] = useState(false);
 
     const rgbaInputTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -107,231 +84,123 @@ function Rgba() {
     }, []);
 
     const handleReset = useCallback(() => setVec4([1, 0, 0, 1]), []);
-    const handleCopyVec4 = useCallback(() => { navigator.clipboard.writeText(formatVec4).catch(() => {}); }, [formatVec4]);
+    const handleCopyVec4 = useCallback(() => {
+        navigator.clipboard.writeText(formatVec4).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1400);
+        }).catch(() => {});
+    }, [formatVec4]);
 
     useEffect(() => () => {
         if (rgbaInputTimeoutRef.current) clearTimeout(rgbaInputTimeoutRef.current);
         cleanupColorPickers();
     }, []);
 
+    const info = [
+        { label: 'Hex Color', value: hexColor },
+        { label: 'RGB (0-255)', value: formatRGB },
+        { label: 'RGBA (0-1)', value: formatRGBA },
+        { label: 'Alpha', value: `${alphaPercent.toFixed(1)}%` },
+    ];
+
     return (
-        <Box sx={{
-            position: 'relative', height: '100%', width: '100%', overflow: 'hidden',
-            display: 'flex', flexDirection: 'column',
-            color: 'var(--text-primary)', fontFamily: 'var(--font-mono)',
-            p: { xs: 2, sm: 3 }, boxSizing: 'border-box',
-        }}>
+        <div className="rgba-root">
             <ColorPickerHost />
 
-            <Box sx={{ flex: 1, display: 'flex', gap: 2, position: 'relative', zIndex: 1 }}>
+            <div className="rgba-cols">
                 {/* Left — Color Selection */}
-                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <ColorizeIcon sx={{ color: 'var(--accent-primary)', mr: 1, fontSize: 20 }} />
-                        <Typography variant="h6" sx={{ color: 'var(--text-primary)', fontWeight: 'bold' }}>
-                            Color Selection
-                        </Typography>
-                    </Box>
+                <section className="rgba-col">
+                    <div className="rgba-head">
+                        <Pipette size={18} />
+                        <span>Color Selection</span>
+                    </div>
 
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                        <Box sx={{ position: 'relative' }}>
-                            <Box
-                                onClick={handleColorPickerClick}
-                                sx={{
-                                    width: '50px', height: '50px',
-                                    border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                                    cursor: 'pointer', backgroundColor: hexColor,
-                                    boxShadow: '0 1px 2px rgba(0,0,0,0.35)',
-                                    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                                    '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' },
-                                }}
-                            />
-                            <Box sx={{
-                                position: 'absolute', top: -4, right: -4,
-                                width: 16, height: 16, backgroundColor: 'var(--accent-primary)', borderRadius: '50%',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.35)',
-                            }}>
-                                <PaletteIcon sx={{ fontSize: 10, color: '#fff' }} />
-                            </Box>
-                        </Box>
+                    <div className="rgba-selrow">
+                        <button className="rgba-swatch" onClick={handleColorPickerClick} style={{ background: hexColor }} title="Pick a color">
+                            <span className="rgba-swatch__badge"><Pipette size={11} /></span>
+                        </button>
 
-                        <Box sx={{ flex: 1 }}>
-                            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 0.5 }}>
-                                Selected Color
-                            </Typography>
-                            <Chip
-                                label={hexColor}
-                                sx={{
-                                    backgroundColor: hexColor, color: 'white',
-                                    fontFamily: 'var(--font-mono)', fontWeight: 'bold',
-                                    fontSize: '0.9rem', height: 28, px: 1,
-                                    boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
-                                }}
-                            />
-                        </Box>
-
-                        <Box sx={{ flex: 1 }}>
-                            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 0.5 }}>
-                                RGBA (0-1)
-                            </Typography>
-                            <TextField
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="rgba-label">RGBA (0-1)</div>
+                            <input
+                                className="dl-input"
                                 value={rgbaInput}
                                 onChange={(e) => handleRgbaInputChange(e.target.value)}
                                 placeholder="{ 1.000, 0.000, 0.000, 1.000 }"
-                                size="small"
-                                sx={{
-                                    '& .MuiOutlinedInput-root': {
-                                        fontFamily: 'var(--font-mono)', fontSize: '0.9rem',
-                                        backgroundColor: 'var(--bg-tertiary)',
-                                        border: '1px solid var(--border)',
-                                        borderRadius: 'var(--radius-sm)',
-                                        '& fieldset': { border: 'none' },
-                                        '&:hover': { borderColor: 'color-mix(in oklab, var(--accent-primary) 30%, var(--border))' },
-                                        '&.Mui-focused fieldset': { border: '1px solid var(--accent-primary)' },
-                                    },
-                                    '& .MuiInputBase-input': { color: 'var(--text-primary)', padding: '8px 12px' },
-                                }}
+                                style={{ fontFamily: 'var(--font-mono)' }}
                             />
-                        </Box>
+                        </div>
 
-                        <Tooltip title={showAlpha ? 'Hide Alpha' : 'Show Alpha'}>
-                            <IconButton
-                                onClick={() => setShowAlpha((s) => !s)}
-                                size="small"
-                                sx={{
-                                    color: showAlpha ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                                    backgroundColor: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)',
-                                    '&:hover': { backgroundColor: 'color-mix(in oklab, var(--accent-primary) 18%, transparent)' },
-                                }}
-                            >
-                                {showAlpha ? <VisibilityIcon /> : <VisibilityOffIcon />}
-                            </IconButton>
-                        </Tooltip>
-                    </Box>
+                        <button
+                            className={`dl-btn dl-btn--icon${showAlpha ? ' dl-btn--active' : ''}`}
+                            onClick={() => setShowAlpha((s) => !s)}
+                            title={showAlpha ? 'Hide alpha' : 'Show alpha'}
+                        >
+                            {showAlpha ? <Eye size={16} /> : <EyeOff size={16} />}
+                        </button>
+                    </div>
 
                     {showAlpha && (
-                        <Fade in={showAlpha}>
-                            <Box sx={{ mb: 2 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                                    <OpacityIcon sx={{ color: 'var(--accent-primary)', mr: 0.5, fontSize: 16 }} />
-                                    <Typography variant="body2" sx={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}>
-                                        Alpha: {Math.round(alphaPreview * 100)}% ({alphaPreview.toFixed(3)})
-                                    </Typography>
-                                </Box>
-                                <Slider
+                        <div className="rgba-alpha">
+                            <div className="rgba-label">Alpha: {Math.round(alphaPreview * 100)}% ({alphaPreview.toFixed(3)})</div>
+                            <span className="dl-slider" style={{ '--_value': `${alphaPreview * 100}%` } as React.CSSProperties}>
+                                <input
+                                    type="range" min={0} max={1} step={0.001}
                                     value={alphaPreview}
-                                    onChange={(_, value) => setAlphaPreview(Number(value))}
-                                    onChangeCommitted={(_, value) => handleAlphaCommit(Number(value))}
-                                    min={0} max={1} step={0.001}
-                                    valueLabelDisplay="auto"
-                                    valueLabelFormat={(value) => `${(Number(value) * 100).toFixed(1)}%`}
-                                    sx={{
-                                        color: 'var(--accent-primary)', height: 6,
-                                        '& .MuiSlider-thumb': {
-                                            backgroundColor: '#fff', width: 16, height: 16,
-                                            border: '2px solid var(--accent-primary)',
-                                            boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
-                                            '&:hover': { boxShadow: '0 2px 6px rgba(0,0,0,0.35), 0 0 0 6px color-mix(in oklab, var(--accent-primary) 22%, transparent)' },
-                                        },
-                                        '& .MuiSlider-track': { backgroundColor: 'var(--accent-primary)', height: 6, borderRadius: 999, border: 'none' },
-                                        '& .MuiSlider-rail': { backgroundColor: 'var(--bg-tertiary)', height: 6, borderRadius: 999 },
-                                    }}
+                                    onChange={(e) => setAlphaPreview(Number(e.target.value))}
+                                    onMouseUp={(e) => handleAlphaCommit(Number((e.target as HTMLInputElement).value))}
+                                    onKeyUp={(e) => handleAlphaCommit(Number((e.target as HTMLInputElement).value))}
                                 />
-                            </Box>
-                        </Fade>
+                            </span>
+                        </div>
                     )}
 
-                    <Box sx={{ display: 'flex', gap: 1, mt: 'auto' }}>
-                        <MuiButton
-                            variant="contained" startIcon={<CopyIcon />} onClick={handleCopyVec4} size="small"
-                            sx={{ ...celestialButtonStyle, flex: 1, minHeight: 36, fontWeight: 'bold' }}
-                        >
-                            Copy Vec4
-                        </MuiButton>
-                        <MuiButton
-                            variant="contained" startIcon={<RefreshIcon />} onClick={handleReset} size="small"
-                            sx={{ ...celestialButtonStyle, flex: 1, minHeight: 36, fontWeight: 'bold' }}
-                        >
-                            Reset
-                        </MuiButton>
-                    </Box>
-                </Box>
+                    <div className="rgba-actions">
+                        <button className={`dl-btn ${copied ? 'dl-btn--active' : 'dl-btn--primary'}`} onClick={handleCopyVec4} style={{ flex: 1 }}>
+                            <span className="dl-icon"><Copy size={15} /></span>
+                            <span>{copied ? 'Copied' : 'Copy Vec4'}</span>
+                        </button>
+                        <button className="dl-btn dl-btn--secondary" onClick={handleReset} style={{ flex: 1 }}>
+                            <span className="dl-icon"><RotateCcw size={15} /></span>
+                            <span>Reset</span>
+                        </button>
+                    </div>
+                </section>
 
-                {/* Divider */}
-                <Box sx={{ width: '1px', background: 'var(--border)', flexShrink: 0, margin: '0 1rem' }} />
+                <div className="rgba-divider" />
 
                 {/* Right — Color Information & Preview */}
-                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: 2 }}>
-                    <Typography variant="h6" sx={{ color: 'var(--text-primary)', mb: 2, fontWeight: 'bold' }}>
-                        Color Information
-                    </Typography>
+                <section className="rgba-col">
+                    <div className="rgba-head"><span>Color Information</span></div>
 
-                    <Grid container spacing={2} sx={{ mb: 2 }}>
-                        {[
-                            { label: 'Hex Color', value: hexColor },
-                            { label: 'RGB (0-255)', value: formatRGB },
-                            { label: 'RGBA (0-1)', value: formatRGBA },
-                            { label: 'Alpha', value: `${alphaPercent.toFixed(1)}%` },
-                        ].map((item) => (
-                            <Grid item xs={6} key={item.label}>
-                                <Box sx={{ p: 1.5 }}>
-                                    <Typography variant="caption" sx={{ color: 'var(--text-muted)', mb: 0.5, display: 'block' }}>
-                                        {item.label}
-                                    </Typography>
-                                    <Typography variant="body2" sx={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>
-                                        {item.value}
-                                    </Typography>
-                                </Box>
-                            </Grid>
+                    <div className="rgba-infogrid">
+                        {info.map((item) => (
+                            <div className="dl-card rgba-infocard" key={item.label}>
+                                <div className="rgba-label">{item.label}</div>
+                                <div className="rgba-infoval">{item.value}</div>
+                            </div>
                         ))}
-                    </Grid>
+                    </div>
 
-                    <Typography variant="h6" sx={{ color: 'var(--text-primary)', mb: 2, fontWeight: 'bold' }}>
-                        Color Preview
-                    </Typography>
+                    <div className="rgba-head" style={{ marginTop: 4 }}><span>Color Preview</span></div>
 
-                    <Grid container spacing={2} sx={{ flex: 1 }}>
-                        <Grid item xs={6}>
-                            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 1, fontWeight: 'bold' }}>
-                                Solid Color
-                            </Typography>
-                            <Paper sx={{
-                                height: 60, backgroundColor: hexColor,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                color: 'white', fontWeight: 'bold', fontFamily: 'var(--font-mono)',
-                                border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.35)', fontSize: '0.8rem',
-                            }}>
-                                {hexColor}
-                            </Paper>
-                        </Grid>
-
-                        <Grid item xs={6}>
-                            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 1, fontWeight: 'bold' }}>
-                                With Alpha
-                            </Typography>
-                            <Paper sx={{
-                                height: 60,
-                                background: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)',
-                                backgroundSize: '20px 20px',
-                                backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
-                                border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.25)', position: 'relative', overflow: 'hidden',
-                            }}>
-                                <Box sx={{
-                                    height: '100%', backgroundColor: hexColor, opacity: vec4[3],
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    color: 'white', fontWeight: 'bold', fontFamily: 'var(--font-mono)', fontSize: '0.8rem',
-                                }}>
+                    <div className="rgba-previewgrid">
+                        <div>
+                            <div className="rgba-label">Solid Color</div>
+                            <div className="rgba-preview" style={{ background: hexColor }}>{hexColor}</div>
+                        </div>
+                        <div>
+                            <div className="rgba-label">With Alpha</div>
+                            <div className="rgba-preview rgba-preview--checker">
+                                <div className="rgba-preview__fill" style={{ background: hexColor, opacity: vec4[3] }}>
                                     {alphaPercent.toFixed(1)}%
-                                </Box>
-                            </Paper>
-                        </Grid>
-                    </Grid>
-                </Box>
-            </Box>
-        </Box>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
     );
 }
 

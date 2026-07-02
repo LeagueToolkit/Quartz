@@ -100,8 +100,7 @@ fn type_from_tag(tag: &str) -> Result<BinType> {
 /// Serialize a `Bin` to a pretty JSON string.
 pub fn to_json(bin: &Bin) -> Result<String> {
     let value = encode_bin(bin);
-    serde_json::to_string_pretty(&value)
-        .map_err(|e| err(format!("JSON serialization failed: {e}")))
+    serde_json::to_string_pretty(&value).map_err(|e| err(format!("JSON serialization failed: {e}")))
 }
 
 fn encode_bin(bin: &Bin) -> Value {
@@ -171,7 +170,11 @@ fn encode_value(value: &BinValue) -> Value {
             "item": type_tag(*item),
             "items": items.iter().map(encode_value).collect::<Vec<_>>(),
         }),
-        BinValue::Map { key, value, entries } => json!({
+        BinValue::Map {
+            key,
+            value,
+            entries,
+        } => json!({
             "t": tag,
             "key": type_tag(*key),
             "value": type_tag(*value),
@@ -480,7 +483,10 @@ fn decode_f32_array<const N: usize>(map: &Map<String, Value>) -> Result<[f32; N]
     }
     let mut out = [0.0f32; N];
     for (i, v) in arr.iter().enumerate() {
-        out[i] = v.as_f64().map(|n| n as f32).ok_or_else(|| err("non-float in array"))?;
+        out[i] = v
+            .as_f64()
+            .map(|n| n as f32)
+            .ok_or_else(|| err("non-float in array"))?;
     }
     Ok(out)
 }

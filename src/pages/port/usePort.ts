@@ -1,53 +1,49 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePortStore } from '@/lib/stores/portStore';
-import { pickBinPath, loadBin, saveBinText } from './utils/loadBin';
+import { useUiPrefsStore } from '@/lib/stores';
+import { log } from '@/lib/util/logger';
+import { pickBinPath } from './utils/loadBin';
 import {
-    parseVfxEmitters,
-    loadEmitterData,
-    replaceEmittersInSystem,
-    generateModifiedPythonFromSystems,
+    vfxOpen,
+    vfxClose,
+    vfxSave,
+    vfxUndo,
+    vfxRedo,
+    vfxCreateSystem,
+    vfxPortEmitters,
+    vfxPortSystem,
+    vfxDeleteEmitter,
+    vfxDeleteSystem,
+    vfxSetMatrix,
+    vfxIdleAdd,
+    vfxIdleRemove,
+    vfxChildAdd,
+    vfxChildUpdate,
+    vfxPersistentUpsert,
+    vfxPersistentRemove,
+    vfxResolverUpsert,
+    vfxRenameEmitter,
+    vfxRenameSystem,
+    type VfxPath,
+    type VfxPortModel,
+} from '@/lib/api/vfxSession';
+import { portCopyAssetsToTarget } from '@/lib/api/wad';
+import {
+    buildSystemMap,
+    buildSystemList,
+    effectKeyForSystem,
+    effectKeyOptionsFromModel,
+    idleEntriesFromModel,
+    persistentConditionsFromModel,
+    availableSystemsFromModel,
+    buildPersistentPayload,
     type VfxSystem,
-    type VfxSystemMap,
-    type VfxEmitter,
-} from './utils/vfxEmitterParser';
-import { extractVFXSystem } from './utils/vfxSystemParser';
-import { insertVFXSystemIntoFile, insertVFXSystemWithPreservedNames, generateUniqueSystemName } from './utils/vfxInsertSystem';
-import { replaceSystemBlockInFile, parseSystemMatrix, upsertSystemMatrix } from './utils/matrixUtils';
-import { removeEmitterBlockFromSystem } from './utils/pyContentUtils';
-import {
-    extractColorsFromEmitterContent,
-    extractTexturesFromEmitterContent,
-} from './utils/vfxUtils';
-import {
-    addChildParticleEffect,
-    findAvailableVfxSystems,
-    extractChildParticleData,
-    updateChildParticleEmitter,
     type AvailableVfxSystem,
-    type DeletedEmittersMap,
-} from './utils/childParticlesManager';
-import {
-    addIdleParticleEffect,
-    hasIdleParticleEffect,
-    extractParticleName,
-    getAllIdleParticleBones,
-    removeAllIdleParticlesForSystem,
-    removeAllIdleParticlesByEffectKey,
     type BoneConfig,
-} from './utils/idleParticlesManager';
-import {
-    scanEffectKeys,
-    extractSubmeshes,
-    insertOrUpdatePersistentEffect,
-    insertMultiplePersistentEffects,
-    ensureResolverMapping,
-    resolveEffectKey,
-    extractExistingPersistentConditions,
-    type EffectKeyOption,
+    type PersistentCondition,
     type PersistentPreset,
     type PersistentVfxItem,
-    type PersistentCondition,
-} from './utils/persistentEffectsManager';
+} from './model';
 
 export interface IdleBoneItem {
     id: number;
@@ -61,17 +57,8 @@ export interface MatrixModalState {
     initial?: number[] | null;
 }
 
-export interface UndoEntry {
-    action: string;
-    timestamp: number;
-    targetSystems: VfxSystemMap;
-    targetPyContent: string;
-    selectedTargetSystem: string | null;
-    deletedEmitters: DeletedEmittersMap;
-}
-
 export interface PendingDrop {
-    fullContent: string;
+    donorSystemPath: VfxPath;
     defaultName: string;
 }
 
@@ -85,35 +72,48 @@ const typeOptions = [
 ];
 
 export default function usePort() {
-    // File state — seeded from the resident store so the loaded bins survive a
-    // page swap (App remounts pages). Mirrored back via the effect below.
+    // File state — seeded from the resident store so the loaded sessions survive
+    // a page swap (App remounts pages). Mirrored back via the effect below.
     const portStore = usePortStore.getState();
     const [targetPath, setTargetPath] = useState(portStore.targetPath);
     const [donorPath, setDonorPath] = useState(portStore.donorPath);
-    const [targetPyContent, setTargetPyContent] = useState(portStore.targetPyContent);
-    const [donorPyContent, setDonorPyContent] = useState(portStore.donorPyContent);
-    const [targetSystems, setTargetSystems] = useState<VfxSystemMap>(portStore.targetSystems);
-    const [donorSystems, setDonorSystems] = useState<VfxSystemMap>(portStore.donorSystems);
+    const [targetSessionId, setTargetSessionId] = useState<number | null>(portStore.targetSessionId);
+    const [donorSessionId, setDonorSessionId] = useState<number | null>(portStore.donorSessionId);
+    const [targetModel, setTargetModel] = useState<VfxPortModel | null>(portStore.targetModel);
+    const [donorModel, setDonorModel] = useState<VfxPortModel | null>(portStore.donorModel);
+    const [donorTempRoot, setDonorTempRoot] = useState<string | null>(portStore.donorTempRoot);
 
     // Shared state
-    const [statusMessage, setStatusMessage] = useState('Ready - Select files to begin porting');
+    const [statusMessage, setStatusMessage] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [processingText, setProcessingText] = useState('');
     const [fileSaved, setFileSaved] = useState(portStore.fileSaved);
 
-    // Mirror the loaded-bin state into the resident store so it persists across
-    // page swaps. The store is the source of truth between mounts.
+    // History (backend undo stack; tracked optimistically like Paint)
+    const [canUndo, setCanUndo] = useState(portStore.canUndo);
+    const [canRedo, setCanRedo] = useState(portStore.canRedo);
+
+    // Mirror the loaded-session state into the resident store so it persists
+    // across page swaps. The store is the source of truth between mounts.
     useEffect(() => {
         usePortStore.getState().hydrate({
-            targetPath, donorPath, targetPyContent, donorPyContent, targetSystems, donorSystems, fileSaved,
+            targetPath, donorPath, targetSessionId, donorSessionId, targetModel, donorModel, donorTempRoot, fileSaved, canUndo, canRedo,
         });
-    }, [targetPath, donorPath, targetPyContent, donorPyContent, targetSystems, donorSystems, fileSaved]);
-    const [deletedEmitters, setDeletedEmitters] = useState<DeletedEmittersMap>(new Map());
+    }, [targetPath, donorPath, targetSessionId, donorSessionId, targetModel, donorModel, donorTempRoot, fileSaved, canUndo, canRedo]);
+
     const [selectedTargetSystem, setSelectedTargetSystem] = useState<string | null>(null);
-    const [collapsedTargetSystems, setCollapsedTargetSystems] = useState<Set<string>>(new Set());
-    const [collapsedDonorSystems, setCollapsedDonorSystems] = useState<Set<string>>(new Set());
-    const [recentCreatedSystemKeys, setRecentCreatedSystemKeys] = useState<string[]>([]);
+    const [collapsedTargetSystems, setCollapsedTargetSystems] = useState<Set<string>>(() => new Set(portStore.collapsedTargetKeys));
+    const [collapsedDonorSystems, setCollapsedDonorSystems] = useState<Set<string>>(() => new Set(portStore.collapsedDonorKeys));
     const [isPortAllLoading, setIsPortAllLoading] = useState(false);
+
+    // Persist collapse state across page swaps too (the main mirror above runs
+    // before these are declared, so keep it in its own effect).
+    useEffect(() => {
+        usePortStore.getState().hydrate({
+            collapsedTargetKeys: [...collapsedTargetSystems],
+            collapsedDonorKeys: [...collapsedDonorSystems],
+        });
+    }, [collapsedTargetSystems, collapsedDonorSystems]);
 
     // Filters
     const [targetFilter, setTargetFilter] = useState('');
@@ -133,7 +133,7 @@ export default function usePort() {
     const [newSystemName, setNewSystemName] = useState('');
     const [matrixModalState, setMatrixModalState] = useState<MatrixModalState>({ systemKey: null, initial: null });
     const [pressedSystemKey, setPressedSystemKey] = useState<string | null>(null);
-    const [dragStartedKey, setDragStartedKey] = useState<string | null>(null);
+    const [dragStartedKey, setDragStartedKeyState] = useState<string | null>(null);
     const [draggedEmitter, setDraggedEmitter] = useState<{ sourceSystemKey: string; emitterName: string } | null>(null);
     const [isDragOverVfx, setIsDragOverVfx] = useState(false);
     const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null);
@@ -141,9 +141,6 @@ export default function usePort() {
     // Rename
     const [renamingEmitter, setRenamingEmitter] = useState<{ systemKey: string; emitterName: string; newName: string } | null>(null);
     const [renamingSystem, setRenamingSystem] = useState<{ systemKey: string; newName: string } | null>(null);
-
-    // History
-    const [undoHistory, setUndoHistory] = useState<UndoEntry[]>([]);
 
     // Trim toggles
     const [trimTargetNames, setTrimTargetNames] = useState(() => {
@@ -176,6 +173,7 @@ export default function usePort() {
     // Child modal state
     const [isEditMode, setIsEditMode] = useState(false);
     const [selectedSystemForChild, setSelectedSystemForChild] = useState<{ key: string; name: string } | null>(null);
+    const [editingChildEmitterPath, setEditingChildEmitterPath] = useState<VfxPath | null>(null);
     const [selectedChildSystem, setSelectedChildSystem] = useState('');
     const [emitterName, setEmitterName] = useState('');
     const [availableVfxSystems, setAvailableVfxSystems] = useState<AvailableVfxSystem[]>([]);
@@ -197,59 +195,145 @@ export default function usePort() {
     const [customHideSubmeshInput, setCustomHideSubmeshInput] = useState('');
     const [vfxSearchTerms, setVfxSearchTerms] = useState<Record<number, string>>({});
     const [vfxDropdownOpen, setVfxDropdownOpen] = useState<Record<number, boolean>>({});
-    const [existingConditions, setExistingConditions] = useState<PersistentCondition[]>([]);
     const [showExistingConditions, setShowExistingConditions] = useState(false);
     const [editingConditionIndex, setEditingConditionIndex] = useState<number | null>(null);
-    const [effectKeyOptions, setEffectKeyOptions] = useState<EffectKeyOption[]>([]);
     const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
-    const [availableSubmeshes, setAvailableSubmeshes] = useState<string[]>([]);
     const typeDropdownRef = useRef<HTMLDivElement | null>(null);
 
     // Refs
     const targetListRef = useRef<HTMLDivElement | null>(null);
     const donorListRef = useRef<HTMLDivElement | null>(null);
     const dragEnterCounter = useRef(0);
-    const targetPyContentRef = useRef('');
-    const donorPyContentRef = useRef('');
+    const dragStartedKeyRef = useRef<string | null>(null);
+    const targetSessionQueueRef = useRef<Promise<void>>(Promise.resolve());
+    const targetSessionBusyCountRef = useRef(0);
 
-    useEffect(() => {
-        targetPyContentRef.current = targetPyContent;
-    }, [targetPyContent]);
-    useEffect(() => {
-        donorPyContentRef.current = donorPyContent;
-    }, [donorPyContent]);
+    const setDragStartedKey = useCallback((key: string | null) => {
+        dragStartedKeyRef.current = key;
+        setDragStartedKeyState(key);
+    }, []);
 
-    const hasResourceResolver = useMemo(() => /\bResourceResolver\s*\{/m.test(targetPyContent || ''), [targetPyContent]);
-    const hasSkinCharacterData = useMemo(() => /=\s*SkinCharacterDataProperties\s*\{/m.test(targetPyContent || ''), [targetPyContent]);
+    const runTargetSessionTask = useCallback(
+        async <T,>(task: () => Promise<T>, processingLabel = 'Applying changes...'): Promise<T> => {
+            const prev = targetSessionQueueRef.current.catch(() => undefined);
+            let release!: () => void;
+            const gate = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            targetSessionQueueRef.current = prev.then(() => gate);
 
-    // History
-    const saveStateToHistory = useCallback(
-        (action: string) => {
-            const entry: UndoEntry = {
-                action,
-                timestamp: Date.now(),
-                targetSystems: JSON.parse(JSON.stringify(targetSystems || {})),
-                targetPyContent,
-                selectedTargetSystem,
-                deletedEmitters: new Map(deletedEmitters),
-            };
-            setUndoHistory((prev) => [...prev, entry].slice(-10));
+            targetSessionBusyCountRef.current += 1;
+            setIsProcessing(true);
+            setProcessingText((current) => current || processingLabel);
+
+            await prev;
+            try {
+                return await task();
+            } finally {
+                release();
+                targetSessionBusyCountRef.current = Math.max(0, targetSessionBusyCountRef.current - 1);
+                if (targetSessionBusyCountRef.current === 0) {
+                    setIsProcessing(false);
+                    setProcessingText('');
+                }
+            }
         },
-        [targetSystems, targetPyContent, selectedTargetSystem, deletedEmitters]
+        []
     );
 
-    const handleUndo = useCallback(() => {
-        setUndoHistory((prev) => {
-            if (prev.length === 0) return prev;
-            const last = prev[prev.length - 1];
-            setTargetSystems(last.targetSystems || {});
-            setTargetPyContent(last.targetPyContent);
-            setSelectedTargetSystem(last.selectedTargetSystem);
-            setDeletedEmitters(last.deletedEmitters || new Map());
-            setFileSaved(false);
-            return prev.slice(0, -1);
-        });
+    // Derived model views. The map is for O(1) lookups by key; the ordered list
+    // preserves the bin's entry order for rendering (Object.values on the map
+    // reorders integer-like keys and scrambled the list vs the bin).
+    const targetSystems = useMemo(() => buildSystemMap(targetModel), [targetModel]);
+    const donorSystems = useMemo(() => buildSystemMap(donorModel), [donorModel]);
+    const targetSystemList = useMemo(() => buildSystemList(targetModel), [targetModel]);
+    const donorSystemList = useMemo(() => buildSystemList(donorModel), [donorModel]);
+    const effectKeyOptions = useMemo(() => effectKeyOptionsFromModel(targetModel), [targetModel]);
+    const availableSubmeshes = useMemo(() => targetModel?.submeshes ?? [], [targetModel]);
+    const existingConditions = useMemo(() => persistentConditionsFromModel(targetModel), [targetModel]);
+
+    const hasResourceResolver = !!targetModel?.resolver;
+    const hasSkinCharacterData = targetModel?.hasSkinCharacterData ?? false;
+
+    /* Apply a mutation result: refresh the model and mark the session edited. */
+    const applyTargetModel = useCallback((model: VfxPortModel) => {
+        setTargetModel(model);
+        setFileSaved(false);
+        setCanUndo(true);
+        setCanRedo(false);
     }, []);
+
+    const findTargetSystem = useCallback(
+        (systemKey: string): VfxSystem | null => targetSystems[systemKey] ?? null,
+        [targetSystems]
+    );
+
+    /* Copy donor asset files referenced by ported content into the target mod
+       tree. Source candidates: the donor-from-game temp extract dir and the
+       donor bin's own folder. */
+    const copyDonorAssets = useCallback(
+        async (assetPaths: string[]) => {
+            if (!assetPaths || assetPaths.length === 0) return;
+            if (!targetPath || !targetPath.includes('.')) return;
+            const sourceDirs = new Set<string>();
+            if (donorTempRoot) sourceDirs.add(`${donorTempRoot}/combined`);
+            const donorDir = donorPath && donorPath.includes('.') ? donorPath.replace(/[/\\][^/\\]*$/, '') : '';
+            if (donorDir) sourceDirs.add(donorDir);
+            if (sourceDirs.size === 0) return;
+            try {
+                const res = await portCopyAssetsToTarget({
+                    assetPaths,
+                    sourceDirs: Array.from(sourceDirs),
+                    targetBinPath: targetPath,
+                });
+                if (res.copied > 0) setStatusMessage(`Copied ${res.copied} asset file(s) into the target mod`);
+            } catch {
+                /* asset copy is best-effort */
+            }
+        },
+        [targetPath, donorPath, donorTempRoot]
+    );
+
+    // ── Undo / redo ──
+    const handleUndo = useCallback(async () => {
+        if (targetSessionId === null) return;
+        await runTargetSessionTask(async () => {
+            try {
+                const restored = await vfxUndo(targetSessionId);
+                if (restored) {
+                    setTargetModel(restored);
+                    setFileSaved(false);
+                    setCanRedo(true);
+                    setStatusMessage('Restored previous state');
+                } else {
+                    setCanUndo(false);
+                    setStatusMessage('Nothing to undo');
+                }
+            } catch (error) {
+                setStatusMessage(`Undo error: ${(error as Error).message}`);
+            }
+        }, 'Undoing...');
+    }, [targetSessionId, runTargetSessionTask]);
+
+    const handleRedo = useCallback(async () => {
+        if (targetSessionId === null) return;
+        await runTargetSessionTask(async () => {
+            try {
+                const restored = await vfxRedo(targetSessionId);
+                if (restored) {
+                    setTargetModel(restored);
+                    setFileSaved(false);
+                    setCanUndo(true);
+                    setStatusMessage('Redid last edit');
+                } else {
+                    setCanRedo(false);
+                    setStatusMessage('Nothing to redo');
+                }
+            } catch (error) {
+                setStatusMessage(`Redo error: ${(error as Error).message}`);
+            }
+        }, 'Redoing...');
+    }, [targetSessionId, runTargetSessionTask]);
 
     const handleToggleTargetCollapse = useCallback((key: string) => {
         setCollapsedTargetSystems((prev) => {
@@ -271,10 +355,9 @@ export default function usePort() {
 
     // Filtered systems
     const filteredTargetSystems = useMemo(() => {
-        const safe = targetSystems || {};
-        if (!targetFilter) return Object.values(safe);
+        if (!targetFilter) return targetSystemList;
         const term = targetFilter.toLowerCase();
-        return Object.values(safe)
+        return targetSystemList
             .map((sys) => {
                 const sysName = (sys.particleName || sys.name || sys.key || '').toLowerCase();
                 if (sysName.includes(term)) return sys;
@@ -285,13 +368,12 @@ export default function usePort() {
                 return null;
             })
             .filter((s): s is VfxSystem => s !== null);
-    }, [targetSystems, targetFilter, enableTargetEmitterSearch]);
+    }, [targetSystemList, targetFilter, enableTargetEmitterSearch]);
 
     const filteredDonorSystems = useMemo(() => {
-        const safe = donorSystems || {};
-        if (!donorFilter) return Object.values(safe);
+        if (!donorFilter) return donorSystemList;
         const term = donorFilter.toLowerCase();
-        return Object.values(safe)
+        return donorSystemList
             .map((sys) => {
                 const sysName = (sys.particleName || sys.name || sys.key || '').toLowerCase();
                 if (sysName.includes(term)) return sys;
@@ -302,25 +384,32 @@ export default function usePort() {
                 return null;
             })
             .filter((s): s is VfxSystem => s !== null);
-    }, [donorSystems, donorFilter, enableDonorEmitterSearch]);
+    }, [donorSystemList, donorFilter, enableDonorEmitterSearch]);
 
-    // File loading
+    // ── File loading ──
     const processTargetBin = useCallback(async (filePath: string) => {
         if (!filePath) return;
         try {
             setIsProcessing(true);
-            setTargetPath(filePath);
             setStatusMessage('Opening target file...');
             setProcessingText('Loading file...');
-            const loaded = await loadBin(filePath);
-            setTargetPyContent(loaded.text);
+
+            // Free the previous resident session. Read the live id from the
+            // store (local state resets on a page swap, the session does not).
+            const prev = usePortStore.getState().targetSessionId;
+            if (prev !== null) void vfxClose(prev).catch(() => undefined);
+
+            const { sessionId, model } = await vfxOpen(filePath);
+            setTargetSessionId(sessionId);
+            setTargetModel(model);
+            setTargetPath(filePath);
             setFileSaved(true);
-            setTargetSystems(loaded.systems);
-            setCollapsedTargetSystems(new Set(Object.keys(loaded.systems)));
-            setDeletedEmitters(new Map());
-            setUndoHistory([]);
+            setCanUndo(false);
+            setCanRedo(false);
+            setCollapsedTargetSystems(new Set(model.systems.map((s) => s.key)));
             setSelectedTargetSystem(null);
-            setStatusMessage(`Target bin loaded: ${Object.keys(loaded.systems).length} systems found`);
+            useUiPrefsStore.getState().pushRecentBinFor('target', filePath);
+            setStatusMessage(`Target bin loaded: ${model.systems.length} systems found`);
         } catch (error) {
             setStatusMessage(`Error: ${(error as Error).message}`);
         } finally {
@@ -333,14 +422,19 @@ export default function usePort() {
         if (!filePath) return;
         try {
             setIsProcessing(true);
-            setDonorPath(filePath);
             setStatusMessage('Opening donor bin...');
             setProcessingText('Loading file...');
-            const loaded = await loadBin(filePath);
-            setDonorPyContent(loaded.text);
-            setDonorSystems(loaded.systems);
-            setCollapsedDonorSystems(new Set(Object.keys(loaded.systems)));
-            setStatusMessage(`Donor bin loaded: ${Object.keys(loaded.systems).length} systems found`);
+
+            const prev = usePortStore.getState().donorSessionId;
+            if (prev !== null) void vfxClose(prev).catch(() => undefined);
+
+            const { sessionId, model } = await vfxOpen(filePath);
+            setDonorSessionId(sessionId);
+            setDonorModel(model);
+            setDonorPath(filePath);
+            setCollapsedDonorSystems(new Set(model.systems.map((s) => s.key)));
+            useUiPrefsStore.getState().pushRecentBinFor('donor', filePath);
+            setStatusMessage(`Donor bin loaded: ${model.systems.length} systems found`);
         } catch (error) {
             setStatusMessage(`Error: ${(error as Error).message}`);
         } finally {
@@ -359,634 +453,111 @@ export default function usePort() {
         if (p) await processDonorBin(p);
     }, [processDonorBin]);
 
-    // Save
+    // ── Save ──
     const handleSave = useCallback(async () => {
-        try {
-            setIsProcessing(true);
-            setProcessingText('Saving .bin...');
-            setStatusMessage('Saving modified target file...');
-            setFileSaved(false);
-
-            const freshPyContent = targetPyContentRef.current || targetPyContent;
-            if (!freshPyContent || Object.keys(targetSystems || {}).length === 0) {
-                setStatusMessage('No target file loaded');
-                setIsProcessing(false);
-                setProcessingText('');
-                return;
-            }
-
-            const existingPersistent = extractExistingPersistentConditions(freshPyContent);
-            let modifiedContent = freshPyContent;
-            const preSaveSystems = targetSystems || {};
-
-            const hasDeleted = deletedEmitters.size > 0;
-            let hasEmittersWithoutFullData = false;
-            for (const sName in targetSystems) {
-                if (targetSystems[sName].emitters?.some((e) => !e.originalContent)) {
-                    hasEmittersWithoutFullData = true;
-                    break;
-                }
-            }
-
-            if (hasDeleted || hasEmittersWithoutFullData) {
-                const systemsForSave: VfxSystemMap = {};
-                for (const [key, sys] of Object.entries(targetSystems)) {
-                    const emitters = sys.emitters?.map((e) => (e.originalContent ? e : loadEmitterData(sys, e.name) || e)) || [];
-                    systemsForSave[key] = { ...sys, emitters };
-                }
-                modifiedContent = generateModifiedPythonFromSystems(freshPyContent, systemsForSave);
-            }
-
-            let finalContent = modifiedContent;
-            try {
-                const nowPersistent = extractExistingPersistentConditions(modifiedContent) || [];
-                const needsReinsert =
-                    (existingPersistent || []).length > 0 &&
-                    (nowPersistent.length === 0 ||
-                        existingPersistent.map((c) => c.originalText).join('') !== nowPersistent.map((c) => c.originalText).join(''));
-                if (needsReinsert) finalContent = insertMultiplePersistentEffects(modifiedContent, existingPersistent);
-            } catch {
-                /* noop */
-            }
-
-            await saveBinText(finalContent, targetPath);
-
-            setStatusMessage('Successfully saved');
-            setTargetPyContent(finalContent);
-            const reparsedSystems = parseVfxEmitters(finalContent) || {};
-            const mergedSystems = Object.fromEntries(
-                Object.entries(reparsedSystems).map(([key, sys]) => {
-                    const priorByKey = preSaveSystems[key];
-                    const priorByName = Object.values(preSaveSystems).find(
-                        (prev) => (prev?.particleName || prev?.name || prev?.key) === (sys?.particleName || sys?.name || sys?.key)
-                    );
-                    const prior = priorByKey || priorByName;
-                    if (!prior) return [key, sys];
-                    return [key, { ...sys }];
-                })
-            );
-            setTargetSystems(mergedSystems);
-            setDeletedEmitters(new Map());
-            setFileSaved(true);
-        } catch (e) {
-            setStatusMessage(`Error saving file: ${(e as Error).message}`);
-            setFileSaved(false);
-        } finally {
-            setIsProcessing(false);
-            setProcessingText('');
+        if (targetSessionId === null) {
+            setStatusMessage('No target file loaded');
+            return;
         }
-    }, [targetPyContent, targetSystems, deletedEmitters, targetPath]);
+        await runTargetSessionTask(async () => {
+            try {
+                setProcessingText('Saving .bin...');
+                setStatusMessage('Saving modified target file...');
+                const written = await vfxSave(targetSessionId);
+                setFileSaved(true);
+                setStatusMessage(written.length > 0 ? `Successfully saved ${written.length} file(s)` : 'No changes to save');
+            } catch (e) {
+                setStatusMessage(`Error saving file: ${(e as Error).message}`);
+                setFileSaved(false);
+            }
+        }, 'Saving .bin...');
+    }, [targetSessionId, runTargetSessionTask]);
 
     const hasChangesToSave = useCallback(() => !fileSaved, [fileSaved]);
 
-    // ── Mutations ──
+    // ── Porting ──
     const handlePortEmitter = useCallback(
-        (donorSystemKey: string, emName: string, _hasResolver?: boolean, targetSystemKeyOverride: string | null = null) => {
+        async (donorSystemKey: string, emName: string, _hasResolver?: boolean, targetSystemKeyOverride: string | null = null) => {
             const targetSystemKey = targetSystemKeyOverride || selectedTargetSystem;
             if (!targetSystemKey) {
                 setStatusMessage('Please select a target system first');
                 return;
             }
+            if (targetSessionId === null || donorSessionId === null || !emName) return;
             const donorSystem = donorSystems[donorSystemKey];
-            if (!emName) return;
-            try {
-                const fullEmitterData = loadEmitterData(donorSystem, emName);
-                if (!fullEmitterData) return;
-
-                const targetSystem = targetSystems[targetSystemKey];
-                let finalEmitterName = emName;
-                if (targetSystem && targetSystem.emitters) {
-                    const existingNames = new Set(targetSystem.emitters.map((e) => e.name));
-                    if (existingNames.has(emName)) {
-                        let suffix = 1;
-                        while (existingNames.has(`${emName}_${suffix}`)) suffix++;
-                        finalEmitterName = `${emName}_${suffix}`;
-                        fullEmitterData.name = finalEmitterName;
-                        if (fullEmitterData.originalContent) {
-                            fullEmitterData.originalContent = fullEmitterData.originalContent.replace(
-                                /emitterName:\s*string\s*=\s*"([^"]+)"/,
-                                `emitterName: string = "${finalEmitterName}"`
-                            );
-                        }
-                    }
+            const targetSystem = targetSystems[targetSystemKey];
+            if (!donorSystem || !targetSystem) return;
+            const emitter = donorSystem.emitters.find((e) => e.name === emName);
+            if (!emitter) return;
+            await runTargetSessionTask(async () => {
+                try {
+                    const result = await vfxPortEmitters(targetSessionId, donorSessionId, [emitter.path], targetSystem.path);
+                    applyTargetModel(result.model);
+                    setStatusMessage(`Ported emitter "${result.ported[0] || emName}"`);
+                    void copyDonorAssets(result.assetPaths);
+                } catch (error) {
+                    setStatusMessage(`Error porting emitter: ${(error as Error).message}`);
                 }
-
-                saveStateToHistory(`Port emitter "${finalEmitterName}" to "${targetSystemKey}"`);
-
-                const updatedTargetSystems = { ...targetSystems };
-                if (updatedTargetSystems[targetSystemKey]) {
-                    const newEmitterList = [...(updatedTargetSystems[targetSystemKey].emitters || []), fullEmitterData];
-                    const targetSys = { ...updatedTargetSystems[targetSystemKey], emitters: newEmitterList };
-
-                    const targetSysKeyForReplace = targetSys.key || targetSystemKey;
-                    const baseText = targetPyContentRef.current || targetPyContent || '';
-                    let currentSystemContent = targetSys.rawContent || '';
-                    try {
-                        currentSystemContent = extractVFXSystem(baseText, targetSysKeyForReplace)?.fullContent || currentSystemContent;
-                    } catch {
-                        /* noop */
-                    }
-                    const emitterBlocks = newEmitterList.map((e) => {
-                        if (e.originalContent) return e.originalContent;
-                        const loaded = loadEmitterData(targetSys, e.name);
-                        if (loaded?.originalContent) return loaded.originalContent;
-                        return `VfxEmitterDefinitionData {\n    emitterName: string = "${e.name}"\n}`;
-                    });
-                    const newSystemText = replaceEmittersInSystem(currentSystemContent || '', emitterBlocks);
-                    const newFile = replaceSystemBlockInFile(baseText, targetSysKeyForReplace, newSystemText);
-                    updatedTargetSystems[targetSystemKey] = { ...targetSys, rawContent: newSystemText };
-                    setTargetSystems(updatedTargetSystems);
-                    setTargetPyContent(newFile);
-                    targetPyContentRef.current = newFile;
-                    setFileSaved(false);
-                    setStatusMessage(`Ported emitter "${finalEmitterName}"`);
-                }
-            } catch {
-                setStatusMessage('Error porting emitter');
-            }
+            }, 'Porting emitter...');
         },
-        [selectedTargetSystem, donorSystems, targetSystems, targetPyContent, saveStateToHistory]
+        [selectedTargetSystem, targetSessionId, donorSessionId, donorSystems, targetSystems, applyTargetModel, copyDonorAssets, runTargetSessionTask]
     );
 
     const handlePortAllEmitters = useCallback(
-        (donorSystemKey: string) => {
+        async (donorSystemKey: string) => {
             if (!selectedTargetSystem) {
                 setStatusMessage('Please select a target system first');
                 return;
             }
+            if (targetSessionId === null || donorSessionId === null) return;
             const donorSystem = donorSystems[donorSystemKey];
-            if (!donorSystem || !donorSystem.emitters || donorSystem.emitters.length === 0) return;
-            try {
-                saveStateToHistory(`Port all emitters from "${donorSystem.name}"`);
-                const origTargetSystem = targetSystems[selectedTargetSystem];
-                const newEmitters: VfxEmitter[] = [...(origTargetSystem.emitters || [])];
-                const existingNames = new Set(newEmitters.map((e) => e.name));
-                let portedCount = 0;
-                for (let i = 0; i < donorSystem.emitters.length; i++) {
-                    const emName = donorSystem.emitters[i].name;
-                    if (!emName) continue;
-                    const fullEmitterData = loadEmitterData(donorSystem, emName);
-                    if (!fullEmitterData) continue;
-                    let finalEmitterName = emName;
-                    if (existingNames.has(emName)) {
-                        let suffix = 1;
-                        while (existingNames.has(`${emName}_${suffix}`)) suffix++;
-                        finalEmitterName = `${emName}_${suffix}`;
-                        fullEmitterData.name = finalEmitterName;
-                        if (fullEmitterData.originalContent) {
-                            fullEmitterData.originalContent = fullEmitterData.originalContent.replace(
-                                /emitterName:\s*string\s*=\s*"([^"]+)"/,
-                                `emitterName: string = "${finalEmitterName}"`
-                            );
-                        }
-                    }
-                    newEmitters.push({ name: finalEmitterName, originalContent: fullEmitterData.originalContent || fullEmitterData.rawContent });
-                    existingNames.add(finalEmitterName);
-                    portedCount++;
-                }
-                const targetSysKey = selectedTargetSystem;
-                const targetSys = { ...origTargetSystem, emitters: newEmitters };
-                const targetSysKeyForReplace = targetSys.key || targetSysKey;
-                let currentSystemContent = targetSys.rawContent || '';
+            const targetSystem = targetSystems[selectedTargetSystem];
+            if (!donorSystem || !targetSystem || donorSystem.emitters.length === 0) return;
+            await runTargetSessionTask(async () => {
                 try {
-                    currentSystemContent = extractVFXSystem(targetPyContent, targetSysKeyForReplace)?.fullContent || currentSystemContent;
-                } catch {
-                    /* noop */
+                    const result = await vfxPortEmitters(
+                        targetSessionId,
+                        donorSessionId,
+                        donorSystem.emitters.map((e) => e.path),
+                        targetSystem.path
+                    );
+                    applyTargetModel(result.model);
+                    setStatusMessage(`Ported ${result.ported.length} emitters`);
+                    void copyDonorAssets(result.assetPaths);
+                } catch (error) {
+                    setStatusMessage(`Error porting all emitters: ${(error as Error).message}`);
                 }
-                const emitterBlocks = newEmitters.map((e) => {
-                    if (e.originalContent) return e.originalContent;
-                    const loaded = loadEmitterData(targetSys, e.name);
-                    if (loaded?.originalContent) return loaded.originalContent;
-                    return `VfxEmitterDefinitionData {\n    emitterName: string = "${e.name}"\n}`;
-                });
-                const newSystemText = replaceEmittersInSystem(currentSystemContent || '', emitterBlocks);
-                const newFile = replaceSystemBlockInFile(targetPyContent || '', targetSysKeyForReplace, newSystemText);
-                setTargetPyContent(newFile);
-                setTargetSystems({ ...targetSystems, [targetSysKey]: { ...targetSys, rawContent: newSystemText } });
-                setFileSaved(false);
-                setStatusMessage(`Ported ${portedCount} emitters`);
-            } catch {
-                setStatusMessage('Error porting all emitters');
-            }
+            }, 'Porting emitters...');
         },
-        [selectedTargetSystem, donorSystems, targetSystems, targetPyContent, saveStateToHistory]
+        [selectedTargetSystem, targetSessionId, donorSessionId, donorSystems, targetSystems, applyTargetModel, copyDonorAssets, runTargetSessionTask]
     );
 
-    const handleMoveEmitter = useCallback(
-        (sourceSystemKey: string, emName: string, targetSystemKey: string) => {
-            if (sourceSystemKey === targetSystemKey) {
-                setStatusMessage('Cannot move emitter to the same system');
+    /* Insert a donor system dropped onto the target column. preserveName keeps
+       the donor's particle names/resolver keys; otherwise renames to `name`. */
+    const handleInsertDonorSystem = useCallback(
+        async (donorSystemPath: VfxPath, name: string | null, preserveName: boolean) => {
+            if (targetSessionId === null || donorSessionId === null) {
+                setStatusMessage('Both target and donor files must be loaded');
                 return;
             }
-            const sourceSystem = targetSystems[sourceSystemKey];
-            const targetSystem = targetSystems[targetSystemKey];
-            if (!sourceSystem || !targetSystem) {
-                setStatusMessage('Source or target system not found');
-                return;
-            }
-            const fullEmitterData = loadEmitterData(sourceSystem, emName);
-            if (!fullEmitterData) {
-                setStatusMessage(`Failed to load emitter data for "${emName}"`);
-                return;
-            }
-            let finalEmitterName = emName;
-            if (targetSystem.emitters) {
-                const existingNames = new Set(targetSystem.emitters.map((e) => e.name));
-                if (existingNames.has(emName)) {
-                    let suffix = 1;
-                    while (existingNames.has(`${emName}_${suffix}`)) suffix++;
-                    finalEmitterName = `${emName}_${suffix}`;
-                    fullEmitterData.name = finalEmitterName;
-                    if (fullEmitterData.originalContent) {
-                        fullEmitterData.originalContent = fullEmitterData.originalContent.replace(
-                            /emitterName:\s*string\s*=\s*"([^"]+)"/i,
-                            `emitterName: string = "${finalEmitterName}"`
-                        );
-                    }
-                }
-            }
-            try {
-                saveStateToHistory(`Move emitter "${emName}" from "${sourceSystem.name}" to "${targetSystem.name}"`);
-                const sourceSystemContent = sourceSystem.rawContent || '';
-                const remainingEmitters = (sourceSystem.emitters || []).filter((e) => e.name !== emName);
-                const remainingEmitterBlocks = remainingEmitters.map((e) => {
-                    if (e.originalContent) return e.originalContent;
-                    const loaded = loadEmitterData(sourceSystem, e.name);
-                    if (loaded?.originalContent) return loaded.originalContent;
-                    return `VfxEmitterDefinitionData {\n    emitterName: string = "${e.name}"\n}`;
-                });
-                const updatedSourceContent = replaceEmittersInSystem(sourceSystemContent, remainingEmitterBlocks);
-                const updatedSourceSystemContent = replaceSystemBlockInFile(targetPyContent || '', sourceSystemKey, updatedSourceContent);
-                const targetSystemContent = targetSystem.rawContent || '';
-                let targetSysText = targetSystemContent;
+            await runTargetSessionTask(async () => {
                 try {
-                    targetSysText = updatedSourceSystemContent
-                        ? extractVFXSystem(updatedSourceSystemContent, targetSystemKey)?.fullContent || targetSystemContent
-                        : targetSystemContent;
-                } catch {
-                    /* noop */
+                    const result = await vfxPortSystem(targetSessionId, donorSessionId, donorSystemPath, preserveName ? null : name, preserveName);
+                    applyTargetModel(result.model);
+                    const modeText = preserveName ? 'with preserved ResourceResolver names' : 'with updated names';
+                    setStatusMessage(`Added VFX system "${result.finalName}" to target ${modeText}`);
+                    void copyDonorAssets(result.assetPaths);
+                } catch (error) {
+                    setStatusMessage(`Failed to add VFX system: ${(error as Error).message}`);
                 }
-                const targetEmitters = targetSystem.emitters || [];
-                const targetEmitterBlocks = targetEmitters.map((e) => {
-                    if (e.originalContent) return e.originalContent;
-                    const loaded = loadEmitterData(targetSystem, e.name);
-                    if (loaded?.originalContent) return loaded.originalContent;
-                    return `VfxEmitterDefinitionData {\n    emitterName: string = "${e.name}"\n}`;
-                });
-                targetEmitterBlocks.push(fullEmitterData.originalContent || `VfxEmitterDefinitionData {\n    emitterName: string = "${finalEmitterName}"\n}`);
-                const updatedTargetSystemContent = replaceEmittersInSystem(targetSysText, targetEmitterBlocks);
-                const updatedTargetContent = replaceSystemBlockInFile(updatedSourceSystemContent || targetPyContent || '', targetSystemKey, updatedTargetSystemContent);
-                setTargetPyContent(updatedTargetContent);
-                setFileSaved(false);
-                setTargetSystems(parseVfxEmitters(updatedTargetContent) || {});
-                setStatusMessage(`Moved emitter "${emName}"${finalEmitterName !== emName ? ` (renamed to "${finalEmitterName}")` : ''}`);
-            } catch {
-                setStatusMessage('Error moving emitter');
-            }
+            }, 'Porting VFX system...');
         },
-        [targetSystems, targetPyContent, saveStateToHistory]
-    );
-
-    const handleDeleteEmitter = useCallback(
-        (systemKey: string, emitterIndex: number, isTarget: boolean, emName: string | null = null) => {
-            const systems = isTarget ? targetSystems : donorSystems;
-            const setSystems = isTarget ? setTargetSystems : setDonorSystems;
-            if (isTarget) saveStateToHistory(`Delete emitter from ${systemKey}`);
-
-            const updatedSystems = { ...systems };
-            if (updatedSystems[systemKey] && updatedSystems[systemKey].emitters) {
-                let emitter: VfxEmitter;
-                let actualIndex: number;
-                if (emName) {
-                    actualIndex = updatedSystems[systemKey].emitters.findIndex((e) => e.name === emName);
-                    if (actualIndex === -1) {
-                        setStatusMessage(`Emitter "${emName}" not found in system`);
-                        return;
-                    }
-                    emitter = updatedSystems[systemKey].emitters[actualIndex];
-                } else {
-                    emitter = updatedSystems[systemKey].emitters[emitterIndex];
-                    actualIndex = emitterIndex;
-                }
-
-                const newEmittersList = [...updatedSystems[systemKey].emitters];
-                newEmittersList.splice(actualIndex, 1);
-                updatedSystems[systemKey] = { ...updatedSystems[systemKey], emitters: newEmittersList };
-
-                if (isTarget) {
-                    const currentSys = systems[systemKey] || ({} as VfxSystem);
-                    const currentRaw = currentSys.rawContent || '';
-                    const newSystemRaw = removeEmitterBlockFromSystem(currentRaw, emitter.name);
-                    if (newSystemRaw) {
-                        updatedSystems[systemKey] = { ...updatedSystems[systemKey], rawContent: newSystemRaw };
-                        const sysKeyForReplace = currentSys.key || systemKey;
-                        const newFileText = replaceSystemBlockInFile(targetPyContentRef.current || targetPyContent || '', sysKeyForReplace, newSystemRaw);
-                        setTargetPyContent(newFileText);
-                        targetPyContentRef.current = newFileText;
-                    }
-                    if (emitter.name) {
-                        setDeletedEmitters((prev) => {
-                            const newMap = new Map(prev);
-                            newMap.set(`${systemKey}:${emitter.name}`, { systemKey, emitterName: emitter.name });
-                            return newMap;
-                        });
-                    }
-                    setFileSaved(false);
-                }
-                setSystems(updatedSystems);
-                setStatusMessage(`Deleted emitter "${emitter.name}" from ${isTarget ? 'target' : 'donor'} bin`);
-            }
-        },
-        [targetSystems, donorSystems, targetPyContent, saveStateToHistory]
-    );
-
-    const handleDeleteAllEmitters = useCallback(
-        (systemKey: string) => {
-            const system = targetSystems[systemKey];
-            if (!system || !system.emitters || system.emitters.length === 0) return;
-            saveStateToHistory(`Delete all emitters from ${systemKey}`);
-            try {
-                const emitterNames = system.emitters.map((e) => e?.name).filter(Boolean) as string[];
-                const updatedDeletedEmitters = new Map(deletedEmitters);
-                emitterNames.forEach((name) => updatedDeletedEmitters.set(`${systemKey}:${name}`, { systemKey, emitterName: name }));
-
-                const updatedSystems = { ...targetSystems };
-                updatedSystems[systemKey] = { ...updatedSystems[systemKey], emitters: [] };
-
-                const currentSys = targetSystems[systemKey] || ({} as VfxSystem);
-                const currentRaw = currentSys.rawContent || '';
-                const newSystemRaw = replaceEmittersInSystem(currentRaw, []);
-                if (newSystemRaw) {
-                    const sysKeyForReplace = currentSys.key || systemKey;
-                    const newFileText = replaceSystemBlockInFile(targetPyContent || '', sysKeyForReplace, newSystemRaw);
-                    setTargetPyContent(newFileText);
-                    updatedSystems[systemKey] = { ...updatedSystems[systemKey], rawContent: newSystemRaw };
-                }
-
-                setTargetSystems(updatedSystems);
-                setDeletedEmitters(updatedDeletedEmitters);
-                setFileSaved(false);
-                setStatusMessage(`Deleted all emitters from "${systemKey}"`);
-            } catch {
-                /* noop */
-            }
-        },
-        [targetSystems, deletedEmitters, targetPyContent, saveStateToHistory]
-    );
-
-    const handleRenameEmitter = useCallback(
-        (systemKey: string, oldEmitterName: string, newEmitterName: string) => {
-            const name = (typeof newEmitterName === 'string' ? newEmitterName : '').trim();
-            if (!name) {
-                setStatusMessage('Emitter name cannot be empty');
-                return;
-            }
-            if (newEmitterName === oldEmitterName) {
-                setRenamingEmitter(null);
-                return;
-            }
-            saveStateToHistory(`Rename emitter "${oldEmitterName}" to "${newEmitterName}"`);
-
-            const system = targetSystems[systemKey];
-            if (!system) {
-                setStatusMessage(`System "${systemKey}" not found`);
-                setRenamingEmitter(null);
-                return;
-            }
-            const existingEmitter = system.emitters?.find((e) => e.name === newEmitterName);
-            if (existingEmitter) {
-                setStatusMessage(`Emitter "${newEmitterName}" already exists in this system`);
-                setRenamingEmitter(null);
-                return;
-            }
-
-            const systemRawContent = system.rawContent || '';
-            const lines = systemRawContent.split('\n');
-            let inTargetEmitter = false;
-            let emitterBracketDepth = 0;
-            let foundEmitterName = false;
-            const updatedLines: string[] = [];
-
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                const trimmed = line.trim();
-                if (/^VfxEmitterDefinitionData\s*\{/i.test(trimmed)) {
-                    inTargetEmitter = true;
-                    emitterBracketDepth = 1;
-                    foundEmitterName = false;
-                    updatedLines.push(line);
-                    continue;
-                }
-                if (inTargetEmitter) {
-                    const ob = (line.match(/\{/g) || []).length;
-                    const cb = (line.match(/\}/g) || []).length;
-                    emitterBracketDepth += ob - cb;
-                    if (!foundEmitterName && /emitterName:\s*string\s*=\s*"/i.test(trimmed)) {
-                        const m = trimmed.match(/emitterName:\s*string\s*=\s*"([^"]+)"/i);
-                        if (m && m[1] === oldEmitterName) {
-                            const indent = line.match(/^(\s*)/)?.[1] || '';
-                            updatedLines.push(`${indent}emitterName: string = "${newEmitterName}"`);
-                            foundEmitterName = true;
-                            continue;
-                        }
-                    }
-                    updatedLines.push(line);
-                    if (emitterBracketDepth <= 0) inTargetEmitter = false;
-                } else {
-                    updatedLines.push(line);
-                }
-            }
-
-            const updatedSystemRawContent = updatedLines.join('\n');
-            const sysKeyForReplace = system.key || systemKey;
-            const newFileText = replaceSystemBlockInFile(targetPyContent || '', sysKeyForReplace, updatedSystemRawContent);
-            setTargetPyContent(newFileText);
-            setTargetSystems((prev) => ({
-                ...prev,
-                [systemKey]: {
-                    ...prev[systemKey],
-                    rawContent: updatedSystemRawContent,
-                    emitters: prev[systemKey].emitters.map((e) => (e.name === oldEmitterName ? { ...e, name: newEmitterName } : e)),
-                },
-            }));
-            setFileSaved(false);
-
-            const oldKey = `${systemKey}:${oldEmitterName}`;
-            if (deletedEmitters.has(oldKey)) {
-                setDeletedEmitters((prev) => {
-                    const newMap = new Map(prev);
-                    newMap.delete(oldKey);
-                    return newMap;
-                });
-            }
-            setStatusMessage(`Renamed emitter "${oldEmitterName}" to "${newEmitterName}"`);
-            setRenamingEmitter(null);
-        },
-        [targetSystems, targetPyContent, deletedEmitters, saveStateToHistory]
-    );
-
-    const handleRenameSystem = useCallback(
-        (systemKey: string, newSystemName: string) => {
-            const name = (typeof newSystemName === 'string' ? newSystemName : '').trim();
-            if (!name) {
-                setStatusMessage('System name cannot be empty');
-                return;
-            }
-            const system = targetSystems[systemKey];
-            if (!system) {
-                setStatusMessage(`System "${systemKey}" not found`);
-                setRenamingSystem(null);
-                return;
-            }
-            const oldSystemName = system.name || system.key;
-            if (newSystemName === oldSystemName) {
-                setRenamingSystem(null);
-                return;
-            }
-            const existingSystem = Object.values(targetSystems).find((s) => (s.name === newSystemName || s.key === newSystemName) && s.key !== systemKey);
-            if (existingSystem) {
-                setStatusMessage(`System "${newSystemName}" already exists`);
-                setRenamingSystem(null);
-                return;
-            }
-
-            saveStateToHistory(`Rename system "${oldSystemName}" to "${newSystemName}"`);
-
-            let updatedContent = targetPyContent || '';
-            const escapedOldKey = systemKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const oldKeyPattern = systemKey.startsWith('0x')
-                ? new RegExp(`^\\s*${escapedOldKey}\\s*=\\s*VfxSystemDefinitionData\\s*\\{`, 'mi')
-                : new RegExp(`^\\s*"${escapedOldKey}"\\s*=\\s*VfxSystemDefinitionData\\s*\\{`, 'mi');
-            const newKey = newSystemName.startsWith('0x') ? newSystemName : `"${newSystemName}"`;
-            updatedContent = updatedContent.replace(oldKeyPattern, (match) => {
-                const leadingWhitespace = match.match(/^(\s*)/)?.[1] || '';
-                return `${leadingWhitespace}${newKey} = VfxSystemDefinitionData {`;
-            });
-
-            const lines = updatedContent.split('\n');
-            let inTargetSystem = false;
-            let systemBracketDepth = 0;
-            const escapedNewKey = newKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const systemHeaderPattern = new RegExp(`${escapedNewKey}\\s*=\\s*VfxSystemDefinitionData\\s*\\{`, 'i');
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                const trimmed = line.trim();
-                if (systemHeaderPattern.test(trimmed)) {
-                    inTargetSystem = true;
-                    systemBracketDepth = 1;
-                    continue;
-                }
-                if (inTargetSystem) {
-                    const ob = (line.match(/\{/g) || []).length;
-                    const cb = (line.match(/\}/g) || []).length;
-                    systemBracketDepth += ob - cb;
-                    if (/particleName:\s*string\s*=\s*"/i.test(trimmed)) lines[i] = line.replace(/particleName:\s*string\s*=\s*"[^"]*"/i, `particleName: string = "${newSystemName}"`);
-                    if (/particlePath:\s*string\s*=\s*"/i.test(trimmed)) lines[i] = line.replace(/particlePath:\s*string\s*=\s*"[^"]*"/i, `particlePath: string = "${newSystemName}"`);
-                    if (systemBracketDepth <= 0) {
-                        inTargetSystem = false;
-                        break;
-                    }
-                }
-            }
-
-            let inResourceMap = false;
-            let resourceMapDepth = 0;
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                const trimmed = line.trim();
-                if (/resourceMap:\s*map\[hash,link\]\s*=\s*\{/i.test(trimmed)) {
-                    inResourceMap = true;
-                    resourceMapDepth = 1;
-                    continue;
-                }
-                if (inResourceMap) {
-                    const ob = (line.match(/\{/g) || []).length;
-                    const cb = (line.match(/\}/g) || []).length;
-                    resourceMapDepth += ob - cb;
-                    const entryMatch = trimmed.match(/^(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*=\s*(?:"([^"]+)"|(0x[0-9a-fA-F]+))/);
-                    if (entryMatch) {
-                        const entryKey = entryMatch[1] || entryMatch[2];
-                        const entryValue = entryMatch[3] || entryMatch[4];
-                        const oldNameClean = oldSystemName.replace(/^"|"$/g, '');
-                        const entryKeyClean = entryKey.replace(/^"|"$/g, '');
-                        const entryValueClean = entryValue.replace(/^"|"$/g, '');
-                        const keyMatches = entryKeyClean === oldNameClean || entryKeyClean === oldSystemName || entryKeyClean.toLowerCase() === oldNameClean.toLowerCase();
-                        const valueMatches =
-                            entryValueClean === oldNameClean ||
-                            entryValueClean === oldSystemName ||
-                            entryValueClean.endsWith('/' + oldNameClean) ||
-                            entryValueClean.endsWith('/' + oldSystemName) ||
-                            entryValueClean.toLowerCase() === oldNameClean.toLowerCase() ||
-                            entryValueClean.toLowerCase().endsWith('/' + oldNameClean.toLowerCase());
-                        if (keyMatches || valueMatches) {
-                            let finalEntryKey = entryKey;
-                            let finalEntryValue = entryValue;
-                            if (keyMatches) finalEntryKey = newSystemName;
-                            if (valueMatches) finalEntryValue = newSystemName;
-                            const fk = finalEntryKey.startsWith('0x') ? finalEntryKey : `"${finalEntryKey}"`;
-                            const fv = finalEntryValue.startsWith('0x') ? finalEntryValue : `"${finalEntryValue}"`;
-                            const indent = line.match(/^(\s*)/)?.[1] || '            ';
-                            lines[i] = `${indent}${fk} = ${fv}`;
-                        }
-                    }
-                    if (resourceMapDepth <= 0) inResourceMap = false;
-                }
-            }
-
-            updatedContent = lines.join('\n');
-            setTargetPyContent(updatedContent);
-            setFileSaved(false);
-            try {
-                setTargetSystems(parseVfxEmitters(updatedContent) || {});
-            } catch {
-                /* noop */
-            }
-            if (selectedTargetSystem === systemKey) setSelectedTargetSystem(newSystemName);
-            setStatusMessage(`Renamed system "${oldSystemName}" to "${newSystemName}"`);
-            setRenamingSystem(null);
-        },
-        [targetSystems, targetPyContent, selectedTargetSystem, saveStateToHistory]
-    );
-
-    const handleCreateNewSystem = useCallback(
-        (name: string, closeModal?: (v: boolean) => void) => {
-            try {
-                const clean = (typeof name === 'string' ? name : '').trim();
-                if (!clean) {
-                    setStatusMessage('Enter a system name');
-                    return;
-                }
-                saveStateToHistory(`Create new VFX system "${clean}"`);
-                const minimalSystem = `"${clean}" = VfxSystemDefinitionData {\n    complexEmitterDefinitionData: list[pointer] = {}\n    particleName: string = "${clean}"\n    particlePath: string = "${clean}"\n}`;
-                const updated = insertVFXSystemIntoFile(targetPyContent, minimalSystem, clean);
-                setTargetPyContent(updated);
-                setFileSaved(false);
-                const systems = parseVfxEmitters(updated);
-                const entries = Object.entries(systems);
-                if (entries.length > 0) {
-                    const nowTs = Date.now();
-                    const createdKey = systems[clean] ? clean : entries[entries.length - 1][0];
-                    setRecentCreatedSystemKeys([createdKey]);
-                    const ordered: VfxSystemMap = {};
-                    if (systems[createdKey]) ordered[createdKey] = { ...systems[createdKey], ported: true, portedAt: nowTs, createdAt: nowTs };
-                    for (const [k, v] of entries) if (k !== createdKey) ordered[k] = v;
-                    setTargetSystems(ordered);
-                } else {
-                    setTargetSystems(systems);
-                }
-                setStatusMessage(`Created VFX system "${clean}" and updated ResourceResolver`);
-            } catch {
-                setStatusMessage('Failed to create VFX system');
-            } finally {
-                if (typeof closeModal === 'function') closeModal(false);
-            }
-        },
-        [targetPyContent, saveStateToHistory]
+        [targetSessionId, donorSessionId, applyTargetModel, copyDonorAssets, runTargetSessionTask]
     );
 
     const handlePortAllSystems = useCallback(
         async (hasResolver: boolean, mode: 'normal' | 'replace-target' = 'normal') => {
-            if (!targetPyContent || !donorPyContent) {
+            if (targetSessionId === null || donorSessionId === null) {
                 setStatusMessage('Both target and donor files must be loaded');
                 return;
             }
@@ -1002,72 +573,281 @@ export default function usePort() {
             try {
                 setIsPortAllLoading(true);
                 setIsProcessing(true);
-                setProcessingText(mode === 'replace-target' ? `Replacing target with ${donorSystemsList.length} donor VFX systems...` : `Porting ${donorSystemsList.length} VFX systems...`);
-                saveStateToHistory(
-                    mode === 'replace-target' ? `Replace target VFX systems with all ${donorSystemsList.length} donor systems` : `Port all ${donorSystemsList.length} VFX systems from donor`
+                setProcessingText(
+                    mode === 'replace-target'
+                        ? `Replacing target with ${donorSystemsList.length} donor VFX systems...`
+                        : `Porting ${donorSystemsList.length} VFX systems...`
                 );
 
-                let updatedContent = targetPyContent;
+                let latest: VfxPortModel | null = null;
                 if (mode === 'replace-target') {
-                    updatedContent = stripVfxSystemsAndResolverEntries(updatedContent);
+                    // Delete every existing target system first, refreshing the
+                    // model between deletes so entry paths stay valid.
+                    let current = targetModel;
+                    while (current && current.systems.length > 0) {
+                        latest = await vfxDeleteSystem(targetSessionId, current.systems[0].path);
+                        current = latest;
+                    }
                 }
+
                 let successCount = 0;
                 let errorCount = 0;
-
+                const allAssets = new Set<string>();
                 for (let i = 0; i < donorSystemsList.length; i++) {
                     const system = donorSystemsList[i];
                     setProcessingText(`Porting system ${i + 1}/${donorSystemsList.length}: ${system.particleName || system.name}`);
                     try {
-                        let fullContent = '';
-                        try {
-                            const extracted = extractVFXSystem(donorPyContent, system.name);
-                            fullContent = extracted?.fullContent || extracted?.rawContent || system.rawContent || '';
-                        } catch {
-                            fullContent = system.rawContent || '';
-                        }
-                        if (!fullContent) {
-                            errorCount++;
-                            continue;
-                        }
-                        const originalName = system.particleName || system.name;
-                        const keyPattern = new RegExp(`^\\s*("${escapeRegExp(originalName)}"|${escapeRegExp(originalName)})\\s*=\\s*VfxSystemDefinitionData\\s*\\{`, 'm');
-                        const systemExists = keyPattern.test(updatedContent);
-                        let finalSystemName = originalName;
-                        if (systemExists) finalSystemName = generateUniqueSystemName(updatedContent, originalName);
-                        if (systemExists) {
-                            updatedContent = insertVFXSystemIntoFile(updatedContent, fullContent, finalSystemName);
-                        } else {
-                            updatedContent = insertVFXSystemWithPreservedNames(updatedContent, fullContent, finalSystemName, donorPyContent, { strictResolverCopy: true });
-                        }
+                        const result = await vfxPortSystem(targetSessionId, donorSessionId, system.path, null, true);
+                        latest = result.model;
+                        for (const a of result.assetPaths) allAssets.add(a);
                         successCount++;
                     } catch {
                         errorCount++;
                     }
-                    if (i % 3 === 0 || i === donorSystemsList.length - 1) await new Promise((r) => setTimeout(r, 0));
                 }
 
-                setTargetPyContent(updatedContent);
-                setFileSaved(false);
-                try {
-                    setTargetSystems(parseVfxEmitters(updatedContent));
-                } catch {
-                    /* noop */
+                if (latest) {
+                    applyTargetModel(latest);
                 }
                 if (successCount > 0) {
                     const verb = mode === 'replace-target' ? 'Replaced target with' : 'Successfully ported';
                     setStatusMessage(`${verb} ${successCount} VFX systems${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+                    void copyDonorAssets(Array.from(allAssets));
                 } else {
                     setStatusMessage('Failed to port any VFX systems');
                 }
-            } catch {
-                setStatusMessage('Failed to port VFX systems');
+            } catch (error) {
+                setStatusMessage(`Failed to port VFX systems: ${(error as Error).message}`);
             } finally {
                 setIsPortAllLoading(false);
                 setIsProcessing(false);
                 setProcessingText('');
             }
         },
-        [targetPyContent, donorPyContent, donorSystems, saveStateToHistory]
+        [targetSessionId, donorSessionId, donorSystems, targetModel, applyTargetModel, copyDonorAssets]
+    );
+
+    /* Move an emitter between two target systems: clone into the destination
+       (same session as donor), then delete the source emitter. */
+    const handleMoveEmitter = useCallback(
+        async (sourceSystemKey: string, emName: string, targetSystemKey: string) => {
+            if (sourceSystemKey === targetSystemKey) {
+                setStatusMessage('Cannot move emitter to the same system');
+                return;
+            }
+            if (targetSessionId === null) return;
+            const sourceSystem = targetSystems[sourceSystemKey];
+            const targetSystem = targetSystems[targetSystemKey];
+            if (!sourceSystem || !targetSystem) {
+                setStatusMessage('Source or target system not found');
+                return;
+            }
+            const emitter = sourceSystem.emitters.find((e) => e.name === emName);
+            if (!emitter) {
+                setStatusMessage(`Failed to load emitter data for "${emName}"`);
+                return;
+            }
+            await runTargetSessionTask(async () => {
+                try {
+                    const ported = await vfxPortEmitters(targetSessionId, targetSessionId, [emitter.path], targetSystem.path);
+                    const freshSource = ported.model.systems.find((s) => s.key === sourceSystemKey);
+                    const freshEmitter = freshSource?.emitters.find((e) => e.name === emName);
+                    if (freshEmitter) {
+                        const model = await vfxDeleteEmitter(targetSessionId, freshEmitter.path);
+                        applyTargetModel(model);
+                    } else {
+                        applyTargetModel(ported.model);
+                    }
+                    const finalName = ported.ported[0] || emName;
+                    setStatusMessage(`Moved emitter "${emName}"${finalName !== emName ? ` (renamed to "${finalName}")` : ''}`);
+                } catch (error) {
+                    setStatusMessage(`Error moving emitter: ${(error as Error).message}`);
+                }
+            }, 'Moving emitter...');
+        },
+        [targetSessionId, targetSystems, applyTargetModel, runTargetSessionTask]
+    );
+
+    const handleDeleteEmitter = useCallback(
+        async (systemKey: string, emitterIndex: number, isTarget: boolean, emName: string | null = null) => {
+            const sessionId = isTarget ? targetSessionId : donorSessionId;
+            const systems = isTarget ? targetSystems : donorSystems;
+            if (sessionId === null) return;
+            const system = systems[systemKey];
+            if (!system || system.emitters.length === 0) return;
+            const emitter = emName ? system.emitters.find((e) => e.name === emName) : system.emitters[emitterIndex];
+            if (!emitter) {
+                setStatusMessage(`Emitter "${emName ?? emitterIndex}" not found in system`);
+                return;
+            }
+            const task = async () => {
+                try {
+                    const model = await vfxDeleteEmitter(sessionId, emitter.path);
+                    if (isTarget) applyTargetModel(model);
+                    else setDonorModel(model);
+                    setStatusMessage(`Deleted emitter "${emitter.name}" from ${isTarget ? 'target' : 'donor'} bin`);
+                } catch (error) {
+                    setStatusMessage(`Error deleting emitter: ${(error as Error).message}`);
+                }
+            };
+            if (isTarget) await runTargetSessionTask(task, 'Deleting emitter...');
+            else await task();
+        },
+        [targetSessionId, donorSessionId, targetSystems, donorSystems, applyTargetModel, runTargetSessionTask]
+    );
+
+    const handleDeleteAllEmitters = useCallback(
+        async (systemKey: string) => {
+            if (targetSessionId === null) return;
+            const system = targetSystems[systemKey];
+            if (!system || system.emitters.length === 0) return;
+            await runTargetSessionTask(async () => {
+                try {
+                    let model: VfxPortModel | null = null;
+                    for (let i = system.emitters.length - 1; i >= 0; i--) {
+                        model = await vfxDeleteEmitter(targetSessionId, system.emitters[i].path);
+                    }
+                    if (model) applyTargetModel(model);
+                    setStatusMessage(`Deleted all emitters from "${system.particleName || system.name || systemKey}"`);
+                } catch (error) {
+                    setStatusMessage(`Error deleting emitters: ${(error as Error).message}`);
+                }
+            }, 'Deleting emitters...');
+        },
+        [targetSessionId, targetSystems, applyTargetModel, runTargetSessionTask]
+    );
+
+    const handleRenameEmitter = useCallback(
+        async (systemKey: string, oldEmitterName: string, newEmitterName: string) => {
+            const name = (typeof newEmitterName === 'string' ? newEmitterName : '').trim();
+            if (!name) {
+                setStatusMessage('Emitter name cannot be empty');
+                return;
+            }
+            if (name === oldEmitterName) {
+                setRenamingEmitter(null);
+                return;
+            }
+            const system = targetSystems[systemKey];
+            if (!system || targetSessionId === null) {
+                setStatusMessage(`System "${systemKey}" not found`);
+                setRenamingEmitter(null);
+                return;
+            }
+            if (system.emitters.some((e) => e.name === name)) {
+                setStatusMessage(`Emitter "${name}" already exists in this system`);
+                setRenamingEmitter(null);
+                return;
+            }
+            const emitter = system.emitters.find((e) => e.name === oldEmitterName);
+            if (!emitter) {
+                setStatusMessage(`Emitter "${oldEmitterName}" not found in system`);
+                setRenamingEmitter(null);
+                return;
+            }
+            await runTargetSessionTask(async () => {
+                try {
+                    const model = await vfxRenameEmitter(targetSessionId, emitter.path, name);
+                    applyTargetModel(model);
+                    setStatusMessage(`Renamed emitter "${oldEmitterName}" to "${name}"`);
+                } catch (error) {
+                    setStatusMessage(`Failed to rename emitter: ${(error as Error).message}`);
+                } finally {
+                    setRenamingEmitter(null);
+                }
+            }, 'Renaming emitter...');
+        },
+        [targetSessionId, targetSystems, applyTargetModel, runTargetSessionTask]
+    );
+
+    /* Rename a system. The backend updates particleName/particlePath, recomputes
+       the entry hash (so the system key changes), uniquifies across all bins and
+       re-points the resolver; re-anchor selection and highlights to the new key. */
+    const handleRenameSystem = useCallback(
+        async (systemKey: string, newSystemName: string) => {
+            const name = (typeof newSystemName === 'string' ? newSystemName : '').trim();
+            if (!name) {
+                setStatusMessage('System name cannot be empty');
+                return;
+            }
+            const system = targetSystems[systemKey];
+            if (!system || targetSessionId === null) {
+                setStatusMessage(`System "${systemKey}" not found`);
+                setRenamingSystem(null);
+                return;
+            }
+            const oldSystemName = system.particleName || system.name || system.key;
+            if (name === oldSystemName) {
+                setRenamingSystem(null);
+                return;
+            }
+            await runTargetSessionTask(async () => {
+                try {
+                    const prevKeys = new Set(targetModel?.systems.map((s) => s.key) ?? []);
+                    const model = await vfxRenameSystem(targetSessionId, system.path, name);
+                    const renamed = model.systems.find((s) => !prevKeys.has(s.key));
+                    if (renamed) {
+                        if (selectedTargetSystem === systemKey) setSelectedTargetSystem(renamed.key);
+                        setCollapsedTargetSystems((prev) => {
+                            if (!prev.has(systemKey)) return prev;
+                            const next = new Set(prev);
+                            next.delete(systemKey);
+                            next.add(renamed.key);
+                            return next;
+                        });
+                    }
+                    applyTargetModel(model);
+                    const finalName = renamed?.particleName || renamed?.name || name;
+                    setStatusMessage(`Renamed system "${oldSystemName}" to "${finalName}"`);
+                } catch (error) {
+                    setStatusMessage(`Failed to rename system: ${(error as Error).message}`);
+                } finally {
+                    setRenamingSystem(null);
+                }
+            }, 'Renaming system...');
+        },
+        [targetSessionId, targetSystems, targetModel, selectedTargetSystem, applyTargetModel, runTargetSessionTask]
+    );
+
+    const handleCreateNewSystem = useCallback(
+        async (name: string, closeModal?: (v: boolean) => void) => {
+            const clean = (typeof name === 'string' ? name : '').trim();
+            if (!clean) {
+                setStatusMessage('Enter a system name');
+                return;
+            }
+            if (targetSessionId === null) {
+                setStatusMessage('No target file loaded');
+                return;
+            }
+            await runTargetSessionTask(async () => {
+                try {
+                    const before = new Set(targetModel?.systems.map((s) => s.key) ?? []);
+                    log.info('[port] create system', { name: clean, systemsBefore: before.size, targetSessionId });
+                    const model = await vfxCreateSystem(targetSessionId, clean);
+                    const created = model.systems.find((s) => !before.has(s.key));
+                    log.info('[port] create system result', {
+                        systemsAfter: model.systems.length,
+                        createdKey: created?.key ?? null,
+                        createdName: created?.name ?? null,
+                        createdBin: created?.binIndex ?? null,
+                    });
+                    if (created) {
+                        setSelectedTargetSystem(created.key);
+                    } else {
+                        log.warn('[port] create system: no new system key appeared in model');
+                    }
+                    applyTargetModel(model);
+                    setStatusMessage(`Created VFX system "${clean}" and updated ResourceResolver`);
+                } catch (error) {
+                    log.error('[port] create system failed', error);
+                    setStatusMessage(`Failed to create VFX system: ${(error as Error).message}`);
+                } finally {
+                    if (typeof closeModal === 'function') closeModal(false);
+                }
+            }, 'Creating VFX system...');
+        },
+        [targetSessionId, targetModel, applyTargetModel, runTargetSessionTask]
     );
 
     // ── Idle particles ──
@@ -1087,9 +867,17 @@ export default function usePort() {
         return normalized;
     }, []);
 
+    const idleBonesForEffectKey = useCallback(
+        (effectKey: string): string[] => {
+            const entry = idleEntriesFromModel(targetModel).find((e) => e.effectKey.toLowerCase() === effectKey.toLowerCase());
+            return entry?.bones ?? [];
+        },
+        [targetModel]
+    );
+
     const handleAddIdleParticles = useCallback(
         (systemKey: string, systemName: string) => {
-            if (!targetPyContent) {
+            if (targetSessionId === null) {
                 setStatusMessage('No target file loaded - Please open a target bin file first');
                 return;
             }
@@ -1097,13 +885,15 @@ export default function usePort() {
                 setStatusMessage('Locked: target bin missing ResourceResolver or SkinCharacterDataProperties');
                 return;
             }
-            const particleName = extractParticleName(targetPyContent, systemKey);
-            if (!particleName) {
+            const system = findTargetSystem(systemKey);
+            if (!system) return;
+            const effectKey = effectKeyForSystem(targetModel, system);
+            if (!effectKey) {
                 setStatusMessage(`VFX system "${systemName}" does not have particle emitters and cannot be used for idle particles.`);
                 return;
             }
-            if (hasIdleParticleEffect(targetPyContent, systemKey)) {
-                const currentBones = getAllIdleParticleBones(targetPyContent, systemKey);
+            const currentBones = idleBonesForEffectKey(effectKey);
+            if (currentBones.length > 0) {
                 setIsEditingIdle(true);
                 setExistingIdleBones(currentBones);
                 setIdleBonesList(currentBones.map((bone, idx) => ({ id: Date.now() + idx, boneName: bone, customBoneName: '' })));
@@ -1118,28 +908,47 @@ export default function usePort() {
             setSelectedSystemForIdle({ key: systemKey, name: systemName });
             setShowIdleParticleModal(true);
         },
-        [targetPyContent, hasResourceResolver, hasSkinCharacterData]
+        [targetSessionId, hasResourceResolver, hasSkinCharacterData, findTargetSystem, targetModel, idleBonesForEffectKey]
     );
 
-    const handleConfirmIdleParticles = useCallback(() => {
-        if (!selectedSystemForIdle || !targetPyContent) return;
+    /* Replace all idle entries for a system's effect key with the given bones. */
+    const upsertIdleForSystem = useCallback(
+        async (systemKey: string, boneConfigs: BoneConfig[]): Promise<{ effectKey: string; bones: BoneConfig[] } | null> => {
+            if (targetSessionId === null) return null;
+            const system = findTargetSystem(systemKey);
+            if (!system) return null;
+            const effectKey = effectKeyForSystem(targetModel, system);
+            if (!effectKey) return null;
+            const bones = normalizeBoneConfigs(boneConfigs);
+            let model: VfxPortModel | null = null;
+            if (idleBonesForEffectKey(effectKey).length > 0) {
+                model = await vfxIdleRemove(targetSessionId, effectKey);
+            }
+            if (bones.length > 0) {
+                model = await vfxIdleAdd(targetSessionId, effectKey, bones.map((b) => b.boneName));
+            }
+            if (model) applyTargetModel(model);
+            return { effectKey, bones };
+        },
+        [targetSessionId, findTargetSystem, targetModel, normalizeBoneConfigs, idleBonesForEffectKey, applyTargetModel]
+    );
+
+    const handleConfirmIdleParticles = useCallback(async () => {
+        if (!selectedSystemForIdle || targetSessionId === null) return;
         try {
-            saveStateToHistory(`${isEditingIdle ? 'Update' : 'Add'} idle particles for "${selectedSystemForIdle.name}"`);
-            const boneConfigs = normalizeBoneConfigs(
-                idleBonesList.map((item) => ({ boneName: item.customBoneName && item.customBoneName.trim() ? item.customBoneName.trim() : item.boneName }))
-            );
-            let updatedContent = targetPyContent;
-            if (isEditingIdle) updatedContent = removeAllIdleParticlesForSystem(updatedContent, selectedSystemForIdle.key);
-            if (boneConfigs.length === 0) {
-                setTargetPyContent(updatedContent);
-                setFileSaved(false);
-                setStatusMessage(`Removed all idle particles from "${selectedSystemForIdle.name}"`);
-            } else {
-                updatedContent = addIdleParticleEffect(updatedContent, selectedSystemForIdle.key, boneConfigs);
-                setTargetPyContent(updatedContent);
-                setFileSaved(false);
-                const boneNames = boneConfigs.map((c) => c.boneName).join(', ');
-                setStatusMessage(`${isEditingIdle ? 'Updated' : 'Added'} ${boneConfigs.length} idle particle(s) for "${selectedSystemForIdle.name}" on bones: ${boneNames}`);
+            const boneConfigs = idleBonesList.map((item) => ({
+                boneName: item.customBoneName && item.customBoneName.trim() ? item.customBoneName.trim() : item.boneName,
+            }));
+            const result = await upsertIdleForSystem(selectedSystemForIdle.key, boneConfigs);
+            if (result) {
+                if (result.bones.length === 0) {
+                    setStatusMessage(`Removed all idle particles from "${selectedSystemForIdle.name}"`);
+                } else {
+                    const boneNames = result.bones.map((c) => c.boneName).join(', ');
+                    setStatusMessage(
+                        `${isEditingIdle ? 'Updated' : 'Added'} ${result.bones.length} idle particle(s) for "${selectedSystemForIdle.name}" on bones: ${boneNames}`
+                    );
+                }
             }
             setShowIdleParticleModal(false);
             setSelectedSystemForIdle(null);
@@ -1149,45 +958,39 @@ export default function usePort() {
         } catch (error) {
             setStatusMessage(`Failed to add idle particles: ${(error as Error).message}`);
         }
-    }, [selectedSystemForIdle, targetPyContent, isEditingIdle, idleBonesList, normalizeBoneConfigs, saveStateToHistory]);
+    }, [selectedSystemForIdle, targetSessionId, idleBonesList, isEditingIdle, upsertIdleForSystem]);
 
     const handleUpsertIdleParticlesForSystem = useCallback(
-        (systemKey: string, systemName: string, boneConfigs: BoneConfig[]) => {
-            if (!targetPyContent || !systemKey) return;
+        async (systemKey: string, systemName: string, boneConfigs: BoneConfig[]) => {
+            if (targetSessionId === null || !systemKey) return;
             try {
-                saveStateToHistory(`Upsert idle particles for "${systemName || systemKey}"`);
                 const safeBones = normalizeBoneConfigs(boneConfigs);
-                let updatedContent = removeAllIdleParticlesForSystem(targetPyContent, systemKey);
                 if (safeBones.length === 0) {
                     setStatusMessage('Add at least one valid bone before applying idle particles');
                     return;
                 }
-                updatedContent = addIdleParticleEffect(updatedContent, systemKey, safeBones);
-                setTargetPyContent(updatedContent);
-                setFileSaved(false);
-                setStatusMessage(`Applied ${safeBones.length} idle particle(s) for "${systemName || systemKey}"`);
+                const result = await upsertIdleForSystem(systemKey, safeBones);
+                if (result) setStatusMessage(`Applied ${result.bones.length} idle particle(s) for "${systemName || systemKey}"`);
             } catch (error) {
                 setStatusMessage(`Failed to apply idle particles: ${(error as Error).message}`);
             }
         },
-        [targetPyContent, normalizeBoneConfigs, saveStateToHistory]
+        [targetSessionId, normalizeBoneConfigs, upsertIdleForSystem]
     );
 
     const handleRemoveIdleParticlesByEffectKey = useCallback(
-        (effectKey: string) => {
+        async (effectKey: string) => {
             const cleanKey = String(effectKey || '').replace(/^"|"$/g, '').trim();
-            if (!cleanKey || !targetPyContent) return;
+            if (!cleanKey || targetSessionId === null) return;
             try {
-                saveStateToHistory(`Remove idle particles for "${cleanKey}"`);
-                const updatedContent = removeAllIdleParticlesByEffectKey(targetPyContent, cleanKey);
-                setTargetPyContent(updatedContent);
-                setFileSaved(false);
+                const model = await vfxIdleRemove(targetSessionId, cleanKey);
+                applyTargetModel(model);
                 setStatusMessage(`Removed idle particles for "${cleanKey}"`);
             } catch (error) {
                 setStatusMessage(`Failed to remove idle particles: ${(error as Error).message}`);
             }
         },
-        [targetPyContent, saveStateToHistory]
+        [targetSessionId, applyTargetModel]
     );
 
     // ── Child particles ──
@@ -1195,6 +998,7 @@ export default function usePort() {
         setShowChildModal(false);
         setIsEditMode(false);
         setSelectedSystemForChild(null);
+        setEditingChildEmitterPath(null);
         setSelectedChildSystem('');
         setEmitterName('');
         setChildParticleRate('1');
@@ -1210,7 +1014,7 @@ export default function usePort() {
 
     const handleAddChildParticles = useCallback(
         (systemKey: string, systemName: string) => {
-            if (!targetPyContent) {
+            if (targetSessionId === null) {
                 setStatusMessage('No target file loaded - Please open a target bin file first');
                 return;
             }
@@ -1218,105 +1022,91 @@ export default function usePort() {
                 setStatusMessage('Locked: target bin missing ResourceResolver or SkinCharacterDataProperties');
                 return;
             }
-            try {
-                const systems = findAvailableVfxSystems(targetPyContent);
-                setAvailableVfxSystems(systems);
-                setSelectedSystemForChild({ key: systemKey, name: systemName });
-                setIsEditMode(false);
-                setEmitterName('');
-                setChildParticleRate('1');
-                setChildParticleLifetime('9999');
-                setChildParticleBindWeight('1');
-                setChildParticleIsSingle(true);
-                setChildParticleTimeBeforeFirstEmission('0');
-                setChildParticleTranslationOverrideX('0');
-                setChildParticleTranslationOverrideY('0');
-                setChildParticleTranslationOverrideZ('0');
-                setShowChildModal(true);
-                setStatusMessage(`Opening child particles modal for "${systemName}"`);
-            } catch (error) {
-                setStatusMessage(`Failed to prepare child particles: ${(error as Error).message}`);
-            }
+            setAvailableVfxSystems(availableSystemsFromModel(targetModel));
+            setSelectedSystemForChild({ key: systemKey, name: systemName });
+            setIsEditMode(false);
+            setEditingChildEmitterPath(null);
+            setEmitterName('');
+            setChildParticleRate('1');
+            setChildParticleLifetime('9999');
+            setChildParticleBindWeight('1');
+            setChildParticleIsSingle(true);
+            setChildParticleTimeBeforeFirstEmission('0');
+            setChildParticleTranslationOverrideX('0');
+            setChildParticleTranslationOverrideY('0');
+            setChildParticleTranslationOverrideZ('0');
+            setShowChildModal(true);
+            setStatusMessage(`Opening child particles modal for "${systemName}"`);
         },
-        [targetPyContent, hasResourceResolver, hasSkinCharacterData]
+        [targetSessionId, hasResourceResolver, hasSkinCharacterData, targetModel]
     );
 
     const handleEditChildParticle = useCallback(
         (systemKey: string, systemName: string, editingEmitterName: string) => {
-            try {
-                const currentData = extractChildParticleData(targetPyContent, systemKey, editingEmitterName);
-                if (!currentData) {
-                    setStatusMessage(`Could not find child particle data for "${editingEmitterName}"`);
-                    return;
-                }
-                const systems = findAvailableVfxSystems(targetPyContent);
-                setAvailableVfxSystems(systems);
-                setSelectedSystemForChild({ key: systemKey, name: systemName });
-                setEmitterName(editingEmitterName);
-                setIsEditMode(true);
-                const matchingSystem = systems.find((sys) => sys.key === currentData.effectKey);
-                setSelectedChildSystem(matchingSystem ? matchingSystem.key : currentData.effectKey || '');
-                setChildParticleRate(currentData.rate.toString());
-                setChildParticleLifetime(currentData.lifetime.toString());
-                setChildParticleBindWeight(currentData.bindWeight.toString());
-                setChildParticleIsSingle(currentData.isSingleParticle);
-                setChildParticleTimeBeforeFirstEmission(currentData.timeBeforeFirstEmission.toString());
-                setChildParticleTranslationOverrideX(currentData.translationOverrideX.toString());
-                setChildParticleTranslationOverrideY(currentData.translationOverrideY.toString());
-                setChildParticleTranslationOverrideZ(currentData.translationOverrideZ.toString());
-                setShowChildModal(true);
-                setStatusMessage(`Editing child particle "${editingEmitterName}" in "${systemName}"`);
-            } catch (error) {
-                setStatusMessage(`Failed to prepare child particle edit: ${(error as Error).message}`);
+            const system = findTargetSystem(systemKey);
+            const emitter = system?.emitters.find((e) => e.name === editingEmitterName);
+            if (!emitter || !emitter.childData) {
+                setStatusMessage(`Could not find child particle data for "${editingEmitterName}"`);
+                return;
             }
+            const systems = availableSystemsFromModel(targetModel);
+            setAvailableVfxSystems(systems);
+            setSelectedSystemForChild({ key: systemKey, name: systemName });
+            setEmitterName(editingEmitterName);
+            setIsEditMode(true);
+            setEditingChildEmitterPath(emitter.path);
+            const currentData = emitter.childData;
+            const matchingSystem = systems.find((sys) => sys.key === currentData.effectKey);
+            setSelectedChildSystem(matchingSystem ? matchingSystem.key : currentData.effectKey || '');
+            setChildParticleRate(currentData.rate.toString());
+            setChildParticleLifetime(currentData.lifetime.toString());
+            setChildParticleBindWeight(currentData.bindWeight.toString());
+            setChildParticleIsSingle(currentData.isSingleParticle);
+            setChildParticleTimeBeforeFirstEmission(currentData.timeBeforeFirstEmission.toString());
+            setChildParticleTranslationOverrideX(currentData.translation[0].toString());
+            setChildParticleTranslationOverrideY(currentData.translation[1].toString());
+            setChildParticleTranslationOverrideZ(currentData.translation[2].toString());
+            setShowChildModal(true);
+            setStatusMessage(`Editing child particle "${editingEmitterName}" in "${systemName}"`);
         },
-        [targetPyContent]
+        [findTargetSystem, targetModel]
     );
 
-    const handleConfirmChildParticles = useCallback(() => {
-        if (!selectedSystemForChild || !selectedChildSystem || !emitterName.trim()) {
+    const handleConfirmChildParticles = useCallback(async () => {
+        if (!selectedSystemForChild || !selectedChildSystem || (!isEditMode && !emitterName.trim())) {
             setStatusMessage('Please fill in all fields (VFX system and emitter name)');
             return;
         }
+        if (targetSessionId === null) return;
+        const num = (v: string, fallback: number) => {
+            const parsed = parseFloat(v);
+            return Number.isFinite(parsed) ? parsed : fallback;
+        };
+        const params = {
+            effectKey: selectedChildSystem,
+            rate: num(childParticleRate, 1),
+            lifetime: num(childParticleLifetime, 9999),
+            bindWeight: num(childParticleBindWeight, 1),
+            translation: [
+                num(childParticleTranslationOverrideX, 0),
+                num(childParticleTranslationOverrideY, 0),
+                num(childParticleTranslationOverrideZ, 0),
+            ] as [number, number, number],
+            isSingleParticle: childParticleIsSingle,
+            emitterName: emitterName.trim() || null,
+            timeBeforeFirstEmission: num(childParticleTimeBeforeFirstEmission, 0),
+        };
         try {
-            saveStateToHistory(`${isEditMode ? 'Edit' : 'Add'} child particles ${isEditMode ? `"${emitterName}" in` : 'to'} "${selectedSystemForChild.name}"`);
-            let updated: string;
+            let model: VfxPortModel;
             if (isEditMode) {
-                updated = updateChildParticleEmitter(targetPyContent, selectedSystemForChild.key, emitterName, {
-                    effectKey: selectedChildSystem,
-                    rate: parseFloat(childParticleRate),
-                    lifetime: parseFloat(childParticleLifetime),
-                    bindWeight: parseFloat(childParticleBindWeight),
-                    isSingleParticle: childParticleIsSingle,
-                    timeBeforeFirstEmission: parseFloat(childParticleTimeBeforeFirstEmission),
-                    translationOverrideX: parseFloat(childParticleTranslationOverrideX),
-                    translationOverrideY: parseFloat(childParticleTranslationOverrideY),
-                    translationOverrideZ: parseFloat(childParticleTranslationOverrideZ),
-                });
+                if (!editingChildEmitterPath) return;
+                model = await vfxChildUpdate(targetSessionId, editingChildEmitterPath, params);
             } else {
-                updated = addChildParticleEffect(
-                    targetPyContent,
-                    selectedSystemForChild.key,
-                    selectedChildSystem,
-                    emitterName.trim(),
-                    deletedEmitters,
-                    parseFloat(childParticleRate),
-                    parseFloat(childParticleLifetime),
-                    parseFloat(childParticleBindWeight),
-                    childParticleIsSingle,
-                    parseFloat(childParticleTimeBeforeFirstEmission),
-                    parseFloat(childParticleTranslationOverrideX),
-                    parseFloat(childParticleTranslationOverrideY),
-                    parseFloat(childParticleTranslationOverrideZ)
-                );
+                const hostSystem = findTargetSystem(selectedSystemForChild.key);
+                if (!hostSystem) return;
+                model = await vfxChildAdd(targetSessionId, hostSystem.path, params);
             }
-            setTargetPyContent(updated);
-            setFileSaved(false);
-            try {
-                setTargetSystems(parseVfxEmitters(updated));
-            } catch {
-                /* noop */
-            }
+            applyTargetModel(model);
             setStatusMessage(`${isEditMode ? 'Updated' : 'Added'} child particle "${emitterName}" in "${selectedSystemForChild.name}"`);
             resetChildState();
         } catch (error) {
@@ -1327,8 +1117,8 @@ export default function usePort() {
         selectedSystemForChild,
         selectedChildSystem,
         emitterName,
-        targetPyContent,
-        deletedEmitters,
+        targetSessionId,
+        editingChildEmitterPath,
         childParticleRate,
         childParticleLifetime,
         childParticleBindWeight,
@@ -1337,7 +1127,8 @@ export default function usePort() {
         childParticleTranslationOverrideX,
         childParticleTranslationOverrideY,
         childParticleTranslationOverrideZ,
-        saveStateToHistory,
+        findTargetSystem,
+        applyTargetModel,
         resetChildState,
     ]);
 
@@ -1364,7 +1155,7 @@ export default function usePort() {
     }, []);
 
     const handleOpenPersistent = useCallback(() => {
-        if (!targetPyContent) {
+        if (targetSessionId === null) {
             setStatusMessage('No target file loaded');
             return;
         }
@@ -1372,26 +1163,18 @@ export default function usePort() {
             setStatusMessage('Locked: target bin missing ResourceResolver or SkinCharacterDataProperties');
             return;
         }
-        try {
-            setPersistentPreset({ type: 'IsAnimationPlaying', animationName: 'Spell4', delay: { on: 0, off: 0 } });
-            setPersistentVfx([]);
-            setCustomShowSubmeshInput('');
-            setCustomHideSubmeshInput('');
-            setVfxSearchTerms({});
-            setVfxDropdownOpen({});
-            setEditingConditionIndex(null);
-            setShowExistingConditions(false);
-            setEffectKeyOptions(scanEffectKeys(targetPyContent));
-            const newAvailableSubmeshes = extractSubmeshes(targetPyContent);
-            setAvailableSubmeshes(newAvailableSubmeshes);
-            setPersistentShowSubmeshes((prev) => prev.filter((s) => !newAvailableSubmeshes.includes(s)));
-            setPersistentHideSubmeshes((prev) => prev.filter((s) => !newAvailableSubmeshes.includes(s)));
-            setExistingConditions(extractExistingPersistentConditions(targetPyContent));
-            setShowPersistentModal(true);
-        } catch {
-            setStatusMessage('Error preparing Persistent editor');
-        }
-    }, [targetPyContent, hasResourceResolver, hasSkinCharacterData]);
+        setPersistentPreset({ type: 'IsAnimationPlaying', animationName: 'Spell4', delay: { on: 0, off: 0 } });
+        setPersistentVfx([]);
+        setCustomShowSubmeshInput('');
+        setCustomHideSubmeshInput('');
+        setVfxSearchTerms({});
+        setVfxDropdownOpen({});
+        setEditingConditionIndex(null);
+        setShowExistingConditions(false);
+        setPersistentShowSubmeshes((prev) => prev.filter((s) => !availableSubmeshes.includes(s)));
+        setPersistentHideSubmeshes((prev) => prev.filter((s) => !availableSubmeshes.includes(s)));
+        setShowPersistentModal(true);
+    }, [targetSessionId, hasResourceResolver, hasSkinCharacterData, availableSubmeshes]);
 
     const handleLoadExistingCondition = useCallback(
         (condition: PersistentCondition) => {
@@ -1408,45 +1191,66 @@ export default function usePort() {
         [effectKeyOptions]
     );
 
-    const handleApplyPersistent = useCallback(() => {
-        if (!targetPyContent) return;
+    const handleApplyPersistent = useCallback(async () => {
+        if (targetSessionId === null) return;
         try {
-            saveStateToHistory(editingConditionIndex !== null ? 'Update persistent effects' : 'Add persistent effects');
-            let updated = targetPyContent;
             const normalizedVfx = persistentVfx
                 .map((v) => {
-                    const selected = effectKeyOptions.find((o) => o.id === v.id) || { key: v.key, type: v.type, value: v.value };
-                    const resolved = resolveEffectKey(updated, selected);
-                    return { ...v, key: resolved.key || undefined, value: resolved.value };
+                    const selected = effectKeyOptions.find((o) => o.id === v.id);
+                    return { ...v, key: selected?.key || v.key };
                 })
                 .filter((v) => !!v.key);
+
+            // Non-hex effect keys need a resolver mapping to resolve in-engine;
+            // add one for keys the resolver does not know yet.
+            let model: VfxPortModel | null = null;
+            const resolverKeys = new Set((targetModel?.resolver?.entries ?? []).map((e) => e.key.toLowerCase()));
             for (const v of normalizedVfx) {
-                if (v && v.key && !/^0x[0-9a-fA-F]+$/.test(v.key) && v.value) updated = ensureResolverMapping(updated, v.key, v.value);
+                const key = v.key!;
+                if (/^0x[0-9a-fA-F]+$/.test(key) || resolverKeys.has(key.toLowerCase())) continue;
+                const option = effectKeyOptions.find((o) => o.key === v.key);
+                const system = Object.values(targetSystems).find(
+                    (s) => s.particleName === (option?.particleName ?? key) || s.particleName === key || s.name === key
+                );
+                const value = system?.particlePath || system?.particleName || key;
+                model = await vfxResolverUpsert(targetSessionId, key, value);
+                resolverKeys.add(key.toLowerCase());
             }
-            updated = insertOrUpdatePersistentEffect(updated, {
-                ownerPreset: persistentPreset,
-                submeshesShow: persistentShowSubmeshes,
-                submeshesHide: persistentHideSubmeshes,
-                vfxList: normalizedVfx,
-                editingIndex: editingConditionIndex,
-            });
-            setTargetPyContent(updated);
-            setFileSaved(false);
+
+            const payload = buildPersistentPayload(persistentPreset, normalizedVfx, persistentShowSubmeshes, persistentHideSubmeshes);
+            model = await vfxPersistentUpsert(targetSessionId, editingConditionIndex, payload);
+            applyTargetModel(model);
             setShowPersistentModal(false);
             setStatusMessage(`${editingConditionIndex !== null ? 'Updated' : 'Added'} PersistentEffectConditions`);
         } catch (e) {
             setStatusMessage(`Failed to apply Persistent effect: ${(e as Error).message}`);
         }
     }, [
-        targetPyContent,
+        targetSessionId,
+        targetModel,
+        targetSystems,
         editingConditionIndex,
         persistentVfx,
         effectKeyOptions,
         persistentPreset,
         persistentShowSubmeshes,
         persistentHideSubmeshes,
-        saveStateToHistory,
+        applyTargetModel,
     ]);
+
+    const handleRemovePersistentCondition = useCallback(
+        async (index: number) => {
+            if (targetSessionId === null) return;
+            try {
+                const model = await vfxPersistentRemove(targetSessionId, index);
+                applyTargetModel(model);
+                setStatusMessage('Removed persistent effect condition');
+            } catch (error) {
+                setStatusMessage(`Failed to remove condition: ${(error as Error).message}`);
+            }
+        },
+        [targetSessionId, applyTargetModel]
+    );
 
     // Type dropdown click-outside
     useEffect(() => {
@@ -1459,40 +1263,22 @@ export default function usePort() {
 
     // ── Matrix ──
     const applyMatrix = useCallback(
-        (mat: number[]) => {
+        async (mat: number[]) => {
             try {
-                if (!matrixModalState.systemKey) {
-                    setShowMatrixModal(false);
-                    return;
-                }
+                if (!matrixModalState.systemKey || targetSessionId === null) return;
                 const sys = targetSystems[matrixModalState.systemKey];
-                if (!sys) {
-                    setShowMatrixModal(false);
-                    return;
-                }
-                saveStateToHistory(`Update matrix for "${sys.name}"`);
-                let currentSysText = sys.rawContent || '';
-                try {
-                    currentSysText = currentSysText || extractVFXSystem(targetPyContent, sys.key)?.fullContent || '';
-                } catch {
-                    /* noop */
-                }
-                const updatedSystemText = upsertSystemMatrix(currentSysText, mat);
-                const updatedFile = replaceSystemBlockInFile(targetPyContent || '', sys.key, updatedSystemText);
-                setTargetPyContent(updatedFile);
-                setFileSaved(false);
-                setTargetSystems((prev) => {
-                    const copy = { ...prev };
-                    const old = copy[matrixModalState.systemKey!];
-                    if (old) copy[matrixModalState.systemKey!] = { ...old, rawContent: updatedSystemText };
-                    return copy;
-                });
+                if (!sys) return;
+                const model = await vfxSetMatrix(targetSessionId, sys.path, mat.slice(0, 16));
+                applyTargetModel(model);
+                setStatusMessage(`Updated matrix for "${sys.particleName || sys.name}"`);
+            } catch (error) {
+                setStatusMessage(`Failed to update matrix: ${(error as Error).message}`);
             } finally {
                 setShowMatrixModal(false);
                 setMatrixModalState({ systemKey: null, initial: null });
             }
         },
-        [matrixModalState, targetSystems, targetPyContent, saveStateToHistory]
+        [matrixModalState, targetSessionId, targetSystems, applyTargetModel]
     );
 
     const handleOpenNewSystemModal = useCallback(() => {
@@ -1504,20 +1290,18 @@ export default function usePort() {
         // state
         targetPath,
         donorPath,
-        targetPyContent,
-        donorPyContent,
+        targetSessionId,
+        donorSessionId,
+        targetModel,
+        donorModel,
         targetSystems,
         donorSystems,
-        setTargetSystems,
-        setTargetPyContent,
-        setDonorSystems,
-        setDonorPyContent,
         setDonorPath,
+        setDonorTempRoot,
         statusMessage,
         setStatusMessage,
         isProcessing,
         processingText,
-        deletedEmitters,
         selectedTargetSystem,
         setSelectedTargetSystem,
         collapsedTargetSystems,
@@ -1557,6 +1341,7 @@ export default function usePort() {
         pressedSystemKey,
         setPressedSystemKey,
         dragStartedKey,
+        dragStartedKeyRef,
         setDragStartedKey,
         draggedEmitter,
         setDraggedEmitter,
@@ -1568,7 +1353,8 @@ export default function usePort() {
         setRenamingEmitter,
         renamingSystem,
         setRenamingSystem,
-        undoHistory,
+        canUndo,
+        canRedo,
         filteredTargetSystems,
         filteredDonorSystems,
         targetListRef,
@@ -1579,7 +1365,6 @@ export default function usePort() {
         trimDonorNames,
         setTrimDonorNames,
         setFileSaved,
-        recentCreatedSystemKeys,
         // file
         processTargetBin,
         processDonorBin,
@@ -1591,6 +1376,7 @@ export default function usePort() {
         handlePortEmitter,
         handlePortAllEmitters,
         handlePortAllSystems,
+        handleInsertDonorSystem,
         handleMoveEmitter,
         handleDeleteEmitter,
         handleDeleteAllEmitters,
@@ -1598,8 +1384,8 @@ export default function usePort() {
         handleRenameSystem,
         handleCreateNewSystem,
         handleOpenNewSystemModal,
-        saveStateToHistory,
         handleUndo,
+        handleRedo,
         // idle
         selectedSystemForIdle,
         setSelectedSystemForIdle,
@@ -1674,112 +1460,8 @@ export default function usePort() {
         handleRemoveCustomSubmesh,
         handleLoadExistingCondition,
         handleApplyPersistent,
+        handleRemovePersistentCondition,
         // matrix
         applyMatrix,
-        // utils
-        extractTexturesFromEmitterContent,
-        extractColorsFromEmitterContent,
-        parseSystemMatrix,
     };
-}
-
-function escapeRegExp(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function stripVfxSystemsAndResolverEntries(content: string): string {
-    if (!content) return '';
-    const lines = content.split('\n');
-    const kept: string[] = [];
-    const removedSystemKeys = new Set<string>();
-
-    let inSystem = false;
-    let systemDepth = 0;
-    const systemStartRe = /^\s*(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*=\s*VfxSystemDefinitionData\s*\{/;
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const trimmed = line.trim();
-        if (!inSystem) {
-            const match = trimmed.match(systemStartRe);
-            if (match) {
-                const key = match[1] || match[2];
-                if (key) removedSystemKeys.add(key);
-                inSystem = true;
-                systemDepth = (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
-                continue;
-            }
-            kept.push(line);
-            continue;
-        }
-        systemDepth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
-        if (systemDepth <= 0) {
-            inSystem = false;
-            systemDepth = 0;
-        }
-    }
-
-    const cleaned: string[] = [];
-    let inResolver = false;
-    let resolverDepth = 0;
-    let inResourceMap = false;
-    let resourceMapDepth = 0;
-    const resolverStartRe = /=\s*ResourceResolver\s*\{/i;
-    const resourceMapStartRe = /resourceMap:\s*map\[hash,link\]\s*=\s*\{/i;
-    const entryRe = /^(\s*)(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*=\s*(?:"([^"]+)"|(0x[0-9a-fA-F]+))\s*,?\s*$/;
-
-    for (let i = 0; i < kept.length; i++) {
-        const line = kept[i];
-        const trimmed = line.trim();
-        if (!inResolver && resolverStartRe.test(trimmed)) {
-            inResolver = true;
-            resolverDepth = (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
-            cleaned.push(line);
-            continue;
-        }
-        if (inResolver && !inResourceMap && resourceMapStartRe.test(trimmed)) {
-            inResourceMap = true;
-            resourceMapDepth = (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
-            cleaned.push(line);
-            continue;
-        }
-        if (inResolver && inResourceMap) {
-            const match = trimmed.match(entryRe);
-            if (match) {
-                const entryKey = match[2] || match[3] || '';
-                const entryValue = match[4] || match[5] || '';
-                const valueLooksLikeVfx = /[\\/]Particles[\\/]/i.test(entryValue);
-                if (valueLooksLikeVfx || removedSystemKeys.has(entryKey) || removedSystemKeys.has(entryValue)) {
-                    /* dropped */
-                } else {
-                    cleaned.push(line);
-                }
-            } else {
-                cleaned.push(line);
-            }
-            resourceMapDepth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
-            if (resourceMapDepth <= 0) {
-                inResourceMap = false;
-                resourceMapDepth = 0;
-            }
-            resolverDepth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
-            if (resolverDepth <= 0) {
-                inResolver = false;
-                resolverDepth = 0;
-                inResourceMap = false;
-            }
-            continue;
-        }
-        cleaned.push(line);
-        if (inResolver) {
-            resolverDepth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
-            if (resolverDepth <= 0) {
-                inResolver = false;
-                resolverDepth = 0;
-                inResourceMap = false;
-            }
-        }
-    }
-
-    return cleaned.join('\n');
 }

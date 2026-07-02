@@ -8,7 +8,8 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    background: var(--bg-primary);
+    /* Transparent so the app background (atmosphere/wallpaper) shows through. */
+    background: transparent;
     color: var(--text-primary);
     font-family: var(--font-mono);
     font-size: small;
@@ -257,72 +258,117 @@
     font-weight: 500;
 }
 
-.port-donor-search::placeholder {
-    color: color-mix(in oklab, var(--accent-secondary) 80%, transparent);
-    opacity: 1;
-}
 
 /* === Column toolbar: open + search + emitter-search toggle on one row ===
    Both columns share this; each sets --port-accent (primary vs secondary). */
 .port-toolbar-row {
     display: flex;
-    align-items: stretch;
+    align-items: center;
     gap: 8px;
 }
 
-.port-open-btn,
-.port-search-toggle-btn {
-    flex: 0 0 auto;
-    width: 40px;
-    height: 40px;
+/* Filter + emitter-search cluster; takes the remaining row width so the search
+   input still flexes like before. */
+.port-toolbar-filters {
     display: flex;
     align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    border-radius: var(--radius-sm);
-    background: color-mix(in oklab, var(--port-accent) 12%, transparent);
-    border: 1px solid color-mix(in oklab, var(--port-accent) 35%, transparent);
-    color: var(--port-accent);
-    cursor: pointer;
-    transition: background var(--motion-fast), border-color var(--motion-fast);
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
 }
-.port-open-btn:hover:not(:disabled),
-.port-search-toggle-btn:hover {
-    background: color-mix(in oklab, var(--port-accent) 22%, transparent);
-    border-color: var(--port-accent);
-}
-.port-open-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    color: var(--text-muted);
-    border-color: var(--border);
-}
-.port-search-toggle-btn.is-active {
-    background: color-mix(in oklab, var(--port-accent) 18%, transparent);
-    border-color: var(--port-accent);
-}
-.port-open-btn svg,
-.port-search-toggle-btn svg { display: block; }
+
+/* Icon buttons + search input use the app-standard .dl-btn / .dl-input classes
+   (see the column components) so they share the glow, border, and focus chrome. */
 
 /* === Compact bottom bar (status + trims + actions on one row, Paint-style) === */
 .port-bottom-bar {
+    position: relative;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 16px;
-    padding: 8px 12px;
+    height: 48px;
+    padding: 0 16px;
     background: var(--bg-primary);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
+    box-sizing: border-box;
 }
+/* Absolutely centered in the whole bar so it's truly middle regardless of how
+   wide the left/right groups are. Sits behind the button groups (which keep
+   their own click targets via a higher stacking order). */
 .port-bottom-bar__status {
-    flex: 1;
-    min-width: 0;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 50%;
     font-family: var(--font-mono);
     font-size: 12px;
     color: var(--accent-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    text-align: center;
+    pointer-events: none;
+}
+/* Left action group (formerly the floating island). */
+.port-bottom-bar__actions--left {
+    flex-shrink: 0;
+}
+/* Scissor toggle pinned inside the column search input. */
+.port-search-trailing {
+    position: absolute;
+    top: 50%;
+    right: 5px;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+}
+.port-search-scissor {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background var(--motion-fast), color var(--motion-fast);
+}
+.port-search-scissor:hover {
+    background: color-mix(in oklab, var(--accent-primary) 12%, transparent);
+    color: var(--text-secondary);
+}
+.port-search-scissor.is-active {
+    background: color-mix(in oklab, var(--accent-primary) 16%, transparent);
+    color: var(--accent-primary);
+}
+
+.port-action-btn {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in oklab, var(--action-color) 35%, transparent);
+    background: color-mix(in oklab, var(--action-color) 12%, transparent);
+    color: var(--action-color);
+    cursor: pointer;
+    transition: background var(--motion-fast), border-color var(--motion-fast), transform var(--motion-fast);
+}
+.port-action-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background: color-mix(in oklab, var(--action-color) 22%, transparent);
+    border-color: color-mix(in oklab, var(--action-color) 60%, transparent);
+}
+.port-action-btn:disabled {
+    color: var(--text-muted);
+    background: var(--bg-tertiary);
+    border-color: var(--border);
+    cursor: not-allowed;
 }
 .port-bottom-bar__trims {
     display: flex;
@@ -342,6 +388,8 @@
 }
 .port-bottom-bar__trims input { cursor: pointer; accent-color: var(--accent-primary); }
 .port-bottom-bar__actions {
+    position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     gap: 8px;

@@ -122,7 +122,8 @@ fn discover_files(dir: &Path, base: &Path, out: &mut HashMap<String, SourceFile>
         } else if file_type.is_file() {
             if let Ok(rel) = path.strip_prefix(base) {
                 let rel_norm = rel_normalize(&rel.to_string_lossy());
-                out.entry(rel_norm).or_insert(SourceFile { full_path: path });
+                out.entry(rel_norm)
+                    .or_insert(SourceFile { full_path: path });
             }
         }
     }
@@ -166,7 +167,9 @@ fn repath_value(value: &mut BinValue, prefix: &str) {
                 repath_value(item, prefix);
             }
         }
-        BinValue::Option { value: Some(inner), .. } => {
+        BinValue::Option {
+            value: Some(inner), ..
+        } => {
             repath_value(inner, prefix);
         }
         BinValue::Map { entries, .. } => {
@@ -227,7 +230,9 @@ fn collect_assets(value: &BinValue, out: &mut HashSet<String>) {
                 collect_assets(item, out);
             }
         }
-        BinValue::Option { value: Some(inner), .. } => collect_assets(inner, out),
+        BinValue::Option {
+            value: Some(inner), ..
+        } => collect_assets(inner, out),
         BinValue::Map { entries, .. } => {
             for (k, v) in entries {
                 collect_assets(k, out);
@@ -316,7 +321,11 @@ fn resolve_linked_bins(
 }
 
 /// Run a repath pass over `source_dir`, writing results to `output_dir`.
-pub fn repath(source_dir: &Path, output_dir: &Path, options: &RepathOptions) -> Result<RepathResult> {
+pub fn repath(
+    source_dir: &Path,
+    output_dir: &Path,
+    options: &RepathOptions,
+) -> Result<RepathResult> {
     if options.custom_prefix.trim().is_empty() {
         return Err(Error::InvalidInput("custom_prefix is required".into()));
     }
@@ -376,7 +385,8 @@ pub fn repath(source_dir: &Path, output_dir: &Path, options: &RepathOptions) -> 
             Some(s) => s,
             None => continue,
         };
-        let data = std::fs::read(&src.full_path).map_err(|e| Error::io_with_path(e, &src.full_path))?;
+        let data =
+            std::fs::read(&src.full_path).map_err(|e| Error::io_with_path(e, &src.full_path))?;
         let mut bin = match read_bin(&data) {
             Ok(b) => b,
             Err(e) => {
@@ -407,7 +417,10 @@ pub fn repath(source_dir: &Path, output_dir: &Path, options: &RepathOptions) -> 
             Some(s) => s,
             None => {
                 if !options.ignore_missing {
-                    return Err(Error::InvalidInput(format!("missing referenced file: {}", asset)));
+                    return Err(Error::InvalidInput(format!(
+                        "missing referenced file: {}",
+                        asset
+                    )));
                 }
                 result.missing += 1;
                 continue;
@@ -735,7 +748,10 @@ mod tests {
 
     #[test]
     fn bum_path_inserts_after_first_segment() {
-        assert_eq!(bum_path("assets/foo/bar.dds", "mod"), "assets/mod/foo/bar.dds");
+        assert_eq!(
+            bum_path("assets/foo/bar.dds", "mod"),
+            "assets/mod/foo/bar.dds"
+        );
         assert_eq!(bum_path("data/x.bin", "mod"), "data/mod/x.bin");
         assert_eq!(bum_path("loose.dds", "mod"), "mod/loose.dds");
     }

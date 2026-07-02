@@ -16,7 +16,7 @@ function skinMatchesSearch(skin: GameSkin, query: string): boolean {
 
 const youtubeBtnStyle: CSSProperties = {
     marginLeft: 'auto', width: 28, height: 24, borderRadius: 6, border: '1px solid color-mix(in oklab, var(--color-danger) 55%, transparent)',
-    background: 'color-mix(in oklab, var(--color-danger) 16%, transparent)', color: 'var(--color-danger)', fontFamily: 'JetBrains Mono, monospace',
+    background: 'color-mix(in oklab, var(--color-danger) 16%, transparent)', color: 'var(--color-danger)', fontFamily: 'var(--font-mono)',
     cursor: 'pointer', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
 };
 
@@ -130,7 +130,7 @@ function BnkGameBanksModal({ open, loading = false, progressText = '', onClose, 
     if (!open) return null;
 
     const panelStyle: CSSProperties = { borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: 10, display: 'flex', flexDirection: 'column', minHeight: 0 };
-    const panelTitle: CSSProperties = { marginBottom: 8, color: 'var(--accent-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' };
+    const panelTitle: CSSProperties = { marginBottom: 8, color: 'var(--accent-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' };
 
     return (
         <div style={{ position: 'fixed', top: 32, left: 60, right: 0, bottom: 0, zIndex: 5300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -145,7 +145,7 @@ function BnkGameBanksModal({ open, loading = false, progressText = '', onClose, 
                 <div style={{ height: 3, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite', flexShrink: 0 }} />
 
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h2 style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)' }}>
+                    <h2 style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text)' }}>
                         Load Sound Banks From Game
                     </h2>
                     <button onClick={loading ? undefined : onClose} type="button"
@@ -163,7 +163,7 @@ function BnkGameBanksModal({ open, loading = false, progressText = '', onClose, 
                         className={`dl-btn dl-btn--sm ${includeSfx ? 'dl-btn--primary' : 'dl-btn--secondary'}`}>
                         Extract SFX
                     </button>
-                    <div style={{ marginLeft: 'auto', color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem' }}>
+                    <div style={{ marginLeft: 'auto', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}>
                         {selectedChampion ? `${selectedChampion.name} - ${selectedSkinIds.size} skin(s) selected` : 'Select a champion first'}
                     </div>
                 </div>
@@ -174,12 +174,12 @@ function BnkGameBanksModal({ open, loading = false, progressText = '', onClose, 
                         <input className="dl-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search champion..." style={{ marginBottom: 10 }} />
                         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                             {loadingChampions ? (
-                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>Loading champions...</div>
+                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.74rem' }}>Loading champions...</div>
                             ) : filteredChampions.map((champ) => {
                                 const selected = selectedChampion?.id === champ.id;
                                 return (
                                     <button key={champ.id} type="button" onClick={() => setSelectedChampion(champ)}
-                                        style={{ width: '100%', height: 36, marginBottom: 4, borderRadius: 8, border: selected ? '1px solid var(--accent-secondary)' : '1px solid transparent', background: selected ? 'color-mix(in oklab, var(--accent-secondary) 16%, transparent)' : 'transparent', display: 'flex', alignItems: 'center', gap: 10, color: selected ? 'var(--accent-secondary)' : 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.76rem', cursor: 'pointer', padding: '0 10px', textAlign: 'left', overflow: 'hidden' }}>
+                                        style={{ width: '100%', height: 36, marginBottom: 4, borderRadius: 8, border: selected ? '1px solid var(--accent-secondary)' : '1px solid transparent', background: selected ? 'color-mix(in oklab, var(--accent-secondary) 16%, transparent)' : 'transparent', display: 'flex', alignItems: 'center', gap: 10, color: selected ? 'var(--accent-secondary)' : 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontSize: '0.76rem', cursor: 'pointer', padding: '0 10px', textAlign: 'left', overflow: 'hidden' }}>
                                         <img src={getChampionIconUrl(champ.id)} alt={champ.name} width={26} height={26} loading="lazy" style={{ borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
                                         <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{champ.name}</span>
                                         <span role="button" tabIndex={0} title="Search champion skins on YouTube"
@@ -203,13 +203,13 @@ function BnkGameBanksModal({ open, loading = false, progressText = '', onClose, 
                         </div>
                         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                             {loadingSkins ? (
-                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>Loading skins...</div>
+                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.74rem' }}>Loading skins...</div>
                             ) : selectedChampion ? (
                                 filteredSkins.length > 0 ? filteredSkins.map((skin) => {
                                     const selected = selectedSkinIds.has(skin.id);
                                     return (
                                         <button key={skin.id} type="button" onClick={() => toggleSkin(skin.id)}
-                                            style={{ width: '100%', height: 46, marginBottom: 4, borderRadius: 8, border: selected ? '1px solid var(--accent-secondary)' : '1px solid transparent', background: selected ? 'color-mix(in oklab, var(--accent-secondary) 16%, transparent)' : 'transparent', display: 'flex', alignItems: 'center', gap: 10, color: selected ? 'var(--accent-secondary)' : 'var(--text-primary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', cursor: 'pointer', padding: '0 10px', textAlign: 'left', overflow: 'hidden' }}>
+                                            style={{ width: '100%', height: 46, marginBottom: 4, borderRadius: 8, border: selected ? '1px solid var(--accent-secondary)' : '1px solid transparent', background: selected ? 'color-mix(in oklab, var(--accent-secondary) 16%, transparent)' : 'transparent', display: 'flex', alignItems: 'center', gap: 10, color: selected ? 'var(--accent-secondary)' : 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem', cursor: 'pointer', padding: '0 10px', textAlign: 'left', overflow: 'hidden' }}>
                                             <SkinIcon tilePath={skin.tilePath} skinName={skin.name} />
                                             <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{skin.name} (ID {skin.id})</span>
                                             <span role="button" tabIndex={0} title="Search skin on YouTube"
@@ -221,17 +221,17 @@ function BnkGameBanksModal({ open, loading = false, progressText = '', onClose, 
                                         </button>
                                     );
                                 }) : (
-                                    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>No skins match this search</div>
+                                    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.74rem' }}>No skins match this search</div>
                                 )
                             ) : (
-                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>Select a champion first</div>
+                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.74rem' }}>Select a champion first</div>
                             )}
                         </div>
                     </div>
                 </div>
 
                 {(errorText || progressText) ? (
-                    <div style={{ padding: '0 16px 10px', color: errorText ? 'var(--color-danger)' : 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem' }}>
+                    <div style={{ padding: '0 16px 10px', color: errorText ? 'var(--color-danger)' : 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.74rem' }}>
                         {errorText || progressText}
                     </div>
                 ) : null}

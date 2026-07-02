@@ -3,8 +3,8 @@ import { useState, useEffect, useRef, type CSSProperties } from 'react';
 const styles: Record<string, CSSProperties> = {
     subtitle: { fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
     section: { borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: '12px 14px' },
-    sectionTitle: { color: 'var(--accent-secondary)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '0 0 8px 0', fontFamily: 'JetBrains Mono, monospace' },
-    hint: { fontSize: '0.62rem', color: 'var(--text-muted)', margin: '6px 0 0 0', fontFamily: 'JetBrains Mono, monospace' },
+    sectionTitle: { color: 'var(--accent-secondary)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '0 0 8px 0', fontFamily: 'var(--font-mono)' },
+    hint: { fontSize: '0.62rem', color: 'var(--text-muted)', margin: '6px 0 0 0', fontFamily: 'var(--font-mono)' },
 };
 
 interface Props {

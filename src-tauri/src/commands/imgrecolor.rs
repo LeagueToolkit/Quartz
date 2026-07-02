@@ -1,6 +1,6 @@
 /* Image Recolor backend: decode a .tex/.dds to RGBA for the canvas, write recolored RGBA
-   back in the file's original format, and scan a directory for image files. Heavy texture
-   work lives in quartz_lib::tex; these commands just bridge the filesystem and base64. */
+back in the file's original format, and scan a directory for image files. Heavy texture
+work lives in quartz_lib::tex; these commands just bridge the filesystem and base64. */
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
@@ -28,18 +28,24 @@ pub struct ScannedImage {
 const IMAGE_EXTENSIONS: &[&str] = &["tex", "dds", "png", "jpg", "jpeg"];
 
 /* Decode a TEX/DDS file at `path` into RGBA8 plus its format tag (e.g. "tex:bc3"). The
-   frontend hands the tag back to imgrecolor_save_texture so the write preserves the
-   original container/format. */
+frontend hands the tag back to imgrecolor_save_texture so the write preserves the
+original container/format. */
 #[tauri::command]
-pub fn imgrecolor_decode_texture(path: String) -> Result<DecodedTexture, String> {
-    let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read {path}: {e}"))?;
-    let decoded = quartz_lib::tex::decode_texture(&bytes)?;
-    Ok(DecodedTexture {
-        width: decoded.width,
-        height: decoded.height,
-        format: decoded.format,
-        rgba: base64::engine::general_purpose::STANDARD.encode(&decoded.rgba),
+pub async fn imgrecolor_decode_texture(path: String) -> Result<DecodedTexture, String> {
+    // Decode + base64 of a multi-MB RGBA buffer must not run on the main thread,
+    // or a large texture freezes the whole window while it works.
+    tokio::task::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read {path}: {e}"))?;
+        let decoded = quartz_lib::tex::decode_texture(&bytes)?;
+        Ok::<_, String>(DecodedTexture {
+            width: decoded.width,
+            height: decoded.height,
+            format: decoded.format,
+            rgba: base64::engine::general_purpose::STANDARD.encode(&decoded.rgba),
+        })
     })
+    .await
+    .map_err(|e| format!("Decode task failed to join: {e}"))?
 }
 
 #[derive(Deserialize)]
@@ -55,25 +61,32 @@ pub struct SaveTextureArgs {
 }
 
 /* Overwrite `path` with the recolored RGBA, re-encoded into `format`. Matches the Electron
-   build's format-preserving save (TEX → same TexFormat, DDS → same DDS format). */
+build's format-preserving save (TEX → same TexFormat, DDS → same DDS format). */
 #[tauri::command]
 pub fn imgrecolor_save_texture(args: SaveTextureArgs) -> Result<(), String> {
     let rgba = base64::engine::general_purpose::STANDARD
         .decode(args.rgba.as_bytes())
         .map_err(|e| format!("Invalid RGBA base64: {e}"))?;
 
-    let format = if args.format.is_empty() { "tex:bc3" } else { &args.format };
+    let format = if args.format.is_empty() {
+        "tex:bc3"
+    } else {
+        &args.format
+    };
     let bytes = quartz_lib::tex::encode_texture(rgba, args.width, args.height, format)?;
 
     std::fs::write(&args.path, bytes).map_err(|e| format!("Failed to write {}: {e}", args.path))
 }
 
 fn ext_of(path: &Path) -> String {
-    path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase()
+    path.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase()
 }
 
 /* List image files under `dir`, optionally recursing. Mirrors the Electron scanDirectory:
-   returns every .tex/.dds/.png/.jpg/.jpeg found. */
+returns every .tex/.dds/.png/.jpg/.jpeg found. */
 #[tauri::command]
 pub fn imgrecolor_scan_dir(dir: String, recursive: bool) -> Result<Vec<ScannedImage>, String> {
     let mut out = Vec::new();
@@ -83,7 +96,9 @@ pub fn imgrecolor_scan_dir(dir: String, recursive: bool) -> Result<Vec<ScannedIm
 }
 
 fn scan_into(dir: &Path, recursive: bool, out: &mut Vec<ScannedImage>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
@@ -93,7 +108,11 @@ fn scan_into(dir: &Path, recursive: bool, out: &mut Vec<ScannedImage>) {
         } else if path.is_file() {
             let ext = ext_of(&path);
             if IMAGE_EXTENSIONS.contains(&ext.as_str()) {
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
                 out.push(ScannedImage {
                     path: path.to_string_lossy().into_owned(),
                     name,

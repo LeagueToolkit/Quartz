@@ -1,7 +1,7 @@
 /* FakeGearSkin backend file ops. The .py content transforms run in the frontend
-   (fakeGearSkinUtils.ts); these commands cover the pieces that need the disk:
-   copying the bundled togglescreen assets into the mod, editing the .skn to add a
-   MinimalMesh, validating .anm references, and writing the variant .bin files. */
+(fakeGearSkinUtils.ts); these commands cover the pieces that need the disk:
+copying the bundled togglescreen assets into the mod, editing the .skn to add a
+MinimalMesh, validating .anm references, and writing the variant .bin files. */
 
 use std::path::{Path, PathBuf};
 
@@ -12,7 +12,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 /* Walk up from the bin's directory until a folder containing a case-insensitive
-   `assets` dir is found — that is the mod root the .py paths are relative to. */
+`assets` dir is found — that is the mod root the .py paths are relative to. */
 fn find_project_root(bin_path: &str) -> PathBuf {
     let bin = PathBuf::from(bin_path);
     let start = bin.parent().unwrap_or_else(|| Path::new(".")).to_path_buf();
@@ -20,7 +20,9 @@ fn find_project_root(bin_path: &str) -> PathBuf {
     for dir in start.ancestors() {
         if let Ok(entries) = std::fs::read_dir(dir) {
             let has_assets = entries.flatten().any(|e| {
-                e.file_name().to_string_lossy().eq_ignore_ascii_case("assets")
+                e.file_name()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case("assets")
             });
             if has_assets {
                 return dir.to_path_buf();
@@ -31,7 +33,7 @@ fn find_project_root(bin_path: &str) -> PathBuf {
 }
 
 /* Resolve a game-relative asset path (e.g. "ASSETS/Characters/...") onto disk under
-   the project root, matching each path segment case-insensitively. */
+the project root, matching each path segment case-insensitively. */
 fn resolve_asset_path(asset_path: &str, project_root: &Path) -> Option<PathBuf> {
     let mut current = project_root.to_path_buf();
 
@@ -81,7 +83,7 @@ pub struct CopyAssetsResult {
 }
 
 /* Find a bundled resource file, trying the declared `resources/textures` layout and
-   the flattened fallback (same pattern as commands::assets::seed_bundled_assets). */
+the flattened fallback (same pattern as commands::assets::seed_bundled_assets). */
 fn bundled_resource(app: &AppHandle, name: &str) -> Option<PathBuf> {
     let resource_dir = app.path().resource_dir().ok()?;
     let candidates = [
@@ -116,8 +118,7 @@ pub fn fakegear_copy_togglescreen_assets(
         }
         let src = bundled_resource(&app, name)
             .ok_or_else(|| format!("Bundled asset not found: {name}"))?;
-        std::fs::copy(&src, &dest)
-            .map_err(|e| format!("Failed to copy {name}: {e}"))?;
+        std::fs::copy(&src, &dest).map_err(|e| format!("Failed to copy {name}: {e}"))?;
         copied.push(name.to_string());
     }
 
@@ -273,13 +274,17 @@ fn build_variant_py(systems: &[String]) -> String {
 }
 
 /* Locate the mod's data folder (case-insensitive) by walking up from the main bin;
-   variant bins live directly inside it. Falls back to the bin's own directory. */
+variant bins live directly inside it. Falls back to the bin's own directory. */
 fn data_folder(main_bin_path: &str) -> PathBuf {
     let bin = PathBuf::from(main_bin_path);
     let bin_dir = bin.parent().unwrap_or_else(|| Path::new(".")).to_path_buf();
 
     for dir in bin_dir.ancestors() {
-        if dir.file_name().map(|n| n.to_string_lossy().eq_ignore_ascii_case("data")).unwrap_or(false) {
+        if dir
+            .file_name()
+            .map(|n| n.to_string_lossy().eq_ignore_ascii_case("data"))
+            .unwrap_or(false)
+        {
             return dir.to_path_buf();
         }
         let candidate = dir.join("data");
@@ -352,7 +357,7 @@ fn write_one(folder: &Path, name: &str, new_systems: &[String]) -> Result<(Strin
 }
 
 /* Read VfxSystemDefinitionData blocks out of an existing variant bin by converting it
-   back to text and slicing on bracket depth. */
+back to text and slicing on bracket depth. */
 fn read_variant_systems(bin_path: &Path) -> Result<Vec<String>, String> {
     use quartz_lib::bin::{read_bin_ltk, tree_to_text_cached};
     let data = std::fs::read(bin_path).map_err(|e| e.to_string())?;

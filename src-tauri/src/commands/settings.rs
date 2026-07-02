@@ -5,7 +5,7 @@ use std::path::PathBuf;
 const SCHEMA_VERSION: u32 = 1;
 
 /* User-facing settings, persisted to %APPDATA%/Quartz/settings.json.
-   Optional fields and serde defaults keep old files loadable as the shape grows. */
+Optional fields and serde defaults keep old files loadable as the shape grows. */
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuartzSettings {
@@ -31,8 +31,12 @@ pub struct QuartzSettings {
     pub theme_overrides: HashMap<String, String>,
 }
 
-fn default_schema_version() -> u32 { SCHEMA_VERSION }
-fn default_true() -> bool { true }
+fn default_schema_version() -> u32 {
+    SCHEMA_VERSION
+}
+fn default_true() -> bool {
+    true
+}
 
 impl Default for QuartzSettings {
     fn default() -> Self {
@@ -82,8 +86,8 @@ fn read_settings_from_disk() -> Result<QuartzSettings, String> {
     if !path.exists() {
         return Ok(QuartzSettings::default());
     }
-    let data = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read settings: {}", e))?;
+    let data =
+        std::fs::read_to_string(&path).map_err(|e| format!("Failed to read settings: {}", e))?;
     serde_json::from_str(&data).map_err(|e| format!("Failed to parse settings: {}", e))
 }
 

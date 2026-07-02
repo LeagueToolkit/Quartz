@@ -1,10 +1,10 @@
 /* File operations: the Universal File Randomizer/Renamer and the custom-tool
-   EXE runner. Ported from Quartz's fileRandomizer.js + tools.js IPC channels.
+EXE runner. Ported from Quartz's fileRandomizer.js + tools.js IPC channels.
 
-   - file_randomize: replace files in a target folder with random picks from a
-     supplied set, matched by extension (optional smart same-base-name reuse).
-   - file_rename: batch rename via find/replace and/or prefix/suffix.
-   - tools_execute: run an external EXE, optionally with a console window. */
+- file_randomize: replace files in a target folder with random picks from a
+  supplied set, matched by extension (optional smart same-base-name reuse).
+- file_rename: batch rename via find/replace and/or prefix/suffix.
+- tools_execute: run an external EXE, optionally with a console window. */
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -168,7 +168,10 @@ pub async fn file_randomize(
             }
         }
 
-        Ok(RandomizeResult { replaced_count: replaced, errors })
+        Ok(RandomizeResult {
+            replaced_count: replaced,
+            errors,
+        })
     })
     .await
     .map_err(|e| format!("randomize task panicked: {}", e))?
@@ -236,7 +239,10 @@ pub async fn file_rename(
             }
         }
 
-        Ok(RenameResult { renamed_count: renamed, errors })
+        Ok(RenameResult {
+            renamed_count: renamed,
+            errors,
+        })
     })
     .await
     .map_err(|e| format!("rename task panicked: {}", e))?
@@ -271,7 +277,11 @@ pub async fn tools_execute(
             }
             cmd.spawn()
                 .map_err(|e| format!("failed to launch {}: {}", exe, e))?;
-            return Ok(ExecResult { code: 0, stdout: String::new(), stderr: String::new() });
+            return Ok(ExecResult {
+                code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            });
         }
 
         let mut cmd = Command::new(&exe);

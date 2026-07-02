@@ -1,0 +1,313 @@
+/* ==========================================================================
+   Bin Editor V2 — shell modeled on ImgRecolor (transparent flex-column root,
+   min-0 flex body so nothing overflows the work area, fixed 48px footer).
+   ========================================================================== */
+
+.bineditorv2-root {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    background: transparent;
+    color: var(--text-primary);
+    overflow: hidden;
+    position: relative;
+}
+
+.bineditorv2-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
+}
+
+/* Left: system search / ability chips / system list. */
+.bineditorv2-sidebar {
+    width: 300px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 12px;
+    border-right: 1px solid var(--border);
+    transition: opacity var(--motion-base);
+}
+.bineditorv2-sidebar.is-dim { opacity: 0.4; pointer-events: none; }
+.bineditorv2-sidebar ::-webkit-scrollbar { width: 4px; }
+.bineditorv2-sidebar ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+
+/* Main: BulkBar + CategoryTabs pinned, emitter list scrolls. */
+.bineditorv2-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 12px 16px 0;
+}
+.bineditorv2-main__scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-bottom: 16px;
+}
+.bineditorv2-main__scroll::-webkit-scrollbar { width: 8px; }
+.bineditorv2-main__scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+
+.bineditorv2-syshead {
+    margin: 10px 0 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bineditorv2-minirow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-shrink: 0;
+}
+.bineditorv2-minirow__count {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+/* Doc loaded but no system selected. */
+.bineditorv2-hint {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+/* No bin loaded: full-brightness prompt over the dimmed sidebar. */
+/* Empty state fills the whole main area and centers the drop card, with the
+   recent-bins list anchored below (Paint-consistent). */
+.bineditorv2-emptywrap {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    padding: 16px;
+    overflow: hidden;
+}
+.bineditorv2-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    flex-shrink: 0;
+}
+.bineditorv2-empty__title {
+    color: var(--text-secondary);
+    font-weight: 700;
+    font-size: 1rem;
+    margin-bottom: 4px;
+}
+.bineditorv2-empty__sub {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    margin-bottom: 18px;
+}
+
+/* Recent bins list */
+.bineditorv2-recent {
+    width: min(520px, 90%);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    max-height: 268px;
+    margin-bottom: 8px;
+}
+.bineditorv2-recent__title {
+    flex-shrink: 0;
+    margin-bottom: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+.bineditorv2-recent__list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    min-height: 0;
+    padding-right: 4px;
+}
+.bineditorv2-recent__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    cursor: pointer;
+    transition: background var(--motion-fast), border-color var(--motion-fast);
+}
+.bineditorv2-recent__item:hover {
+    background: var(--bg-hover);
+    border-color: color-mix(in oklab, var(--accent-primary) 30%, var(--border));
+}
+.bineditorv2-recent__info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+}
+.bineditorv2-recent__icon {
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: color var(--motion-fast);
+}
+.bineditorv2-recent__item:hover .bineditorv2-recent__icon {
+    color: var(--accent-primary);
+}
+.bineditorv2-recent__name {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.bineditorv2-recent__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.bineditorv2-recent__date {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.bineditorv2-recent__delete {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--motion-fast), color var(--motion-fast), background var(--motion-fast);
+}
+.bineditorv2-recent__item:hover .bineditorv2-recent__delete {
+    opacity: 1;
+}
+.bineditorv2-recent__delete:hover {
+    color: var(--color-danger);
+    background: color-mix(in oklab, var(--color-danger) 12%, transparent);
+}
+
+/* Footer — full-width bottom action bar (Paint-consistent, fixed 48px). */
+.bineditorv2-footer {
+    height: 48px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border);
+}
+.bineditorv2-status {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 0 1 auto;
+    min-width: 0;
+}
+.bineditorv2-unsaved {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--accent-primary);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.bineditorv2-unsaved::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+}
+.bineditorv2-advanced {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.bineditorv2-footer__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-end;
+}
+
+/* Drag overlay */
+.bineditorv2-drag {
+    position: absolute;
+    inset: 16px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: color-mix(in oklab, var(--bg-primary) 85%, transparent);
+    backdrop-filter: blur(8px);
+    border: 3px dashed var(--accent-primary);
+    border-radius: var(--radius-lg);
+    pointer-events: none;
+    animation: bineditorv2-pulse 1.5s ease-in-out infinite;
+}
+.bineditorv2-drag__title {
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+@keyframes bineditorv2-pulse {
+    0%, 100% { border-color: var(--accent-primary); }
+    50% { border-color: color-mix(in oklab, var(--accent-primary) 55%, var(--border)); }
+}

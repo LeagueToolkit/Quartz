@@ -118,9 +118,9 @@ export function handleTextureMouseEnter(event: React.MouseEvent, rawContent: str
         padding: 14px; box-shadow: 0 12px 28px rgba(0,0,0,0.45);
         display: flex; flex-direction: column; gap: 10px; pointer-events: auto;`;
     preview.innerHTML = `
-        <div style="color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em;">PREVIEW</div>
-        <div id="${PREVIEW_ID}-img" style="width: 100%; height: 200px; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid var(--border); background-image: linear-gradient(45deg, color-mix(in oklab, var(--text-primary) 8%, transparent) 25%, transparent 25%), linear-gradient(-45deg, color-mix(in oklab, var(--text-primary) 8%, transparent) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, color-mix(in oklab, var(--text-primary) 8%, transparent) 75%), linear-gradient(-45deg, transparent 75%, color-mix(in oklab, var(--text-primary) 8%, transparent) 75%); background-size: 12px 12px; background-position: 0 0, 0 6px, 6px -6px, -6px 0px; color: var(--text-muted); font-size: 11px; font-family: 'JetBrains Mono', monospace;">LOADING...</div>
-        <div style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--text-muted); word-break: break-all; line-height: 1.4;">${escapeHtml(texturePath)}</div>`;
+        <div style="color: var(--accent); font-family: 'var(--font-mono)', monospace; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em;">PREVIEW</div>
+        <div id="${PREVIEW_ID}-img" style="width: 100%; height: 200px; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid var(--border); background-image: linear-gradient(45deg, color-mix(in oklab, var(--text-primary) 8%, transparent) 25%, transparent 25%), linear-gradient(-45deg, color-mix(in oklab, var(--text-primary) 8%, transparent) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, color-mix(in oklab, var(--text-primary) 8%, transparent) 75%), linear-gradient(-45deg, transparent 75%, color-mix(in oklab, var(--text-primary) 8%, transparent) 75%); background-size: 12px 12px; background-position: 0 0, 0 6px, 6px -6px, -6px 0px; color: var(--text-muted); font-size: 11px; font-family: 'var(--font-mono)', monospace;">LOADING...</div>
+        <div style="font-family: 'var(--font-mono)', monospace; font-size: 9px; color: var(--text-muted); word-break: break-all; line-height: 1.4;">${escapeHtml(texturePath)}</div>`;
     document.body.appendChild(preview);
     positionNear(preview, anchor);
 
@@ -182,7 +182,7 @@ export function handleTextureContextMenu(event: React.MouseEvent, rawContent: st
         backdrop-filter: blur(10px) saturate(160%);
         border: 1px solid var(--border); border-radius: 10px;
         box-shadow: 0 14px 34px rgba(0,0,0,0.45); padding: 6px;
-        font-family: 'JetBrains Mono', monospace; color: var(--text-primary);`;
+        font-family: 'var(--font-mono)', monospace; color: var(--text-primary);`;
 
     const makeItem = (label: string, onClick: () => void, disabled = false) => {
         const item = document.createElement('button');

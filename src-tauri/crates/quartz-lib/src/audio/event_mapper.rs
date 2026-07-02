@@ -68,7 +68,12 @@ fn read_u32_le(data: &[u8], offset: usize) -> u32 {
     if offset + 4 > data.len() {
         return 0;
     }
-    u32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]])
+    u32::from_le_bytes([
+        data[offset],
+        data[offset + 1],
+        data[offset + 2],
+        data[offset + 3],
+    ])
 }
 
 pub fn extract_bin_events(bin_data: &[u8]) -> Vec<BinEventString> {
@@ -189,7 +194,11 @@ fn add_connected_files(
     }
 
     if let Some(mp) = hirc.music_playlists.iter().find(|o| o.self_id == id) {
-        let pid = if mp.track_ids.len() > 1 { id } else { parent_id };
+        let pid = if mp.track_ids.len() > 1 {
+            id
+        } else {
+            parent_id
+        };
         for &track_id in &mp.track_ids {
             add_connected_files(event_name, track_id, pid, hirc, results);
         }
@@ -197,7 +206,11 @@ fn add_connected_files(
     }
 
     if let Some(rc) = hirc.random_containers.iter().find(|o| o.self_id == id) {
-        let pid = if rc.sound_ids.len() > 1 { id } else { parent_id };
+        let pid = if rc.sound_ids.len() > 1 {
+            id
+        } else {
+            parent_id
+        };
         for &sound_id in &rc.sound_ids {
             add_connected_files(event_name, sound_id, pid, hirc, results);
         }
@@ -324,14 +337,20 @@ mod tests {
 
     #[test]
     fn test_fnv1_hash() {
-        assert_eq!(fnv1_hash("Play_sfx_Ahri_Base_Q_Cast"), fnv1_hash("play_sfx_ahri_base_q_cast"));
+        assert_eq!(
+            fnv1_hash("Play_sfx_Ahri_Base_Q_Cast"),
+            fnv1_hash("play_sfx_ahri_base_q_cast")
+        );
         let fnv1 = fnv1_hash("test");
         let mut fnv1a: u32 = 0x811c9dc5;
         for &b in b"test" {
             fnv1a ^= b as u32;
             fnv1a = fnv1a.wrapping_mul(0x01000193);
         }
-        assert_ne!(fnv1, fnv1a, "FNV-1 and FNV-1a should produce different results");
+        assert_ne!(
+            fnv1, fnv1a,
+            "FNV-1 and FNV-1a should produce different results"
+        );
     }
 
     #[test]

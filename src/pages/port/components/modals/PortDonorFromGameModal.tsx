@@ -27,7 +27,7 @@ export default function PortDonorFromGameModal({ open, loading, progressText, on
         border: '1px solid var(--border)',
         borderRadius: 8,
         fontSize: '0.85rem',
-        fontFamily: 'JetBrains Mono, monospace',
+        fontFamily: 'var(--font-mono)',
         outline: 'none',
     };
 
@@ -53,7 +53,7 @@ export default function PortDonorFromGameModal({ open, loading, progressText, on
             >
                 <div style={{ height: 3, flexShrink: 0, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%', animation: 'shimmer 3s linear infinite' }} />
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h2 style={{ margin: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>Load Donor From Game</h2>
+                    <h2 style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)' }}>Load Donor From Game</h2>
                     <button
                         onClick={() => !loading && onClose()}
                         style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--text-muted)', border: '1px solid var(--border)', background: 'var(--bg-tertiary)', cursor: 'pointer', outline: 'none' }}
@@ -63,21 +63,21 @@ export default function PortDonorFromGameModal({ open, loading, progressText, on
                 </div>
                 <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Champion</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Champion</span>
                         <input value={championName} onChange={(e) => setChampionName(e.target.value)} placeholder="e.g., Ahri" style={inputStyle} />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Skin ID</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Skin ID</span>
                         <input value={skinId} onChange={(e) => setSkinId(e.target.value)} placeholder="0" style={inputStyle} />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Porting Prefix</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Porting Prefix</span>
                         <input value={portingPrefix} onChange={(e) => setPortingPrefix(e.target.value)} placeholder="prefix" style={inputStyle} />
                     </div>
-                    <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic', lineHeight: 1.5 }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic', lineHeight: 1.5 }}>
                         Extracts the skin from your live League install and loads it as the donor. The porting prefix folds VFX assets under one folder.
                     </div>
-                    {progressText && <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', color: 'var(--accent-primary)' }}>{progressText}</div>}
+                    {progressText && <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--accent-primary)' }}>{progressText}</div>}
                 </div>
                 <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                     <button
@@ -89,7 +89,7 @@ export default function PortDonorFromGameModal({ open, loading, progressText, on
                             border: '1px solid color-mix(in oklab, var(--accent-secondary) 45%, transparent)',
                             background: 'color-mix(in oklab, var(--accent-secondary) 12%, transparent)',
                             color: 'var(--accent-secondary)',
-                            fontFamily: 'JetBrains Mono, monospace',
+                            fontFamily: 'var(--font-mono)',
                             fontSize: '0.78rem',
                             fontWeight: 700,
                             cursor: loading || !championName.trim() || !portingPrefix.trim() ? 'not-allowed' : 'pointer',

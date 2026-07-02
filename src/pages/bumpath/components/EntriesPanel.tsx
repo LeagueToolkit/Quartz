@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, CircularProgress, List, ListItem, Typography } from '@mui/material';
-import { ChevronRight as ChevronRightIcon, ExpandMore as ExpandMoreIcon, Check as CheckIcon } from '@mui/icons-material';
+import { ChevronRight as ChevronRightIcon, ExpandMore as ExpandMoreIcon, Check as CheckIcon, CheckBox as CheckBoxIcon, Clear as ClearIcon } from '@mui/icons-material';
 import { groupReferencedFiles } from '../utils/referencedFiles';
 import type { ScannedData, ScannedEntry } from '../utils/types';
 
@@ -13,6 +13,10 @@ interface EntriesPanelProps {
     expandedFilePaths: Set<string>;
     appliedPrefixes: Map<string, string>;
     showMissingOnly: boolean;
+    setShowMissingOnly: (value: boolean) => void;
+    selectedEntriesSize: number;
+    handleSelectAll: () => void;
+    handleDeselectAll: () => void;
     getEntryDisplayName: (entryHash: string, entryData: ScannedEntry) => string;
     handleEntryExpand: (entryHash: string) => void;
     handleEntrySelect: (entryHash: string) => void;
@@ -28,6 +32,10 @@ const EntriesPanel = React.memo(function EntriesPanel({
     expandedFilePaths,
     appliedPrefixes,
     showMissingOnly,
+    setShowMissingOnly,
+    selectedEntriesSize,
+    handleSelectAll,
+    handleDeselectAll,
     getEntryDisplayName,
     handleEntryExpand,
     handleEntrySelect,
@@ -35,6 +43,72 @@ const EntriesPanel = React.memo(function EntriesPanel({
 }: EntriesPanelProps) {
     return (
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {/* List header: entry selection + missing-only filter (moved out of
+                the top bar so it sits directly above the entries it acts on). */}
+            <Box
+                sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1.5,
+                    p: 1.5,
+                    borderBottom: '1px solid var(--border)',
+                    flexWrap: 'wrap',
+                }}
+            >
+                <button
+                    type="button"
+                    className="dl-btn dl-btn--secondary dl-btn--sm"
+                    onClick={handleSelectAll}
+                    disabled={!scannedData || Object.keys(scannedData.entries).length === 0}
+                    data-bumpath-select-all
+                >
+                    <span className="dl-icon"><CheckBoxIcon /></span>
+                    <span>Select All</span>
+                </button>
+
+                <button
+                    type="button"
+                    className="dl-btn dl-btn--danger dl-btn--sm"
+                    onClick={handleDeselectAll}
+                    disabled={!scannedData || selectedEntriesSize === 0}
+                >
+                    <span className="dl-icon"><ClearIcon /></span>
+                    <span>Deselect All</span>
+                </button>
+
+                <label
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        marginLeft: 'auto',
+                    }}
+                >
+                    <span className="dl-toggle">
+                        <input
+                            type="checkbox"
+                            checked={showMissingOnly}
+                            onChange={(e) => setShowMissingOnly(e.target.checked)}
+                        />
+                        <span className="dl-toggle__track" />
+                        <span className="dl-toggle__thumb" />
+                    </span>
+                    <span
+                        style={{
+                            color: showMissingOnly ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
+                            letterSpacing: '0.02em',
+                            transition: 'color 180ms ease',
+                        }}
+                    >
+                        Show Missing Files Only
+                    </span>
+                </label>
+            </Box>
+
             <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
                 {isScanning ? (
                     <Box
@@ -98,7 +172,7 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                         color: 'var(--text-primary)',
                                                         fontSize: '0.7rem',
                                                         fontWeight: '600',
-                                                        fontFamily: 'JetBrains Mono, monospace',
+                                                        fontFamily: 'var(--font-mono)',
                                                         flex: '1 1 auto',
                                                         minWidth: 0,
                                                     }}
@@ -123,7 +197,7 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                             color: 'var(--accent-primary)',
                                                             fontSize: '0.65rem',
                                                             fontWeight: '600',
-                                                            fontFamily: 'JetBrains Mono, monospace',
+                                                            fontFamily: 'var(--font-mono)',
                                                             lineHeight: 1,
                                                             whiteSpace: 'nowrap',
                                                         }}
@@ -138,7 +212,7 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                     sx={{
                                                         color: 'var(--text-secondary)',
                                                         fontSize: '0.65rem',
-                                                        fontFamily: 'JetBrains Mono, monospace',
+                                                        fontFamily: 'var(--font-mono)',
                                                         opacity: 0.7,
                                                         display: 'block',
                                                         width: '100%',
@@ -201,7 +275,7 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                                         color: 'var(--text-primary)',
                                                                         fontSize: '0.7rem',
                                                                         fontWeight: '600',
-                                                                        fontFamily: 'JetBrains Mono, monospace',
+                                                                        fontFamily: 'var(--font-mono)',
                                                                         wordBreak: 'break-all',
                                                                     }}
                                                                 >

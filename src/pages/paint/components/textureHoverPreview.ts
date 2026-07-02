@@ -31,7 +31,7 @@ function ensureRoot(): HTMLDivElement {
         root.style.background = 'var(--glass-bg, rgba(18,18,24,0.96))';
         root.style.border = '1px solid var(--glass-border, rgba(255,255,255,0.12))';
         root.style.boxShadow = '0 18px 44px rgba(0,0,0,0.5)';
-        root.style.fontFamily = 'JetBrains Mono, monospace';
+        root.style.fontFamily = 'var(--font-mono)';
         root.style.fontSize = '11px';
         root.style.color = 'var(--text, #fff)';
         root.style.pointerEvents = 'auto';

@@ -209,9 +209,7 @@ pub fn write_bnk(entries: &[AudioEntry]) -> Vec<u8> {
         data_size = aligned + entry.data.len();
     }
 
-    let total = 8 + bkhd_section_len as usize
-        + 8 + didx_size as usize
-        + 8 + data_size;
+    let total = 8 + bkhd_section_len as usize + 8 + didx_size as usize + 8 + data_size;
 
     let mut buf = Vec::with_capacity(total);
 
@@ -227,7 +225,8 @@ pub fn write_bnk(entries: &[AudioEntry]) -> Vec<u8> {
     for (i, entry) in entries.iter().enumerate() {
         buf.write_u32::<LittleEndian>(entry.id).unwrap();
         buf.write_u32::<LittleEndian>(offsets[i]).unwrap();
-        buf.write_u32::<LittleEndian>(entry.data.len() as u32).unwrap();
+        buf.write_u32::<LittleEndian>(entry.data.len() as u32)
+            .unwrap();
     }
 
     buf.write_all(b"DATA").unwrap();
@@ -262,12 +261,12 @@ pub const SILENCE_WEM: &[u8] = &[
     0x57, 0x41, 0x56, 0x45, // "WAVE"
     0x66, 0x6D, 0x74, 0x20, // "fmt "
     0x10, 0x00, 0x00, 0x00, // fmt size = 16
-    0x01, 0x00,             // PCM format
-    0x01, 0x00,             // 1 channel
+    0x01, 0x00, // PCM format
+    0x01, 0x00, // 1 channel
     0x44, 0xAC, 0x00, 0x00, // 44100 Hz
     0x88, 0x58, 0x01, 0x00, // byte rate
-    0x02, 0x00,             // block align
-    0x10, 0x00,             // 16 bits per sample
+    0x02, 0x00, // block align
+    0x10, 0x00, // 16 bits per sample
     0x64, 0x61, 0x74, 0x61, // "data"
     0x00, 0x00, 0x00, 0x00, // data size = 0 (silence)
 ];
@@ -293,8 +292,14 @@ mod tests {
     use super::*;
 
     fn make_test_bnk() -> Vec<u8> {
-        let e1 = AudioEntry { id: 100, data: vec![0xAA; 32] };
-        let e2 = AudioEntry { id: 200, data: vec![0xBB; 16] };
+        let e1 = AudioEntry {
+            id: 100,
+            data: vec![0xAA; 32],
+        };
+        let e2 = AudioEntry {
+            id: 200,
+            data: vec![0xBB; 16],
+        };
         write_bnk(&[e1, e2])
     }
 

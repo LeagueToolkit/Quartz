@@ -29,3 +29,35 @@
 input[type='range']:not([class*='dl-']):not([class*='paint']) {
     accent-color: var(--accent);
 }
+
+/* ── Reusable glow card ──────────────────────────────────────────────────────
+   Matches the .dl-btn feel: accent border + cursor-following radial glow on
+   hover. Apply .q-glow-card to any bordered surface to get consistent card
+   styling across the app. The glow reads --mx/--my, set by useButtonGlow. */
+.q-glow-card {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    transition: border-color var(--motion-fast);
+}
+.q-glow-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+        160px circle at var(--mx, 50%) var(--my, 50%),
+        color-mix(in oklab, var(--accent-primary) 30%, transparent) 0%,
+        color-mix(in oklab, var(--accent-primary) 10%, transparent) 30%,
+        transparent 60%);
+    opacity: 0;
+    transition: opacity var(--motion-base);
+    z-index: 0;
+    border-radius: inherit;
+}
+.q-glow-card > * { position: relative; z-index: 1; }
+.q-glow-card:hover::after { opacity: 1; }
+.q-glow-card:hover {
+    border-color: color-mix(in oklab, var(--accent-primary) 45%, var(--border));
+}
+

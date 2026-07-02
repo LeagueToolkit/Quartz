@@ -146,15 +146,15 @@ const CelestiaTutorialOverlays = React.memo(function CelestiaTutorialOverlays({
                                                 />
                                                 <Box sx={{ flex: 1, minWidth: 0 }}>
                                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
-                                                        <Typography variant="body2" sx={{ color: 'var(--text-secondary)', fontSize: '0.65rem', opacity: 0.7, fontFamily: 'JetBrains Mono, monospace' }}>
+                                                        <Typography variant="body2" sx={{ color: 'var(--text-secondary)', fontSize: '0.65rem', opacity: 0.7, fontFamily: 'var(--font-mono)' }}>
                                                             {bin.path.split('\\').slice(0, -1).join('\\')}
                                                         </Typography>
                                                     </Box>
                                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                                        <Typography variant="body2" sx={{ color: 'var(--accent-primary)', fontSize: '0.75rem', fontWeight: '600', fontFamily: 'JetBrains Mono, monospace' }}>
+                                                        <Typography variant="body2" sx={{ color: 'var(--accent-primary)', fontSize: '0.75rem', fontWeight: '600', fontFamily: 'var(--font-mono)' }}>
                                                             {bin.path.split('\\').pop()}
                                                         </Typography>
-                                                        <Typography variant="body2" sx={{ color: 'var(--color-info)', fontSize: '0.7rem', fontWeight: '700', fontFamily: 'JetBrains Mono, monospace', backgroundColor: 'color-mix(in oklab, var(--color-info) 12%, transparent)', px: 0.5, py: 0.25, borderRadius: '3px' }}>
+                                                        <Typography variant="body2" sx={{ color: 'var(--color-info)', fontSize: '0.7rem', fontWeight: '700', fontFamily: 'var(--font-mono)', backgroundColor: 'color-mix(in oklab, var(--color-info) 12%, transparent)', px: 0.5, py: 0.25, borderRadius: '3px' }}>
                                                             .{bin.ext}
                                                         </Typography>
                                                     </Box>
@@ -263,16 +263,16 @@ const CelestiaTutorialOverlays = React.memo(function CelestiaTutorialOverlays({
 
                                             <Box sx={{ flex: 1, minWidth: 0 }}>
                                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25, flexWrap: 'wrap' }}>
-                                                    <Typography variant="body2" sx={{ color: 'var(--accent-primary)', fontSize: '0.7rem', fontWeight: '600', fontFamily: 'JetBrains Mono, monospace', flex: '1 1 auto', minWidth: 0 }}>
+                                                    <Typography variant="body2" sx={{ color: 'var(--accent-primary)', fontSize: '0.7rem', fontWeight: '600', fontFamily: 'var(--font-mono)', flex: '1 1 auto', minWidth: 0 }}>
                                                         {entry.id}
                                                     </Typography>
                                                     <Box sx={{ backgroundColor: 'color-mix(in oklab, var(--color-info) 12%, transparent)', border: '1px solid color-mix(in oklab, var(--color-info) 24%, transparent)', borderRadius: '3px', px: 0.5, py: 0.25, display: 'inline-flex', alignItems: 'center', flex: '0 0 auto' }}>
-                                                        <Typography variant="body2" sx={{ color: 'var(--color-info)', fontSize: '0.65rem', fontWeight: '600', fontFamily: 'JetBrains Mono, monospace', lineHeight: 1, whiteSpace: 'nowrap' }}>
+                                                        <Typography variant="body2" sx={{ color: 'var(--color-info)', fontSize: '0.65rem', fontWeight: '600', fontFamily: 'var(--font-mono)', lineHeight: 1, whiteSpace: 'nowrap' }}>
                                                             {entry.prefix}
                                                         </Typography>
                                                     </Box>
                                                 </Box>
-                                                <Typography variant="body2" sx={{ color: 'var(--text-secondary)', fontSize: '0.65rem', fontFamily: 'JetBrains Mono, monospace', opacity: 0.7, display: 'block', width: '100%' }}>
+                                                <Typography variant="body2" sx={{ color: 'var(--text-secondary)', fontSize: '0.65rem', fontFamily: 'var(--font-mono)', opacity: 0.7, display: 'block', width: '100%' }}>
                                                     ID: {entry.id}
                                                 </Typography>
                                             </Box>

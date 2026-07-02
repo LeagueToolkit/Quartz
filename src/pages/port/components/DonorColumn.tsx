@@ -2,11 +2,12 @@ import React, { useCallback } from 'react';
 import { Tooltip } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
-import { FolderOpen as FolderOpenIcon } from 'lucide-react';
+import { FolderOpen as FolderOpenIcon, Github, Scissors as ScissorsIcon } from 'lucide-react';
 import { SearchInput } from './common/Inputs';
 import { useBinFileDrop } from './common/binFileDrop';
+import PortRecentBins from './common/PortRecentBins';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
-import type { VfxSystem, VfxSystemMap } from '../utils/vfxEmitterParser';
+import type { VfxSystem, VfxSystemMap } from '../model';
 import type { ListSharedProps } from './ParticleSystemList/types';
 
 interface DonorColumnProps extends ListSharedProps {
@@ -22,6 +23,8 @@ interface DonorColumnProps extends ListSharedProps {
     donorSystems: VfxSystemMap;
     donorListRef: React.RefObject<HTMLDivElement>;
     filteredDonorSystems: VfxSystem[];
+    trimDonorNames: boolean;
+    setTrimDonorNames: (v: boolean) => void;
 }
 
 export default function DonorColumn(props: DonorColumnProps) {
@@ -38,9 +41,12 @@ export default function DonorColumn(props: DonorColumnProps) {
         donorSystems,
         donorListRef,
         filteredDonorSystems,
+        trimDonorNames,
+        setTrimDonorNames,
     } = props;
 
     const safeDonorSystems = donorSystems || {};
+    const hasBin = Object.keys(safeDonorSystems).length > 0;
 
     const handleFileDrop = useCallback((filePath: string) => {
         if (typeof processDonorBin === 'function') processDonorBin(filePath);
@@ -80,20 +86,55 @@ export default function DonorColumn(props: DonorColumnProps) {
                     </div>
                 </div>
             )}
-            {/* One row: open + load-from-game + filter + emitter-search toggle. */}
-            <div className="port-toolbar-row" style={{ '--port-accent': 'var(--accent-secondary)' } as React.CSSProperties}>
+            {/* One row: open · search · vfxhub · load-from-game · emitter toggle. */}
+            <div className="port-toolbar-row">
                 <button
-                    className="port-open-btn"
+                    className="dl-btn dl-btn--secondary dl-btn--icon"
                     onClick={handleOpenDonorBin}
                     disabled={isProcessing}
                     title={isProcessing ? 'Processing...' : 'Open Donor Bin'}
                 >
                     <FolderOpenIcon size={16} />
                 </button>
+                {/* Search flexes to fill; dims until a bin is loaded. */}
+                <div
+                    className="port-toolbar-filters"
+                    style={hasBin ? undefined : { opacity: 0.4, pointerEvents: 'none' }}
+                    aria-disabled={!hasBin}
+                >
+                    <SearchInput
+                        initialValue={donorFilterInput}
+                        placeholder={enableDonorEmitterSearch ? 'Filter by Particle or Emitter Name' : 'Filter by Particle Name Only'}
+                        onChange={filterDonorParticles}
+                        trailing={
+                            <button
+                                type="button"
+                                className={`port-search-scissor${trimDonorNames ? ' is-active' : ''}`}
+                                onClick={() => setTrimDonorNames(!trimDonorNames)}
+                                title={trimDonorNames ? 'Show full donor names' : 'Trim donor names'}
+                            >
+                                <ScissorsIcon size={15} />
+                            </button>
+                        }
+                    />
+                </div>
+                {/* VFX Hub browse (placeholder — will host the ported VFX Hub). */}
+                <Tooltip title="Browse VFX Hub">
+                    <span>
+                        <button
+                            className="dl-btn dl-btn--secondary dl-btn--icon"
+                            onClick={() => { /* TODO: open ported VFX Hub */ }}
+                            aria-label="Browse VFX Hub"
+                        >
+                            <Github size={16} />
+                        </button>
+                    </span>
+                </Tooltip>
+                {/* Load-from-game stays live even with no bin loaded. */}
                 <Tooltip title="Load donor from game">
                     <span>
                         <button
-                            className="port-open-btn"
+                            className="dl-btn dl-btn--secondary dl-btn--icon"
                             onClick={handleOpenDonorFromGame}
                             disabled={isProcessing}
                             aria-label="Load donor from game"
@@ -102,21 +143,15 @@ export default function DonorColumn(props: DonorColumnProps) {
                         </button>
                     </span>
                 </Tooltip>
-                <SearchInput
-                    initialValue={donorFilterInput}
-                    placeholder={enableDonorEmitterSearch ? 'Filter by Particle or Emitter Name' : 'Filter by Particle Name Only'}
-                    onChange={filterDonorParticles}
-                    accentVar="var(--accent-secondary)"
-                    style={{ color: 'var(--accent-secondary)', height: '40px', padding: '0 14px' }}
-                    className="port-donor-search"
-                />
-                <button
-                    className={`port-search-toggle-btn${enableDonorEmitterSearch ? ' is-active' : ''}`}
-                    onClick={() => setEnableDonorEmitterSearch(!enableDonorEmitterSearch)}
-                    title={enableDonorEmitterSearch ? 'Disable emitter search (faster)' : 'Enable emitter search'}
-                >
-                    <SearchIcon sx={{ fontSize: 16 }} />
-                </button>
+                <div style={hasBin ? undefined : { opacity: 0.4, pointerEvents: 'none' }} aria-disabled={!hasBin}>
+                    <button
+                        className={`dl-btn dl-btn--secondary dl-btn--icon${enableDonorEmitterSearch ? ' dl-btn--active' : ''}`}
+                        onClick={() => setEnableDonorEmitterSearch(!enableDonorEmitterSearch)}
+                        title={enableDonorEmitterSearch ? 'Disable emitter search (faster)' : 'Enable emitter search'}
+                    >
+                        <SearchIcon sx={{ fontSize: 16 }} />
+                    </button>
+                </div>
             </div>
 
             <div
@@ -128,20 +163,22 @@ export default function DonorColumn(props: DonorColumnProps) {
                         <ParticleSystemList systems={filteredDonorSystems} isTarget={false} {...props} />
                     </div>
                 ) : (
-                    <div
-                        style={{
-                            color: 'var(--text-muted)',
-                            fontSize: '16px',
-                            fontFamily: 'var(--font-mono)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '100%',
-                            height: '100%',
-                            textAlign: 'center',
-                        }}
-                    >
-                        No donor bin loaded
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '28px', width: '100%', height: '100%', padding: '2rem', overflow: 'hidden', minHeight: 0 }}>
+                        <div style={{
+                            width: 'min(360px, 90%)',
+                            flexShrink: 0,
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px',
+                        }}>
+                            <FolderOpenIcon size={36} color="var(--accent-primary)" strokeWidth={1.5} />
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
+                                Drag Donor <b style={{ color: 'var(--text-primary)' }}>.bin</b> here
+                            </div>
+                            <button onClick={handleOpenDonorBin} disabled={isProcessing} className="dl-btn dl-btn--primary dl-btn--sm">
+                                <span className="dl-icon"><FolderOpenIcon size={14} /></span>
+                                <span>Open Bin</span>
+                            </button>
+                        </div>
+                        <PortRecentBins slot="donor" onOpen={processDonorBin} />
                     </div>
                 )}
             </div>

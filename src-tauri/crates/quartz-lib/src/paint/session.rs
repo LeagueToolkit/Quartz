@@ -1,11 +1,14 @@
 //! Resident bin-session registry. A session holds the parsed `Bin` tree, its
 //! VFX edit index, the source format (so save round-trips correctly), and a
-//! bounded undo stack of tree snapshots. Mirrors the WAD mount registry pattern.
+//! bounded undo stack of entry-granular COW frames (see [`crate::undo`]) —
+//! an edit only clones the top-level entries it touches, never the whole
+//! tree. Mirrors the WAD mount registry pattern.
 
 use super::model::{self, EditIndex, VfxModel};
 use super::recolor::{self, ColorTargetSel, PaletteStop, RecolorOptions};
 use crate::bin::{read_bin_ltk, text_to_tree, tree_to_text_cached, write_bin_ltk};
 use crate::error::{Error, Result};
+use crate::undo::{push_bounded, UndoFrame};
 use parking_lot::RwLock;
 use ritoshark::bin::Bin;
 use std::collections::HashMap;
@@ -27,7 +30,11 @@ pub enum SourceFormat {
 }
 
 fn format_for_path(path: &Path) -> SourceFormat {
-    match path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()) {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+    {
         Some(ext) if ext == "py" || ext == "ritobin" || ext == "txt" => SourceFormat::Text,
         _ => SourceFormat::Bin,
     }
@@ -51,8 +58,8 @@ pub struct BinSession {
     pub source_format: SourceFormat,
     pub tree: Bin,
     pub index: EditIndex,
-    undo: Vec<Bin>,
-    redo: Vec<Bin>,
+    undo: Vec<UndoFrame>,
+    redo: Vec<UndoFrame>,
 }
 
 impl BinSession {
@@ -65,13 +72,10 @@ impl BinSession {
         model
     }
 
-    /// Push the current tree onto the undo stack before a mutating edit. A fresh
-    /// edit invalidates the redo history.
-    fn snapshot(&mut self) {
-        if self.undo.len() >= UNDO_CAP {
-            self.undo.remove(0);
-        }
-        self.undo.push(self.tree.clone());
+    /// Commit a completed edit's frame to the undo stack. A fresh edit
+    /// invalidates the redo history.
+    fn push_undo(&mut self, frame: UndoFrame) {
+        push_bounded(&mut self.undo, frame, UNDO_CAP);
         self.redo.clear();
     }
 }
@@ -120,7 +124,10 @@ pub fn open(path: impl AsRef<Path>) -> Result<OpenResult> {
             redo: Vec::new(),
         },
     );
-    Ok(OpenResult { session_id: id, model })
+    Ok(OpenResult {
+        session_id: id,
+        model,
+    })
 }
 
 /// Drop a session and free its tree. Returns false if the id was unknown.
@@ -148,11 +155,20 @@ pub fn recolor_emitters(
     opts: &RecolorOptions,
 ) -> Result<usize> {
     with_session(id, |s| {
-        s.snapshot();
-        let n = recolor::recolor_emitters(&mut s.tree, &s.index, emitter_keys, targets, palette, opts);
-        if n == 0 {
-            // Nothing changed — drop the snapshot we just took.
-            s.undo.pop();
+        // Every path a recolor can write lives under the selected emitters'
+        // color targets — snapshot just those entries (systems).
+        let touched: Vec<usize> = emitter_keys
+            .iter()
+            .filter_map(|k| s.index.emitter_colors.get(k))
+            .flat_map(|slots| slots.values())
+            .flat_map(|t| t.constant.iter().chain(t.keyframes.iter()))
+            .map(|p| p.entry)
+            .collect();
+        let frame = UndoFrame::capture(&s.tree, touched);
+        let n =
+            recolor::recolor_emitters(&mut s.tree, &s.index, emitter_keys, targets, palette, opts);
+        if n > 0 {
+            s.push_undo(frame);
         }
         n
     })
@@ -169,10 +185,11 @@ pub fn set_material_param(
         let Some(path) = s.index.material_params.get(selection_key).cloned() else {
             return false;
         };
-        s.snapshot();
-        let changed = recolor::recolor_material_param(&mut s.tree, &path, new_color, preserve_alpha, false);
-        if !changed {
-            s.undo.pop();
+        let frame = UndoFrame::capture(&s.tree, [path.entry]);
+        let changed =
+            recolor::recolor_material_param(&mut s.tree, &path, new_color, preserve_alpha, false);
+        if changed {
+            s.push_undo(frame);
         }
         changed
     })
@@ -184,7 +201,7 @@ pub fn set_blend_mode(id: SessionId, emitter_key: &str, mode: u8) -> Result<bool
         let Some(path) = s.index.blend_modes.get(emitter_key).cloned() else {
             return false;
         };
-        s.snapshot();
+        let frame = UndoFrame::capture(&s.tree, [path.entry]);
         let changed = match path.resolve_mut(&mut s.tree) {
             Some(ritoshark::bin::BinValue::U8(v)) => {
                 if *v != mode {
@@ -196,8 +213,8 @@ pub fn set_blend_mode(id: SessionId, emitter_key: &str, mode: u8) -> Result<bool
             }
             _ => false,
         };
-        if !changed {
-            s.undo.pop();
+        if changed {
+            s.push_undo(frame);
         }
         changed
     })
@@ -208,9 +225,11 @@ pub fn set_blend_mode(id: SessionId, emitter_key: &str, mode: u8) -> Result<bool
 pub fn undo(id: SessionId) -> Result<Option<VfxModel>> {
     with_session(id, |s| {
         match s.undo.pop() {
-            Some(prev) => {
-                // Park the current tree on the redo stack before restoring.
-                s.redo.push(std::mem::replace(&mut s.tree, prev));
+            Some(mut frame) => {
+                // Swap the stored entries back in; the frame now holds the
+                // undone state and parks on the redo stack.
+                frame.swap_with(&mut s.tree);
+                s.redo.push(frame);
                 Some(s.reproject())
             }
             None => None,
@@ -221,17 +240,13 @@ pub fn undo(id: SessionId) -> Result<Option<VfxModel>> {
 /// Redo the last undone edit. Returns the refreshed model, or null if there's
 /// nothing to redo.
 pub fn redo(id: SessionId) -> Result<Option<VfxModel>> {
-    with_session(id, |s| {
-        match s.redo.pop() {
-            Some(next) => {
-                if s.undo.len() >= UNDO_CAP {
-                    s.undo.remove(0);
-                }
-                s.undo.push(std::mem::replace(&mut s.tree, next));
-                Some(s.reproject())
-            }
-            None => None,
+    with_session(id, |s| match s.redo.pop() {
+        Some(mut frame) => {
+            frame.swap_with(&mut s.tree);
+            push_bounded(&mut s.undo, frame, UNDO_CAP);
+            Some(s.reproject())
         }
+        None => None,
     })
 }
 
@@ -240,6 +255,25 @@ pub fn model_of(id: SessionId) -> Result<VfxModel> {
     with_session(id, |s| {
         let (model, _) = model::project(&s.tree);
         model
+    })
+}
+
+/// Refreshed color views for just `emitter_keys`, read from the live tree —
+/// the partial payload a recolor returns instead of a whole-model
+/// reprojection (O(selected emitters), not O(file)).
+pub fn emitter_colors_of(
+    id: SessionId,
+    emitter_keys: &[String],
+) -> Result<HashMap<String, model::EmitterColors>> {
+    with_session(id, |s| {
+        let mut out = HashMap::new();
+        let BinSession { tree, index, .. } = s;
+        for key in emitter_keys {
+            if let Some(slots) = index.emitter_colors.get(key) {
+                out.insert(key.clone(), model::emitter_colors_from_targets(tree, slots));
+            }
+        }
+        out
     })
 }
 
@@ -256,20 +290,195 @@ pub fn save(id: SessionId, out_path: Option<PathBuf>) -> Result<PathBuf> {
         };
         match format {
             SourceFormat::Bin => {
-                let bytes = write_bin_ltk(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
+                let bytes =
+                    write_bin_ltk(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
                 std::fs::write(&dest, bytes).map_err(|e| Error::io_with_path(e, &dest))?;
                 // Keep a sibling .ritobin / .py text dump in sync, but only if one
                 // already sits next to the bin — don't create new files.
                 if let Some(sidecar) = existing_text_sidecar(&dest) {
-                    let text = tree_to_text_cached(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
+                    let text = tree_to_text_cached(&s.tree)
+                        .map_err(|e| Error::InvalidInput(e.to_string()))?;
                     std::fs::write(&sidecar, text).map_err(|e| Error::io_with_path(e, &sidecar))?;
                 }
             }
             SourceFormat::Text => {
-                let text = tree_to_text_cached(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
+                let text =
+                    tree_to_text_cached(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
                 std::fs::write(&dest, text).map_err(|e| Error::io_with_path(e, &dest))?;
             }
         }
         Ok(dest)
     })?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::paint::recolor::RecolorMode;
+    use std::time::Instant;
+
+    fn real_bin_path() -> Option<PathBuf> {
+        let p = std::env::var("QUARTZ_TEST_BIN")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                PathBuf::from(r"D:\updated skins\Frozen Locke\data\locke_vfx_skin0.bin")
+            });
+        p.is_file().then_some(p)
+    }
+
+    fn bytes_of(id: SessionId) -> Vec<u8> {
+        with_session(id, |s| write_bin_ltk(&s.tree).unwrap()).unwrap()
+    }
+
+    fn opts(seed: u64) -> RecolorOptions {
+        RecolorOptions {
+            mode: RecolorMode::Linear,
+            ignore_black_white: false,
+            preserve_alpha: true,
+            hsl_shift: (0.0, 0.0, 0.0),
+            hue_target: None,
+            seed,
+        }
+    }
+
+    fn palette(a: [f32; 4], b: [f32; 4]) -> Vec<PaletteStop> {
+        vec![
+            PaletteStop { vec4: a, time: 0.0 },
+            PaletteStop { vec4: b, time: 1.0 },
+        ]
+    }
+
+    fn some_emitter_keys(id: SessionId, n: usize) -> Vec<String> {
+        with_session(id, |s| {
+            let mut keys: Vec<String> = s.index.emitter_colors.keys().cloned().collect();
+            keys.sort();
+            keys.truncate(n);
+            keys
+        })
+        .unwrap()
+    }
+
+    /// Recolor twice with different palettes, then undo/redo must replay every
+    /// state byte-exact — the corruption check for entry-granular undo.
+    #[test]
+    fn recolor_undo_redo_replays_byte_exact() {
+        let Some(path) = real_bin_path() else {
+            eprintln!("skipping: real test bin not found (set QUARTZ_TEST_BIN)");
+            return;
+        };
+        let opened = open(&path).unwrap();
+        let id = opened.session_id;
+        let keys = some_emitter_keys(id, 6);
+        if keys.is_empty() {
+            eprintln!("skipping: no emitters with color targets");
+            close(id);
+            return;
+        }
+
+        let s0 = bytes_of(id);
+        let n1 = recolor_emitters(
+            id,
+            &keys,
+            &[ColorTargetSel::All],
+            &palette([1.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]),
+            &opts(1),
+        )
+        .unwrap();
+        assert!(n1 > 0, "first recolor changed nothing");
+        let s1 = bytes_of(id);
+        assert_ne!(s0, s1);
+
+        let n2 = recolor_emitters(
+            id,
+            &keys,
+            &[ColorTargetSel::All],
+            &palette([0.0, 1.0, 0.2, 1.0], [0.6, 0.0, 0.8, 1.0]),
+            &opts(2),
+        )
+        .unwrap();
+        assert!(n2 > 0, "second recolor changed nothing");
+        let s2 = bytes_of(id);
+        assert_ne!(s1, s2);
+
+        undo(id).unwrap().expect("undo #1");
+        assert_eq!(bytes_of(id), s1, "undo #1 diverged");
+        undo(id).unwrap().expect("undo #2");
+        assert_eq!(bytes_of(id), s0, "undo #2 diverged from pristine");
+        assert!(undo(id).unwrap().is_none());
+
+        redo(id).unwrap().expect("redo #1");
+        assert_eq!(bytes_of(id), s1, "redo #1 diverged");
+        redo(id).unwrap().expect("redo #2");
+        assert_eq!(bytes_of(id), s2, "redo #2 diverged");
+        assert!(redo(id).unwrap().is_none());
+        close(id);
+    }
+
+    /// Perf report: old per-click cost (whole-tree clone) vs entry-granular
+    /// recolor. Run with:
+    /// `cargo test -p quartz-lib --release bench_recolor -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn bench_recolor_vs_whole_tree_clone() {
+        let Some(path) = real_bin_path() else {
+            eprintln!("skipping: real test bin not found (set QUARTZ_TEST_BIN)");
+            return;
+        };
+        let opened = open(&path).unwrap();
+        let id = opened.session_id;
+        let keys = some_emitter_keys(id, 6);
+        if keys.is_empty() {
+            eprintln!("skipping: no emitters with color targets");
+            close(id);
+            return;
+        }
+
+        let (n_entries, clone_avg) = with_session(id, |s| {
+            let iters = 10u32;
+            let t0 = Instant::now();
+            for _ in 0..iters {
+                std::hint::black_box(s.tree.clone());
+            }
+            (s.tree.entries.len(), t0.elapsed() / iters)
+        })
+        .unwrap();
+
+        let pals = [
+            palette([1.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]),
+            palette([0.0, 1.0, 0.2, 1.0], [0.6, 0.0, 0.8, 1.0]),
+        ];
+        let iters = 20u32;
+        let t0 = Instant::now();
+        for i in 0..iters {
+            let n = recolor_emitters(
+                id,
+                &keys,
+                &[ColorTargetSel::All],
+                &pals[(i % 2) as usize],
+                &opts(i as u64),
+            )
+            .unwrap();
+            assert!(n > 0);
+        }
+        let recolor_avg = t0.elapsed() / iters;
+
+        let t0 = Instant::now();
+        let pairs = 10u32;
+        for _ in 0..pairs {
+            undo(id).unwrap().unwrap();
+            redo(id).unwrap().unwrap();
+        }
+        let pair_avg = t0.elapsed() / pairs;
+
+        println!(
+            "paint bench: {} entries, {} emitters selected | whole-tree clone (old per-click cost) {:?} | \
+             recolor click {:?} | undo+redo pair (incl. reprojection) {:?}",
+            n_entries,
+            keys.len(),
+            clone_avg,
+            recolor_avg,
+            pair_avg
+        );
+        close(id);
+    }
 }

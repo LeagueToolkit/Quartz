@@ -1,8 +1,8 @@
 /* On-disk session store for BnkExtract.
 
-   Sessions are JSON files under %APPDATA%/Quartz/bnk_sessions, matching the
-   Electron build's bnk_sessions folder. Each file is one session payload; the
-   filename is the session key. */
+Sessions are JSON files under %APPDATA%/Quartz/bnk_sessions, matching the
+Electron build's bnk_sessions folder. Each file is one session payload; the
+filename is the session key. */
 
 use super::settings::get_quartz_home;
 use std::path::PathBuf;
@@ -58,7 +58,9 @@ pub fn bnk_session_list() -> Result<Vec<(String, String)>, String> {
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
-        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
         if let Ok(content) = std::fs::read_to_string(&path) {
             out.push((stem.to_string(), content));
         }

@@ -10,8 +10,8 @@
 //! Heavy WAD IO reuses `crate::wad`; BIN parsing/printing reuses
 //! `crate::bin::ltk_bridge`; asset path rewriting reuses `crate::bumpath`.
 
-use crate::bin::ltk_bridge::{read_bin, write_bin};
 use crate::bin::converter::bin_to_text;
+use crate::bin::ltk_bridge::{read_bin, write_bin};
 use crate::error::{Error, Result};
 use crate::wad::{self, ChunkSel, WadTocEntry};
 use ritoshark::bin::{Bin, BinValue};
@@ -41,7 +41,10 @@ pub struct DonorResult {
 }
 
 fn normalize_rel(value: &str) -> String {
-    value.replace('\\', "/").trim_start_matches('/').to_lowercase()
+    value
+        .replace('\\', "/")
+        .trim_start_matches('/')
+        .to_lowercase()
 }
 
 /// Normalize a skin selection id: ids >= 1000 are chroma ids encoded as
@@ -83,7 +86,7 @@ fn find_main_bin(by_path: &HashMap<String, WadTocEntry>, champ: &str, skin: u32)
 
 /// A link string can be a real rel path or a bare 16-hex path hash. Return the
 /// normalized rel-path candidates worth trying against the TOC.
-fn link_candidates(link: &str) -> Vec<String> {
+pub(crate) fn link_candidates(link: &str) -> Vec<String> {
     let raw = normalize_rel(link);
     if raw.is_empty() {
         return Vec::new();
@@ -96,12 +99,12 @@ fn link_candidates(link: &str) -> Vec<String> {
 }
 
 /// Pull the linked-BIN references out of a parsed BIN (the `linked` table).
-fn linked_bins(bin: &Bin) -> Vec<String> {
+pub(crate) fn linked_bins(bin: &Bin) -> Vec<String> {
     bin.linked.clone()
 }
 
 /// Recursively collect every asset/data string referenced in a BIN value.
-fn collect_assets(value: &BinValue, out: &mut HashSet<String>) {
+pub(crate) fn collect_assets(value: &BinValue, out: &mut HashSet<String>) {
     match value {
         BinValue::String(s) => {
             let lower = s.to_lowercase();
@@ -110,7 +113,9 @@ fn collect_assets(value: &BinValue, out: &mut HashSet<String>) {
             }
         }
         BinValue::List { items, .. } => items.iter().for_each(|v| collect_assets(v, out)),
-        BinValue::Option { value: Some(inner), .. } => collect_assets(inner, out),
+        BinValue::Option {
+            value: Some(inner), ..
+        } => collect_assets(inner, out),
         BinValue::Map { entries, .. } => {
             for (k, v) in entries {
                 collect_assets(k, out);
@@ -169,7 +174,9 @@ fn extract_paths(
     let selected: Vec<ChunkSel> = wanted
         .iter()
         .filter_map(|rel| by_path.get(rel))
-        .map(|e| ChunkSel { path_hash: e.path_hash })
+        .map(|e| ChunkSel {
+            path_hash: e.path_hash,
+        })
         .collect();
     if selected.is_empty() {
         return Ok(0);
@@ -179,7 +186,7 @@ fn extract_paths(
 }
 
 /// Read a BIN file off disk, tolerating missing/unparseable files.
-fn try_read_bin(path: &Path) -> Option<Bin> {
+pub(crate) fn try_read_bin(path: &Path) -> Option<Bin> {
     let data = std::fs::read(path).ok()?;
     read_bin(&data).ok()
 }
@@ -222,7 +229,9 @@ fn consolidate_value(value: &mut BinValue, prefix: &str) {
             }
         }
         BinValue::List { items, .. } => items.iter_mut().for_each(|v| consolidate_value(v, prefix)),
-        BinValue::Option { value: Some(inner), .. } => consolidate_value(inner, prefix),
+        BinValue::Option {
+            value: Some(inner), ..
+        } => consolidate_value(inner, prefix),
         BinValue::Map { entries, .. } => {
             for (k, v) in entries.iter_mut() {
                 consolidate_value(k, prefix);
@@ -270,7 +279,10 @@ pub fn prepare_donor_from_skin(
     prefix: &str,
 ) -> Result<DonorResult> {
     let wad_path = wad::find_champion_wad(league_path, champion).ok_or_else(|| {
-        Error::InvalidInput(format!("Champion WAD not found for '{champion}' in {}", league_path.display()))
+        Error::InvalidInput(format!(
+            "Champion WAD not found for '{champion}' in {}",
+            league_path.display()
+        ))
     })?;
     let champ_file = wad::normalize_champion(champion);
     let skin = normalize_skin_id(skin_id);
@@ -279,7 +291,9 @@ pub fn prepare_donor_from_skin(
     let by_path = toc_by_path(&toc);
 
     let main_bin = find_main_bin(&by_path, &champ_file, skin).ok_or_else(|| {
-        Error::InvalidInput(format!("Could not locate skin BIN for {champion} skin {skin}"))
+        Error::InvalidInput(format!(
+            "Could not locate skin BIN for {champion} skin {skin}"
+        ))
     })?;
 
     let temp_root = cache_root(&champ_file, skin, &wad_path);
@@ -326,7 +340,9 @@ pub fn prepare_donor_from_skin(
         extract_paths(&wad_path, &by_path, &single, &stage_dir)?;
 
         let abs = stage_dir.join(&rel);
-        let Some(bin) = try_read_bin(&abs) else { continue };
+        let Some(bin) = try_read_bin(&abs) else {
+            continue;
+        };
         for link in linked_bins(&bin) {
             let resolved = link_candidates(&link)
                 .into_iter()
@@ -340,12 +356,11 @@ pub fn prepare_donor_from_skin(
     }
 
     // Combine the linked graph into the main BIN.
-    let mut main = try_read_bin(&stage_dir.join(&main_bin)).ok_or_else(|| {
-        Error::BinConversion {
+    let mut main =
+        try_read_bin(&stage_dir.join(&main_bin)).ok_or_else(|| Error::BinConversion {
             message: "Failed to read extracted main BIN".into(),
             path: Some(stage_dir.join(&main_bin)),
-        }
-    })?;
+        })?;
 
     let mut referenced: HashSet<String> = HashSet::new();
     collect_bin_assets(&main, &mut referenced);

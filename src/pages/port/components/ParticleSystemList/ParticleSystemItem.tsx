@@ -2,9 +2,7 @@ import KeyboardDoubleArrowLeftIcon from '@mui/icons-material/KeyboardDoubleArrow
 import { RenameInput } from '../common/Inputs';
 import SystemActionsButton from '../SystemActionsButton';
 import EmitterItem from './EmitterItem';
-import { getShortSystemName } from '../../utils/nameUtils';
-import { extractVFXSystem } from '../../utils/vfxSystemParser';
-import type { VfxSystem } from '../../utils/vfxEmitterParser';
+import { getShortSystemName, type VfxSystem } from '../../model';
 import type { ListSharedProps } from './types';
 
 interface ParticleSystemItemProps extends ListSharedProps {
@@ -21,8 +19,8 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
         pressedSystemKey,
         setPressedSystemKey,
         dragStartedKey,
+        dragStartedKeyRef,
         setDragStartedKey,
-        donorPyContent,
         handlePortAllEmitters,
         handleRenameSystem,
         renamingSystem,
@@ -42,6 +40,7 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
         handleAddIdleParticles,
         handleAddChildParticles,
         handleDeleteAllEmitters,
+        processVfxSystemDrop,
     } = props;
 
     const isPressed = pressedSystemKey === system.key && !isTarget;
@@ -64,19 +63,29 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
             }}
             onDragStart={(e) => {
                 if (isTarget) return;
+                e.stopPropagation();
                 setDragStartedKey?.(system.key);
+                console.log('[port drag] donor-system:dragstart', {
+                    systemKey: system.key,
+                    particleName: system.particleName || system.name,
+                });
+                // Set the payload first and on its own: if the drag-image code
+                // throws, the drag must still carry the system data.
                 try {
-                    let fullContent = '';
-                    try {
-                        const extracted = extractVFXSystem(donorPyContent || '', system.name);
-                        fullContent = extracted?.fullContent || extracted?.rawContent || system.rawContent || '';
-                    } catch {
-                        fullContent = system.rawContent || '';
-                    }
                     const particleNameForUi = system && typeof system.particleName === 'string' && system.particleName.trim() ? system.particleName : system.name;
-                    const payload = { name: particleNameForUi, fullContent };
-                    e.dataTransfer.effectAllowed = 'copy';
+                    const payload = { name: particleNameForUi, systemKey: system.key, path: system.path };
+                    e.dataTransfer.effectAllowed = 'copyMove';
+                    e.dataTransfer.setData('text/plain', particleNameForUi);
                     e.dataTransfer.setData('application/x-vfxsys', JSON.stringify(payload));
+                    console.log('[port drag] donor-system:payload-set', {
+                        systemKey: system.key,
+                        particleName: particleNameForUi,
+                        types: Array.from(e.dataTransfer.types || []),
+                    });
+                } catch {
+                    /* noop */
+                }
+                try {
                     const el = e.currentTarget;
                     const dragImage = el.cloneNode(true) as HTMLElement;
                     dragImage.style.transform = 'rotate(2deg)';
@@ -98,6 +107,10 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
             }}
             onDragEnd={() => {
                 if (isTarget) return;
+                console.log('[port drag] donor-system:dragend', {
+                    systemKey: system.key,
+                    particleName: system.particleName || system.name,
+                });
                 setPressedSystemKey?.(null);
                 setDragStartedKey?.(null);
             }}
@@ -112,8 +125,16 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                 if (!isTarget) return;
                 const types = e.dataTransfer?.types;
                 const hasEmitterType = types && Array.from(types).includes('application/x-vfxemitter');
-                const hasVfxType = types && Array.from(types).includes('application/x-vfxsys');
-                if (hasVfxType) return;
+                // System drags bubble up to the column drop zone; detect them
+                // via the payload type or the live drag state (types can be
+                // withheld during dragover in WebView2).
+                const isSystemDrag = (types && Array.from(types).includes('application/x-vfxsys')) || !!dragStartedKeyRef?.current;
+                if (isSystemDrag) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'copy';
+                    return;
+                }
                 if (hasEmitterType) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -123,8 +144,11 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
             onDrop={(e) => {
                 if (!isTarget) return;
                 const types = e.dataTransfer?.types;
-                const hasVfxType = types && Array.from(types).includes('application/x-vfxsys');
-                if (hasVfxType) return;
+                const isSystemDrag = (types && Array.from(types).includes('application/x-vfxsys')) || !!dragStartedKeyRef?.current;
+                if (isSystemDrag) {
+                    processVfxSystemDrop?.(e, 'target system row');
+                    return;
+                }
                 try {
                     e.preventDefault();
                     e.stopPropagation();
@@ -141,20 +165,13 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                 }
             }}
             style={{
-                cursor: isTarget ? 'pointer' : 'default',
+                cursor: isTarget ? 'pointer' : 'grab',
                 outline: isPressed || isDragging ? '2px dashed var(--accent-primary)' : 'none',
                 outlineOffset: isPressed || isDragging ? '2px' : '0px',
                 userSelect: 'none',
                 opacity: isPressed ? 0.8 : isDragging ? 0.7 : 1,
                 transform: isPressed ? 'scale(0.98)' : isDragging ? 'scale(0.95)' : 'scale(1)',
                 transition: 'all 0.1s ease-out',
-                ...(isTarget && system.ported
-                    ? {
-                          background:
-                              'linear-gradient(180deg, color-mix(in oklab, var(--color-success) 35%, transparent), color-mix(in oklab, var(--color-success) 22%, transparent))',
-                          border: '1px solid color-mix(in oklab, var(--color-success) 55%, transparent)',
-                      }
-                    : {}),
             }}
         >
             <div
@@ -165,12 +182,6 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                     display: 'flex',
                     alignItems: 'stretch',
                     minHeight: '42px',
-                    ...(isTarget && system.ported
-                        ? {
-                              background: 'color-mix(in oklab, var(--color-success) 25%, transparent)',
-                              borderBottom: '1px solid color-mix(in oklab, var(--color-success) 55%, transparent)',
-                          }
-                        : {}),
                 }}
             >
                 <div
@@ -192,7 +203,7 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'color-mix(in oklab, var(--bg-hover) 30%, transparent)')}
                     title={collapsedSystems.has(system.key) ? 'Expand' : 'Collapse'}
                 >
-                    <span style={{ fontSize: '14px', opacity: 0.9, color: isTarget ? 'var(--accent-primary)' : 'var(--accent-secondary)' }}>
+                    <span style={{ fontSize: '14px', opacity: 0.9, color: 'var(--accent-primary)' }}>
                         {collapsedSystems.has(system.key) ? '▶' : '▼'}
                     </span>
                 </div>
@@ -250,7 +261,7 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                             className="label ellipsis flex-1"
                             title={system.particleName || system.name}
                             style={{
-                                color: isTarget ? 'var(--accent-primary)' : 'var(--accent-secondary)',
+                                color: 'var(--text-primary)',
                                 fontWeight: 600,
                                 fontSize: '0.95rem',
                                 cursor: 'pointer',
@@ -281,11 +292,11 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                                     marginLeft: 'auto',
                                     opacity: 1,
                                     fontSize: '12px',
-                                    background: isTarget ? 'var(--bg-hover)' : 'color-mix(in oklab, var(--accent-secondary) 14%, transparent)',
+                                    background: 'var(--bg-hover)',
                                     padding: '1px 7px',
                                     borderRadius: '12px',
-                                    color: isTarget ? 'var(--text-primary)' : 'var(--accent-secondary)',
-                                    border: isTarget ? '1px solid var(--border)' : '1px solid color-mix(in oklab, var(--accent-secondary) 40%, transparent)',
+                                    color: 'var(--text-primary)',
+                                    border: '1px solid var(--border)',
                                     fontWeight: 600,
                                 }}
                             >

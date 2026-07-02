@@ -10,19 +10,32 @@ struct TextWriter {
 
 impl TextWriter {
     fn new() -> Self {
-        Self { buf: String::with_capacity(65536), indent: 0 }
+        Self {
+            buf: String::with_capacity(65536),
+            indent: 0,
+        }
     }
 
-    fn into_string(self) -> String { self.buf }
+    fn into_string(self) -> String {
+        self.buf
+    }
 
-    fn raw(&mut self, s: &str) { self.buf.push_str(s); }
+    fn raw(&mut self, s: &str) {
+        self.buf.push_str(s);
+    }
 
     fn pad(&mut self) {
-        for _ in 0..self.indent { self.buf.push(' '); }
+        for _ in 0..self.indent {
+            self.buf.push(' ');
+        }
     }
 
-    fn indent(&mut self) { self.indent += INDENT_SIZE; }
-    fn dedent(&mut self) { self.indent = self.indent.saturating_sub(INDENT_SIZE); }
+    fn indent(&mut self) {
+        self.indent += INDENT_SIZE;
+    }
+    fn dedent(&mut self) {
+        self.indent = self.indent.saturating_sub(INDENT_SIZE);
+    }
 
     fn write_float(&mut self, v: f32) {
         // Match C# InvariantCulture float formatting
@@ -103,7 +116,11 @@ impl TextWriter {
                 self.raw(value_type.name());
                 self.raw("]");
             }
-            BinValue::Map { key_type, value_type, .. } => {
+            BinValue::Map {
+                key_type,
+                value_type,
+                ..
+            } => {
                 self.raw("map[");
                 self.raw(key_type.name());
                 self.raw(",");
@@ -118,35 +135,74 @@ impl TextWriter {
         match value {
             BinValue::None => self.raw("null"),
             BinValue::Bool(v) => self.raw(if *v { "true" } else { "false" }),
-            BinValue::I8(v) => { write!(self.buf, "{}", v).ok(); }
-            BinValue::U8(v) => { write!(self.buf, "{}", v).ok(); }
-            BinValue::I16(v) => { write!(self.buf, "{}", v).ok(); }
-            BinValue::U16(v) => { write!(self.buf, "{}", v).ok(); }
-            BinValue::I32(v) => { write!(self.buf, "{}", v).ok(); }
-            BinValue::U32(v) => { write!(self.buf, "{}", v).ok(); }
-            BinValue::I64(v) => { write!(self.buf, "{}", v).ok(); }
-            BinValue::U64(v) => { write!(self.buf, "{}", v).ok(); }
+            BinValue::I8(v) => {
+                write!(self.buf, "{}", v).ok();
+            }
+            BinValue::U8(v) => {
+                write!(self.buf, "{}", v).ok();
+            }
+            BinValue::I16(v) => {
+                write!(self.buf, "{}", v).ok();
+            }
+            BinValue::U16(v) => {
+                write!(self.buf, "{}", v).ok();
+            }
+            BinValue::I32(v) => {
+                write!(self.buf, "{}", v).ok();
+            }
+            BinValue::U32(v) => {
+                write!(self.buf, "{}", v).ok();
+            }
+            BinValue::I64(v) => {
+                write!(self.buf, "{}", v).ok();
+            }
+            BinValue::U64(v) => {
+                write!(self.buf, "{}", v).ok();
+            }
             BinValue::F32(v) => self.write_float(*v),
             BinValue::Vec2(v) => {
-                self.raw("{ "); self.write_float(v[0]); self.raw(", "); self.write_float(v[1]); self.raw(" }");
+                self.raw("{ ");
+                self.write_float(v[0]);
+                self.raw(", ");
+                self.write_float(v[1]);
+                self.raw(" }");
             }
             BinValue::Vec3(v) => {
-                self.raw("{ "); self.write_float(v[0]); self.raw(", "); self.write_float(v[1]); self.raw(", "); self.write_float(v[2]); self.raw(" }");
+                self.raw("{ ");
+                self.write_float(v[0]);
+                self.raw(", ");
+                self.write_float(v[1]);
+                self.raw(", ");
+                self.write_float(v[2]);
+                self.raw(" }");
             }
             BinValue::Vec4(v) => {
-                self.raw("{ "); self.write_float(v[0]); self.raw(", "); self.write_float(v[1]); self.raw(", "); self.write_float(v[2]); self.raw(", "); self.write_float(v[3]); self.raw(" }");
+                self.raw("{ ");
+                self.write_float(v[0]);
+                self.raw(", ");
+                self.write_float(v[1]);
+                self.raw(", ");
+                self.write_float(v[2]);
+                self.raw(", ");
+                self.write_float(v[3]);
+                self.raw(" }");
             }
             BinValue::Mtx44(m) => {
-                self.raw("{\n"); self.indent();
+                self.raw("{\n");
+                self.indent();
                 for row in 0..4 {
                     self.pad();
                     for col in 0..4 {
                         self.write_float(m[row * 4 + col]);
-                        if col < 3 { self.raw(", "); }
+                        if col < 3 {
+                            self.raw(", ");
+                        }
                     }
                     self.raw("\n");
                 }
-                self.dedent(); self.pad(); self.raw("}");
+                self.dedent();
+                self.pad();
+                self.raw("}");
             }
             BinValue::Rgba(r, g, b, a) => {
                 write!(self.buf, "{{ {}, {}, {}, {} }}", r, g, b, a).ok();
@@ -157,7 +213,9 @@ impl TextWriter {
             BinValue::Link(l) => self.write_hash_value_fnv(l),
             BinValue::Flag(v) => self.raw(if *v { "true" } else { "false" }),
 
-            BinValue::List { items, .. } | BinValue::List2 { items, .. } | BinValue::Option { items, .. } => {
+            BinValue::List { items, .. }
+            | BinValue::List2 { items, .. }
+            | BinValue::Option { items, .. } => {
                 self.write_item_list(items);
             }
             BinValue::Map { items, .. } => self.write_map_items(items),
@@ -184,13 +242,16 @@ impl TextWriter {
             self.raw("{}");
             return;
         }
-        self.raw("{\n"); self.indent();
+        self.raw("{\n");
+        self.indent();
         for item in items {
             self.pad();
             self.write_value(item);
             self.raw("\n");
         }
-        self.dedent(); self.pad(); self.raw("}");
+        self.dedent();
+        self.pad();
+        self.raw("}");
     }
 
     fn write_map_items(&mut self, items: &[(BinValue, BinValue)]) {
@@ -198,7 +259,8 @@ impl TextWriter {
             self.raw("{}");
             return;
         }
-        self.raw("{\n"); self.indent();
+        self.raw("{\n");
+        self.indent();
         for (k, v) in items {
             self.pad();
             self.write_value(k);
@@ -206,7 +268,9 @@ impl TextWriter {
             self.write_value(v);
             self.raw("\n");
         }
-        self.dedent(); self.pad(); self.raw("}");
+        self.dedent();
+        self.pad();
+        self.raw("}");
     }
 
     fn write_fields(&mut self, fields: &[BinField]) {
@@ -214,7 +278,8 @@ impl TextWriter {
             self.raw("{}");
             return;
         }
-        self.raw("{\n"); self.indent();
+        self.raw("{\n");
+        self.indent();
         for field in fields {
             self.pad();
             self.write_hash_name(&field.key);
@@ -224,7 +289,9 @@ impl TextWriter {
             self.write_value(&field.value);
             self.raw("\n");
         }
-        self.dedent(); self.pad(); self.raw("}");
+        self.dedent();
+        self.pad();
+        self.raw("}");
     }
 
     fn write_section(&mut self, name: &str, value: &BinValue) {

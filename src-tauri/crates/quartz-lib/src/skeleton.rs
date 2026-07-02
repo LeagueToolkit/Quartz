@@ -1,7 +1,7 @@
 /* League skeleton (.skl) reading for the AniPort mask viewer. Parses a modern
-   skeleton with the ritoshark `anim` crate and exposes the flat joint list plus
-   the parent indices the mask UI needs. Includes an auto-detect helper that maps
-   a game-relative skeleton path (from a skins .bin) onto the real .skl on disk. */
+skeleton with the ritoshark `anim` crate and exposes the flat joint list plus
+the parent indices the mask UI needs. Includes an auto-detect helper that maps
+a game-relative skeleton path (from a skins .bin) onto the real .skl on disk. */
 
 use std::path::{Path, PathBuf};
 
@@ -54,21 +54,24 @@ pub fn read_skeleton(bytes: &[u8]) -> Result<SkeletonInfo> {
 
 /// Read and parse a skeleton from a file on disk.
 pub fn read_skeleton_file<P: AsRef<Path>>(path: P) -> Result<SkeletonInfo> {
-    let bytes = std::fs::read(path.as_ref())
-        .map_err(|e| Error::io_with_path(e, path.as_ref()))?;
+    let bytes = std::fs::read(path.as_ref()).map_err(|e| Error::io_with_path(e, path.as_ref()))?;
     read_skeleton(&bytes)
 }
 
 /* Resolve the real .skl path for a skins/animation bin.
 
-   `skeleton_ref` is the game-relative skeleton path pulled from the skins bin
-   (e.g. "ASSETS/Characters/Aatrox/Skins/Base/Aatrox.skl"). Mod folders mirror
-   the game tree, so we locate the .skl by:
-     1. trying `explicit` if the caller already knows the path,
-     2. anchoring the game-relative path onto the mod root (walk up from the bin
-        until a parent + skeleton_ref resolves to a real file),
-     3. falling back to a single .skl sitting next to the bin. */
-pub fn autodetect_skl(bin_path: &str, skeleton_ref: Option<&str>, explicit: Option<&str>) -> Result<PathBuf> {
+`skeleton_ref` is the game-relative skeleton path pulled from the skins bin
+(e.g. "ASSETS/Characters/Aatrox/Skins/Base/Aatrox.skl"). Mod folders mirror
+the game tree, so we locate the .skl by:
+  1. trying `explicit` if the caller already knows the path,
+  2. anchoring the game-relative path onto the mod root (walk up from the bin
+     until a parent + skeleton_ref resolves to a real file),
+  3. falling back to a single .skl sitting next to the bin. */
+pub fn autodetect_skl(
+    bin_path: &str,
+    skeleton_ref: Option<&str>,
+    explicit: Option<&str>,
+) -> Result<PathBuf> {
     if let Some(p) = explicit {
         let pb = PathBuf::from(p);
         if pb.is_file() {

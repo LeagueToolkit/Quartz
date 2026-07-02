@@ -1,10 +1,10 @@
 /* Generic WAD-reading commands.
 
-   Thin wrappers over `quartz_lib::wad`. These cover the primitives the Port
-   ("load donor from game") and Sound Banks ("extract banks from game") flows
-   build on: find a champion's WAD, read its table of contents, and extract a
-   chosen set of chunks. Domain-specific orchestration commands live elsewhere
-   and call `quartz_lib::wad` directly. */
+Thin wrappers over `quartz_lib::wad`. These cover the primitives the Port
+("load donor from game") and Sound Banks ("extract banks from game") flows
+build on: find a champion's WAD, read its table of contents, and extract a
+chosen set of chunks. Domain-specific orchestration commands live elsewhere
+and call `quartz_lib::wad` directly. */
 
 use quartz_lib::wad::{self, ChunkSel, ExtractResult, WadTocEntry};
 use std::path::PathBuf;

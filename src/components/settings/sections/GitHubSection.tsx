@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Github, Link, RefreshCw } from 'lucide-react';
+import { Github, Link, RefreshCw, User, KeyRound } from 'lucide-react';
 import { FormGroup, Input, InputWithToggle, Button } from '../primitives';
 import { useUiPrefsStore } from '@/lib/stores';
 
@@ -53,11 +53,11 @@ export function GitHubSection() {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <FormGroup label="Username" description="Your GitHub username">
+            <FormGroup label="Username" icon={<User size={15} />}>
                 <Input value={username} onChange={(e) => set('githubUsername', e.target.value)} placeholder="e.g., frogcslol" />
             </FormGroup>
 
-            <FormGroup label="Personal Access Token" description="Token with repo permissions">
+            <FormGroup label="Personal Access Token" icon={<KeyRound size={15} />}>
                 <InputWithToggle
                     type={showToken ? 'text' : 'password'}
                     value={token}
@@ -68,7 +68,7 @@ export function GitHubSection() {
                 />
             </FormGroup>
 
-            <FormGroup label="Repository URL" description="VFX Hub repository">
+            <FormGroup label="Repository URL" icon={<Link size={15} />}>
                 <Input value={repo} onChange={(e) => set('githubRepoUrl', e.target.value)} placeholder="https://github.com/..." icon={<Link size={16} />} />
             </FormGroup>
 

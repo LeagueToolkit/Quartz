@@ -1,19 +1,20 @@
-import { useState } from 'react';
-import { Palette, Terminal, HardDrive, Eye, Github, FolderTree, FlaskConical, type LucideIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Settings as SettingsIcon, Palette, Terminal, HardDrive, Eye, Github, FlaskConical, type LucideIcon } from 'lucide-react';
+import { useNavigationStore } from '@/lib/stores';
+import { GeneralSection } from '@/components/settings/sections/GeneralSection';
 import { AppearanceSection } from '@/components/settings/sections/AppearanceSection';
-import { PathsSection } from '@/components/settings/sections/PathsSection';
 import { ToolsSection } from '@/components/settings/sections/ToolsSection';
 import { WindowsIntegrationSection } from '@/components/settings/sections/WindowsIntegrationSection';
 import { PageVisibilitySection } from '@/components/settings/sections/PageVisibilitySection';
 import { GitHubSection } from '@/components/settings/sections/GitHubSection';
 import { DevSection } from '@/components/settings/sections/DevSection';
 
-type SectionId = 'appearance' | 'paths' | 'tools' | 'windowsIntegration' | 'pages' | 'github' | 'dev';
+type SectionId = 'general' | 'appearance' | 'tools' | 'windowsIntegration' | 'pages' | 'github' | 'dev';
 
 // The Dev section is only surfaced in development builds.
 const SECTIONS: { id: SectionId; name: string; icon: LucideIcon }[] = [
+    { id: 'general', name: 'General', icon: SettingsIcon },
     { id: 'appearance', name: 'Appearance', icon: Palette },
-    { id: 'paths', name: 'League Path', icon: FolderTree },
     { id: 'tools', name: 'External Tools', icon: Terminal },
     { id: 'windowsIntegration', name: 'Windows Integration', icon: HardDrive },
     { id: 'pages', name: 'Page Visibility', icon: Eye },
@@ -23,8 +24,8 @@ const SECTIONS: { id: SectionId; name: string; icon: LucideIcon }[] = [
 
 function SectionContent({ id }: { id: SectionId }) {
     switch (id) {
+        case 'general': return <GeneralSection />;
         case 'appearance': return <AppearanceSection />;
-        case 'paths': return <PathsSection />;
         case 'tools': return <ToolsSection />;
         case 'windowsIntegration': return <WindowsIntegrationSection />;
         case 'pages': return <PageVisibilitySection />;
@@ -34,13 +35,24 @@ function SectionContent({ id }: { id: SectionId }) {
 }
 
 export function Settings() {
-    const [selected, setSelected] = useState<SectionId>('appearance');
+    const target = useNavigationStore((s) => s.settingsTarget);
+    const [selected, setSelected] = useState<SectionId>(
+        (target?.section as SectionId) ?? 'general',
+    );
+
+    // If we were navigated here with a deep-link target, open its section. The
+    // highlight flag stays in the store for the section to consume; clear it once
+    // it's had a chance to fire.
+    useEffect(() => {
+        if (target?.section) setSelected(target.section as SectionId);
+    }, [target?.section]);
 
     return (
-        <div style={{ width: '100%', minHeight: '100%', color: 'var(--text-primary)', fontFamily: "var(--app-font, 'JetBrains Mono', monospace)" }}>
+        <div style={{ width: '100%', minHeight: '100%', color: 'var(--text-primary)', fontFamily: "var(--app-font, 'var(--font-mono)', monospace)" }}>
             <div style={{ display: 'flex', gap: '24px', maxWidth: '1400px', width: '100%', margin: '0 auto' }}>
-                {/* Section sidebar */}
-                <div style={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {/* Section sidebar — Celestial-style rail: brand-tinted active state with
+                   inset accent edge + glow, subtle hover lift on inactive items. */}
+                <div style={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     {SECTIONS.map(({ id, name, icon: Icon }) => {
                         const active = selected === id;
                         return (
@@ -48,28 +60,53 @@ export function Settings() {
                                 key={id}
                                 onClick={() => setSelected(id)}
                                 style={{
-                                    padding: '12px 16px',
-                                    background: active ? 'color-mix(in oklab, var(--accent-primary) 12%, transparent)' : 'transparent',
-                                    border: active ? '1px solid var(--accent-primary)' : '1px solid var(--border)',
+                                    position: 'relative',
+                                    transformOrigin: 'left',
+                                    padding: '8px 12px',
+                                    background: active ? 'color-mix(in oklab, var(--accent-primary) 16%, transparent)' : 'transparent',
+                                    border: 'none',
                                     borderRadius: 'var(--radius-sm)',
                                     color: active ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                                    fontSize: '14px', fontWeight: active ? 600 : 500, fontFamily: 'inherit',
-                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px',
-                                    transition: 'all var(--motion-fast)', textAlign: 'left',
+                                    fontSize: '13px', fontWeight: 600, fontFamily: 'inherit',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
+                                    transition: 'transform var(--motion-base), background-color var(--motion-base), color var(--motion-base), opacity var(--motion-base)',
+                                    textAlign: 'left',
+                                    opacity: active ? 1 : 0.75,
+                                    transform: active ? 'scale(1.02)' : 'scale(1)',
+                                    boxShadow: active
+                                        ? 'inset 2px 0 0 var(--accent-primary), 0 0 24px -4px color-mix(in srgb, var(--accent-primary) 60%, transparent)'
+                                        : 'none',
                                 }}
-                                onMouseEnter={(e) => { if (!active) { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.borderColor = 'var(--border-strong)'; } }}
-                                onMouseLeave={(e) => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border)'; } }}
+                                onMouseEnter={(e) => {
+                                    if (!active) {
+                                        e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                                        e.currentTarget.style.color = 'var(--text-primary)';
+                                        e.currentTarget.style.opacity = '1';
+                                        e.currentTarget.style.transform = 'scale(1.03)';
+                                    }
+                                }}
+                                onMouseLeave={(e) => {
+                                    if (!active) {
+                                        e.currentTarget.style.background = 'transparent';
+                                        e.currentTarget.style.color = 'var(--text-secondary)';
+                                        e.currentTarget.style.opacity = '0.75';
+                                        e.currentTarget.style.transform = 'scale(1)';
+                                    }
+                                }}
                             >
-                                <Icon size={18} />
-                                <span>{name}</span>
+                                <Icon size={16} style={{ flexShrink: 0 }} />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
                             </button>
                         );
                     })}
                 </div>
 
-                {/* Content */}
-                <div style={{ flex: 1, minWidth: 0, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '24px' }}>
-                    <SectionContent id={selected} />
+                {/* Content — Celestial-style open scroll area: no card chrome, centered
+                   column with generous horizontal padding. */}
+                <div style={{ flex: 1, minWidth: 0, padding: '4px 48px 40px' }}>
+                    <div style={{ maxWidth: '860px', margin: '0 auto' }}>
+                        <SectionContent id={selected} />
+                    </div>
                 </div>
             </div>
         </div>
