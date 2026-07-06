@@ -190,6 +190,7 @@ fn main() {
             commands::explorer::explorer_list_dir,
             commands::explorer::explorer_quick_links,
             commands::explorer::explorer_resolve_path,
+            commands::explorer::explorer_filter_existing,
             commands::explorer::explorer_reveal,
             commands::explorer::explorer_thumbnail,
         ])

@@ -67,8 +67,11 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     const nav = useExplorerNav(extFilter);
     const addRecent = useExplorerStore((s) => s.addRecent);
     const addPin = useExplorerStore((s) => s.addPin);
+    const view = useExplorerStore((s) => s.view);
+    const setView = useExplorerStore((s) => s.setView);
+    const setLastFolder = useExplorerStore((s) => s.setLastFolder);
+    const pruneRecents = useExplorerStore((s) => s.pruneRecents);
 
-    const [view, setView] = useState<'grid' | 'list'>('grid');
     const [search, setSearch] = useState('');
     const [selected, setSelected] = useState<string | null>(null); // entry.name
     const [multi, setMulti] = useState<Set<string>>(new Set()); // entry.path, files mode
@@ -82,24 +85,36 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     const isFiles = options.mode === 'files';
     const isDirectory = options.mode === 'directory';
 
-    // Boot: resolve the start folder from defaultPath (or Home) once per open.
+    // Boot: prune stale recents, then resolve the start folder. Priority:
+    // caller defaultPath -> last-visited folder -> Desktop -> Home.
     useEffect(() => {
         if (!open) return;
         setSearch(''); setSelected(null); setMulti(new Set()); setCtx(null); setFilterIdx(0);
+        void pruneRecents();
         (async () => {
             const start = options.defaultPath;
             if (start) {
                 const r = await nav.resolveAndGo(start);
                 if (r.file) { setSelected(r.file); if (isSave) setSaveName(r.file); }
-                if (!r.ok) await nav.resolveAndGo('%USERPROFILE%\\Desktop');
-            } else {
-                // No default: open on the Desktop (fall back to Home if absent).
-                const desktop = await nav.resolveAndGo('%USERPROFILE%\\Desktop');
-                if (!desktop.ok) await nav.resolveAndGo('%USERPROFILE%');
+                if (r.ok) return;
             }
+            // This picker's own most-recent entry (e.g. the last opened .bin),
+            // so each picker type reopens near where it last left off.
+            const bucketRecent = useExplorerStore.getState().recents[recentsKey]?.[0];
+            if (bucketRecent && (await nav.resolveAndGo(bucketRecent)).ok) return;
+            const last = useExplorerStore.getState().lastFolder;
+            if (last && (await nav.resolveAndGo(last)).ok) return;
+            if ((await nav.resolveAndGo('%USERPROFILE%\\Desktop')).ok) return;
+            await nav.resolveAndGo('%USERPROFILE%');
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open]);
+
+    // Remember the last folder browsed so the next open (e.g. the titlebar
+    // button) reopens where the user left off.
+    useEffect(() => {
+        if (open && nav.currentPath) setLastFolder(nav.currentPath);
+    }, [open, nav.currentPath, setLastFolder]);
 
     // Re-list the current folder when the active filter changes (skip the very
     // first render, which the boot effect already handles).

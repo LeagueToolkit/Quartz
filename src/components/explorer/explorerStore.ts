@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { explorerFilterExisting } from '@/lib/api/explorer';
 
 /* Recents (per-bucket) + pinned folders for the custom file explorer.
    Persisted to localStorage. One-time migration from old Quartz's
@@ -6,7 +7,11 @@ import { create } from 'zustand';
 
 const RECENTS_KEY = 'quartz-explorer-recents';
 const PINS_KEY = 'quartz-explorer-pins';
+const VIEW_KEY = 'quartz-explorer-view';
+const LAST_FOLDER_KEY = 'quartz-explorer-last-folder';
 const MAX_RECENTS = 10;
+
+type ViewMode = 'grid' | 'list';
 
 type Recents = Record<string, string[]>;
 
@@ -36,18 +41,30 @@ function migrate(): { recents: Recents; pins: string[] } {
 
 const initial = migrate();
 
+function loadView(): ViewMode {
+    return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid';
+}
+
 interface ExplorerState {
     recents: Recents;
     pins: string[];
+    view: ViewMode;
+    lastFolder: string;
     addRecent: (bucket: string, path: string) => void;
     removeRecent: (bucket: string, path: string) => void;
     addPin: (path: string) => void;
     removePin: (path: string) => void;
+    setView: (view: ViewMode) => void;
+    setLastFolder: (path: string) => void;
+    /** Drop recents (all buckets) + pins whose paths no longer exist. */
+    pruneRecents: () => Promise<void>;
 }
 
 export const useExplorerStore = create<ExplorerState>((set, get) => ({
     recents: initial.recents,
     pins: initial.pins,
+    view: loadView(),
+    lastFolder: localStorage.getItem(LAST_FOLDER_KEY) ?? '',
     addRecent: (bucket, path) => {
         if (!path) return;
         const cur = get().recents[bucket] ?? [];
@@ -72,5 +89,36 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
         const pins = get().pins.filter((p) => p !== path);
         localStorage.setItem(PINS_KEY, JSON.stringify(pins));
         set({ pins });
+    },
+    setView: (view) => {
+        localStorage.setItem(VIEW_KEY, view);
+        set({ view });
+    },
+    setLastFolder: (path) => {
+        if (!path) return;
+        localStorage.setItem(LAST_FOLDER_KEY, path);
+        set({ lastFolder: path });
+    },
+    pruneRecents: async () => {
+        const { recents, pins } = get();
+        // Gather every stored path once, check existence in a single backend
+        // call, then rebuild each bucket from the survivors.
+        const all = [...new Set([...Object.values(recents).flat(), ...pins])];
+        if (all.length === 0) return;
+        let alive: Set<string>;
+        try {
+            alive = new Set(await explorerFilterExisting(all));
+        } catch {
+            return; // leave lists untouched if the check fails
+        }
+        if (alive.size === all.length) return; // nothing stale
+        const nextRecents: Recents = {};
+        for (const [bucket, list] of Object.entries(recents)) {
+            nextRecents[bucket] = list.filter((p) => alive.has(p));
+        }
+        const nextPins = pins.filter((p) => alive.has(p));
+        localStorage.setItem(RECENTS_KEY, JSON.stringify(nextRecents));
+        localStorage.setItem(PINS_KEY, JSON.stringify(nextPins));
+        set({ recents: nextRecents, pins: nextPins });
     },
 }));

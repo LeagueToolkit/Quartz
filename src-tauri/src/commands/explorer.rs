@@ -307,6 +307,16 @@ pub fn explorer_resolve_path(path: String) -> ResolvedPath {
     }
 }
 
+/// Keep only the paths that still exist on disk (preserving order). Used to
+/// prune stale recents when the explorer opens.
+#[tauri::command]
+pub fn explorer_filter_existing(paths: Vec<String>) -> Vec<String> {
+    paths
+        .into_iter()
+        .filter(|p| Path::new(p).exists())
+        .collect()
+}
+
 #[tauri::command]
 pub fn explorer_reveal(app: tauri::AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;

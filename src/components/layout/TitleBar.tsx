@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Minus, Square, X, ChevronLeft, ChevronRight, Globe } from 'lucide-react';
+import { Minus, Square, X, ChevronLeft, ChevronRight, Globe, FolderOpen } from 'lucide-react';
 import { useNavigationStore, useUiPrefsStore } from '@/lib/stores';
 import { log } from '@/lib/util/logger';
 import { visibleNavItems, SETTINGS_ITEM, type NavItem } from './NavRail';
 import { CommunityPopover } from './CommunityPopover';
+import { useFileExplorer } from '@/components/explorer';
 
 const win = getCurrentWindow();
 
@@ -16,8 +17,11 @@ interface TitleBarProps {
 
 export function TitleBar({ collapsed = false }: TitleBarProps) {
     const setPage = useNavigationStore((s) => s.setPage);
+    const pick = useFileExplorer();
     const communityRef = useRef<HTMLButtonElement>(null);
     const [communityOpen, setCommunityOpen] = useState(false);
+    // Standalone browse: reopens at the last-visited folder (no defaultPath).
+    const openExplorer = () => { void pick({ mode: 'file' }); };
     const minimize = () => win.minimize().catch((e) => log.error('minimize', e));
     const maximize = () => win.toggleMaximize().catch((e) => log.error('maximize', e));
     const close = () => win.close().catch((e) => log.error('close', e));
@@ -37,6 +41,14 @@ export function TitleBar({ collapsed = false }: TitleBarProps) {
             </div>
             <div className="q-titlebar-right">
                 <div className="q-topnav-settings" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+                    <button
+                        type="button"
+                        className="q-topnavbtn"
+                        data-tip="File explorer"
+                        onClick={openExplorer}
+                    >
+                        <FolderOpen size={17} />
+                    </button>
                     <button
                         ref={communityRef}
                         type="button"

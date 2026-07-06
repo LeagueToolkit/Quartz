@@ -43,6 +43,11 @@ export function explorerReveal(path: string): Promise<void> {
     return invokeCommand<void>('explorer_reveal', { path });
 }
 
+/** Keep only paths that still exist on disk (order preserved). */
+export function explorerFilterExisting(paths: string[]): Promise<string[]> {
+    return invokeCommand<string[]>('explorer_filter_existing', { paths });
+}
+
 /** Decode an image / game texture to a PNG `data:` URL for thumbnails. */
 export function explorerThumbnail(path: string): Promise<string> {
     return invokeCommand<string>('explorer_thumbnail', { path });
