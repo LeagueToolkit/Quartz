@@ -236,3 +236,32 @@
 
 .dl-explorer__ctx { min-width: 200px; }
 .dl-modal.dl-explorer__rename { width: 380px; max-width: 90vw; }
+
+/* ── Loading skeleton (shimmer; only shown for slow folder loads) ─────────── */
+.dl-explorer__grid-blank { height: 100%; }
+.dl-explorer__grid--skel .dl-explorer-tile { pointer-events: none; }
+.dl-explorer-skel {
+    position: relative; overflow: hidden;
+    background: color-mix(in oklab, var(--text-primary) 8%, var(--bg-tertiary));
+    border-radius: 6px;
+}
+.dl-explorer-skel::after {
+    content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg,
+        transparent 0%,
+        color-mix(in oklab, var(--accent-primary) 14%, transparent) 45%,
+        color-mix(in oklab, var(--accent-primary) 22%, transparent) 50%,
+        color-mix(in oklab, var(--accent-primary) 14%, transparent) 55%,
+        transparent 100%);
+    animation: dl-explorer-shimmer 1.35s ease-in-out infinite;
+}
+.dl-explorer-skel--d1::after { animation-delay: 0.10s; }
+.dl-explorer-skel--d2::after { animation-delay: 0.22s; }
+.dl-explorer-skel--d3::after { animation-delay: 0.34s; }
+@keyframes dl-explorer-shimmer {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .dl-explorer-skel::after { animation: none; opacity: 0.5; transform: none; }
+}

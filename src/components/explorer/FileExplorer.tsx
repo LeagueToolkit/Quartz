@@ -300,6 +300,10 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
         if (selectedEntry && !selectedEntry.isDirectory) chooseFile(selectedEntry);
     };
 
+    // Only surface the skeleton if a load runs longer than this; quick folder
+    // switches (the common case) show nothing and never flash a loader.
+    const showSkeleton = useDelayedFlag(nav.loading, 180);
+
     const confirmLabel = isSave ? 'Save' : isDirectory ? 'Select folder' : isFiles ? `Select (${multi.size})` : 'Open';
     const confirmDisabled = isDirectory
         ? !nav.currentPath
@@ -358,7 +362,9 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
 
                     <div className="dl-explorer__main">
                         {nav.loading ? (
-                            <div className="dl-explorer__state"><div className="dl-explorer-preview__spinner" /><span>Loading...</span></div>
+                            // Show a skeleton only for slow loads; quick switches stay blank
+                            // (no spinner flash). Blank area holds layout meanwhile.
+                            showSkeleton ? <GridSkeleton view={view} /> : <div className="dl-explorer__grid-blank" />
                         ) : nav.error ? (
                             <div className="dl-explorer__state dl-explorer__state--error">{nav.error}</div>
                         ) : visible.length === 0 ? (
@@ -501,5 +507,36 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
             </div>
         </div>,
         document.body,
+    );
+}
+
+/** True only after `active` has stayed true for `delay` ms. Flips back to false
+ *  immediately when `active` goes false. Lets quick loads pass with no UI. */
+function useDelayedFlag(active: boolean, delay: number): boolean {
+    const [flag, setFlag] = useState(false);
+    useEffect(() => {
+        if (!active) { setFlag(false); return; }
+        const t = setTimeout(() => setFlag(true), delay);
+        return () => clearTimeout(t);
+    }, [active, delay]);
+    return flag;
+}
+
+/** Shimmer placeholder for the file grid (styled like the asset extractor's
+ *  skeleton). Only rendered for genuinely slow folder loads. */
+function GridSkeleton({ view }: { view: 'grid' | 'list' }) {
+    const count = view === 'grid' ? 24 : 12;
+    return (
+        <div className={`dl-explorer__grid dl-explorer__grid--${view} dl-explorer__grid--skel`}>
+            {Array.from({ length: count }).map((_, i) => (
+                <div key={i} className={`dl-explorer-tile dl-explorer-tile--${view}`}>
+                    <div className={`dl-explorer-tile__icon dl-explorer-skel dl-explorer-skel--d${(i % 3) + 1}`} />
+                    <span
+                        className={`dl-explorer-tile__name dl-explorer-skel dl-explorer-skel--d${(i % 3) + 1}`}
+                        style={{ height: 10, width: view === 'grid' ? '80%' : 160 }}
+                    />
+                </div>
+            ))}
+        </div>
     );
 }
