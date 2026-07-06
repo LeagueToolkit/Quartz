@@ -124,6 +124,14 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
         setEditingAddr(false);
     };
 
+    // Sidebar recents/pins may hold FILE paths (bin pickers store the file).
+    // Resolve first: a file lands on its parent folder with the file selected,
+    // a folder navigates in, a dead path is ignored (no read_dir on a file).
+    const handleSidebarNavigate = async (path: string) => {
+        const file = await nav.resolveAndGo(path);
+        if (file) { setSelected(file); if (isSave) setSaveName(file); }
+    };
+
     const chooseFile = (entry: FsEntry) => {
         addRecent(recentsKey, entry.path);
         onResolve(entry.path);
@@ -232,7 +240,7 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
 
                 {/* Body */}
                 <div className="dl-explorer__body">
-                    <ExplorerSidebar recentsKey={recentsKey} currentPath={nav.currentPath} onNavigate={nav.navigateTo} />
+                    <ExplorerSidebar recentsKey={recentsKey} currentPath={nav.currentPath} onNavigate={handleSidebarNavigate} />
 
                     <div className="dl-explorer__main">
                         {nav.loading ? (
