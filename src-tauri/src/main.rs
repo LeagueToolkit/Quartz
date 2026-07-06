@@ -187,6 +187,11 @@ fn main() {
             commands::upscale::upscayl_stream,
             commands::upscale::upscayl_batch_process,
             commands::upscale::upscayl_cancel,
+            commands::explorer::explorer_list_dir,
+            commands::explorer::explorer_quick_links,
+            commands::explorer::explorer_resolve_path,
+            commands::explorer::explorer_reveal,
+            commands::explorer::explorer_thumbnail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Quartz");

@@ -8,6 +8,7 @@ pub mod bins;
 pub mod bnk_session;
 pub mod bumpath;
 pub mod context_menu;
+pub mod explorer;
 pub mod extractor;
 pub mod fakegear;
 pub mod file_ops;
