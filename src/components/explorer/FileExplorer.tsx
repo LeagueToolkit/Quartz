@@ -89,12 +89,13 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
         (async () => {
             const start = options.defaultPath;
             if (start) {
-                const file = await nav.resolveAndGo(start);
-                if (file) { setSelected(file); if (isSave) setSaveName(file); }
+                const r = await nav.resolveAndGo(start);
+                if (r.file) { setSelected(r.file); if (isSave) setSaveName(r.file); }
+                if (!r.ok) await nav.resolveAndGo('%USERPROFILE%\\Desktop');
             } else {
-                // No default: land on Home via quick-links resolve of %USERPROFILE%.
-                const home = await nav.resolveAndGo('%USERPROFILE%');
-                void home;
+                // No default: open on the Desktop (fall back to Home if absent).
+                const desktop = await nav.resolveAndGo('%USERPROFILE%\\Desktop');
+                if (!desktop.ok) await nav.resolveAndGo('%USERPROFILE%');
             }
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -138,8 +139,8 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     if (!open) return null;
 
     const commitAddress = async () => {
-        const file = await nav.resolveAndGo(addrDraft);
-        if (file) setSelected(file);
+        const r = await nav.resolveAndGo(addrDraft);
+        if (r.file) setSelected(r.file);
         setEditingAddr(false);
     };
 
@@ -147,8 +148,8 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     // Resolve first: a file lands on its parent folder with the file selected,
     // a folder navigates in, a dead path is ignored (no read_dir on a file).
     const handleSidebarNavigate = async (path: string) => {
-        const file = await nav.resolveAndGo(path);
-        if (file) { setSelected(file); if (isSave) setSaveName(file); }
+        const r = await nav.resolveAndGo(path);
+        if (r.file) { setSelected(r.file); if (isSave) setSaveName(r.file); }
     };
 
     const chooseFile = (entry: FsEntry) => {
