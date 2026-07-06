@@ -142,7 +142,7 @@ export const useUiPrefsStore = create<UiPrefs>()(
             contextMenuEnabled: false,
             githubUsername: '',
             githubToken: '',
-            githubRepoUrl: 'https://github.com/FrogCsLoL/VFXHub',
+            githubRepoUrl: 'https://github.com/FrogCsLoL/Vfx-Hub-Rust',
             showGithubToken: false,
             recentBins: [],
             recentTargetBins: [],

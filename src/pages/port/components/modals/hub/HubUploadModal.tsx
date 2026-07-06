@@ -1,13 +1,22 @@
 import { useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Upload, Check, Image as ImageIcon } from 'lucide-react';
-import githubApi, { type UploadSystemInput } from '@/pages/vfxhub/lib/githubApi';
+import { uploadHubSystem } from './hubApi';
+import { textToBinBytes } from '@/lib/api';
 import { useUiPrefsStore } from '@/lib/stores';
 import './hub.css';
 
 export interface UploadableSystem { key: string; name: string; fullContent: string }
 
-const COLLECTIONS = ['missilevfxs.py', 'auravfxs.py', 'explosionvfxs.py', 'miscvfxs.py'];
+// Wrap a single-system ritobin fragment into a valid document so it compiles.
+const PY_HEADER = '#PROP_text\nversion: u32 = 3\nlinked: list[string] = {\n}\nentries: map[hash,embed] = {\n';
+const PY_FOOTER = '\n}\n';
+
+function bytesToBase64(bytes: number[]): string {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i] & 0xff);
+    return btoa(bin);
+}
 
 /* Upload one or more of the loaded Port TARGET's VFX systems to the hub. Needs a
    GitHub token (Settings -> GitHub Integration); otherwise shows a hint. */
@@ -24,7 +33,6 @@ export function HubUploadModal({ open, onClose, targetSystems, setStatus }: {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [category, setCategory] = useState('');
-    const [collection, setCollection] = useState(COLLECTIONS[0]);
     const [preview, setPreview] = useState<{ base64: string; ext: string } | null>(null);
     const [dragOver, setDragOver] = useState(false);
     const [busy, setBusy] = useState(false);
@@ -54,20 +62,25 @@ export function HubUploadModal({ open, onClose, targetSystems, setStatus }: {
 
     const submit = async () => {
         if (!picked.length) return;
-        const effectName = name.trim() || picked[0].name;
         setBusy(true);
         try {
-            setStatus('Uploading to hub...');
-            const systems: UploadSystemInput[] = picked.map((s) => ({ name: s.name, fullContent: s.fullContent }));
-            await githubApi.uploadVFXSystem(systems, collection, {
-                name: effectName,
-                description: description.trim(),
-                category: category.trim(),
-                emitters: undefined,
-            });
-            if (preview?.base64) {
-                setStatus('Uploading preview...');
-                await githubApi.uploadPreview(preview.base64, effectName, preview.ext);
+            for (let i = 0; i < picked.length; i++) {
+                const sys = picked[i];
+                // Name from the field only when uploading a single system.
+                const effectName = (picked.length === 1 && name.trim()) ? name.trim() : sys.name;
+                setStatus(`Compiling ${effectName}...`);
+                const emitters = (sys.fullContent.match(/VfxEmitterDefinitionData\s*\{/g) || []).length;
+                const bytes = await textToBinBytes(PY_HEADER + sys.fullContent + PY_FOOTER);
+                setStatus(`Uploading ${effectName}...`);
+                await uploadHubSystem({
+                    name: effectName,
+                    category: category.trim() || 'general',
+                    description: description.trim(),
+                    binBase64: bytesToBase64(bytes),
+                    emitters,
+                    previewBase64: i === 0 ? preview?.base64 ?? null : null,
+                    previewExt: preview?.ext,
+                });
             }
             setStatus(`Uploaded ${picked.length} system(s) to hub`);
             onClose();
@@ -119,17 +132,9 @@ export function HubUploadModal({ open, onClose, targetSystems, setStatus }: {
                             <span className="hub-upload__label">Description</span>
                             <textarea className="dl-textarea" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional" />
                         </div>
-                        <div style={{ display: 'flex', gap: 12 }}>
-                            <div className="hub-upload__field" style={{ flex: 1 }}>
-                                <span className="hub-upload__label">Category</span>
-                                <input className="dl-input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. missiles" />
-                            </div>
-                            <div className="hub-upload__field" style={{ flex: 1 }}>
-                                <span className="hub-upload__label">Collection</span>
-                                <select className="dl-input" value={collection} onChange={(e) => setCollection(e.target.value)}>
-                                    {COLLECTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                            </div>
+                        <div className="hub-upload__field">
+                            <span className="hub-upload__label">Category</span>
+                            <input className="dl-input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. auras, missiles, explosions" />
                         </div>
 
                         <div className="hub-upload__field">

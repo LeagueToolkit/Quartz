@@ -39,3 +39,8 @@ export function readBin(path: string): Promise<string> {
 export function writeBin(text: string, outPath: string): Promise<void> {
     return invokeCommand<void>('write_bin', { text, outPath });
 }
+
+/** Convert ritobin text to BIN bytes in memory (no file write). */
+export function textToBinBytes(text: string): Promise<number[]> {
+    return invokeCommand<number[]>('text_to_bin_bytes', { text });
+}

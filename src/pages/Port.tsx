@@ -625,7 +625,7 @@ function Port() {
             <HubBrowserModal
                 open={showHubBrowser}
                 onClose={() => setShowHubBrowser(false)}
-                onPickSystems={(picks) => void hubDonor.loadSystemsAsDonor(picks)}
+                onPickSystem={(system) => void hubDonor.loadSystemAsDonor(system)}
                 onOpenUpload={() => void handleOpenHubUpload()}
                 staging={hubDonor.staging}
             />

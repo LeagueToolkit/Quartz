@@ -1,47 +1,36 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, X, RefreshCw, Upload, Github } from 'lucide-react';
-import githubApi, { type HubVfxSystem } from '@/pages/vfxhub/lib/githubApi';
+import { getHubSystems, type HubSystem } from './hubApi';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { HubSystemCard } from './HubSystemCard';
-import type { HubPick } from './useHubDonor';
 import './hub.css';
 
-interface FlatSystem extends HubVfxSystem {
-    collection: string;
-    filePath: string;
-}
-
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const systemKey = (s: FlatSystem) => `${s.collection}::${s.name}`;
 
-/* VFX Hub collection browser. Loads systems from the GitHub hub, filters by
-   category + search, and lets the user pick one or more to load as the Port
-   donor. Hosts the "Upload to Hub" entry point. */
-export function HubBrowserModal({ open, onClose, onPickSystems, onOpenUpload, staging }: {
+/* VFX Hub browser. Loads systems from the .bin hub (index.json), filters by
+   category + search, and lets the user pick one to load as the Port donor.
+   Hosts the "Upload to Hub" entry point. One bin = one system, so selection is
+   single. */
+export function HubBrowserModal({ open, onClose, onPickSystem, onOpenUpload, staging }: {
     open: boolean;
     onClose: () => void;
-    onPickSystems: (picks: HubPick[]) => void;
+    onPickSystem: (system: HubSystem) => void;
     onOpenUpload: () => void;
     staging: boolean;
 }) {
-    const [systems, setSystems] = useState<FlatSystem[]>([]);
+    const [systems, setSystems] = useState<HubSystem[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [search, setSearch] = useState('');
     const [category, setCategory] = useState('All');
-    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [selected, setSelected] = useState<string | null>(null); // binFile
 
     const load = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const { collections } = await githubApi.getVFXCollections();
-            const flat: FlatSystem[] = [];
-            for (const c of collections) {
-                for (const s of c.systems) flat.push({ ...s, collection: c.name, filePath: c.filePath, category: c.category });
-            }
-            setSystems(flat);
+            setSystems(await getHubSystems());
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
         } finally {
@@ -51,7 +40,7 @@ export function HubBrowserModal({ open, onClose, onPickSystems, onOpenUpload, st
 
     useEffect(() => {
         if (!open) return;
-        setSelected(new Set());
+        setSelected(null);
         if (systems.length === 0) void load();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open]);
@@ -84,20 +73,9 @@ export function HubBrowserModal({ open, onClose, onPickSystems, onOpenUpload, st
 
     if (!open) return null;
 
-    const toggle = (s: FlatSystem) => {
-        setSelected((prev) => {
-            const next = new Set(prev);
-            const k = systemKey(s);
-            if (next.has(k)) next.delete(k); else next.add(k);
-            return next;
-        });
-    };
-
     const confirm = () => {
-        const picks: HubPick[] = systems
-            .filter((s) => selected.has(systemKey(s)))
-            .map((s) => ({ name: s.name, collectionFile: s.filePath || s.collection }));
-        if (picks.length) { onPickSystems(picks); onClose(); }
+        const sys = systems.find((s) => s.binFile === selected);
+        if (sys) { onPickSystem(sys); onClose(); }
     };
 
     return createPortal(
@@ -157,7 +135,13 @@ export function HubBrowserModal({ open, onClose, onPickSystems, onOpenUpload, st
                     ) : (
                         <div className="hub-grid">
                             {visible.map((s) => (
-                                <HubSystemCard key={systemKey(s)} system={s} selected={selected.has(systemKey(s))} onToggle={() => toggle(s)} />
+                                <HubSystemCard
+                                    key={s.binFile}
+                                    system={s}
+                                    selected={selected === s.binFile}
+                                    onToggle={() => setSelected(s.binFile)}
+                                    onActivate={() => { onPickSystem(s); onClose(); }}
+                                />
                             ))}
                         </div>
                     )}
@@ -167,8 +151,7 @@ export function HubBrowserModal({ open, onClose, onPickSystems, onOpenUpload, st
                 <div className="hub-foot">
                     <button className="dl-btn dl-btn--secondary" onClick={onOpenUpload}><Upload size={14} /><span>Upload to Hub</span></button>
                     <div className="hub-foot__spacer" />
-                    {selected.size > 0 && <span className="hub-foot__count">{selected.size} selected</span>}
-                    <button className="dl-btn dl-btn--primary" disabled={selected.size === 0 || staging} onClick={confirm}>
+                    <button className="dl-btn dl-btn--primary" disabled={!selected || staging} onClick={confirm}>
                         {staging ? 'Loading...' : 'Load as donor'}
                     </button>
                 </div>

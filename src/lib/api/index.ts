@@ -4,7 +4,7 @@ export { getAppHome, getSettings, saveSettings } from './settings';
 export { logMessage } from './logging';
 export { listCustomThemes, saveCustomTheme, deleteCustomTheme } from './theme';
 export {
-    getHashStatus, downloadHashes, reloadHashes, forceRebuildHashes, readBin, writeBin,
+    getHashStatus, downloadHashes, reloadHashes, forceRebuildHashes, readBin, writeBin, textToBinBytes,
     type HashStatus, type DownloadResult,
 } from './hashes';
 export { getLeaguePath } from './league';

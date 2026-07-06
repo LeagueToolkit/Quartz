@@ -60,7 +60,7 @@ fn asset_dest_rel(rel: &str) -> Option<String> {
 /// so `vfx_open(py_path)` finds the assets beside the bin's mod root.
 #[tauri::command]
 pub fn port_stage_hub_donor(
-    py_content: String,
+    bin_base64: String,
     assets: Vec<HubAssetBytes>,
 ) -> Result<StagedDonor, String> {
     let nanos = std::time::SystemTime::now()
@@ -73,12 +73,11 @@ pub fn port_stage_hub_donor(
     std::fs::create_dir_all(&data_dir).map_err(|e| format!("mkdir data: {e}"))?;
     std::fs::create_dir_all(&assets_dir).map_err(|e| format!("mkdir assets: {e}"))?;
 
-    // vfx_open needs a .bin, but hub systems are stored as ritobin .py text.
-    // Compile the .py to a .bin here so the donor session can open it.
-    let tree = quartz_lib::bin::text_to_tree(&py_content)
-        .map_err(|e| format!("parse donor py: {e}"))?;
-    let bin_bytes = quartz_lib::bin::write_bin(&tree)
-        .map_err(|e| format!("compile donor bin: {e}"))?;
+    // Hub systems are compiled .bin files (Vfx-Hub-Rust), so write the bin bytes
+    // straight to disk for vfx_open. No conversion needed.
+    let bin_bytes = base64::engine::general_purpose::STANDARD
+        .decode(bin_base64.as_bytes())
+        .map_err(|e| format!("decode donor bin: {e}"))?;
     let bin_path = data_dir.join("donor.bin");
     std::fs::write(&bin_path, &bin_bytes).map_err(|e| format!("write bin: {e}"))?;
 

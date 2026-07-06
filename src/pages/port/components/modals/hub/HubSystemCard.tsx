@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Layers, Image as ImageIcon } from 'lucide-react';
-import type { HubVfxSystem } from '@/pages/vfxhub/lib/githubApi';
+import type { HubSystem } from './hubApi';
 
 /* One VFX Hub system card: lazy preview image, name, emitter count, and a short
-   description. Selectable (accent ring + check). Built from theme tokens only. */
-export function HubSystemCard({ system, selected, onToggle }: {
-    system: HubVfxSystem;
+   description. Click to select, double-click to load. Theme tokens only. */
+export function HubSystemCard({ system, selected, onToggle, onActivate }: {
+    system: HubSystem;
     selected: boolean;
     onToggle: () => void;
+    onActivate: () => void;
 }) {
     const ref = useRef<HTMLButtonElement>(null);
     const [visible, setVisible] = useState(false);
@@ -28,6 +29,7 @@ export function HubSystemCard({ system, selected, onToggle }: {
             type="button"
             className={`hub-card ${selected ? 'is-selected' : ''}`}
             onClick={onToggle}
+            onDoubleClick={onActivate}
             title={system.name}
         >
             <div className="hub-card__thumb">
@@ -40,7 +42,7 @@ export function HubSystemCard({ system, selected, onToggle }: {
                 <span className="hub-card__name">{system.displayName}</span>
                 <span className="hub-card__meta">
                     <Layers size={11} />
-                    {system.emitterCount} emitter{system.emitterCount === 1 ? '' : 's'}
+                    {system.emitters} emitter{system.emitters === 1 ? '' : 's'}
                 </span>
                 {system.description && system.description.trim().toLowerCase() !== system.displayName.trim().toLowerCase() && (
                     <span className="hub-card__desc">{system.description}</span>
