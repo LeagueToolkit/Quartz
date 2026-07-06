@@ -6,7 +6,9 @@
 
 .dl-explorer-backdrop { z-index: 10000; }
 
-.dl-explorer {
+/* Override .dl-modal's 480px cap. Chained selector raises specificity so the
+   width wins regardless of stylesheet source order. */
+.dl-modal.dl-explorer {
     width: 1040px;
     max-width: 95vw;
     height: 82vh;
