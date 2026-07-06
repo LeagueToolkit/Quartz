@@ -42,21 +42,20 @@ export function SkeletonList({ count = 6 }: { count?: number }) {
     );
 }
 
-/** A full-height stack of full-width "card" skeletons (e.g. list panels that
- *  fill a column). Each card has a header line + a couple of sub-lines. */
-export function SkeletonCardList({ count = 6 }: { count?: number }) {
+/** A stack of compact single-row "card" skeletons that mirror a list of
+ *  collapsed items: a small leading glyph, a name line, and a trailing pill.
+ *  Widths vary per row so it doesn't look mechanical. */
+export function SkeletonCardList({ count = 8 }: { count?: number }) {
+    const widths = ['58%', '42%', '70%', '35%', '50%', '64%', '46%', '38%'];
     return (
         <div className="q-skel-cards">
             {Array.from({ length: count }).map((_, i) => {
                 const d = ((i % 3) + 1) as 1 | 2 | 3;
                 return (
-                    <div key={i} className="q-skel-card">
-                        <div className="q-skel-card__head">
-                            <Skeleton width={26} height={26} radius={6} delayClass={d} />
-                            <Skeleton height={12} delayClass={d} style={{ flex: 1, maxWidth: `${64 - (i % 3) * 10}%` }} />
-                        </div>
-                        <Skeleton height={9} delayClass={d} style={{ width: '90%' }} />
-                        <Skeleton height={9} delayClass={d} style={{ width: '72%' }} />
+                    <div key={i} className="q-skel-cardrow">
+                        <Skeleton width={20} height={20} radius={5} delayClass={d} />
+                        <Skeleton height={12} delayClass={d} style={{ flex: 1, maxWidth: widths[i % widths.length] }} />
+                        <Skeleton width={22} height={16} radius={5} delayClass={d} />
                     </div>
                 );
             })}
