@@ -8,8 +8,9 @@
 //!   --output <fbx>` (the C++ side parses PMX itself).
 //!
 //! The bridge exes are located via a `QUARTZ_*_FBX_BRIDGE_PATH` env override,
-//! then next to the running exe, then a dev build tree. If none resolve the
-//! call fails with a clear "not found — build it or set the env var" error.
+//! then next to the running exe, then the bundled `resources/bin/` folder (they
+//! ship as Tauri resources — see `tauri.conf.json`), then a dev build tree. If
+//! none resolve the call fails with a clear "not found" error.
 
 pub mod xps_converter;
 pub mod xps_model;
@@ -75,7 +76,12 @@ pub(crate) fn find_bridge_exe(
     let mut candidates = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
+            // Right next to the app exe.
             candidates.push(exe_dir.join(exe_name));
+            // Bundled as a Tauri resource: NSIS installs put `resources/` next
+            // to the exe, so the bridge lands at `<exe>/resources/bin/<name>`.
+            candidates.push(exe_dir.join("resources").join("bin").join(exe_name));
+            candidates.push(exe_dir.join("resources").join(exe_name));
         }
     }
     if let Some(manifest_dir) = option_env!("CARGO_MANIFEST_DIR") {

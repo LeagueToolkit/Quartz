@@ -22,6 +22,7 @@ import { FolderOpen as FolderOpenIcon, Undo2 as UndoIcon, Redo2 as RedoIcon, Sli
 import { useFileExplorer } from '@/components/explorer';
 import {
     paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintUndo, paintRedo, paintSave,
+    isStaleFileError, staleFilePaths,
     type VfxEmitter, type ColorTargetId,
     type PaletteStopInput, type RecolorOptionsInput,
 } from '@/lib/api';
@@ -374,16 +375,36 @@ function Paint() {
         },
     });
 
-    const handleSave = useCallback(async () => {
+    const handleSave = useCallback(async (force = false) => {
         if (sessionId === null) return;
         setIsLoading(true);
         setStatusMessage('Saving...');
         try {
-            const savedPath = await paintSave(sessionId);
+            const savedPaths = await paintSave(sessionId, undefined, force);
             setFileSaved(true);
-            setStatusMessage('Saved successfully');
-            notify('success', `Saved ${savedPath.split(/[\\/]/).pop()}`);
+            if (savedPaths.length === 0) {
+                setStatusMessage('Nothing to save (no changes)');
+                notify('info', 'No changes to save');
+            } else {
+                const names = savedPaths.map((p) => p.split(/[\\/]/).pop()).join(', ');
+                setStatusMessage('Saved successfully');
+                notify('success', savedPaths.length === 1 ? `Saved ${names}` : `Saved ${savedPaths.length} files: ${names}`);
+            }
         } catch (error) {
+            // A file changed on disk since opening (e.g. saved from Port/Bin Editor).
+            // Ask before clobbering; on confirm, retry with force.
+            if (!force && isStaleFileError(error)) {
+                const paths = staleFilePaths(error);
+                const names = paths.map((p) => p.split(/[\\/]/).pop()).join(', ') || 'this file';
+                setIsLoading(false);
+                const ok = window.confirm(
+                    `${names} was modified outside Paint since you opened it.\n\n`
+                    + `Saving now will overwrite those changes. Overwrite?`,
+                );
+                if (ok) await handleSave(true);
+                else setStatusMessage('Save cancelled (file changed on disk)');
+                return;
+            }
             const msg = error instanceof Error ? error.message : String(error);
             setStatusMessage(`Save error: ${msg}`);
             notify('error', `Save failed: ${msg}`);
@@ -1360,7 +1381,7 @@ function Paint() {
                     <button onClick={handleRecolor} disabled={selection.size === 0} className="dl-btn dl-btn--primary dl-btn--sm paint2-recolor-btn">
                         Recolor Selected ({visibleSelectionCount})
                     </button>
-                    <button onClick={handleSave} disabled={isLoading || fileSaved} className="dl-btn dl-btn--sm paint2-save-btn">
+                    <button onClick={() => void handleSave()} disabled={isLoading || fileSaved} className="dl-btn dl-btn--sm paint2-save-btn">
                         Save Bin
                     </button>
                 </Box>

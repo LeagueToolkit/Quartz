@@ -33,6 +33,13 @@ pub enum Error {
 
     #[error("Invalid input: {0}")]
     InvalidInput(String),
+
+    /// A file changed on disk since the session opened it, so a save would
+    /// clobber those out-of-band changes. Carries the affected paths. The
+    /// `STALE_FILE:` prefix is a stable marker the frontend matches to offer an
+    /// overwrite/cancel prompt (which re-saves with `force = true`).
+    #[error("STALE_FILE: {} file(s) changed on disk since opening: {}", .paths.len(), .paths.join(", "))]
+    StaleFile { paths: Vec<String> },
 }
 
 impl Error {

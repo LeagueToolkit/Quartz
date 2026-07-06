@@ -127,6 +127,27 @@
     background: var(--accent-primary);
     flex-shrink: 0;
 }
+/* Bin tag: shown only when linked bins are resident, so the user can see which
+   file a system lives in. Sits right after the name (before the count). */
+.biev2-row__bin {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: color-mix(in oklab, var(--accent-secondary) 14%, transparent);
+    border: 1px solid color-mix(in oklab, var(--accent-secondary) 30%, var(--border));
+    color: var(--accent-secondary);
+    flex-shrink: 0;
+}
+/* When the bin tag is present it takes the auto-margin, so the count no longer
+   needs it. */
+.biev2-row__bin + .biev2-row__dot,
+.biev2-row__bin ~ .biev2-row__count {
+    margin-left: 6px;
+}
 .biev2-row__count {
     margin-left: auto;
     font-size: 12px;

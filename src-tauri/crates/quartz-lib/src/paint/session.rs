@@ -1,16 +1,17 @@
-//! Resident bin-session registry. A session holds the parsed `Bin` tree, its
-//! VFX edit index, the source format (so save round-trips correctly), and a
-//! bounded undo stack of entry-granular COW frames (see [`crate::undo`]) —
-//! an edit only clones the top-level entries it touches, never the whole
-//! tree. Mirrors the WAD mount registry pattern.
+//! Resident bin-session registry. A session holds the main skin bin plus every
+//! resolved linked bin (via [`crate::linked_bins`]) as resident trees, one
+//! merged VFX edit index whose keys are bin-prefixed and whose paths carry a
+//! bin, the per-bin source formats, and a bounded undo stack of per-bin
+//! entry-granular COW frames (see [`crate::undo`]). An edit clones only the
+//! top-level entries it touches and marks only that bin dirty. Save writes ONLY
+//! dirty bins, each back to its own file. Mirrors `crate::vfx_session`.
 
 use super::model::{self, EditIndex, VfxModel};
 use super::recolor::{self, ColorTargetSel, PaletteStop, RecolorOptions};
-use crate::bin::{read_bin, text_to_tree, tree_to_text_cached, write_bin};
 use crate::error::{Error, Result};
-use crate::undo::{push_bounded, UndoFrame};
+use crate::linked_bins::{self, LoadedBin};
+use crate::undo::UndoFrame;
 use parking_lot::RwLock;
-use ritoshark::bin::Bin;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -20,63 +21,82 @@ pub type SessionId = u64;
 
 const UNDO_CAP: usize = 50;
 
-/// How the file was loaded, so save writes it back the same way.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SourceFormat {
-    /// Binary `.bin` — serialize the tree to bytes.
-    Bin,
-    /// `.py` / `.ritobin` text — serialize the tree to ritobin text.
-    Text,
+/// One reversible edit across the session: per-bin entry frames, so a single
+/// undo reverses the last logical edit regardless of which bins it touched.
+struct MultiUndoFrame {
+    parts: Vec<(usize, UndoFrame)>,
 }
 
-fn format_for_path(path: &Path) -> SourceFormat {
-    match path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_ascii_lowercase())
-    {
-        Some(ext) if ext == "py" || ext == "ritobin" || ext == "txt" => SourceFormat::Text,
-        _ => SourceFormat::Bin,
-    }
-}
-
-/// A sibling `.ritobin` / `.py` text dump for a saved `.bin`, if one already
-/// exists on disk. `.ritobin` wins when both are present.
-fn existing_text_sidecar(bin_path: &Path) -> Option<PathBuf> {
-    for ext in ["ritobin", "py"] {
-        let candidate = bin_path.with_extension(ext);
-        if candidate != bin_path && candidate.is_file() {
-            return Some(candidate);
+impl MultiUndoFrame {
+    fn swap_with(&mut self, bins: &mut [LoadedBin]) {
+        for (bin_idx, frame) in self.parts.iter_mut() {
+            if let Some(lb) = bins.get_mut(*bin_idx) {
+                frame.swap_with(&mut lb.tree);
+                lb.dirty = true;
+            }
         }
     }
-    None
+
+    /// True when this frame recorded no entries (nothing to undo).
+    fn is_empty(&self) -> bool {
+        self.parts.is_empty()
+    }
 }
 
 pub struct BinSession {
     pub id: SessionId,
-    pub source_path: PathBuf,
-    pub source_format: SourceFormat,
-    pub tree: Bin,
+    /// Index 0 is always the main bin; linked bins follow in `linked` order.
+    pub bins: Vec<LoadedBin>,
     pub index: EditIndex,
-    undo: Vec<UndoFrame>,
-    redo: Vec<UndoFrame>,
+    undo: Vec<MultiUndoFrame>,
+    redo: Vec<MultiUndoFrame>,
 }
 
 impl BinSession {
-    /// Reproject the edit index + view model from the current tree. Called after
-    /// any structural change (open, undo). Edits that only change vec4/u8 values
-    /// keep the index valid, so they don't need a reproject.
+    /// Reproject the edit index + view model from all resident bins. Called
+    /// after any structural change (open, undo). Edits that only change
+    /// vec4/u8 values keep the index valid, so they don't need a reproject.
     fn reproject(&mut self) -> VfxModel {
-        let (model, index) = model::project(&self.tree);
+        let (model, index) = model::project_all(&self.bins);
         self.index = index;
         model
     }
 
     /// Commit a completed edit's frame to the undo stack. A fresh edit
     /// invalidates the redo history.
-    fn push_undo(&mut self, frame: UndoFrame) {
-        push_bounded(&mut self.undo, frame, UNDO_CAP);
+    fn push_undo(&mut self, frame: MultiUndoFrame) {
+        if self.undo.len() >= UNDO_CAP {
+            self.undo.remove(0);
+        }
+        self.undo.push(frame);
         self.redo.clear();
+    }
+
+    /// Capture one undo frame across the bins for the given `(bin, entry)`
+    /// touch set, grouping entries per bin.
+    fn capture(&self, touched: impl IntoIterator<Item = (usize, usize)>) -> MultiUndoFrame {
+        let mut by_bin: std::collections::BTreeMap<usize, Vec<usize>> = Default::default();
+        for (b, e) in touched {
+            by_bin.entry(b).or_default().push(e);
+        }
+        let parts = by_bin
+            .into_iter()
+            .filter_map(|(b, entries)| {
+                self.bins
+                    .get(b)
+                    .map(|lb| (b, UndoFrame::capture(&lb.tree, entries)))
+            })
+            .collect();
+        MultiUndoFrame { parts }
+    }
+
+    /// Mark every bin in the touch set dirty.
+    fn dirty_bins(&mut self, bins_touched: impl IntoIterator<Item = usize>) {
+        for b in bins_touched {
+            if let Some(lb) = self.bins.get_mut(b) {
+                lb.dirty = true;
+            }
+        }
     }
 }
 
@@ -93,32 +113,19 @@ pub struct OpenResult {
     pub model: VfxModel,
 }
 
-/// Open a `.bin`/`.py`/`.ritobin`, parse it into a resident tree, and register
-/// the session. Binary files load straight into the tree (no text conversion).
+/// Open a `.bin` (plus its resolvable linked bins) into a resident session and
+/// register it. The main bin is index 0; linked bins follow. A `.py`/`.ritobin`
+/// main opens as a single bin with no link resolution.
 pub fn open(path: impl AsRef<Path>) -> Result<OpenResult> {
     let path = path.as_ref().to_path_buf();
-    let format = format_for_path(&path);
-
-    let tree = match format {
-        SourceFormat::Bin => {
-            let data = std::fs::read(&path).map_err(|e| Error::io_with_path(e, &path))?;
-            read_bin(&data).map_err(|e| Error::InvalidInput(e.to_string()))?
-        }
-        SourceFormat::Text => {
-            let text = std::fs::read_to_string(&path).map_err(|e| Error::io_with_path(e, &path))?;
-            text_to_tree(&text).map_err(|e| Error::InvalidInput(e.to_string()))?
-        }
-    };
-
-    let (model, index) = model::project(&tree);
+    let bins = linked_bins::open_with_linked(&path)?;
+    let (model, index) = model::project_all(&bins);
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     registry().write().insert(
         id,
         BinSession {
             id,
-            source_path: path,
-            source_format: format,
-            tree,
+            bins,
             index,
             undo: Vec::new(),
             redo: Vec::new(),
@@ -130,7 +137,7 @@ pub fn open(path: impl AsRef<Path>) -> Result<OpenResult> {
     })
 }
 
-/// Drop a session and free its tree. Returns false if the id was unknown.
+/// Drop a session and free its trees. Returns false if the id was unknown.
 pub fn close(id: SessionId) -> bool {
     registry().write().remove(&id).is_some()
 }
@@ -156,18 +163,26 @@ pub fn recolor_emitters(
 ) -> Result<usize> {
     with_session(id, |s| {
         // Every path a recolor can write lives under the selected emitters'
-        // color targets — snapshot just those entries (systems).
-        let touched: Vec<usize> = emitter_keys
+        // color targets — snapshot just those (bin, entry) pairs.
+        let touched: Vec<(usize, usize)> = emitter_keys
             .iter()
             .filter_map(|k| s.index.emitter_colors.get(k))
             .flat_map(|slots| slots.values())
             .flat_map(|t| t.constant.iter().chain(t.keyframes.iter()))
-            .map(|p| p.entry)
+            .map(|p| (p.bin, p.entry))
             .collect();
-        let frame = UndoFrame::capture(&s.tree, touched);
-        let n =
-            recolor::recolor_emitters(&mut s.tree, &s.index, emitter_keys, targets, palette, opts);
+        let bins_touched: Vec<usize> = touched.iter().map(|(b, _)| *b).collect();
+        let frame = s.capture(touched);
+        let n = recolor::recolor_emitters(
+            &mut s.bins,
+            &s.index,
+            emitter_keys,
+            targets,
+            palette,
+            opts,
+        );
         if n > 0 {
+            s.dirty_bins(bins_touched);
             s.push_undo(frame);
         }
         n
@@ -185,10 +200,16 @@ pub fn set_material_param(
         let Some(path) = s.index.material_params.get(selection_key).cloned() else {
             return false;
         };
-        let frame = UndoFrame::capture(&s.tree, [path.entry]);
-        let changed =
-            recolor::recolor_material_param(&mut s.tree, &path, new_color, preserve_alpha, false);
+        let frame = s.capture([(path.bin, path.entry)]);
+        let changed = recolor::recolor_material_param(
+            &mut s.bins,
+            &path,
+            new_color,
+            preserve_alpha,
+            false,
+        );
         if changed {
+            s.dirty_bins([path.bin]);
             s.push_undo(frame);
         }
         changed
@@ -201,8 +222,8 @@ pub fn set_blend_mode(id: SessionId, emitter_key: &str, mode: u8) -> Result<bool
         let Some(path) = s.index.blend_modes.get(emitter_key).cloned() else {
             return false;
         };
-        let frame = UndoFrame::capture(&s.tree, [path.entry]);
-        let changed = match path.resolve_mut(&mut s.tree) {
+        let frame = s.capture([(path.bin, path.entry)]);
+        let changed = match path.resolve_mut(&mut s.bins) {
             Some(ritoshark::bin::BinValue::U8(v)) => {
                 if *v != mode {
                     *v = mode;
@@ -214,6 +235,7 @@ pub fn set_blend_mode(id: SessionId, emitter_key: &str, mode: u8) -> Result<bool
             _ => false,
         };
         if changed {
+            s.dirty_bins([path.bin]);
             s.push_undo(frame);
         }
         changed
@@ -228,7 +250,7 @@ pub fn undo(id: SessionId) -> Result<Option<VfxModel>> {
             Some(mut frame) => {
                 // Swap the stored entries back in; the frame now holds the
                 // undone state and parks on the redo stack.
-                frame.swap_with(&mut s.tree);
+                frame.swap_with(&mut s.bins);
                 s.redo.push(frame);
                 Some(s.reproject())
             }
@@ -242,8 +264,11 @@ pub fn undo(id: SessionId) -> Result<Option<VfxModel>> {
 pub fn redo(id: SessionId) -> Result<Option<VfxModel>> {
     with_session(id, |s| match s.redo.pop() {
         Some(mut frame) => {
-            frame.swap_with(&mut s.tree);
-            push_bounded(&mut s.undo, frame, UNDO_CAP);
+            frame.swap_with(&mut s.bins);
+            if s.undo.len() >= UNDO_CAP {
+                s.undo.remove(0);
+            }
+            s.undo.push(frame);
             Some(s.reproject())
         }
         None => None,
@@ -253,7 +278,7 @@ pub fn redo(id: SessionId) -> Result<Option<VfxModel>> {
 /// Re-fetch the full VFX model (after edits, to refresh views).
 pub fn model_of(id: SessionId) -> Result<VfxModel> {
     with_session(id, |s| {
-        let (model, _) = model::project(&s.tree);
+        let (model, _) = model::project_all(&s.bins);
         model
     })
 }
@@ -267,53 +292,43 @@ pub fn emitter_colors_of(
 ) -> Result<HashMap<String, model::EmitterColors>> {
     with_session(id, |s| {
         let mut out = HashMap::new();
-        let BinSession { tree, index, .. } = s;
+        let BinSession { bins, index, .. } = s;
         for key in emitter_keys {
             if let Some(slots) = index.emitter_colors.get(key) {
-                out.insert(key.clone(), model::emitter_colors_from_targets(tree, slots));
+                out.insert(key.clone(), model::emitter_colors_from_targets(bins, slots));
             }
         }
         out
     })
 }
 
-/// Serialize the resident tree to disk in its original format. `out_path`
-/// overrides the source path (e.g. Save As); otherwise saves in place.
-pub fn save(id: SessionId, out_path: Option<PathBuf>) -> Result<PathBuf> {
-    with_session(id, |s| -> Result<PathBuf> {
-        let dest = out_path.unwrap_or_else(|| s.source_path.clone());
-        // Honor the destination's own extension (Save As to a different format),
-        // falling back to the source format when the dest has no extension.
-        let format = match dest.extension() {
-            Some(_) => format_for_path(&dest),
-            None => s.source_format,
-        };
-        match format {
-            SourceFormat::Bin => {
-                let bytes =
-                    write_bin(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
+/// Save the session. With `out_path = None`, writes ONLY the dirty bins, each
+/// back to its own file in its own format (via [`crate::linked_bins::save_dirty`]),
+/// and returns the paths written. With `out_path = Some(dest)`, this is a
+/// Save-As of the MAIN bin (index 0) to `dest`; linked bins are not written.
+pub fn save(id: SessionId, out_path: Option<PathBuf>, force: bool) -> Result<Vec<PathBuf>> {
+    with_session(id, |s| -> Result<Vec<PathBuf>> {
+        match out_path {
+            None => linked_bins::save_dirty_checked(&mut s.bins, force),
+            Some(dest) => {
+                let main = s
+                    .bins
+                    .get_mut(0)
+                    .ok_or_else(|| Error::InvalidInput("Session has no bins".to_string()))?;
+                let bytes = crate::bin::write_bin(&main.tree)
+                    .map_err(|e| Error::InvalidInput(e.to_string()))?;
                 std::fs::write(&dest, bytes).map_err(|e| Error::io_with_path(e, &dest))?;
-                // Keep a sibling .ritobin / .py text dump in sync, but only if one
-                // already sits next to the bin — don't create new files.
-                if let Some(sidecar) = existing_text_sidecar(&dest) {
-                    let text = tree_to_text_cached(&s.tree)
-                        .map_err(|e| Error::InvalidInput(e.to_string()))?;
-                    std::fs::write(&sidecar, text).map_err(|e| Error::io_with_path(e, &sidecar))?;
-                }
-            }
-            SourceFormat::Text => {
-                let text =
-                    tree_to_text_cached(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
-                std::fs::write(&dest, text).map_err(|e| Error::io_with_path(e, &dest))?;
+                main.dirty = false;
+                Ok(vec![dest])
             }
         }
-        Ok(dest)
     })?
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bin::write_bin;
     use crate::paint::recolor::RecolorMode;
     use std::time::Instant;
 
@@ -326,8 +341,17 @@ mod tests {
         p.is_file().then_some(p)
     }
 
+    /// Byte fingerprint of the whole session (all resident bins concatenated),
+    /// so undo/redo replay is verified across linked bins too.
     fn bytes_of(id: SessionId) -> Vec<u8> {
-        with_session(id, |s| write_bin(&s.tree).unwrap()).unwrap()
+        with_session(id, |s| {
+            let mut out = Vec::new();
+            for lb in &s.bins {
+                out.extend(write_bin(&lb.tree).unwrap());
+            }
+            out
+        })
+        .unwrap()
     }
 
     fn opts(seed: u64) -> RecolorOptions {
@@ -437,9 +461,9 @@ mod tests {
             let iters = 10u32;
             let t0 = Instant::now();
             for _ in 0..iters {
-                std::hint::black_box(s.tree.clone());
+                std::hint::black_box(s.bins[0].tree.clone());
             }
-            (s.tree.entries.len(), t0.elapsed() / iters)
+            (s.bins[0].tree.entries.len(), t0.elapsed() / iters)
         })
         .unwrap();
 

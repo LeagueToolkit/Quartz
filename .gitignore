@@ -42,3 +42,6 @@ Thumbs.db
 
 # Reference clone (not part of the project)
 Flint-ref/
+
+# Agent tooling scratch (progress ledgers, etc.)
+.superpowers/

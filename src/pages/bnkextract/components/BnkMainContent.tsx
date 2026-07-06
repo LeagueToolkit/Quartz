@@ -1,11 +1,11 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Box, Typography, Divider, Slider } from '@mui/material';
 import {
-    Search, Close, SortByAlpha, Undo, Redo, Download, Upload, VolumeOff, Save, PlayArrow, Stop, VolumeUp, Settings, AutoFixHigh,
+    Search, Close, SortByAlpha, Download, Upload, VolumeOff, Save, PlayArrow, Stop, VolumeUp, Settings, AutoFixHigh,
 } from '@mui/icons-material';
 import type { SxProps, Theme } from '@mui/material';
 import TreeNode from './TreeNode';
-import type { BnkNode, DroppedFile, HistoryEntry, LastSelected, Pane, SortMode, ViewMode } from '../types';
+import type { BnkNode, DroppedFile, LastSelected, Pane, SortMode, ViewMode } from '../types';
 
 const ROW_HEIGHT = 30;
 const OVERSCAN = 6;
@@ -154,10 +154,6 @@ interface Props {
     rightSelectedNodes: Set<string>;
     setRightSelectedNodes: React.Dispatch<React.SetStateAction<Set<string>>>;
     rightExpandedNodes: Set<string>;
-    handleUndo: () => void;
-    undoStack: HistoryEntry[];
-    handleRedo: () => void;
-    redoStack: HistoryEntry[];
     handleExtract: () => void;
     handleReplace: () => void;
     hasAudioSelection: () => boolean;
@@ -186,7 +182,6 @@ export default function BnkMainContent(props: Props) {
         rightPaneDragOver, handleRightPaneDragOver, handleRightPaneDragLeave, handleRightPaneFileDrop,
         rightSearchQuery, setRightSearchQuery, rightSortMode, setRightSortMode, leftSortMode, setLeftSortMode,
         filteredRightTree, rightSelectedNodes, setRightSelectedNodes, rightExpandedNodes,
-        handleUndo, undoStack, handleRedo, redoStack,
         handleExtract, handleReplace, hasAudioSelection, handleMakeSilent, handleSave, hasRootSelection,
         handlePlaySelected, stopAudio, volume, setVolume, treeData, rightTreeData,
         setShowSettingsModal, stampDropTarget,
@@ -372,27 +367,6 @@ export default function BnkMainContent(props: Props) {
             )}
 
             <Box className="bnk-extract-sidebar" sx={sidebarStyle}>
-                <Box sx={{ display: 'flex', gap: 0.5, mb: 1 }}>
-                    <button
-                        className="dl-btn dl-btn--secondary dl-btn--sm"
-                        style={{ flex: 1, justifyContent: 'center' }}
-                        onClick={handleUndo}
-                        disabled={undoStack.length === 0}
-                        title="Undo (Ctrl+Z)"
-                    >
-                        <span className="dl-icon"><Undo sx={{ fontSize: 16 }} /></span>
-                    </button>
-                    <button
-                        className="dl-btn dl-btn--secondary dl-btn--sm"
-                        style={{ flex: 1, justifyContent: 'center' }}
-                        onClick={handleRedo}
-                        disabled={redoStack.length === 0}
-                        title="Redo (Ctrl+Y)"
-                    >
-                        <span className="dl-icon"><Redo sx={{ fontSize: 16 }} /></span>
-                    </button>
-                </Box>
-
                 <button className="dl-btn dl-btn--primary" onClick={handleExtract} disabled={selectedNodes.size === 0}>
                     <span className="dl-icon"><Download sx={{ fontSize: 12 }} /></span>
                     <span>Extract</span>

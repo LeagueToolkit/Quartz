@@ -36,6 +36,50 @@ pub struct WadExtractResult {
     pub hashed_named: usize,
 }
 
+// ── progress ────────────────────────────────────────────────────────────────
+
+/// Emits a `[<tag>] Progress N% (done/total) <suffix>` line to stderr each time
+/// a whole-percent boundary is crossed, so the Explorer console shows movement
+/// during long WAD scans/unpacks (matches the old quartz_cli output).
+struct Progress {
+    total: usize,
+    tag: &'static str,
+    next_step: usize,
+}
+
+impl Progress {
+    fn new(total: usize, tag: &'static str) -> Self {
+        Progress {
+            total,
+            tag,
+            next_step: 1,
+        }
+    }
+
+    /// `done` is the 1-based count processed so far. `suffix` is appended for
+    /// extra context (e.g. `extracted=.. skipped=..`); pass "" for none.
+    fn tick(&mut self, done: usize, suffix: &str) {
+        if self.total == 0 {
+            return;
+        }
+        let pct = (done * 100) / self.total;
+        while self.next_step <= 100 && pct >= self.next_step {
+            if suffix.is_empty() {
+                eprintln!(
+                    "[{}] Progress {:>3}% ({}/{})",
+                    self.tag, self.next_step, done, self.total
+                );
+            } else {
+                eprintln!(
+                    "[{}] Progress {:>3}% ({}/{}) {}",
+                    self.tag, self.next_step, done, self.total, suffix
+                );
+            }
+            self.next_step += 1;
+        }
+    }
+}
+
 // ── path helpers ────────────────────────────────────────────────────────────
 
 fn normalize_rel_path(v: &str) -> String {
@@ -241,16 +285,19 @@ pub fn extract_hashes(wad_path: &Path) -> Result<(usize, usize)> {
     let mut game_hashes: BTreeMap<u64, String> = BTreeMap::new();
     let mut bin_hashes: BTreeMap<u32, String> = BTreeMap::new();
 
-    for chunk in &wad.chunks {
-        let Ok(data) = wad.chunk_data(chunk) else {
-            continue;
-        };
-        for (k, v) in scan_wad_game_hashes(&data) {
-            game_hashes.entry(k).or_insert(v);
+    let total = wad.chunks.len();
+    eprintln!("[HASH] Scanning {} chunks for hashes", total);
+    let mut progress = Progress::new(total, "HASH");
+    for (idx, chunk) in wad.chunks.iter().enumerate() {
+        if let Ok(data) = wad.chunk_data(chunk) {
+            for (k, v) in scan_wad_game_hashes(&data) {
+                game_hashes.entry(k).or_insert(v);
+            }
+            for (k, v) in scan_skn_bin_hashes(&data) {
+                bin_hashes.entry(k).or_insert(v);
+            }
         }
-        for (k, v) in scan_skn_bin_hashes(&data) {
-            bin_hashes.entry(k).or_insert(v);
-        }
+        progress.tick(idx + 1, "");
     }
 
     // Merge game hashes into hashes.extracted.txt (sorted by path).
@@ -332,7 +379,15 @@ pub fn unpack(wad_path: &Path, output_dir: Option<&Path>) -> Result<WadExtractRe
     let mut result = WadExtractResult::default();
     let mut hashed_files: HashMap<String, String> = HashMap::new();
 
-    for chunk in &wad.chunks {
+    let total = wad.chunks.len();
+    eprintln!("[WAD] Unpacking {} chunks to {}", total, out_dir.display());
+    let mut progress = Progress::new(total, "WAD");
+
+    for (idx, chunk) in wad.chunks.iter().enumerate() {
+        progress.tick(
+            idx + 1,
+            &format!("extracted={} skipped={}", result.extracted, result.skipped),
+        );
         let path_hash = chunk.path_hash;
         let resolved = resolve(path_hash);
         let mut rel = normalize_rel_path(&resolved);
@@ -428,7 +483,9 @@ pub fn unpack(wad_path: &Path, output_dir: Option<&Path>) -> Result<WadExtractRe
 
 /// [`extract_hashes`] then [`unpack`].
 pub fn extract_and_unpack(wad_path: &Path, output_dir: Option<&Path>) -> Result<WadExtractResult> {
+    eprintln!("[WAD] Phase 1/2: extract hashes");
     extract_hashes(wad_path)?;
+    eprintln!("[WAD] Phase 2/2: unpack");
     unpack(wad_path, output_dir)
 }
 

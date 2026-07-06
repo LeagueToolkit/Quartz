@@ -205,61 +205,11 @@ fn sanitize_name_token(name: &str) -> String {
 }
 
 fn find_bridge_exe() -> Result<PathBuf, String> {
-    if let Ok(raw) = std::env::var("QUARTZ_XPS_FBX_BRIDGE_PATH") {
-        let candidate = PathBuf::from(raw);
-        if candidate.exists() {
-            return Ok(candidate);
-        }
-    }
-
-    let mut candidates = Vec::new();
-
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(exe_dir) = exe.parent() {
-            candidates.push(exe_dir.join("xps_fbx_bridge.exe"));
-        }
-    }
-
-    if let Some(manifest_dir) = option_env!("CARGO_MANIFEST_DIR") {
-        let native_root = Path::new(manifest_dir)
-            .parent()
-            .ok_or_else(|| "Failed to locate native root".to_string())?;
-        candidates.push(
-            native_root
-                .join("xps_fbx_bridge")
-                .join("build_release")
-                .join("xps_fbx_bridge.exe"),
-        );
-        candidates.push(
-            native_root
-                .join("xps_fbx_bridge")
-                .join("build")
-                .join("xps_fbx_bridge.exe"),
-        );
-        candidates.push(
-            native_root
-                .join("xps_fbx_bridge")
-                .join("build")
-                .join("Release")
-                .join("xps_fbx_bridge.exe"),
-        );
-        candidates.push(
-            native_root
-                .join("xps_fbx_bridge")
-                .join("build")
-                .join("Debug")
-                .join("xps_fbx_bridge.exe"),
-        );
-    }
-
-    for candidate in candidates {
-        if candidate.exists() {
-            return Ok(candidate);
-        }
-    }
-
-    Err(
-        "xps_fbx_bridge.exe not found. Build native/xps_fbx_bridge or set QUARTZ_XPS_FBX_BRIDGE_PATH."
-            .to_string(),
+    // Shares the resource-dir + env-override discovery with the PMX bridge
+    // (env var → next-to-exe → bundled `resources/bin/` → dev build tree).
+    super::find_bridge_exe(
+        "QUARTZ_XPS_FBX_BRIDGE_PATH",
+        "xps_fbx_bridge",
+        "xps_fbx_bridge.exe",
     )
 }

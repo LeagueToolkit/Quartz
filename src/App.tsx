@@ -66,7 +66,8 @@ function PageView({ page }: { page: Page }) {
         case 'particlerandomizer': return <ParticleRandomizer />;
         case 'fakegear': return <FakeGear />;
         case 'aniport': return <AniPort />;
-        case 'soundbanks': return <BnkExtract />;
+        // 'soundbanks' (BnkExtract) is rendered separately + always-mounted so its
+        // editing state survives navigating away and back — see App().
         case 'bumpath': return <Bumpath />;
         case 'tools': return <Tools />;
         case 'upscale': return <Upscale />;
@@ -105,9 +106,21 @@ export function App() {
             <div className="relative z-[1] flex min-h-0 flex-1">
                 {!sidebarCollapsed && <NavRail />}
                 <main className="q-main min-w-0 flex-1 overflow-y-auto">
-                    <div key={page} className={`q-page h-full ${FULL_BLEED_PAGES.has(page) ? '' : 'p-6'}`}>
-                        <PageView page={page} />
+                    {/* BnkExtract stays mounted across navigation (hidden when
+                        inactive) so in-progress edits are preserved when you leave
+                        and come back. All other pages remount per navigation via
+                        the keyed div below. */}
+                    <div
+                        className="q-page h-full"
+                        style={{ display: page === 'soundbanks' ? 'block' : 'none' }}
+                    >
+                        <BnkExtract />
                     </div>
+                    {page !== 'soundbanks' && (
+                        <div key={page} className={`q-page h-full ${FULL_BLEED_PAGES.has(page) ? '' : 'p-6'}`}>
+                            <PageView page={page} />
+                        </div>
+                    )}
                 </main>
             </div>
             <FileExplorerHost />

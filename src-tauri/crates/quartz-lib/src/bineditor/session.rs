@@ -1,21 +1,24 @@
-//! Resident bin-editor session registry, mirroring `crate::paint::session`:
-//! a session holds the parsed `Bin` tree, its source format for round-trip
-//! saves, a bounded undo/redo stack of entry-granular COW frames (see
-//! [`crate::undo`]), and — unlike paint — the pristine `initial` tree for
-//! restore. Edits resolve `NodePath`s against the live tree; any mid-batch
-//! failure swaps the frame back so the tree returns to its pre-batch state.
+//! Resident bin-editor session registry, mirroring `crate::vfx_session`:
+//! a session holds the main skin bin plus every resolved linked bin (via
+//! [`crate::linked_bins`]) as resident trees, a bounded undo/redo stack of
+//! per-bin entry-granular COW frames (see [`crate::undo`]), and the pristine
+//! per-bin `initial` trees for restore. Edits resolve `NodePath`s (which carry
+//! a bin index) against the owning bin's tree and mark only that bin dirty; any
+//! mid-batch failure swaps every captured frame back. Save writes ONLY dirty
+//! bins, each back to its own file.
 
 use super::path::{NodePath, Step};
 use super::project::{self, EditorModel, EditorSystem};
 use super::value::{self, JsonBinValue};
-use crate::bin::{read_bin, text_to_tree, tree_to_text_cached, write_bin};
+use crate::bin::write_bin;
 use crate::error::{Error, Result};
-use crate::undo::{push_bounded, UndoFrame};
+use crate::linked_bins::{self, LoadedBin};
+use crate::undo::UndoFrame;
 use indexmap::IndexMap;
 use parking_lot::RwLock;
 use ritoshark::bin::{Bin, BinValue};
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
@@ -32,52 +35,58 @@ pub struct EditOp {
     pub value: JsonBinValue,
 }
 
-/// How the file was loaded, so save writes it back the same way.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SourceFormat {
-    Bin,
-    Text,
+/// One reversible edit across the session: per-bin entry (or whole-tree) frames.
+/// Mirrors `crate::vfx_session`'s multi-bin undo shape so a single Ctrl+Z
+/// reverses the last logical edit regardless of which bins it touched.
+struct MultiUndoFrame {
+    parts: Vec<(usize, UndoFrame)>,
 }
 
-fn format_for_path(path: &Path) -> SourceFormat {
-    match path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_ascii_lowercase())
-    {
-        Some(ext) if ext == "py" || ext == "ritobin" || ext == "txt" => SourceFormat::Text,
-        _ => SourceFormat::Bin,
-    }
-}
-
-/// A sibling `.ritobin` / `.py` text dump for a saved `.bin`, if one already
-/// exists on disk. `.ritobin` wins when both are present.
-fn existing_text_sidecar(bin_path: &Path) -> Option<PathBuf> {
-    for ext in ["ritobin", "py"] {
-        let candidate = bin_path.with_extension(ext);
-        if candidate != bin_path && candidate.is_file() {
-            return Some(candidate);
+impl MultiUndoFrame {
+    /// Swap every part back into its owning bin's tree and re-mark that bin
+    /// dirty (its tree may now differ from disk regardless of save state).
+    fn swap_with(&mut self, bins: &mut [LoadedBin]) {
+        for (bin_idx, frame) in self.parts.iter_mut() {
+            if let Some(lb) = bins.get_mut(*bin_idx) {
+                frame.swap_with(&mut lb.tree);
+                lb.dirty = true;
+            }
         }
     }
-    None
+
+    /// The `(bin, entry)` pairs this frame touched, for a partial reprojection.
+    /// Returns `None` if any part is a whole-tree frame (restore), signalling a
+    /// full reproject.
+    fn touched(&self) -> Option<Vec<(usize, usize)>> {
+        let mut out = Vec::new();
+        for (bin_idx, frame) in &self.parts {
+            let entries = frame.touched_entries()?;
+            for e in entries {
+                out.push((*bin_idx, e));
+            }
+        }
+        Some(out)
+    }
 }
 
 pub struct EditorSession {
     pub id: SessionId,
-    pub source_path: PathBuf,
-    pub source_format: SourceFormat,
-    pub tree: Bin,
-    /// Pristine parse from open time, for restore.
-    pub initial: Bin,
-    undo: Vec<UndoFrame>,
-    redo: Vec<UndoFrame>,
+    /// Index 0 is always the main bin; linked bins follow in `linked` order.
+    pub bins: Vec<LoadedBin>,
+    /// Pristine per-bin parse from open time, for restore.
+    pub initial: Vec<Bin>,
+    undo: Vec<MultiUndoFrame>,
+    redo: Vec<MultiUndoFrame>,
 }
 
 impl EditorSession {
     /// Commit a completed edit's frame to the undo stack. A fresh edit
     /// invalidates the redo history.
-    fn push_undo(&mut self, frame: UndoFrame) {
-        push_bounded(&mut self.undo, frame, UNDO_CAP);
+    fn push_undo(&mut self, frame: MultiUndoFrame) {
+        if self.undo.len() >= UNDO_CAP {
+            self.undo.remove(0);
+        }
+        self.undo.push(frame);
         self.redo.clear();
     }
 }
@@ -94,33 +103,21 @@ pub struct OpenResult {
     pub model: EditorModel,
 }
 
-/// Open a `.bin`/`.py`/`.ritobin`, parse it into a resident tree, and register
-/// the session. Binary files load straight into the tree (no text conversion).
+/// Open a `.bin` (plus its resolvable linked bins) into a resident session and
+/// register it. The main bin is index 0; linked bins follow. A `.py`/`.ritobin`
+/// main opens as a single bin with no link resolution.
 pub fn open(path: impl AsRef<Path>) -> Result<OpenResult> {
     let path = path.as_ref().to_path_buf();
-    let format = format_for_path(&path);
-
-    let tree = match format {
-        SourceFormat::Bin => {
-            let data = std::fs::read(&path).map_err(|e| Error::io_with_path(e, &path))?;
-            read_bin(&data).map_err(|e| Error::InvalidInput(e.to_string()))?
-        }
-        SourceFormat::Text => {
-            let text = std::fs::read_to_string(&path).map_err(|e| Error::io_with_path(e, &path))?;
-            text_to_tree(&text).map_err(|e| Error::InvalidInput(e.to_string()))?
-        }
-    };
-
-    let model = project::project(&tree);
+    let bins = linked_bins::open_with_linked(&path)?;
+    let initial = bins.iter().map(|b| b.tree.clone()).collect();
+    let model = project::project_all(&bins);
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     registry().write().insert(
         id,
         EditorSession {
             id,
-            source_path: path,
-            source_format: format,
-            initial: tree.clone(),
-            tree,
+            bins,
+            initial,
             undo: Vec::new(),
             redo: Vec::new(),
         },
@@ -144,38 +141,66 @@ fn with_session<R>(id: SessionId, f: impl FnOnce(&mut EditorSession) -> R) -> Re
     Ok(f(session))
 }
 
-/// Reproject the model from the live tree.
+/// Reproject the whole model from the live bins.
 pub fn model_of(id: SessionId) -> Result<EditorModel> {
-    with_session(id, |s| project::project(&s.tree))
+    with_session(id, |s| project::project_all(&s.bins))
 }
 
-/// Batch leaf overwrites. One undo frame for the whole batch — only the
-/// entries the edit paths touch are cloned, so a single-field commit is
-/// O(one system), not O(whole file). If any edit fails to resolve or its
-/// value tag mismatches the node's variant, the frame is swapped back and
-/// the whole batch errors.
+/// Batch leaf overwrites across any resident bins. One undo frame for the whole
+/// batch, capturing only the entries the edit paths touch (per bin), so a
+/// single-field commit is O(one system), not O(whole file). If any edit fails
+/// to resolve or its value tag mismatches, every captured frame is swapped back
+/// and the whole batch errors. Each bin an edit lands in is marked dirty.
 pub fn apply(id: SessionId, edits: &[EditOp]) -> Result<usize> {
-    with_session(id, |s| -> Result<usize> {
-        if edits.is_empty() {
-            return Ok(0);
-        }
-        let mut frame = UndoFrame::capture(&s.tree, edits.iter().map(|e| e.path.entry));
-        for (i, op) in edits.iter().enumerate() {
-            if let Err(e) = apply_one(&mut s.tree, op) {
-                frame.swap_with(&mut s.tree);
-                return Err(Error::InvalidInput(format!("Edit {} failed: {}", i, e)));
-            }
-        }
-        s.push_undo(frame);
-        Ok(edits.len())
-    })?
+    with_session(id, |s| apply_to(s, edits))?
 }
 
-fn apply_one(tree: &mut Bin, op: &EditOp) -> Result<()> {
+/// Registry-free core of [`apply`], so tests can drive it against a session
+/// value directly.
+fn apply_to(s: &mut EditorSession, edits: &[EditOp]) -> Result<usize> {
+    if edits.is_empty() {
+        return Ok(0);
+    }
+    // Group touched entries by bin so each bin gets one capture frame.
+    let mut by_bin: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for e in edits {
+        by_bin.entry(e.path.bin).or_default().push(e.path.entry);
+    }
+    let mut parts: Vec<(usize, UndoFrame)> = by_bin
+        .iter()
+        .filter_map(|(&b, entries)| {
+            s.bins
+                .get(b)
+                .map(|lb| (b, UndoFrame::capture(&lb.tree, entries.iter().copied())))
+        })
+        .collect();
+
+    for (i, op) in edits.iter().enumerate() {
+        if let Err(e) = apply_one(&mut s.bins, op) {
+            for (b, frame) in parts.iter_mut() {
+                if let Some(lb) = s.bins.get_mut(*b) {
+                    frame.swap_with(&mut lb.tree);
+                }
+            }
+            return Err(Error::InvalidInput(format!("Edit {} failed: {}", i, e)));
+        }
+    }
+    for (b, _) in &parts {
+        if let Some(lb) = s.bins.get_mut(*b) {
+            lb.dirty = true;
+        }
+    }
+    s.push_undo(MultiUndoFrame {
+        parts: std::mem::take(&mut parts),
+    });
+    Ok(edits.len())
+}
+
+fn apply_one(bins: &mut [LoadedBin], op: &EditOp) -> Result<()> {
     let mut new_val = value::json_to_bin(&op.value)?;
     let target = op
         .path
-        .resolve_mut(tree)
+        .resolve_mut(bins)
         .ok_or_else(|| Error::InvalidInput("Path no longer resolves to a value".to_string()))?;
 
     match (&*target, &new_val) {
@@ -235,18 +260,24 @@ pub fn insert(
     val: &JsonBinValue,
 ) -> Result<EditorModel> {
     with_session(id, |s| -> Result<EditorModel> {
-        let frame = UndoFrame::capture(&s.tree, [parent_path.entry]);
-        if let Err(e) = insert_impl(&mut s.tree, parent_path, key, index, val) {
-            // Nothing to swap back: a failed insert never mutates.
-            return Err(e);
+        let frame = match s.bins.get(parent_path.bin) {
+            Some(lb) => UndoFrame::capture(&lb.tree, [parent_path.entry]),
+            None => return Err(Error::InvalidInput("Parent path no longer resolves".to_string())),
+        };
+        // A failed insert never mutates, so there is nothing to swap back.
+        insert_impl(&mut s.bins, parent_path, key, index, val)?;
+        if let Some(lb) = s.bins.get_mut(parent_path.bin) {
+            lb.dirty = true;
         }
-        s.push_undo(frame);
-        Ok(project::project(&s.tree))
+        s.push_undo(MultiUndoFrame {
+            parts: vec![(parent_path.bin, frame)],
+        });
+        Ok(project::project_all(&s.bins))
     })?
 }
 
 fn insert_impl(
-    tree: &mut Bin,
+    bins: &mut [LoadedBin],
     parent_path: &NodePath,
     key: Option<&str>,
     index: Option<u32>,
@@ -256,9 +287,9 @@ fn insert_impl(
 
     // An empty-steps path addresses the top-level entry's own field map.
     if parent_path.steps.is_empty() {
-        let entry = tree
-            .entries
-            .get_mut(parent_path.entry)
+        let entry = bins
+            .get_mut(parent_path.bin)
+            .and_then(|lb| lb.tree.entries.get_mut(parent_path.entry))
             .ok_or_else(|| Error::InvalidInput("Parent path no longer resolves".to_string()))?;
         let key = key.ok_or_else(|| {
             Error::InvalidInput("A key is required when inserting into a struct".to_string())
@@ -267,7 +298,7 @@ fn insert_impl(
     }
 
     let parent = parent_path
-        .resolve_mut(tree)
+        .resolve_mut(bins)
         .ok_or_else(|| Error::InvalidInput("Parent path no longer resolves".to_string()))?;
     match parent {
         BinValue::Embed { fields, .. } | BinValue::Pointer { fields, .. } => {
@@ -323,23 +354,30 @@ fn insert_field(fields: &mut IndexMap<u32, BinValue>, key: &str, val: BinValue) 
 /// parent list. Returns the fresh projection.
 pub fn remove(id: SessionId, path: &NodePath) -> Result<EditorModel> {
     with_session(id, |s| -> Result<EditorModel> {
-        let frame = UndoFrame::capture(&s.tree, [path.entry]);
-        if let Err(e) = remove_impl(&mut s.tree, path) {
-            // Nothing to swap back: a failed remove never mutates.
-            return Err(e);
+        let frame = match s.bins.get(path.bin) {
+            Some(lb) => UndoFrame::capture(&lb.tree, [path.entry]),
+            None => return Err(Error::InvalidInput("Path no longer resolves".to_string())),
+        };
+        // A failed remove never mutates, so there is nothing to swap back.
+        remove_impl(&mut s.bins, path)?;
+        if let Some(lb) = s.bins.get_mut(path.bin) {
+            lb.dirty = true;
         }
-        s.push_undo(frame);
-        Ok(project::project(&s.tree))
+        s.push_undo(MultiUndoFrame {
+            parts: vec![(path.bin, frame)],
+        });
+        Ok(project::project_all(&s.bins))
     })?
 }
 
-fn remove_impl(tree: &mut Bin, path: &NodePath) -> Result<()> {
+fn remove_impl(bins: &mut [LoadedBin], path: &NodePath) -> Result<()> {
     let Some((last, parent_steps)) = path.steps.split_last() else {
         return Err(Error::InvalidInput(
             "Cannot remove a top-level entry".to_string(),
         ));
     };
     let parent = NodePath {
+        bin: path.bin,
         entry: path.entry,
         steps: parent_steps.to_vec(),
     };
@@ -347,13 +385,13 @@ fn remove_impl(tree: &mut Bin, path: &NodePath) -> Result<()> {
     match last {
         Step::Field { field } => {
             let fields = if parent.steps.is_empty() {
-                &mut tree
-                    .entries
-                    .get_mut(path.entry)
+                &mut bins
+                    .get_mut(path.bin)
+                    .and_then(|lb| lb.tree.entries.get_mut(path.entry))
                     .ok_or_else(|| Error::InvalidInput("Path no longer resolves".to_string()))?
                     .fields
             } else {
-                match parent.resolve_mut(tree) {
+                match parent.resolve_mut(bins) {
                     Some(BinValue::Embed { fields, .. })
                     | Some(BinValue::Pointer { fields, .. }) => fields,
                     Some(other) => {
@@ -371,7 +409,7 @@ fn remove_impl(tree: &mut Bin, path: &NodePath) -> Result<()> {
                 .map(|_| ())
                 .ok_or_else(|| Error::InvalidInput(format!("Field 0x{:08x} not found", field)))
         }
-        Step::Index { index } => match parent.resolve_mut(tree) {
+        Step::Index { index } => match parent.resolve_mut(bins) {
             Some(BinValue::List { items, .. }) => {
                 if *index >= items.len() {
                     return Err(Error::InvalidInput(format!(
@@ -398,18 +436,19 @@ fn remove_impl(tree: &mut Bin, path: &NodePath) -> Result<()> {
 pub enum UndoOutcome {
     Full(EditorModel),
     Partial {
-        entries: Vec<usize>,
+        /// `(bin, entry)` pairs the frame touched.
+        entries: Vec<(usize, usize)>,
         systems: Vec<EditorSystem>,
     },
 }
 
-fn outcome_for(tree: &Bin, touched: Option<Vec<usize>>) -> UndoOutcome {
+fn outcome_for(bins: &[LoadedBin], touched: Option<Vec<(usize, usize)>>) -> UndoOutcome {
     match touched {
         Some(entries) => UndoOutcome::Partial {
-            systems: project::project_entries(tree, &entries),
+            systems: project::project_entries_multi(bins, &entries),
             entries,
         },
-        None => UndoOutcome::Full(project::project(tree)),
+        None => UndoOutcome::Full(project::project_all(bins)),
     }
 }
 
@@ -418,10 +457,10 @@ fn outcome_for(tree: &Bin, touched: Option<Vec<usize>>) -> UndoOutcome {
 pub fn undo(id: SessionId) -> Result<Option<UndoOutcome>> {
     with_session(id, |s| match s.undo.pop() {
         Some(mut frame) => {
-            let touched = frame.touched_entries();
-            frame.swap_with(&mut s.tree);
+            let touched = frame.touched();
+            frame.swap_with(&mut s.bins);
             s.redo.push(frame);
-            Some(outcome_for(&s.tree, touched))
+            Some(outcome_for(&s.bins, touched))
         }
         None => None,
     })
@@ -432,62 +471,61 @@ pub fn undo(id: SessionId) -> Result<Option<UndoOutcome>> {
 pub fn redo(id: SessionId) -> Result<Option<UndoOutcome>> {
     with_session(id, |s| match s.redo.pop() {
         Some(mut frame) => {
-            let touched = frame.touched_entries();
-            frame.swap_with(&mut s.tree);
-            push_bounded(&mut s.undo, frame, UNDO_CAP);
-            Some(outcome_for(&s.tree, touched))
+            let touched = frame.touched();
+            frame.swap_with(&mut s.bins);
+            if s.undo.len() >= UNDO_CAP {
+                s.undo.remove(0);
+            }
+            s.undo.push(frame);
+            Some(outcome_for(&s.bins, touched))
         }
         None => None,
     })
 }
 
-/// Reset the tree to the pristine open-time parse. The pre-restore tree is
-/// kept as a whole-tree undo frame, so restore itself is undoable.
+/// Reset every bin to its pristine open-time parse. The pre-restore trees are
+/// kept as whole-tree undo frames (one per bin), so restore itself is undoable.
 pub fn restore(id: SessionId) -> Result<EditorModel> {
     with_session(id, |s| {
-        let prev = std::mem::replace(&mut s.tree, s.initial.clone());
-        s.push_undo(UndoFrame::Tree(Box::new(prev)));
-        project::project(&s.tree)
+        let mut parts = Vec::with_capacity(s.bins.len());
+        for (i, lb) in s.bins.iter_mut().enumerate() {
+            let pristine = s.initial[i].clone();
+            let prev = std::mem::replace(&mut lb.tree, pristine);
+            lb.dirty = true;
+            parts.push((i, UndoFrame::Tree(Box::new(prev))));
+        }
+        s.push_undo(MultiUndoFrame { parts });
+        project::project_all(&s.bins)
     })
 }
 
-/// Serialize the resident tree to disk in its original format. `out_path`
-/// overrides the source path (e.g. Save As); otherwise saves in place.
-pub fn save(id: SessionId, out_path: Option<PathBuf>) -> Result<PathBuf> {
-    with_session(id, |s| -> Result<PathBuf> {
-        let dest = out_path.unwrap_or_else(|| s.source_path.clone());
-        // Honor the destination's own extension (Save As to a different format),
-        // falling back to the source format when the dest has no extension.
-        let format = match dest.extension() {
-            Some(_) => format_for_path(&dest),
-            None => s.source_format,
-        };
-        match format {
-            SourceFormat::Bin => {
+/// Save the session. With `out_path = None`, writes ONLY the dirty bins, each
+/// back to its own file in its own format (via [`crate::linked_bins::save_dirty`]),
+/// and returns the paths written. With `out_path = Some(dest)`, this is a
+/// Save-As of the MAIN bin (index 0) to `dest`; linked bins are not written.
+pub fn save(id: SessionId, out_path: Option<PathBuf>, force: bool) -> Result<Vec<PathBuf>> {
+    with_session(id, |s| -> Result<Vec<PathBuf>> {
+        match out_path {
+            None => linked_bins::save_dirty_checked(&mut s.bins, force),
+            Some(dest) => {
+                let main = s
+                    .bins
+                    .get_mut(0)
+                    .ok_or_else(|| Error::InvalidInput("Session has no bins".to_string()))?;
                 let bytes =
-                    write_bin(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
+                    write_bin(&main.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
                 std::fs::write(&dest, bytes).map_err(|e| Error::io_with_path(e, &dest))?;
-                // Keep a sibling .ritobin / .py text dump in sync, but only if one
-                // already sits next to the bin — don't create new files.
-                if let Some(sidecar) = existing_text_sidecar(&dest) {
-                    let text = tree_to_text_cached(&s.tree)
-                        .map_err(|e| Error::InvalidInput(e.to_string()))?;
-                    std::fs::write(&sidecar, text).map_err(|e| Error::io_with_path(e, &sidecar))?;
-                }
-            }
-            SourceFormat::Text => {
-                let text =
-                    tree_to_text_cached(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
-                std::fs::write(&dest, text).map_err(|e| Error::io_with_path(e, &dest))?;
+                main.dirty = false;
+                Ok(vec![dest])
             }
         }
-        Ok(dest)
     })?
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bin::read_bin;
     use ritoshark::hash::fnv1a;
     use std::time::Instant;
 
@@ -497,17 +535,28 @@ mod tests {
         crate::bineditor::project::tests::sample_bin()
     }
 
-    /// Register an in-memory session (no disk) for undo/redo tests.
+    /// Wrap a tree as a single resident main bin.
+    fn loaded_one(tree: Bin) -> LoadedBin {
+        LoadedBin {
+            path: PathBuf::new(),
+            role: crate::linked_bins::BinRole::Main,
+            source_format: crate::linked_bins::SourceFormat::Bin,
+            tree,
+            dirty: false,
+            link_str: None,
+            mtime: None,
+        }
+    }
+
+    /// Register an in-memory single-bin session (no disk) for undo/redo tests.
     fn open_tree_for_test(tree: Bin) -> SessionId {
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         registry().write().insert(
             id,
             EditorSession {
                 id,
-                source_path: PathBuf::new(),
-                source_format: SourceFormat::Bin,
-                initial: tree.clone(),
-                tree,
+                bins: vec![loaded_one(tree.clone())],
+                initial: vec![tree],
                 undo: Vec::new(),
                 redo: Vec::new(),
             },
@@ -515,9 +564,9 @@ mod tests {
         id
     }
 
-    /// Serialize the session's live tree — byte-exact state fingerprint.
+    /// Serialize the session's main tree — byte-exact state fingerprint.
     fn bytes_of(id: SessionId) -> Vec<u8> {
-        with_session(id, |s| write_bin(&s.tree).unwrap()).unwrap()
+        with_session(id, |s| write_bin(&s.bins[0].tree).unwrap()).unwrap()
     }
 
     /// The real-file fixture: `QUARTZ_TEST_BIN` env override, defaulting to the
@@ -559,6 +608,7 @@ mod tests {
                 walk(
                     v,
                     &NodePath {
+                        bin: 0,
                         entry: ei,
                         steps: vec![Step::Field { field: *h }],
                     },
@@ -578,7 +628,7 @@ mod tests {
         with_session(id, |s| {
             paths
                 .iter()
-                .filter_map(|p| match p.resolve_mut(&mut s.tree) {
+                .filter_map(|p| match p.resolve_mut(&mut s.bins) {
                     Some(BinValue::F32(v)) => Some(EditOp {
                         path: p.clone(),
                         value: JsonBinValue::F32 {
@@ -646,7 +696,7 @@ mod tests {
             assert_eq!(&bytes_of(id), expect, "undo diverged from recorded state");
         }
         assert!(
-            with_session(id, |s| s.tree == s.initial).unwrap(),
+            with_session(id, |s| s.bins[0].tree == s.initial[0]).unwrap(),
             "tree != pristine after full undo"
         );
         assert!(undo(id).unwrap().is_none(), "undo stack should be empty");
@@ -731,7 +781,7 @@ mod tests {
 
         let opened = open(&path).unwrap();
         let id = opened.session_id;
-        let paths = with_session(id, |s| collect_f32_paths(&s.tree, 400)).unwrap();
+        let paths = with_session(id, |s| collect_f32_paths(&s.bins[0].tree, 400)).unwrap();
         assert!(!paths.is_empty(), "no f32 leaves in the test bin");
 
         let mut states = vec![bytes_of(id)];
@@ -748,7 +798,7 @@ mod tests {
         // existing struct field (one whose last step is Field).
         insert(
             id,
-            &NodePath::root(0),
+            &NodePath::root(0, 0),
             Some("quartzTestField"),
             None,
             &JsonBinValue::F32 { v: 1.0 },
@@ -768,7 +818,7 @@ mod tests {
             assert_eq!(&bytes_of(id), expect, "undo diverged on real bin");
         }
         assert!(
-            with_session(id, |s| s.tree == s.initial).unwrap(),
+            with_session(id, |s| s.bins[0].tree == s.initial[0]).unwrap(),
             "tree != pristine after full undo"
         );
         assert_eq!(bytes_of(id), states[0]);
@@ -797,13 +847,13 @@ mod tests {
             let iters = 10u32;
             let t0 = Instant::now();
             for _ in 0..iters {
-                std::hint::black_box(s.tree.clone());
+                std::hint::black_box(s.bins[0].tree.clone());
             }
-            (s.tree.entries.len(), t0.elapsed() / iters)
+            (s.bins[0].tree.entries.len(), t0.elapsed() / iters)
         })
         .unwrap();
 
-        let paths = with_session(id, |s| collect_f32_paths(&s.tree, 500)).unwrap();
+        let paths = with_session(id, |s| collect_f32_paths(&s.bins[0].tree, 500)).unwrap();
 
         // Single-edit applies (the keystroke path).
         let singles = scale_edits(id, &paths, 1.001);
@@ -842,6 +892,7 @@ mod tests {
 
     fn emitter_path() -> NodePath {
         NodePath {
+            bin: 0,
             entry: 0,
             steps: vec![
                 Step::Field {
@@ -853,8 +904,50 @@ mod tests {
     }
 
     #[test]
+    fn edit_marks_only_the_owning_bin_dirty() {
+        // Two resident bins, each with one VFX system. An edit into bin 1 must
+        // dirty only bin 1 and write only bin 1's value.
+        let mut s = EditorSession {
+            id: 1,
+            bins: vec![loaded_one(sample_bin()), loaded_one(sample_bin())],
+            initial: vec![sample_bin(), sample_bin()],
+            undo: Vec::new(),
+            redo: Vec::new(),
+        };
+
+        // The rate leaf lives at bin/entry 0, same steps in each bin.
+        let mut rate_path = emitter_path().child(Step::Field {
+            field: fnv1a("rate"),
+        });
+        rate_path.bin = 1;
+
+        apply_to(
+            &mut s,
+            &[EditOp {
+                path: rate_path.clone(),
+                value: JsonBinValue::F32 { v: 9.0 },
+            }],
+        )
+        .unwrap();
+
+        assert!(!s.bins[0].dirty, "bin 0 must be untouched");
+        assert!(s.bins[1].dirty, "bin 1 must be dirty");
+        assert!(
+            matches!(rate_path.resolve_mut(&mut s.bins), Some(BinValue::F32(v)) if *v == 9.0)
+        );
+        // Bin 0's rate is unchanged (still the fixture's 4.0).
+        let mut bin0_rate = emitter_path().child(Step::Field {
+            field: fnv1a("rate"),
+        });
+        bin0_rate.bin = 0;
+        assert!(
+            matches!(bin0_rate.resolve_mut(&mut s.bins), Some(BinValue::F32(v)) if *v == 4.0)
+        );
+    }
+
+    #[test]
     fn apply_overwrites_and_rejects_mismatch() {
-        let mut tree = sample_bin();
+        let mut bins = vec![loaded_one(sample_bin())];
         let rate_path = emitter_path().child(Step::Field {
             field: fnv1a("rate"),
         });
@@ -863,24 +956,24 @@ mod tests {
             path: rate_path.clone(),
             value: JsonBinValue::F32 { v: 9.5 },
         };
-        apply_one(&mut tree, &ok).unwrap();
-        assert!(matches!(rate_path.resolve_mut(&mut tree), Some(BinValue::F32(v)) if *v == 9.5));
+        apply_one(&mut bins, &ok).unwrap();
+        assert!(matches!(rate_path.resolve_mut(&mut bins), Some(BinValue::F32(v)) if *v == 9.5));
 
         let bad = EditOp {
             path: rate_path.clone(),
             value: JsonBinValue::U8 { v: 1.0 },
         };
-        assert!(apply_one(&mut tree, &bad).is_err());
+        assert!(apply_one(&mut bins, &bad).is_err());
     }
 
     #[test]
     fn insert_and_remove_field_and_list_item() {
-        let mut tree = sample_bin();
+        let mut bins = vec![loaded_one(sample_bin())];
         let epath = emitter_path();
 
         // Add a new f32 field to the emitter struct.
         insert_impl(
-            &mut tree,
+            &mut bins,
             &epath,
             Some("bindWeight"),
             None,
@@ -891,13 +984,13 @@ mod tests {
             field: fnv1a("bindWeight"),
         });
         assert!(matches!(
-            field_path.resolve_mut(&mut tree),
+            field_path.resolve_mut(&mut bins),
             Some(BinValue::F32(_))
         ));
 
         // Duplicate key errors.
         assert!(insert_impl(
-            &mut tree,
+            &mut bins,
             &epath,
             Some("bindWeight"),
             None,
@@ -914,7 +1007,7 @@ mod tests {
                 field: fnv1a("values"),
             });
         insert_impl(
-            &mut tree,
+            &mut bins,
             &list_path,
             None,
             None,
@@ -923,14 +1016,14 @@ mod tests {
             },
         )
         .unwrap();
-        match list_path.resolve_mut(&mut tree) {
+        match list_path.resolve_mut(&mut bins) {
             Some(BinValue::List { items, .. }) => assert_eq!(items.len(), 2),
             other => panic!("expected list, got {:?}", other),
         }
 
         // Wrong item type into the list errors.
         assert!(insert_impl(
-            &mut tree,
+            &mut bins,
             &list_path,
             None,
             None,
@@ -939,12 +1032,12 @@ mod tests {
         .is_err());
 
         // Remove the list element, then the added field.
-        remove_impl(&mut tree, &list_path.child(Step::Index { index: 1 })).unwrap();
-        match list_path.resolve_mut(&mut tree) {
+        remove_impl(&mut bins, &list_path.child(Step::Index { index: 1 })).unwrap();
+        match list_path.resolve_mut(&mut bins) {
             Some(BinValue::List { items, .. }) => assert_eq!(items.len(), 1),
             other => panic!("expected list, got {:?}", other),
         }
-        remove_impl(&mut tree, &field_path).unwrap();
-        assert!(field_path.resolve_mut(&mut tree).is_none());
+        remove_impl(&mut bins, &field_path).unwrap();
+        assert!(field_path.resolve_mut(&mut bins).is_none());
     }
 }

@@ -11,6 +11,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Box } from '@mui/material';
+import { ContentCut, ViewStream, VerticalSplit, Undo, Redo, Delete } from '@mui/icons-material';
 import { pickPath } from '@/components/explorer';
 import { log } from '@/lib/util/logger';
 
@@ -25,13 +26,11 @@ import BnkContextMenu from './bnkextract/components/BnkContextMenu';
 import BnkHeaderPanel from './bnkextract/components/BnkHeaderPanel';
 import BnkLoadingOverlay from './bnkextract/components/BnkLoadingOverlay';
 import BnkAutoMatchConfirmModal from './bnkextract/components/BnkAutoMatchConfirmModal';
-import BnkSessionManager from './bnkextract/components/BnkSessionManager';
 import BnkModDropModal from './bnkextract/components/BnkModDropModal';
 import BnkGroupNameModal from './bnkextract/components/BnkGroupNameModal';
 import BnkAddToGroupModal from './bnkextract/components/BnkAddToGroupModal';
 import BnkGameBanksModal from './bnkextract/components/BnkGameBanksModal';
 
-import { saveSession, type SessionDetail } from './bnkextract/utils/sessionManager';
 import {
     loadBanks, wemToPlayable, extractNodes, saveBank, checkWwiseInstalled, installWwise,
     getModFiles, extractBnkBanksFromGame, loadCodebook, pickDirectory,
@@ -41,7 +40,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import {
-    containerStyle, headerStyle, mainContentStyle, treeViewStyle, sidebarStyle,
+    containerStyle, mainContentStyle, treeViewStyle, sidebarStyle,
 } from './bnkextract/styles';
 import type {
     AutoExtractRequest, BnkNode, ContextMenuState, ExtractFormat, GameBanksConfirm, GameBanksSelection,
@@ -114,7 +113,6 @@ export function BnkExtract() {
         const raw = localStorage.getItem(MP3_KEY);
         return raw ? parseInt(raw, 10) : 192;
     });
-    const [autoSaveSession, setAutoSaveSession] = useState(false);
 
     // ── Parsed data / trees ───────────────────────────────────────────────────
     const [treeData, setTreeData] = useState<BnkNode[]>([]);
@@ -166,7 +164,6 @@ export function BnkExtract() {
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [autoExtractOpen, setAutoExtractOpen] = useState(false);
     const [showAutoMatchModal, setShowAutoMatchModal] = useState(false);
-    const [showSessionManager, setShowSessionManager] = useState(false);
     const [modDropModalOpen, setModDropModalOpen] = useState(false);
     const [pendingModFolder, setPendingModFolder] = useState<string | null>(null);
     const [groupNameModalOpen, setGroupNameModalOpen] = useState(false);
@@ -931,35 +928,6 @@ export function BnkExtract() {
         setStatusMessage(`Removed ${removed.length} file${removed.length !== 1 ? 's' : ''} from group`);
     }, [rightTreeData, pushToHistory]);
 
-    // ── Session ───────────────────────────────────────────────────────────────
-    const sessionStateRef = useRef({ treeData, rightTreeData, bnkPath, wpkPath, binPath, viewMode, activePane });
-    sessionStateRef.current = { treeData, rightTreeData, bnkPath, wpkPath, binPath, viewMode, activePane };
-
-    useEffect(() => () => {
-        if (autoSaveSession && (sessionStateRef.current.treeData.length > 0 || sessionStateRef.current.rightTreeData.length > 0)) {
-            try { saveSession(sessionStateRef.current, 'AutoSave_Exit'); } catch (e) { log.error('[BnkExtract] auto-save failed', e); }
-        }
-    }, [autoSaveSession]);
-
-    const handleLoadSession = useCallback(async (session: SessionDetail) => {
-        setIsLoading(true);
-        setStatusMessage(`Loading session: ${session.name}...`);
-        try {
-            setBnkPath(session.paths?.bnk || '');
-            setWpkPath(session.paths?.wpk || '');
-            setBinPath(session.paths?.bin || '');
-            setViewMode((session.viewMode as ViewMode) || 'split');
-            setActivePane((session.activePane as Pane) || 'left');
-            setTreeData(session.treeData || []);
-            setRightTreeData(session.rightTreeData || []);
-            setStatusMessage(`Loaded session: ${session.name}`);
-        } catch (e) {
-            setStatusMessage(`Error loading session: ${(e as Error).message}`);
-        } finally {
-            setIsLoading(false);
-        }
-    }, []);
-
     // ── Game banks ────────────────────────────────────────────────────────────
     const handleConfirmGameBanks = useCallback(async ({ champion, skinIds, selections, includeVoiceover, includeSfx }: GameBanksConfirm) => {
         const requestItems: GameBanksSelection[] = Array.isArray(selections) && selections.length > 0
@@ -1095,13 +1063,7 @@ export function BnkExtract() {
             />
 
             <BnkHeaderPanel
-                headerStyle={headerStyle}
-                statusMessage={statusMessage}
-                showAudioSplitter={showAudioSplitter}
-                setSplitterInitialFile={setSplitterInitialFile}
-                setShowAudioSplitter={setShowAudioSplitter}
                 viewMode={viewMode}
-                setViewMode={setViewMode}
                 activePane={activePane}
                 setActivePane={setActivePane}
                 binPath={binPath}
@@ -1113,8 +1075,6 @@ export function BnkExtract() {
                 handleSelectFile={handleSelectFile}
                 handleParseFiles={handleParseFiles}
                 isLoading={isLoading}
-                handleClearPane={handleClearPane}
-                onSessionClick={() => setShowSessionManager(true)}
                 setAutoExtractOpen={setAutoExtractOpen}
                 onOpenGameBanks={() => setShowGameBanksModal(true)}
             />
@@ -1161,10 +1121,6 @@ export function BnkExtract() {
                 rightSelectedNodes={rightSelectedNodes}
                 setRightSelectedNodes={setRightSelectedNodes}
                 rightExpandedNodes={rightExpandedNodes}
-                handleUndo={handleUndo}
-                undoStack={undoStack}
-                handleRedo={handleRedo}
-                redoStack={redoStack}
                 handleExtract={() => void handleExtract()}
                 handleReplace={() => void handleReplace()}
                 hasAudioSelection={hasAudioSelection}
@@ -1181,6 +1137,58 @@ export function BnkExtract() {
                 onLeftPaneFolderDrop={handleLeftPaneFolderDrop}
                 stampDropTarget={(t) => { webviewDropTarget.current = { kind: t }; }}
             />
+
+            {/* Bottom bar: splitter + view-mode toggles (left), centered status,
+                undo/redo + clear (right). Mirrors Port's bottom-bar layout. */}
+            <Box className="bnk-bottom-bar">
+                <Box className="bnk-bottom-bar__actions">
+                    <button
+                        className="bnk-action-btn"
+                        style={{ '--action-color': showAudioSplitter ? 'var(--accent-primary)' : 'var(--text-secondary)' } as React.CSSProperties}
+                        onClick={() => { setSplitterInitialFile(null); setShowAudioSplitter(true); }}
+                        title="Audio Splitter - cut audio into segments"
+                    >
+                        <ContentCut sx={{ fontSize: 18 }} />
+                    </button>
+                    <button
+                        className="bnk-action-btn"
+                        style={{ '--action-color': viewMode === 'split' ? 'var(--accent-primary)' : 'var(--text-secondary)' } as React.CSSProperties}
+                        onClick={() => setViewMode((prev) => (prev === 'normal' ? 'split' : 'normal'))}
+                        title={viewMode === 'normal' ? 'Switch to Split View' : 'Switch to Single View'}
+                    >
+                        {viewMode === 'normal' ? <ViewStream sx={{ fontSize: 18 }} /> : <VerticalSplit sx={{ fontSize: 18 }} />}
+                    </button>
+                </Box>
+
+                <span className="bnk-bottom-bar__status">{statusMessage}</span>
+
+                <Box className="bnk-bottom-bar__actions">
+                    <button
+                        className="dl-btn dl-btn--secondary dl-btn--sm dl-btn--icon"
+                        onClick={handleUndo}
+                        disabled={undoStack.length === 0}
+                        title="Undo (Ctrl+Z)"
+                    >
+                        <span className="dl-icon"><Undo sx={{ fontSize: 15 }} /></span>
+                    </button>
+                    <button
+                        className="dl-btn dl-btn--secondary dl-btn--sm dl-btn--icon"
+                        onClick={handleRedo}
+                        disabled={redoStack.length === 0}
+                        title="Redo (Ctrl+Y)"
+                    >
+                        <span className="dl-icon"><Redo sx={{ fontSize: 15 }} /></span>
+                    </button>
+                    <button
+                        className="bnk-action-btn"
+                        style={{ '--action-color': 'var(--color-danger, #e5484d)' } as React.CSSProperties}
+                        onClick={() => handleClearPane(viewMode === 'split' ? activePane : 'left')}
+                        title="Clear tree"
+                    >
+                        <Delete sx={{ fontSize: 18 }} />
+                    </button>
+                </Box>
+            </Box>
 
             <BnkContextMenu
                 contextMenu={contextMenu}
@@ -1257,15 +1265,6 @@ export function BnkExtract() {
                 groups={collectRightGroups(rightTreeData)}
                 onConfirm={handleAddToGroup}
                 onCancel={() => setAddToGroupModalOpen(false)}
-            />
-
-            <BnkSessionManager
-                open={showSessionManager}
-                onClose={() => setShowSessionManager(false)}
-                currentState={sessionStateRef.current}
-                onLoadSession={handleLoadSession}
-                autoSaveEnabled={autoSaveSession}
-                setAutoSaveEnabled={setAutoSaveSession}
             />
 
             <BnkGameBanksModal

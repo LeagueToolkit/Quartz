@@ -10,32 +10,20 @@ export const containerStyle: SxProps<Theme> = {
     fontFamily: 'var(--font-mono)',
 };
 
-export const headerStyle: SxProps<Theme> = {
-    display: 'flex',
-    alignItems: 'center',
-    padding: '1rem 1.5rem',
-    background: 'var(--bg)',
-    backdropFilter: 'blur(calc(var(--glass-blur, 10px) + 1px)) saturate(120%)',
-    WebkitBackdropFilter: 'blur(calc(var(--glass-blur, 10px) + 1px)) saturate(120%)',
-    borderBottom: '1px solid var(--glass-border)',
-};
-
 export const mainContentStyle: SxProps<Theme> = {
     display: 'flex',
     flex: 1,
     overflow: 'hidden',
-    background: 'var(--bg)',
-    backdropFilter: 'blur(calc(var(--glass-blur, 10px) + 1px)) saturate(120%)',
-    WebkitBackdropFilter: 'blur(calc(var(--glass-blur, 10px) + 1px)) saturate(120%)',
+    // Transparent so the app background (atmosphere/wallpaper) shows through.
+    background: 'transparent',
     borderTop: '1px solid var(--glass-border)',
 };
 
 export const treeViewStyle: Record<string, unknown> = {
     flex: 1,
     overflow: 'auto',
-    background: 'var(--bg)',
-    backdropFilter: 'blur(calc(var(--glass-blur, 10px) + 1px)) saturate(125%)',
-    WebkitBackdropFilter: 'blur(calc(var(--glass-blur, 10px) + 1px)) saturate(125%)',
+    // Transparent fill; panels stay legible via their border + radius.
+    background: 'transparent',
     border: '1px solid var(--glass-border)',
     borderRadius: '10px',
     margin: '1rem',
@@ -51,7 +39,5 @@ export const sidebarStyle: SxProps<Theme> = {
     paddingLeft: 0,
     overflow: 'hidden',
     minHeight: 0,
-    background: 'var(--bg)',
-    backdropFilter: 'blur(calc(var(--glass-blur, 10px) + 1px)) saturate(122%)',
-    WebkitBackdropFilter: 'blur(calc(var(--glass-blur, 10px) + 1px)) saturate(122%)',
+    background: 'transparent',
 };

@@ -27,6 +27,7 @@ import {
     type VfxPath,
     type VfxPortModel,
 } from '@/lib/api/vfxSession';
+import { isStaleFileError, staleFilePaths } from '@/lib/api/staleFile';
 import { portCopyAssetsToTarget } from '@/lib/api/wad';
 import {
     buildSystemMap,
@@ -477,7 +478,7 @@ export default function usePort() {
     }, [processDonorBin]);
 
     // ── Save ──
-    const handleSave = useCallback(async () => {
+    const handleSave = useCallback(async (force = false) => {
         if (targetSessionId === null) {
             setStatusMessage('No target file loaded');
             return;
@@ -486,10 +487,23 @@ export default function usePort() {
             try {
                 setProcessingText('Saving .bin...');
                 setStatusMessage('Saving modified target file...');
-                const written = await vfxSave(targetSessionId);
+                const written = await vfxSave(targetSessionId, force);
                 setFileSaved(true);
                 setStatusMessage(written.length > 0 ? `Successfully saved ${written.length} file(s)` : 'No changes to save');
             } catch (e) {
+                // A file changed on disk since opening (e.g. saved from Paint/Bin Editor).
+                // Ask before clobbering; on confirm, retry with force.
+                if (!force && isStaleFileError(e)) {
+                    const paths = staleFilePaths(e);
+                    const names = paths.map((p) => p.split(/[\\/]/).pop()).join(', ') || 'this file';
+                    const ok = window.confirm(
+                        `${names} was modified outside Port since you opened it.\n\n`
+                        + `Saving now will overwrite those changes. Overwrite?`,
+                    );
+                    if (ok) await handleSave(true);
+                    else setStatusMessage('Save cancelled (file changed on disk)');
+                    return;
+                }
                 setStatusMessage(`Error saving file: ${(e as Error).message}`);
                 setFileSaved(false);
             }

@@ -178,14 +178,25 @@ pub async fn paint_redo(session_id: u64) -> Result<Option<VfxModel>, String> {
     session::redo(session_id).map_err(|e| e.to_string())
 }
 
-/// Serialize the resident tree to disk in its original format. `outPath`
-/// overrides the source path (Save As).
+/// Save the session. With no `outPath`, writes every dirty bin back to its own
+/// file and returns the paths written. With `outPath`, saves the main bin to
+/// that path (Save As). Returns the list of files written.
 #[tauri::command]
-pub async fn paint_save(session_id: u64, out_path: Option<String>) -> Result<String, String> {
+pub async fn paint_save(
+    session_id: u64,
+    out_path: Option<String>,
+    force: Option<bool>,
+) -> Result<Vec<String>, String> {
     let out = out_path.map(std::path::PathBuf::from);
-    tokio::task::spawn_blocking(move || session::save(session_id, out))
+    let force = force.unwrap_or(false);
+    tokio::task::spawn_blocking(move || session::save(session_id, out, force))
         .await
         .map_err(|e| format!("Save task failed to join: {}", e))?
-        .map(|p| p.to_string_lossy().into_owned())
+        .map(|paths| {
+            paths
+                .into_iter()
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect()
+        })
         .map_err(|e| e.to_string())
 }

@@ -10,21 +10,6 @@
     font-family: var(--font-mono);
 }
 
-.bnk-extract-header {
-    display: flex;
-    align-items: center;
-    padding: 1rem 1.5rem;
-    background: transparent;
-    border-bottom: 1px solid var(--border);
-}
-
-.bnk-extract-header h1 {
-    font-size: 1.4rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    margin: 0;
-}
-
 .bnk-extract-main {
     display: flex;
     flex: 1;
@@ -308,4 +293,74 @@
     100% {
         background-position: -200% 0;
     }
+}
+
+/* ── Bottom bar (mirrors Port's .port-bottom-bar; copied so there is no
+   dependency on Port.css load order) ─────────────────────────────────────── */
+.bnk-bottom-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    height: 48px;
+    padding: 0 16px;
+    /* Transparent so the app background shows through, matching the panels. */
+    background: transparent;
+    border-top: 1px solid var(--glass-border);
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+/* Absolutely centered in the whole bar so it's truly middle regardless of how
+   wide the left/right groups are. Sits behind the button groups. */
+.bnk-bottom-bar__status {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 50%;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    pointer-events: none;
+}
+
+.bnk-bottom-bar__actions {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* Toggle icon buttons in the bottom bar. --action-color drives the tint; the
+   active toggle passes the accent, inactive a muted color. */
+.bnk-action-btn {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in oklab, var(--action-color) 35%, transparent);
+    background: color-mix(in oklab, var(--action-color) 12%, transparent);
+    color: var(--action-color);
+    cursor: pointer;
+    transition: background var(--motion-fast), border-color var(--motion-fast), transform var(--motion-fast);
+}
+.bnk-action-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background: color-mix(in oklab, var(--action-color) 22%, transparent);
+    border-color: color-mix(in oklab, var(--action-color) 60%, transparent);
+}
+.bnk-action-btn:disabled {
+    color: var(--text-muted);
+    background: var(--bg-tertiary);
+    border-color: var(--border);
+    cursor: not-allowed;
 }

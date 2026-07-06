@@ -73,8 +73,10 @@ export function binConsolidateAssets(
 /** One step into the bin tree: a struct field (FNV1a-32 hash) or a list index. */
 export type Step = { field: number } | { index: number };
 
-/** Opaque address of a node inside the resident bin tree; pass back verbatim. */
+/** Opaque address of a node inside the resident bins; pass back verbatim.
+ *  `bin` selects which resident bin (main at 0, linked bins follow). */
 export interface NodePath {
+    bin: number;
     entry: number;
     steps: Step[];
 }
@@ -143,6 +145,8 @@ export interface EditorSystem {
     key: string;
     /** particleName or derived short name (same logic as paint). */
     name: string;
+    /** Which resident bin this system lives in (main at 0, linked bins follow). */
+    bin: number;
     emitters: EditorEmitter[];
 }
 
@@ -194,7 +198,7 @@ export function binEditorRemove(sessionId: number, path: NodePath): Promise<Edit
  *  systems they touched; whole-tree frames (restore) return a full model. */
 export type BinEditorUndoResult =
     | { kind: 'full'; model: EditorModel }
-    | { kind: 'partial'; entries: number[]; systems: EditorSystem[] };
+    | { kind: 'partial'; entries: { bin: number; entry: number }[]; systems: EditorSystem[] };
 
 /** Undo the last edit. Returns the refreshed view, or null if nothing to undo. */
 export function binEditorUndo(sessionId: number): Promise<BinEditorUndoResult | null> {
@@ -211,9 +215,12 @@ export function binEditorRestore(sessionId: number): Promise<EditorModel> {
     return invokeCommand<EditorModel>('bin_editor_restore', { sessionId });
 }
 
-/** Serialize the resident tree to disk in its original format. Returns the path written. */
-export function binEditorSave(sessionId: number, outPath?: string): Promise<string> {
-    return invokeCommand<string>('bin_editor_save', { sessionId, outPath: outPath ?? null });
+/** Save the session: with no outPath, writes every dirty bin to its own file;
+ *  with outPath, saves the main bin there (Save As). Returns the files written.
+ *  Rejects with a `STALE_FILE:` error if a file changed on disk since opening,
+ *  unless `force` is true (see {@link isStaleFileError}). */
+export function binEditorSave(sessionId: number, outPath?: string, force = false): Promise<string[]> {
+    return invokeCommand<string[]>('bin_editor_save', { sessionId, outPath: outPath ?? null, force });
 }
 
 /** Close a session and free its tree. */

@@ -93,9 +93,28 @@ fn get_system_short_name(entry: &BinEntry) -> String {
     out
 }
 
+/// Build a class-tagged struct value as either an `Embed` or `Pointer`,
+/// matching the container type the source BIN used for that field. The two
+/// have identical bodies on disk but distinct type tags (0x83 vs 0x82), and
+/// the engine cares which — so we never re-tag a struct we're copying.
+fn make_struct(item: BinType, class: u32, fields: Fields) -> BinValue {
+    match item {
+        BinType::Pointer => BinValue::Pointer { class, fields },
+        // Default to Embed for anything else (VFX emitter/struct lists are
+        // Embed in every real bin we've seen).
+        _ => BinValue::Embed { class, fields },
+    }
+}
+
 /// Build the `VfxEmitterDefinitionData` trigger emitter that fires the wrapper
-/// system named `trigger_name`.
-fn make_trigger_emitter(trigger_name: &str, emitter_name_original: &str, count: usize) -> BinValue {
+/// system named `trigger_name`. `emitter_item` is the container tag the source
+/// emitter list used, so the rebuilt emitter keeps the same on-disk type.
+fn make_trigger_emitter(
+    trigger_name: &str,
+    emitter_name_original: &str,
+    count: usize,
+    emitter_item: BinType,
+) -> BinValue {
     let effect_link_hash = h(trigger_name);
 
     // childrenIdentifiers: [ VfxChildIdentifier { effect: Link(<trigger>) } ]
@@ -130,20 +149,24 @@ fn make_trigger_emitter(trigger_name: &str, emitter_name_original: &str, count: 
         BinValue::String(format!("Trigger_{}_{}", count, emitter_name_original)),
     );
 
-    BinValue::Pointer {
-        class: h("VfxEmitterDefinitionData"),
-        fields,
-    }
+    make_struct(emitter_item, h("VfxEmitterDefinitionData"), fields)
 }
 
 /// Build the wrapper `VfxSystemDefinitionData` entry holding the original
-/// emitter, keyed by `fnv1a(trigger_name)`.
-fn make_wrapper_system(trigger_name: &str, original_emitter: BinValue) -> BinEntry {
+/// emitter, keyed by `fnv1a(trigger_name)`. The emitter list is rebuilt with
+/// the same `item`/`is_list2` the source system used so the wrapped emitter
+/// keeps its exact on-disk container type.
+fn make_wrapper_system(
+    trigger_name: &str,
+    original_emitter: BinValue,
+    emitter_item: BinType,
+    is_list2: bool,
+) -> BinEntry {
     let path_hash = h(trigger_name);
 
     let emitter_list = BinValue::List {
-        is_list2: false,
-        item: BinType::Pointer,
+        is_list2,
+        item: emitter_item,
         items: vec![original_emitter],
     };
 
@@ -226,13 +249,17 @@ pub fn run(bin_path: &Path) -> Result<BatchSplitResult> {
     for idx in vfx_indices {
         let short_name = get_system_short_name(&bin.entries[idx]);
 
-        // The system's complexEmitterDefinitionData must be a List of emitter
-        // Pointers. Clone the originals, build triggers + wrappers, then
-        // replace the system's emitter list with the triggers.
-        let original_emitters: Vec<BinValue> = match bin.entries[idx].fields.get(&complex_emitter_hash) {
-            Some(BinValue::List { items, .. }) if !items.is_empty() => items.clone(),
-            _ => continue,
-        };
+        // The system's complexEmitterDefinitionData is a List of emitter
+        // structs. Capture its exact container type (item tag + list2 flag) so
+        // both the trigger emitters and the wrapper lists reproduce it byte for
+        // byte — re-tagging Embed<->Pointer produces a bin the engine rejects.
+        let (emitter_item, is_list2, original_emitters): (BinType, bool, Vec<BinValue>) =
+            match bin.entries[idx].fields.get(&complex_emitter_hash) {
+                Some(BinValue::List { item, is_list2, items }) if !items.is_empty() => {
+                    (*item, *is_list2, items.clone())
+                }
+                _ => continue,
+            };
 
         let mut triggers: Vec<BinValue> = Vec::with_capacity(original_emitters.len());
         for (i, emitter) in original_emitters.iter().enumerate() {
@@ -240,8 +267,13 @@ pub fn run(bin_path: &Path) -> Result<BatchSplitResult> {
                 get_emitter_name(emitter).unwrap_or_else(|| format!("Emitter_{}", i + 1));
             let trigger_name = format!("REC_{}_{}", short_name, emitter_name);
 
-            triggers.push(make_trigger_emitter(&trigger_name, &emitter_name, i + 1));
-            new_entries.push(make_wrapper_system(&trigger_name, emitter.clone()));
+            triggers.push(make_trigger_emitter(&trigger_name, &emitter_name, i + 1, emitter_item));
+            new_entries.push(make_wrapper_system(
+                &trigger_name,
+                emitter.clone(),
+                emitter_item,
+                is_list2,
+            ));
             total_emitters += 1;
         }
 

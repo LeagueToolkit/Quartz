@@ -5,8 +5,9 @@ import {
     binEditorApply, binEditorClose, binEditorInsert, binEditorModel, binEditorOpen,
     binEditorRedo, binEditorRemove, binEditorRestore, binEditorSave, binEditorUndo,
     type BinEditorUndoResult, type EditorEmitter, type EditorModel, type EditorNode,
-    type JsonBinValue, type NodePath,
+    type EditorSystem, type JsonBinValue, type NodePath,
 } from '@/lib/api/bineditor';
+import { isStaleFileError, staleFilePaths } from '@/lib/api/staleFile';
 import { useNavigationStore, useNotificationStore, useUiPrefsStore } from '@/lib/stores';
 import { useFileDrop } from '@/lib/util/useFileDrop';
 import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
@@ -14,7 +15,7 @@ import { Switch } from '@/components/settings/primitives';
 import {
     cancelTextureHoverClose, removeTextureHoverPreview, scheduleTextureHoverClose, showTextureHoverPreview,
 } from '../paint/components/textureHoverPreview';
-import SystemSidebar from './components/SystemSidebar';
+import SystemSidebar, { systemId } from './components/SystemSidebar';
 import CategoryTabs from './components/CategoryTabs';
 import BulkBar from './components/BulkBar';
 import EmitterGroup from './components/EmitterGroup';
@@ -27,7 +28,7 @@ import {
     canAnimate, type StructuralOp,
 } from './model/dynamics';
 import { buildFieldValue, type SchemaEntry } from './model/emitterSchema';
-import { applyValueToNode, collectTextures, defaultListItem, fieldByKey, pathKey } from './model/nodes';
+import { applyValueToNode, collectTextures, defaultListItem, emitterId, entryKey, fieldByKey, pathKey } from './model/nodes';
 import './BinEditorV2.css';
 
 /* Bin Editor V2 — dynamic VFX bin editor over the native Rust bin session.
@@ -107,11 +108,12 @@ function BinEditorV2() {
     // ── Model lookups ──
     const systems = model?.systems ?? [];
 
-    /* Bin entry index -> system key, for dirty-dot attribution from NodePaths. */
+    /* `${bin}:${entry}` -> system key, for dirty-dot attribution from NodePaths.
+       Keyed on (bin, entry) since entry indices collide across resident bins. */
     const entryToSystem = useMemo(() => {
-        const m = new Map<number, string>();
+        const m = new Map<string, string>();
         for (const sys of model?.systems ?? []) {
-            for (const em of sys.emitters) m.set(em.path.entry, sys.key);
+            for (const em of sys.emitters) m.set(entryKey(em.path.bin, em.path.entry), systemId(sys));
         }
         return m;
     }, [model]);
@@ -132,7 +134,7 @@ function BinEditorV2() {
         return m;
     }, [model]);
 
-    const markEdited = useCallback((entries: number[]) => {
+    const markEdited = useCallback((entries: string[]) => {
         setDirty(true);
         setCanUndo(true);
         setCanRedo(false);
@@ -159,8 +161,8 @@ function BinEditorV2() {
     /* Nodes are mutated in place on leaf edits, so memo'd EmitterGroups can't
        see changes in their props. Per-entry revision counters invalidate
        exactly the touched systems' groups; everything else bails in memo. */
-    const [entryRevs, setEntryRevs] = useState<Map<number, number>>(new Map());
-    const bumpEntries = useCallback((entries: Iterable<number>) => {
+    const [entryRevs, setEntryRevs] = useState<Map<string, number>>(new Map());
+    const bumpEntries = useCallback((entries: Iterable<string>) => {
         setEntryRevs((prev) => {
             const next = new Map(prev);
             for (const e of entries) next.set(e, (next.get(e) ?? 0) + 1);
@@ -227,18 +229,38 @@ function BinEditorV2() {
         },
     });
 
-    const handleSave = useCallback(async () => {
+    const handleSave = useCallback(async (force = false) => {
         const sid = sessionRef.current;
         if (sid === null) return;
         setBusy(true);
         setStatus('Saving...');
         try {
-            const savedPath = await binEditorSave(sid);
+            const savedPaths = await binEditorSave(sid, undefined, force);
             setDirty(false);
             setDirtyKeys(new Set());
-            setStatus(`Saved: ${savedPath}`);
-            notify('success', `Saved ${savedPath.split(/[\\/]/).pop()}`);
+            if (savedPaths.length === 0) {
+                setStatus('Nothing to save (no changes)');
+                notify('info', 'No changes to save');
+            } else {
+                const names = savedPaths.map((p) => p.split(/[\\/]/).pop()).join(', ');
+                setStatus(`Saved: ${savedPaths.join(', ')}`);
+                notify('success', savedPaths.length === 1 ? `Saved ${names}` : `Saved ${savedPaths.length} files: ${names}`);
+            }
         } catch (error) {
+            // A file changed on disk since opening (e.g. saved from Paint/Port).
+            // Ask before clobbering; on confirm, retry with force.
+            if (!force && isStaleFileError(error)) {
+                const paths = staleFilePaths(error);
+                const names = paths.map((p) => p.split(/[\\/]/).pop()).join(', ') || 'this file';
+                setBusy(false);
+                const ok = window.confirm(
+                    `${names} was modified outside the Bin Editor since you opened it.\n\n`
+                    + `Saving now will overwrite those changes. Overwrite?`,
+                );
+                if (ok) await handleSave(true);
+                else setStatus('Save cancelled (file changed on disk)');
+                return;
+            }
             const msg = error instanceof Error ? error.message : String(error);
             setStatus(`Save error: ${msg}`);
             notify('error', `Save failed: ${msg}`);
@@ -255,13 +277,16 @@ function BinEditorV2() {
             setModel(res.model);
             return;
         }
-        const byKey = new Map(res.systems.map((s) => [s.key, s]));
+        // Reconcile by (bin, key): system keys are path_hash hex and can repeat
+        // across resident bins, so bin must be part of the identity.
+        const sysId = (s: EditorSystem): string => `${s.bin}:${s.key}`;
+        const byKey = new Map(res.systems.map((s) => [sysId(s), s]));
         setModel((prev) =>
             prev
-                ? { ...prev, systems: prev.systems.map((s) => byKey.get(s.key) ?? s) }
+                ? { ...prev, systems: prev.systems.map((s) => byKey.get(sysId(s)) ?? s) }
                 : prev,
         );
-        bumpEntries(res.entries);
+        bumpEntries(res.entries.map((e) => entryKey(e.bin, e.entry)));
     }, [bumpEntries]);
 
     const handleUndo = useCallback(async () => {
@@ -341,8 +366,8 @@ function BinEditorV2() {
             if (current.size === 0) return current;
             const visibleEmitterKeys = new Set<string>();
             for (const sys of model?.systems ?? []) {
-                if (!selectedSystems.has(sys.key)) continue;
-                for (const em of sys.emitters) visibleEmitterKeys.add(em.key);
+                if (!selectedSystems.has(systemId(sys))) continue;
+                for (const em of sys.emitters) visibleEmitterKeys.add(emitterId(sys.bin, em.key));
             }
             const next = new Set([...current].filter((key) => visibleEmitterKeys.has(key)));
             return next.size === current.size ? current : next;
@@ -381,8 +406,8 @@ function BinEditorV2() {
         if (!model) return;
         const keys = new Set<string>();
         for (const sys of model.systems) {
-            if (!selectedSystems.has(sys.key)) continue;
-            for (const em of sys.emitters) keys.add(em.key);
+            if (!selectedSystems.has(systemId(sys))) continue;
+            for (const em of sys.emitters) keys.add(emitterId(sys.bin, em.key));
         }
         setCheckedEmitters(keys);
     }, [model, selectedSystems]);
@@ -392,7 +417,7 @@ function BinEditorV2() {
     // ── Derivations ──
 
     const selectedSystemList = useMemo(
-        () => systems.filter((s) => selectedSystems.has(s.key)),
+        () => systems.filter((s) => selectedSystems.has(systemId(s))),
         [systems, selectedSystems],
     );
 
@@ -401,7 +426,7 @@ function BinEditorV2() {
             if (current.size === 0) return current;
             const visibleEmitterKeys = new Set<string>();
             for (const sys of selectedSystemList) {
-                for (const em of sys.emitters) visibleEmitterKeys.add(em.key);
+                for (const em of sys.emitters) visibleEmitterKeys.add(emitterId(sys.bin, em.key));
             }
             const next = new Set([...current].filter((key) => visibleEmitterKeys.has(key)));
             return next.size === current.size ? current : next;
@@ -427,7 +452,7 @@ function BinEditorV2() {
         const out: EditorEmitter[] = [];
         for (const sys of selectedSystemList) {
             for (const em of sys.emitters) {
-                if (checkedEmitters.has(em.key)) out.push(em);
+                if (checkedEmitters.has(emitterId(sys.bin, em.key))) out.push(em);
             }
         }
         return out;
@@ -468,7 +493,7 @@ function BinEditorV2() {
         const node = pathIndex.get(pathKey(path));
         if (!node) return;
         applyValueToNode(node, value);
-        bumpEntries([path.entry]);
+        bumpEntries([entryKey(path.bin, path.entry)]);
     }, [pathIndex, bumpEntries]);
 
     const commitLeaf = useCallback(async (path: NodePath, value: JsonBinValue) => {
@@ -476,10 +501,10 @@ function BinEditorV2() {
         if (sid === null) return;
         const node = pathIndex.get(pathKey(path));
         if (node) applyValueToNode(node, value);
-        bumpEntries([path.entry]);
+        bumpEntries([entryKey(path.bin, path.entry)]);
         try {
             await binEditorApply(sid, [{ path, value }]);
-            markEdited([path.entry]);
+            markEdited([entryKey(path.bin, path.entry)]);
         } catch (error) {
             setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
             await refetchModel();
@@ -502,10 +527,10 @@ function BinEditorV2() {
             const node = pathIndex.get(pathKey(e.path));
             if (node) applyValueToNode(node, e.value);
         }
-        bumpEntries(result.edits.map((e) => e.path.entry));
+        bumpEntries(result.edits.map((e) => entryKey(e.path.bin, e.path.entry)));
         try {
             await binEditorApply(sid, result.edits);
-            markEdited(result.edits.map((e) => e.path.entry));
+            markEdited(result.edits.map((e) => entryKey(e.path.bin, e.path.entry)));
             setStatus(successMsg);
         } catch (error) {
             // Native side swapped the batch back; resync the local model.
@@ -538,7 +563,7 @@ function BinEditorV2() {
     const runStructural = useCallback(async (
         ops: StructuralOp | StructuralOp[] | null,
         successMsg: string,
-        entries: number[],
+        entries: string[],
     ): Promise<boolean> => {
         const sid = sessionRef.current;
         if (sid === null || !ops) return false;
@@ -563,23 +588,23 @@ function BinEditorV2() {
     }, [markEdited, refetchModel]);
 
     const doAnimate = useCallback((node: EditorNode) => {
-        void runStructural(buildAnimate(node), `Animated ${node.key ?? 'value'}`, [node.path.entry]);
+        void runStructural(buildAnimate(node), `Animated ${node.key ?? 'value'}`, [entryKey(node.path.bin, node.path.entry)]);
     }, [runStructural]);
 
     const doDeanimate = useCallback((node: EditorNode) => {
-        void runStructural(buildDeanimate(node), `Made ${node.key ?? 'value'} constant`, [node.path.entry]);
+        void runStructural(buildDeanimate(node), `Made ${node.key ?? 'value'} constant`, [entryKey(node.path.bin, node.path.entry)]);
     }, [runStructural]);
 
     const doAddKeyframe = useCallback((node: EditorNode) => {
-        void runStructural(buildAddKeyframe(node), `Added keyframe to ${node.key ?? 'value'}`, [node.path.entry]);
+        void runStructural(buildAddKeyframe(node), `Added keyframe to ${node.key ?? 'value'}`, [entryKey(node.path.bin, node.path.entry)]);
     }, [runStructural]);
 
     const doRemoveKeyframe = useCallback((node: EditorNode, index: number) => {
-        void runStructural(buildRemoveKeyframe(node, index), `Removed keyframe from ${node.key ?? 'value'}`, [node.path.entry]);
+        void runStructural(buildRemoveKeyframe(node, index), `Removed keyframe from ${node.key ?? 'value'}`, [entryKey(node.path.bin, node.path.entry)]);
     }, [runStructural]);
 
     const doRemoveNode = useCallback((node: EditorNode) => {
-        void runStructural({ kind: 'remove', path: node.path }, `Removed ${node.key ?? 'item'}`, [node.path.entry]);
+        void runStructural({ kind: 'remove', path: node.path }, `Removed ${node.key ?? 'item'}`, [entryKey(node.path.bin, node.path.entry)]);
     }, [runStructural]);
 
     const doAddListItem = useCallback((node: EditorNode) => {
@@ -588,7 +613,7 @@ function BinEditorV2() {
             setStatus('This list type has no safe default item');
             return;
         }
-        void runStructural(op, 'Added list item', [node.path.entry]);
+        void runStructural(op, 'Added list item', [entryKey(node.path.bin, node.path.entry)]);
     }, [runStructural]);
 
     const doAddNested = useCallback((node: EditorNode, entry: SchemaEntry) => {
@@ -600,7 +625,7 @@ function BinEditorV2() {
         void runStructural(
             { kind: 'insert', parentPath: node.path, key: entry.name, value },
             `Added ${entry.name}`,
-            [node.path.entry],
+            [entryKey(node.path.bin, node.path.entry)],
         );
     }, [runStructural]);
 
@@ -617,7 +642,7 @@ function BinEditorV2() {
         const ok = await runStructural(
             { kind: 'insert', parentPath: emitter.path, key: entry.name, value },
             `Added ${entry.name} to ${emitter.name}`,
-            [emitter.path.entry],
+            [entryKey(emitter.path.bin, emitter.path.entry)],
         );
         if (ok) pinCategory(entry.name);
     }, [runStructural, pinCategory]);
@@ -640,7 +665,7 @@ function BinEditorV2() {
         const ok = await runStructural(
             ops,
             `Added ${entry.name} to ${ops.length} emitters`,
-            targetEmitters.map((e) => e.path.entry),
+            targetEmitters.map((e) => entryKey(e.path.bin, e.path.entry)),
         );
         if (ok) pinCategory(entry.name);
     }, [targetEmitters, runStructural, pinCategory]);
@@ -663,7 +688,7 @@ function BinEditorV2() {
             animate
                 ? `Animated ${activeCategory} on ${ops.length} emitters`
                 : `Made ${activeCategory} constant on ${ops.length} emitters`,
-            targetEmitters.map((e) => e.path.entry),
+            targetEmitters.map((e) => entryKey(e.path.bin, e.path.entry)),
         );
     }, [targetEmitters, activeCategory, runStructural]);
 
@@ -681,7 +706,7 @@ function BinEditorV2() {
         void runStructural(
             ops,
             `Removed ${activeCategory} from ${ops.length} emitters`,
-            targetEmitters.map((e) => e.path.entry),
+            targetEmitters.map((e) => entryKey(e.path.bin, e.path.entry)),
         );
     }, [targetEmitters, activeCategory, runStructural]);
 
@@ -830,23 +855,26 @@ function BinEditorV2() {
                             </div>
                             <div className="bineditorv2-main__scroll">
                                 {selectedSystemList.map((sys) => (
-                                    <div key={sys.key}>
+                                    <div key={systemId(sys)}>
                                         {selectedSystemList.length > 1 && (
                                             <div className="bineditorv2-syshead">{sys.name}</div>
                                         )}
-                                        {sys.emitters.map((em) => (
+                                        {sys.emitters.map((em) => {
+                                            const emId = emitterId(sys.bin, em.key);
+                                            return (
                                             <EmitterGroup
-                                                key={em.key}
+                                                key={emId}
+                                                emitterId={emId}
                                                 emitter={em}
-                                                selected={checkedEmitters.has(em.key)}
-                                                open={expandedEmitters.has(em.key)}
+                                                selected={checkedEmitters.has(emId)}
+                                                open={expandedEmitters.has(emId)}
                                                 onToggle={toggleEmitter}
                                                 onToggleOpen={toggleEmitterOpen}
                                                 expandedFields={expandedFields}
                                                 onToggleField={toggleFieldOpen}
                                                 activeCategory={activeCategory}
                                                 advanced={advanced}
-                                                rev={entryRevs.get(em.path.entry) ?? 0}
+                                                rev={entryRevs.get(entryKey(em.path.bin, em.path.entry)) ?? 0}
                                                 onAddField={doAddFieldToEmitter}
                                                 onTextureHover={handleTextureHover}
                                                 onTextureLeave={handleTextureLeave}
@@ -861,7 +889,8 @@ function BinEditorV2() {
                                                 onAddNested={doAddNested}
                                                 onAddListItem={doAddListItem}
                                             />
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 ))}
                             </div>

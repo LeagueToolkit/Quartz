@@ -4,7 +4,13 @@ import { getShortSystemName } from '@/pages/port/utils/nameUtils';
 
 /* Left sidebar: system search + the multi-selectable system list with emitter
    counts and dirty dots. Rows use the shared Settings-rail styling (matches the
-   Asset Extractor champion list). */
+   Asset Extractor champion list). Systems are keyed by (bin, key) since a
+   system's path_hash can repeat across the resident bins. */
+
+/** Selection/dirty identity for a system: `${bin}:${key}`. */
+export function systemId(sys: EditorSystem): string {
+    return `${sys.bin}:${sys.key}`;
+}
 
 interface SystemSidebarProps {
     systems: EditorSystem[];
@@ -12,7 +18,7 @@ interface SystemSidebarProps {
     dirtyKeys: Set<string>;
     search: string;
     onSearch: (q: string) => void;
-    onToggleSystem: (key: string) => void;
+    onToggleSystem: (id: string) => void;
 }
 
 /* Cursor-following glow: set --mx/--my on the hovered row. */
@@ -41,6 +47,9 @@ export default function SystemSidebar({
         );
     }, [systems, search]);
 
+    // Only surface the bin tag once linked bins are actually resident.
+    const multiBin = useMemo(() => systems.some((s) => s.bin > 0), [systems]);
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
             <input
@@ -55,17 +64,26 @@ export default function SystemSidebar({
 
             <div className="biev2-syslist" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }} onMouseMove={onRowMove}>
                 {filtered.map((sys) => {
-                    const selected = selectedKeys.has(sys.key);
-                    const dirty = dirtyKeys.has(sys.key);
+                    const id = systemId(sys);
+                    const selected = selectedKeys.has(id);
+                    const dirty = dirtyKeys.has(id);
                     return (
                         <div
-                            key={sys.key}
+                            key={id}
                             className={`biev2-row${selected ? ' is-active' : ''}`}
-                            onClick={() => onToggleSystem(sys.key)}
+                            onClick={() => onToggleSystem(id)}
                         >
                             <span className="biev2-row__name" title={sys.name}>
                                 {getShortSystemName(sys.name)}
                             </span>
+                            {multiBin && (
+                                <span
+                                    className="biev2-row__bin"
+                                    title={sys.bin === 0 ? 'Main bin' : `Linked bin ${sys.bin}`}
+                                >
+                                    {sys.bin === 0 ? 'main' : `linked ${sys.bin}`}
+                                </span>
+                            )}
                             {dirty && <span className="biev2-row__dot" title="Modified" />}
                             <span className="biev2-row__count">{sys.emitters.length}</span>
                         </div>

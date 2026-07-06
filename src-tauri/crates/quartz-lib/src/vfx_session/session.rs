@@ -6,13 +6,16 @@
 //! registry pattern.
 
 use super::project::{self, VfxPortModel};
-use super::resolve;
-use crate::bin::{read_bin, write_bin};
 use crate::error::{Error, Result};
+use crate::linked_bins;
 use crate::undo::UndoFrame;
+
+// The resident-bin types now live in the shared `linked_bins` module. Re-export
+// them from here (as `pub use`) so existing `vfx_session::session::{BinRole,
+// LoadedBin}` paths (project/ops/path modules, tests) keep resolving unchanged.
+pub use crate::linked_bins::{BinRole, LoadedBin};
 use parking_lot::RwLock;
-use ritoshark::bin::Bin;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
@@ -20,25 +23,6 @@ use std::sync::OnceLock;
 pub type SessionId = u64;
 
 const UNDO_CAP: usize = 50;
-
-/// Whether a bin is the opened main skin bin or one resolved from its
-/// `linked` list.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BinRole {
-    Main,
-    Linked,
-}
-
-/// One resident bin: its disk path, parsed tree, and whether the in-memory
-/// tree differs from what save last wrote.
-pub struct LoadedBin {
-    pub path: PathBuf,
-    pub role: BinRole,
-    pub tree: Bin,
-    pub dirty: bool,
-    /// The `linked`-list string that resolved here (`None` for the main bin).
-    pub link_str: Option<String>,
-}
 
 /// One reversible edit across the session: per-bin entry/tree frames.
 pub struct VfxUndoFrame {
@@ -151,12 +135,6 @@ pub struct OpenResult {
     pub model: VfxPortModel,
 }
 
-/// Case-fold a path for duplicate detection (two links may resolve to the
-/// same file; Windows paths compare case-insensitively).
-fn dedup_key(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/").to_lowercase()
-}
-
 /// Open a main skin `.bin`, resolve and parse its linked bins from the
 /// project folder, and register the session. Unresolvable or unparseable
 /// linked bins are skipped with a warning, never fatal.
@@ -172,53 +150,9 @@ pub fn open(path: impl AsRef<Path>) -> Result<OpenResult> {
         ));
     }
 
-    let data = std::fs::read(&path).map_err(|e| Error::io_with_path(e, &path))?;
-    let main = read_bin(&data).map_err(|e| Error::InvalidInput(e.to_string()))?;
-
-    let links = resolve::gather_linked(&path, &main);
-    let mut seen: HashSet<String> = HashSet::new();
-    seen.insert(dedup_key(&path));
-
-    let mut bins = vec![LoadedBin {
-        path: path.clone(),
-        role: BinRole::Main,
-        tree: main,
-        dirty: false,
-        link_str: None,
-    }];
-
-    for link in links {
-        let Some(link_path) = link.path else {
-            tracing::warn!("linked bin not found in project, skipping: {}", link.link);
-            continue;
-        };
-        if !seen.insert(dedup_key(&link_path)) {
-            continue;
-        }
-        let bytes = match std::fs::read(&link_path) {
-            Ok(b) => b,
-            Err(e) => {
-                tracing::warn!("failed to read linked bin {}: {}", link_path.display(), e);
-                continue;
-            }
-        };
-        match read_bin(&bytes) {
-            Ok(tree) => bins.push(LoadedBin {
-                path: link_path,
-                role: BinRole::Linked,
-                tree,
-                dirty: false,
-                link_str: Some(link.link),
-            }),
-            Err(e) => {
-                tracing::warn!(
-                    "skipping unparseable linked bin {}: {}",
-                    link_path.display(),
-                    e
-                );
-            }
-        }
-    }
+    // Shared resolver: reads the main bin, gathers its linked list from the
+    // project root, and loads every resolvable sibling (main at index 0).
+    let bins = linked_bins::open_with_linked(&path)?;
 
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     tracing::info!(
@@ -270,17 +204,8 @@ pub fn model_of(id: SessionId) -> Result<VfxPortModel> {
 /// dirty flags. Untouched bins are never rewritten. A mid-way failure
 /// propagates; bins already written stay written (their flags are already
 /// cleared, so a retried save resumes with the rest).
-pub fn save(id: SessionId) -> Result<Vec<PathBuf>> {
-    with_session(id, |s| -> Result<Vec<PathBuf>> {
-        let mut written = Vec::new();
-        for lb in s.bins.iter_mut().filter(|b| b.dirty) {
-            let bytes = write_bin(&lb.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
-            std::fs::write(&lb.path, bytes).map_err(|e| Error::io_with_path(e, &lb.path))?;
-            lb.dirty = false;
-            written.push(lb.path.clone());
-        }
-        Ok(written)
-    })?
+pub fn save(id: SessionId, force: bool) -> Result<Vec<PathBuf>> {
+    with_session(id, |s| linked_bins::save_dirty_checked(&mut s.bins, force))?
 }
 
 /// Undo the last mutating edit. Returns the refreshed model, or `None` if the
@@ -313,7 +238,7 @@ pub fn redo(id: SessionId) -> Result<Option<VfxPortModel>> {
 mod tests {
     use super::*;
     use indexmap::IndexMap;
-    use ritoshark::bin::{BinEntry, BinValue};
+    use ritoshark::bin::{Bin, BinEntry, BinValue};
 
     fn f32_entry(path_hash: u32, class_hash: u32, field: u32, v: f32) -> BinEntry {
         let mut fields = IndexMap::new();
@@ -329,9 +254,11 @@ mod tests {
         LoadedBin {
             path: PathBuf::new(),
             role,
+            source_format: crate::linked_bins::SourceFormat::Bin,
             tree,
             dirty: false,
             link_str: None,
+            mtime: None,
         }
     }
 

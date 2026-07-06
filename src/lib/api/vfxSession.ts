@@ -194,9 +194,11 @@ export function vfxModel(sessionId: number): Promise<VfxPortModel> {
     return invokeCommand<VfxPortModel>('vfx_model', { sessionId });
 }
 
-/** Write every dirty bin back to its own file. Returns the paths written. */
-export function vfxSave(sessionId: number): Promise<string[]> {
-    return invokeCommand<string[]>('vfx_save', { sessionId });
+/** Write every dirty bin back to its own file. Returns the paths written.
+ *  Rejects with a `STALE_FILE:` error if a file changed on disk since opening,
+ *  unless `force` is true (see {@link isStaleFileError}). */
+export function vfxSave(sessionId: number, force = false): Promise<string[]> {
+    return invokeCommand<string[]>('vfx_save', { sessionId, force });
 }
 
 /** Close a session and free its trees. */

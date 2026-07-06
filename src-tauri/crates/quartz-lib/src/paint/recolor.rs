@@ -4,7 +4,7 @@
 //! place (preserving alpha and skipping black/white by default).
 
 use super::model::{ColorSlot, ColorTarget, EditIndex, NodePath};
-use ritoshark::bin::{Bin, BinValue};
+use ritoshark::bin::BinValue;
 
 /// Recolor modes, matching the TS `RecolorMode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,7 +99,7 @@ impl ColorTargetSel {
 /// Recolor the selected emitters' selected color slots. Returns the number of
 /// color groups modified. Mutates `bin` in place.
 pub fn recolor_emitters(
-    bin: &mut Bin,
+    bins: &mut [crate::linked_bins::LoadedBin],
     index: &EditIndex,
     emitter_keys: &[String],
     targets: &[ColorTargetSel],
@@ -116,7 +116,7 @@ pub fn recolor_emitters(
         for sel in targets {
             for slot in sel.slots() {
                 if let Some(target) = slot_map.get(slot) {
-                    if recolor_one(bin, target, palette, opts, &mut rng) {
+                    if recolor_one(bins, target, palette, opts, &mut rng) {
                         modified += 1;
                     }
                 }
@@ -129,7 +129,7 @@ pub fn recolor_emitters(
 /// Recolor a single color target (constant + keyframes). Returns true if any
 /// node changed.
 fn recolor_one(
-    bin: &mut Bin,
+    bins: &mut [crate::linked_bins::LoadedBin],
     target: &ColorTarget,
     palette: &[PaletteStop],
     opts: &RecolorOptions,
@@ -147,7 +147,7 @@ fn recolor_one(
 
     let originals: Vec<[f32; 4]> = nodes
         .iter()
-        .map(|p| match p.resolve_mut(bin) {
+        .map(|p| match p.resolve_mut(bins) {
             Some(BinValue::Vec4(v)) => *v,
             _ => [0.0, 0.0, 0.0, 1.0],
         })
@@ -169,7 +169,7 @@ fn recolor_one(
         };
         let finalc = [nc[0], nc[1], nc[2], alpha];
         if finalc != original {
-            if let Some(BinValue::Vec4(v)) = path.resolve_mut(bin) {
+            if let Some(BinValue::Vec4(v)) = path.resolve_mut(bins) {
                 *v = finalc;
                 changed = true;
             }
@@ -246,13 +246,13 @@ fn compute_new_colors(
 
 /// Recolor a material color param to a single new color. Returns true if changed.
 pub fn recolor_material_param(
-    bin: &mut Bin,
+    bins: &mut [crate::linked_bins::LoadedBin],
     path: &NodePath,
     new_color: [f32; 4],
     preserve_alpha: bool,
     ignore_black_white: bool,
 ) -> bool {
-    let original = match path.resolve_mut(bin) {
+    let original = match path.resolve_mut(bins) {
         Some(BinValue::Vec4(v)) => *v,
         _ => return false,
     };
@@ -268,7 +268,7 @@ pub fn recolor_material_param(
     if finalc == original {
         return false;
     }
-    if let Some(BinValue::Vec4(v)) = path.resolve_mut(bin) {
+    if let Some(BinValue::Vec4(v)) = path.resolve_mut(bins) {
         *v = finalc;
         true
     } else {

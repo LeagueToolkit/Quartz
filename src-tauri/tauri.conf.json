@@ -15,6 +15,7 @@
       "resources/cursors/*",
       "resources/textures/*",
       "resources/audio/*",
+      "resources/bin/*",
       "resources/UxYW2KY_x2.png"
     ]
   },
@@ -40,7 +41,7 @@
       {
         "title": "Quartz",
         "width": 1280,
-        "height": 800,
+        "height": 720,
         "minWidth": 1100,
         "minHeight": 720,
         "dragDropEnabled": true,

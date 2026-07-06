@@ -13,10 +13,12 @@ import FieldRow, { type FieldRowCallbacks } from './FieldRow';
 
 interface EmitterGroupProps extends FieldRowCallbacks {
     emitter: EditorEmitter;
+    /** Bin-qualified selection/expansion identity for this emitter. */
+    emitterId: string;
     selected: boolean;
     open: boolean;
-    onToggle: (emitterKey: string) => void;
-    onToggleOpen: (emitterKey: string) => void;
+    onToggle: (emitterId: string) => void;
+    onToggleOpen: (emitterId: string) => void;
     activeCategory: string;
     advanced: boolean;
     /// Bumped by the page whenever an edit touches this emitter's entry —
@@ -31,6 +33,7 @@ interface EmitterGroupProps extends FieldRowCallbacks {
 function EmitterGroup(props: EmitterGroupProps) {
     const {
         emitter,
+        emitterId,
         selected,
         open,
         onToggle,
@@ -67,7 +70,7 @@ function EmitterGroup(props: EmitterGroupProps) {
                 <span
                     onClick={(e) => {
                         e.stopPropagation();
-                        onToggleOpen(emitter.key);
+                        onToggleOpen(emitterId);
                     }}
                     style={{
                         cursor: 'pointer',
@@ -84,7 +87,7 @@ function EmitterGroup(props: EmitterGroupProps) {
 
                 {/* Click the row body to highlight it for bulk selection */}
                 <div
-                    onClick={() => onToggle(emitter.key)}
+                    onClick={() => onToggle(emitterId)}
                     style={{
                         flex: 1,
                         display: 'flex',

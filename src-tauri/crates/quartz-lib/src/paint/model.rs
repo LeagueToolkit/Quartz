@@ -17,31 +17,67 @@ pub enum Step {
     Index(usize),
 }
 
-/// A relocatable path to a live node: which top-level entry, then the steps down
-/// to the value. Resolved against the resident tree at edit time so we never
-/// hold a borrow across IPC.
+/// A relocatable path to a live node: which resident bin, which top-level
+/// entry, then the steps down to the value. Resolved against the resident bins
+/// at edit time so we never hold a borrow across IPC. `bin` is the index into
+/// the session's bins (main at 0, linked bins follow).
 #[derive(Debug, Clone)]
 pub struct NodePath {
+    pub bin: usize,
     pub entry: usize,
     pub steps: Vec<Step>,
 }
 
 impl NodePath {
+    pub fn root(bin: usize, entry: usize) -> NodePath {
+        NodePath {
+            bin,
+            entry,
+            steps: Vec::new(),
+        }
+    }
+
     fn child(&self, step: Step) -> NodePath {
         let mut steps = self.steps.clone();
         steps.push(step);
         NodePath {
+            bin: self.bin,
             entry: self.entry,
             steps,
         }
     }
 
-    /// Resolve to a mutable reference into `bin`, or `None` if the path no longer
-    /// points at a value (tree shape changed).
-    pub fn resolve_mut<'a>(&self, bin: &'a mut Bin) -> Option<&'a mut BinValue> {
-        let entry = bin.entries.get_mut(self.entry)?;
+    /// Resolve to a mutable reference into the addressed bin's tree, or `None`
+    /// if the bin index is out of range or the path no longer points at a value
+    /// (tree shape changed).
+    pub fn resolve_mut<'a>(
+        &self,
+        bins: &'a mut [crate::linked_bins::LoadedBin],
+    ) -> Option<&'a mut BinValue> {
+        let entry = bins.get_mut(self.bin)?.tree.entries.get_mut(self.entry)?;
         let mut steps = self.steps.iter();
         // First step must descend from the entry's field map.
+        let first = steps.next()?;
+        let mut cur: &mut BinValue = match first {
+            Step::Field(h) => entry.fields.get_mut(h)?,
+            Step::Index(_) => return None,
+        };
+        for step in steps {
+            cur = match (step, cur) {
+                (Step::Field(h), BinValue::Embed { fields, .. })
+                | (Step::Field(h), BinValue::Pointer { fields, .. }) => fields.get_mut(h)?,
+                (Step::Index(i), BinValue::List { items, .. }) => items.get_mut(*i)?,
+                _ => return None,
+            };
+        }
+        Some(cur)
+    }
+
+    /// Resolve against a single tree (used by the recolor engine, which is
+    /// handed the owning bin's tree directly).
+    pub fn resolve_in_tree<'a>(&self, bin: &'a mut Bin) -> Option<&'a mut BinValue> {
+        let entry = bin.entries.get_mut(self.entry)?;
+        let mut steps = self.steps.iter();
         let first = steps.next()?;
         let mut cur: &mut BinValue = match first {
             Step::Field(h) => entry.fields.get_mut(h)?,
@@ -246,8 +282,26 @@ impl Hashes {
     }
 }
 
-/// Project a parsed bin into the VFX view plus the edit index.
+/// Project a single bin into the VFX view plus edit index (single-bin sessions
+/// and tests). Equivalent to [`project_all`] over one main bin.
 pub fn project(bin: &Bin) -> (VfxModel, EditIndex) {
+    let lb = crate::linked_bins::LoadedBin {
+        path: std::path::PathBuf::new(),
+        role: crate::linked_bins::BinRole::Main,
+        source_format: crate::linked_bins::SourceFormat::Bin,
+        tree: bin.clone(),
+        dirty: false,
+        link_str: None,
+        mtime: None,
+    };
+    project_all(std::slice::from_ref(&lb))
+}
+
+/// Project every resident bin into one merged VFX view plus edit index. Keys are
+/// bin-prefixed (`${bin}:${path_hash}`) so systems/emitters/materials stay
+/// unambiguous when linked bins share a path hash, and every `NodePath` carries
+/// its bin so edits route to the right tree. Main bin first.
+pub fn project_all(bins: &[crate::linked_bins::LoadedBin]) -> (VfxModel, EditIndex) {
     let h = Hashes::new();
     let mut model = VfxModel {
         systems: Vec::new(),
@@ -259,11 +313,14 @@ pub fn project(bin: &Bin) -> (VfxModel, EditIndex) {
     };
     let mut index = EditIndex::default();
 
-    for (entry_idx, entry) in bin.entries.iter().enumerate() {
-        if entry.class_hash == h.vfx_system {
-            project_system(bin, entry_idx, &h, &mut model, &mut index);
-        } else if entry.class_hash == h.static_material {
-            project_material(bin, entry_idx, &h, &mut model, &mut index);
+    for (bin_idx, lb) in bins.iter().enumerate() {
+        let bin = &lb.tree;
+        for (entry_idx, entry) in bin.entries.iter().enumerate() {
+            if entry.class_hash == h.vfx_system {
+                project_system(bin, bin_idx, entry_idx, &h, &mut model, &mut index);
+            } else if entry.class_hash == h.static_material {
+                project_material(bin, bin_idx, entry_idx, &h, &mut model, &mut index);
+            }
         }
     }
 
@@ -273,25 +330,24 @@ pub fn project(bin: &Bin) -> (VfxModel, EditIndex) {
     (model, index)
 }
 
-fn entry_key(bin: &Bin, entry_idx: usize) -> String {
+fn entry_key(bin: &Bin, bin_idx: usize, entry_idx: usize) -> String {
     // The entry's path hash gives a stable per-entry key; hex form matches the
-    // hashed-name convention the rest of the app uses for unresolved names.
-    format!("{:08x}", bin.entries[entry_idx].path_hash)
+    // hashed-name convention the rest of the app uses for unresolved names. The
+    // bin index prefix keeps keys unique when linked bins repeat a path hash.
+    format!("{}:{:08x}", bin_idx, bin.entries[entry_idx].path_hash)
 }
 
 fn project_system(
     bin: &Bin,
+    bin_idx: usize,
     entry_idx: usize,
     h: &Hashes,
     model: &mut VfxModel,
     index: &mut EditIndex,
 ) {
     let entry = &bin.entries[entry_idx];
-    let system_key = entry_key(bin, entry_idx);
-    let base = NodePath {
-        entry: entry_idx,
-        steps: Vec::new(),
-    };
+    let system_key = entry_key(bin, bin_idx, entry_idx);
+    let base = NodePath::root(bin_idx, entry_idx);
 
     let particle_name = entry.fields.get(&h.particle_name).and_then(string_of);
     let display_name = particle_name
@@ -421,10 +477,13 @@ fn project_emitter(
 /// Rebuild one color view from its edit target against the live tree — the
 /// partial-refresh path after a recolor. Mirrors `project_color`'s shape: the
 /// constant contributes a t=0 keyframe and list times are synthesized evenly.
-pub(crate) fn color_data_from_target(tree: &mut Bin, target: &ColorTarget) -> Option<ColorData> {
+pub(crate) fn color_data_from_target(
+    bins: &mut [crate::linked_bins::LoadedBin],
+    target: &ColorTarget,
+) -> Option<ColorData> {
     let mut keyframes = Vec::new();
     if let Some(p) = &target.constant {
-        if let Some(BinValue::Vec4(v)) = p.resolve_mut(tree) {
+        if let Some(BinValue::Vec4(v)) = p.resolve_mut(bins) {
             keyframes.push(ColorKeyframe {
                 rgba: *v,
                 time: 0.0,
@@ -433,7 +492,7 @@ pub(crate) fn color_data_from_target(tree: &mut Bin, target: &ColorTarget) -> Op
     }
     let count = target.keyframes.len();
     for (i, p) in target.keyframes.iter().enumerate() {
-        if let Some(BinValue::Vec4(v)) = p.resolve_mut(tree) {
+        if let Some(BinValue::Vec4(v)) = p.resolve_mut(bins) {
             let time = if count <= 1 {
                 0.0
             } else {
@@ -453,13 +512,13 @@ pub(crate) fn color_data_from_target(tree: &mut Bin, target: &ColorTarget) -> Op
 
 /// Assemble a full per-emitter color view from its slot map (partial refresh).
 pub(crate) fn emitter_colors_from_targets(
-    tree: &mut Bin,
+    bins: &mut [crate::linked_bins::LoadedBin],
     slots: &HashMap<ColorSlot, ColorTarget>,
 ) -> EmitterColors {
     let mut get = |slot: ColorSlot| -> Option<ColorData> {
         slots
             .get(&slot)
-            .and_then(|t| color_data_from_target(tree, t))
+            .and_then(|t| color_data_from_target(bins, t))
     };
     EmitterColors {
         color: get(ColorSlot::Color),
@@ -541,17 +600,15 @@ fn project_color(
 
 fn project_material(
     bin: &Bin,
+    bin_idx: usize,
     entry_idx: usize,
     h: &Hashes,
     model: &mut VfxModel,
     index: &mut EditIndex,
 ) {
     let entry = &bin.entries[entry_idx];
-    let material_key = entry_key(bin, entry_idx);
-    let base = NodePath {
-        entry: entry_idx,
-        steps: Vec::new(),
-    };
+    let material_key = entry_key(bin, bin_idx, entry_idx);
+    let base = NodePath::root(bin_idx, entry_idx);
 
     let mut color_params = Vec::new();
 
@@ -606,12 +663,19 @@ fn string_of(v: &BinValue) -> Option<String> {
     }
 }
 
-/// Trim a slash-delimited path to its last segment, capped at 40 chars.
+/// Trim a slash-delimited path to its last segment, capped at 40 chars. Strips a
+/// leading `<bin>:` prefix first so a bin-prefixed hex key (`0:1a2b3c4d`) reads
+/// as just the hash in the UI, not the internal bin index.
 fn short_name(full: &str) -> String {
     if full.is_empty() {
         return "Unknown".to_string();
     }
-    let last = full.rsplit('/').next().unwrap_or(full);
+    // Drop a leading numeric bin prefix (`<digits>:`) if present.
+    let unprefixed = match full.split_once(':') {
+        Some((head, tail)) if head.chars().all(|c| c.is_ascii_digit()) && !head.is_empty() => tail,
+        _ => full,
+    };
+    let last = unprefixed.rsplit('/').next().unwrap_or(unprefixed);
     if last.len() > 40 {
         format!("{}...", &last[..37])
     } else {
@@ -721,9 +785,17 @@ mod tests {
         assert!(index.blend_modes.contains_key(&emitter.key));
 
         // The base-color target's constant path resolves back to the live vec4.
-        let mut bin_mut = bin.clone();
+        let mut bins_mut = vec![crate::linked_bins::LoadedBin {
+            path: std::path::PathBuf::new(),
+            role: crate::linked_bins::BinRole::Main,
+            source_format: crate::linked_bins::SourceFormat::Bin,
+            tree: bin.clone(),
+            dirty: false,
+            link_str: None,
+            mtime: None,
+        }];
         let target = &slots[&ColorSlot::Color];
-        let node = target.constant.as_ref().unwrap().resolve_mut(&mut bin_mut);
+        let node = target.constant.as_ref().unwrap().resolve_mut(&mut bins_mut);
         assert!(matches!(node, Some(BinValue::Vec4(_))));
     }
 }

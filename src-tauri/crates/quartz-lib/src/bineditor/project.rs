@@ -96,6 +96,8 @@ pub struct EditorSystem {
     /// Hex path_hash, e.g. `"1a2b3c4d"`.
     pub key: String,
     pub name: String,
+    /// Which resident bin this system lives in (main at 0, linked bins follow).
+    pub bin: usize,
     pub emitters: Vec<EditorEmitter>,
 }
 
@@ -105,46 +107,63 @@ pub struct EditorModel {
     pub systems: Vec<EditorSystem>,
 }
 
-/// Project a parsed bin into the editor view using the cached hash mapper.
-pub fn project(bin: &Bin) -> EditorModel {
-    let hashes = crate::bin::get_cached_bin_hashes().read();
-    project_with(bin, &hashes)
-}
-
-pub fn project_with(bin: &Bin, m: &HashMapper) -> EditorModel {
+/// Project one loaded bin's systems, each tagged with `bin_idx`, using the
+/// cached hash mapper.
+pub fn project_with(bin_idx: usize, bin: &Bin, m: &HashMapper) -> Vec<EditorSystem> {
     let mut systems = Vec::new();
     for (entry_idx, entry) in bin.entries.iter().enumerate() {
         if entry.class_hash == H_VFX_SYSTEM {
-            systems.push(project_system(entry_idx, entry, m));
+            systems.push(project_system(bin_idx, entry_idx, entry, m));
         }
+    }
+    systems
+}
+
+/// Project every resident bin into one model (main first). Each system carries
+/// its `bin` index and every node path addresses the bin it came from.
+pub fn project_all(bins: &[crate::linked_bins::LoadedBin]) -> EditorModel {
+    let hashes = crate::bin::get_cached_bin_hashes().read();
+    let mut systems = Vec::new();
+    for (bin_idx, lb) in bins.iter().enumerate() {
+        systems.extend(project_with(bin_idx, &lb.tree, &hashes));
     }
     EditorModel { systems }
 }
 
-/// Project only the given entries' systems — the partial refresh an undo/redo
-/// returns instead of a whole-model reprojection. Non-system entries (and
-/// out-of-range indices) yield nothing.
-pub fn project_entries(bin: &Bin, entry_idxs: &[usize]) -> Vec<EditorSystem> {
+/// Partial refresh: reproject only the given `(bin, entry)` systems — what an
+/// undo/redo returns instead of a whole-model reprojection. Non-system entries
+/// (and out-of-range indices) yield nothing.
+pub fn project_entries_multi(
+    bins: &[crate::linked_bins::LoadedBin],
+    targets: &[(usize, usize)],
+) -> Vec<EditorSystem> {
     let hashes = crate::bin::get_cached_bin_hashes().read();
     let mut out = Vec::new();
-    for &idx in entry_idxs {
-        if let Some(entry) = bin.entries.get(idx) {
-            if entry.class_hash == H_VFX_SYSTEM {
-                out.push(project_system(idx, entry, &hashes));
+    for &(bin_idx, entry_idx) in targets {
+        if let Some(lb) = bins.get(bin_idx) {
+            if let Some(entry) = lb.tree.entries.get(entry_idx) {
+                if entry.class_hash == H_VFX_SYSTEM {
+                    out.push(project_system(bin_idx, entry_idx, entry, &hashes));
+                }
             }
         }
     }
     out
 }
 
-fn project_system(entry_idx: usize, entry: &BinEntry, m: &HashMapper) -> EditorSystem {
+fn project_system(
+    bin_idx: usize,
+    entry_idx: usize,
+    entry: &BinEntry,
+    m: &HashMapper,
+) -> EditorSystem {
     let key = format!("{:08x}", entry.path_hash);
     let particle_name = match entry.fields.get(&H_PARTICLE_NAME) {
         Some(BinValue::String(s)) => Some(s.clone()),
         _ => None,
     };
     let name = particle_name.unwrap_or_else(|| short_name(&key));
-    let base = NodePath::root(entry_idx);
+    let base = NodePath::root(bin_idx, entry_idx);
 
     let mut emitters = Vec::new();
     for (&field_hash, field_val) in entry.fields.iter() {
@@ -189,6 +208,7 @@ fn project_system(entry_idx: usize, entry: &BinEntry, m: &HashMapper) -> EditorS
     EditorSystem {
         key,
         name,
+        bin: bin_idx,
         emitters,
     }
 }
@@ -366,8 +386,25 @@ fn short_name(full: &str) -> String {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::linked_bins::{BinRole, LoadedBin, SourceFormat};
     use indexmap::IndexMap;
     use ritoshark::bin::BinType;
+
+    /// Wrap trees as resident bins for path resolution in tests.
+    pub(crate) fn loaded_bins(trees: Vec<Bin>) -> Vec<LoadedBin> {
+        trees
+            .into_iter()
+            .map(|tree| LoadedBin {
+                path: Default::default(),
+                role: BinRole::Main,
+                source_format: SourceFormat::Bin,
+                tree,
+                dirty: false,
+                link_str: None,
+                mtime: None,
+            })
+            .collect()
+    }
 
     pub(crate) fn sample_bin() -> Bin {
         let h_color = fnv1a("color");
@@ -421,13 +458,14 @@ pub(crate) mod tests {
 
     #[test]
     fn projects_every_emitter_field_with_paths() {
-        let bin = sample_bin();
-        let model = project_with(&bin, &HashMapper::new());
+        let mut bins = loaded_bins(vec![sample_bin()]);
+        let model = project_all(&bins);
 
         assert_eq!(model.systems.len(), 1);
         let system = &model.systems[0];
         assert_eq!(system.key, "12345678");
         assert_eq!(system.name, "Yasuo_Q");
+        assert_eq!(system.bin, 0);
         assert_eq!(system.emitters.len(), 1);
 
         let emitter = &system.emitters[0];
@@ -441,9 +479,9 @@ pub(crate) mod tests {
             .iter()
             .find(|f| matches!(f.num_type, Some("f32")))
             .expect("rate field");
-        let mut bin_mut = bin.clone();
+        assert_eq!(rate.path.bin, 0);
         assert!(matches!(
-            rate.path.resolve_mut(&mut bin_mut),
+            rate.path.resolve_mut(&mut bins),
             Some(BinValue::F32(_))
         ));
 
@@ -458,8 +496,33 @@ pub(crate) mod tests {
         let kf = &list.children.as_ref().unwrap()[0];
         assert_eq!(kf.kind, NodeKind::Vector);
         assert!(matches!(
-            kf.path.resolve_mut(&mut bin_mut),
+            kf.path.resolve_mut(&mut bins),
             Some(BinValue::Vec4(_))
+        ));
+    }
+
+    #[test]
+    fn project_all_stamps_bin_index_on_paths_and_systems() {
+        let bins = loaded_bins(vec![sample_bin(), sample_bin()]);
+        let model = project_all(&bins);
+
+        // One system per bin, each tagged with its bin index.
+        assert_eq!(model.systems.len(), 2);
+        assert_eq!(model.systems[0].bin, 0);
+        assert_eq!(model.systems[1].bin, 1);
+
+        // A leaf path in the second system addresses bin 1 and resolves there.
+        let sys1 = &model.systems[1];
+        let rate = sys1.emitters[0]
+            .fields
+            .iter()
+            .find(|f| matches!(f.num_type, Some("f32")))
+            .expect("rate");
+        assert_eq!(rate.path.bin, 1);
+        let mut bins_mut = loaded_bins(vec![sample_bin(), sample_bin()]);
+        assert!(matches!(
+            rate.path.resolve_mut(&mut bins_mut),
+            Some(BinValue::F32(_))
         ));
     }
 }

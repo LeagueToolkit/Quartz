@@ -1657,9 +1657,11 @@ mod tests {
         let donor_bins = vec![LoadedBin {
             path: Default::default(),
             role: BinRole::Main,
+            source_format: crate::linked_bins::SourceFormat::Bin,
             tree: bin_of(vec![resolver, system_entry(&h, system_hash)]),
             dirty: false,
             link_str: None,
+            mtime: None,
         }];
 
         let pairs = resolver_entries_for_system_hash(&donor_bins, &h, system_hash);

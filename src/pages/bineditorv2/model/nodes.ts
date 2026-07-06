@@ -39,6 +39,18 @@ export function pathKey(path: NodePath): string {
     return JSON.stringify(path);
 }
 
+/** `${bin}:${entry}` identity for a top-level entry, disambiguated across the
+ *  resident bins (entry indices repeat between bins). */
+export function entryKey(bin: number, entry: number): string {
+    return `${bin}:${entry}`;
+}
+
+/** `${bin}:${emitterKey}` identity for an emitter, disambiguated across the
+ *  resident bins (emitter keys derive from system path_hash, which repeats). */
+export function emitterId(bin: number, emitterKey: string): string {
+    return `${bin}:${emitterKey}`;
+}
+
 /** Format a number for display: integers plain, floats trimmed of trailing zeros. */
 export function formatNumber(n: number): string {
     if (Number.isInteger(n)) return String(n);

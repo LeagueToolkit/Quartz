@@ -32,6 +32,7 @@ export {
 export * from './vfxSession';
 export * from './explorer';
 export * from './portHub';
+export { isStaleFileError, staleFilePaths } from './staleFile';
 export {
     discoverChampions,
     extractChampionAssets,

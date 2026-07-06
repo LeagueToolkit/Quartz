@@ -44,10 +44,12 @@ pub async fn vfx_model(session_id: u64) -> Result<VfxPortModel, String> {
 }
 
 /// Write every dirty bin back to its own original file. Returns the paths
-/// written.
+/// written. Unless `force` is true, a bin whose file changed on disk since
+/// opening aborts the save with a `STALE_FILE:` error so the UI can prompt.
 #[tauri::command]
-pub async fn vfx_save(session_id: u64) -> Result<Vec<String>, String> {
-    tokio::task::spawn_blocking(move || session::save(session_id))
+pub async fn vfx_save(session_id: u64, force: Option<bool>) -> Result<Vec<String>, String> {
+    let force = force.unwrap_or(false);
+    tokio::task::spawn_blocking(move || session::save(session_id, force))
         .await
         .map_err(|e| format!("Save task failed to join: {}", e))?
         .map(|paths| {

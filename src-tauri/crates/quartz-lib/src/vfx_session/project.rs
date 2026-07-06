@@ -926,9 +926,11 @@ mod tests {
         LoadedBin {
             path: Default::default(),
             role,
+            source_format: crate::linked_bins::SourceFormat::Bin,
             tree: bin,
             dirty: false,
             link_str: None,
+            mtime: None,
         }
     }
 

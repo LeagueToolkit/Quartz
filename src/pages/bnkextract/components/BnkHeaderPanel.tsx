@@ -1,18 +1,11 @@
-import { Box, Typography } from '@mui/material';
+import { Box } from '@mui/material';
 import {
-    ContentCut, ViewStream, VerticalSplit, FolderOpen, Refresh, Delete, Bookmark, AutoFixHigh, SportsEsports,
+    FolderOpen, Refresh, AutoFixHigh, SportsEsports,
 } from '@mui/icons-material';
-import type { SxProps, Theme } from '@mui/material';
-import type { Pane, SplitterFile, ViewMode } from '../types';
+import type { Pane, ViewMode } from '../types';
 
 interface Props {
-    headerStyle: SxProps<Theme>;
-    statusMessage: string;
-    showAudioSplitter: boolean;
-    setSplitterInitialFile: (f: SplitterFile | null) => void;
-    setShowAudioSplitter: (v: boolean) => void;
     viewMode: ViewMode;
-    setViewMode: React.Dispatch<React.SetStateAction<ViewMode>>;
     activePane: Pane;
     setActivePane: (p: Pane) => void;
     binPath: string;
@@ -24,20 +17,12 @@ interface Props {
     handleSelectFile: (kind: 'bin' | 'wpk' | 'bnk') => void;
     handleParseFiles: () => void;
     isLoading: boolean;
-    handleClearPane: (pane: Pane) => void;
-    onSessionClick: () => void;
     setAutoExtractOpen: (v: boolean) => void;
     onOpenGameBanks: () => void;
 }
 
 export default function BnkHeaderPanel({
-    headerStyle,
-    statusMessage,
-    showAudioSplitter,
-    setSplitterInitialFile,
-    setShowAudioSplitter,
     viewMode,
-    setViewMode,
     activePane,
     setActivePane,
     binPath,
@@ -49,54 +34,19 @@ export default function BnkHeaderPanel({
     handleSelectFile,
     handleParseFiles,
     isLoading,
-    handleClearPane,
-    onSessionClick,
     setAutoExtractOpen,
     onOpenGameBanks,
 }: Props) {
     return (
         <>
-            <Box className="bnk-extract-header" sx={headerStyle}>
-                <Typography sx={{ fontSize: '1rem', fontWeight: 700, letterSpacing: '0.1em', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 1 }}>
-                    BNK EXTRACT
-                    <Box component="span" sx={{ fontSize: '0.6rem', background: 'transparent', color: 'var(--accent)', px: 1, borderRadius: '4px', verticalAlign: 'middle' }}>
-                        PRO
-                    </Box>
-                </Typography>
-
-                <Box sx={{ flex: 1 }} />
-
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mr: 2 }}>
-                    <button
-                        className={`dl-btn dl-btn--icon dl-btn--sm ${showAudioSplitter ? 'dl-btn--primary' : 'dl-btn--ghost'}`}
-                        onClick={() => { setSplitterInitialFile(null); setShowAudioSplitter(true); }}
-                        title="Audio Splitter - cut audio into segments"
-                    >
-                        <span className="dl-icon"><ContentCut sx={{ fontSize: 18 }} /></span>
-                    </button>
-                    <button
-                        className={`dl-btn dl-btn--icon dl-btn--sm ${viewMode === 'split' ? 'dl-btn--primary' : 'dl-btn--ghost'}`}
-                        onClick={() => setViewMode((prev) => (prev === 'normal' ? 'split' : 'normal'))}
-                        title={viewMode === 'normal' ? 'Switch to Split View' : 'Switch to Single View'}
-                    >
-                        <span className="dl-icon">{viewMode === 'normal' ? <ViewStream sx={{ fontSize: 18 }} /> : <VerticalSplit sx={{ fontSize: 18 }} />}</span>
-                    </button>
-                </Box>
-
-                <Typography sx={{ fontSize: '0.65rem', opacity: 0.6, color: 'var(--text-2)' }}>
-                    {statusMessage}
-                </Typography>
-            </Box>
-
             <Box
                 sx={{
                     padding: '0.5rem 1rem',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '0.5rem',
-                    background: 'var(--bg)',
-                    backdropFilter: 'blur(calc(var(--glass-blur, 10px) + 1px)) saturate(118%)',
-                    WebkitBackdropFilter: 'blur(calc(var(--glass-blur, 10px) + 1px)) saturate(118%)',
+                    // Transparent so the app background shows through.
+                    background: 'transparent',
                     borderBottom: '1px solid var(--glass-border)',
                 }}
             >
@@ -166,20 +116,6 @@ export default function BnkHeaderPanel({
                         >
                             <span className="dl-icon"><Refresh sx={{ fontSize: 12 }} /></span>
                             <span>Parse</span>
-                        </button>
-                        <button
-                            className="dl-btn dl-btn--icon dl-btn--sm dl-btn--danger"
-                            onClick={() => handleClearPane(viewMode === 'split' ? activePane : 'left')}
-                            title="Clear tree"
-                        >
-                            <span className="dl-icon"><Delete sx={{ fontSize: 14 }} /></span>
-                        </button>
-                        <button
-                            className="dl-btn dl-btn--icon dl-btn--sm dl-btn--secondary"
-                            onClick={onSessionClick}
-                            title="Session Manager"
-                        >
-                            <span className="dl-icon"><Bookmark style={{ fontSize: 14 }} /></span>
                         </button>
                         <button
                             className="dl-btn dl-btn--icon dl-btn--sm dl-btn--secondary"

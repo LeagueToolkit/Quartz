@@ -148,7 +148,10 @@ export function paintRedo(sessionId: number): Promise<VfxModel | null> {
     return invokeCommand<VfxModel | null>('paint_redo', { sessionId });
 }
 
-/** Serialize the resident tree to disk in its original format. */
-export function paintSave(sessionId: number, outPath?: string): Promise<string> {
-    return invokeCommand<string>('paint_save', { sessionId, outPath: outPath ?? null });
+/** Save the session: with no outPath, writes every dirty bin to its own file;
+ *  with outPath, saves the main bin there (Save As). Returns the files written.
+ *  Rejects with a `STALE_FILE:` error if a file changed on disk since opening,
+ *  unless `force` is true (see {@link isStaleFileError}). */
+export function paintSave(sessionId: number, outPath?: string, force = false): Promise<string[]> {
+    return invokeCommand<string[]>('paint_save', { sessionId, outPath: outPath ?? null, force });
 }
