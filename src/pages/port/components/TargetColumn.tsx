@@ -5,7 +5,7 @@ import { SearchInput } from './common/Inputs';
 import { useBinFileDrop } from './common/binFileDrop';
 import PortRecentBins from './common/PortRecentBins';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
-import { SkeletonList } from '@/components/ui/Skeleton';
+import { SkeletonCardList } from '@/components/ui/Skeleton';
 import { usePortDropZone, type PortDragPayload } from '../usePortDrag';
 import type { VfxSystem, VfxSystemMap } from '../model';
 import type { ListSharedProps } from './ParticleSystemList/types';
@@ -215,7 +215,7 @@ export default function TargetColumn(props: TargetColumnProps) {
                     </div>
                 )}
                 {binLoading ? (
-                    <SkeletonList count={8} />
+                    <SkeletonCardList count={7} />
                 ) : Object.keys(safeTargetSystems).length > 0 ? (
                     <div
                         ref={targetListRef}

@@ -7,7 +7,7 @@ import { SearchInput } from './common/Inputs';
 import { useBinFileDrop } from './common/binFileDrop';
 import PortRecentBins from './common/PortRecentBins';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
-import { SkeletonList } from '@/components/ui/Skeleton';
+import { SkeletonCardList } from '@/components/ui/Skeleton';
 import type { VfxSystem, VfxSystemMap } from '../model';
 import type { ListSharedProps } from './ParticleSystemList/types';
 
@@ -162,7 +162,7 @@ export default function DonorColumn(props: DonorColumnProps) {
                 style={{ flex: 1, ...sectionStyle, borderRadius: '8px', padding: 0, overflow: 'hidden', display: 'flex', alignItems: 'stretch', justifyContent: 'stretch' }}
             >
                 {binLoading ? (
-                    <SkeletonList count={8} />
+                    <SkeletonCardList count={7} />
                 ) : Object.keys(safeDonorSystems).length > 0 ? (
                     <div ref={donorListRef} style={{ width: '100%', height: '100%', overflow: 'auto' }}>
                         <ParticleSystemList systems={filteredDonorSystems} isTarget={false} {...props} />

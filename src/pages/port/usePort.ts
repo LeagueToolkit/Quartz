@@ -413,7 +413,7 @@ export default function usePort() {
         try {
             setIsProcessing(true);
             setStatusMessage('Opening target file...');
-            setProcessingText('Loading file...');
+            setProcessingText('Loading target...');
 
             // Free the previous resident session. Read the live id from the
             // store (local state resets on a page swap, the session does not).
@@ -446,7 +446,7 @@ export default function usePort() {
         try {
             setIsProcessing(true);
             setStatusMessage('Opening donor bin...');
-            setProcessingText('Loading file...');
+            setProcessingText('Loading donor...');
 
             const prev = usePortStore.getState().donorSessionId;
             if (prev !== null) void vfxClose(prev).catch(() => undefined);

@@ -42,6 +42,28 @@ export function SkeletonList({ count = 6 }: { count?: number }) {
     );
 }
 
+/** A full-height stack of full-width "card" skeletons (e.g. list panels that
+ *  fill a column). Each card has a header line + a couple of sub-lines. */
+export function SkeletonCardList({ count = 6 }: { count?: number }) {
+    return (
+        <div className="q-skel-cards">
+            {Array.from({ length: count }).map((_, i) => {
+                const d = ((i % 3) + 1) as 1 | 2 | 3;
+                return (
+                    <div key={i} className="q-skel-card">
+                        <div className="q-skel-card__head">
+                            <Skeleton width={26} height={26} radius={6} delayClass={d} />
+                            <Skeleton height={12} delayClass={d} style={{ flex: 1, maxWidth: `${64 - (i % 3) * 10}%` }} />
+                        </div>
+                        <Skeleton height={9} delayClass={d} style={{ width: '90%' }} />
+                        <Skeleton height={9} delayClass={d} style={{ width: '72%' }} />
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 /** Delay a boolean: true only after `active` stays true for `delay` ms. Lets
  *  quick operations pass with no skeleton flash. */
 import { useEffect, useState } from 'react';

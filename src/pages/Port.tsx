@@ -444,13 +444,15 @@ function Port() {
         dropEmitterOnSystem,
     };
 
-    // Only bin-loading gets a skeleton; other operations (save/port) are quick.
-    const binLoading = p.isProcessing && p.processingText === 'Loading file...';
+    // Only bin-loading gets a skeleton, and only on the side being loaded;
+    // other operations (save/port) are quick and show no loader.
+    const targetLoading = p.isProcessing && p.processingText === 'Loading target...';
+    const donorLoading = p.isProcessing && p.processingText === 'Loading donor...';
 
     const targetColumnProps = {
         ...sharedListProps,
         isProcessing: p.isProcessing,
-        binLoading,
+        binLoading: targetLoading,
         handleOpenTargetBin: p.handleOpenTargetBin,
         processTargetBin: p.processTargetBin,
         targetFilterInput: p.targetFilter,
@@ -497,7 +499,7 @@ function Port() {
     const donorColumnProps = {
         ...sharedListProps,
         isProcessing: p.isProcessing,
-        binLoading,
+        binLoading: donorLoading,
         handleOpenDonorBin: p.handleOpenDonorBin,
         processDonorBin: p.processDonorBin,
         handleOpenDonorFromGame,
