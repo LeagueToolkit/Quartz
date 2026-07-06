@@ -6,7 +6,6 @@ export type Page =
     | 'home'
     | 'paint'
     | 'port'
-    | 'vfxhub'
     | 'bineditor'
     | 'assetextractor'
     | 'imgrecolor'

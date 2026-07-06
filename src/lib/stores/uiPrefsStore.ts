@@ -7,7 +7,6 @@ import type { Page } from './navigationStore';
 export const PAGE_DEFAULTS: Partial<Record<Page, boolean>> = {
     paint: true,
     port: true,
-    vfxhub: true,
     bineditor: true,
     imgrecolor: true,
     upscale: true,
@@ -23,7 +22,6 @@ export const PAGE_DEFAULTS: Partial<Record<Page, boolean>> = {
 
 // Display labels + order for the Page Visibility list (matches Quartz).
 export const PAGE_LABELS: { page: Page; label: string }[] = [
-    { page: 'vfxhub', label: 'VFX Hub' },
     { page: 'bineditor', label: 'Bin Editor' },
     { page: 'imgrecolor', label: 'Image Recolor' },
     { page: 'upscale', label: 'Upscale' },

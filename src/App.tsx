@@ -14,7 +14,6 @@ import AssetExtractor from '@/pages/AssetExtractor';
 import FileRandomizer from '@/pages/FileRandomizer';
 import Paint from '@/pages/Paint';
 import Port from '@/pages/Port';
-import VfxHub from '@/pages/VfxHub';
 import ImgRecolor from '@/pages/ImgRecolor';
 import ParticleRandomizer from '@/pages/ParticleRandomizer';
 import FakeGear from '@/pages/FakeGear';
@@ -31,7 +30,6 @@ const TITLES: Record<Page, string> = {
     home: 'Home',
     paint: 'Paint',
     port: 'Port',
-    vfxhub: 'VFX Hub',
     bineditor: 'Bin Editor',
     assetextractor: 'Asset Extractor',
     imgrecolor: 'Image Recolor',
@@ -51,7 +49,7 @@ const TITLES: Record<Page, string> = {
    should fill the work area with no outer frame. Content/card pages keep the
    default p-6 gutter. */
 const FULL_BLEED_PAGES = new Set<Page>([
-    'home', 'paint', 'bineditor', 'assetextractor', 'port', 'vfxhub', 'soundbanks', 'fakegear', 'aniport', 'particlerandomizer', 'upscale', 'rgba', 'imgrecolor', 'bumpath',
+    'home', 'paint', 'bineditor', 'assetextractor', 'port', 'soundbanks', 'fakegear', 'aniport', 'particlerandomizer', 'upscale', 'rgba', 'imgrecolor', 'bumpath',
 ]);
 
 function PageView({ page }: { page: Page }) {
@@ -64,7 +62,6 @@ function PageView({ page }: { page: Page }) {
         case 'filehandler': return <FileRandomizer />;
         case 'paint': return <Paint />;
         case 'port': return <Port />;
-        case 'vfxhub': return <VfxHub />;
         case 'imgrecolor': return <ImgRecolor />;
         case 'particlerandomizer': return <ParticleRandomizer />;
         case 'fakegear': return <FakeGear />;
