@@ -21,15 +21,35 @@ pub struct StagedDonor {
     pub py_path: String,
 }
 
-/// Normalize an asset rel path to sit under the tree's `assets/` root: strip any
-/// leading `assets/`/`ASSETS/` and normalize separators.
-fn asset_dest_rel(rel: &str) -> String {
+/// Normalize an asset rel path to a SAFE relative path under the tree's
+/// `assets/` root. Strips a leading `assets/`/`ASSETS/`, then drops any drive
+/// prefix, absolute-root, and `.`/`..` segments so a hostile hub entry can
+/// never escape the staging dir (path traversal / arbitrary write). Returns
+/// None if nothing safe remains.
+fn asset_dest_rel(rel: &str) -> Option<String> {
     let r = rel.replace('\\', "/");
     let stripped = r
         .strip_prefix("assets/")
         .or_else(|| r.strip_prefix("ASSETS/"))
         .unwrap_or(&r);
-    stripped.to_string()
+
+    let safe: Vec<&str> = stripped
+        .split('/')
+        .filter(|seg| {
+            // Reject empty (leading `/`, doubled `//`), current/parent refs, and
+            // any Windows drive component like `C:`.
+            !seg.is_empty()
+                && *seg != "."
+                && *seg != ".."
+                && !seg.contains(':')
+        })
+        .collect();
+
+    if safe.is_empty() {
+        None
+    } else {
+        Some(safe.join("/"))
+    }
 }
 
 /// Write the donor `.py` and asset bytes into a fresh temp tree:
@@ -55,7 +75,13 @@ pub fn port_stage_hub_donor(
     std::fs::write(&py_path, py_content.as_bytes()).map_err(|e| format!("write py: {e}"))?;
 
     for a in &assets {
-        let dest = assets_dir.join(asset_dest_rel(&a.rel_path));
+        // Reject anything that doesn't sanitize to a safe relative path.
+        let Some(rel) = asset_dest_rel(&a.rel_path) else { continue };
+        let dest = assets_dir.join(&rel);
+        // Defense in depth: the normalized dest must still live under assets_dir.
+        if !dest.starts_with(&assets_dir) {
+            continue;
+        }
         if let Some(parent) = dest.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -78,9 +104,23 @@ mod tests {
 
     #[test]
     fn asset_dest_rel_strips_assets_prefix() {
-        assert_eq!(asset_dest_rel("assets/foo/bar.dds"), "foo/bar.dds");
-        assert_eq!(asset_dest_rel("ASSETS/foo/BAR.dds"), "foo/BAR.dds");
-        assert_eq!(asset_dest_rel("foo/bar.dds"), "foo/bar.dds");
-        assert_eq!(asset_dest_rel("a\\b\\c.tex"), "a/b/c.tex");
+        assert_eq!(asset_dest_rel("assets/foo/bar.dds").as_deref(), Some("foo/bar.dds"));
+        assert_eq!(asset_dest_rel("ASSETS/foo/BAR.dds").as_deref(), Some("foo/BAR.dds"));
+        assert_eq!(asset_dest_rel("foo/bar.dds").as_deref(), Some("foo/bar.dds"));
+        assert_eq!(asset_dest_rel("a\\b\\c.tex").as_deref(), Some("a/b/c.tex"));
+    }
+
+    #[test]
+    fn asset_dest_rel_rejects_traversal_and_absolute() {
+        // Parent refs are dropped, so an escape attempt collapses to its tail.
+        assert_eq!(asset_dest_rel("../../../../Windows/System32/evil.dll").as_deref(), Some("Windows/System32/evil.dll"));
+        assert_eq!(asset_dest_rel("foo/../../bar.dds").as_deref(), Some("foo/bar.dds"));
+        // Leading slash / drive letters are stripped, never rooted.
+        assert_eq!(asset_dest_rel("/etc/passwd").as_deref(), Some("etc/passwd"));
+        assert_eq!(asset_dest_rel("C:/Windows/x.dll").as_deref(), Some("Windows/x.dll"));
+        assert_eq!(asset_dest_rel("C:\\Windows\\x.dll").as_deref(), Some("Windows/x.dll"));
+        // Nothing safe left.
+        assert_eq!(asset_dest_rel("../.."), None);
+        assert_eq!(asset_dest_rel("").as_deref(), None);
     }
 }
