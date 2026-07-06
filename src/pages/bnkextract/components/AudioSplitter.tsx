@@ -15,7 +15,7 @@ import {
     Close, PlayArrow, Pause, Stop, FolderOpen, Download, Upload,
     Delete, ZoomIn, ZoomOut, ContentCut, SkipPrevious, VolumeUp, AutoFixHigh, ViewStream, Add,
 } from '@mui/icons-material';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickPath } from '@/components/explorer';
 import { tempDir, join } from '@tauri-apps/api/path';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin, { type Region as WsRegion } from 'wavesurfer.js/dist/plugins/regions.esm.js';
@@ -393,7 +393,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
     useEffect(() => { if (wsRef.current && isReady) wsRef.current.zoom(zoom * 20); }, [zoom, isReady]);
 
     const handleOpenFile = useCallback(async () => {
-        const picked = await open({ multiple: false, filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'ogg', 'wem'] }, { name: 'All', extensions: ['*'] }] });
+        const picked = await pickPath({ mode: 'file', filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'ogg', 'wem'] }, { name: 'All', extensions: ['*'] }], recentsKey: 'audio' });
         if (typeof picked === 'string') void loadSource({ path: picked, name: picked.split(/[\\/]/).pop() || 'audio' });
     }, [loadSource]);
 
@@ -529,7 +529,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
     const handleExportOne = useCallback(async (reg: Region) => {
         const wav = sliceRegion(reg);
         if (!wav) { flash('Audio not decoded yet'); return; }
-        const dir = await open({ directory: true, multiple: false });
+        const dir = await pickPath({ mode: 'directory' });
         if (typeof dir !== 'string') return;
         setIsExporting(true);
         try {
@@ -547,7 +547,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
     const handleExportAll = useCallback(async () => {
         if (regions.length === 0) return;
         if (!audioBufferRef.current) { flash('Audio not decoded yet'); return; }
-        const dir = await open({ directory: true, multiple: false });
+        const dir = await pickPath({ mode: 'directory' });
         if (typeof dir !== 'string') return;
         setIsExporting(true);
         try {

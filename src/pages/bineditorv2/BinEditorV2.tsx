@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { FolderOpen as FolderOpenIcon, Redo2 as RedoIcon, Undo2 as UndoIcon, X as CloseIcon } from 'lucide-react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { useFileExplorer } from '@/components/explorer';
 import {
     binEditorApply, binEditorClose, binEditorInsert, binEditorModel, binEditorOpen,
     binEditorRedo, binEditorRemove, binEditorRestore, binEditorSave, binEditorUndo,
@@ -53,6 +53,7 @@ function relativeTime(iso: string): string {
 }
 
 function BinEditorV2() {
+    const pick = useFileExplorer();
     const page = useNavigationStore((s) => s.page);
     const notify = useNotificationStore((s) => s.push);
     const storedRecentBins = useUiPrefsStore((s) => s.recentBins);
@@ -201,18 +202,19 @@ function BinEditorV2() {
 
     const handleFileOpen = useCallback(async () => {
         try {
-            const selected = await open({
-                multiple: false,
+            const selected = await pick({
+                mode: 'file',
                 filters: [
                     { name: 'Bin Files', extensions: ['bin'] },
                     { name: 'Py Files', extensions: ['py', 'ritobin'] },
                 ],
+                recentsKey: 'bin',
             });
             if (selected && typeof selected === 'string') await loadBinFile(selected);
         } catch (error) {
             setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
         }
-    }, [loadBinFile]);
+    }, [loadBinFile, pick]);
 
     useFileDrop({
         onEnter: () => setIsDragOver(true),

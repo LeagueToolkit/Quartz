@@ -4,7 +4,7 @@
  * Ported 1:1 from the Electron Quartz utils/imgRecolorLogic.js.
  */
 
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickPath } from '@/components/explorer';
 import {
     readFileBase64,
     imgRecolorDecodeTexture,
@@ -66,7 +66,7 @@ export async function loadFolder(
         let folderPath = initialPath;
 
         if (!folderPath) {
-            const picked = await open({ directory: true, multiple: false });
+            const picked = await pickPath({ mode: 'directory' });
             if (!picked || Array.isArray(picked)) return null;
             folderPath = picked;
         }
@@ -182,14 +182,16 @@ export async function saveImageFileWithDialog(imageData: ImageData, originalPath
             ? originalPath
             : originalPath.replace(new RegExp(`${ext}$`), '_recolored.png');
 
-        const dest = await save({
+        const dest = await pickPath({
+            mode: 'save',
             defaultPath,
             filters: [
                 { name: 'Images', extensions: ['tex', 'dds', 'png', 'jpg', 'jpeg'] },
                 { name: 'All Files', extensions: ['*'] },
             ],
+            recentsKey: 'image',
         });
-        if (!dest) return false;
+        if (!dest || Array.isArray(dest)) return false;
 
         const format = formatForPath(dest, originalPath);
         return await writeTexture(imageData, dest, format);

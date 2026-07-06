@@ -15,7 +15,7 @@ import FileOpenIcon from '@mui/icons-material/FileOpen';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import BookmarkIcon from '@mui/icons-material/Bookmark';
-import { open } from '@tauri-apps/plugin-dialog';
+import { useFileExplorer } from '@/components/explorer';
 import { readFileBase64 } from '@/lib/api';
 import ColorHandler from '../utils/ColorHandler';
 import { savePalette, deletePalette } from '../utils/paletteManager';
@@ -135,6 +135,7 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
     mode, palette, setPalette, colorCount, setColorCount, onLoadPalette,
     savedPalettesList = [], onPalettesChanged, onStatus,
 }) => {
+    const pick = useFileExplorer();
     const isMinecraftStyle = useMinecraftStyle();
     const [managerOpen, setManagerOpen] = useState(false);
     const [paletteName, setPaletteName] = useState('');
@@ -238,7 +239,7 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
 
     const handleImportJson = async () => {
         try {
-            const selected = await open({ multiple: false, filters: [{ name: 'JSON Files', extensions: ['json'] }] });
+            const selected = await pick({ mode: 'file', filters: [{ name: 'JSON Files', extensions: ['json'] }] });
             if (!selected || typeof selected !== 'string') return;
             const b64 = await readFileBase64(selected);
             const text = atob(b64);

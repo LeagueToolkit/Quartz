@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FolderOpen, AutoFixHigh, Close } from '@mui/icons-material';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickPath } from '@/components/explorer';
 import { log } from '@/lib/util/logger';
 import { getModFiles } from '../utils/backend';
 import type { AutoExtractRequest, ModFileSet } from '../types';
@@ -23,12 +23,14 @@ export default function AutoExtractDialog({ open: isOpen, onClose, onProcess }: 
     const [loadToTree, setLoadToTree] = useState(true);
 
     const handleSelectFolder = async (target: 'mod' | 'output') => {
-        const picked = await open({ directory: true, multiple: target === 'mod' });
-        if (picked == null) return;
+        const picked = await pickPath({ mode: 'directory' });
+        if (typeof picked !== 'string') return;
         if (target === 'mod') {
-            setModPaths(Array.isArray(picked) ? picked : [picked]);
+            // The explorer picks one folder at a time; append so users can still
+            // build a multi-folder batch by browsing repeatedly (no dupes).
+            setModPaths((prev) => (prev.includes(picked) ? prev : [...prev, picked]));
         } else {
-            setOutputPath(Array.isArray(picked) ? picked[0] : picked);
+            setOutputPath(picked);
         }
     };
 

@@ -20,7 +20,7 @@ import {
 } from 'react';
 import { Select, MenuItem } from '@mui/material';
 import CropOriginalIcon from '@mui/icons-material/CropOriginal';
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { useFileExplorer } from '@/components/explorer';
 
 import { readBin, writeBin } from '@/lib/api';
 import { useNavigationStore, useNotificationStore } from '@/lib/stores';
@@ -197,6 +197,7 @@ function emitterHasTexture(emitter: Emitter): boolean {
 }
 
 export function BinEditor() {
+    const pick = useFileExplorer();
     const page = useNavigationStore((s) => s.page);
     const notify = useNotificationStore((s) => s.push);
 
@@ -323,12 +324,13 @@ export function BinEditor() {
 
     const loadBinFile = useCallback(async () => {
         try {
-            const picked = await openDialog({
-                multiple: false,
+            const picked = await pick({
+                mode: 'file',
                 filters: [
                     { name: 'Bin Files', extensions: ['bin', 'py'] },
                     { name: 'All Files', extensions: ['*'] },
                 ],
+                recentsKey: 'bin',
             });
             if (typeof picked === 'string') {
                 await processBinFile(picked);
@@ -337,7 +339,7 @@ export function BinEditor() {
             const message = error instanceof Error ? error.message : String(error);
             setStatusMessage('Error opening file dialog: ' + message);
         }
-    }, [processBinFile]);
+    }, [processBinFile, pick]);
 
     const saveFile = useCallback(async () => {
         if (!data || !currentPath || !binPath) {

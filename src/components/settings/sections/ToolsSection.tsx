@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 import { Download, FolderOpen, Search, FolderTree, Terminal, Database, ImageUpscale, PackageOpen } from 'lucide-react';
 import { desktopDir } from '@tauri-apps/api/path';
@@ -10,8 +9,10 @@ import {
     upscaleCheckStatus, upscaleDownloadAll, type UpscaleStatus,
 } from '@/lib/api';
 import { log } from '@/lib/util/logger';
+import { useFileExplorer } from '@/components/explorer';
 
 export function ToolsSection() {
+    const pick = useFileExplorer();
     const jadePath = useUiPrefsStore((s) => s.jadeExecutablePath);
     const set = useUiPrefsStore((s) => s.set);
 
@@ -63,17 +64,17 @@ export function ToolsSection() {
     };
 
     const browseLeague = async () => {
-        const dir = await open({ directory: true, multiple: false });
+        const dir = await pick({ mode: 'directory' });
         if (typeof dir === 'string' && dir) await update({ leaguePath: dir });
     };
 
     const browseJade = async () => {
-        const picked = await open({ multiple: false, filters: [{ name: 'Jade', extensions: ['exe'] }] });
+        const picked = await pick({ mode: 'file', filters: [{ name: 'Jade', extensions: ['exe'] }] });
         if (typeof picked === 'string') set('jadeExecutablePath', picked);
     };
 
     const browseWadOutput = async () => {
-        const dir = await open({ directory: true, multiple: false });
+        const dir = await pick({ mode: 'directory' });
         if (typeof dir === 'string' && dir) await update({ wadOutputPath: dir });
     };
 

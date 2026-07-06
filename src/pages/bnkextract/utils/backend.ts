@@ -5,7 +5,7 @@
    signatures so the rest of the UI is unaffected. */
 
 import { invoke } from '@tauri-apps/api/core';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickPath } from '@/components/explorer';
 import { log } from '@/lib/util/logger';
 import type { AudioData, BnkNode, ExtractFormat } from '../types';
 
@@ -192,8 +192,8 @@ export async function loadCodebook(): Promise<Uint8Array | null> {
 /* Dialog helpers (these DO work today via the Tauri dialog plugin). */
 export async function pickFile(name: string, extensions: string[], multiple = false): Promise<string[]> {
     try {
-        const picked = await open({
-            multiple,
+        const picked = await pickPath({
+            mode: multiple ? 'files' : 'file',
             filters: [{ name, extensions }, { name: 'All Files', extensions: ['*'] }],
         });
         if (picked == null) return [];
@@ -206,7 +206,7 @@ export async function pickFile(name: string, extensions: string[], multiple = fa
 
 export async function pickDirectory(): Promise<string | null> {
     try {
-        const dir = await open({ directory: true, multiple: false });
+        const dir = await pickPath({ mode: 'directory' });
         return typeof dir === 'string' ? dir : null;
     } catch (e) {
         log.error('[BnkExtract] pickDirectory failed', e);
@@ -216,8 +216,8 @@ export async function pickDirectory(): Promise<string | null> {
 
 export async function pickSavePath(defaultPath: string, name: string, extensions: string[]): Promise<string | null> {
     try {
-        const path = await save({ defaultPath, filters: [{ name, extensions }] });
-        return path ?? null;
+        const path = await pickPath({ mode: 'save', defaultPath, filters: [{ name, extensions }] });
+        return typeof path === 'string' ? path : null;
     } catch (e) {
         log.error('[BnkExtract] pickSavePath failed', e);
         return null;

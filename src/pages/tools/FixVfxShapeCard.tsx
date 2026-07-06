@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Wand2, FolderOpen, Play, X, File as FileIcon, Folder as FolderIcon } from 'lucide-react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickPath } from '@/components/explorer';
 import { Button } from '@/components/settings/primitives';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { toolsFixVfxShape } from '@/lib/api/vfxTools';
@@ -12,11 +12,11 @@ interface NotifyArg { message: string; severity: 'info' | 'success' | 'error' | 
 const basename = (p: string) => p.replace(/\\/g, '/').split('/').pop() ?? p;
 
 async function pickBinFile(): Promise<string | null> {
-    const r = await open({ title: 'Select .bin to fix', multiple: false, filters: [{ name: 'BIN Files', extensions: ['bin'] }] });
+    const r = await pickPath({ mode: 'file', title: 'Select .bin to fix', filters: [{ name: 'BIN Files', extensions: ['bin'] }], recentsKey: 'bin' });
     return typeof r === 'string' ? r : null;
 }
 async function pickFolder(): Promise<string | null> {
-    const r = await open({ title: 'Select folder (recursively scans for .bin)', directory: true, multiple: false });
+    const r = await pickPath({ mode: 'directory', title: 'Select folder (recursively scans for .bin)' });
     return typeof r === 'string' ? r : null;
 }
 

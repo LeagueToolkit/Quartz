@@ -8,7 +8,7 @@ import {
     Info as InfoIcon, CheckCircle as CheckIcon, Error as ErrorIcon, FolderOpen as FolderOpenIcon,
     ContentCopy as CopyIcon, Help as HelpIcon, Shuffle as ShuffleIcon, Settings as SettingsIcon,
 } from '@mui/icons-material';
-import { open } from '@tauri-apps/plugin-dialog';
+import { useFileExplorer } from '@/components/explorer';
 import { fileRandomize, fileRename } from '@/lib/api/fileOps';
 import { log } from '@/lib/util/logger';
 import './filerandomizer/UniversalFileRandomizer.css';
@@ -45,6 +45,7 @@ function extname(p: string) {
 }
 
 export function FileRandomizer() {
+    const pick = useFileExplorer();
     const [mode, setMode] = useState<Mode>('randomizer');
     const [replacementFiles, setReplacementFiles] = useState<PickedFile[]>([]);
     const [targetFolder, setTargetFolder] = useState('');
@@ -89,9 +90,9 @@ export function FileRandomizer() {
 
     const handleReplacementFilesSelect = async () => {
         try {
-            const picked = await open({
+            const picked = await pick({
                 title: 'Select Replacement Files',
-                multiple: true,
+                mode: 'files',
                 filters: [
                     { name: 'All Files', extensions: ALL_EXTS },
                     { name: 'Common Files', extensions: COMMON_EXTS },
@@ -129,7 +130,7 @@ export function FileRandomizer() {
     const handleTargetFolderSelect = async () => {
         try {
             addToLog('🔍 Opening folder selection dialog...\n');
-            const dir = await open({ title: 'Select Target Folder', directory: true, multiple: false });
+            const dir = await pick({ mode: 'directory', title: 'Select Target Folder' });
             if (typeof dir !== 'string') {
                 addToLog('❌ Folder selection was canceled\n');
                 return;

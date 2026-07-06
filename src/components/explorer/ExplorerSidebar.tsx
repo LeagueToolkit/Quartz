@@ -5,6 +5,10 @@ import { useExplorerStore } from './explorerStore';
 
 const basename = (p: string) => p.replace(/[\\/]+$/, '').replace(/^.*[\\/]/, '') || p;
 
+// Stable reference so the recents selector never returns a fresh array (which
+// would make Zustand's getSnapshot differ every render -> infinite loop).
+const EMPTY: string[] = [];
+
 /** Left rail: OS quick links (Desktop/Docs/Downloads/Home + drives), pinned
  *  folders, and this call site's recents bucket. */
 export function ExplorerSidebar({ recentsKey, currentPath, onNavigate }: {
@@ -16,7 +20,7 @@ export function ExplorerSidebar({ recentsKey, currentPath, onNavigate }: {
     const pins = useExplorerStore((s) => s.pins);
     const addPin = useExplorerStore((s) => s.addPin);
     const removePin = useExplorerStore((s) => s.removePin);
-    const recents = useExplorerStore((s) => s.recents[recentsKey] ?? []);
+    const recents = useExplorerStore((s) => s.recents[recentsKey] ?? EMPTY);
     const removeRecent = useExplorerStore((s) => s.removeRecent);
 
     useEffect(() => {

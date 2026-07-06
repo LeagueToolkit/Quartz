@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { useFileExplorer } from '@/components/explorer';
 import type { BumpathApiCall } from './useBumpathCoreApi';
 import type { ScannedData, SourceBins } from '../utils/types';
 
@@ -45,6 +45,7 @@ export default function useBumpathSourceScan({
     setSuccess,
     onSourceDirAdded,
 }: UseBumpathSourceScanArgs) {
+    const pick = useFileExplorer();
     useEffect(() => {
         return () => {
             if (scanDebounceTimerRef.current) {
@@ -149,7 +150,7 @@ export default function useBumpathSourceScan({
 
     const handleSelectSourceDir = useCallback(async () => {
         try {
-            const result = await open({ directory: true, multiple: false });
+            const result = await pick({ mode: 'directory' });
             if (typeof result === 'string') {
                 await addSourceDirByPath(result);
             }
@@ -157,7 +158,7 @@ export default function useBumpathSourceScan({
             const message = selectError instanceof Error ? selectError.message : String(selectError);
             setError('Failed to select directory: ' + message);
         }
-    }, [addSourceDirByPath, setError]);
+    }, [addSourceDirByPath, setError, pick]);
 
     const handleBinSelect = useCallback(async (unifyPath: string, selected: boolean) => {
         const newSelections: SourceBins = { ...(sourceBins || {}) };

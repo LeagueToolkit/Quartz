@@ -3,7 +3,7 @@ import { Box } from '@mui/material';
 import { FolderOpen } from 'lucide-react';
 import { log } from '@/lib/util/logger';
 import './bumpath/Bumpath.css';
-import { open } from '@tauri-apps/plugin-dialog';
+import { useFileExplorer } from '@/components/explorer';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import CelestiaGuide from './bumpath/components/CelestiaGuide';
 import SourceBinsPanel from './bumpath/components/SourceBinsPanel';
@@ -41,6 +41,7 @@ function readBoolPref(key: string): boolean | undefined {
 }
 
 export function Bumpath() {
+    const pick = useFileExplorer();
     const [sourceDirs, setSourceDirs] = useState<string[]>([]);
     const [, setSourceFiles] = useState<Record<string, unknown>>({});
     const [sourceBins, setSourceBins] = useState<SourceBins>({});
@@ -384,7 +385,7 @@ export function Bumpath() {
 
     const handleQuickSelectOutputDir = useCallback(async () => {
         try {
-            const result = await open({ directory: true, multiple: false });
+            const result = await pick({ mode: 'directory' });
             if (typeof result === 'string') {
                 setQuickOutputPath(result);
             }
@@ -392,7 +393,7 @@ export function Bumpath() {
             const message = selectError instanceof Error ? selectError.message : String(selectError);
             setError('Failed to select output directory: ' + message);
         }
-    }, []);
+    }, [pick]);
 
     const handleRunQuickRepath = useCallback(async () => {
         if (!quickMainBin) {

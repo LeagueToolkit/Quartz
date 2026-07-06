@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Type, FolderOpen, RefreshCw, Plus, Trash2, Palette, Image, MousePointerClick, Sparkles } from 'lucide-react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { useFileExplorer } from '@/components/explorer';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { FormGroup, CustomSelect, Button, cardSurface } from '../primitives';
 import { ThemeCardGrid } from '../ThemeCardGrid';
@@ -40,6 +40,7 @@ function Checkbox({ checked, onChange, children }: { checked: boolean; onChange:
 }
 
 export function AppearanceSection() {
+    const pick = useFileExplorer();
     const prefs = useUiPrefsStore();
     const set = prefs.set;
 
@@ -68,7 +69,7 @@ export function AppearanceSection() {
     const setWallpaperEnabled = (c: boolean) => { set('wallpaperEnabled', c); reapplyWallpaper(); };
 
     const addWallpaper = async () => {
-        const picked = await open({ multiple: false, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }] });
+        const picked = await pick({ mode: 'file', filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }] });
         if (typeof picked !== 'string') return;
         const item = await importWallpaper(picked);
         await loadWallpapers();

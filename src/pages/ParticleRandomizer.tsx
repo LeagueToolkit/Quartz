@@ -14,7 +14,7 @@ import {
     FolderOpen, Save, Dices, ChevronDown, ChevronRight, HelpCircle, Folder,
     Lock, CheckSquare, Square, Eye, ChevronsDown, ChevronsUp,
 } from 'lucide-react';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { useFileExplorer } from '@/components/explorer';
 import { readBin, writeBin } from '@/lib/api';
 
 import { parseVfxFile, type ParsedFile, type Emitter } from './particlerandomizer/parser';
@@ -27,6 +27,7 @@ import './particlerandomizer/ParticleRandomizer.css';
 type StatusType = '' | 'success' | 'error';
 
 export function ParticleRandomizer() {
+    const pick = useFileExplorer();
     // File state
     const [pyContent, setPyContent] = useState('');
     const [binPath, setBinPath] = useState<string | null>(null);
@@ -153,8 +154,8 @@ export function ParticleRandomizer() {
     }, [setStatus]);
 
     const loadBinFile = useCallback(async () => {
-        const result = await open({
-            multiple: false,
+        const result = await pick({
+            mode: 'file',
             filters: [
                 { name: 'Bin Files', extensions: ['bin'] },
                 { name: 'All Files', extensions: ['*'] },
@@ -162,7 +163,7 @@ export function ParticleRandomizer() {
         });
         if (typeof result !== 'string') return;
         await processFile(result);
-    }, [processFile]);
+    }, [processFile, pick]);
 
     // ── Selection ──
     const toggleEmitter = useCallback((emitterKey: string, systemKey?: string) => {
@@ -333,9 +334,11 @@ export function ParticleRandomizer() {
             setIsLoading(true);
             setLoadingText('Saving modified .bin...');
 
-            const out = await save({
+            const out = await pick({
+                mode: 'save',
                 defaultPath: binPath,
                 filters: [{ name: 'Bin Files', extensions: ['bin'] }],
+                recentsKey: 'bin',
             });
             if (typeof out !== 'string') {
                 setIsLoading(false);
@@ -357,7 +360,7 @@ export function ParticleRandomizer() {
             setIsLoading(false);
             setLoadingText('');
         }
-    }, [generatedContent, binPath, setStatus]);
+    }, [generatedContent, binPath, setStatus, pick]);
 
     // ── Copy Assets ──
     const handleCopyAssets = useCallback(async () => {

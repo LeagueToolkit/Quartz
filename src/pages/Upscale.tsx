@@ -14,8 +14,8 @@ import {
     Loader2 as LoaderIcon,
     ArrowRight as ArrowRightIcon,
 } from 'lucide-react';
-import { open } from '@tauri-apps/plugin-dialog';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { useFileExplorer } from '@/components/explorer';
 import { Button, CustomSelect, FormGroup } from '@/components/settings/primitives';
 import { useNavigationStore } from '@/lib/stores';
 import { useFileDrop } from '@/lib/util/useFileDrop';
@@ -93,6 +93,7 @@ async function readAsDataUrl(p: string): Promise<string> {
 }
 
 export function Upscale() {
+    const pick = useFileExplorer();
     const goToSettings = useNavigationStore((s) => s.goToSettings);
     const [exePath, setExePath] = useState('');
     const [, setIsEnsuring] = useState(false);
@@ -297,7 +298,7 @@ export function Upscale() {
 
     const pickInput = async () => {
         if (batchMode) {
-            const picked = await open({ directory: true, multiple: false });
+            const picked = await pick({ mode: 'directory' });
             if (typeof picked === 'string') {
                 const scanned = await imgRecolorScanDir(picked, false);
                 const files = scanned.map((img) => img.path);
@@ -306,8 +307,8 @@ export function Upscale() {
                 setOutputDir(joinPath(picked, 'upscaled'));
             }
         } else {
-            const picked = await open({
-                multiple: false,
+            const picked = await pick({
+                mode: 'file',
                 filters: [
                     { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'jfif', 'bmp', 'tif', 'tiff'] },
                     { name: 'All Files', extensions: ['*'] },
@@ -322,7 +323,7 @@ export function Upscale() {
     };
 
     const pickOutput = async () => {
-        const dir = await open({ directory: true, multiple: false });
+        const dir = await pick({ mode: 'directory' });
         if (typeof dir === 'string') setOutputDir(dir);
     };
 

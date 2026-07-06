@@ -9,7 +9,7 @@ import {
     Info as InfoIcon, Settings as SettingsIcon, Refresh as RefreshIcon, Apps as AppsIcon,
     EmojiEmotions as EmojiIcon,
 } from '@mui/icons-material';
-import { open } from '@tauri-apps/plugin-dialog';
+import { useFileExplorer } from '@/components/explorer';
 import { openPath } from '@tauri-apps/plugin-opener';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { toolsExecute } from '@/lib/api/fileOps';
@@ -40,6 +40,7 @@ const isExeName = (name: string) => {
 };
 
 export function Tools() {
+    const pick = useFileExplorer();
     const [exes, setExes] = useState<ExeEntry[]>([]);
     const [isDragOver, setIsDragOver] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -112,7 +113,7 @@ export function Tools() {
     };
 
     const pickExe = async () => {
-        const picked = await open({ multiple: true, filters: [{ name: 'Executables', extensions: ['exe', 'bat', 'cmd'] }] });
+        const picked = await pick({ mode: 'files', filters: [{ name: 'Executables', extensions: ['exe', 'bat', 'cmd'] }] });
         if (!picked) return;
         const paths = Array.isArray(picked) ? picked : [picked];
         const added = addExes(paths);
@@ -180,7 +181,7 @@ export function Tools() {
         e.preventDefault();
         e.stopPropagation();
         if (dragTargetRef.current) return; // OS handler will run it with real paths
-        const dir = await open({ directory: true, multiple: false });
+        const dir = await pick({ mode: 'directory' });
         if (typeof dir === 'string') await runExeAgainstPaths(exe, [dir]);
     };
 

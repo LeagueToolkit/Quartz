@@ -32,7 +32,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ClearIcon from '@mui/icons-material/Clear';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { useFileExplorer } from '@/components/explorer';
 
 import { readBin, writeBin } from '@/lib/api';
 import { useNotificationStore } from '@/lib/stores';
@@ -318,6 +318,7 @@ type PendingAction =
     | null;
 
 function FakeGear() {
+    const pick = useFileExplorer();
     const notify = useNotificationStore((s) => s.push);
 
     // File state
@@ -569,8 +570,8 @@ function FakeGear() {
 
     const loadBinFile = useCallback(async () => {
         try {
-            const picked = await openDialog({
-                multiple: false,
+            const picked = await pick({
+                mode: 'file',
                 filters: [
                     { name: 'Bin Files', extensions: ['bin', 'py'] },
                     { name: 'All Files', extensions: ['*'] },
@@ -583,7 +584,7 @@ function FakeGear() {
             const msg = error instanceof Error ? error.message : String(error);
             setStatusMessage('Error opening file dialog: ' + msg);
         }
-    }, [processBinFile]);
+    }, [processBinFile, pick]);
 
     const saveFile = useCallback(async () => {
         if (!pyContent || !binPath) {

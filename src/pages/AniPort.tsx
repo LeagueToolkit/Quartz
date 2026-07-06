@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Snackbar, Alert, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
 import InfoIcon from '@mui/icons-material/Info';
-import { open } from '@tauri-apps/plugin-dialog';
+import { useFileExplorer } from '@/components/explorer';
 
 import './aniport/AniPort.css';
 
@@ -40,6 +40,7 @@ type Side = 'donor' | 'target';
 type CreateMessageFn = (opts: { title: string; message: string; type: 'success' | 'error' | 'info' | 'warning' }) => void;
 
 function AniPort() {
+    const pick = useFileExplorer();
     // File management state
     const [donorAnimationFile, setDonorAnimationFile] = useState<string | null>(null);
     const [donorSkinsFile, setDonorSkinsFile] = useState<string | null>(null);
@@ -219,14 +220,15 @@ function AniPort() {
     // ---- Combined file selection -------------------------------------------
     const handleCombinedFileSelect = async (type: Side) => {
         try {
-            const result = await open({
-                multiple: false,
+            const result = await pick({
+                mode: 'file',
                 title: `Select ${type === 'donor' ? 'Donor' : 'Target'} Combined File`,
                 filters: [
                     { name: 'Binary Files', extensions: ['bin'] },
                     { name: 'Python Files', extensions: ['py'] },
                     { name: 'All Files', extensions: ['*'] },
                 ],
+                recentsKey: 'bin',
             });
             if (typeof result !== 'string') return;
 

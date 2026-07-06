@@ -19,7 +19,7 @@ import TuneIcon from '@mui/icons-material/Tune';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 import { FolderOpen as FolderOpenIcon, Undo2 as UndoIcon, Redo2 as RedoIcon, SlidersHorizontal as SlidersIcon, ChevronDown as ChevronDownIcon, X as CloseIcon } from 'lucide-react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { useFileExplorer } from '@/components/explorer';
 import {
     paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintUndo, paintRedo, paintSave,
     type VfxEmitter, type ColorTargetId,
@@ -210,6 +210,7 @@ function makeSetter<K extends keyof PaintStoreState>(key: K) {
 }
 
 function Paint() {
+    const pick = useFileExplorer();
     const notify = useNotificationStore((s) => s.push);
     const isMinecraftStyle = useMinecraftStyle();
 
@@ -352,14 +353,14 @@ function Paint() {
 
     const handleFileOpen = useCallback(async () => {
         try {
-            const selected = await open({ multiple: false, filters: [{ name: 'Bin Files', extensions: ['bin', 'py'] }] });
+            const selected = await pick({ mode: 'file', filters: [{ name: 'Bin Files', extensions: ['bin', 'py'] }], recentsKey: 'bin' });
             if (selected && typeof selected === 'string') {
                 await loadBinFile(selected);
             }
         } catch (error) {
             setStatusMessage(`Error: ${error instanceof Error ? error.message : String(error)}`);
         }
-    }, [loadBinFile]);
+    }, [loadBinFile, pick]);
 
     /* OS drag-and-drop: accept a dropped .bin/.py and load it. */
     useFileDrop({

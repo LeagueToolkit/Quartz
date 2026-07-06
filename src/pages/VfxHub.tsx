@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileInput, Globe, Upload, Undo2 } from 'lucide-react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { useFileExplorer } from '@/components/explorer';
 import { readBin, writeBin } from '@/lib/api';
 import { useNotificationStore } from '@/lib/stores';
 import githubApi, { type HubVfxSystem, type UploadSystemInput } from './vfxhub/lib/githubApi';
@@ -55,6 +55,7 @@ function getShortUndoAction(action: string): string {
 }
 
 function VfxHub() {
+    const pick = useFileExplorer();
     const notify = useNotificationStore((s) => s.push);
 
     // Target bin state.
@@ -143,7 +144,7 @@ function VfxHub() {
 
     const handleOpenTargetBin = useCallback(async () => {
         if (isProcessing) return;
-        const picked = await open({ multiple: false, filters: [{ name: 'BIN / PY', extensions: ['bin', 'py'] }] });
+        const picked = await pick({ mode: 'file', filters: [{ name: 'BIN / PY', extensions: ['bin', 'py'] }], recentsKey: 'bin' });
         if (typeof picked !== 'string') return;
         await processTargetBin(picked);
     }, [isProcessing, processTargetBin]);

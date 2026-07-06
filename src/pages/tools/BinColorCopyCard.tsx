@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Palette, FolderOpen, Play, X } from 'lucide-react';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickPath } from '@/components/explorer';
 import { Button } from '@/components/settings/primitives';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { toolsBinCopyColors } from '@/lib/api/vfxTools';
@@ -17,13 +17,13 @@ const dirname = (p: string) => {
 };
 
 async function pickBinFile(title: string): Promise<string | null> {
-    const r = await open({ title, multiple: false, filters: [{ name: 'BIN Files', extensions: ['bin'] }] });
+    const r = await pickPath({ mode: 'file', title, filters: [{ name: 'BIN Files', extensions: ['bin'] }], recentsKey: 'bin' });
     return typeof r === 'string' ? r : null;
 }
 
 async function pickSaveBinFile(defaultPath: string): Promise<string | null> {
-    const r = await save({ title: 'Save modified BIN as', defaultPath, filters: [{ name: 'BIN Files', extensions: ['bin'] }] });
-    return r ?? null;
+    const r = await pickPath({ mode: 'save', title: 'Save modified BIN as', defaultPath, filters: [{ name: 'BIN Files', extensions: ['bin'] }], recentsKey: 'bin' });
+    return typeof r === 'string' ? r : null;
 }
 
 function PathPicker({ label, value, onChange, onPick }: {

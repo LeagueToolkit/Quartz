@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
+import { useFileExplorer } from '@/components/explorer';
 import './assetextractor/assetextractor.css';
 import {
     getLeaguePath,
@@ -82,6 +82,7 @@ interface NormalizedSelection {
 }
 
 export function AssetExtractor() {
+    const pick = useFileExplorer();
     const wadOutputPath = useConfigStore((s) => s.settings.wadOutputPath);
     const goToSettings = useNavigationStore((s) => s.setPage);
 
@@ -562,7 +563,7 @@ export function AssetExtractor() {
 
     /* ── Output / League folder pickers ───────────────────────────────────── */
     const pickDirectory = async (): Promise<string> => {
-        const dir = await openDialog({ directory: true, multiple: false });
+        const dir = await pick({ mode: 'directory' });
         return typeof dir === 'string' ? dir : '';
     };
 

@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { useFileExplorer } from '@/components/explorer';
 import type { BumpathApiCall } from './useBumpathCoreApi';
 import type { ScannedData, SourceBins } from '../utils/types';
 
@@ -56,6 +56,7 @@ export default function useBumpathActions({
     setSourceFiles,
     setSourceBins,
 }: UseBumpathActionsArgs) {
+    const pick = useFileExplorer();
     const handleApplyPrefix = useCallback(async () => {
         if (selectedEntries.size === 0) {
             setError('Please select at least one entry');
@@ -211,7 +212,7 @@ export default function useBumpathActions({
 
     const handleSelectOutputDir = useCallback(async () => {
         try {
-            const result = await open({ directory: true, multiple: false });
+            const result = await pick({ mode: 'directory' });
             if (typeof result === 'string') {
                 setOutputPath(result);
             }
@@ -219,7 +220,7 @@ export default function useBumpathActions({
             const message = selectError instanceof Error ? selectError.message : String(selectError);
             setError('Failed to select output directory: ' + message);
         }
-    }, [setError, setOutputPath]);
+    }, [setError, setOutputPath, pick]);
 
     const handleReset = useCallback(async () => {
         try {

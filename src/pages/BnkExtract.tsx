@@ -11,7 +11,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Box } from '@mui/material';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickPath } from '@/components/explorer';
 import { log } from '@/lib/util/logger';
 
 import AutoExtractDialog from './bnkextract/components/AutoExtractDialog';
@@ -318,7 +318,7 @@ export function BnkExtract() {
     // ── File picking + parse ──────────────────────────────────────────────────
     const handleSelectFile = useCallback(async (kind: 'bin' | 'wpk' | 'bnk') => {
         const exts = kind === 'bin' ? ['bin'] : kind === 'wpk' ? ['wpk', 'bnk'] : ['bnk'];
-        const picked = await open({ multiple: false, filters: [{ name: kind.toUpperCase(), extensions: exts }, { name: 'All Files', extensions: ['*'] }] });
+        const picked = await pickPath({ mode: 'file', filters: [{ name: kind.toUpperCase(), extensions: exts }, { name: 'All Files', extensions: ['*'] }] });
         if (typeof picked !== 'string') return;
         if (kind === 'bin') setBinPath(picked);
         else if (kind === 'wpk') setWpkPath(picked);
@@ -490,7 +490,7 @@ export function BnkExtract() {
     const handleReplace = useCallback(async () => {
         if (!hasAudioSelection()) return;
         if (!isWwiseInstalled) { setShowInstallModal(true); return; }
-        const picked = await open({ multiple: false, filters: [{ name: 'Audio', extensions: ['wem', 'wav', 'ogg', 'mp3'] }] });
+        const picked = await pickPath({ mode: 'file', filters: [{ name: 'Audio', extensions: ['wem', 'wav', 'ogg', 'mp3'] }], recentsKey: 'audio' });
         if (typeof picked !== 'string') return;
         const targets = collectSelectedAudioNodes();
         if (targets.length === 0) return;
@@ -531,7 +531,7 @@ export function BnkExtract() {
         const tree = pane === 'left' ? treeData : rightTreeData;
         const root = tree.find((n) => sel.has(n.id) && n.isRoot);
         if (!root) return;
-        const out = await open({ multiple: false, directory: false });
+        const out = await pickPath({ mode: 'file' });
         if (typeof out !== 'string') return;
         setIsLoading(true);
         try {
