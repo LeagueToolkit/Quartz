@@ -73,14 +73,30 @@ async function buildPreviewIndex(): Promise<Record<string, string>> {
     return idx;
 }
 
+/** Fetch a repo file's TEXT, resilient to raw.githubusercontent CDN staleness
+ *  (a fresh push can 404 on the raw edge for a few minutes). Tries raw with a
+ *  cache-buster, then falls back to the GitHub contents API (base64). */
+async function fetchRepoText(owner: string, repo: string, filePath: string): Promise<string> {
+    const bust = `?t=${Math.floor(Date.now() / 30000)}`; // 30s granularity, avoids per-keystroke misses
+    const raw = await fetch(rawUrl(owner, repo, filePath) + bust).catch(() => null);
+    if (raw && raw.ok) return raw.text();
+
+    // Fallback: contents API returns base64 and is not served by the raw CDN.
+    const api = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${encPath(filePath)}`);
+    if (!api.ok) throw new Error(`Failed to load ${filePath}: ${api.status} ${api.statusText}`);
+    const j = (await api.json()) as { content?: string; encoding?: string };
+    if (j.encoding === 'base64' && j.content) {
+        return decodeURIComponent(escape(atob(j.content.replace(/\n/g, ''))));
+    }
+    throw new Error(`Unexpected contents response for ${filePath}`);
+}
+
 /** Load the hub index (one entry per system) with resolved preview URLs. */
 export async function getHubSystems(): Promise<HubSystem[]> {
     if (cache && Date.now() - cache.at < CACHE_MS) return cache.systems;
     const { owner, repo } = getCreds();
 
-    const res = await fetch(rawUrl(owner, repo, 'index.json'));
-    if (!res.ok) throw new Error(`Failed to load index.json: ${res.status} ${res.statusText}`);
-    const json = (await res.json()) as IndexJson;
+    const json = JSON.parse(await fetchRepoText(owner, repo, 'index.json')) as IndexJson;
 
     const previews = await buildPreviewIndex().catch(() => ({} as Record<string, string>));
     const systems: HubSystem[] = Object.entries(json.systems || {}).map(([key, s]) => {
