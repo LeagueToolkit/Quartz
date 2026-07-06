@@ -30,6 +30,7 @@ export {
     type PaletteStopInput, type RecolorOptionsInput,
 } from './paint';
 export * from './vfxSession';
+export * from './explorer';
 export {
     discoverChampions,
     extractChampionAssets,

@@ -25,6 +25,7 @@ import Tools from '@/pages/Tools';
 import Upscale from '@/pages/Upscale';
 import { Placeholder } from '@/pages/Placeholder';
 import { EffectsLayer } from '@/components/effects/EffectsLayer';
+import { FileExplorerHost } from '@/components/explorer';
 
 const TITLES: Record<Page, string> = {
     home: 'Home',
@@ -112,6 +113,7 @@ export function App() {
                     </div>
                 </main>
             </div>
+            <FileExplorerHost />
         </div>
     );
 }
