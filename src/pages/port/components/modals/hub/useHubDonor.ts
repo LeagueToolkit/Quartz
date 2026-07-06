@@ -56,7 +56,7 @@ export function useHubDonor(deps: {
             setStatus('Staging donor...');
             const staged = await portStageHubDonor(merged, assetBytes);
             setDonorTempRoot(staged.tempRoot);
-            await processDonorBin(staged.pyPath, false);
+            await processDonorBin(staged.binPath, false);
             setStatus('Hub donor loaded');
         } catch (e) {
             setStatus(`Hub load failed: ${e instanceof Error ? e.message : String(e)}`);

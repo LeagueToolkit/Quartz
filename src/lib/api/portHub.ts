@@ -7,7 +7,7 @@ export interface HubAssetBytes {
 
 export interface StagedDonor {
     tempRoot: string;
-    pyPath: string;
+    binPath: string;
 }
 
 /**

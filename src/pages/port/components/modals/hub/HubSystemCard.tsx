@@ -42,7 +42,9 @@ export function HubSystemCard({ system, selected, onToggle }: {
                     <Layers size={11} />
                     {system.emitterCount} emitter{system.emitterCount === 1 ? '' : 's'}
                 </span>
-                {system.description && <span className="hub-card__desc">{system.description}</span>}
+                {system.description && system.description.trim().toLowerCase() !== system.displayName.trim().toLowerCase() && (
+                    <span className="hub-card__desc">{system.description}</span>
+                )}
             </div>
         </button>
     );

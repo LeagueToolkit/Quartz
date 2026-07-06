@@ -103,38 +103,48 @@ export function HubBrowserModal({ open, onClose, onPickSystems, onOpenUpload, st
     return createPortal(
         <div className="dl-modal-backdrop" style={{ zIndex: 10000 }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
             <div className="dl-modal hub-modal">
-                {/* Bar */}
-                <div className="hub-bar">
-                    <Github size={18} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
-                    <div className="dl-search hub-bar__search">
-                        <Search size={14} />
+                {/* Header: title row + search + actions */}
+                <div className="hub-head">
+                    <div className="hub-head__title"><Github size={18} /><span>VFX Hub</span></div>
+                    <label className="dl-search hub-head__search">
+                        <span className="dl-icon"><Search size={15} /></span>
                         <input className="dl-input" placeholder="Search VFX systems..." value={search} onChange={(e) => setSearch(e.target.value)} />
-                    </div>
+                    </label>
                     <button className="dl-btn dl-btn--icon dl-btn--sm" onClick={() => void load()} title="Refresh"><RefreshCw size={15} /></button>
                     <button className="dl-btn dl-btn--icon dl-btn--sm" onClick={onClose} title="Close"><X size={16} /></button>
                 </div>
-                <div className="hub-bar" style={{ borderTop: 'none', paddingTop: 0 }}>
-                    <div className="hub-chips">
-                        {categories.map((c) => (
-                            <button key={c} className={`hub-chip ${category === c ? 'is-active' : ''}`} onClick={() => setCategory(c)}>{c}</button>
-                        ))}
-                    </div>
+
+                {/* Category filter: design-lab glow buttons */}
+                <div className="hub-cats">
+                    {categories.map((c) => (
+                        <button
+                            key={c}
+                            className={`dl-btn dl-btn--sm ${category === c ? 'dl-btn--primary' : 'dl-btn--secondary'}`}
+                            onClick={() => setCategory(c)}
+                        >
+                            {c}
+                        </button>
+                    ))}
                 </div>
 
                 {/* Body */}
                 <div className="hub-body">
                     {loading ? (
                         <div className="hub-grid">
-                            {Array.from({ length: 9 }).map((_, i) => (
-                                <div key={i} className="hub-card" style={{ pointerEvents: 'none' }}>
-                                    <Skeleton height={0} radius={0} style={{ aspectRatio: '16 / 10', width: '100%' }} delayClass={((i % 3) + 1) as 1 | 2 | 3} />
-                                    <div className="hub-card__body">
-                                        <Skeleton height={13} radius={4} style={{ width: '70%' }} delayClass={((i % 3) + 1) as 1 | 2 | 3} />
-                                        <Skeleton height={10} radius={4} style={{ width: '40%' }} delayClass={((i % 3) + 1) as 1 | 2 | 3} />
-                                        <Skeleton height={10} radius={4} style={{ width: '90%' }} delayClass={((i % 3) + 1) as 1 | 2 | 3} />
+                            {Array.from({ length: 9 }).map((_, i) => {
+                                const d = ((i % 3) + 1) as 1 | 2 | 3;
+                                return (
+                                    // Mirrors HubSystemCard: thumb + name + meta + desc.
+                                    <div key={i} className="hub-card hub-card--skel">
+                                        <div className="hub-card__thumb"><Skeleton style={{ width: '100%', height: '100%' }} radius={0} delayClass={d} /></div>
+                                        <div className="hub-card__body">
+                                            <Skeleton height={13} radius={4} style={{ width: '68%' }} delayClass={d} />
+                                            <Skeleton height={10} radius={4} style={{ width: '42%' }} delayClass={d} />
+                                            <Skeleton height={10} radius={4} style={{ width: '88%' }} delayClass={d} />
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     ) : error ? (
                         <div className="hub-state hub-state--error">
