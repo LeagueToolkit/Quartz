@@ -58,14 +58,17 @@ pub fn explorer_list_dir(
 
     for dirent in read.flatten() {
         let full = dirent.path();
-        let Ok(meta) = std::fs::metadata(&full) else { continue };
+        // dirent.metadata() reuses the directory-scan handle where the OS
+        // supports it, avoiding a second stat syscall per entry.
+        let Ok(meta) = dirent.metadata() else { continue };
         let raw_name = dirent.file_name().to_string_lossy().to_string();
         let mut is_dir = meta.is_dir();
         let mut is_shortcut = false;
         let mut target = full.clone();
         let mut name = raw_name.clone();
 
-        // Resolve .lnk (best effort; only real, existing targets are adopted).
+        // Resolve .lnk by parsing the shell-link binary directly (no process
+        // spawn). Only adopt the target if it still exists on disk.
         if raw_name.to_lowercase().ends_with(".lnk") {
             if let Some(resolved) = resolve_shortcut(&full) {
                 if let Ok(tmeta) = std::fs::metadata(&resolved) {
@@ -110,24 +113,84 @@ pub fn explorer_list_dir(
     Ok(out)
 }
 
-/// Resolve a Windows .lnk to its target path via WScript.Shell (no extra crate).
-/// Non-Windows / failure -> None.
+/// Resolve a Windows .lnk to its target path by parsing the shell-link binary
+/// (MS-SHLLINK) directly. Reading a few hundred bytes is microseconds, versus
+/// ~150-300ms to spawn PowerShell per shortcut. Non-Windows / unparseable -> None.
 #[cfg(windows)]
 fn resolve_shortcut(lnk: &Path) -> Option<std::path::PathBuf> {
-    let script = format!(
-        "(New-Object -ComObject WScript.Shell).CreateShortcut('{}').TargetPath",
-        lnk.to_string_lossy().replace('\'', "''")
-    );
-    let out = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .output()
-        .ok()?;
-    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if s.is_empty() {
-        None
-    } else {
-        Some(std::path::PathBuf::from(s))
+    let data = std::fs::read(lnk).ok()?;
+    parse_lnk_target(&data).map(std::path::PathBuf::from)
+}
+
+/// Extract the target path from a .lnk byte buffer. Follows the MS-SHLLINK
+/// layout: fixed 76-byte ShellLinkHeader, optional LinkTargetIDList, then the
+/// LinkInfo structure which carries the local base path we want.
+#[cfg(windows)]
+fn parse_lnk_target(data: &[u8]) -> Option<String> {
+    // Header is 0x4C bytes; LinkFlags is a u32 at offset 20 (LE).
+    if data.len() < 0x4C { return None; }
+    let flags = u32::from_le_bytes([data[20], data[21], data[22], data[23]]);
+    let has_id_list = flags & 0x1 != 0;   // HasLinkTargetIDList
+    let has_link_info = flags & 0x2 != 0; // HasLinkInfo
+    if !has_link_info { return None; }
+
+    let mut off = 0x4C;
+    // Skip the LinkTargetIDList (a u16 size prefix + that many bytes).
+    if has_id_list {
+        if data.len() < off + 2 { return None; }
+        let id_size = u16::from_le_bytes([data[off], data[off + 1]]) as usize;
+        off += 2 + id_size;
     }
+
+    // LinkInfo starts here. Read its header fields (all LE u32).
+    if data.len() < off + 32 { return None; }
+    let li = off;
+    let read_u32 = |p: usize| -> Option<u32> {
+        data.get(p..p + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    };
+    let li_size = read_u32(li)? as usize;
+    if data.len() < li + li_size { return None; }
+    let flags2 = read_u32(li + 8)?;
+    // Bit 0 = VolumeIDAndLocalBasePath present.
+    if flags2 & 0x1 == 0 { return None; }
+
+    // Prefer the Unicode base path when the header is large enough to carry the
+    // extra optional offsets (LinkInfoHeaderSize >= 0x24).
+    let header_size = read_u32(li + 4)?;
+    if header_size >= 0x24 {
+        if let Some(u_off) = read_u32(li + 28) {
+            let start = li + u_off as usize;
+            if let Some(s) = read_utf16z(&data[..li + li_size], start) {
+                if !s.is_empty() { return Some(s); }
+            }
+        }
+    }
+    // Fall back to the ANSI LocalBasePath.
+    let base_off = read_u32(li + 16)? as usize;
+    read_ansiz(&data[..li + li_size], li + base_off)
+}
+
+/// Read a NUL-terminated ANSI string starting at `start`.
+#[cfg(windows)]
+fn read_ansiz(data: &[u8], start: usize) -> Option<String> {
+    let slice = data.get(start..)?;
+    let end = slice.iter().position(|&b| b == 0).unwrap_or(slice.len());
+    Some(String::from_utf8_lossy(&slice[..end]).into_owned())
+}
+
+/// Read a NUL-terminated UTF-16LE string starting at `start`.
+#[cfg(windows)]
+fn read_utf16z(data: &[u8], start: usize) -> Option<String> {
+    let slice = data.get(start..)?;
+    let mut units = Vec::new();
+    let mut i = 0;
+    while i + 1 < slice.len() {
+        let u = u16::from_le_bytes([slice[i], slice[i + 1]]);
+        if u == 0 { break; }
+        units.push(u);
+        i += 2;
+    }
+    Some(String::from_utf16_lossy(&units))
 }
 
 #[cfg(not(windows))]
@@ -340,5 +403,42 @@ mod tests {
     #[test]
     fn expand_env_passthrough_without_vars() {
         assert_eq!(expand_env("C:\\plain\\path"), "C:\\plain\\path");
+    }
+
+    // Build a minimal .lnk with LinkInfo carrying an ANSI LocalBasePath and no
+    // LinkTargetIDList, then confirm the parser extracts the target.
+    #[cfg(windows)]
+    #[test]
+    fn parse_lnk_extracts_ansi_base_path() {
+        let target = b"C:\\Users\\Frog\\Desktop\\game.exe\0";
+
+        // LinkInfo: header(28 bytes: size, headerSize=0x1C, flags=1, volIdOff,
+        // localBasePathOff, netRelOff, commonPathSuffixOff) + basePath bytes.
+        let li_header_size: u32 = 0x1C;
+        let base_off = li_header_size; // path immediately after the 28-byte header
+        let li_size = li_header_size + target.len() as u32;
+        let mut li = Vec::new();
+        li.extend_from_slice(&li_size.to_le_bytes());        // LinkInfoSize
+        li.extend_from_slice(&li_header_size.to_le_bytes());  // LinkInfoHeaderSize (0x1C -> ANSI only)
+        li.extend_from_slice(&1u32.to_le_bytes());            // Flags: VolumeIDAndLocalBasePath
+        li.extend_from_slice(&0u32.to_le_bytes());            // VolumeIDOffset
+        li.extend_from_slice(&base_off.to_le_bytes());        // LocalBasePathOffset
+        li.extend_from_slice(&0u32.to_le_bytes());            // CommonNetworkRelativeLinkOffset
+        li.extend_from_slice(&0u32.to_le_bytes());            // CommonPathSuffixOffset
+        li.extend_from_slice(target);                         // LocalBasePath (ANSI, NUL-terminated)
+
+        // 0x4C-byte header: only LinkFlags (offset 20) matters here -> HasLinkInfo.
+        let mut lnk = vec![0u8; 0x4C];
+        lnk[20..24].copy_from_slice(&0x2u32.to_le_bytes()); // HasLinkInfo, no IDList
+        lnk.extend_from_slice(&li);
+
+        let got = parse_lnk_target(&lnk).expect("should parse target");
+        assert_eq!(got, "C:\\Users\\Frog\\Desktop\\game.exe");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn parse_lnk_rejects_truncated_buffer() {
+        assert!(parse_lnk_target(&[0u8; 10]).is_none());
     }
 }

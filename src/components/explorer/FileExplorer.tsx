@@ -280,7 +280,7 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
                         </span>
                     )}
                     <div className="dl-explorer__foot-actions">
-                        <button className="dl-btn" onClick={onCancel}>Cancel</button>
+                        {/* No Cancel button: the X in the top bar (and Esc / backdrop click) cancels. */}
                         <button className="dl-btn dl-btn--primary" disabled={confirmDisabled} onClick={confirm}>{confirmLabel}</button>
                     </div>
                 </div>
