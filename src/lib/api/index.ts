@@ -31,6 +31,7 @@ export {
 } from './paint';
 export * from './vfxSession';
 export * from './explorer';
+export * from './portHub';
 export {
     discoverChampions,
     extractChampionAssets,
