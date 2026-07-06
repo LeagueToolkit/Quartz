@@ -1,0 +1,38 @@
+/* Global shimmer skeleton. Theme-aware via --accent-primary / --bg-tertiary. */
+
+.q-skel {
+    display: block;
+    position: relative;
+    overflow: hidden;
+    background: color-mix(in oklab, var(--text-primary) 8%, var(--bg-tertiary));
+}
+.q-skel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        color-mix(in oklab, var(--accent-primary) 14%, transparent) 45%,
+        color-mix(in oklab, var(--accent-primary) 22%, transparent) 50%,
+        color-mix(in oklab, var(--accent-primary) 14%, transparent) 55%,
+        transparent 100%
+    );
+    animation: q-skel-shimmer 1.35s ease-in-out infinite;
+}
+.q-skel--d1::after { animation-delay: 0.10s; }
+.q-skel--d2::after { animation-delay: 0.22s; }
+.q-skel--d3::after { animation-delay: 0.34s; }
+
+.q-skel-list { display: flex; flex-direction: column; gap: 10px; padding: 8px 4px; }
+.q-skel-row { display: flex; align-items: center; gap: 10px; }
+
+@keyframes q-skel-shimmer {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .q-skel::after { animation: none; opacity: 0.5; transform: none; }
+}

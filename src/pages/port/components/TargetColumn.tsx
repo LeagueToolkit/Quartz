@@ -5,12 +5,14 @@ import { SearchInput } from './common/Inputs';
 import { useBinFileDrop } from './common/binFileDrop';
 import PortRecentBins from './common/PortRecentBins';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
+import { SkeletonList } from '@/components/ui/Skeleton';
 import { usePortDropZone, type PortDragPayload } from '../usePortDrag';
 import type { VfxSystem, VfxSystemMap } from '../model';
 import type { ListSharedProps } from './ParticleSystemList/types';
 
 interface TargetColumnProps extends ListSharedProps {
     isProcessing: boolean;
+    binLoading?: boolean;
     handleOpenTargetBin: () => void;
     processTargetBin: (path: string) => void;
     targetFilterInput: string;
@@ -34,6 +36,7 @@ interface TargetColumnProps extends ListSharedProps {
 export default function TargetColumn(props: TargetColumnProps) {
     const {
         isProcessing,
+        binLoading,
         handleOpenTargetBin,
         processTargetBin,
         targetFilterInput,
@@ -211,7 +214,9 @@ export default function TargetColumn(props: TargetColumnProps) {
                         </div>
                     </div>
                 )}
-                {Object.keys(safeTargetSystems).length > 0 ? (
+                {binLoading ? (
+                    <SkeletonList count={8} />
+                ) : Object.keys(safeTargetSystems).length > 0 ? (
                     <div
                         ref={targetListRef}
                         style={{ width: '100%', height: '100%', overflow: 'auto', background: 'transparent' }}

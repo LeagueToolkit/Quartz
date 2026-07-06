@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CircularProgress, Tooltip } from '@mui/material';
+import { Tooltip } from '@mui/material';
 import {
     Apps as AppsIcon,
     BubbleChart as BubbleChartIcon,
@@ -87,7 +87,7 @@ function VfxFloatingActions({
                       id: 'portAll',
                       color: 'var(--accent-primary)',
                       title: isPortAllLoading ? 'Porting…' : portAllTooltip,
-                      icon: isPortAllLoading ? <CircularProgress size={15} sx={{ color: 'var(--accent-primary)' }} /> : <ArrowBackIcon sx={{ fontSize: 16 }} />,
+                      icon: <ArrowBackIcon sx={{ fontSize: 16 }} />,
                       onClick: onPortAll,
                       disabled: paDis,
                   },

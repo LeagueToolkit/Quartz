@@ -13,11 +13,9 @@ import { getLeaguePath } from '@/lib/api/league';
 import { readBin, writeBin } from '@/lib/api';
 import { useUiPrefsStore } from '@/lib/stores';
 import { portPrepareDonorFromSkin, backupCreate, portCleanupDonorTemp } from '@/lib/api/wad';
-import GlowingSpinner from './port/components/GlowingSpinner';
 import TargetColumn from './port/components/TargetColumn';
 import DonorColumn from './port/components/DonorColumn';
 import PortBottomControls, { type PortActionButton } from './port/components/PortBottomControls';
-import { CircularProgress } from '@mui/material';
 import {
     Apps as AppsIcon,
     BubbleChart as BubbleChartIcon,
@@ -446,9 +444,13 @@ function Port() {
         dropEmitterOnSystem,
     };
 
+    // Only bin-loading gets a skeleton; other operations (save/port) are quick.
+    const binLoading = p.isProcessing && p.processingText === 'Loading file...';
+
     const targetColumnProps = {
         ...sharedListProps,
         isProcessing: p.isProcessing,
+        binLoading,
         handleOpenTargetBin: p.handleOpenTargetBin,
         processTargetBin: p.processTargetBin,
         targetFilterInput: p.targetFilter,
@@ -495,6 +497,7 @@ function Port() {
     const donorColumnProps = {
         ...sharedListProps,
         isProcessing: p.isProcessing,
+        binLoading,
         handleOpenDonorBin: p.handleOpenDonorBin,
         processDonorBin: p.processDonorBin,
         handleOpenDonorFromGame,
@@ -531,7 +534,7 @@ function Port() {
                 id: 'portAll',
                 color: 'var(--accent-primary)',
                 title: p.isPortAllLoading ? 'Porting…' : 'Port All VFX Systems',
-                icon: p.isPortAllLoading ? <CircularProgress size={15} sx={{ color: 'var(--accent-primary)' }} /> : <ArrowBackIcon sx={{ fontSize: 16 }} />,
+                icon: <ArrowBackIcon sx={{ fontSize: 16 }} />,
                 onClick: () => setShowPortAllModeModal(true),
                 disabled: portAllDisabled,
             }]
@@ -575,7 +578,8 @@ function Port() {
             className="port-container"
             style={{ minHeight: '100%', height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
         >
-            {p.isProcessing && <GlowingSpinner text={p.processingText || 'Working...'} />}
+            {/* No full-screen spinner: bin-load shows column skeletons (below);
+               save/port operations are quick enough to need no loader. */}
 
             <div className="port-main-content" style={{ display: 'flex', flex: 1, gap: '20px', padding: '12px', overflow: 'hidden', position: 'relative', zIndex: 1 }}>
                 <TargetColumn {...targetColumnProps} />

@@ -118,8 +118,10 @@ export default function usePort() {
     // Filters
     const [targetFilter, setTargetFilter] = useState('');
     const [donorFilter, setDonorFilter] = useState('');
-    const [enableTargetEmitterSearch, setEnableTargetEmitterSearch] = useState(false);
-    const [enableDonorEmitterSearch, setEnableDonorEmitterSearch] = useState(false);
+    // Emitter search on by default: the filter box matches particle AND emitter
+    // names, and hides non-matching emitters within each system.
+    const [enableTargetEmitterSearch, setEnableTargetEmitterSearch] = useState(true);
+    const [enableDonorEmitterSearch, setEnableDonorEmitterSearch] = useState(true);
 
     // Modal / UI state
     const [actionsMenuAnchor, setActionsMenuAnchor] = useState<{ element: HTMLElement; systemKey: string } | null>(null);
