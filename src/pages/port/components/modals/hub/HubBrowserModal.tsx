@@ -9,6 +9,7 @@ import './hub.css';
 
 interface FlatSystem extends HubVfxSystem {
     collection: string;
+    filePath: string;
 }
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -38,7 +39,7 @@ export function HubBrowserModal({ open, onClose, onPickSystems, onOpenUpload, st
             const { collections } = await githubApi.getVFXCollections();
             const flat: FlatSystem[] = [];
             for (const c of collections) {
-                for (const s of c.systems) flat.push({ ...s, collection: c.name, category: c.category });
+                for (const s of c.systems) flat.push({ ...s, collection: c.name, filePath: c.filePath, category: c.category });
             }
             setSystems(flat);
         } catch (e) {
@@ -95,7 +96,7 @@ export function HubBrowserModal({ open, onClose, onPickSystems, onOpenUpload, st
     const confirm = () => {
         const picks: HubPick[] = systems
             .filter((s) => selected.has(systemKey(s)))
-            .map((s) => ({ name: s.name, collectionFile: s.collection }));
+            .map((s) => ({ name: s.name, collectionFile: s.filePath || s.collection }));
         if (picks.length) { onPickSystems(picks); onClose(); }
     };
 

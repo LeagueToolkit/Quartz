@@ -130,7 +130,7 @@ async function getPreviewsIndexPublic(): Promise<Record<string, string>> {
             const name = f.name || '';
             if (!name.match(/\.(png|jpg|jpeg|gif|webp)$/i)) continue;
             const base = name.replace(/\.[^.]+$/, '');
-            index[cleanPreviewKey(base)] = `https://raw.githubusercontent.com/${owner}/${repo}/${BRANCH}/${f.path}`;
+            index[cleanPreviewKey(base)] = `https://raw.githubusercontent.com/${owner}/${repo}/${BRANCH}/${encodeRepoPath(f.path)}`;
         }
         return index;
     } catch {
@@ -197,7 +197,7 @@ export async function getVFXCollectionsPublic(): Promise<{ collections: HubColle
         if (!file.name.endsWith('.py')) continue;
         const category = deriveCategoryFromFilename(file.name);
         try {
-            const response = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${BRANCH}/${file.path}`);
+            const response = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${BRANCH}/${encodeRepoPath(file.path)}`);
             if (!response.ok) continue;
             const content = await response.text();
             const systems = attachPreviews(parseVFXSystemsFromContent(content), previewsIndex);
@@ -223,10 +223,16 @@ export async function getVFXCollections(): Promise<{ collections: HubCollection[
     return getVFXCollectionsPublic();
 }
 
+// Encode each path segment (raw.githubusercontent.com 404s on unencoded
+// spaces, e.g. the "vfx collection" directory) while keeping the slashes.
+function encodeRepoPath(p: string): string {
+    return p.split('/').map(encodeURIComponent).join('/');
+}
+
 async function getRawFile(filePath: string): Promise<string> {
     const { owner, repo } = await getCredentials();
-    const response = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${BRANCH}/${filePath}`);
-    if (!response.ok) throw new Error(`Failed to fetch file: ${response.status} ${response.statusText}`);
+    const response = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${BRANCH}/${encodeRepoPath(filePath)}`);
+    if (!response.ok) throw new Error(`Failed to fetch file: ${response.status} ${response.statusText} (${filePath})`);
     return response.text();
 }
 
@@ -240,7 +246,7 @@ async function listDirectory(dirPath: string): Promise<{ name: string; path: str
 async function getPublicDownloadUrl(filePath: string): Promise<string | null> {
     try {
         const { owner, repo } = await getCredentials();
-        return `https://raw.githubusercontent.com/${owner}/${repo}/${BRANCH}/${filePath}`;
+        return `https://raw.githubusercontent.com/${owner}/${repo}/${BRANCH}/${encodeRepoPath(filePath)}`;
     } catch {
         return null;
     }
@@ -335,7 +341,11 @@ function matchesName(assetName: string, requiredFilename: string): boolean {
 }
 
 export async function downloadVFXSystem(systemName: string, collectionFile: string): Promise<DownloadedVfxSystem> {
-    const fullPath = collectionFile.startsWith('collection/') ? collectionFile : `collection/${collectionFile}`;
+    // collectionFile may be a full repo path or a bare filename. Bare filenames
+    // live under `collection/vfx collection/`, not directly under `collection/`.
+    const fullPath = collectionFile.startsWith('collection/')
+        ? collectionFile
+        : `collection/vfx collection/${collectionFile}`;
     const content = await getRawFile(fullPath);
     const systems = parseCompleteVFXSystems(content);
     const targetSystem = systems.find((sys) => sys.name === systemName);
