@@ -19,6 +19,7 @@ pub mod logging;
 pub mod paint;
 pub mod particle;
 pub mod port_donor;
+pub mod port_hub;
 pub mod settings;
 pub mod system;
 pub mod themes;
