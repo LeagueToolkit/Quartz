@@ -15,7 +15,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use quartz_lib::bin::read_bin_ltk;
+use quartz_lib::bin::read_bin;
 use quartz_lib::extractor::{
     extract_skin, finalize_extracted, repath_extracted, ExtractOptions, FinalizeOptions,
     RepathOptions,
@@ -49,7 +49,7 @@ fn vfx_system_count(path: &Path) -> usize {
     let vfx = fnv1a("VfxSystemDefinitionData");
     std::fs::read(path)
         .ok()
-        .and_then(|b| read_bin_ltk(&b).ok())
+        .and_then(|b| read_bin(&b).ok())
         .map(|bin| bin.entries.iter().filter(|e| e.class_hash == vfx).count())
         .unwrap_or(0)
 }
@@ -265,7 +265,7 @@ fn extractor_clean_repath_per_character() {
 fn bin_has_prefixed_asset(bin_path: &Path, prefix: &str) -> bool {
     let needle = format!("/{}/", prefix.to_lowercase());
     let Ok(bytes) = std::fs::read(bin_path) else { return false };
-    let Ok(bin) = read_bin_ltk(&bytes) else { return false };
+    let Ok(bin) = read_bin(&bytes) else { return false };
     fn walk(v: &quartz_lib::bin::BinValue, needle: &str) -> bool {
         use quartz_lib::bin::BinValue as V;
         match v {
@@ -286,7 +286,7 @@ fn bin_has_prefixed_asset(bin_path: &Path, prefix: &str) -> bool {
 fn bin_first_unprefixed_asset(bin_path: &Path, prefix: &str) -> Option<String> {
     let pfx = format!("/{}/", prefix.to_lowercase());
     let bytes = std::fs::read(bin_path).ok()?;
-    let bin = read_bin_ltk(&bytes).ok()?;
+    let bin = read_bin(&bytes).ok()?;
     fn walk(v: &quartz_lib::bin::BinValue, pfx: &str, out: &mut Option<String>) {
         use quartz_lib::bin::BinValue as V;
         if out.is_some() {

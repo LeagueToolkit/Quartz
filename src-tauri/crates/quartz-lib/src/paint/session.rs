@@ -6,7 +6,7 @@
 
 use super::model::{self, EditIndex, VfxModel};
 use super::recolor::{self, ColorTargetSel, PaletteStop, RecolorOptions};
-use crate::bin::{read_bin_ltk, text_to_tree, tree_to_text_cached, write_bin_ltk};
+use crate::bin::{read_bin, text_to_tree, tree_to_text_cached, write_bin};
 use crate::error::{Error, Result};
 use crate::undo::{push_bounded, UndoFrame};
 use parking_lot::RwLock;
@@ -102,7 +102,7 @@ pub fn open(path: impl AsRef<Path>) -> Result<OpenResult> {
     let tree = match format {
         SourceFormat::Bin => {
             let data = std::fs::read(&path).map_err(|e| Error::io_with_path(e, &path))?;
-            read_bin_ltk(&data).map_err(|e| Error::InvalidInput(e.to_string()))?
+            read_bin(&data).map_err(|e| Error::InvalidInput(e.to_string()))?
         }
         SourceFormat::Text => {
             let text = std::fs::read_to_string(&path).map_err(|e| Error::io_with_path(e, &path))?;
@@ -291,7 +291,7 @@ pub fn save(id: SessionId, out_path: Option<PathBuf>) -> Result<PathBuf> {
         match format {
             SourceFormat::Bin => {
                 let bytes =
-                    write_bin_ltk(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
+                    write_bin(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
                 std::fs::write(&dest, bytes).map_err(|e| Error::io_with_path(e, &dest))?;
                 // Keep a sibling .ritobin / .py text dump in sync, but only if one
                 // already sits next to the bin — don't create new files.
@@ -327,7 +327,7 @@ mod tests {
     }
 
     fn bytes_of(id: SessionId) -> Vec<u8> {
-        with_session(id, |s| write_bin_ltk(&s.tree).unwrap()).unwrap()
+        with_session(id, |s| write_bin(&s.tree).unwrap()).unwrap()
     }
 
     fn opts(seed: u64) -> RecolorOptions {

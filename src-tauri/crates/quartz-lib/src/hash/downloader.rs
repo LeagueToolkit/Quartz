@@ -211,7 +211,7 @@ pub async fn download_hashes(output_dir: impl AsRef<Path>, force: bool) -> Resul
 
         // Reload both in-process hash caches so new data is live immediately
         // without requiring an app restart.
-        crate::bin::ltk_bridge::reload_bin_hash_cache();
+        crate::bin::ritoshark_bridge::reload_bin_hash_cache();
         crate::bin::jade::hash_manager::reload_jade_hashes();
         tracing::info!("BIN hash caches reloaded after successful download");
     }

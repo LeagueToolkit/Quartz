@@ -10,7 +10,7 @@
 //! mod folders carry real Riot paths (assets/.../foo.dds), so this is the
 //! common case; hashed_files.json mappings are honored when present.
 
-use crate::bin::ltk_bridge::{get_cached_bin_hashes, read_bin, write_bin};
+use crate::bin::ritoshark_bridge::{get_cached_bin_hashes, read_bin, write_bin};
 use crate::error::{Error, Result};
 use ritoshark::bin::{Bin, BinValue};
 use std::collections::{HashMap, HashSet};

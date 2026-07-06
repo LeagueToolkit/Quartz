@@ -5,7 +5,7 @@ MinimalMesh, validating .anm references, and writing the variant .bin files. */
 
 use std::path::{Path, PathBuf};
 
-use quartz_lib::bin::{text_to_tree, write_bin_ltk};
+use quartz_lib::bin::{text_to_tree, write_bin};
 use quartz_lib::mesh::{self, MinimalMeshResult};
 use quartz_lib::skeleton;
 use serde::Serialize;
@@ -349,7 +349,7 @@ fn write_one(folder: &Path, name: &str, new_systems: &[String]) -> Result<(Strin
 
     let py = build_variant_py(&merged);
     let tree = text_to_tree(&py).map_err(|e| e.to_string())?;
-    let bytes = write_bin_ltk(&tree).map_err(|e| e.to_string())?;
+    let bytes = write_bin(&tree).map_err(|e| e.to_string())?;
     std::fs::write(&bin_path, bytes)
         .map_err(|e| format!("Failed to write {}: {}", bin_path.display(), e))?;
 
@@ -359,9 +359,9 @@ fn write_one(folder: &Path, name: &str, new_systems: &[String]) -> Result<(Strin
 /* Read VfxSystemDefinitionData blocks out of an existing variant bin by converting it
 back to text and slicing on bracket depth. */
 fn read_variant_systems(bin_path: &Path) -> Result<Vec<String>, String> {
-    use quartz_lib::bin::{read_bin_ltk, tree_to_text_cached};
+    use quartz_lib::bin::{read_bin, tree_to_text_cached};
     let data = std::fs::read(bin_path).map_err(|e| e.to_string())?;
-    let tree = read_bin_ltk(&data).map_err(|e| e.to_string())?;
+    let tree = read_bin(&data).map_err(|e| e.to_string())?;
     let text = tree_to_text_cached(&tree).map_err(|e| e.to_string())?;
     Ok(extract_systems(&text))
 }

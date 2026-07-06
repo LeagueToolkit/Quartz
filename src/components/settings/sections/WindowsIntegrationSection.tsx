@@ -39,10 +39,12 @@ export function WindowsIntegrationSection() {
                     <div style={{ padding: '12px', background: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)', border: '1px solid color-mix(in oklab, var(--accent-primary) 30%, transparent)', borderRadius: 'var(--radius-sm)', fontSize: '12px', color: 'var(--text-secondary)', marginTop: '10px' }}>
                         <div style={{ fontWeight: 600, marginBottom: '8px' }}>Available Actions:</div>
                         <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: 1.6 }}>
-                            <li><strong>.bin:</strong> Convert to .py, Separate VFX, Batch Split VFX.</li>
+                            <li><strong>.bin:</strong> Convert to .py, Separate/Combine VFX, Separate/Combine Animations, Combine Linked, NoSkinLite, Batch Split VFX, Extract hashes.</li>
                             <li><strong>.py:</strong> Convert to .bin.</li>
                             <li><strong>Textures:</strong> .tex / .dds / .png conversions.</li>
-                            <li><strong>Folders:</strong> Convert all BIN↔PY and batch texture conversions.</li>
+                            <li><strong>Models:</strong> .mesh / .xps / .ascii and .pmx to .fbx.</li>
+                            <li><strong>.wad / .wad.client:</strong> Extract hashes, Unpack, Extract + Unpack.</li>
+                            <li><strong>Folders:</strong> Convert all BIN↔PY, extract hashes, pyntex missing/junk, batch texture conversions, pack to .wad.client.</li>
                         </ul>
                     </div>
                 )}

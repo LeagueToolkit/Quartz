@@ -146,8 +146,8 @@ fn vfx_session_roundtrip() {
 
     // ── Parse/serialize idempotence per physical bin ─────────────────────────
     for (rel, bytes) in bin_bytes(&target_ws) {
-        let tree = quartz_lib::bin::read_bin_ltk(&bytes).unwrap();
-        let out = quartz_lib::bin::write_bin_ltk(&tree).unwrap();
+        let tree = quartz_lib::bin::read_bin(&bytes).unwrap();
+        let out = quartz_lib::bin::write_bin(&tree).unwrap();
         assert_eq!(bytes, out, "idempotence broke for {rel:?}");
     }
     println!("[vfx] idempotence OK for all bins");

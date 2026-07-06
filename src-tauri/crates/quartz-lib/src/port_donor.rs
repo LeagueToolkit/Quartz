@@ -8,10 +8,10 @@
 //! ritobin text so the Port panel can load it as a donor.
 //!
 //! Heavy WAD IO reuses `crate::wad`; BIN parsing/printing reuses
-//! `crate::bin::ltk_bridge`; asset path rewriting reuses `crate::bumpath`.
+//! `crate::bin::ritoshark_bridge`; asset path rewriting reuses `crate::bumpath`.
 
 use crate::bin::converter::bin_to_text;
-use crate::bin::ltk_bridge::read_bin;
+use crate::bin::ritoshark_bridge::read_bin;
 use crate::error::{Error, Result};
 use crate::wad;
 use ritoshark::bin::{Bin, BinValue};

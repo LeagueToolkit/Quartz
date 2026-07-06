@@ -50,11 +50,11 @@ pub async fn bin_scale_params(
 ) -> Result<ScaleParamsResult, String> {
     tokio::task::spawn_blocking(move || {
         let data = std::fs::read(&path).map_err(|e| format!("Failed to read {}: {}", path, e))?;
-        let mut bin = quartz_lib::bin::read_bin_ltk(&data).map_err(|e| e.to_string())?;
+        let mut bin = quartz_lib::bin::read_bin(&data).map_err(|e| e.to_string())?;
 
         let res = bin_editor::scale_params(&mut bin, birth_scale, scale, apply_matrix_fix);
 
-        let bytes = quartz_lib::bin::write_bin_ltk(&bin).map_err(|e| e.to_string())?;
+        let bytes = quartz_lib::bin::write_bin(&bin).map_err(|e| e.to_string())?;
         let out = target_path.unwrap_or(path);
         std::fs::write(&out, &bytes).map_err(|e| format!("Failed to write {}: {}", out, e))?;
 

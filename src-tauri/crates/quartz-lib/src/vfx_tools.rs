@@ -8,7 +8,7 @@
 //! color fields from a donor bin into a structurally identical target bin,
 //! matching entries by path hash.
 //!
-//! Everything operates on `ritoshark::bin::Bin` trees from the `ltk_bridge`
+//! Everything operates on `ritoshark::bin::Bin` trees from the `ritoshark_bridge`
 //! reader/writer.
 
 use indexmap::IndexMap;

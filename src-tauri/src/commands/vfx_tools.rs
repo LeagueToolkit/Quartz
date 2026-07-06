@@ -78,7 +78,7 @@ fn collect_bins_recursive(dir: &Path) -> Vec<PathBuf> {
 /// overwriting when modified and `create_backup` is set.
 fn fix_one_bin(path: &Path, create_backup: bool) -> Result<(bool, FixShapeStats), String> {
     let data = std::fs::read(path).map_err(|e| format!("read {}: {}", path.display(), e))?;
-    let mut bin = quartz_lib::bin::read_bin_ltk(&data).map_err(|e| e.to_string())?;
+    let mut bin = quartz_lib::bin::read_bin(&data).map_err(|e| e.to_string())?;
 
     let stats = vfx_tools::fix_vfx_shape(&mut bin);
     if !stats.any_change() {
@@ -92,7 +92,7 @@ fn fix_one_bin(path: &Path, create_backup: bool) -> Result<(bool, FixShapeStats)
         }
     }
 
-    let bytes = quartz_lib::bin::write_bin_ltk(&bin).map_err(|e| e.to_string())?;
+    let bytes = quartz_lib::bin::write_bin(&bin).map_err(|e| e.to_string())?;
     std::fs::write(path, &bytes).map_err(|e| format!("write {}: {}", path.display(), e))?;
     Ok((true, stats))
 }
@@ -206,8 +206,8 @@ pub async fn tools_bin_copy_colors(
 
         let src_data = std::fs::read(&src_p).map_err(|e| format!("read {}: {}", source_path, e))?;
         let dst_data = std::fs::read(&dst_p).map_err(|e| format!("read {}: {}", target_path, e))?;
-        let src_bin = quartz_lib::bin::read_bin_ltk(&src_data).map_err(|e| e.to_string())?;
-        let mut dst_bin = quartz_lib::bin::read_bin_ltk(&dst_data).map_err(|e| e.to_string())?;
+        let src_bin = quartz_lib::bin::read_bin(&src_data).map_err(|e| e.to_string())?;
+        let mut dst_bin = quartz_lib::bin::read_bin(&dst_data).map_err(|e| e.to_string())?;
 
         let stats = vfx_tools::copy_bin_colors(&src_bin, &mut dst_bin);
 
@@ -221,7 +221,7 @@ pub async fn tools_bin_copy_colors(
             }
         }
 
-        let bytes = quartz_lib::bin::write_bin_ltk(&dst_bin).map_err(|e| e.to_string())?;
+        let bytes = quartz_lib::bin::write_bin(&dst_bin).map_err(|e| e.to_string())?;
         std::fs::write(&write_path, &bytes).map_err(|e| format!("write {}: {}", write_path, e))?;
 
         Ok(CopyColorsResult {

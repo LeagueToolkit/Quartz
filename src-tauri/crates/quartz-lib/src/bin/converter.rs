@@ -2,11 +2,11 @@
 //!
 //! This module provides functionality to convert League of Legends .bin files
 //! between different formats. Text conversion delegates to the `rs_bin` ritobin
-//! printer/parser via `ltk_bridge`; JSON conversion uses the local `bin_json`
+//! printer/parser via `ritoshark_bridge`; JSON conversion uses the local `bin_json`
 //! mapping (`rs_bin::BinValue` is not serde-derived).
 
 use crate::bin::bin_json;
-use crate::bin::ltk_bridge::{text_to_tree, tree_to_text_cached};
+use crate::bin::ritoshark_bridge::{text_to_tree, tree_to_text_cached};
 use crate::error::{Error, Result};
 use ritoshark::bin::Bin;
 

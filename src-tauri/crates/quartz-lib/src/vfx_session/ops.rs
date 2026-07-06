@@ -1453,7 +1453,7 @@ fn collect_asset_strings(value: &BinValue, out: &mut HashSet<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bin::write_bin_ltk;
+    use crate::bin::write_bin;
     use crate::undo::UndoFrame;
     use crate::vfx_session::construct::{
         PersistentPresetPayload, PersistentVfxPayload, H_M_VALUE_A, H_SPELL_SLOT,
@@ -1473,7 +1473,7 @@ mod tests {
     }
 
     fn bytes(bin: &Bin) -> Vec<u8> {
-        write_bin_ltk(bin).unwrap()
+        write_bin(bin).unwrap()
     }
 
     fn skin_entry(h: &Hashes) -> BinEntry {

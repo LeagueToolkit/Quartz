@@ -8,7 +8,7 @@
 use super::path::{NodePath, Step};
 use super::project::{self, EditorModel, EditorSystem};
 use super::value::{self, JsonBinValue};
-use crate::bin::{read_bin_ltk, text_to_tree, tree_to_text_cached, write_bin_ltk};
+use crate::bin::{read_bin, text_to_tree, tree_to_text_cached, write_bin};
 use crate::error::{Error, Result};
 use crate::undo::{push_bounded, UndoFrame};
 use indexmap::IndexMap;
@@ -103,7 +103,7 @@ pub fn open(path: impl AsRef<Path>) -> Result<OpenResult> {
     let tree = match format {
         SourceFormat::Bin => {
             let data = std::fs::read(&path).map_err(|e| Error::io_with_path(e, &path))?;
-            read_bin_ltk(&data).map_err(|e| Error::InvalidInput(e.to_string()))?
+            read_bin(&data).map_err(|e| Error::InvalidInput(e.to_string()))?
         }
         SourceFormat::Text => {
             let text = std::fs::read_to_string(&path).map_err(|e| Error::io_with_path(e, &path))?;
@@ -465,7 +465,7 @@ pub fn save(id: SessionId, out_path: Option<PathBuf>) -> Result<PathBuf> {
         match format {
             SourceFormat::Bin => {
                 let bytes =
-                    write_bin_ltk(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
+                    write_bin(&s.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
                 std::fs::write(&dest, bytes).map_err(|e| Error::io_with_path(e, &dest))?;
                 // Keep a sibling .ritobin / .py text dump in sync, but only if one
                 // already sits next to the bin — don't create new files.
@@ -517,7 +517,7 @@ mod tests {
 
     /// Serialize the session's live tree — byte-exact state fingerprint.
     fn bytes_of(id: SessionId) -> Vec<u8> {
-        with_session(id, |s| write_bin_ltk(&s.tree).unwrap()).unwrap()
+        with_session(id, |s| write_bin(&s.tree).unwrap()).unwrap()
     }
 
     /// The real-file fixture: `QUARTZ_TEST_BIN` env override, defaulting to the
@@ -725,8 +725,8 @@ mod tests {
 
         // Serializer stability: write(parse(write(parse(file)))) == write(parse(file)).
         let raw = std::fs::read(&path).unwrap();
-        let b0 = write_bin_ltk(&read_bin_ltk(&raw).unwrap()).unwrap();
-        let b1 = write_bin_ltk(&read_bin_ltk(&b0).unwrap()).unwrap();
+        let b0 = write_bin(&read_bin(&raw).unwrap()).unwrap();
+        let b1 = write_bin(&read_bin(&b0).unwrap()).unwrap();
         assert_eq!(b0, b1, "serializer is not round-trip stable");
 
         let opened = open(&path).unwrap();

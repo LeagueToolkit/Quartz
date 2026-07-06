@@ -7,7 +7,7 @@
 //! deletes the merged source BINs from disk. There is NO separate `_Concat.bin`
 //! file — the skin BIN itself becomes self-contained, exactly like old Quartz.
 
-use crate::bin::ltk_bridge::{read_bin, write_bin};
+use crate::bin::ritoshark_bridge::{read_bin, write_bin};
 use crate::error::{Error, Result};
 use ritoshark::bin::Bin;
 use std::collections::HashMap;

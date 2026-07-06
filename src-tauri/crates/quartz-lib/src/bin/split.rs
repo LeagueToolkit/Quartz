@@ -63,7 +63,7 @@ pub struct MultiAnalysis {
 
 /// Compute the FNV-1a 32-bit hash of a string. Used to derive BIN class
 /// hashes from their textual class names. Always lowercases the input,
-/// matching the convention `ltk_ritobin` and Riot's tooling use.
+/// matching the convention ritobin and Riot's tooling use.
 fn fnv1a_lower(s: &str) -> u32 {
     let mut h: u32 = 0x811c9dc5;
     for b in s.to_lowercase().bytes() {
@@ -704,4 +704,166 @@ fn paths_match(a: &Path, b: &Path) -> bool {
         (Ok(ca), Ok(cb)) => ca == cb,
         _ => a == b,
     }
+}
+
+// =============================================================================
+// Separate animations — 1:1 port of old quartz_cli `separate_anm`
+// =============================================================================
+
+/// The WAD project root: walk up until a `data` folder's parent, else the
+/// file's own folder. (Mirrors the combine variants' `find_root_dir`.)
+fn anm_root_dir(bin_path: &Path) -> PathBuf {
+    let mut cur = bin_path.parent();
+    while let Some(dir) = cur {
+        let lower = dir
+            .file_name()
+            .map(|n| n.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if lower == "data" {
+            if let Some(parent) = dir.parent() {
+                return parent.to_path_buf();
+            }
+        }
+        cur = dir.parent();
+    }
+    bin_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn detect_champ_name(path: &Path) -> Option<String> {
+    let posix = path.to_string_lossy().replace('\\', "/").to_lowercase();
+    let marker = "/characters/";
+    let start = posix.find(marker)? + marker.len();
+    let rest = &posix[start..];
+    let end = rest.find('/')?;
+    Some(rest[..end].to_string())
+}
+
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => c.to_ascii_uppercase().to_string() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+/// Move every `AnimationGraphData` entry from the target BIN and its sibling
+/// BINs into a single new `<champ>_anm_<stem>.bin` under `data/`, and add a
+/// `DATA/<LinkName>` dependency to the target BIN. Returns the number of
+/// entries extracted.
+///
+/// Refuses to run when the input already contains only `AnimationGraphData`
+/// entries (already separated).
+pub fn separate_anm(bin_path: &Path) -> Result<usize> {
+    let root_dir = anm_root_dir(bin_path);
+    let anm_type_hash = fnv1a_lower("AnimationGraphData");
+
+    // Refuse when the input is already a pure split-anm bin.
+    {
+        let input = crate::bin::read_bin(
+            &std::fs::read(bin_path).map_err(|e| Error::io_with_path(e, bin_path))?,
+        )
+        .map_err(|e| Error::InvalidInput(format!("Failed to parse {}: {}", bin_path.display(), e)))?;
+        if !input.entries.is_empty()
+            && input.entries.iter().all(|e| e.class_hash == anm_type_hash)
+        {
+            return Ok(0);
+        }
+    }
+
+    // Scan the target BIN plus every other `.bin` in the root, pulling out
+    // AnimationGraphData entries (deduped by path hash across files).
+    let mut files_to_scan = vec![bin_path.to_path_buf()];
+    if let Ok(entries) = std::fs::read_dir(&root_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().map(|e| e.to_ascii_lowercase()) == Some("bin".into()) && p != bin_path
+            {
+                files_to_scan.push(p);
+            }
+        }
+    }
+
+    let mut all_anm: Vec<BinEntry> = Vec::new();
+    let mut managed: HashSet<u32> = HashSet::new();
+
+    for f_path in &files_to_scan {
+        let mut bin = match std::fs::read(f_path).ok().and_then(|d| crate::bin::read_bin(&d).ok()) {
+            Some(b) => b,
+            None => continue,
+        };
+
+        let take: HashSet<u32> = bin
+            .entries
+            .iter()
+            .filter(|e| e.class_hash == anm_type_hash && !managed.contains(&e.path_hash))
+            .map(|e| e.path_hash)
+            .collect();
+        if take.is_empty() {
+            continue;
+        }
+
+        bin.entries.retain(|e| {
+            if take.contains(&e.path_hash) {
+                managed.insert(e.path_hash);
+                all_anm.push(e.clone());
+                false
+            } else {
+                true
+            }
+        });
+
+        let bytes = crate::bin::write_bin(&bin)
+            .map_err(|e| Error::InvalidInput(format!("Failed to serialize {}: {}", f_path.display(), e)))?;
+        std::fs::write(f_path, &bytes).map_err(|e| Error::io_with_path(e, f_path))?;
+    }
+
+    if all_anm.is_empty() {
+        return Ok(0);
+    }
+
+    // Derive the output filename and the (capitalized) link name.
+    let stem = bin_path.file_stem().unwrap_or_default().to_string_lossy();
+    let stem_lower = stem.to_lowercase();
+    let (file_name_lower, link_name) = if let Some(champ) = detect_champ_name(bin_path) {
+        (
+            format!("{}_anm_{}.bin", champ.to_lowercase(), stem_lower),
+            format!("{}_anm_{}.bin", capitalize_first(&champ), stem_lower),
+        )
+    } else {
+        (
+            format!("{}_anm.bin", stem_lower),
+            format!("{}_anm.bin", capitalize_first(&stem_lower)),
+        )
+    };
+
+    let anm_path = root_dir.join("data").join(&file_name_lower);
+    if let Some(parent) = anm_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| Error::io_with_path(e, parent))?;
+    }
+
+    let anm_bin = Bin {
+        entries: all_anm.clone(),
+        ..Bin::new()
+    };
+    let anm_bytes = crate::bin::write_bin(&anm_bin)
+        .map_err(|e| Error::InvalidInput(format!("Failed to serialize anm BIN: {}", e)))?;
+    std::fs::write(&anm_path, &anm_bytes).map_err(|e| Error::io_with_path(e, &anm_path))?;
+
+    // Add the DATA/<LinkName> dependency to the target BIN.
+    let mut main = crate::bin::read_bin(
+        &std::fs::read(bin_path).map_err(|e| Error::io_with_path(e, bin_path))?,
+    )
+    .map_err(|e| Error::InvalidInput(format!("Failed to re-parse target BIN: {}", e)))?;
+    let link_str = format!("DATA/{}", link_name);
+    if !main.linked.iter().any(|d| d.eq_ignore_ascii_case(&link_str)) {
+        main.linked.push(link_str);
+    }
+    let main_bytes = crate::bin::write_bin(&main)
+        .map_err(|e| Error::InvalidInput(format!("Failed to serialize target BIN: {}", e)))?;
+    std::fs::write(bin_path, &main_bytes).map_err(|e| Error::io_with_path(e, bin_path))?;
+
+    Ok(all_anm.len())
 }

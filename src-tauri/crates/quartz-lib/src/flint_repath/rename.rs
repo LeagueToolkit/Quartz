@@ -5,7 +5,7 @@
 //! rather than assuming a creator, since the creator comes from the global
 //! setting at refather time (not a per-project field) and may have drifted.
 
-use crate::bin::ltk_bridge::{read_bin, write_bin};
+use crate::bin::ritoshark_bridge::{read_bin, write_bin};
 use crate::error::{Error, Result};
 use regex::Regex;
 use ritoshark::bin::BinValue;

@@ -1,5 +1,5 @@
 /* quartz-lib wraps the RitoShark league-toolkit crates. Hash downloading and BIN
-parsing are ported from Flint's flint-ltk: hashes come as prebuilt LMDB from the
+parsing are ported from Flint's toolkit layer: hashes come as prebuilt LMDB from the
 lmdb-hashes GitHub releases (stored under %APPDATA%/RitoShark/Requirements/Hashes),
 and BINs are parsed with the `ritoshark` crate — no ritobin, no CommunityDragon
 text hashes. */
@@ -13,8 +13,10 @@ pub mod extractor;
 pub mod flint_repath;
 pub mod hash;
 pub mod mesh;
+pub mod model_bridge;
 pub mod paint;
 pub mod port_donor;
+pub mod pyntex;
 pub mod skeleton;
 pub mod tex;
 mod undo;
@@ -22,6 +24,7 @@ pub mod vfx_session;
 pub mod vfx_tools;
 pub mod wad;
 pub mod wad_explorer;
+pub mod wad_tools;
 
 // Re-export heed so callers can hold Arc<heed::Env> if needed.
 pub use heed;

@@ -4,7 +4,7 @@
 //! `assetConsolidator.js`.
 //!
 //! Everything here operates on `ritoshark::bin::Bin` trees obtained through
-//! the existing `ltk_bridge` reader/writer, so there is no separate parser.
+//! the existing `ritoshark_bridge` reader/writer, so there is no separate parser.
 //! Scaling walks the `VfxSystemDefinitionData` → emitter → `birthScale0` /
 //! `scale0` value subtree and multiplies the vec3 constant + dynamics values.
 

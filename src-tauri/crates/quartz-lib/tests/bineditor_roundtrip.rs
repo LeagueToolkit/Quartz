@@ -8,7 +8,7 @@
 //! restore byte-exactness, insert/remove structural round-trip, and that every
 //! saved artifact re-parses (no corruption).
 
-use quartz_lib::bin::{read_bin_ltk, write_bin_ltk};
+use quartz_lib::bin::{read_bin, write_bin};
 use quartz_lib::bineditor::project::{NodeKind, NodeValue};
 use quartz_lib::bineditor::{session, EditOp, EditorModel, EditorNode, JsonBinValue, NodePath};
 
@@ -77,10 +77,10 @@ fn bineditor_roundtrip() {
 
     // 1) Parse + serialize idempotence.
     let original = std::fs::read(&bin_path).expect("read source bin");
-    let tree = read_bin_ltk(&original).expect("parse source bin");
-    let w1 = write_bin_ltk(&tree).expect("serialize");
-    let tree2 = read_bin_ltk(&w1).expect("re-parse serialized bytes");
-    let w2 = write_bin_ltk(&tree2).expect("re-serialize");
+    let tree = read_bin(&original).expect("parse source bin");
+    let w1 = write_bin(&tree).expect("serialize");
+    let tree2 = read_bin(&w1).expect("re-parse serialized bytes");
+    let w2 = write_bin(&tree2).expect("re-serialize");
     assert_eq!(w1, w2, "serialize->parse->serialize must be byte-stable");
     eprintln!(
         "[be2] idempotence OK ({} bytes; byte-identical to original: {})",
@@ -101,7 +101,7 @@ fn bineditor_roundtrip() {
 
     session::save(id, Some(t("base.bin"))).expect("save baseline");
     let b0 = std::fs::read(t("base.bin")).unwrap();
-    read_bin_ltk(&b0).expect("baseline save re-parses");
+    read_bin(&b0).expect("baseline save re-parses");
 
     // 3) Leaf edit.
     let (path, old_v, em_key) = locate_first_f32(&opened.model).expect("an f32 leaf to edit");
@@ -122,7 +122,7 @@ fn bineditor_roundtrip() {
 
     session::save(id, Some(t("mut.bin"))).expect("save mutated");
     let b1 = std::fs::read(t("mut.bin")).unwrap();
-    read_bin_ltk(&b1).expect("mutated save re-parses");
+    read_bin(&b1).expect("mutated save re-parses");
     assert_ne!(b0, b1, "mutation must change the serialized bytes");
 
     // 4) Undo restores byte-exact baseline. Leaf edits come back as partial
@@ -193,7 +193,7 @@ fn bineditor_roundtrip() {
         .expect("new field present in projection");
     assert!(matches!(new_node.value, Some(NodeValue::F32(v)) if (v - 42.0).abs() < 1e-3));
     session::save(id, Some(t("insert.bin"))).unwrap();
-    read_bin_ltk(&std::fs::read(t("insert.bin")).unwrap()).expect("insert save re-parses");
+    read_bin(&std::fs::read(t("insert.bin")).unwrap()).expect("insert save re-parses");
 
     let m = session::remove(id, &new_node.path.clone()).expect("remove field");
     assert_eq!(m.systems[0].emitters[0].fields.len(), before.len());

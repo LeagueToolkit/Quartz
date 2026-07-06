@@ -7,7 +7,7 @@
 
 use super::project::{self, VfxPortModel};
 use super::resolve;
-use crate::bin::{read_bin_ltk, write_bin_ltk};
+use crate::bin::{read_bin, write_bin};
 use crate::error::{Error, Result};
 use crate::undo::UndoFrame;
 use parking_lot::RwLock;
@@ -173,7 +173,7 @@ pub fn open(path: impl AsRef<Path>) -> Result<OpenResult> {
     }
 
     let data = std::fs::read(&path).map_err(|e| Error::io_with_path(e, &path))?;
-    let main = read_bin_ltk(&data).map_err(|e| Error::InvalidInput(e.to_string()))?;
+    let main = read_bin(&data).map_err(|e| Error::InvalidInput(e.to_string()))?;
 
     let links = resolve::gather_linked(&path, &main);
     let mut seen: HashSet<String> = HashSet::new();
@@ -202,7 +202,7 @@ pub fn open(path: impl AsRef<Path>) -> Result<OpenResult> {
                 continue;
             }
         };
-        match read_bin_ltk(&bytes) {
+        match read_bin(&bytes) {
             Ok(tree) => bins.push(LoadedBin {
                 path: link_path,
                 role: BinRole::Linked,
@@ -274,7 +274,7 @@ pub fn save(id: SessionId) -> Result<Vec<PathBuf>> {
     with_session(id, |s| -> Result<Vec<PathBuf>> {
         let mut written = Vec::new();
         for lb in s.bins.iter_mut().filter(|b| b.dirty) {
-            let bytes = write_bin_ltk(&lb.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
+            let bytes = write_bin(&lb.tree).map_err(|e| Error::InvalidInput(e.to_string()))?;
             std::fs::write(&lb.path, bytes).map_err(|e| Error::io_with_path(e, &lb.path))?;
             lb.dirty = false;
             written.push(lb.path.clone());
