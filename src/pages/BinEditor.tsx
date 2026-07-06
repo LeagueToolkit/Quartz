@@ -199,6 +199,7 @@ function emitterHasTexture(emitter: Emitter): boolean {
 export function BinEditor() {
     const pick = useFileExplorer();
     const page = useNavigationStore((s) => s.page);
+    const consumePendingFile = useNavigationStore((s) => s.consumePendingFile);
     const notify = useNotificationStore((s) => s.push);
 
     // ============ STATE ============
@@ -340,6 +341,12 @@ export function BinEditor() {
             setStatusMessage('Error opening file dialog: ' + message);
         }
     }, [processBinFile, pick]);
+
+    // Auto-load a file handed over from the explorer's "Open in Bin Editor".
+    useEffect(() => {
+        const path = consumePendingFile('bineditor');
+        if (path) void processBinFile(path);
+    }, [consumePendingFile, processBinFile]);
 
     const saveFile = useCallback(async () => {
         if (!data || !currentPath || !binPath) {

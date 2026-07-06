@@ -234,4 +234,5 @@
 .dl-explorer__filter:focus { outline: none; border-color: var(--accent-primary); }
 .dl-explorer__filter option { background: var(--bg-secondary); color: var(--text-primary); }
 
-.dl-explorer__ctx { min-width: 190px; }
+.dl-explorer__ctx { min-width: 200px; }
+.dl-modal.dl-explorer__rename { width: 380px; max-width: 90vw; }

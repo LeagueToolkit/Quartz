@@ -3,8 +3,13 @@ import { createPortal } from 'react-dom';
 import {
     ArrowLeft, ArrowRight, ArrowUp, RefreshCw, Search, X,
     LayoutGrid, List as ListIcon, FolderOpen, Eye, Star,
+    Pencil, Trash2, Copy, ClipboardCopy, FolderPlus, Palette, FileCode,
 } from 'lucide-react';
-import { explorerReveal, type FsEntry } from '@/lib/api/explorer';
+import {
+    explorerReveal, explorerRename, explorerDelete, explorerCopy, explorerNewFolder,
+    type FsEntry,
+} from '@/lib/api/explorer';
+import { useNavigationStore } from '@/lib/stores';
 import { useExplorerNav } from './useExplorerNav';
 import { ExplorerSidebar } from './ExplorerSidebar';
 import { FileTile } from './FileTile';
@@ -14,6 +19,8 @@ import type { ExplorerOptions } from './types';
 import './explorer.css';
 
 const MODEL_EXTS = new Set(['scb', 'sco', 'skn']);
+const TEXTURE_EXTS = new Set(['tex', 'dds', 'png', 'jpg', 'jpeg']);
+const BIN_EXTS = new Set(['bin', 'py']);
 
 interface FilterGroup { label: string; exts: string[] | undefined } // undefined = all files
 
@@ -79,7 +86,10 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     const [editingAddr, setEditingAddr] = useState(false);
     const [addrDraft, setAddrDraft] = useState('');
     const [ctx, setCtx] = useState<ContextState | null>(null);
+    // Inline rename: the entry being renamed + its draft name.
+    const [renaming, setRenaming] = useState<{ entry: FsEntry; draft: string } | null>(null);
     const gridRef = useRef<HTMLDivElement>(null);
+    const openInTool = useNavigationStore((s) => s.openInTool);
 
     const isSave = options.mode === 'save';
     const isFiles = options.mode === 'files';
@@ -170,6 +180,75 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     const chooseFile = (entry: FsEntry) => {
         addRecent(recentsKey, entry.path);
         onResolve(entry.path);
+    };
+
+    // ── Context-menu file operations ──────────────────────────────────────────
+    const copyPath = (entry: FsEntry) => {
+        void navigator.clipboard?.writeText(entry.path).catch(() => { /* ignore */ });
+        setCtx(null);
+    };
+
+    const startRename = (entry: FsEntry) => {
+        setRenaming({ entry, draft: entry.name });
+        setCtx(null);
+    };
+
+    const commitRename = async () => {
+        if (!renaming) return;
+        const { entry, draft } = renaming;
+        const name = draft.trim();
+        setRenaming(null);
+        if (!name || name === entry.name) return;
+        try {
+            await explorerRename(entry.path, name);
+            nav.refresh();
+            setSelected(name);
+        } catch (e) {
+            window.alert(e instanceof Error ? e.message : String(e));
+        }
+    };
+
+    const deleteEntry = async (entry: FsEntry) => {
+        setCtx(null);
+        const kind = entry.isDirectory ? 'folder' : 'file';
+        if (!window.confirm(`Delete this ${kind}?\n\n${entry.name}\n\nThis cannot be undone.`)) return;
+        try {
+            await explorerDelete(entry.path);
+            if (selected === entry.name) setSelected(null);
+            nav.refresh();
+        } catch (e) {
+            window.alert(e instanceof Error ? e.message : String(e));
+        }
+    };
+
+    const copyEntry = async (entry: FsEntry) => {
+        setCtx(null);
+        try {
+            const newPath = await explorerCopy(entry.path, nav.currentPath);
+            nav.refresh();
+            setSelected(newPath.replace(/^.*[\\/]/, ''));
+        } catch (e) {
+            window.alert(e instanceof Error ? e.message : String(e));
+        }
+    };
+
+    const makeNewFolder = async () => {
+        setCtx(null);
+        const name = window.prompt('New folder name:', 'New folder');
+        if (!name) return;
+        try {
+            const path = await explorerNewFolder(nav.currentPath, name);
+            nav.refresh();
+            setSelected(path.replace(/^.*[\\/]/, ''));
+        } catch (e) {
+            window.alert(e instanceof Error ? e.message : String(e));
+        }
+    };
+
+    const openIn = (page: 'imgrecolor' | 'bineditor', entry: FsEntry) => {
+        setCtx(null);
+        onCancel(); // close the picker first
+        openInTool(page, entry.path);
     };
 
     const handleDouble = (entry: FsEntry) => {
@@ -343,12 +422,15 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
                 {/* Context menu */}
                 {ctx && (
                     <div className="dl-dd-portal dl-explorer__ctx" style={{ position: 'fixed', top: ctx.y, left: ctx.x }} onClick={(e) => e.stopPropagation()}>
-                        <button className="dl-dd__item" onClick={() => { void explorerReveal(ctx.entry.path); setCtx(null); }}>
-                            <Eye size={14} /><span>Reveal in Explorer</span>
-                        </button>
-                        {ctx.entry.isDirectory && (
-                            <button className="dl-dd__item" onClick={() => { addPin(ctx.entry.path); setCtx(null); }}>
-                                <Star size={14} /><span>Pin folder</span>
+                        {/* Open in tool */}
+                        {TEXTURE_EXTS.has(ctx.entry.extension) && (
+                            <button className="dl-dd__item" onClick={() => openIn('imgrecolor', ctx.entry)}>
+                                <Palette size={14} /><span>Open in Image Recolor</span>
+                            </button>
+                        )}
+                        {BIN_EXTS.has(ctx.entry.extension) && (
+                            <button className="dl-dd__item" onClick={() => openIn('bineditor', ctx.entry)}>
+                                <FileCode size={14} /><span>Open in Bin Editor</span>
                             </button>
                         )}
                         {MODEL_EXTS.has(ctx.entry.extension) && onInspect && (
@@ -356,7 +438,65 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
                                 <Eye size={14} /><span>Inspect model</span>
                             </button>
                         )}
+                        {(TEXTURE_EXTS.has(ctx.entry.extension) || BIN_EXTS.has(ctx.entry.extension) || (MODEL_EXTS.has(ctx.entry.extension) && onInspect)) && (
+                            <div className="dl-dd__divider" />
+                        )}
+
+                        {/* File operations */}
+                        <button className="dl-dd__item" onClick={() => startRename(ctx.entry)}>
+                            <Pencil size={14} /><span>Rename</span>
+                        </button>
+                        <button className="dl-dd__item" onClick={() => copyEntry(ctx.entry)}>
+                            <Copy size={14} /><span>Duplicate</span>
+                        </button>
+                        <button className="dl-dd__item" onClick={() => copyPath(ctx.entry)}>
+                            <ClipboardCopy size={14} /><span>Copy path</span>
+                        </button>
+                        <button className="dl-dd__item dl-dd__item--danger" onClick={() => deleteEntry(ctx.entry)}>
+                            <Trash2 size={14} /><span>Delete</span>
+                        </button>
+
+                        <div className="dl-dd__divider" />
+                        <button className="dl-dd__item" onClick={() => { void explorerReveal(ctx.entry.path); setCtx(null); }}>
+                            <Eye size={14} /><span>Reveal in Explorer</span>
+                        </button>
+                        <button className="dl-dd__item" onClick={makeNewFolder}>
+                            <FolderPlus size={14} /><span>New folder</span>
+                        </button>
+                        {ctx.entry.isDirectory && (
+                            <button className="dl-dd__item" onClick={() => { addPin(ctx.entry.path); setCtx(null); }}>
+                                <Star size={14} /><span>Pin folder</span>
+                            </button>
+                        )}
                     </div>
+                )}
+
+                {/* Rename modal */}
+                {renaming && createPortal(
+                    <div className="dl-modal-backdrop" style={{ zIndex: 10001 }} onMouseDown={(e) => { if (e.target === e.currentTarget) setRenaming(null); }}>
+                        <div className="dl-modal dl-explorer__rename">
+                            <div className="dl-modal__head"><h3 className="dl-modal__title">Rename</h3></div>
+                            <div className="dl-modal__body">
+                                <input
+                                    className="dl-input"
+                                    autoFocus
+                                    value={renaming.draft}
+                                    onChange={(e) => setRenaming({ entry: renaming.entry, draft: e.target.value })}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') void commitRename(); if (e.key === 'Escape') setRenaming(null); }}
+                                    onFocus={(e) => {
+                                        // Preselect the base name (exclude extension) for quick edits.
+                                        const dot = renaming.entry.isDirectory ? -1 : renaming.draft.lastIndexOf('.');
+                                        e.target.setSelectionRange(0, dot > 0 ? dot : renaming.draft.length);
+                                    }}
+                                />
+                            </div>
+                            <div className="dl-modal__foot">
+                                <button className="dl-btn" onClick={() => setRenaming(null)}>Cancel</button>
+                                <button className="dl-btn dl-btn--primary" onClick={() => void commitRename()}>Rename</button>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body,
                 )}
             </div>
         </div>,

@@ -48,6 +48,26 @@ export function explorerFilterExisting(paths: string[]): Promise<string[]> {
     return invokeCommand<string[]>('explorer_filter_existing', { paths });
 }
 
+/** Rename a file/folder in place (bare name, no separators). Returns new path. */
+export function explorerRename(path: string, newName: string): Promise<string> {
+    return invokeCommand<string>('explorer_rename', { path, newName });
+}
+
+/** Delete a file, or a folder recursively. */
+export function explorerDelete(path: string): Promise<void> {
+    return invokeCommand<void>('explorer_delete', { path });
+}
+
+/** Copy a file/folder into destDir (auto-suffixes on collision). Returns new path. */
+export function explorerCopy(path: string, destDir: string): Promise<string> {
+    return invokeCommand<string>('explorer_copy', { path, destDir });
+}
+
+/** Create an empty folder inside parent. Returns its path. */
+export function explorerNewFolder(parent: string, name: string): Promise<string> {
+    return invokeCommand<string>('explorer_new_folder', { parent, name });
+}
+
 /** Decode an image / game texture to a PNG `data:` URL for thumbnails. */
 export function explorerThumbnail(path: string): Promise<string> {
     return invokeCommand<string>('explorer_thumbnail', { path });

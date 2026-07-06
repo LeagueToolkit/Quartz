@@ -12,6 +12,7 @@ import {
     type RecolorParams,
 } from './utils/imgRecolorLogic';
 import { useFileDrop } from '@/lib/util/useFileDrop';
+import { useNavigationStore } from '@/lib/stores';
 import { thumbnailQueue } from './components/thumbnailQueue';
 import { ImageThumbnail } from './components/ImageThumbnail';
 import { ProcessedImageCard } from './components/ProcessedImageCard';
@@ -289,6 +290,13 @@ function ImgRecolor() {
             setIsLoading(false);
         }
     }, [recursiveScan]);
+
+    // Auto-load a file handed over from the explorer's "Open in Image Recolor".
+    const consumePendingFile = useNavigationStore((s) => s.consumePendingFile);
+    useEffect(() => {
+        const path = consumePendingFile('imgrecolor');
+        if (path) void loadDroppedPaths([path]);
+    }, [consumePendingFile, loadDroppedPaths]);
 
     useFileDrop({
         onEnter: () => setIsDragging(true),

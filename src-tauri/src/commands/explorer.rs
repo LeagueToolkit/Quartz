@@ -317,6 +317,98 @@ pub fn explorer_filter_existing(paths: Vec<String>) -> Vec<String> {
         .collect()
 }
 
+/// Rename a file/folder in place. `new_name` is a bare name (no separators),
+/// so a rename can never move the item to another directory. Refuses to
+/// overwrite an existing sibling.
+#[tauri::command]
+pub fn explorer_rename(path: String, new_name: String) -> Result<String, String> {
+    let src = Path::new(&path);
+    let trimmed = new_name.trim();
+    if trimmed.is_empty() || trimmed.contains(['/', '\\']) || trimmed == "." || trimmed == ".." {
+        return Err("Invalid name".into());
+    }
+    let parent = src.parent().ok_or("No parent directory")?;
+    let dst = parent.join(trimmed);
+    if dst.exists() {
+        return Err(format!("'{trimmed}' already exists"));
+    }
+    std::fs::rename(src, &dst).map_err(|e| format!("rename failed: {e}"))?;
+    Ok(dst.to_string_lossy().to_string())
+}
+
+/// Delete a file or (recursively) a folder.
+#[tauri::command]
+pub fn explorer_delete(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    let meta = std::fs::metadata(p).map_err(|e| format!("stat failed: {e}"))?;
+    if meta.is_dir() {
+        std::fs::remove_dir_all(p).map_err(|e| format!("delete folder failed: {e}"))
+    } else {
+        std::fs::remove_file(p).map_err(|e| format!("delete file failed: {e}"))
+    }
+}
+
+/// Copy a file or folder into `dest_dir`. If a name collision occurs, appends
+/// " (copy)", " (copy 2)", ... before the extension. Returns the new path.
+#[tauri::command]
+pub fn explorer_copy(path: String, dest_dir: String) -> Result<String, String> {
+    let src = Path::new(&path);
+    let dest = Path::new(&dest_dir);
+    if !dest.is_dir() {
+        return Err("Destination is not a folder".into());
+    }
+    let stem = src.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let ext = src.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    let is_dir = src.is_dir();
+
+    // Pick a non-colliding target name.
+    let mut target = dest.join(src.file_name().ok_or("Bad source name")?);
+    let mut n = 1;
+    while target.exists() {
+        let suffix = if n == 1 { " (copy)".to_string() } else { format!(" (copy {n})") };
+        let name = if is_dir { format!("{stem}{suffix}") } else { format!("{stem}{suffix}{ext}") };
+        target = dest.join(name);
+        n += 1;
+    }
+
+    if is_dir {
+        copy_dir_recursive(src, &target).map_err(|e| format!("copy folder failed: {e}"))?;
+    } else {
+        std::fs::copy(src, &target).map_err(|e| format!("copy file failed: {e}"))?;
+    }
+    Ok(target.to_string_lossy().to_string())
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&from, &to)?;
+        } else {
+            std::fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
+/// Create a new empty folder named `name` inside `parent`. Returns its path.
+#[tauri::command]
+pub fn explorer_new_folder(parent: String, name: String) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() || trimmed.contains(['/', '\\']) || trimmed == "." || trimmed == ".." {
+        return Err("Invalid name".into());
+    }
+    let dir = Path::new(&parent).join(trimmed);
+    if dir.exists() {
+        return Err(format!("'{trimmed}' already exists"));
+    }
+    std::fs::create_dir(&dir).map_err(|e| format!("create folder failed: {e}"))?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 pub fn explorer_reveal(app: tauri::AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
