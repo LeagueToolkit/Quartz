@@ -188,6 +188,7 @@ fn main() {
             commands::upscale::upscayl_batch_process,
             commands::upscale::upscayl_cancel,
             commands::port_hub::port_stage_hub_donor,
+            commands::port_hub::port_prepare_hub_upload,
             commands::explorer::explorer_list_dir,
             commands::explorer::explorer_quick_links,
             commands::explorer::explorer_resolve_path,

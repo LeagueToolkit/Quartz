@@ -2,28 +2,19 @@ import { useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Upload, Check, Image as ImageIcon } from 'lucide-react';
 import { uploadHubSystem } from './hubApi';
-import { textToBinBytes } from '@/lib/api';
+import { portPrepareHubUpload } from '@/lib/api/portHub';
 import { useUiPrefsStore } from '@/lib/stores';
 import './hub.css';
 
 export interface UploadableSystem { key: string; name: string; fullContent: string }
 
-// Wrap a single-system ritobin fragment into a valid document so it compiles.
-const PY_HEADER = '#PROP_text\nversion: u32 = 3\nlinked: list[string] = {\n}\nentries: map[hash,embed] = {\n';
-const PY_FOOTER = '\n}\n';
-
-function bytesToBase64(bytes: number[]): string {
-    let bin = '';
-    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i] & 0xff);
-    return btoa(bin);
-}
-
 /* Upload one or more of the loaded Port TARGET's VFX systems to the hub. Needs a
    GitHub token (Settings -> GitHub Integration); otherwise shows a hint. */
-export function HubUploadModal({ open, onClose, targetSystems, setStatus }: {
+export function HubUploadModal({ open, onClose, targetSystems, targetPath, setStatus }: {
     open: boolean;
     onClose: () => void;
     targetSystems: UploadableSystem[];
+    targetPath: string;
     setStatus: (msg: string) => void;
 }) {
     const token = useUiPrefsStore((s) => s.githubToken);
@@ -66,18 +57,22 @@ export function HubUploadModal({ open, onClose, targetSystems, setStatus }: {
         try {
             for (let i = 0; i < picked.length; i++) {
                 const sys = picked[i];
-                // Name from the field only when uploading a single system.
                 const effectName = (picked.length === 1 && name.trim()) ? name.trim() : sys.name;
-                setStatus(`Compiling ${effectName}...`);
-                const emitters = (sys.fullContent.match(/VfxEmitterDefinitionData\s*\{/g) || []).length;
-                const bytes = await textToBinBytes(PY_HEADER + sys.fullContent + PY_FOOTER);
+                // Bin-native: repath assets -> ASSETS/vfxhub, compile to .bin, and
+                // collect the referenced asset files from the target's mod tree.
+                setStatus(`Preparing ${effectName}...`);
+                const prepared = await portPrepareHubUpload(targetPath, sys.fullContent);
+                if (prepared.missing.length) {
+                    setStatus(`Warning: ${prepared.missing.length} asset(s) not found on disk for ${effectName}`);
+                }
                 setStatus(`Uploading ${effectName}...`);
                 await uploadHubSystem({
                     name: effectName,
                     category: category.trim() || 'general',
                     description: description.trim(),
-                    binBase64: bytesToBase64(bytes),
-                    emitters,
+                    binBase64: prepared.binBase64,
+                    emitters: prepared.emitters,
+                    assets: prepared.assets,
                     previewBase64: i === 0 ? preview?.base64 ?? null : null,
                     previewExt: preview?.ext,
                 });
@@ -85,7 +80,9 @@ export function HubUploadModal({ open, onClose, targetSystems, setStatus }: {
             setStatus(`Uploaded ${picked.length} system(s) to hub`);
             onClose();
         } catch (e) {
-            setStatus(`Upload failed: ${e instanceof Error ? e.message : String(e)}`);
+            const msg = e instanceof Error ? e.message : String(e);
+            setStatus(`Upload failed: ${msg}`);
+            console.error('[hub] upload failed:', msg, e);
         } finally {
             setBusy(false);
         }

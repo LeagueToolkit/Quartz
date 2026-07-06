@@ -131,17 +131,24 @@ export async function testConnection(): Promise<{ success: boolean; error?: stri
     }
 }
 
+/** Raised when GitHub's raw CDN rate-limits us (429). Surfaced to the console. */
+export class HubRateLimitError extends Error {
+    constructor() { super('GitHub is rate-limiting downloads (HTTP 429). Wait a minute and try again.'); this.name = 'HubRateLimitError'; }
+}
+
 async function fetchBase64(url: string): Promise<string | null> {
+    let res: Response;
     try {
-        const res = await fetch(url);
-        if (!res.ok) return null;
-        const buf = new Uint8Array(await res.arrayBuffer());
-        let bin = '';
-        for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
-        return btoa(bin);
+        res = await fetch(url);
     } catch {
-        return null;
+        return null; // network error -> treat as missing, non-fatal
     }
+    if (res.status === 429) throw new HubRateLimitError();
+    if (!res.ok) return null;
+    const buf = new Uint8Array(await res.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+    return btoa(bin);
 }
 
 export interface DownloadedHubSystem { binBase64: string; assets: HubAssetBytesInput[] }
@@ -212,11 +219,14 @@ export interface HubUploadInput {
     description: string;
     binBase64: string;
     emitters: number;
+    /** Asset files (name = basename, already repathed to ASSETS/vfxhub/name). */
+    assets: { name: string; base64: string }[];
     previewBase64?: string | null;
     previewExt?: string;
 }
 
-/** Upload a compiled .bin (+ optional preview) and update index.json. */
+/** Upload a compiled .bin + its assets (to assets/vfxhub/) + optional preview,
+ *  then update index.json. Assets are already repathed to ASSETS/vfxhub/<name>. */
 export async function uploadHubSystem(input: HubUploadInput): Promise<string> {
     const { token } = getCreds();
     if (!token) throw new Error('A GitHub token is required to upload. Set one in Settings.');
@@ -226,6 +236,11 @@ export async function uploadHubSystem(input: HubUploadInput): Promise<string> {
     const binFile = `bins/${cat}/${base}.bin`;
 
     await putFile(binFile, input.binBase64, `Add VFX system: ${input.name}`);
+
+    // Upload each referenced asset into assets/vfxhub/ (skip ones already there).
+    for (const a of input.assets) {
+        await putFile(`assets/vfxhub/${a.name}`, a.base64, `Asset: ${a.name}`).catch(() => { /* tolerate dupes/races */ });
+    }
 
     if (input.previewBase64) {
         const ext = (input.previewExt || 'png').toLowerCase();
@@ -246,6 +261,7 @@ export async function uploadHubSystem(input: HubUploadInput): Promise<string> {
         category: cat,
         emitters: input.emitters,
         binFile,
+        assets: input.assets.map((a) => `ASSETS/vfxhub/${a.name}`),
     };
     const indexB64 = btoa(unescape(encodeURIComponent(JSON.stringify(index, null, 2))));
     await putFile('index.json', indexB64, `Index: ${input.name}`);

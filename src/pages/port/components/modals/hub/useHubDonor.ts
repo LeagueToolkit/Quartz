@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { downloadHubSystem, type HubSystem } from './hubApi';
 import { portStageHubDonor, type HubAssetBytes } from '@/lib/api/portHub';
+import { log } from '@/lib/util/logger';
 
 /* Bridge: turn a picked hub system into a Port donor. Downloads the compiled
    .bin + its assets, stages them into a temp tree, then loads that as the donor
@@ -29,7 +30,10 @@ export function useHubDonor(deps: {
             await processDonorBin(staged.binPath, false);
             setStatus('Hub donor loaded');
         } catch (e) {
-            setStatus(`Hub load failed: ${e instanceof Error ? e.message : String(e)}`);
+            const msg = e instanceof Error ? e.message : String(e);
+            setStatus(`Hub load failed: ${msg}`);
+            log.error('[hub] load failed', e);          // -> Port log
+            console.error('[hub] load failed:', msg, e); // -> browser console
         } finally {
             setStaging(false);
         }

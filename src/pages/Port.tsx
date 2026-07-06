@@ -633,6 +633,7 @@ function Port() {
                 open={showHubUpload}
                 onClose={() => setShowHubUpload(false)}
                 targetSystems={uploadableSystems}
+                targetPath={p.targetPath}
                 setStatus={p.setStatusMessage}
             />
 
