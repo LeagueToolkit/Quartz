@@ -33,6 +33,59 @@ export function LoadingStateView() {
     );
 }
 
+/* Loading skeleton — shimmers the champion sidebar (tabs, search, rows) while
+   the champion list loads. The main area keeps the real "Select a Champion"
+   empty state: nothing is selected on load, so no skin grid is coming until the
+   user picks a champion, and a card skeleton there would imply otherwise.
+   Reuses the real .ae-sb / .ae-sb__row structure so the placeholder lines up
+   1:1 with the loaded sidebar. */
+export function LoadingSkeletonView({ sidebarWidth = 256 }: { sidebarWidth?: number }) {
+    const rows = Array.from({ length: 12 });
+    const stagger = (i: number) => ['', 'ae-skel--d1', 'ae-skel--d2', 'ae-skel--d3'][i % 4];
+
+    return (
+        <div className="flex" style={{ height: '100%', minHeight: 0 }}>
+            {/* Sidebar skeleton */}
+            <aside className="ae-sb" style={{ width: sidebarWidth }} aria-hidden="true">
+                {/* Category tabs */}
+                <div className="ae-sb__tabs" style={{ gap: 6 }}>
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="ae-skel" style={{ flex: 1, height: 30 }} />
+                    ))}
+                </div>
+                {/* Search bar */}
+                <div className="ae-sb__search">
+                    <div className="ae-skel" style={{ height: 38, borderRadius: 8 }} />
+                </div>
+                {/* Champion rows */}
+                <div className="ae-sb__list">
+                    {rows.map((_, i) => (
+                        <div
+                            key={i}
+                            className="ae-sb__row"
+                            style={{ pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 10 }}
+                        >
+                            <div className={`ae-skel ae-skel__avatar ${stagger(i)}`} />
+                            <div className="ae-sb__meta" style={{ flex: 1, gap: 6 }}>
+                                <div className={`ae-skel ae-skel__line ${stagger(i)}`} style={{ width: `${55 + ((i * 13) % 35)}%` }} />
+                                <div className={`ae-skel ae-skel__line--sm ${stagger(i + 1)}`} style={{ width: `${30 + ((i * 7) % 25)}%` }} />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </aside>
+
+            {/* Resize handle placeholder (matches the real 8px divider) */}
+            <div style={{ width: 8, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.06)', borderRight: '1px solid rgba(255,255,255,0.06)' }} />
+
+            {/* Main area keeps the real empty state — no champion selected yet. */}
+            <main className="flex-1" style={{ minWidth: 0, padding: '12px 16px 16px', overflow: 'hidden' }}>
+                <NoChampionSelectedView loading />
+            </main>
+        </div>
+    );
+}
+
 export function ErrorStateView({ error, onRetry }: { error: string; onRetry: () => void }) {
     return (
         <div style={centerWrap}>

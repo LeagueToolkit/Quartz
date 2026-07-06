@@ -45,7 +45,7 @@ import { SelectionActionBar } from './assetextractor/components/SelectionActionB
 import { SearchHelpModal } from './assetextractor/components/SearchHelpModal';
 import { ExtractionModeModal, type ExtractionPayload } from './assetextractor/components/ExtractionModeModal';
 import { CustomPrefixModal, type RepathSkin, type RepathOptionsPayload } from './assetextractor/components/CustomPrefixModal';
-import { LoadingStateView, ErrorStateView, NoChampionSelectedView } from './assetextractor/components/StateViews';
+import { LoadingSkeletonView, ErrorStateView, NoChampionSelectedView } from './assetextractor/components/StateViews';
 
 const SIDEBAR_WIDTH_STORAGE_KEY = 'assetextractor-sidebar-width';
 const OUTPUT_RECENT_PATHS_STORAGE_KEY = 'assetextractor-recent-output-paths';
@@ -894,8 +894,8 @@ export function AssetExtractor() {
     };
 
     /* ── Render ───────────────────────────────────────────────────────────── */
-    if (!settingsLoaded) return wrap(<LoadingStateView />);
-    if (loading && champions.length === 0) return wrap(<LoadingStateView />);
+    if (!settingsLoaded) return wrap(<LoadingSkeletonView sidebarWidth={sidebarWidth} />);
+    if (loading && champions.length === 0) return wrap(<LoadingSkeletonView sidebarWidth={sidebarWidth} />);
     if (error && champions.length === 0) return wrap(<ErrorStateView error={error} onRetry={loadChampions} />);
 
     return wrap(

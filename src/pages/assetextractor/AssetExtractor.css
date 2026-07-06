@@ -323,3 +323,46 @@
     background: radial-gradient(160px circle at var(--mx, 50%) var(--my, 50%),
         color-mix(in oklab, var(--color-success) 30%, transparent) 0%, transparent 60%);
 }
+
+/* ── Loading skeleton ──────────────────────────────────────────────────────
+   Shown in place of the spinner while champions load. Reuses the real sidebar
+   classes (.ae-sb / .ae-sb__list / .ae-sb__row) so the placeholder lines up
+   1:1 with the loaded sidebar; each block sweeps a soft accent shimmer. */
+.ae-skel {
+    position: relative;
+    overflow: hidden;
+    background: color-mix(in oklab, var(--text-primary) 8%, var(--bg-tertiary));
+    border-radius: 6px;
+}
+.ae-skel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        color-mix(in oklab, var(--accent-primary) 14%, transparent) 45%,
+        color-mix(in oklab, var(--accent-primary) 22%, transparent) 50%,
+        color-mix(in oklab, var(--accent-primary) 14%, transparent) 55%,
+        transparent 100%
+    );
+    animation: ae-shimmer 1.35s ease-in-out infinite;
+}
+/* Stagger sweeps so the page doesn't pulse as one solid block. */
+.ae-skel--d1::after { animation-delay: 0.12s; }
+.ae-skel--d2::after { animation-delay: 0.24s; }
+.ae-skel--d3::after { animation-delay: 0.36s; }
+
+.ae-skel__avatar { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; }
+.ae-skel__line { height: 10px; }
+.ae-skel__line--sm { height: 8px; }
+
+@keyframes ae-shimmer {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ae-skel::after { animation: none; opacity: 0.5; transform: none; }
+}
