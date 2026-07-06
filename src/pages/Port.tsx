@@ -33,6 +33,10 @@ import ChildParticleModal from './port/components/modals/ChildParticleModal';
 import PersistentEffectsModal from './port/components/modals/PersistentEffectsModal';
 import PortDonorFromGameModal from './port/components/modals/PortDonorFromGameModal';
 import BackupViewerModal from './port/components/modals/BackupViewerModal';
+import { HubBrowserModal } from './port/components/modals/hub/HubBrowserModal';
+import { HubUploadModal, type UploadableSystem } from './port/components/modals/hub/HubUploadModal';
+import { useHubDonor } from './port/components/modals/hub/useHubDonor';
+import { parseCompleteVFXSystems } from './vfxhub/lib/vfxSystemParser';
 
 function Port() {
     const p = usePort();
@@ -43,6 +47,33 @@ function Port() {
     const [isPreparingPortDonor, setIsPreparingPortDonor] = useState(false);
     const [portDonorProgress, setPortDonorProgress] = useState('');
     const [showBackupViewer, setShowBackupViewer] = useState(false);
+    const [showHubBrowser, setShowHubBrowser] = useState(false);
+    const [showHubUpload, setShowHubUpload] = useState(false);
+    const [uploadableSystems, setUploadableSystems] = useState<UploadableSystem[]>([]);
+
+    // Bridge picked hub systems into the donor column (temp tree + vfx_open).
+    const hubDonor = useHubDonor({
+        processDonorBin: p.processDonorBin,
+        setDonorTempRoot: p.setDonorTempRoot,
+        setStatus: p.setStatusMessage,
+    });
+
+    const handleOpenHub = useCallback(() => setShowHubBrowser(true), []);
+
+    // Read + parse the target's .py into per-system content for upload. Done on
+    // open so we always reflect the currently loaded target.
+    const handleOpenHubUpload = useCallback(async () => {
+        setShowHubUpload(true);
+        setUploadableSystems([]);
+        if (!p.targetPath || !p.targetPath.includes('.')) return;
+        try {
+            const text = await readBin(p.targetPath);
+            const systems = parseCompleteVFXSystems(text);
+            setUploadableSystems(systems.map((s) => ({ key: s.name, name: s.name, fullContent: s.fullContent })));
+        } catch (e) {
+            p.setStatusMessage(`Could not read target for upload: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    }, [p]);
     const recentPortDonors = useUiPrefsStore((s) => s.recentPortDonors);
 
     const sectionStyle = useMemo<React.CSSProperties>(() => ({ background: 'transparent', border: 'none', borderRadius: '5px' }), []);
@@ -503,6 +534,7 @@ function Port() {
         handleOpenDonorBin: p.handleOpenDonorBin,
         processDonorBin: p.processDonorBin,
         handleOpenDonorFromGame,
+        handleOpenHub,
         donorFilterInput: p.donorFilter,
         enableDonorEmitterSearch: p.enableDonorEmitterSearch,
         filterDonorParticles,
@@ -589,6 +621,20 @@ function Port() {
                 <div style={{ width: '1px', alignSelf: 'stretch', background: 'var(--border)', flexShrink: 0 }} />
                 <DonorColumn {...donorColumnProps} />
             </div>
+
+            <HubBrowserModal
+                open={showHubBrowser}
+                onClose={() => setShowHubBrowser(false)}
+                onPickSystems={(picks) => void hubDonor.loadSystemsAsDonor(picks)}
+                onOpenUpload={() => void handleOpenHubUpload()}
+                staging={hubDonor.staging}
+            />
+            <HubUploadModal
+                open={showHubUpload}
+                onClose={() => setShowHubUpload(false)}
+                targetSystems={uploadableSystems}
+                setStatus={p.setStatusMessage}
+            />
 
             <PortDonorFromGameModal
                 open={showPortDonorModal}

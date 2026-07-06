@@ -17,6 +17,7 @@ interface DonorColumnProps extends ListSharedProps {
     handleOpenDonorBin: () => void;
     processDonorBin: (path: string) => void;
     handleOpenDonorFromGame: () => void;
+    handleOpenHub: () => void;
     donorFilterInput: string;
     filterDonorParticles: (v: string) => void;
     enableDonorEmitterSearch: boolean;
@@ -36,6 +37,7 @@ export default function DonorColumn(props: DonorColumnProps) {
         handleOpenDonorBin,
         processDonorBin,
         handleOpenDonorFromGame,
+        handleOpenHub,
         donorFilterInput,
         enableDonorEmitterSearch,
         filterDonorParticles,
@@ -121,12 +123,12 @@ export default function DonorColumn(props: DonorColumnProps) {
                         }
                     />
                 </div>
-                {/* VFX Hub browse (placeholder — will host the ported VFX Hub). */}
+                {/* VFX Hub browse — opens the GitHub collection browser. */}
                 <Tooltip title="Browse VFX Hub">
                     <span>
                         <button
                             className="dl-btn dl-btn--secondary dl-btn--icon"
-                            onClick={() => { /* TODO: open ported VFX Hub */ }}
+                            onClick={handleOpenHub}
                             aria-label="Browse VFX Hub"
                         >
                             <Github size={16} />
