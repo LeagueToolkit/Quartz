@@ -156,25 +156,15 @@ export async function downloadHubSystem(system: HubSystem): Promise<DownloadedHu
     const binBase64 = await fetchBase64(rawUrl(owner, repo, system.binFile));
     if (!binBase64) throw new Error(`Failed to download ${system.binFile}`);
 
-    const wanted = new Set(system.assets.map((a) => a.toLowerCase()));
+    // system.assets holds the full reference paths the bin uses, e.g.
+    // "ASSETS/vfxhub/Foo.dds". Strip the leading ASSETS/ to get the repo path
+    // (assets/vfxhub/Foo.dds), download it, and pass the same rel path so the
+    // staging command reproduces assets/vfxhub/Foo.dds for the donor.
     const assets: HubAssetBytesInput[] = [];
-    if (wanted.size) {
-        const assetFiles = await listDir('assets').catch(() => []);
-        const pick = assetFiles.filter((f) => {
-            const n = f.name.toLowerCase();
-            if (wanted.has(n)) return true;
-            // Tolerate the League "<name>.<skinref>.<ext>" collapsed form.
-            const parts = n.split('.');
-            if (parts.length >= 3) {
-                const collapsed = `${parts.slice(0, parts.length - 2).join('.')}.${parts[parts.length - 1]}`;
-                if (wanted.has(collapsed)) return true;
-            }
-            return false;
-        });
-        for (const f of pick) {
-            const b64 = await fetchBase64(rawUrl(owner, repo, f.path));
-            if (b64) assets.push({ relPath: f.name, base64: b64 });
-        }
+    for (const ref of system.assets) {
+        const rel = ref.replace(/\\/g, '/').replace(/^ASSETS\//i, '');
+        const b64 = await fetchBase64(rawUrl(owner, repo, `assets/${rel}`));
+        if (b64) assets.push({ relPath: rel, base64: b64 });
     }
     return { binBase64, assets };
 }
