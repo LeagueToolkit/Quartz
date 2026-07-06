@@ -220,6 +220,16 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .dl-explorer__savename { flex: 1; }
-.dl-explorer__foot-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.dl-explorer__foot-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.dl-explorer__filter {
+    height: 34px; padding: 0 10px; flex-shrink: 0;
+    background: var(--bg-tertiary); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 8px;
+    font-size: 12.5px; cursor: pointer; max-width: 240px;
+    transition: border-color var(--dl-fast);
+}
+.dl-explorer__filter:hover { border-color: color-mix(in oklab, var(--accent-primary) 40%, var(--border)); }
+.dl-explorer__filter:focus { outline: none; border-color: var(--accent-primary); }
+.dl-explorer__filter option { background: var(--bg-secondary); color: var(--text-primary); }
 
 .dl-explorer__ctx { min-width: 190px; }

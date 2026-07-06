@@ -15,13 +15,21 @@ import './explorer.css';
 
 const MODEL_EXTS = new Set(['scb', 'sco', 'skn']);
 
-/** Merge an options.filters list into a flat lowercased extension list.
- *  A `*` extension (any file) yields undefined = no filter. */
-function extFilterFrom(options: ExplorerOptions): string[] | undefined {
-    if (options.mode === 'directory') return undefined;
-    const exts = (options.filters ?? []).flatMap((f) => f.extensions).map((e) => e.toLowerCase());
-    if (!exts.length || exts.includes('*')) return undefined;
-    return exts;
+interface FilterGroup { label: string; exts: string[] | undefined } // undefined = all files
+
+/** Build the selectable filter groups for a picker: the caller's filters, plus
+ *  an always-present "All files" escape so nothing is ever unreachable. A `*`
+ *  extension collapses a group to "all". Directory mode gets none. */
+function filterGroupsFrom(options: ExplorerOptions): FilterGroup[] {
+    if (options.mode === 'directory') return [];
+    const callerGroups: FilterGroup[] = (options.filters ?? []).map((f) => {
+        const exts = f.extensions.map((e) => e.toLowerCase());
+        return { label: `${f.name} (${exts.map((e) => `.${e}`).join(', ')})`, exts: exts.includes('*') ? undefined : exts };
+    });
+    // "All files" is first (the default) so nothing is hidden on open; the
+    // caller's specific filters follow for users who want to narrow down.
+    const hasAll = callerGroups.some((g) => g.exts === undefined);
+    return hasAll ? callerGroups : [{ label: 'All files (*)', exts: undefined }, ...callerGroups];
 }
 
 /** Windows-style shortened path for the address bar display. */
@@ -53,7 +61,9 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     onInspect?: (entry: FsEntry) => void;
 }) {
     const recentsKey = options.recentsKey ?? 'default';
-    const extFilter = useMemo(() => extFilterFrom(options), [options]);
+    const filterGroups = useMemo(() => filterGroupsFrom(options), [options]);
+    const [filterIdx, setFilterIdx] = useState(0);
+    const extFilter = filterGroups[filterIdx]?.exts;
     const nav = useExplorerNav(extFilter);
     const addRecent = useExplorerStore((s) => s.addRecent);
     const addPin = useExplorerStore((s) => s.addPin);
@@ -75,7 +85,7 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     // Boot: resolve the start folder from defaultPath (or Home) once per open.
     useEffect(() => {
         if (!open) return;
-        setSearch(''); setSelected(null); setMulti(new Set()); setCtx(null);
+        setSearch(''); setSelected(null); setMulti(new Set()); setCtx(null); setFilterIdx(0);
         (async () => {
             const start = options.defaultPath;
             if (start) {
@@ -89,6 +99,15 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open]);
+
+    // Re-list the current folder when the active filter changes (skip the very
+    // first render, which the boot effect already handles).
+    const didMount = useRef(false);
+    useEffect(() => {
+        if (!didMount.current) { didMount.current = true; return; }
+        nav.refresh();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filterIdx]);
 
     // Esc closes; also dismiss the context menu on any outside click.
     useEffect(() => {
@@ -274,6 +293,18 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
 
                 {/* Footer */}
                 <div className="dl-explorer__foot">
+                    {filterGroups.length > 1 && (
+                        <select
+                            className="dl-explorer__filter"
+                            value={filterIdx}
+                            onChange={(e) => setFilterIdx(Number(e.target.value))}
+                            title="File type filter"
+                        >
+                            {filterGroups.map((g, i) => (
+                                <option key={g.label} value={i}>{g.label}</option>
+                            ))}
+                        </select>
+                    )}
                     {isSave ? (
                         <input
                             className="dl-input dl-explorer__savename"
