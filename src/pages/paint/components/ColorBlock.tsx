@@ -18,9 +18,11 @@ interface ColorBlockProps {
     title: string;
     variant?: 'standard' | 'secondary' | 'wide';
     onClick?: (e: React.MouseEvent) => void;
+    /** Right-click to open the alpha editor. */
+    onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-function ColorBlock({ colors, title, variant = 'standard', onClick }: ColorBlockProps) {
+function ColorBlock({ colors, title, variant = 'standard', onClick, onContextMenu }: ColorBlockProps) {
     const dimensions = ({
         standard: { width: 40, height: 26 },
         secondary: { width: 34, height: 24 },
@@ -42,18 +44,20 @@ function ColorBlock({ colors, title, variant = 'standard', onClick }: ColorBlock
         );
     }
 
+    // Render the color with its ACTUAL alpha so transparency shows directly in
+    // the swatch (a checkerboard behind it makes low alpha read at a glance).
     const rgbaToCSS = (rgba: number[]): string => {
         if (!rgba || rgba.length < 3) return 'transparent';
-        const [r, g, b] = rgba;
         const toInt = (val: number) => Math.round(Math.max(0, Math.min(1, val)) * 255);
-        return `rgba(${toInt(r)}, ${toInt(g)}, ${toInt(b)}, 1.0)`;
+        const a = rgba[3] !== undefined ? Math.max(0, Math.min(1, rgba[3])) : 1;
+        return `rgba(${toInt(rgba[0])}, ${toInt(rgba[1])}, ${toInt(rgba[2])}, ${a})`;
     };
 
-    const visibleColors = colors.filter(c => (c.rgba[3] !== undefined ? c.rgba[3] : 1) > 0.05);
-    const renderList = visibleColors.length > 0 ? visibleColors : colors;
+    const alphaOf = (c: ColorKeyframe) => (c.rgba[3] !== undefined ? c.rgba[3] : 1);
+    // Keep fully-transparent keyframes in the gradient now (they're the point).
+    const renderList = colors;
 
     let background: string;
-
     if (renderList.length === 1) {
         background = rgbaToCSS(renderList[0].rgba);
     } else {
@@ -67,19 +71,21 @@ function ColorBlock({ colors, title, variant = 'standard', onClick }: ColorBlock
         background = `linear-gradient(90deg, ${stops.join(', ')})`;
     }
 
+    const hasAlpha = renderList.some(c => alphaOf(c) < 0.999);
+    const alphaText = colors.map(c => alphaOf(c).toFixed(2)).join(', ');
     const tooltipContent = colors.length === 1
-        ? `${title}: ${colors[0].rgba.map(v => v.toFixed(2)).join(', ')}`
-        : `${title}: ${colors.length} keyframes`;
+        ? `${title}: ${colors[0].rgba.map(v => v.toFixed(2)).join(', ')}\nAlpha: ${alphaText}\n(right-click to edit alpha)`
+        : `${title}: ${colors.length} keyframes\nAlpha: ${alphaText}\n(right-click to edit alpha)`;
 
     return (
         <Box
             onClick={onClick}
+            onContextMenu={onContextMenu}
             title={tooltipContent}
             sx={{
                 ...dimensions,
                 borderRadius: 'var(--radius-sm)',
                 border: '1px solid var(--border)',
-                // Solid backing behind the data-color swatch so alpha doesn't bleed.
                 backgroundColor: 'var(--bg-primary)',
                 cursor: 'pointer',
                 flexShrink: 0,
@@ -92,6 +98,24 @@ function ColorBlock({ colors, title, variant = 'standard', onClick }: ColorBlock
                 },
             }}
         >
+            {/* Checkerboard, only when there's transparency to show through. */}
+            {hasAlpha && (
+                <Box
+                    sx={{
+                        position: 'absolute',
+                        inset: 0,
+                        borderRadius: '3px',
+                        backgroundColor: '#888',
+                        backgroundImage:
+                            'linear-gradient(45deg, rgba(255,255,255,.3) 25%, transparent 25%),' +
+                            'linear-gradient(-45deg, rgba(255,255,255,.3) 25%, transparent 25%),' +
+                            'linear-gradient(45deg, transparent 75%, rgba(255,255,255,.3) 75%),' +
+                            'linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.3) 75%)',
+                        backgroundSize: '8px 8px',
+                        backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0',
+                    }}
+                />
+            )}
             <Box
                 sx={{
                     position: 'absolute',

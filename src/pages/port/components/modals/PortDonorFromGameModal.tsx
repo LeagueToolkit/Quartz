@@ -13,13 +13,14 @@ import DonorChampionList from './donor/DonorChampionList';
 import DonorSkinList from './donor/DonorSkinList';
 import RecentDonorsRow from './donor/RecentDonorsRow';
 import DonorPrefixField from './donor/DonorPrefixField';
-import type { DonorChampion, DonorSkin, DonorConfirmArgs } from './donor/types';
+import type { DonorChampion, DonorSkin, DonorConfirmArgs, BanksConfirmArgs } from './donor/types';
 // Reuse the Asset Extractor's ae-* card/sidebar styles + the dl-* primitives so
 // this modal reads as the same design system.
 import '@/pages/assetextractor/assetextractor.css';
 import './donor/donorModal.css';
 
 const PREFIX_KEY = 'port_donor_porting_prefix';
+const BANK_OPTIONS_KEY = 'bnk-game-banks-options';
 const sanitizePrefix = (v: string) => String(v || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
 
 function openYouTube(query: string) {
@@ -28,23 +29,34 @@ function openYouTube(query: string) {
     try { window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ }
 }
 
-interface PortDonorFromGameModalProps {
+/* One modal, two modes:
+   - 'donor' (Port): pick ONE skin + a porting prefix → emits DonorConfirmArgs.
+   - 'banks' (BNK Extract): pick MANY skins + VO/SFX toggles → emits BanksConfirmArgs.
+   Both share the champion list, skin grid, skinline search, and dl-modal shell. */
+type LoadFromGameModalProps = {
     open: boolean;
     loading: boolean;
     progressText: string;
-    recentDonors: RecentPortDonor[];
     onClose: () => void;
-    onConfirm: (args: DonorConfirmArgs) => void;
-}
+} & (
+    | {
+        mode?: 'donor';
+        recentDonors: RecentPortDonor[];
+        onConfirm: (args: DonorConfirmArgs) => void;
+    }
+    | {
+        mode: 'banks';
+        recentDonors?: never;
+        onConfirm: (args: BanksConfirmArgs) => void;
+    }
+);
 
-export default function PortDonorFromGameModal({
-    open,
-    loading,
-    progressText,
-    recentDonors,
-    onClose,
-    onConfirm,
-}: PortDonorFromGameModalProps) {
+export default function PortDonorFromGameModal(props: LoadFromGameModalProps) {
+    const { open, loading, progressText, onClose } = props;
+    const mode = props.mode ?? 'donor';
+    const isBanks = mode === 'banks';
+    const title = isBanks ? 'Load Sound Banks From Game' : 'Load Donor From Game';
+
     const [champions, setChampions] = useState<DonorChampion[]>([]);
     const [loadingChampions, setLoadingChampions] = useState(false);
     const [skins, setSkins] = useState<DonorSkin[]>([]);
@@ -53,9 +65,17 @@ export default function PortDonorFromGameModal({
     const [search, setSearch] = useState('');
     const [skinlineResults, setSkinlineResults] = useState<Array<{ champion: DonorChampion; skin: DonorSkin }>>([]);
     const [selectedChampion, setSelectedChampion] = useState<DonorChampion | null>(null);
+    // donor mode: single skin; banks mode: many skins (by id).
     const [selectedSkin, setSelectedSkin] = useState<DonorSkin | null>(null);
+    const [selectedSkinIds, setSelectedSkinIds] = useState<Set<number>>(new Set());
     const [prefix, setPrefix] = useState(() => {
         try { return localStorage.getItem(PREFIX_KEY) || ''; } catch { return ''; }
+    });
+    const [includeVoiceover, setIncludeVoiceover] = useState(() => {
+        try { const raw = localStorage.getItem(BANK_OPTIONS_KEY); return raw ? JSON.parse(raw).includeVoiceover !== false : true; } catch { return true; }
+    });
+    const [includeSfx, setIncludeSfx] = useState(() => {
+        try { const raw = localStorage.getItem(BANK_OPTIONS_KEY); return raw ? JSON.parse(raw).includeSfx !== false : true; } catch { return true; }
     });
     const [errorText, setErrorText] = useState('');
 
@@ -63,6 +83,9 @@ export default function PortDonorFromGameModal({
     useEffect(() => {
         try { localStorage.setItem(PREFIX_KEY, prefix); } catch { /* ignore */ }
     }, [prefix]);
+    useEffect(() => {
+        try { localStorage.setItem(BANK_OPTIONS_KEY, JSON.stringify({ includeVoiceover, includeSfx })); } catch { /* ignore */ }
+    }, [includeVoiceover, includeSfx]);
 
     // Load champions on open.
     useEffect(() => {
@@ -107,6 +130,7 @@ export default function PortDonorFromGameModal({
         setSkinlineResults([]);
         setSelectedChampion(null);
         setSelectedSkin(null);
+        setSelectedSkinIds(new Set());
         setSkins([]);
         setErrorText('');
     }, [open]);
@@ -164,6 +188,7 @@ export default function PortDonorFromGameModal({
     const handleSelectChampion = (champion: DonorChampion) => {
         setSelectedChampion(champion);
         setSelectedSkin(null);
+        setSelectedSkinIds(new Set());
     };
 
     const handleSelectRecent = (donor: RecentPortDonor) => {
@@ -181,7 +206,9 @@ export default function PortDonorFromGameModal({
     };
 
     const activeRecentKey = selectedChampion && selectedSkin ? `${selectedChampion.id}_${selectedSkin.id}` : null;
-    const canConfirm = Boolean(selectedChampion && selectedSkin && sanitized && !loading && !loadingChampions);
+    const canConfirm = isBanks
+        ? Boolean(selectedChampion && selectedSkinIds.size > 0 && (includeVoiceover || includeSfx) && !loading && !loadingChampions && !loadingSkins)
+        : Boolean(selectedChampion && selectedSkin && sanitized && !loading && !loadingChampions);
 
     if (!open) return null;
 
@@ -190,29 +217,85 @@ export default function PortDonorFromGameModal({
     const showSkinlineResults = searchMode === 'skinline' && skinlineResults.length > 0;
     const rightSkins: DonorSkin[] = showSkinlineResults ? skinlineResults.map((r) => r.skin) : skins;
     const rightHasChampion = showSkinlineResults || !!selectedChampion;
-    const rightSelectedId = selectedSkin?.id ?? null;
+    // Banks mode multi-selects; donor mode is the single selected skin as a 0/1 set.
+    const rightSelectedIds = isBanks
+        ? selectedSkinIds
+        : (selectedSkin ? new Set([selectedSkin.id]) : new Set<number>());
     const emptyLabel = searchMode === 'skinline' ? 'Search a skinline, then pick a skin' : 'Select a champion first';
     const onRightSelect = (skin: DonorSkin) => {
         if (showSkinlineResults) {
             const entry = skinlineResults.find((r) => r.skin.id === skin.id && r.skin.name === skin.name);
-            if (entry) { handleSelectSkinlineResult(entry); return; }
+            if (entry) {
+                // A skinline result carries its own champion; select it, then in
+                // banks mode toggle that skin into the multi-select set.
+                handleSelectSkinlineResult(entry);
+                if (isBanks) {
+                    setSelectedSkinIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(skin.id)) next.delete(skin.id); else next.add(skin.id);
+                        return next;
+                    });
+                }
+                return;
+            }
         }
-        setSelectedSkin(skin);
+        if (isBanks) {
+            setSelectedSkinIds((prev) => {
+                const next = new Set(prev);
+                if (next.has(skin.id)) next.delete(skin.id); else next.add(skin.id);
+                return next;
+            });
+        } else {
+            setSelectedSkin(skin);
+        }
+    };
+
+    const handleConfirm = () => {
+        if (!selectedChampion) return;
+        const champion = { id: selectedChampion.id, name: selectedChampion.name, alias: selectedChampion.alias };
+        if (props.mode === 'banks') {
+            if (selectedSkinIds.size === 0) return;
+            props.onConfirm({ champion, skinIds: Array.from(selectedSkinIds), includeVoiceover, includeSfx });
+        } else {
+            if (!selectedSkin) return;
+            props.onConfirm({
+                champion,
+                skin: { id: selectedSkin.id, name: selectedSkin.name, tilePath: selectedSkin.tilePath },
+                portingPrefix: sanitized,
+            });
+        }
     };
 
     return createPortal(
         <div className="dl-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget && !loading) onClose(); }}>
             <div className="dl-modal dl-modal--large" style={{ height: 'min(760px, calc(100vh - 48px))' }}>
                 <div className="dl-modal__head">
-                    <h3 className="dl-modal__title">Load Donor From Game</h3>
+                    <h3 className="dl-modal__title">{title}</h3>
                     <button className="dl-modal__close" onClick={() => !loading && onClose()} aria-label="Close">
                         <span className="dl-icon"><CloseIcon size={16} /></span>
                     </button>
                 </div>
 
-                <DonorPrefixField value={prefix} sanitized={sanitized} onChange={setPrefix} disabled={loading} />
-
-                <RecentDonorsRow recentDonors={recentDonors} activeKey={activeRecentKey} onSelect={handleSelectRecent} />
+                {isBanks ? (
+                    <div className="donor-banks-opts">
+                        <button type="button" onClick={() => setIncludeVoiceover((v) => !v)}
+                            className={`dl-btn dl-btn--sm ${includeVoiceover ? 'dl-btn--primary' : 'dl-btn--secondary'}`}>
+                            Extract VO
+                        </button>
+                        <button type="button" onClick={() => setIncludeSfx((v) => !v)}
+                            className={`dl-btn dl-btn--sm ${includeSfx ? 'dl-btn--primary' : 'dl-btn--secondary'}`}>
+                            Extract SFX
+                        </button>
+                        <span className="donor-banks-opts__hint">
+                            {selectedChampion ? `${selectedChampion.name} · ${selectedSkinIds.size} skin(s) selected` : 'Select a champion first'}
+                        </span>
+                    </div>
+                ) : (
+                    <>
+                        <DonorPrefixField value={prefix} sanitized={sanitized} onChange={setPrefix} disabled={loading} />
+                        <RecentDonorsRow recentDonors={props.recentDonors ?? []} activeKey={activeRecentKey} onSelect={handleSelectRecent} />
+                    </>
+                )}
 
                 <div className="dl-modal__body donor-body">
                     <div className="donor-cols">
@@ -232,7 +315,8 @@ export default function PortDonorFromGameModal({
                             skins={rightSkins}
                             loading={loadingSkins}
                             hasChampion={rightHasChampion}
-                            selectedSkinId={rightSelectedId}
+                            selectedSkinIds={rightSelectedIds}
+                            badgeLabel={isBanks ? 'PICKED' : 'DONOR'}
                             emptyLabel={emptyLabel}
                             onSelect={onRightSelect}
                             onYouTubeSkin={(skinName) => openYouTube(`${selectedChampion?.name ?? ''} ${skinName} skin spotlight League of Legends`)}
@@ -253,17 +337,10 @@ export default function PortDonorFromGameModal({
                     <button
                         type="button"
                         disabled={!canConfirm}
-                        onClick={() => {
-                            if (!selectedChampion || !selectedSkin) return;
-                            onConfirm({
-                                champion: { id: selectedChampion.id, name: selectedChampion.name, alias: selectedChampion.alias },
-                                skin: { id: selectedSkin.id, name: selectedSkin.name, tilePath: selectedSkin.tilePath },
-                                portingPrefix: sanitized,
-                            });
-                        }}
+                        onClick={handleConfirm}
                         className={`dl-btn dl-btn--primary ${loading ? 'dl-btn--loading' : ''}`}
                     >
-                        {loading ? 'Preparing' : 'Use As Donor'}
+                        {isBanks ? (loading ? 'Extracting…' : 'Load Banks') : (loading ? 'Preparing' : 'Use As Donor')}
                     </button>
                 </div>
             </div>

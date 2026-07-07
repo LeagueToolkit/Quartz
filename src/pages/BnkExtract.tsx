@@ -11,7 +11,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Box } from '@mui/material';
-import { ContentCut, ViewStream, VerticalSplit, Undo, Redo, Delete } from '@mui/icons-material';
+import { ContentCut, ViewStream, VerticalSplit, Undo, Redo, Delete, AutoFixHigh, SportsEsports } from '@mui/icons-material';
 import { pickPath } from '@/components/explorer';
 import { log } from '@/lib/util/logger';
 
@@ -23,13 +23,13 @@ import BnkInstallModal from './bnkextract/components/BnkInstallModal';
 import BnkConvertOverlay from './bnkextract/components/BnkConvertOverlay';
 import BnkGainModal from './bnkextract/components/BnkGainModal';
 import BnkContextMenu from './bnkextract/components/BnkContextMenu';
-import BnkHeaderPanel from './bnkextract/components/BnkHeaderPanel';
 import BnkLoadingOverlay from './bnkextract/components/BnkLoadingOverlay';
 import BnkAutoMatchConfirmModal from './bnkextract/components/BnkAutoMatchConfirmModal';
 import BnkModDropModal from './bnkextract/components/BnkModDropModal';
 import BnkGroupNameModal from './bnkextract/components/BnkGroupNameModal';
 import BnkAddToGroupModal from './bnkextract/components/BnkAddToGroupModal';
-import BnkGameBanksModal from './bnkextract/components/BnkGameBanksModal';
+import LoadFromGameModal from './port/components/modals/PortDonorFromGameModal';
+import type { BanksConfirmArgs } from './port/components/modals/donor/types';
 
 import {
     loadBanks, wemToPlayable, extractNodes, saveBank, checkWwiseInstalled, installWwise,
@@ -38,7 +38,7 @@ import {
 } from './bnkextract/utils/backend';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { useFileDrop, type FileDropPosition } from '@/lib/util/useFileDrop';
 import {
     containerStyle, mainContentStyle, treeViewStyle, sidebarStyle,
 } from './bnkextract/styles';
@@ -51,6 +51,9 @@ import './bnkextract/BnkExtract.css';
 const VOLUME_KEY = 'bnk-extract-volume';
 const FORMATS_KEY = 'bnk-extract-formats';
 const MP3_KEY = 'bnk-extract-mp3-bitrate';
+
+/* One pane's BIN/Audio(WPK)/Events(BNK) file paths. */
+export type PathSet = { bin: string; wpk: string; bnk: string };
 
 // ── tree helpers ─────────────────────────────────────────────────────────────
 function findNode(nodes: BnkNode[], id: string): BnkNode | null {
@@ -99,10 +102,13 @@ function countNodes(nodes: BnkNode[]): number {
 }
 
 export function BnkExtract() {
-    // ── Persisted inputs / settings ───────────────────────────────────────────
-    const [bnkPath, setBnkPath] = useState('');
-    const [wpkPath, setWpkPath] = useState('');
-    const [binPath, setBinPath] = useState('');
+    // ── Per-pane file inputs ──────────────────────────────────────────────────
+    // Each pane (left = Main Bank, right = Reference) owns its own BIN/Audio/Events
+    // triple and parses independently into itself via its empty-state load block.
+    const [leftPaths, setLeftPaths] = useState<PathSet>({ bin: '', wpk: '', bnk: '' });
+    const [rightPaths, setRightPaths] = useState<PathSet>({ bin: '', wpk: '', bnk: '' });
+
+    // ── Settings ──────────────────────────────────────────────────────────────
     const [extractFormats, setExtractFormats] = useState<Set<ExtractFormat>>(() => {
         try {
             const raw = localStorage.getItem(FORMATS_KEY);
@@ -132,6 +138,7 @@ export function BnkExtract() {
     const [statusMessage, setStatusMessage] = useState('Ready');
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
     const [rightPaneDragOver, setRightPaneDragOver] = useState(false);
+    const [leftDragOver, setLeftDragOver] = useState(false);
     const [rightSortMode, setRightSortMode] = useState<SortMode>('name-asc');
     const [leftSortMode, setLeftSortMode] = useState<SortMode>('name-asc');
 
@@ -187,15 +194,6 @@ export function BnkExtract() {
     const pendingConversion = useRef<{ filePath: string; targetNodeId: string } | null>(null);
     const pendingGroupIds = useRef<string[]>([]);
 
-    /* Routing for the Tauri webview file-drop event. DOM drag handlers stamp the
-       intended target here; the webview 'drop' (carrying real absolute paths)
-       reads and clears it. */
-    const webviewDropTarget = useRef<
-        { kind: 'reference' }
-        | { kind: 'node'; targetId: string; pane: Pane }
-        | { kind: 'mod-folder' }
-        | null
-    >(null);
 
     const setVolume = useCallback((v: number) => {
         setVolumeState(v);
@@ -312,28 +310,30 @@ export function BnkExtract() {
         return tree.some((n) => sel.has(n.id) && n.isRoot);
     }, [activePane, selectedNodes, rightSelectedNodes, treeData, rightTreeData]);
 
-    // ── File picking + parse ──────────────────────────────────────────────────
-    const handleSelectFile = useCallback(async (kind: 'bin' | 'wpk' | 'bnk') => {
+    // ── File picking + parse (per pane) ───────────────────────────────────────
+    const handleSelectFile = useCallback(async (pane: Pane, kind: keyof PathSet) => {
         const exts = kind === 'bin' ? ['bin'] : kind === 'wpk' ? ['wpk', 'bnk'] : ['bnk'];
         const picked = await pickPath({ mode: 'file', filters: [{ name: kind.toUpperCase(), extensions: exts }, { name: 'All Files', extensions: ['*'] }] });
         if (typeof picked !== 'string') return;
-        if (kind === 'bin') setBinPath(picked);
-        else if (kind === 'wpk') setWpkPath(picked);
-        else setBnkPath(picked);
+        const setter = pane === 'right' ? setRightPaths : setLeftPaths;
+        setter((prev) => ({ ...prev, [kind]: picked }));
     }, []);
 
-    const handleParseFiles = useCallback(async () => {
+    const handleSetPath = useCallback((pane: Pane, kind: keyof PathSet, value: string) => {
+        const setter = pane === 'right' ? setRightPaths : setLeftPaths;
+        setter((prev) => ({ ...prev, [kind]: value }));
+    }, []);
+
+    const handleParseFiles = useCallback(async (pane: Pane) => {
+        const paths = pane === 'right' ? rightPaths : leftPaths;
         setIsLoading(true);
         setStatusMessage('Parsing...');
         try {
             pushToHistory();
-            const result = await loadBanks({ bnkPath, wpkPath, binPath });
+            const result = await loadBanks({ bnkPath: paths.bnk, wpkPath: paths.wpk, binPath: paths.bin });
             if (result?.tree) {
-                if (viewMode === 'split' && activePane === 'right') {
-                    setRightTreeData((prev) => [...prev, result.tree]);
-                } else {
-                    setTreeData((prev) => [...prev, result.tree]);
-                }
+                if (pane === 'right') setRightTreeData((prev) => [...prev, result.tree]);
+                else setTreeData((prev) => [...prev, result.tree]);
                 setStatusMessage(`Loaded ${result.fileCount} audio file(s)`);
             } else {
                 setStatusMessage('Nothing parsed');
@@ -344,7 +344,7 @@ export function BnkExtract() {
         } finally {
             setIsLoading(false);
         }
-    }, [bnkPath, wpkPath, binPath, viewMode, activePane, pushToHistory]);
+    }, [leftPaths, rightPaths, pushToHistory]);
 
     const handleClearPane = useCallback((pane: Pane) => {
         pushToHistory();
@@ -581,11 +581,10 @@ export function BnkExtract() {
         }
     }, [isWwiseInstalled, pushToHistory, applyAudioToNodes]);
 
-    const handleExternalFileDrop = useCallback((_files: { path: string; name: string }[], targetId: string, pane: Pane) => {
-        // The DOM event lacks real paths under Tauri; stamp the target and let the
-        // webview drop listener apply the converted bytes.
-        webviewDropTarget.current = { kind: 'node', targetId, pane };
-    }, []);
+    /* External file→node drops are routed by the OS drag-drop listener (via cursor
+       hit-test), so the DOM handler is a no-op. Internal node→node drags still flow
+       through TreeNode's own DOM handlers. */
+    const handleExternalFileDrop = useCallback(() => { }, []);
 
     /* Match audio leaves between panes by their numeric WEM id and copy the
        reference (right) bytes onto the matching main (left) leaf. */
@@ -662,12 +661,11 @@ export function BnkExtract() {
         setStatusMessage(`Imported ${children.length} reference file(s)`);
     }, [isWwiseInstalled, pushToHistory]);
 
+    /* The OS drag-drop listener imports the real paths; the DOM handler only clears
+       the drag-over highlight. */
     const handleRightPaneFileDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setRightPaneDragOver(false);
-        // Real paths arrive through the Tauri webview drop listener; the DOM event
-        // only tells us the reference pane was the target.
-        webviewDropTarget.current = { kind: 'reference' };
     }, []);
 
     // ── Wwise install ─────────────────────────────────────────────────────────
@@ -796,8 +794,13 @@ export function BnkExtract() {
                     binPath: set.bin || '',
                 });
                 if (result?.tree) {
-                    const root = set.modFolderName ? { ...result.tree, name: set.modFolderName } : result.tree;
-                    loaded.push(root);
+                    // Root label mirrors old Quartz: "<modFolderName> [<audioFileName>]"
+                    // (e.g. "MyMod_VO [aatrox_base_vo_audio.bnk]").
+                    const bankFileName = (set.audio || '').split(/[\\/]/).pop() || '';
+                    const rootLabel = set.modFolderName
+                        ? `${set.modFolderName} [${bankFileName}]`
+                        : bankFileName || result.tree.name;
+                    loaded.push({ ...result.tree, name: rootLabel });
                 }
             }
             if (loaded.length === 0) { setStatusMessage('Nothing parsed from mod folder'); return; }
@@ -841,7 +844,14 @@ export function BnkExtract() {
         try {
             const sets = (await getModFiles(folderPath, skinId)) as ModFileSet[];
             if (!sets || sets.length === 0) { setStatusMessage('No audio files found in mod folder'); return; }
-            await handleAutoExtractProcess({ batchFiles: sets, outputPath: null, loadToTree: true, skinId: skinId ?? undefined });
+            // Name each set "<folder>_<TYPE>" (e.g. MyMod_VO / MyMod_SFX) when a type
+            // was detected, else just the folder name — matching old Quartz.
+            const folderName = folderPath.split(/[\\/]/).pop() || '';
+            const batchFiles = sets.map((s) => ({
+                ...s,
+                modFolderName: s.type ? `${folderName}_${s.type}` : folderName,
+            }));
+            await handleAutoExtractProcess({ batchFiles, outputPath: null, loadToTree: true, skinId: skinId ?? undefined });
         } catch (e) {
             setStatusMessage(`Mod folder error: ${(e as Error).message}`);
         }
@@ -979,47 +989,83 @@ export function BnkExtract() {
         }
     }, [pushToHistory]);
 
-    // ── Webview file-drop (real absolute paths) ───────────────────────────────
-    /* Tauri delivers dropped file/folder paths through the webview drop event, not
-       the DOM. The DOM drag handlers stamp the intended target into
-       webviewDropTarget; here we read it and route the real paths. */
+    // ── OS file-drop (real absolute paths) ────────────────────────────────────
+    /* Tauri's webview File objects carry no disk path, so external file/folder
+       drops arrive via the OS drag-drop event (with a cursor position) rather than
+       the DOM. We hit-test that position against each pane's rect — the same
+       geometry approach Port uses — instead of the old DOM-stamp hand-off, which
+       never fires reliably while `dragDropEnabled` is on. This restores the old
+       Quartz behavior: drop a mod folder on the main pane to auto-extract, drop a
+       .wem/.wav/.ogg/.mp3 on a tree node to replace it, or on the reference pane
+       to import. */
     const dropHandlersRef = useRef({ applyExternalFiles, importReferenceFiles, handleLeftPaneFolderDrop });
     dropHandlersRef.current = { applyExternalFiles, importReferenceFiles, handleLeftPaneFolderDrop };
 
-    useEffect(() => {
-        let unlisten: (() => void) | null = null;
-        let active = true;
-        void getCurrentWebview().onDragDropEvent((event) => {
-            if (event.payload.type !== 'drop') return;
-            const paths = event.payload.paths || [];
-            const target = webviewDropTarget.current;
-            webviewDropTarget.current = null;
+    const rectContains = (el: Element | null, pos: FileDropPosition): boolean => {
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        return pos.x >= r.left && pos.x <= r.right && pos.y >= r.top && pos.y <= r.bottom;
+    };
+
+    // Drive the pane drag-over highlight from the OS drag event (Tauri suppresses
+    // DOM dragover while dragDropEnabled is on, so a plain onDragOver never fires).
+    const updateDragHover = (pos: FileDropPosition) => {
+        const rightEl = document.querySelector('.bnk-extract-tree-right');
+        const leftEl = document.querySelector('.bnk-extract-tree');
+        const overRight = rectContains(rightEl, pos);
+        const overLeft = !overRight && rectContains(leftEl, pos);
+        setRightPaneDragOver(overRight);
+        setLeftDragOver(overLeft);
+    };
+    const clearDragHover = () => { setRightPaneDragOver(false); setLeftDragOver(false); };
+
+    useFileDrop({
+        onEnter: updateDragHover,
+        onOver: updateDragHover,
+        onLeave: clearDragHover,
+        onDrop: (paths, pos) => {
+            clearDragHover();
             if (paths.length === 0) return;
-
-            const audioPaths = paths.filter((p) => /\.(wem|wav|ogg|mp3)$/i.test(p));
             const { applyExternalFiles: applyFn, importReferenceFiles: importFn, handleLeftPaneFolderDrop: folderFn } = dropHandlersRef.current;
+            const audioPaths = paths.filter((p) => /\.(wem|wav|ogg|mp3)$/i.test(p));
 
-            if (target?.kind === 'node') {
-                if (audioPaths.length === 0) { setStatusMessage('Drop a .wem/.wav/.ogg/.mp3 file'); return; }
+            const leftEl = document.querySelector('.bnk-extract-tree');
+            const rightEl = document.querySelector('.bnk-extract-tree-right');
+            const overRight = rectContains(rightEl, pos);
+            const overLeft = !overRight && rectContains(leftEl, pos);
+
+            // A specific tree row under the cursor → replace that node's audio.
+            const nodeEl = (document.elementFromPoint(pos.x, pos.y) as Element | null)?.closest('[data-node-id]');
+            const targetNodeId = nodeEl?.getAttribute('data-node-id') || null;
+            if (targetNodeId && audioPaths.length > 0) {
                 const name = audioPaths[0].split(/[\\/]/).pop() || '';
-                void applyFn([{ path: audioPaths[0], name }], target.targetId, target.pane);
+                void applyFn([{ path: audioPaths[0], name }], targetNodeId, overRight ? 'right' : 'left');
                 return;
             }
-            if (target?.kind === 'reference') {
+
+            // Reference (right) pane → import dropped audio as a reference group.
+            if (overRight) {
                 if (audioPaths.length === 0) { setStatusMessage('Drop .wem/.wav/.ogg/.mp3 files into the reference pane'); return; }
                 void importFn(audioPaths);
                 return;
             }
-            // Left pane / unspecified: a single audio file isn't a mod folder, so
-            // treat any non-audio path as a folder for the auto-extract scan.
-            const folder = paths.find((p) => !/\.[a-z0-9]{1,5}$/i.test(p));
-            if (folder) { folderFn(folder); return; }
-            if (audioPaths.length > 0) void importFn(audioPaths);
-        }).then((fn) => {
-            if (active) unlisten = fn; else fn();
-        }).catch((e) => log.error('[BnkExtract] webview drop listener failed', e));
-        return () => { active = false; if (unlisten) unlisten(); };
-    }, []);
+
+            // Main (left) pane (or anywhere else): a dropped directory is a mod
+            // folder for the auto-extract scan; loose audio files import as ref.
+            if (overLeft || (!overRight && !overLeft)) {
+                void (async () => {
+                    for (const p of paths) {
+                        try {
+                            const info = await invoke<{ isDir: boolean }>('explorer_resolve_path', { path: p });
+                            if (info?.isDir) { folderFn(p); return; }
+                        } catch (e) { log.error('[BnkExtract] resolve path failed', e); }
+                    }
+                    if (audioPaths.length > 0) importFn(audioPaths);
+                    else setStatusMessage('Drop a mod folder, or .wem/.wav/.ogg/.mp3 files');
+                })();
+            }
+        },
+    });
 
     // ── Hotkeys ───────────────────────────────────────────────────────────────
     useEffect(() => {
@@ -1062,23 +1108,6 @@ export function BnkExtract() {
                 onApply={handleApplyGain}
             />
 
-            <BnkHeaderPanel
-                viewMode={viewMode}
-                activePane={activePane}
-                setActivePane={setActivePane}
-                binPath={binPath}
-                setBinPath={setBinPath}
-                wpkPath={wpkPath}
-                setWpkPath={setWpkPath}
-                bnkPath={bnkPath}
-                setBnkPath={setBnkPath}
-                handleSelectFile={handleSelectFile}
-                handleParseFiles={handleParseFiles}
-                isLoading={isLoading}
-                setAutoExtractOpen={setAutoExtractOpen}
-                onOpenGameBanks={() => setShowGameBanksModal(true)}
-            />
-
             <AutoExtractDialog
                 open={autoExtractOpen}
                 onClose={() => setAutoExtractOpen(false)}
@@ -1093,6 +1122,7 @@ export function BnkExtract() {
                 sidebarStyle={sidebarStyle}
                 viewMode={viewMode}
                 activePane={activePane}
+                setActivePane={setActivePane}
                 leftSearchQuery={leftSearchQuery}
                 setLeftSearchQuery={setLeftSearchQuery}
                 filteredLeftTree={filteredLeftTree}
@@ -1108,6 +1138,7 @@ export function BnkExtract() {
                 handleAutoMatchByEventName={() => setShowAutoMatchModal(true)}
                 handleExternalFileDrop={handleExternalFileDrop}
                 rightPaneDragOver={rightPaneDragOver}
+                leftDragOver={leftDragOver}
                 handleRightPaneDragOver={handleRightPaneDragOver}
                 handleRightPaneDragLeave={handleRightPaneDragLeave}
                 handleRightPaneFileDrop={handleRightPaneFileDrop}
@@ -1134,8 +1165,12 @@ export function BnkExtract() {
                 treeData={treeData}
                 rightTreeData={rightTreeData}
                 setShowSettingsModal={setShowSettingsModal}
-                onLeftPaneFolderDrop={handleLeftPaneFolderDrop}
-                stampDropTarget={(t) => { webviewDropTarget.current = { kind: t }; }}
+                leftPaths={leftPaths}
+                rightPaths={rightPaths}
+                onSelectFile={handleSelectFile}
+                onSetPath={handleSetPath}
+                onParse={handleParseFiles}
+                isLoading={isLoading}
             />
 
             {/* Bottom bar: splitter + view-mode toggles (left), centered status,
@@ -1157,6 +1192,22 @@ export function BnkExtract() {
                         title={viewMode === 'normal' ? 'Switch to Split View' : 'Switch to Single View'}
                     >
                         {viewMode === 'normal' ? <ViewStream sx={{ fontSize: 18 }} /> : <VerticalSplit sx={{ fontSize: 18 }} />}
+                    </button>
+                    <button
+                        className="bnk-action-btn"
+                        style={{ '--action-color': 'var(--text-secondary)' } as React.CSSProperties}
+                        onClick={() => setAutoExtractOpen(true)}
+                        title="Mod Auto-Extract"
+                    >
+                        <AutoFixHigh sx={{ fontSize: 18 }} />
+                    </button>
+                    <button
+                        className="bnk-action-btn"
+                        style={{ '--action-color': 'var(--text-secondary)' } as React.CSSProperties}
+                        onClick={() => setShowGameBanksModal(true)}
+                        title="Load Banks From Game"
+                    >
+                        <SportsEsports sx={{ fontSize: 18 }} />
                     </button>
                 </Box>
 
@@ -1267,12 +1318,18 @@ export function BnkExtract() {
                 onCancel={() => setAddToGroupModalOpen(false)}
             />
 
-            <BnkGameBanksModal
+            <LoadFromGameModal
+                mode="banks"
                 open={showGameBanksModal}
                 loading={isGameBanksLoading}
                 progressText={gameBanksProgress}
                 onClose={() => { if (isGameBanksLoading) return; setShowGameBanksModal(false); }}
-                onConfirm={handleConfirmGameBanks}
+                onConfirm={(args: BanksConfirmArgs) => handleConfirmGameBanks({
+                    champion: { id: Number(args.champion.id), name: args.champion.name, alias: args.champion.alias },
+                    skinIds: args.skinIds,
+                    includeVoiceover: args.includeVoiceover,
+                    includeSfx: args.includeSfx,
+                })}
             />
         </Box>
     );

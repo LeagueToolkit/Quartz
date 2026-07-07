@@ -58,7 +58,7 @@
     position: relative;
     overflow: hidden;
     aspect-ratio: 3 / 4;
-    border-radius: var(--dl-radius, 10px) var(--dl-radius, 10px) 0 0;
+    border-radius: var(--dl-radius, 10px);
 }
 .ae-card__media--icon {
     aspect-ratio: 1 / 1;
@@ -88,11 +88,48 @@
     pointer-events: none;
 }
 .ae-card:hover .ae-card__overlay { opacity: 1; }
-.ae-card__body { padding: 12px; }
 
+/* Top-left action stack, tucked under the rarity badge (badge is 24px @ top:8,
+   left:8, so the stack starts at 40px). Buttons sit vertically. */
+.ae-card__toolstack {
+    position: absolute;
+    top: 40px;
+    left: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 2;
+}
 /* Hover-revealed corner actions (download / youtube). */
 .ae-card__action { opacity: 0; transition: opacity var(--dl-base); }
 .ae-card:hover .ae-card__action { opacity: 1; }
+
+/* Name + chroma dots overlaid on the bottom of the splash, on a dark gradient
+   so text stays legible over any art. Replaces the old separate card body. */
+.ae-card__footer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 24px 12px 12px;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.35) 55%, transparent);
+    z-index: 2;
+    pointer-events: none;
+}
+/* Only the interactive bits (chroma dots) should catch clicks; the gradient
+   itself must pass clicks through to the card. */
+.ae-card__footer .chroma-container,
+.ae-card__footer .chroma-dot { pointer-events: auto; }
+.ae-card__title {
+    margin: 0;
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 1.25;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 /* ── Champion sidebar ──────────────────────────────────────────────────── */
 .ae-sb {
@@ -228,7 +265,9 @@
 .ae-sb__yt:hover { background: var(--bg-hover); color: var(--accent-primary); }
 
 /* ── Chroma dots + tooltip (ported, re-tokened) ────────────────────────── */
-.chroma-container { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+/* Dots sit ABOVE the skin name in the card footer, so the name stays anchored
+   to the same bottom baseline whether or not a skin has chromas. */
+.chroma-container { display: flex; gap: 4px; flex-wrap: wrap; margin: 0 0 6px; }
 .chroma-dot {
     width: 8px; height: 8px;
     border-radius: 50%;
@@ -261,6 +300,20 @@
     text-align: center;
 }
 .chroma-dot:hover .chroma-tooltip { opacity: 1; }
+
+/* Portaled variant: rendered to document.body so the card's overflow:hidden
+   can't clip it. Positioned in viewport coords (fixed) at the dot's location,
+   translated to sit centered above the dot. Always visible while mounted
+   (React only mounts it on hover). */
+.chroma-tooltip--portal {
+    position: fixed;
+    bottom: auto;
+    left: 0;
+    top: 0;
+    transform: translate(-50%, -100%);
+    opacity: 1;
+    pointer-events: none;
+}
 .chroma-preview-image { margin-bottom: 4px; }
 .chroma-preview-name { font-weight: 500; color: var(--accent-primary); }
 .chroma-preview-ids { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }

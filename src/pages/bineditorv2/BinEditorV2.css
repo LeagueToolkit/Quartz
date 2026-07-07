@@ -380,6 +380,7 @@
 
 /* Footer — full-width bottom action bar (Paint-consistent, fixed 48px). */
 .bineditorv2-footer {
+    position: relative;
     height: 48px;
     flex-shrink: 0;
     box-sizing: border-box;
@@ -390,15 +391,22 @@
     background: var(--bg-primary);
     border-top: 1px solid var(--border);
 }
+/* Absolutely centered in the whole bar so it's truly middle regardless of how
+   wide the left/right groups are (mirrors Port's .port-bottom-bar__status).
+   pointer-events: none so it never blocks the buttons beneath it. */
 .bineditorv2-status {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 50%;
     font-family: var(--font-mono);
     font-size: 0.72rem;
-    color: var(--text-muted);
+    color: var(--accent-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    flex: 0 1 auto;
-    min-width: 0;
+    text-align: center;
+    pointer-events: none;
 }
 .bineditorv2-unsaved {
     display: flex;
@@ -437,30 +445,93 @@
     justify-content: flex-end;
 }
 
-/* Drag overlay */
-.bineditorv2-drag {
-    position: absolute;
-    inset: 16px;
-    z-index: 100;
+/* Drag overlay: now the shared <DropOverlay variant="scrim" /> component. */
+
+/* ==========================================================================
+   Field list rows (RubyRe layout, theme-tokened). A fixed-width label column,
+   a flexible value area, and a per-row action toolbar that only appears on
+   hover. Nested structs/lists indent under a faint left rule.
+   ========================================================================== */
+.bev2-row {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    min-height: 32px;
+    padding: 6px 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+}
+.bev2-row--expandable { cursor: pointer; }
+.bev2-row--expandable:hover { background: color-mix(in srgb, var(--accent-primary) 6%, transparent); }
+
+.bev2-label {
+    width: 168px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+.bev2-value {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+.bev2-summary {
+    flex: 1;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+/* Children indent under a subtle accent-tinted left rule (RubyRe border-l). */
+.bev2-nest {
+    margin-left: 6px;
+    padding-left: 12px;
+    border-left: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+/* Per-row hover toolbar: up / down / delete. Hidden until the row is hovered. */
+.bev2-rowactions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity var(--dl-fast, 120ms);
+}
+.bev2-row:hover .bev2-rowactions,
+.bev2-rowactions:focus-within { opacity: 1; }
+.bev2-rowbtn {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    background: color-mix(in oklab, var(--bg-primary) 85%, transparent);
-    backdrop-filter: blur(8px);
-    border: 3px dashed var(--accent-primary);
-    border-radius: var(--radius-lg);
-    pointer-events: none;
-    animation: bineditorv2-pulse 1.5s ease-in-out infinite;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background var(--dl-fast, 120ms), color var(--dl-fast, 120ms);
 }
-.bineditorv2-drag__title {
-    color: var(--accent-primary);
-    font-family: var(--font-mono);
-    font-size: 1.1rem;
-    font-weight: 600;
+.bev2-rowbtn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
 }
-@keyframes bineditorv2-pulse {
-    0%, 100% { border-color: var(--accent-primary); }
-    50% { border-color: color-mix(in oklab, var(--accent-primary) 55%, var(--border)); }
+.bev2-rowbtn--danger:hover {
+    background: color-mix(in srgb, var(--color-danger) 20%, transparent);
+    color: var(--color-danger);
 }
+.bev2-animbtn { color: var(--accent-secondary); flex-shrink: 0; }
+
+/* Texture string input gets an accent-tinted skin so texture fields stand out
+   (RubyRe uses sky-blue; we tint with the theme accent instead). */
+.bev2-texinput {
+    border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border)) !important;
+    background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-secondary)) !important;
+}
+/* The per-field texture button; its preview popover is the shared
+   .tex-preview panel (src/lib/util/texturePreview.css). */
+.bev2-texbtn { flex-shrink: 0; }

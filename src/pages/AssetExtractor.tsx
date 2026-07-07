@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { save } from '@tauri-apps/plugin-dialog';
 import { useFileExplorer } from '@/components/explorer';
 import './assetextractor/assetextractor.css';
 import {
@@ -578,7 +581,7 @@ export function AssetExtractor() {
         const q = String(query || '').trim();
         if (!q) return;
         const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
-        try { window.open(url, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ }
+        openUrl(url).catch(() => { try { window.open(url, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ } });
     };
     const handleYouTubeChampion = (champion: ExtractorChampion) => {
         if (!champion?.name) return;
@@ -588,9 +591,45 @@ export function AssetExtractor() {
         openYouTubeSearch(`${championName} ${skinName} skin spotlight League of Legends`);
     };
 
-    /* Splash art download is display-only in the Tauri port (no fs plugin). */
-    const handleDownloadSplashArt = () => {
-        addConsoleLog('Saving splash art to disk is not supported in this build.', 'warning');
+    /* Download splash art: fetch the skin's splash and let the user pick where to
+       save it. Writes bytes through the shared audio_write_file backend command
+       (there is no fs plugin in this build). splashUrlOverride lets callers that
+       already know the CDragon splash path (e.g. skin cards) skip the ddragon
+       fallback. */
+    const handleDownloadSplashArt = async (
+        championName: string,
+        championAlias: string,
+        skinNumber: number,
+        skinName: string,
+        splashUrlOverride?: string | null,
+    ) => {
+        const splashUrl = splashUrlOverride
+            || `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${championAlias}_${skinNumber}.jpg`;
+        if (!splashUrl) {
+            addConsoleLog('No splash art available for this skin.', 'warning');
+            return;
+        }
+        try {
+            const extMatch = String(splashUrl).match(/\.([a-z0-9]{2,5})(?:\?|$)/i);
+            const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
+            const safeName = skinName.replace(/[^a-zA-Z0-9]/g, '_');
+            const defaultName = `${championName}_${safeName}_splash.${ext}`;
+
+            const target = await save({
+                defaultPath: defaultName,
+                filters: [{ name: 'Image', extensions: [ext] }],
+            });
+            if (!target) return; // user cancelled
+
+            addConsoleLog(`Downloading splash art for ${skinName}...`, 'info');
+            const response = await fetch(splashUrl);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const bytes = new Uint8Array(await response.arrayBuffer());
+            await invoke('audio_write_file', { path: target, data: Array.from(bytes) });
+            addConsoleLog(`Saved splash art to ${target}`, 'success');
+        } catch (err) {
+            addConsoleLog(`Failed to save splash art: ${String((err as Error)?.message || err)}`, 'error');
+        }
     };
 
     /* ── Extraction ───────────────────────────────────────────────────────── */

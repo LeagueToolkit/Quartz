@@ -1,0 +1,173 @@
+/* Unified texture preview panel + context menu (see texturePreview.ts).
+   Theme-tokened so it matches light/dark across every page that uses it. */
+
+.tex-preview {
+    position: fixed;
+    z-index: 10000;
+    max-height: 80vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 12px;
+    background: var(--glass-bg, color-mix(in oklab, var(--bg-secondary) 96%, transparent));
+    border: 1px solid var(--glass-border, var(--border));
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(12px) saturate(180%);
+    pointer-events: auto;
+}
+
+.tex-preview__header {
+    color: var(--accent, var(--accent-primary));
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+}
+
+/* Single-column list by default; a 2-column grid once there are 3+ tiles so
+   the panel spreads sideways instead of scrolling into a tall strip. */
+.tex-preview__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 260px);
+    gap: 12px;
+}
+.tex-preview__grid.is-grid {
+    grid-template-columns: repeat(2, minmax(0, 200px));
+}
+
+.tex-preview__row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+/* Checkerboard transparency backdrop behind the thumbnail. */
+.tex-preview__tile {
+    width: 100%;
+    height: 150px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    border: 1px solid color-mix(in oklab, var(--text-primary) 8%, transparent);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background-image:
+        linear-gradient(45deg, color-mix(in oklab, var(--text-primary) 8%, transparent) 25%, transparent 25%),
+        linear-gradient(-45deg, color-mix(in oklab, var(--text-primary) 8%, transparent) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, color-mix(in oklab, var(--text-primary) 8%, transparent) 75%),
+        linear-gradient(-45deg, transparent 75%, color-mix(in oklab, var(--text-primary) 8%, transparent) 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+}
+
+.tex-preview__img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    image-rendering: pixelated;
+}
+
+/* Slot label tag (Main Texture / Erosion Map / ...) above the filename. */
+.tex-preview__slot {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent, var(--accent-primary));
+    opacity: 0.85;
+}
+
+.tex-preview__caption-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+}
+.tex-preview__caption {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-secondary, var(--text-muted));
+    word-break: break-all;
+    line-height: 1.35;
+}
+.tex-preview__caption.is-editable { cursor: text; }
+.tex-preview__caption.is-editable:hover { color: var(--accent, var(--accent-primary)); }
+
+/* Pencil button revealed alongside an editable caption. */
+.tex-preview__edit {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+}
+.tex-preview__edit:hover {
+    color: var(--accent, var(--accent-primary));
+    border-color: var(--accent, var(--accent-primary));
+}
+
+/* Inline path editor (replaces the caption while editing). */
+.tex-preview__caption-input {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--accent, var(--accent-primary));
+    background: var(--bg-primary, #000);
+    color: var(--text-primary, #fff);
+    outline: none;
+}
+
+/* Right-click context menu. */
+.tex-preview-menu {
+    position: fixed;
+    z-index: 11050;
+    min-width: 200px;
+    padding: 6px;
+    border-radius: 10px;
+    background: var(--glass-bg, color-mix(in oklab, var(--bg-secondary) 98%, transparent));
+    border: 1px solid var(--glass-border, var(--border));
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(10px) saturate(160%);
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.tex-preview-menu__item {
+    width: 100%;
+    display: block;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-radius: 7px;
+    padding: 8px 10px;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.tex-preview-menu__item:hover:not(:disabled) {
+    background: var(--bg-hover, color-mix(in oklab, var(--text-primary) 8%, transparent));
+}
+.tex-preview-menu__item:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+}

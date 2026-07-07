@@ -23,7 +23,7 @@ export {
     type BinEditorOpenResult, type BinEditorApplyResult,
 } from './bineditor';
 export {
-    paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintUndo, paintRedo, paintSave,
+    paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintSetTexture, paintSetColorAlpha, paintUndo, paintRedo, paintSave,
     type VfxModel, type VfxSystem, type VfxEmitter, type VfxMaterial, type MaterialParam,
     type ColorData, type ColorKeyframe, type EmitterColors, type EmitterTexture,
     type PaintOpenResult, type RecolorResult, type RecolorModeId, type ColorTargetId,

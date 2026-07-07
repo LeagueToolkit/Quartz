@@ -48,5 +48,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 # Logging (macros only)
 tracing = "0.1"
 
-# RitoShark crates — BIN/format handling + TEX decode. Pinned to the same rev Flint uses.
-ritoshark = { git = "https://github.com/RitoShark/RitoShark-Crates", rev = "d6af5ac", features = ["tex", "anim", "mesh"] }
+# RitoShark crates — BIN/format handling + TEX decode. Pinned to a rev branched
+# off d6af5ac (the rev Flint uses) that adds Wad::from_reader_toc + seek-per-chunk
+# reads for lightweight WAD indexing/extraction (branch: wad-toc-seek).
+ritoshark = { git = "https://github.com/RitoShark/RitoShark-Crates", rev = "59a086245cbf7ae9ddbf45fc631f2afb622b0fd8", features = ["tex", "anim", "mesh"] }

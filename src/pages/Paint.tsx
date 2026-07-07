@@ -21,13 +21,14 @@ import LockOpenIcon from '@mui/icons-material/LockOpen';
 import { FolderOpen as FolderOpenIcon, Undo2 as UndoIcon, Redo2 as RedoIcon, SlidersHorizontal as SlidersIcon, ChevronDown as ChevronDownIcon, X as CloseIcon } from 'lucide-react';
 import { useFileExplorer } from '@/components/explorer';
 import {
-    paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintUndo, paintRedo, paintSave,
+    paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintSetTexture, paintSetColorAlpha, paintUndo, paintRedo, paintSave,
     isStaleFileError, staleFilePaths,
     type VfxEmitter, type ColorTargetId,
     type PaletteStopInput, type RecolorOptionsInput,
 } from '@/lib/api';
 import { useNotificationStore, usePaintStore, useUiPrefsStore, type HslValues, type PaintState as PaintStoreState } from '@/lib/stores';
 import { useFileDrop } from '@/lib/util/useFileDrop';
+import { DropOverlay } from '@/components/ui';
 import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
 
 import './paint/Paint.css';
@@ -35,12 +36,13 @@ import ColorHandler from './paint/utils/ColorHandler';
 import { savePalette, loadAllPalettes, deletePalette } from './paint/utils/paletteManager';
 import { getColorDescription } from './paint/utils/colorFilter';
 
-import SystemList from './paint/components/SystemList';
+import SystemList, { type ColorSlotKey } from './paint/components/SystemList';
 import PaletteManager, { type SavedPaletteItem } from './paint/components/PaletteManager';
 import { ColorPickerHost, openColorPicker, cleanupColorPickers } from './paint/components/ColorPicker';
+import AlphaEditorModal from './paint/components/AlphaEditorModal';
 import {
-    cancelTextureHoverClose, removeTextureHoverPreview, scheduleTextureHoverClose, showTextureHoverPreview,
-} from './paint/components/textureHoverPreview';
+    closeTexturePreview, scheduleTexturePreviewClose, showTexturePreview,
+} from '@/lib/util/texturePreview';
 import { useMinecraftStyle } from './paint/useMinecraftStyle';
 
 const controlLabelStyle = {
@@ -230,7 +232,6 @@ function Paint() {
     const expandedMaterials = usePaintStore((s) => s.expandedMaterials);
     const autoExpand = usePaintStore((s) => s.autoExpand);
     const variantFilter = usePaintStore((s) => s.variantFilter);
-    const searchByTexture = usePaintStore((s) => s.searchByTexture);
     const mode = usePaintStore((s) => s.mode);
     const palette = usePaintStore((s) => s.palette);
     const colorCount = usePaintStore((s) => s.colorCount);
@@ -262,7 +263,6 @@ function Paint() {
     const setExpandedMaterials = useMemo(() => makeSetter('expandedMaterials'), []);
     const setAutoExpand = useMemo(() => makeSetter('autoExpand'), []);
     const setVariantFilter = useMemo(() => makeSetter('variantFilter'), []);
-    const setSearchByTexture = useMemo(() => makeSetter('searchByTexture'), []);
     const setMode = useMemo(() => makeSetter('mode'), []);
     const setPalette = useMemo(() => makeSetter('palette'), []);
     const setColorCount = useMemo(() => makeSetter('colorCount'), []);
@@ -440,14 +440,14 @@ function Paint() {
                 const systemMatches = (system?.name || '').toLowerCase().includes(searchLower) || (emitter.systemKey || '').toLowerCase().includes(searchLower);
                 if (!systemMatches) {
                     const emitterMatches = (emitter.name || '').toLowerCase().includes(searchLower) ||
-                        (searchByTexture && emitter.textures.some(t => t.path.toLowerCase().includes(searchLower)));
+                        emitter.textures.some(t => t.path.toLowerCase().includes(searchLower));
                     if (!emitterMatches) continue;
                 }
             }
             count++;
         }
         return count;
-    }, [model, emitterMap, systemMap, selection, searchQuery, variantFilter, searchByTexture]);
+    }, [model, emitterMap, systemMap, selection, searchQuery, variantFilter]);
 
     // Compute the replacement color for one material param the way the old
     // applyPaletteToMaterials did, given the param's current value.
@@ -502,7 +502,7 @@ function Paint() {
                     const systemMatches = (system?.name || '').toLowerCase().includes(searchLower) || (emitter.systemKey || '').toLowerCase().includes(searchLower);
                     if (!systemMatches) {
                         const emitterMatches = (emitter.name || '').toLowerCase().includes(searchLower) ||
-                            (searchByTexture && emitter.textures.some(t => t.path.toLowerCase().includes(searchLower)));
+                            emitter.textures.some(t => t.path.toLowerCase().includes(searchLower));
                         if (!emitterMatches) isVisible = false;
                     }
                 }
@@ -514,6 +514,8 @@ function Paint() {
             }
         }
 
+        // Recolor never touches alpha — the game's original alpha is preserved.
+        // (Alpha is edited directly per color, separate from recoloring.)
         const paletteData: PaletteStopInput[] = palette.map(c => ({
             vec4: c.vec4 ? [c.vec4[0], c.vec4[1], c.vec4[2], 1] : [0, 0, 0, 1],
             time: c.time || 0,
@@ -543,6 +545,8 @@ function Paint() {
             hslShift: [hslValues.h, hslValues.s, hslValues.l],
             hueTarget,
             seed: Date.now() >>> 0,
+            // Recolor always keeps the original alpha the game shipped.
+            preserveAlpha: true,
         };
 
         try {
@@ -611,7 +615,7 @@ function Paint() {
             setStatusMessage(`Recolor error: ${msg}`);
             notify('error', `Recolor failed: ${msg}`);
         }
-    }, [model, sessionId, emitterMap, systemMap, selection, palette, mode, ignoreBlackWhite, hslValues, hueTarget, searchQuery, variantFilter, searchByTexture, targetBaseColor, targetBC, targetOC, targetLC, computeMaterialColor, notify]);
+    }, [model, sessionId, emitterMap, systemMap, selection, palette, mode, ignoreBlackWhite, hslValues, hueTarget, searchQuery, variantFilter, targetBaseColor, targetBC, targetOC, targetLC, computeMaterialColor, notify]);
 
     const handleUndo = useCallback(async () => {
         if (sessionId === null) return;
@@ -901,27 +905,48 @@ function Paint() {
     // TEXTURE PREVIEW
     // ============================================================
 
-    const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
     const handleTextureHover = useCallback((event: React.MouseEvent, emitter: VfxEmitter) => {
-        const buttonElement = event.currentTarget as HTMLElement;
-        if (!buttonElement) return;
-        cancelTextureHoverClose();
-        if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-        hoverTimerRef.current = setTimeout(() => {
-            const textures = (emitter.textures || []).map(t => ({ label: t.label, path: t.path }));
-            void showTextureHoverPreview(textures, [], buttonElement, filePath);
-        }, 200);
-    }, [filePath]);
+        // The shared module owns the show-debounce, staleness guard, and now
+        // decodes .tex/.dds (the old Paint util only inlined plain images).
+        const textures = (emitter.textures || []).map((t) => ({ label: t.label, path: t.path }));
+        showTexturePreview(textures, event.currentTarget as HTMLElement, filePath, {
+            onEditPath: async (oldPath, newPath) => {
+                if (sessionId === null) return;
+                try {
+                    const next = await paintSetTexture(sessionId, emitter.key, oldPath, newPath);
+                    if (next) { setModel(next); notify('success', 'Texture path updated'); }
+                } catch (e) {
+                    notify('error', `Failed to update texture: ${e instanceof Error ? e.message : String(e)}`);
+                }
+            },
+        });
+    }, [filePath, sessionId, setModel, notify]);
 
     const handleTextureLeave = useCallback(() => {
-        if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
-        scheduleTextureHoverClose(500);
+        scheduleTexturePreviewClose(500);
     }, []);
 
     const handleTextureClick = useCallback(() => {
-        removeTextureHoverPreview();
+        closeTexturePreview();
     }, []);
+
+    // Right-click a color block → edit that slot's per-keyframe alpha directly.
+    const [alphaTarget, setAlphaTarget] = useState<{
+        emitterKey: string; slot: ColorSlotKey; title: string; keyframes: { rgba: number[]; time: number }[];
+    } | null>(null);
+    const handleColorAlpha = useCallback((emitterKey: string, slot: ColorSlotKey, title: string, colors: { rgba: number[]; time: number }[]) => {
+        setAlphaTarget({ emitterKey, slot, title, keyframes: colors });
+    }, []);
+    const handleApplyAlpha = useCallback(async (alphas: number[]) => {
+        if (!alphaTarget || sessionId === null) { setAlphaTarget(null); return; }
+        try {
+            const next = await paintSetColorAlpha(sessionId, alphaTarget.emitterKey, alphaTarget.slot, alphas);
+            if (next) { setModel(next); setCanUndo(true); setCanRedo(false); setFileSaved(false); notify('success', 'Alpha updated'); }
+        } catch (e) {
+            notify('error', `Failed to update alpha: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        setAlphaTarget(null);
+    }, [alphaTarget, sessionId, setModel, setCanUndo, setCanRedo, setFileSaved, notify]);
 
     const importColorsToPalette = useCallback((colors: { rgba: number[]; time: number }[]) => {
         cleanupColorPickers();
@@ -964,6 +989,8 @@ function Paint() {
                 position: 'relative',
             }}
         >
+            {isDragOver && <DropOverlay label="Drop .bin or .py to load" />}
+
             <ColorPickerHost />
 
             {/* Recolor chrome renders always so the page reads as the full editor;
@@ -1097,14 +1124,22 @@ function Paint() {
                                         e.preventDefault();
                                         e.stopPropagation();
                                         setDeleteTargetIndex(null);
-                                        const ch = new ColorHandler([color[0], color[1], color[2], 1]);
+                                        const startA = color[3] ?? 1;
+                                        const ch = new ColorHandler([color[0], color[1], color[2], startA]);
+                                        // Keep the latest picked RGB + alpha so either control updates the same slot.
+                                        let curRGB: [number, number, number] = [color[0], color[1], color[2]];
+                                        let curA = startA;
+                                        const applyTarget = () => {
+                                            const newColors = [...targetColors];
+                                            newColors[index] = [curRGB[0], curRGB[1], curRGB[2], curA];
+                                            setTargetColors(newColors);
+                                        };
                                         openColorPicker(e, ch.ToHEX(), (hex) => {
                                             const h = new ColorHandler();
                                             h.InputHex(hex);
-                                            const newColors = [...targetColors];
-                                            newColors[index] = [h.vec4[0], h.vec4[1], h.vec4[2], 1];
-                                            setTargetColors(newColors);
-                                        });
+                                            curRGB = [h.vec4[0], h.vec4[1], h.vec4[2]];
+                                            applyTarget();
+                                        }, { alpha: startA, onAlpha: (a) => { curA = a; applyTarget(); } });
                                     }}
                                     title={isDelete ? 'Click again to delete' : `${getColorDescription(color)} - Click to select for deletion, Double-click to edit`}
                                 >
@@ -1228,10 +1263,6 @@ function Paint() {
                         <Checkbox size="small" checked={colorFilterEnabled} sx={{ color: 'var(--text-muted)', p: 0, mr: 1, '&.Mui-checked': { color: 'var(--accent-primary)' } }} />
                         Color Filter
                     </MenuItem>
-                    <MenuItem onClick={() => setSearchByTexture(!searchByTexture)}>
-                        <Checkbox size="small" checked={searchByTexture} sx={{ color: 'var(--text-muted)', p: 0, mr: 1, '&.Mui-checked': { color: 'var(--accent-primary)' } }} />
-                        Search Textures
-                    </MenuItem>
                     <Box className="paint2-filter-section-title" sx={{ px: 2, py: 1, mt: 1, borderTop: '1px solid var(--border)' }}>
                         <Typography sx={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>VIEW</Typography>
                     </Box>
@@ -1259,7 +1290,6 @@ function Paint() {
                         expandedSystems={expandedSystems}
                         expandedMaterials={expandedMaterials}
                         searchQuery={searchQuery}
-                        searchByTexture={searchByTexture}
                         variantFilter={variantFilter}
                         viewMode={mode}
                         showBirthColor
@@ -1278,6 +1308,7 @@ function Paint() {
                         onTextureLeave={handleTextureLeave}
                         onTextureClick={handleTextureClick}
                         onColorClick={importColorsToPalette}
+                        onColorAlpha={handleColorAlpha}
                     />
                 ) : (
                     /* Empty state: the drop zone is centered in the available space
@@ -1430,6 +1461,14 @@ function Paint() {
                     <Button onClick={confirmDeletePalette} variant="contained" sx={{ background: 'var(--color-danger)', color: '#fff', fontWeight: 700, textTransform: 'none', '&:hover': { background: 'color-mix(in oklab, var(--color-danger) 85%, black)' } }}>Delete</Button>
                 </DialogActions>
             </Dialog>
+
+            <AlphaEditorModal
+                open={alphaTarget !== null}
+                title={alphaTarget?.title ?? ''}
+                keyframes={alphaTarget?.keyframes ?? []}
+                onApply={handleApplyAlpha}
+                onClose={() => setAlphaTarget(null)}
+            />
         </Box>
     );
 }

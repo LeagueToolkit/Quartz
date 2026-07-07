@@ -59,7 +59,6 @@ interface SystemListProps {
     expandedSystems: Set<string>;
     expandedMaterials: Set<string>;
     searchQuery: string;
-    searchByTexture: boolean;
     variantFilter: 'all' | 'v1' | 'v2';
     viewMode: string;
     showBirthColor: boolean;
@@ -74,11 +73,14 @@ interface SystemListProps {
     onToggleMaterialParam: (key: string, selected: boolean) => void;
     onMaterialParamValueChange: (materialKey: string, paramName: string, newValues: number[]) => void;
     onColorClick: (colors: ColorKeyframe[]) => void;
+    onColorAlpha: (emitterKey: string, slot: ColorSlotKey, title: string, colors: ColorKeyframe[]) => void;
     onSetBlendMode: (emitterKey: string, mode: number) => void;
     onTextureHover: (e: React.MouseEvent, emitter: VfxEmitter) => void;
     onTextureLeave: () => void;
     onTextureClick: (emitter: VfxEmitter) => void;
 }
+
+export type ColorSlotKey = 'color' | 'birthColor' | 'fresnelColor' | 'lingerColor';
 
 /* Per-row state the parent derives once per render, so Row receives only plain
    booleans (memo-stable) instead of the shared Sets. */
@@ -93,7 +95,7 @@ type RowHandlers = Pick<SystemListProps,
     'showBirthColor' | 'showOC' | 'showLingerColor' | 'showBaseColor' |
     'onToggleEmitter' | 'onToggleSystem' | 'onToggleLock' | 'onToggleExpand' |
     'onToggleMaterialExpand' | 'onToggleMaterialParam' | 'onMaterialParamValueChange' |
-    'onColorClick' | 'onSetBlendMode' | 'onTextureHover' | 'onTextureLeave' | 'onTextureClick'
+    'onColorClick' | 'onColorAlpha' | 'onSetBlendMode' | 'onTextureHover' | 'onTextureLeave' | 'onTextureClick'
 >;
 
 const Row = React.memo(function Row(props: { row: ListRow; state: RowState; style: CSSProperties } & RowHandlers) {
@@ -102,7 +104,7 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
         showBirthColor, showOC, showLingerColor, showBaseColor,
         onToggleEmitter, onToggleSystem, onToggleLock, onToggleExpand,
         onToggleMaterialExpand, onToggleMaterialParam, onMaterialParamValueChange,
-        onColorClick, onSetBlendMode, onTextureHover, onTextureLeave, onTextureClick,
+        onColorClick, onColorAlpha, onSetBlendMode, onTextureHover, onTextureLeave, onTextureClick,
     } = props;
 
     const style: React.CSSProperties = { ...props.style, height: ROW_HEIGHT };
@@ -322,10 +324,18 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                     <ImageOutlinedIcon sx={{ fontSize: 14 }} />
                 </Box>
 
-                {showLingerColor && <ColorBlock variant="secondary" colors={colors.lingerColor} title="Linger Color" onClick={(e) => { e.stopPropagation(); if (colors.lingerColor.length > 0) onColorClick(colors.lingerColor); }} />}
-                {showOC && <ColorBlock variant="secondary" colors={colors.fresnelColor} title="OC/Fresnel" onClick={(e) => { e.stopPropagation(); if (colors.fresnelColor.length > 0) onColorClick(colors.fresnelColor); }} />}
-                {showBirthColor && <ColorBlock variant="standard" colors={colors.birthColor} title="Birth Color" onClick={(e) => { e.stopPropagation(); if (colors.birthColor.length > 0) onColorClick(colors.birthColor); }} />}
-                {showBaseColor && <ColorBlock variant="wide" colors={colors.color} title="Base Color" onClick={(e) => { e.stopPropagation(); if (colors.color.length > 0) onColorClick(colors.color); }} />}
+                {showLingerColor && <ColorBlock variant="secondary" colors={colors.lingerColor} title="Linger Color"
+                    onClick={(e) => { e.stopPropagation(); if (colors.lingerColor.length > 0) onColorClick(colors.lingerColor); }}
+                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (colors.lingerColor.length > 0) onColorAlpha(row.emitter.key, 'lingerColor', 'Linger Color', colors.lingerColor); }} />}
+                {showOC && <ColorBlock variant="secondary" colors={colors.fresnelColor} title="OC/Fresnel"
+                    onClick={(e) => { e.stopPropagation(); if (colors.fresnelColor.length > 0) onColorClick(colors.fresnelColor); }}
+                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (colors.fresnelColor.length > 0) onColorAlpha(row.emitter.key, 'fresnelColor', 'OC/Fresnel', colors.fresnelColor); }} />}
+                {showBirthColor && <ColorBlock variant="standard" colors={colors.birthColor} title="Birth Color"
+                    onClick={(e) => { e.stopPropagation(); if (colors.birthColor.length > 0) onColorClick(colors.birthColor); }}
+                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (colors.birthColor.length > 0) onColorAlpha(row.emitter.key, 'birthColor', 'Birth Color', colors.birthColor); }} />}
+                {showBaseColor && <ColorBlock variant="wide" colors={colors.color} title="Base Color"
+                    onClick={(e) => { e.stopPropagation(); if (colors.color.length > 0) onColorClick(colors.color); }}
+                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (colors.color.length > 0) onColorAlpha(row.emitter.key, 'color', 'Base Color', colors.color); }} />}
 
                 <Box
                     sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)', borderRadius: 'var(--radius-sm)', padding: '0 2px', ml: 0.5, height: '24px', border: '1px solid transparent', '&:hover': { border: '1px solid color-mix(in oklab, var(--accent-primary) 35%, transparent)' } }}
@@ -354,7 +364,7 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
 
 function SystemList(props: SystemListProps) {
     const {
-        model, searchQuery, searchByTexture, variantFilter, viewMode,
+        model, searchQuery, variantFilter, viewMode,
         expandedSystems, expandedMaterials, showBaseColor = true,
     } = props;
 
@@ -391,7 +401,7 @@ function SystemList(props: SystemListProps) {
                     if (!systemMatches) {
                         matchingEmitters = matchingEmitters.filter(e =>
                             (e.emitter.name || '').toLowerCase().includes(searchLower) ||
-                            (searchByTexture && e.emitter.textures.some(t => t.path.toLowerCase().includes(searchLower)))
+                            e.emitter.textures.some(t => t.path.toLowerCase().includes(searchLower))
                         );
                     }
                 }
@@ -430,7 +440,7 @@ function SystemList(props: SystemListProps) {
         }
 
         return result;
-    }, [model, systemMap, emitterMap, materialMap, searchQuery, searchByTexture, expandedSystems, expandedMaterials, variantFilter, viewMode]);
+    }, [model, systemMap, emitterMap, materialMap, searchQuery, expandedSystems, expandedMaterials, variantFilter, viewMode]);
 
     const { selection, lockedSystems } = props;
 
@@ -479,6 +489,7 @@ function SystemList(props: SystemListProps) {
         onToggleMaterialParam: props.onToggleMaterialParam,
         onMaterialParamValueChange: props.onMaterialParamValueChange,
         onColorClick: props.onColorClick,
+        onColorAlpha: props.onColorAlpha,
         onSetBlendMode: props.onSetBlendMode,
         onTextureHover: props.onTextureHover,
         onTextureLeave: props.onTextureLeave,
@@ -488,7 +499,7 @@ function SystemList(props: SystemListProps) {
         props.showBirthColor, props.showOC, props.showLingerColor,
         props.onToggleEmitter, props.onToggleSystem, props.onToggleLock, props.onToggleExpand,
         props.onToggleMaterialExpand, props.onToggleMaterialParam, props.onMaterialParamValueChange,
-        props.onColorClick, props.onSetBlendMode, props.onTextureHover, props.onTextureLeave, props.onTextureClick,
+        props.onColorClick, props.onColorAlpha, props.onSetBlendMode, props.onTextureHover, props.onTextureLeave, props.onTextureClick,
     ]);
 
     /* react-window List: fills its parent, scrolls on the compositor thread (the

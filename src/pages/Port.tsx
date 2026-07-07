@@ -4,11 +4,11 @@ import usePort from './port/usePort';
 import { PortDragProvider, type PortDragPayload } from './port/usePortDrag';
 import type { VfxEmitter, VfxSystem, VfxPath } from './port/model';
 import {
-    handleEmitterTextureMouseEnter,
-    handleEmitterTextureMouseLeave,
-    handleEmitterTextureContextMenu,
-    closeTextureHoverPreview,
-} from './port/utils/textureHoverPreview';
+    showTexturePreview,
+    scheduleTexturePreviewClose,
+    closeTexturePreview,
+    openTexturePreviewContextMenu,
+} from '@/lib/util/texturePreview';
 import { getLeaguePath } from '@/lib/api/league';
 import { readBin, writeBin } from '@/lib/api';
 import { useUiPrefsStore } from '@/lib/stores';
@@ -141,18 +141,25 @@ function Port() {
     const binPathFor = useCallback((isTarget: boolean) => (isTarget ? p.targetPath : p.donorPath), [p.targetPath, p.donorPath]);
     const handleEmitterMouseEnter = useCallback(
         (e: React.MouseEvent, emitter: VfxEmitter, _system: VfxSystem, isTarget: boolean) => {
-            handleEmitterTextureMouseEnter(e, emitter, binPathFor(isTarget));
+            const textures = (emitter.textures || []).map((path) => ({ path }));
+            showTexturePreview(textures, e.currentTarget as HTMLElement, binPathFor(isTarget), {
+                contextMenu: true,
+                onEditPath: (oldPath, newPath) => {
+                    void p.handleSetTexture(emitter, isTarget, oldPath, newPath);
+                },
+            });
         },
-        [binPathFor]
+        [binPathFor, p]
     );
-    const handleEmitterMouseLeave = useCallback(() => handleEmitterTextureMouseLeave(), []);
+    const handleEmitterMouseLeave = useCallback(() => scheduleTexturePreviewClose(), []);
     const handleEmitterClick = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
-        closeTextureHoverPreview();
+        closeTexturePreview();
     }, []);
     const handleEmitterContextMenu = useCallback(
         (e: React.MouseEvent, emitter: VfxEmitter, _system: VfxSystem, isTarget: boolean) => {
-            handleEmitterTextureContextMenu(e, emitter, binPathFor(isTarget));
+            const first = (emitter.textures || [])[0];
+            if (first) openTexturePreviewContextMenu(e, { path: first }, binPathFor(isTarget));
         },
         [binPathFor]
     );
@@ -452,12 +459,10 @@ function Port() {
     }, [p]);
 
     // Old-Quartz behavior: systems are collapsed by default, but an active
-    // filter expands every (matching) system; clearing the search collapses them
-    // again. Passing an empty set = "expand all" without touching the manual
-    // toggle state underneath, so it's restored the moment the query clears.
-    const EXPAND_ALL: Set<string> = new Set();
-    const targetCollapsed = p.targetFilter ? EXPAND_ALL : p.collapsedTargetSystems;
-    const donorCollapsed = p.donorFilter ? EXPAND_ALL : p.collapsedDonorSystems;
+    // Search no longer force-expands matching systems — the user's own collapse
+    // state is always respected, whether or not a filter is active.
+    const targetCollapsed = p.collapsedTargetSystems;
+    const donorCollapsed = p.collapsedDonorSystems;
 
     const sharedListProps = {
         selectedTargetSystem: p.selectedTargetSystem,
@@ -487,9 +492,7 @@ function Port() {
         handleOpenTargetBin: p.handleOpenTargetBin,
         processTargetBin: p.processTargetBin,
         targetFilterInput: p.targetFilter,
-        enableTargetEmitterSearch: p.enableTargetEmitterSearch,
         filterTargetParticles,
-        setEnableTargetEmitterSearch: p.setEnableTargetEmitterSearch,
         sectionStyle,
         isDragOverVfx: p.isDragOverVfx,
         handleTargetDropDragOver,
@@ -536,9 +539,7 @@ function Port() {
         handleOpenDonorFromGame,
         handleOpenHub,
         donorFilterInput: p.donorFilter,
-        enableDonorEmitterSearch: p.enableDonorEmitterSearch,
         filterDonorParticles,
-        setEnableDonorEmitterSearch: p.setEnableDonorEmitterSearch,
         sectionStyle,
         donorSystems: p.donorSystems,
         donorListRef: p.donorListRef,

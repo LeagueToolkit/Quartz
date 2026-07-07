@@ -277,6 +277,21 @@ pub async fn vfx_rename_emitter(
         .map_err(|e| e.to_string())
 }
 
+/// Rewrite an emitter's texture path. `old_path` identifies the texture node
+/// (its current value); `new_path` replaces it.
+#[tauri::command]
+pub async fn vfx_set_texture(
+    session_id: u64,
+    emitter: VfxPath,
+    old_path: String,
+    new_path: String,
+) -> Result<VfxPortModel, String> {
+    tokio::task::spawn_blocking(move || ops::set_texture(session_id, &emitter, &old_path, &new_path))
+        .await
+        .map_err(|e| format!("Set texture task failed to join: {}", e))?
+        .map_err(|e| e.to_string())
+}
+
 /// Rename a system (particleName/particlePath + path hash + resolver relink).
 #[tauri::command]
 pub async fn vfx_rename_system(

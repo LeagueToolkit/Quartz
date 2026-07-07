@@ -16,7 +16,7 @@ use crate::hash::{get_hash_dir, get_wad_env, resolve_hashes_lmdb_bulk, ResolvedH
 use ritoshark::wad::{Wad, WadChunk, WadCompression};
 use std::collections::HashSet;
 use std::fs;
-use std::io::Cursor;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 /// One TOC entry, flattened for the command layer and the frontend.
@@ -140,15 +140,19 @@ pub fn list_voiceover_wads(league_root: &Path, champion: &str) -> Vec<PathBuf> {
 
 // ── Reading ────────────────────────────────────────────────────────────────────
 
-/// Mount a WAD off disk. ritoshark on this rev has no `from_path`, so we read
-/// the whole file (the archive owns its data section in memory anyway) and
-/// parse from a cursor.
-fn mount(wad_path: &Path) -> Result<Wad> {
-    let bytes = fs::read(wad_path).map_err(|e| Error::io_with_path(e, wad_path))?;
-    Wad::from_reader(&mut Cursor::new(bytes)).map_err(|e| Error::Wad {
+/// Open a WAD and parse its TOC only, returning the parsed archive alongside the
+/// still-open reader. The data section is never buffered — chunk payloads are
+/// pulled on demand by seeking the reader ([`Wad::chunk_data_from`]), so listing
+/// or extracting from a multi-hundred-MB archive costs a header+table read plus
+/// the bytes of the chunks actually wanted, not the whole file.
+fn mount_toc(wad_path: &Path) -> Result<(Wad, BufReader<fs::File>)> {
+    let file = fs::File::open(wad_path).map_err(|e| Error::io_with_path(e, wad_path))?;
+    let mut reader = BufReader::new(file);
+    let wad = Wad::from_reader_toc(&mut reader).map_err(|e| Error::Wad {
         message: format!("Failed to parse WAD: {}", e),
         path: Some(wad_path.to_path_buf()),
-    })
+    })?;
+    Ok((wad, reader))
 }
 
 /// Build the bulk path resolver backed by the WAD-hash LMDB. Falls back to an
@@ -166,7 +170,7 @@ fn resolve_paths(hashes: &[u64]) -> ResolvedHashes {
 /// Read a WAD's table of contents, resolving every chunk's path hash to a real
 /// path through the WAD LMDB. Nothing is decompressed or written.
 pub fn read_wad_toc(wad_path: &Path) -> Result<Vec<WadTocEntry>> {
-    let wad = mount(wad_path)?;
+    let (wad, _reader) = mount_toc(wad_path)?;
 
     let hashes: Vec<u64> = wad.chunks.iter().map(|c| c.path_hash).collect();
     let resolved = resolve_paths(&hashes);
@@ -187,23 +191,23 @@ pub fn read_wad_toc(wad_path: &Path) -> Result<Vec<WadTocEntry>> {
     Ok(toc)
 }
 
-/// Decompress a single chunk by its path hash.
+/// Decompress a single chunk by its path hash, seeking to it in the archive.
 pub fn read_chunk_by_hash(wad_path: &Path, path_hash: u64) -> Result<Vec<u8>> {
-    let wad = mount(wad_path)?;
+    let (wad, mut reader) = mount_toc(wad_path)?;
     let chunk = wad.chunk_by_hash(path_hash).ok_or_else(|| Error::Wad {
         message: format!("chunk {:016x} not found", path_hash),
         path: Some(wad_path.to_path_buf()),
     })?;
-    decompress_chunk(&wad, chunk)
+    decompress_chunk(&wad, &mut reader, chunk)
 }
 
-/// Decompress an already-located chunk against a mounted WAD.
-pub fn read_chunk(wad: &Wad, chunk: &WadChunk) -> Result<Vec<u8>> {
-    decompress_chunk(wad, chunk)
-}
-
-fn decompress_chunk(wad: &Wad, chunk: &WadChunk) -> Result<Vec<u8>> {
-    wad.chunk_data(chunk).map_err(|e| Error::Wad {
+/// Seek to `chunk` in `reader` and decompress it against the TOC-only `wad`.
+fn decompress_chunk<R: std::io::Read + std::io::Seek>(
+    wad: &Wad,
+    reader: &mut R,
+    chunk: &WadChunk,
+) -> Result<Vec<u8>> {
+    wad.chunk_data_from(reader, chunk).map_err(|e| Error::Wad {
         message: format!("Failed to decompress chunk {:016x}: {}", chunk.path_hash, e),
         path: None,
     })
@@ -224,13 +228,16 @@ pub fn extract_selected(
     out_dir: &Path,
     preserve_paths: bool,
 ) -> Result<ExtractResult> {
-    let wad = mount(wad_path)?;
+    let (wad, mut reader) = mount_toc(wad_path)?;
 
     let want: HashSet<u64> = selected.iter().map(|s| s.path_hash).collect();
-    let targets: Vec<&WadChunk> = wad
+    // WadChunk is Copy; own the targets so the reader can be borrowed mutably in
+    // the seek loop without holding a borrow of wad.chunks.
+    let targets: Vec<WadChunk> = wad
         .chunks
         .iter()
         .filter(|c| want.contains(&c.path_hash))
+        .copied()
         .collect();
 
     if targets.is_empty() {
@@ -248,8 +255,8 @@ pub fn extract_selected(
 
     let mut result = ExtractResult::default();
 
-    for chunk in targets {
-        let data = match decompress_chunk(&wad, chunk) {
+    for chunk in &targets {
+        let data = match decompress_chunk(&wad, &mut reader, chunk) {
             Ok(d) => d,
             Err(e) => {
                 tracing::warn!("skip chunk {:016x}: {}", chunk.path_hash, e);

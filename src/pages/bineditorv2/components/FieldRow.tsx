@@ -14,6 +14,7 @@ import {
     pathKey,
 } from '../model/nodes';
 import { widgetFor } from '../model/widgets';
+import { ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import KeyframeEditor from './KeyframeEditor';
 import GenericFieldMenu from './GenericFieldMenu';
 import { BoolWidget, ColorWidget, EnumWidget, NumberWidget, StringWidget, VecWidget } from './widgets';
@@ -32,9 +33,12 @@ export interface FieldRowCallbacks {
     onAddKeyframe?: (node: EditorNode) => void;
     onRemoveKeyframe?: (node: EditorNode, index: number) => void;
     onRemoveNode?: (node: EditorNode) => void;
+    onMoveNode?: (node: EditorNode, delta: number) => void;
     onAddNested?: (node: EditorNode, entry: SchemaEntry) => void;
     onAddListItem?: (node: EditorNode) => void;
     onPreviewTexture?: (path: string) => void;
+    /** Path of the bin being edited, for resolving inline texture previews. */
+    binPath?: string | null;
 }
 
 interface FieldRowProps extends FieldRowCallbacks {
@@ -43,26 +47,8 @@ interface FieldRowProps extends FieldRowCallbacks {
     depth?: number;
 }
 
-const LABEL_W = 150;
+const LABEL_W = 168;
 
-const rowStyle: CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    padding: '5px 0',
-    borderBottom: '1px solid color-mix(in srgb, var(--border) 40%, transparent)',
-    minHeight: 34,
-};
-const labelStyle: CSSProperties = {
-    width: LABEL_W,
-    flexShrink: 0,
-    fontSize: 12,
-    fontWeight: 600,
-    color: 'var(--text-secondary)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-};
 const badgeStyle: CSSProperties = {
     padding: '0 5px',
     borderRadius: 3,
@@ -73,20 +59,51 @@ const badgeStyle: CSSProperties = {
 };
 const mutedStyle: CSSProperties = { color: 'var(--text-muted)', fontSize: 12 };
 
-function DeleteBtn({ onDelete }: { onDelete: () => void }) {
+/* Hover-revealed per-row action toolbar (RubyRe pattern): move up / move down /
+   delete. Only the handlers that are provided render a button. */
+function RowActions({
+    onUp,
+    onDown,
+    onDelete,
+}: {
+    onUp?: () => void;
+    onDown?: () => void;
+    onDelete?: () => void;
+}) {
+    if (!onUp && !onDown && !onDelete) return null;
     return (
-        <button
-            type="button"
-            className="dl-btn dl-btn--ghost dl-btn--sm dl-btn--icon"
-            title="Delete"
-            onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-            }}
-            style={{ color: 'var(--color-danger)', flexShrink: 0 }}
-        >
-            ×
-        </button>
+        <div className="bev2-rowactions">
+            {onUp && (
+                <button
+                    type="button"
+                    className="bev2-rowbtn"
+                    title="Move up"
+                    onClick={(e) => { e.stopPropagation(); onUp(); }}
+                >
+                    <ArrowUp size={13} />
+                </button>
+            )}
+            {onDown && (
+                <button
+                    type="button"
+                    className="bev2-rowbtn"
+                    title="Move down"
+                    onClick={(e) => { e.stopPropagation(); onDown(); }}
+                >
+                    <ArrowDown size={13} />
+                </button>
+            )}
+            {onDelete && (
+                <button
+                    type="button"
+                    className="bev2-rowbtn bev2-rowbtn--danger"
+                    title="Delete"
+                    onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                >
+                    <Trash2 size={13} />
+                </button>
+            )}
+        </div>
     );
 }
 
@@ -114,15 +131,24 @@ function FieldRowInner(props: FieldRowProps) {
         onAddKeyframe,
         onRemoveKeyframe,
         onRemoveNode,
+        onMoveNode,
         onAddNested,
         onAddListItem,
         onPreviewTexture,
+        binPath,
     } = props;
     const open = expandedFields.has(pathKey(node.path));
     const kind = widgetFor(node);
     const label = prettyName(node.key ?? 'item');
     const protectedField = !!node.key && sameKey(node.key, 'emitterName');
     const removeThis = !protectedField && onRemoveNode ? () => onRemoveNode(node) : null;
+    // Reorder is offered on any non-protected node with a move handler. Edge
+    // moves are clamped to no-ops by the backend, so first/last rows stay safe.
+    const moveUp = !protectedField && onMoveNode ? () => onMoveNode(node, -1) : undefined;
+    const moveDown = !protectedField && onMoveNode ? () => onMoveNode(node, 1) : undefined;
+    const rowActions = (
+        <RowActions onUp={moveUp} onDown={moveDown} onDelete={removeThis ?? undefined} />
+    );
 
     const childProps: FieldRowCallbacks = {
         onCommitLeaf,
@@ -134,9 +160,11 @@ function FieldRowInner(props: FieldRowProps) {
         onAddKeyframe,
         onRemoveKeyframe,
         onRemoveNode,
+        onMoveNode,
         onAddNested,
         onAddListItem,
         onPreviewTexture,
+        binPath,
     };
 
     /** Widget for a value node. `wrap` re-wraps payloads for option interiors. */
@@ -205,7 +233,7 @@ function FieldRowInner(props: FieldRowProps) {
                 <StringWidget
                     node={target}
                     isTexture={k === 'texture'}
-                    onPreview={onPreviewTexture}
+                    binPath={binPath}
                     onCommit={(v) => send(target, encodeString(target, v))}
                 />
             );
@@ -228,37 +256,35 @@ function FieldRowInner(props: FieldRowProps) {
         );
         return (
             <>
-                <div style={rowStyle}>
-                    <div style={labelStyle}>
+                <div className="bev2-row">
+                    <div className="bev2-label">
                         {label}
                         {advanced && node.className && <span style={badgeStyle}>{node.className}</span>}
                     </div>
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                    <div className="bev2-value">
                         {renderControl(primary)}
                         {canDyn &&
                             (animated ? (
                                 <button
                                     type="button"
-                                    className="dl-btn dl-btn--secondary dl-btn--sm"
+                                    className="dl-btn dl-btn--secondary dl-btn--sm bev2-animbtn"
                                     title="Remove the animated curve"
                                     onClick={() => onDeanimate?.(node)}
-                                    style={{ color: 'var(--accent-secondary)', flexShrink: 0 }}
                                 >
                                     Constant
                                 </button>
                             ) : (
                                 <button
                                     type="button"
-                                    className="dl-btn dl-btn--secondary dl-btn--sm"
+                                    className="dl-btn dl-btn--secondary dl-btn--sm bev2-animbtn"
                                     title="Animate this value (add a dynamics curve)"
                                     onClick={() => onAnimate?.(node)}
-                                    style={{ color: 'var(--accent-secondary)', flexShrink: 0 }}
                                 >
                                     Animate
                                 </button>
                             ))}
                     </div>
-                    {removeThis && <DeleteBtn onDelete={removeThis} />}
+                    {rowActions}
                 </div>
                 {advanced && animated && times && values && (
                     <KeyframeEditor
@@ -270,7 +296,7 @@ function FieldRowInner(props: FieldRowProps) {
                     />
                 )}
                 {advanced && extraDynChildren.length > 0 && (
-                    <div style={{ paddingLeft: LABEL_W + 12 }}>
+                    <div className="bev2-nest" style={{ paddingLeft: LABEL_W + 12 }}>
                         {extraDynChildren.map((c, i) => (
                             <FieldRow
                                 key={(c.key ?? 'i') + i}
@@ -291,13 +317,13 @@ function FieldRowInner(props: FieldRowProps) {
         const kids = node.children ?? [];
         return (
             <>
-                <div style={{ ...rowStyle, cursor: 'pointer' }} onClick={() => onToggleField(node.path)}>
-                    <div style={labelStyle}>
+                <div className="bev2-row bev2-row--expandable" onClick={() => onToggleField(node.path)}>
+                    <div className="bev2-label">
                         <span style={{ color: 'var(--accent-secondary)', width: 10 }}>{open ? '▼' : '▶'}</span>
                         {label}
                         {advanced && typeBadge(node) && <span style={badgeStyle}>{typeBadge(node)}</span>}
                     </div>
-                    <div style={{ flex: 1, color: 'var(--text-muted)', fontSize: 11 }}>{kids.length} items</div>
+                    <div className="bev2-summary">{kids.length} items</div>
                     {kind === 'list' && onAddListItem && (
                         <span onClick={(e) => e.stopPropagation()}>
                             <button
@@ -315,10 +341,10 @@ function FieldRowInner(props: FieldRowProps) {
                             <GenericFieldMenu onAdd={(entry) => onAddNested(node, entry)} />
                         </span>
                     )}
-                    {removeThis && <DeleteBtn onDelete={removeThis} />}
+                    {rowActions}
                 </div>
                 {open && (
-                    <div style={{ paddingLeft: 16 }}>
+                    <div className="bev2-nest">
                         {kids.map((c, i) => (
                             <FieldRow
                                 key={(c.key ?? 'i') + i}
@@ -336,15 +362,15 @@ function FieldRowInner(props: FieldRowProps) {
 
     // --- Plain leaf / vector / option row ---
     return (
-        <div style={rowStyle}>
-            <div style={labelStyle}>
+        <div className="bev2-row">
+            <div className="bev2-label">
                 {label}
                 {advanced && typeBadge(node) && <span style={badgeStyle}>{typeBadge(node)}</span>}
             </div>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <div className="bev2-value">
                 {renderControl(node)}
             </div>
-            {removeThis && <DeleteBtn onDelete={removeThis} />}
+            {rowActions}
         </div>
     );
 }

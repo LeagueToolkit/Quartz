@@ -206,6 +206,9 @@ pub struct EditIndex {
     pub blend_modes: HashMap<String, NodePath>,
     /// `"mat::<materialKey>::<paramName>"` → path to the param `value: vec4`.
     pub material_params: HashMap<String, NodePath>,
+    /// `emitterKey` → (current texture path string → path to that `string` node).
+    /// Lets an edit relocate the exact texture node from its old value.
+    pub emitter_textures: HashMap<String, HashMap<String, NodePath>>,
 }
 
 /// Where a color's editable vec4 nodes live.
@@ -228,6 +231,8 @@ struct Hashes {
     blend_mode: u32,
     constant_value: u32,
     values: u32,
+    dynamics: u32,
+    times: u32,
     color_slots: Vec<(ColorSlot, Vec<u32>)>,
     textures: Vec<(u32, &'static str)>,
     static_material: u32,
@@ -248,6 +253,8 @@ impl Hashes {
             blend_mode: fnv1a_lower("blendMode"),
             constant_value: fnv1a_lower("constantValue"),
             values: fnv1a_lower("values"),
+            dynamics: fnv1a_lower("dynamics"),
+            times: fnv1a_lower("times"),
             // Field names that carry each color, in priority order.
             color_slots: vec![
                 (ColorSlot::Color, vec![fnv1a_lower("color")]),
@@ -424,6 +431,12 @@ fn project_emitter(
     let mut textures = Vec::new();
     for (tex_hash, label) in &h.textures {
         if let Some(p) = fields.get(tex_hash).and_then(string_of) {
+            // Index the node so an edit can relocate it from its old path value.
+            index
+                .emitter_textures
+                .entry(key.clone())
+                .or_default()
+                .insert(p.clone(), path.child(Step::Field(*tex_hash)));
             if !textures
                 .iter()
                 .any(|t: &EmitterTexture| t.path == p && t.label == *label)
@@ -566,16 +579,39 @@ fn project_color(
                 target.constant = Some(path.child(Step::Field(h.constant_value)));
             }
 
-            if let Some(BinValue::List { items, .. }) = fields.get(&h.values) {
-                let values_path = path.child(Step::Field(h.values));
+            // Animated colors nest `values`/`times` inside a `dynamics` pointer
+            // (VfxAnimatedColorVariableData). Descend into it when present;
+            // otherwise fall back to `values` directly on the embed.
+            let (values_owner_path, values_fields) = match fields.get(&h.dynamics) {
+                Some(BinValue::Pointer { fields: df, .. } | BinValue::Embed { fields: df, .. }) => {
+                    (path.child(Step::Field(h.dynamics)), df)
+                }
+                _ => (path.clone(), fields),
+            };
+
+            if let Some(BinValue::List { items, .. }) = values_fields.get(&h.values) {
+                // Prefer the real `times` list; fall back to even spacing.
+                let times: Vec<f32> = match values_fields.get(&h.times) {
+                    Some(BinValue::List { items: t, .. }) => t
+                        .iter()
+                        .filter_map(|v| match v {
+                            BinValue::F32(f) => Some(*f),
+                            _ => None,
+                        })
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                let values_path = values_owner_path.child(Step::Field(h.values));
                 let count = items.len();
                 for (i, item) in items.iter().enumerate() {
                     if let BinValue::Vec4(v) = item {
-                        let time = if count <= 1 {
-                            0.0
-                        } else {
-                            i as f32 / (count - 1) as f32
-                        };
+                        let time = times.get(i).copied().unwrap_or_else(|| {
+                            if count <= 1 {
+                                0.0
+                            } else {
+                                i as f32 / (count - 1) as f32
+                            }
+                        });
                         keyframes.push(ColorKeyframe { rgba: *v, time });
                         target.keyframes.push(values_path.child(Step::Index(i)));
                     }

@@ -56,6 +56,41 @@
     pointer-events: none;
 }
 
+/* Alpha slider: a checkerboard base with a transparent→color gradient on top. */
+.paint-color-picker .pcp-alpha {
+    position: relative;
+    width: 100%;
+    height: 14px;
+    border-radius: 7px;
+    cursor: pointer;
+    overflow: hidden;
+    margin-bottom: 10px;
+    background-image:
+        linear-gradient(45deg, rgba(255, 255, 255, 0.25) 25%, transparent 25%),
+        linear-gradient(-45deg, rgba(255, 255, 255, 0.25) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.25) 75%),
+        linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.25) 75%);
+    background-size: 8px 8px;
+    background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+    background-color: #666;
+}
+.paint-color-picker .pcp-alpha-track {
+    position: absolute;
+    inset: 0;
+    border-radius: 7px;
+}
+.paint-color-picker .pcp-alpha-thumb {
+    position: absolute;
+    top: 50%;
+    width: 8px;
+    height: 18px;
+    border-radius: 4px;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
 .paint-color-picker .pcp-row {
     display: flex;
     gap: 8px;

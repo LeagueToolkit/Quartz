@@ -138,6 +138,30 @@ export function paintSetMaterialParam(
     return invokeCommand<boolean>('paint_set_material_param', { sessionId, selectionKey, values, preserveAlpha });
 }
 
+/** Rewrite an emitter's texture path. `oldPath` identifies the node (its current
+ *  value); `newPath` replaces it. Returns the refreshed model, or null if the
+ *  node wasn't found / value unchanged. */
+export function paintSetTexture(
+    sessionId: number,
+    emitterKey: string,
+    oldPath: string,
+    newPath: string,
+): Promise<VfxModel | null> {
+    return invokeCommand<VfxModel | null>('paint_set_texture', { sessionId, emitterKey, oldPath, newPath });
+}
+
+/** Set the per-keyframe alpha of an emitter color slot (color / birthColor /
+ *  fresnelColor / lingerColor), preserving RGB. `alphas` are in model keyframe
+ *  order (constant first, then the values list). Returns the refreshed model. */
+export function paintSetColorAlpha(
+    sessionId: number,
+    emitterKey: string,
+    slot: 'color' | 'birthColor' | 'fresnelColor' | 'lingerColor',
+    alphas: number[],
+): Promise<VfxModel | null> {
+    return invokeCommand<VfxModel | null>('paint_set_color_alpha', { sessionId, emitterKey, slot, alphas });
+}
+
 /** Undo the last edit. Returns the refreshed model, or null if nothing to undo. */
 export function paintUndo(sessionId: number): Promise<VfxModel | null> {
     return invokeCommand<VfxModel | null>('paint_undo', { sessionId });

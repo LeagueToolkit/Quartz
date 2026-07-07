@@ -1,6 +1,10 @@
 import { type CSSProperties } from 'react';
+import { Image as ImageIcon } from 'lucide-react';
 import type { EditorNode } from '@/lib/api/bineditor';
 import { enumLabelsFor } from '../model/widgets';
+import {
+    showTexturePreview, scheduleTexturePreviewClose, openTexturePreviewContextMenu,
+} from '@/lib/util/texturePreview';
 
 /* Field widgets, ported from bineditorV3/components/widgets/*. Controlled by the
    node's current value; edits flow out through onCommit / onLive callbacks and
@@ -171,31 +175,39 @@ interface StringWidgetProps {
     node: EditorNode;
     onCommit: (v: string) => void;
     isTexture?: boolean;
-    onPreview?: (path: string) => void;
+    /** Bin path for resolving the inline texture preview. */
+    binPath?: string | null;
 }
 
-export function StringWidget({ node, onCommit, isTexture, onPreview }: StringWidgetProps) {
+export function StringWidget({ node, onCommit, isTexture, binPath }: StringWidgetProps) {
+    const value = String(node.value ?? '');
     return (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', width: '100%' }}>
             <input
                 type="text"
-                className="dl-input"
-                defaultValue={String(node.value ?? '')}
-                key={`v:${String(node.value)}`}
+                className={`dl-input${isTexture ? ' bev2-texinput' : ''}`}
+                defaultValue={value}
+                key={`v:${value}`}
                 onBlur={(e) => onCommit(e.target.value)}
                 onKeyDown={(e) => {
                     if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
                 }}
                 style={{ ...monoInput, flex: 1, minWidth: 0 }}
             />
-            {isTexture && onPreview && (
+            {isTexture && value && binPath && (
                 <button
                     type="button"
-                    className="dl-btn dl-btn--secondary dl-btn--sm"
-                    title="Preview texture"
-                    onClick={() => onPreview(String(node.value ?? ''))}
+                    className="dl-btn dl-btn--secondary dl-btn--sm dl-btn--icon bev2-texbtn"
+                    title="Preview texture (right-click for actions)"
+                    onMouseEnter={(e) => showTexturePreview([{ path: value }], e.currentTarget, binPath, {
+                        contextMenu: true,
+                        onEditPath: (_old, next) => onCommit(next),
+                    })}
+                    onMouseLeave={() => scheduleTexturePreviewClose()}
+                    onClick={(e) => e.stopPropagation()}
+                    onContextMenu={(e) => openTexturePreviewContextMenu(e, { path: value }, binPath)}
                 >
-                    👁
+                    <span className="dl-icon"><ImageIcon size={13} /></span>
                 </button>
             )}
         </div>

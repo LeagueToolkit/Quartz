@@ -272,18 +272,26 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
                                 '&:hover': { border: '1px solid var(--accent-primary)', transform: 'translateY(-1px)', boxShadow: '0 2px 8px rgba(0,0,0,.3)' },
                             }}
                             onClick={(event) => {
-                                openColorPicker(event, color.ToHEX(), (hex) => {
+                                const startAlpha = color.vec4?.[3] ?? 1;
+                                // Both the hex commit and the alpha slider mutate stop `idx`.
+                                const patchStop = (mutate: (h: ColorHandler) => void) => {
                                     setPalette((prev) => {
                                         if (!Array.isArray(prev) || !prev[idx]) return prev;
                                         const current = prev[idx];
                                         const next = [...prev];
                                         const updated = new ColorHandler(current?.ToVec4?.() || current?.vec4 || [0.5, 0.5, 0.5, 1]);
-                                        updated.InputHex(hex);
+                                        mutate(updated);
                                         updated.time = current?.time ?? (prev.length === 1 ? 0 : idx / (prev.length - 1));
                                         next[idx] = updated;
                                         return next;
                                     });
-                                });
+                                };
+                                openColorPicker(
+                                    event,
+                                    color.ToHEX(),
+                                    (hex) => patchStop((h) => h.InputHex(hex)),
+                                    { alpha: startAlpha, onAlpha: (a) => patchStop((h) => { h.vec4[3] = a; }) },
+                                );
                             }}
                         />
                     </Tooltip>

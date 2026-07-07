@@ -38,7 +38,6 @@ export interface PaintState {
     expandedMaterials: Set<string>;
     autoExpand: boolean;
     variantFilter: 'all' | 'v1' | 'v2';
-    searchByTexture: boolean;
 
     // Mode + recolor settings
     mode: RecolorModeId;
@@ -86,7 +85,6 @@ export const usePaintStore = create<PaintState>((set) => ({
     expandedMaterials: new Set(),
     autoExpand: true,
     variantFilter: 'all',
-    searchByTexture: false,
 
     mode: 'random',
     palette: defaultPalette(),
@@ -100,8 +98,8 @@ export const usePaintStore = create<PaintState>((set) => ({
     colorTolerance: 30,
 
     targetBC: true,
-    targetOC: false,
-    targetLC: false,
+    targetOC: true,
+    targetLC: true,
     targetBaseColor: true,
 
     blendModeSelect: 0,

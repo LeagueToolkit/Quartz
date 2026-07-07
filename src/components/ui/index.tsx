@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 
+export { DropOverlay, type DropOverlayProps } from './DropOverlay';
+
 export function PageHeader({ icon: Icon, title, subtitle, actions }: {
     icon: LucideIcon;
     title: string;

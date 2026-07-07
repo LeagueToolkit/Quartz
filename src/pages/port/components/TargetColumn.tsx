@@ -1,11 +1,11 @@
 import React, { useCallback, useState } from 'react';
-import SearchIcon from '@mui/icons-material/Search';
 import { FolderOpen as FolderOpenIcon, Scissors as ScissorsIcon } from 'lucide-react';
 import { SearchInput } from './common/Inputs';
 import { useBinFileDrop } from './common/binFileDrop';
 import PortRecentBins from './common/PortRecentBins';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
 import { SkeletonCardList } from '@/components/ui/Skeleton';
+import { DropOverlay } from '@/components/ui';
 import { usePortDropZone, type PortDragPayload } from '../usePortDrag';
 import type { VfxSystem, VfxSystemMap } from '../model';
 import type { ListSharedProps } from './ParticleSystemList/types';
@@ -17,8 +17,6 @@ interface TargetColumnProps extends ListSharedProps {
     processTargetBin: (path: string) => void;
     targetFilterInput: string;
     filterTargetParticles: (v: string) => void;
-    enableTargetEmitterSearch: boolean;
-    setEnableTargetEmitterSearch: (v: boolean) => void;
     sectionStyle: React.CSSProperties;
     isDragOverVfx: boolean;
     handleTargetDropDragOver: (e: React.DragEvent) => void;
@@ -40,9 +38,7 @@ export default function TargetColumn(props: TargetColumnProps) {
         handleOpenTargetBin,
         processTargetBin,
         targetFilterInput,
-        enableTargetEmitterSearch,
         filterTargetParticles,
-        setEnableTargetEmitterSearch,
         sectionStyle,
         isDragOverVfx,
         handleTargetDropDragOver,
@@ -87,38 +83,9 @@ export default function TargetColumn(props: TargetColumnProps) {
             style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative', borderRadius: '8px' }}
             {...fileDrop.handlers}
         >
-            {fileDrop.isOver && (
-                <div
-                    style={{
-                        position: 'absolute',
-                        inset: 0,
-                        zIndex: 30,
-                        pointerEvents: 'none',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
-                        border: '2px dashed var(--accent-primary)',
-                        borderRadius: '8px',
-                        transition: 'all 0.15s ease-out',
-                    }}
-                >
-                    <div
-                        style={{
-                            padding: '10px 16px',
-                            borderRadius: '6px',
-                            border: '1px dashed var(--accent-primary)',
-                            color: 'var(--accent-primary)',
-                            fontFamily: 'var(--font-mono)',
-                            fontSize: '13px',
-                            background: 'color-mix(in oklab, var(--accent-primary) 20%, transparent)',
-                        }}
-                    >
-                        Drop .bin or .py to load as Target
-                    </div>
-                </div>
-            )}
-            {/* One row: open + filter + emitter-search toggle (mirrors Donor). */}
+            {fileDrop.isOver && <DropOverlay label="Drop .bin or .py to load as Target" />}
+            {/* One row: open + filter (mirrors Donor). Emitter + texture search
+               is always on. */}
             <div className="port-toolbar-row">
                 <button
                     className="dl-btn dl-btn--secondary dl-btn--icon"
@@ -128,8 +95,8 @@ export default function TargetColumn(props: TargetColumnProps) {
                 >
                     <FolderOpenIcon size={16} />
                 </button>
-                {/* Filter + emitter-search dim out until a bin is loaded (the open
-                   button stays live so you can still load one). */}
+                {/* Filter dims out until a bin is loaded (the open button stays
+                   live so you can still load one). */}
                 <div
                     className="port-toolbar-filters"
                     style={hasBin ? undefined : { opacity: 0.4, pointerEvents: 'none' }}
@@ -137,7 +104,7 @@ export default function TargetColumn(props: TargetColumnProps) {
                 >
                     <SearchInput
                         initialValue={targetFilterInput}
-                        placeholder={enableTargetEmitterSearch ? 'Filter by Particle or Emitter Name' : 'Filter by Particle Name Only'}
+                        placeholder="Filter by Particle or Emitter"
                         onChange={filterTargetParticles}
                         trailing={
                             <button
@@ -150,13 +117,6 @@ export default function TargetColumn(props: TargetColumnProps) {
                             </button>
                         }
                     />
-                    <button
-                        className={`dl-btn dl-btn--secondary dl-btn--icon${enableTargetEmitterSearch ? ' dl-btn--active' : ''}`}
-                        onClick={() => setEnableTargetEmitterSearch(!enableTargetEmitterSearch)}
-                        title={enableTargetEmitterSearch ? 'Disable emitter search (faster)' : 'Enable emitter search'}
-                    >
-                        <SearchIcon sx={{ fontSize: 16 }} />
-                    </button>
                 </div>
             </div>
 
@@ -183,37 +143,7 @@ export default function TargetColumn(props: TargetColumnProps) {
                 onDragLeave={handleTargetDropDragLeave}
                 onDrop={(e) => processVfxSystemDrop(e, 'target container')}
             >
-                {isDragOverVfx && (
-                    <div
-                        style={{
-                            position: 'absolute',
-                            inset: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            pointerEvents: 'none',
-                            zIndex: 2,
-                            background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)',
-                            border: '2px dashed var(--accent-primary)',
-                            borderRadius: '8px',
-                            transition: 'all 0.15s ease-out',
-                        }}
-                    >
-                        <div
-                            style={{
-                                padding: '10px 16px',
-                                borderRadius: '6px',
-                                border: '1px dashed var(--accent-primary)',
-                                color: 'var(--accent-primary)',
-                                fontFamily: 'var(--font-mono)',
-                                fontSize: '13px',
-                                background: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)',
-                            }}
-                        >
-                            Drop to add VFX system
-                        </div>
-                    </div>
-                )}
+                {isDragOverVfx && <DropOverlay label="Drop to add VFX system" />}
                 {binLoading ? (
                     <SkeletonCardList count={7} />
                 ) : Object.keys(safeTargetSystems).length > 0 ? (

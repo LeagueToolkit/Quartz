@@ -242,6 +242,112 @@ pub fn set_blend_mode(id: SessionId, emitter_key: &str, mode: u8) -> Result<bool
     })
 }
 
+/// Rewrite an emitter's texture path (the `string` node whose current value is
+/// `old_path`). Returns the refreshed model so the edit index picks up the new
+/// path value; `None` if the node could not be located or the value was
+/// unchanged.
+pub fn set_texture(
+    id: SessionId,
+    emitter_key: &str,
+    old_path: &str,
+    new_path: &str,
+) -> Result<Option<VfxModel>> {
+    with_session(id, |s| {
+        let Some(path) = s
+            .index
+            .emitter_textures
+            .get(emitter_key)
+            .and_then(|m| m.get(old_path))
+            .cloned()
+        else {
+            return None;
+        };
+        let frame = s.capture([(path.bin, path.entry)]);
+        let changed = match path.resolve_mut(&mut s.bins) {
+            Some(ritoshark::bin::BinValue::String(v)) => {
+                if v != new_path {
+                    *v = new_path.to_string();
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        };
+        if !changed {
+            return None;
+        }
+        s.dirty_bins([path.bin]);
+        s.push_undo(frame);
+        // The texture string is an index key, so relocate everything.
+        Some(s.reproject())
+    })
+}
+
+/// Set the alpha channel of an emitter color slot, per keyframe, preserving
+/// RGB. `slot` is one of "color" | "birthColor" | "fresnelColor" |
+/// "lingerColor". `alphas` are applied in the model's keyframe order: the
+/// constant (if any) first, then the `values` list in order; extra/missing
+/// entries are ignored. Returns the refreshed model, or `None` if nothing
+/// changed / the slot wasn't found.
+pub fn set_color_alpha(
+    id: SessionId,
+    emitter_key: &str,
+    slot: &str,
+    alphas: &[f32],
+) -> Result<Option<VfxModel>> {
+    let slot = match slot {
+        "color" => model::ColorSlot::Color,
+        "birthColor" => model::ColorSlot::BirthColor,
+        "fresnelColor" => model::ColorSlot::FresnelColor,
+        "lingerColor" => model::ColorSlot::LingerColor,
+        _ => return Ok(None),
+    };
+    with_session(id, |s| {
+        let Some(target) = s
+            .index
+            .emitter_colors
+            .get(emitter_key)
+            .and_then(|slots| slots.get(&slot))
+            .cloned()
+        else {
+            return None;
+        };
+        // All nodes live in the same emitter entry; capture one frame.
+        let entry = target
+            .constant
+            .as_ref()
+            .or_else(|| target.keyframes.first())
+            .map(|p| (p.bin, p.entry));
+        let Some(entry) = entry else { return None };
+        let frame = s.capture([entry]);
+
+        // Node order mirrors color_data_from_target: constant first, then list.
+        let mut nodes: Vec<&model::NodePath> = Vec::new();
+        if let Some(c) = target.constant.as_ref() {
+            nodes.push(c);
+        }
+        nodes.extend(target.keyframes.iter());
+
+        let mut changed = false;
+        for (node, &a) in nodes.iter().zip(alphas.iter()) {
+            let a = a.clamp(0.0, 1.0);
+            if let Some(ritoshark::bin::BinValue::Vec4(v)) = node.resolve_mut(&mut s.bins) {
+                if (v[3] - a).abs() > f32::EPSILON {
+                    v[3] = a;
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            return None;
+        }
+        s.dirty_bins([entry.0]);
+        s.push_undo(frame);
+        Some(s.reproject())
+    })
+}
+
 /// Undo the last mutating edit. Returns the refreshed model, or `None` if the
 /// undo stack was empty.
 pub fn undo(id: SessionId) -> Result<Option<VfxModel>> {

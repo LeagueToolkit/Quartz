@@ -777,8 +777,35 @@ pub async fn bnk_scan_mod_folder(
             }
         };
 
-        // Bin selection: prefer skin-matching bins.
-        let bins: Vec<&PathBuf> = all.iter().filter(|p| lower(p).ends_with(".bin")).collect();
+        // Bin selection: score paths to prefer the most "standard" BIN location
+        // (data/characters/skins), then prefer skin-matching bins. Mirrors the old
+        // Quartz modAutoProcessor scoring.
+        let mut bins: Vec<&PathBuf> = all.iter().filter(|p| lower(p).ends_with(".bin")).collect();
+        let bin_score = |p: &Path| -> i32 {
+            let l = lower(p);
+            let mut score = 0;
+            if l.contains("data") {
+                score += 1;
+            }
+            if l.contains("characters") {
+                score += 2;
+            }
+            if l.contains("skins") {
+                score += 2;
+            }
+            if l.contains("\\data\\") || l.contains("/data/") {
+                score += 1;
+            }
+            if l.contains("\\skins\\") || l.contains("/skins/") {
+                score += 1;
+            }
+            if l.contains("\\characters\\") || l.contains("/characters/") {
+                score += 1;
+            }
+            score
+        };
+        // Highest score first (stable so ties keep discovery order).
+        bins.sort_by(|a, b| bin_score(b).cmp(&bin_score(a)));
         let selected_bin = bins
             .iter()
             .find(|p| skin_matches(p))
@@ -803,7 +830,9 @@ pub async fn bnk_scan_mod_folder(
             .iter()
             .filter(|p| {
                 let l = lower(p);
-                l.ends_with("_audio.bnk") || l.ends_with(".wpk") || l.contains("audio")
+                l.ends_with("_audio.bnk")
+                    || l.ends_with(".wpk")
+                    || (l.contains("audio") && !l.contains("events"))
             })
             .map(|p| **p)
             .collect();
@@ -817,25 +846,37 @@ pub async fn bnk_scan_mod_folder(
             audio_files
         };
 
+        // Resolve the events .bnk paired with an audio bank. Mirrors old Quartz's
+        // four rules, in order: _audio.bnk→_events.bnk, .wpk→_events.bnk, the
+        // substring "audio"→"events", then any _events.bnk in the same directory.
         let find_events = |audio: &Path| -> String {
             let low = lower(audio);
-            let target = if low.ends_with("_audio.bnk") {
-                Some(format!("{}_events.bnk", &low[..low.len() - 10]))
-            } else if low.ends_with(".wpk") {
-                Some(format!("{}_events.bnk", &low[..low.len() - 4]))
-            } else if low.ends_with(".bnk") {
-                Some(format!("{}_events.bnk", &low[..low.len() - 4]))
-            } else {
-                None
+            let find_exact = |t: &str| -> Option<String> {
+                relevant
+                    .iter()
+                    .find(|p| lower(p) == t)
+                    .map(|p| p.to_string_lossy().to_string())
             };
-            if let Some(t) = target {
-                for p in &relevant {
-                    if lower(p) == t {
-                        return p.to_string_lossy().to_string();
-                    }
+
+            // Rule 1: _audio.bnk → _events.bnk
+            if low.ends_with("_audio.bnk") {
+                if let Some(f) = find_exact(&format!("{}_events.bnk", &low[..low.len() - 10])) {
+                    return f;
                 }
             }
-            // Any _events.bnk in the same directory.
+            // Rule 2: .wpk → _events.bnk
+            if low.ends_with(".wpk") {
+                if let Some(f) = find_exact(&format!("{}_events.bnk", &low[..low.len() - 4])) {
+                    return f;
+                }
+            }
+            // Rule 3: replace the first "audio" with "events"
+            if low.contains("audio") {
+                if let Some(f) = find_exact(&low.replacen("audio", "events", 1)) {
+                    return f;
+                }
+            }
+            // Rule 4: any _events.bnk in the same directory.
             if let Some(dir) = audio.parent() {
                 for p in &relevant {
                     if p.parent() == Some(dir) && lower(p).ends_with("_events.bnk") {
@@ -851,15 +892,44 @@ pub async fn bnk_scan_mod_folder(
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
 
+        // Determine a set's type (VO / SFX / distinctive dir name), matching old
+        // Quartz. Used by the caller to name the loaded tree "<folder>_<TYPE>".
+        let detect_type = |audio: &Path| -> Option<String> {
+            let l = lower(audio);
+            if l.contains("\\vo\\") || l.contains("/vo/") || l.contains("_vo") {
+                return Some("VO".to_string());
+            }
+            if l.contains("\\sfx\\") || l.contains("/sfx/") || l.contains("_sfx") {
+                return Some("SFX".to_string());
+            }
+            if let Some(dir) = audio.parent() {
+                if let Some(dir_name) = dir.file_name() {
+                    let dn = dir_name.to_string_lossy();
+                    let dl = dn.to_lowercase();
+                    if dl != "skins" && dl != "sounds" {
+                        return Some(dn.to_uppercase());
+                    }
+                }
+            }
+            None
+        };
+
+        // Keep only sets whose audio file is non-empty (> 150 bytes of header
+        // overhead), matching the old Quartz isNonEmpty filter.
+        let is_non_empty = |p: &Path| -> bool {
+            std::fs::metadata(p).map(|m| m.len() > 150).unwrap_or(false)
+        };
+
         let sets: Vec<ModFileSet> = audio_files
             .iter()
+            .filter(|audio| is_non_empty(audio))
             .map(|audio| {
                 let events = find_events(audio);
                 ModFileSet {
                     audio: audio.to_string_lossy().to_string(),
                     events,
                     bin: selected_bin.clone(),
-                    r#type: None,
+                    r#type: detect_type(audio),
                     mod_folder_name: folder_name.clone(),
                 }
             })

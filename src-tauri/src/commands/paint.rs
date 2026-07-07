@@ -165,6 +165,32 @@ pub async fn paint_set_material_param(
     .map_err(|e| e.to_string())
 }
 
+/// Rewrite an emitter's texture path. `old_path` is the texture's current value
+/// (identifies the node); `new_path` replaces it. Returns the refreshed model,
+/// or null if the node wasn't found / value unchanged.
+#[tauri::command]
+pub async fn paint_set_texture(
+    session_id: u64,
+    emitter_key: String,
+    old_path: String,
+    new_path: String,
+) -> Result<Option<VfxModel>, String> {
+    session::set_texture(session_id, &emitter_key, &old_path, &new_path).map_err(|e| e.to_string())
+}
+
+/// Set the per-keyframe alpha of an emitter color slot (color / birthColor /
+/// fresnelColor / lingerColor), preserving RGB. Returns the refreshed model, or
+/// null if nothing changed / the slot wasn't found.
+#[tauri::command]
+pub async fn paint_set_color_alpha(
+    session_id: u64,
+    emitter_key: String,
+    slot: String,
+    alphas: Vec<f32>,
+) -> Result<Option<VfxModel>, String> {
+    session::set_color_alpha(session_id, &emitter_key, &slot, &alphas).map_err(|e| e.to_string())
+}
+
 /// Undo the last edit. Returns the refreshed model, or null if nothing to undo.
 #[tauri::command]
 pub async fn paint_undo(session_id: u64) -> Result<Option<VfxModel>, String> {

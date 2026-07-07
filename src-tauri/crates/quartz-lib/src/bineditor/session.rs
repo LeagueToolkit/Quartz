@@ -350,6 +350,108 @@ fn insert_field(fields: &mut IndexMap<u32, BinValue>, key: &str, val: BinValue) 
     Ok(())
 }
 
+/// Move a field/element up (`delta < 0`) or down (`delta > 0`) within its
+/// parent struct/list by `|delta|` positions, clamped to the container bounds.
+/// Struct fields reorder via `IndexMap::move_index`; list items via a `Vec`
+/// shift. Returns the fresh projection. A no-op move (already at the edge)
+/// still succeeds without pushing an undo frame.
+pub fn move_node(id: SessionId, path: &NodePath, delta: i32) -> Result<EditorModel> {
+    with_session(id, |s| -> Result<EditorModel> {
+        let frame = match s.bins.get(path.bin) {
+            Some(lb) => UndoFrame::capture(&lb.tree, [path.entry]),
+            None => return Err(Error::InvalidInput("Path no longer resolves".to_string())),
+        };
+        // A failed/no-op move never mutates, so there is nothing to swap back.
+        let moved = move_impl(&mut s.bins, path, delta)?;
+        if moved {
+            if let Some(lb) = s.bins.get_mut(path.bin) {
+                lb.dirty = true;
+            }
+            s.push_undo(MultiUndoFrame {
+                parts: vec![(path.bin, frame)],
+            });
+        }
+        Ok(project::project_all(&s.bins))
+    })?
+}
+
+/// Returns `true` if a reorder actually happened (`false` for an edge no-op).
+fn move_impl(bins: &mut [LoadedBin], path: &NodePath, delta: i32) -> Result<bool> {
+    let Some((last, parent_steps)) = path.steps.split_last() else {
+        return Err(Error::InvalidInput(
+            "Cannot move a top-level entry".to_string(),
+        ));
+    };
+    let parent = NodePath {
+        bin: path.bin,
+        entry: path.entry,
+        steps: parent_steps.to_vec(),
+    };
+
+    match last {
+        Step::Field { field } => {
+            let fields = if parent.steps.is_empty() {
+                &mut bins
+                    .get_mut(path.bin)
+                    .and_then(|lb| lb.tree.entries.get_mut(path.entry))
+                    .ok_or_else(|| Error::InvalidInput("Path no longer resolves".to_string()))?
+                    .fields
+            } else {
+                match parent.resolve_mut(bins) {
+                    Some(BinValue::Embed { fields, .. })
+                    | Some(BinValue::Pointer { fields, .. }) => fields,
+                    Some(other) => {
+                        return Err(Error::InvalidInput(format!(
+                            "Parent is a {}, not a struct",
+                            value::bintype_tag(other.ty())
+                        )))
+                    }
+                    None => return Err(Error::InvalidInput("Path no longer resolves".to_string())),
+                }
+            };
+            let from = fields
+                .get_index_of(field)
+                .ok_or_else(|| Error::InvalidInput(format!("Field 0x{:08x} not found", field)))?;
+            let to = clamp_target(from, delta, fields.len());
+            if to == from {
+                return Ok(false);
+            }
+            fields.move_index(from, to);
+            Ok(true)
+        }
+        Step::Index { index } => match parent.resolve_mut(bins) {
+            Some(BinValue::List { items, .. }) => {
+                if *index >= items.len() {
+                    return Err(Error::InvalidInput(format!(
+                        "Index {} out of bounds (list has {} items)",
+                        index,
+                        items.len()
+                    )));
+                }
+                let to = clamp_target(*index, delta, items.len());
+                if to == *index {
+                    return Ok(false);
+                }
+                let item = items.remove(*index);
+                items.insert(to, item);
+                Ok(true)
+            }
+            Some(other) => Err(Error::InvalidInput(format!(
+                "Parent is a {}, not a list",
+                value::bintype_tag(other.ty())
+            ))),
+            None => Err(Error::InvalidInput("Path no longer resolves".to_string())),
+        },
+    }
+}
+
+/// Clamp `from + delta` into `[0, len - 1]` (len is always >= 1 here since the
+/// node itself resolved).
+fn clamp_target(from: usize, delta: i32, len: usize) -> usize {
+    let target = from as i64 + delta as i64;
+    target.clamp(0, len as i64 - 1) as usize
+}
+
 /// Remove a field from its parent struct or splice an element out of its
 /// parent list. Returns the fresh projection.
 pub fn remove(id: SessionId, path: &NodePath) -> Result<EditorModel> {

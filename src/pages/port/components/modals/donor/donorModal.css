@@ -170,3 +170,20 @@
 }
 .donor-progress--error { color: var(--color-danger); }
 .donor-progress--info { color: var(--accent-primary); }
+
+/* Banks-mode option row (VO/SFX toggles + status), replacing the donor prefix
+   field. Sits between the modal head and the champion/skin columns. */
+.donor-banks-opts {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--border);
+}
+.donor-banks-opts__hint {
+    margin-left: auto;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+}

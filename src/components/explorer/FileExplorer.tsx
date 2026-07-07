@@ -80,6 +80,8 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     const pruneRecents = useExplorerStore((s) => s.pruneRecents);
 
     const [search, setSearch] = useState('');
+    // Tracks the folder the current search applies to, so navigating away clears it.
+    const lastSearchPath = useRef<string | null>(null);
     const [selected, setSelected] = useState<string | null>(null); // entry.name
     const [multi, setMulti] = useState<Set<string>>(new Set()); // entry.path, files mode
     const [saveName, setSaveName] = useState('');
@@ -100,6 +102,7 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     useEffect(() => {
         if (!open) return;
         setSearch(''); setSelected(null); setMulti(new Set()); setCtx(null); setFilterIdx(0);
+        lastSearchPath.current = null; // fresh session: don't clear on the boot navigation
         void pruneRecents();
         (async () => {
             const start = options.defaultPath;
@@ -125,6 +128,18 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     useEffect(() => {
         if (open && nav.currentPath) setLastFolder(nav.currentPath);
     }, [open, nav.currentPath, setLastFolder]);
+
+    // Clear the search when the folder changes, so opening a result (or any
+    // navigation) drops back to the plain folder listing instead of keeping the
+    // now-stale query. Skips the first path seen so it doesn't wipe a search the
+    // user is still typing in the current folder.
+    useEffect(() => {
+        if (!nav.currentPath) return;
+        if (lastSearchPath.current !== null && lastSearchPath.current !== nav.currentPath) {
+            setSearch('');
+        }
+        lastSearchPath.current = nav.currentPath;
+    }, [nav.currentPath]);
 
     // Re-list the current folder when the active filter changes (skip the very
     // first render, which the boot effect already handles).

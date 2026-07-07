@@ -194,6 +194,12 @@ export function binEditorRemove(sessionId: number, path: NodePath): Promise<Edit
     return invokeCommand<EditorModel>('bin_editor_remove', { sessionId, path });
 }
 
+/** Move a field/list element up (delta < 0) or down (delta > 0) within its
+ *  parent by |delta| positions (clamped to bounds). Returns the refreshed model. */
+export function binEditorMove(sessionId: number, path: NodePath, delta: number): Promise<EditorModel> {
+    return invokeCommand<EditorModel>('bin_editor_move', { sessionId, path, delta });
+}
+
 /** Undo/redo response: entry-granular edits return only the re-projected
  *  systems they touched; whole-tree frames (restore) return a full model. */
 export type BinEditorUndoResult =

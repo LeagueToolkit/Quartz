@@ -92,6 +92,20 @@ pub async fn bin_editor_remove(session_id: u64, path: NodePath) -> Result<Editor
         .map_err(|e| e.to_string())
 }
 
+/// Move a field/list element up (`delta < 0`) or down (`delta > 0`) within its
+/// parent by `|delta|` positions (clamped). Returns the fresh projection.
+#[tauri::command]
+pub async fn bin_editor_move(
+    session_id: u64,
+    path: NodePath,
+    delta: i32,
+) -> Result<EditorModel, String> {
+    tokio::task::spawn_blocking(move || session::move_node(session_id, &path, delta))
+        .await
+        .map_err(|e| format!("Move task failed to join: {}", e))?
+        .map_err(|e| e.to_string())
+}
+
 /// A `(bin, entry)` address the frontend uses to reconcile a partial refresh.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

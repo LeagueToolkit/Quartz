@@ -18,3 +18,12 @@ export interface DonorConfirmArgs {
     skin: { id: number; name: string; tilePath?: string | null };
     portingPrefix: string;
 }
+
+/* Confirm payload for the modal's "banks" mode (BNK Extract → load sound banks
+   from game): one champion, many skins, plus which bank types to pull. */
+export interface BanksConfirmArgs {
+    champion: { id: string; name: string; alias?: string };
+    skinIds: number[];
+    includeVoiceover: boolean;
+    includeSfx: boolean;
+}

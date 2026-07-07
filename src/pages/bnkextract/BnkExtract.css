@@ -16,14 +16,13 @@
     overflow: hidden;
 }
 
+/* Container-less pane (Port-style): no bordered box / margin — the layout,
+   divider, and drag highlight come from the component's sx. */
 .bnk-extract-tree {
     flex: 1;
-    overflow: auto;
+    min-width: 0;
+    overflow: hidden;
     background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    margin: 1.25rem;
-    padding: 0.75rem;
 }
 
 .bnk-extract-tree::-webkit-scrollbar {
@@ -363,4 +362,45 @@
     background: var(--bg-tertiary);
     border-color: var(--border);
     cursor: not-allowed;
+}
+
+/* ── Filter toolbar (Port-style: SearchInput + trailing sort toggle) ────────── */
+.bnk-toolbar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    flex: none;
+}
+/* SearchInput's trailing-control wrapper + slot (mirrors Port.css so the toggle
+   pins inside the field's right edge without pulling in Port's stylesheet). */
+.bnk-toolbar-row .port-search-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
+.bnk-toolbar-row .port-search-trailing {
+    position: absolute;
+    top: 50%;
+    right: 5px;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+}
+.bnk-search-sort {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: var(--radius-sm, 6px);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.bnk-search-sort:hover {
+    background: color-mix(in oklab, var(--accent-primary) 12%, transparent);
+    color: var(--text-secondary);
+}
+.bnk-search-sort.is-active {
+    background: color-mix(in oklab, var(--accent-primary) 16%, transparent);
+    color: var(--accent-primary);
 }

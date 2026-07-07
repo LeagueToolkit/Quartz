@@ -23,6 +23,7 @@ import {
     vfxPersistentRemove,
     vfxResolverUpsert,
     vfxRenameEmitter,
+    vfxSetTexture,
     vfxRenameSystem,
     type VfxPath,
     type VfxPortModel,
@@ -39,6 +40,7 @@ import {
     availableSystemsFromModel,
     buildPersistentPayload,
     type VfxSystem,
+    type VfxEmitter,
     type AvailableVfxSystem,
     type BoneConfig,
     type PersistentCondition,
@@ -119,11 +121,6 @@ export default function usePort() {
     // Filters
     const [targetFilter, setTargetFilter] = useState('');
     const [donorFilter, setDonorFilter] = useState('');
-    // Emitter search on by default: the filter box matches particle AND emitter
-    // names, and hides non-matching emitters within each system.
-    const [enableTargetEmitterSearch, setEnableTargetEmitterSearch] = useState(true);
-    const [enableDonorEmitterSearch, setEnableDonorEmitterSearch] = useState(true);
-
     // Modal / UI state
     const [actionsMenuAnchor, setActionsMenuAnchor] = useState<{ element: HTMLElement; systemKey: string } | null>(null);
     const [showNamePromptModal, setShowNamePromptModal] = useState(false);
@@ -266,6 +263,18 @@ export default function usePort() {
         setCanRedo(false);
     }, []);
 
+    /* Rewrite a texture path on an emitter (target or donor session). */
+    const handleSetTexture = useCallback(
+        async (emitter: VfxEmitter, isTarget: boolean, oldPath: string, newPath: string) => {
+            const sid = isTarget ? targetSessionId : donorSessionId;
+            if (sid === null) return;
+            const model = await vfxSetTexture(sid, emitter.path, oldPath, newPath);
+            if (isTarget) applyTargetModel(model);
+            else setDonorModel(model);
+        },
+        [targetSessionId, donorSessionId, applyTargetModel]
+    );
+
     const findTargetSystem = useCallback(
         (systemKey: string): VfxSystem | null => targetSystems[systemKey] ?? null,
         [targetSystems]
@@ -375,38 +384,41 @@ export default function usePort() {
         });
     }, []);
 
-    // Filtered systems
-    const filteredTargetSystems = useMemo(() => {
-        if (!targetFilter) return targetSystemList;
-        const term = targetFilter.toLowerCase();
-        return targetSystemList
-            .map((sys) => {
-                const sysName = (sys.particleName || sys.name || sys.key || '').toLowerCase();
-                if (sysName.includes(term)) return sys;
-                if (enableTargetEmitterSearch && sys.emitters) {
-                    const matching = sys.emitters.filter((e) => (e.name || '').toLowerCase().includes(term));
-                    if (matching.length > 0) return { ...sys, emitters: matching };
-                }
-                return null;
-            })
-            .filter((s): s is VfxSystem => s !== null);
-    }, [targetSystemList, targetFilter, enableTargetEmitterSearch]);
+    // Filtered systems.
+    // Ability/variant tokens like "_Q", "_Q_", "_w_", "_R" are system-naming
+    // conventions (e.g. Katarina_Skin12_Q_mis) — for those we match SYSTEM names
+    // only, since matching emitters just adds noise. Any other term also matches
+    // emitters (by name or texture), narrowing each system to its hits.
+    const isSystemOnlyTerm = (term: string) => /^_[a-z](_)?$/i.test(term.trim());
+    const emitterMatchesTerm = (e: VfxSystem['emitters'][number], term: string): boolean =>
+        (e.name || '').toLowerCase().includes(term) ||
+        (e.textures || []).some((t) => t.toLowerCase().includes(term));
 
-    const filteredDonorSystems = useMemo(() => {
-        if (!donorFilter) return donorSystemList;
-        const term = donorFilter.toLowerCase();
-        return donorSystemList
+    const filterSystems = (list: VfxSystem[], rawTerm: string): VfxSystem[] => {
+        if (!rawTerm) return list;
+        const term = rawTerm.toLowerCase();
+        const systemOnly = isSystemOnlyTerm(rawTerm);
+        return list
             .map((sys) => {
                 const sysName = (sys.particleName || sys.name || sys.key || '').toLowerCase();
                 if (sysName.includes(term)) return sys;
-                if (enableDonorEmitterSearch && sys.emitters) {
-                    const matching = sys.emitters.filter((e) => (e.name || '').toLowerCase().includes(term));
+                if (!systemOnly && sys.emitters) {
+                    const matching = sys.emitters.filter((e) => emitterMatchesTerm(e, term));
                     if (matching.length > 0) return { ...sys, emitters: matching };
                 }
                 return null;
             })
             .filter((s): s is VfxSystem => s !== null);
-    }, [donorSystemList, donorFilter, enableDonorEmitterSearch]);
+    };
+
+    const filteredTargetSystems = useMemo(
+        () => filterSystems(targetSystemList, targetFilter),
+        [targetSystemList, targetFilter]
+    );
+    const filteredDonorSystems = useMemo(
+        () => filterSystems(donorSystemList, donorFilter),
+        [donorSystemList, donorFilter]
+    );
 
     // ── File loading ──
     const processTargetBin = useCallback(async (filePath: string) => {
@@ -1348,14 +1360,11 @@ export default function usePort() {
         isPortAllLoading,
         hasResourceResolver,
         hasSkinCharacterData,
+        handleSetTexture,
         targetFilter,
         donorFilter,
         setTargetFilter,
         setDonorFilter,
-        enableTargetEmitterSearch,
-        setEnableTargetEmitterSearch,
-        enableDonorEmitterSearch,
-        setEnableDonorEmitterSearch,
         actionsMenuAnchor,
         setActionsMenuAnchor,
         showNamePromptModal,

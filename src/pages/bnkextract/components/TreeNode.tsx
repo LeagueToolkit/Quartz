@@ -126,6 +126,7 @@ const TreeNode = React.memo<TreeNodeProps>(({
     return (
         <Box>
             <Box
+                data-node-id={node.id}
                 draggable={isAudioFile || hasChildren}
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}

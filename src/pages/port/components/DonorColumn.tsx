@@ -1,6 +1,5 @@
 import React, { useCallback } from 'react';
 import { Tooltip } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
 import { FolderOpen as FolderOpenIcon, Github, Scissors as ScissorsIcon } from 'lucide-react';
 import { SearchInput } from './common/Inputs';
@@ -8,6 +7,7 @@ import { useBinFileDrop } from './common/binFileDrop';
 import PortRecentBins from './common/PortRecentBins';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
 import { SkeletonCardList } from '@/components/ui/Skeleton';
+import { DropOverlay } from '@/components/ui';
 import type { VfxSystem, VfxSystemMap } from '../model';
 import type { ListSharedProps } from './ParticleSystemList/types';
 
@@ -20,8 +20,6 @@ interface DonorColumnProps extends ListSharedProps {
     handleOpenHub: () => void;
     donorFilterInput: string;
     filterDonorParticles: (v: string) => void;
-    enableDonorEmitterSearch: boolean;
-    setEnableDonorEmitterSearch: (v: boolean) => void;
     sectionStyle: React.CSSProperties;
     donorSystems: VfxSystemMap;
     donorListRef: React.RefObject<HTMLDivElement>;
@@ -39,9 +37,7 @@ export default function DonorColumn(props: DonorColumnProps) {
         handleOpenDonorFromGame,
         handleOpenHub,
         donorFilterInput,
-        enableDonorEmitterSearch,
         filterDonorParticles,
-        setEnableDonorEmitterSearch,
         sectionStyle,
         donorSystems,
         donorListRef,
@@ -60,37 +56,7 @@ export default function DonorColumn(props: DonorColumnProps) {
 
     return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }} {...fileDrop.handlers}>
-            {fileDrop.isOver && (
-                <div
-                    style={{
-                        position: 'absolute',
-                        inset: 0,
-                        zIndex: 30,
-                        pointerEvents: 'none',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: 'color-mix(in oklab, var(--accent-secondary) 12%, transparent)',
-                        border: '2px dashed var(--accent-secondary)',
-                        borderRadius: '8px',
-                        transition: 'all 0.15s ease-out',
-                    }}
-                >
-                    <div
-                        style={{
-                            padding: '10px 16px',
-                            borderRadius: '6px',
-                            border: '1px dashed var(--accent-secondary)',
-                            color: 'var(--accent-secondary)',
-                            fontFamily: 'var(--font-mono)',
-                            fontSize: '13px',
-                            background: 'color-mix(in oklab, var(--accent-secondary) 20%, transparent)',
-                        }}
-                    >
-                        Drop .bin or .py to load as Donor
-                    </div>
-                </div>
-            )}
+            {fileDrop.isOver && <DropOverlay accent="secondary" label="Drop .bin or .py to load as Donor" />}
             {/* One row: open · search · vfxhub · load-from-game · emitter toggle. */}
             <div className="port-toolbar-row">
                 <button
@@ -109,7 +75,7 @@ export default function DonorColumn(props: DonorColumnProps) {
                 >
                     <SearchInput
                         initialValue={donorFilterInput}
-                        placeholder={enableDonorEmitterSearch ? 'Filter by Particle or Emitter Name' : 'Filter by Particle Name Only'}
+                        placeholder="Filter by Particle or Emitter"
                         onChange={filterDonorParticles}
                         trailing={
                             <button
@@ -148,15 +114,6 @@ export default function DonorColumn(props: DonorColumnProps) {
                         </button>
                     </span>
                 </Tooltip>
-                <div style={hasBin ? undefined : { opacity: 0.4, pointerEvents: 'none' }} aria-disabled={!hasBin}>
-                    <button
-                        className={`dl-btn dl-btn--secondary dl-btn--icon${enableDonorEmitterSearch ? ' dl-btn--active' : ''}`}
-                        onClick={() => setEnableDonorEmitterSearch(!enableDonorEmitterSearch)}
-                        title={enableDonorEmitterSearch ? 'Disable emitter search (faster)' : 'Enable emitter search'}
-                    >
-                        <SearchIcon sx={{ fontSize: 16 }} />
-                    </button>
-                </div>
             </div>
 
             <div

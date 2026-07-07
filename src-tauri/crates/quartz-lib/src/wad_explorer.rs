@@ -6,10 +6,12 @@
 //! resolution. Parsed archives live in a process-global mount registry so the
 //! frontend can navigate without re-parsing on every click.
 //!
-//! `rs_wad::Wad` reads the whole data section into memory on open; chunk reads
-//! and extraction then decompress straight out of that buffer with no extra
-//! disk I/O. Bulk hash resolution mirrors the rest of the codebase: one
-//! parallel LMDB sweep over every chunk hash, hex fallback for misses.
+//! Archives are mounted TOC-only (`Wad::from_reader_toc`): the header and chunk
+//! table are parsed, but the (often hundreds of MB) data section is never
+//! buffered. Chunk reads and extraction seek to each chunk's offset and pull
+//! only its bytes, so a mount costs a few KB plus its resolved-path table. Bulk
+//! hash resolution mirrors the rest of the codebase: one parallel LMDB sweep
+//! over every chunk hash, hex fallback for misses.
 
 use crate::error::{Error, Result};
 use crate::hash::{get_hash_dir, get_wad_env, resolve_hashes_lmdb_bulk};
@@ -206,9 +208,13 @@ fn collect_wads(
 /// every chunk hash, and register it. Returns the new [`MountId`].
 pub fn mount(path: impl Into<PathBuf>) -> Result<MountId> {
     let path: PathBuf = path.into();
+    // TOC-only mount: parse the header + chunk table but never buffer the (often
+    // hundreds of MB) data section. Chunk reads and extraction seek to each
+    // chunk's offset on demand, so a mounted archive costs a few KB of RAM plus
+    // its resolved-path table, not the whole file.
     let file = std::fs::File::open(&path).map_err(|e| Error::io_with_path(e, &path))?;
     let mut reader = std::io::BufReader::new(file);
-    let wad = Wad::from_reader(&mut reader)
+    let wad = Wad::from_reader_toc(&mut reader)
         .map_err(|e| Error::wad_with_path(e.to_string(), &path))?;
 
     let resolved = resolve_all(&wad.chunks);
@@ -329,36 +335,38 @@ pub fn parse_path_hash(hex: &str) -> Result<u64> {
 }
 
 /// Decompress a single chunk from the WAD at `wad_path`, addressed by its
-/// path hash. Re-uses an existing mount when one is open on the same file
-/// (no re-read of the 100s-of-MB data section); otherwise opens the WAD
-/// fresh. Intended for the preview pane. Heavy enough (multi-MB textures)
-/// to warrant the caller running it on a blocking pool.
+/// path hash. Re-uses an existing mount's parsed TOC when one is open on the
+/// same file (skips re-parsing the chunk table); either way the chunk is read
+/// by seeking to its offset, never buffering the whole data section. Intended
+/// for the preview pane. Heavy enough (multi-MB textures) to warrant the caller
+/// running it on a blocking pool.
 pub fn read_chunk(wad_path: &str, path_hash: u64) -> Result<Vec<u8>> {
-    // Fast path: a mount already holds this file's data section in memory.
-    let from_mount = {
+    // Reuse a live mount's parsed TOC when possible; else parse the TOC fresh.
+    // Either way we only need the chunk record, then we seek its bytes out of a
+    // freshly opened reader.
+    let chunk = {
         let reg = registry().read();
-        reg.values()
+        match reg
+            .values()
             .find(|m| m.path.as_os_str() == Path::new(wad_path).as_os_str())
-            .and_then(|m| {
-                m.wad
-                    .chunk_by_hash(path_hash)
-                    .map(|c| m.wad.chunk_data(c))
-            })
+        {
+            Some(m) => m.wad.chunk_by_hash(path_hash).copied(),
+            None => None,
+        }
     };
-    if let Some(res) = from_mount {
-        return res.map_err(|e| Error::wad_with_path(e.to_string(), wad_path));
-    }
 
-    // Slow path: open the WAD just for this read.
     let file = std::fs::File::open(wad_path).map_err(|e| Error::io_with_path(e, wad_path))?;
     let mut reader = std::io::BufReader::new(file);
-    let wad = Wad::from_reader(&mut reader)
+    let wad = Wad::from_reader_toc(&mut reader)
         .map_err(|e| Error::wad_with_path(e.to_string(), wad_path))?;
-    let chunk = wad.chunk_by_hash(path_hash).ok_or_else(|| Error::Wad {
-        message: format!("Chunk {:016x} not found in WAD", path_hash),
-        path: Some(PathBuf::from(wad_path)),
-    })?;
-    wad.chunk_data(chunk)
+    let chunk = match chunk {
+        Some(c) => c,
+        None => *wad.chunk_by_hash(path_hash).ok_or_else(|| Error::Wad {
+            message: format!("Chunk {:016x} not found in WAD", path_hash),
+            path: Some(PathBuf::from(wad_path)),
+        })?,
+    };
+    wad.chunk_data_from(&mut reader, &chunk)
         .map_err(|e| Error::wad_with_path(e.to_string(), wad_path))
 }
 
@@ -394,10 +402,10 @@ pub fn extract_selected(
     let selected: HashSet<u64> = hashes.iter().copied().collect();
     let out_dir = Path::new(out_dir);
 
-    // Reuse a live mount's parsed WAD + resolved table when possible; else
-    // open + resolve fresh. We need owned data because the rayon closures
-    // outlive the registry read guard, so we parse our own `Wad` when no
-    // mount matches and clone the resolved paths we need either way.
+    // Reuse a live mount's parsed TOC + resolved table when possible; else parse
+    // the TOC fresh. The `Wad` here is TOC-only (no data section), so cloning it
+    // is cheap; each rayon worker opens its own reader and seeks to the chunks it
+    // writes, so nothing buffers the whole archive.
     let wp = Path::new(wad_path);
     let (wad, plan): (Wad, Vec<PlanEntry>) = {
         let reg = registry().read();
@@ -414,7 +422,7 @@ pub fn extract_selected(
                 let file =
                     std::fs::File::open(wad_path).map_err(|e| Error::io_with_path(e, wad_path))?;
                 let mut reader = std::io::BufReader::new(file);
-                let wad = Wad::from_reader(&mut reader)
+                let wad = Wad::from_reader_toc(&mut reader)
                     .map_err(|e| Error::wad_with_path(e.to_string(), wad_path))?;
                 let resolved = resolve_all(&wad.chunks);
                 let plan = build_plan(&wad, &resolved, &selected);
@@ -450,7 +458,7 @@ pub fn extract_selected(
     let done = AtomicU64::new(0);
 
     plan.par_iter().for_each(|entry| {
-        match extract_one(&wad, entry, out_dir) {
+        match extract_one(&wad, wad_path, entry, out_dir) {
             Ok(true) => {
                 written.fetch_add(1, Ordering::Relaxed);
             }
@@ -504,12 +512,17 @@ fn build_plan(
 }
 
 /// Returns `Ok(true)` written, `Ok(false)` skipped (e.g. Satellite).
-fn extract_one(wad: &Wad, entry: &PlanEntry, out_dir: &Path) -> Result<bool> {
+///
+/// Opens its own reader on `wad_path` and seeks to this chunk, so parallel
+/// workers never share a reader and no worker buffers the whole data section.
+fn extract_one(wad: &Wad, wad_path: &str, entry: &PlanEntry, out_dir: &Path) -> Result<bool> {
     if matches!(entry.chunk.compression, WadCompression::Satellite) {
         return Ok(false);
     }
+    let file = std::fs::File::open(wad_path).map_err(|e| Error::io_with_path(e, wad_path))?;
+    let mut reader = std::io::BufReader::new(file);
     let data = wad
-        .chunk_data(&entry.chunk)
+        .chunk_data_from(&mut reader, &entry.chunk)
         .map_err(|e| Error::Wad { message: e.to_string(), path: None })?;
 
     let final_path = augment_path_with_extension(&entry.path, &data);

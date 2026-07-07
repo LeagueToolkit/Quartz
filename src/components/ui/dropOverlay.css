@@ -1,0 +1,55 @@
+/* Shared drag-over / drop-target overlay. See DropOverlay.tsx.
+   Colors key off the --drop-accent custom prop the component sets from its
+   `accent` prop, so one stylesheet serves both accent-primary and -secondary. */
+
+.drop-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    transition: all 0.15s ease-out;
+}
+
+/* ── Pill variant (Port columns, Bin Editor v1) ─────────────────────────────── */
+.drop-overlay--pill {
+    background: color-mix(in oklab, var(--drop-accent) 12%, transparent);
+    border: 2px dashed var(--drop-accent);
+    border-radius: 8px;
+}
+.drop-overlay__pill {
+    padding: 10px 16px;
+    border-radius: 6px;
+    border: 1px dashed var(--drop-accent);
+    color: var(--drop-accent);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: color-mix(in oklab, var(--drop-accent) 20%, transparent);
+}
+
+/* ── Scrim variant (Bin Editor v2, Image Recolor full-panel zones) ──────────── */
+.drop-overlay--scrim {
+    inset: 16px;
+    z-index: 100;
+    flex-direction: column;
+    gap: 12px;
+    background: color-mix(in oklab, var(--bg-primary) 85%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 3px dashed var(--drop-accent);
+    border-radius: var(--radius-lg, 16px);
+    animation: drop-overlay-pulse 1.5s ease-in-out infinite;
+}
+.drop-overlay__icon { color: var(--drop-accent); display: flex; }
+.drop-overlay__scrim-label {
+    color: var(--drop-accent);
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+@keyframes drop-overlay-pulse {
+    0%, 100% { border-color: var(--drop-accent); }
+    50% { border-color: color-mix(in oklab, var(--drop-accent) 55%, var(--border)); }
+}

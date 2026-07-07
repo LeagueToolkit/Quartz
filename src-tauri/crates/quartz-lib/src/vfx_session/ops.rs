@@ -555,6 +555,75 @@ pub fn rename_emitter(id: SessionId, emitter: &VfxPath, new_name: &str) -> Resul
     })?
 }
 
+/// Replace the first texture-path `String` in `value`'s subtree whose value
+/// equals `old_path` (case-insensitively) with `new_path`. Returns `true` on a
+/// change. Walk order mirrors `collect_texture_strings` in `project.rs`.
+fn replace_texture_string(value: &mut BinValue, old_path: &str, new_path: &str) -> bool {
+    match value {
+        BinValue::String(s) => {
+            if s.eq_ignore_ascii_case(old_path) {
+                *s = new_path.to_string();
+                true
+            } else {
+                false
+            }
+        }
+        BinValue::List { items, .. } => items
+            .iter_mut()
+            .any(|v| replace_texture_string(v, old_path, new_path)),
+        BinValue::Option {
+            value: Some(inner), ..
+        } => replace_texture_string(inner, old_path, new_path),
+        BinValue::Map { entries, .. } => entries
+            .iter_mut()
+            .any(|(_k, v)| replace_texture_string(v, old_path, new_path)),
+        BinValue::Embed { fields, .. } | BinValue::Pointer { fields, .. } => fields
+            .iter_mut()
+            .any(|(_k, v)| replace_texture_string(v, old_path, new_path)),
+        _ => false,
+    }
+}
+
+/// Rewrite an emitter's texture path. Re-walks the emitter subtree to find the
+/// `String` node whose value is `old_path` (Port projects textures without
+/// retaining their node paths) and overwrites it with `new_path`.
+pub fn set_texture(
+    id: SessionId,
+    emitter: &VfxPath,
+    old_path: &str,
+    new_path: &str,
+) -> Result<VfxPortModel> {
+    let next = new_path.trim().to_string();
+    if next.is_empty() {
+        return Err(Error::InvalidInput("Missing texture path".to_string()));
+    }
+    session::with_session(id, |s| -> Result<VfxPortModel> {
+        {
+            let value = emitter.resolve_mut(&mut s.bins).ok_or_else(|| {
+                Error::InvalidInput("Emitter path no longer resolves".to_string())
+            })?;
+            if !matches!(value, BinValue::Pointer { .. } | BinValue::Embed { .. }) {
+                return Err(Error::InvalidInput(
+                    "Path does not address an emitter".to_string(),
+                ));
+            }
+        }
+        let frame = s.capture(&[(emitter.bin, vec![emitter.entry])]);
+        let changed = emitter
+            .resolve_mut(&mut s.bins)
+            .map(|v| replace_texture_string(v, old_path, &next))
+            .unwrap_or(false);
+        if !changed {
+            return Err(Error::InvalidInput(
+                "Texture path not found on this emitter".to_string(),
+            ));
+        }
+        s.mark_dirty(emitter.bin);
+        s.push_frame(frame);
+        Ok(project::project(s))
+    })?
+}
+
 /// Rename a system: update `particleName`/`particlePath`, recompute the
 /// entry's path hash, and re-point every resolver mapping that targeted the
 /// old hash. The new name is uniquified against every other system.

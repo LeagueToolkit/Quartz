@@ -12,6 +12,7 @@ import {
     type RecolorParams,
 } from './utils/imgRecolorLogic';
 import { useFileDrop } from '@/lib/util/useFileDrop';
+import { DropOverlay } from '@/components/ui';
 import { useNavigationStore } from '@/lib/stores';
 import { thumbnailQueue } from './components/thumbnailQueue';
 import { ImageThumbnail } from './components/ImageThumbnail';
@@ -317,15 +318,18 @@ function ImgRecolor() {
         >
             {/* Drag overlay */}
             {isDragging && (
-                <div className="imgrecolor-drag">
-                    <CloudUploadIcon sx={{ fontSize: '4rem', color: 'var(--accent-primary)', animation: 'imgrecolor-float 2s ease-in-out infinite' }} />
-                    <div style={{ color: 'var(--accent-primary)', fontFamily: 'var(--font-mono)', fontSize: '1.2rem', fontWeight: 600 }}>
-                        Drop images or folder here
-                    </div>
-                    <div style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>
-                        Supports TEX, DDS, PNG, JPG files
-                    </div>
-                </div>
+                <DropOverlay
+                    variant="scrim"
+                    icon={<CloudUploadIcon sx={{ fontSize: '2.5rem' }} />}
+                    label={(
+                        <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                            <span>Drop images or folder here</span>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 400 }}>
+                                Supports TEX, DDS, PNG, JPG files
+                            </span>
+                        </span>
+                    )}
+                />
             )}
 
             {/* Body: adjustments panel (left) + image area (right) */}

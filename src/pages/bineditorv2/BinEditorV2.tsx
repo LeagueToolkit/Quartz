@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { FolderOpen as FolderOpenIcon, Redo2 as RedoIcon, Undo2 as UndoIcon, X as CloseIcon } from 'lucide-react';
 import { useFileExplorer } from '@/components/explorer';
+import { DropOverlay } from '@/components/ui';
 import {
-    binEditorApply, binEditorClose, binEditorInsert, binEditorModel, binEditorOpen,
+    binEditorApply, binEditorClose, binEditorInsert, binEditorModel, binEditorMove, binEditorOpen,
     binEditorRedo, binEditorRemove, binEditorRestore, binEditorSave, binEditorUndo,
     type BinEditorUndoResult, type EditorEmitter, type EditorModel, type EditorNode,
     type EditorSystem, type JsonBinValue, type NodePath,
@@ -13,8 +14,8 @@ import { useFileDrop } from '@/lib/util/useFileDrop';
 import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
 import { Switch } from '@/components/settings/primitives';
 import {
-    cancelTextureHoverClose, removeTextureHoverPreview, scheduleTextureHoverClose, showTextureHoverPreview,
-} from '../paint/components/textureHoverPreview';
+    closeTexturePreview, scheduleTexturePreviewClose, showTexturePreview,
+} from '@/lib/util/texturePreview';
 import SystemSidebar, { systemId } from './components/SystemSidebar';
 import CategoryTabs from './components/CategoryTabs';
 import BulkBar from './components/BulkBar';
@@ -607,6 +608,23 @@ function BinEditorV2() {
         void runStructural({ kind: 'remove', path: node.path }, `Removed ${node.key ?? 'item'}`, [entryKey(node.path.bin, node.path.entry)]);
     }, [runStructural]);
 
+    // Reorder a field/list item up (delta -1) or down (delta +1) in its parent.
+    // Not an insert/remove op, so it calls binEditorMove directly and replaces
+    // the model with the fresh projection (same refresh contract as runStructural).
+    const doMoveNode = useCallback(async (node: EditorNode, delta: number) => {
+        const sid = sessionRef.current;
+        if (sid === null) return;
+        try {
+            const next = await binEditorMove(sid, node.path, delta);
+            setModel(next);
+            markEdited([entryKey(node.path.bin, node.path.entry)]);
+            setStatus(`Moved ${node.key ?? 'item'} ${delta < 0 ? 'up' : 'down'}`);
+        } catch (error) {
+            setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
+            await refetchModel();
+        }
+    }, [markEdited, refetchModel]);
+
     const doAddListItem = useCallback((node: EditorNode) => {
         const op = buildAddListItem(node, defaultListItem(node.itemType));
         if (!op) {
@@ -710,32 +728,20 @@ function BinEditorV2() {
         );
     }, [targetEmitters, activeCategory, runStructural]);
 
-    // ── Texture hover preview (shared Paint panel) ──
-
-    const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // ── Texture hover preview (shared module) ──
 
     const handleTextureHover = useCallback((emitter: EditorEmitter, e: MouseEvent<HTMLButtonElement>) => {
-        const button = e.currentTarget;
-        cancelTextureHoverClose();
-        if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-        hoverTimerRef.current = setTimeout(() => {
-            const textures = collectTextures(emitter);
-            if (textures.length && button) {
-                void showTextureHoverPreview(textures, [], button, filePath ?? '');
-            }
-        }, 200);
+        // The shared module owns the debounce + staleness guard; collectTextures
+        // already returns { path, label }[] (PreviewTexture-compatible).
+        showTexturePreview(collectTextures(emitter), e.currentTarget, filePath ?? '');
     }, [filePath]);
 
     const handleTextureLeave = useCallback(() => {
-        if (hoverTimerRef.current) {
-            clearTimeout(hoverTimerRef.current);
-            hoverTimerRef.current = null;
-        }
-        scheduleTextureHoverClose(500);
+        scheduleTexturePreviewClose(500);
     }, []);
 
     const handleTextureOpen = useCallback(() => {
-        removeTextureHoverPreview();
+        closeTexturePreview();
     }, []);
 
     // ── Render ──
@@ -745,10 +751,7 @@ function BinEditorV2() {
     return (
         <div className="bineditorv2-root">
             {isDragOver && (
-                <div className="bineditorv2-drag">
-                    <FolderOpenIcon size={48} color="var(--accent-primary)" strokeWidth={1.5} />
-                    <div className="bineditorv2-drag__title">Drop the bin here</div>
-                </div>
+                <DropOverlay variant="scrim" label="Drop the bin here" icon={<FolderOpenIcon size={48} strokeWidth={1.5} />} />
             )}
 
             <div className="bineditorv2-body">
@@ -886,8 +889,10 @@ function BinEditorV2() {
                                                 onAddKeyframe={doAddKeyframe}
                                                 onRemoveKeyframe={doRemoveKeyframe}
                                                 onRemoveNode={doRemoveNode}
+                                                onMoveNode={doMoveNode}
                                                 onAddNested={doAddNested}
                                                 onAddListItem={doAddListItem}
+                                                binPath={filePath}
                                             />
                                             );
                                         })}

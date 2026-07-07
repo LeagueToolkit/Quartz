@@ -1,11 +1,16 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Box, Typography, Divider, Slider } from '@mui/material';
 import {
-    Search, Close, SortByAlpha, Download, Upload, VolumeOff, Save, PlayArrow, Stop, VolumeUp, Settings, AutoFixHigh,
+    SortByAlpha, Download, Upload, VolumeOff, Save, PlayArrow, Stop, VolumeUp, Settings, AutoFixHigh, FolderOpen,
 } from '@mui/icons-material';
 import type { SxProps, Theme } from '@mui/material';
 import TreeNode from './TreeNode';
+import PaneLoadBlock from './PaneLoadBlock';
+import BnkAddFilesModal from './BnkAddFilesModal';
+import { SearchInput } from '@/pages/port/components/common/Inputs';
+import { DropOverlay } from '@/components/ui';
 import type { BnkNode, DroppedFile, LastSelected, Pane, SortMode, ViewMode } from '../types';
+import type { PathSet } from '../../BnkExtract';
 
 const ROW_HEIGHT = 30;
 const OVERSCAN = 6;
@@ -126,6 +131,7 @@ interface Props {
     sidebarStyle: SxProps<Theme>;
     viewMode: ViewMode;
     activePane: Pane;
+    setActivePane: (p: Pane) => void;
     leftSearchQuery: string;
     setLeftSearchQuery: (v: string) => void;
     filteredLeftTree: BnkNode[];
@@ -141,6 +147,7 @@ interface Props {
     handleAutoMatchByEventName: () => void;
     handleExternalFileDrop: (files: DroppedFile[], targetId: string, pane: Pane) => void;
     rightPaneDragOver: boolean;
+    leftDragOver: boolean;
     handleRightPaneDragOver: (e: React.DragEvent) => void;
     handleRightPaneDragLeave: (e: React.DragEvent) => void;
     handleRightPaneFileDrop: (e: React.DragEvent) => void;
@@ -167,56 +174,48 @@ interface Props {
     treeData: BnkNode[];
     rightTreeData: BnkNode[];
     setShowSettingsModal: (v: boolean) => void;
-    onLeftPaneFolderDrop: (folderPath: string) => void;
-    stampDropTarget: (target: 'mod-folder' | 'reference') => void;
+    // Per-pane file loading (Port-style empty-state block inside each pane).
+    leftPaths: PathSet;
+    rightPaths: PathSet;
+    onSelectFile: (pane: Pane, kind: keyof PathSet) => void;
+    onSetPath: (pane: Pane, kind: keyof PathSet, value: string) => void;
+    onParse: (pane: Pane) => void;
+    isLoading: boolean;
 }
 
 export default function BnkMainContent(props: Props) {
     const {
         mainContentStyle, treeViewStyle, sidebarStyle,
-        viewMode, activePane,
+        viewMode, activePane, setActivePane,
         leftSearchQuery, setLeftSearchQuery, filteredLeftTree,
         selectedNodes, setSelectedNodes, setLastSelectedId, handleNodeSelect, playAudio,
         handleContextMenu, expandedNodes, handleToggleExpand, handleDropReplace,
         handleAutoMatchByEventName, handleExternalFileDrop,
-        rightPaneDragOver, handleRightPaneDragOver, handleRightPaneDragLeave, handleRightPaneFileDrop,
+        rightPaneDragOver, leftDragOver, handleRightPaneDragOver, handleRightPaneDragLeave, handleRightPaneFileDrop,
         rightSearchQuery, setRightSearchQuery, rightSortMode, setRightSortMode, leftSortMode, setLeftSortMode,
         filteredRightTree, rightSelectedNodes, setRightSelectedNodes, rightExpandedNodes,
         handleExtract, handleReplace, hasAudioSelection, handleMakeSilent, handleSave, hasRootSelection,
         handlePlaySelected, stopAudio, volume, setVolume, treeData, rightTreeData,
-        setShowSettingsModal, stampDropTarget,
+        setShowSettingsModal,
+        leftPaths, rightPaths, onSelectFile, onSetPath, onParse, isLoading,
     } = props;
 
     const treeBorder = treeViewStyle.border as string;
     const treeBackground = treeViewStyle.background as string;
-    const [leftDragOver, setLeftDragOver] = useState(false);
+    // Which pane's "add more files" modal is open (null = closed).
+    const [addFilesPane, setAddFilesPane] = useState<Pane | null>(null);
 
-    const handleLeftDragOver = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.dataTransfer?.types?.includes('Files')) setLeftDragOver(true);
-    }, []);
-
-    const handleLeftDragLeave = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setLeftDragOver(false);
-    }, []);
-
-    /* Tauri delivers dropped directory paths through the webview file-drop event,
-       not the DOM. The DOM drop stamps the main pane as the target so the webview
-       listener can route the real folder path into the auto-extract scan. */
+    /* The OS drag-drop listener in BnkExtract hit-tests the cursor position to
+       both drive the drag-over highlight (leftDragOver/rightPaneDragOver props)
+       and route real dropped paths. The pane DOM drop handlers only preventDefault. */
     const handleLeftDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        setLeftDragOver(false);
-        stampDropTarget('mod-folder');
-    }, [stampDropTarget]);
+    }, []);
 
     const handleRightDrop = useCallback((e: React.DragEvent) => {
-        stampDropTarget('reference');
         handleRightPaneFileDrop?.(e);
-    }, [handleRightPaneFileDrop, stampDropTarget]);
+    }, [handleRightPaneFileDrop]);
 
     const leftRows = useMemo(() => flattenVisibleTree(filteredLeftTree, expandedNodes), [filteredLeftTree, expandedNodes]);
     const rightRows = useMemo(() => flattenVisibleTree(filteredRightTree, rightExpandedNodes), [filteredRightTree, rightExpandedNodes]);
@@ -225,74 +224,84 @@ export default function BnkMainContent(props: Props) {
         <Box className="bnk-extract-main" sx={mainContentStyle}>
             <Box
                 className="bnk-extract-tree"
-                onDragOver={handleLeftDragOver}
-                onDragLeave={handleLeftDragLeave}
                 onDrop={handleLeftDrop}
+                onMouseDownCapture={viewMode === 'split' ? () => setActivePane('left') : undefined}
                 sx={{
                     ...treeViewStyle,
-                    border: leftDragOver
-                        ? '2px dashed var(--accent-primary)'
-                        : (viewMode === 'split' && activePane === 'left' ? '1px solid var(--accent-primary)' : treeBorder),
+                    border: leftDragOver ? '1px dashed var(--accent-primary)' : treeBorder,
                     background: leftDragOver ? 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' : treeBackground,
                     position: 'relative',
                     display: 'flex',
                     flexDirection: 'column',
                     transition: 'border-color 0.15s, background 0.15s',
+                    // Active pane gets an accent top rule so it's obvious which side
+                    // the sidebar actions target.
+                    ...(viewMode === 'split' && activePane === 'left' ? {
+                        boxShadow: 'inset 0 2px 0 0 var(--accent-primary)',
+                    } : {}),
                 }}
             >
-                <Box sx={{ p: 1.25, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 1, minHeight: 56 }}>
-                    <div className="dl-search" style={{ flex: 1 }}>
-                        <span className="dl-icon"><Search sx={{ fontSize: 18 }} /></span>
-                        <input
-                            className="dl-input"
-                            value={leftSearchQuery}
-                            onChange={(e) => setLeftSearchQuery(e.target.value)}
-                            placeholder="Filter left..."
+                {treeData.length === 0 ? (
+                    <PaneLoadBlock
+                        pane="left"
+                        paths={leftPaths}
+                        onSelectFile={onSelectFile}
+                        onSetPath={onSetPath}
+                        onParse={onParse}
+                        isLoading={isLoading}
+                    />
+                ) : (
+                    <>
+                        <div className="bnk-toolbar-row">
+                            <button
+                                className="dl-btn dl-btn--secondary dl-btn--icon"
+                                onClick={() => setAddFilesPane('left')}
+                                title="Add more files to Main bank"
+                            >
+                                <FolderOpen sx={{ fontSize: 16 }} />
+                            </button>
+                            <SearchInput
+                                initialValue={leftSearchQuery}
+                                placeholder="Filter by name"
+                                onChange={setLeftSearchQuery}
+                                trailing={(
+                                    <button
+                                        type="button"
+                                        className={`bnk-search-sort${leftSortMode !== 'none' ? ' is-active' : ''}`}
+                                        onClick={() => setLeftSortMode((prev) => prev === 'none' ? 'name-asc' : (prev === 'name-asc' ? 'name-desc' : 'none'))}
+                                        title={`Sort alphabetically: ${leftSortMode === 'none' ? 'Off' : (leftSortMode === 'name-asc' ? 'A to Z' : 'Z to A')}`}
+                                    >
+                                        <SortByAlpha sx={{ fontSize: 15, transform: leftSortMode === 'name-desc' ? 'scaleY(-1)' : 'none' }} />
+                                    </button>
+                                )}
+                            />
+                        </div>
+
+                        <VirtualTreeList
+                            rows={leftRows}
+                            expandedNodes={expandedNodes}
+                            selectedNodes={selectedNodes}
+                            setSelectedNodes={setSelectedNodes}
+                            setLastSelectedId={setLastSelectedId}
+                            handleNodeSelect={handleNodeSelect}
+                            playAudio={playAudio}
+                            handleContextMenu={handleContextMenu}
+                            handleToggleExpand={handleToggleExpand}
+                            onDropReplace={handleDropReplace}
+                            onExternalFileDrop={handleExternalFileDrop}
+                            pane="left"
+                            emptyText={leftSearchQuery ? 'No matches' : 'Drag & drop a mod folder here'}
                         />
-                    </div>
-                    {leftSearchQuery && (
-                        <button
-                            className="dl-btn dl-btn--icon dl-btn--sm dl-btn--ghost"
-                            onClick={() => setLeftSearchQuery('')}
-                            title="Clear filter"
-                        >
-                            <span className="dl-icon"><Close sx={{ fontSize: 14 }} /></span>
-                        </button>
-                    )}
-                    <button
-                        className={`dl-btn dl-btn--icon dl-btn--sm ${leftSortMode !== 'none' ? 'dl-btn--primary' : 'dl-btn--ghost'}`}
-                        onClick={() => setLeftSortMode((prev) => prev === 'none' ? 'name-asc' : (prev === 'name-asc' ? 'name-desc' : 'none'))}
-                        title={`Sort alphabetically: ${leftSortMode === 'none' ? 'Off' : (leftSortMode === 'name-asc' ? 'A to Z' : 'Z to A')}`}
-                    >
-                        <span className="dl-icon"><SortByAlpha sx={{ fontSize: 16, transform: leftSortMode === 'name-desc' ? 'scaleY(-1)' : 'none' }} /></span>
-                    </button>
-                    {leftSearchQuery && (
-                        <span className="dl-badge">{filteredLeftTree.length}</span>
-                    )}
-                </Box>
-
-                <VirtualTreeList
-                    rows={leftRows}
-                    expandedNodes={expandedNodes}
-                    selectedNodes={selectedNodes}
-                    setSelectedNodes={setSelectedNodes}
-                    setLastSelectedId={setLastSelectedId}
-                    handleNodeSelect={handleNodeSelect}
-                    playAudio={playAudio}
-                    handleContextMenu={handleContextMenu}
-                    handleToggleExpand={handleToggleExpand}
-                    onDropReplace={handleDropReplace}
-                    onExternalFileDrop={handleExternalFileDrop}
-                    pane="left"
-                    emptyText={leftSearchQuery ? 'No matches' : 'Select a .bnk or .wpk file and click "Parse"\nor drag & drop a mod folder here'}
-                />
-
-                {viewMode === 'split' && (
-                    <Box sx={{ position: 'absolute', top: 4, right: 8, zIndex: 5, pointerEvents: 'none' }}>
-                        <Typography sx={{ fontSize: '0.6rem', color: 'var(--accent-primary)', fontWeight: 800, opacity: 0.6 }}>MAIN BANK</Typography>
-                    </Box>
+                    </>
                 )}
+
+                {leftDragOver && <DropOverlay label="Drop a mod folder to load" />}
             </Box>
+
+            {/* Single center divider splitting the two halves (Port-style). */}
+            {viewMode === 'split' && (
+                <Box sx={{ width: '1px', alignSelf: 'stretch', background: 'var(--border)', flexShrink: 0 }} />
+            )}
 
             {viewMode === 'split' && (
                 <Box
@@ -300,73 +309,118 @@ export default function BnkMainContent(props: Props) {
                     onDragOver={handleRightPaneDragOver}
                     onDragLeave={handleRightPaneDragLeave}
                     onDrop={handleRightDrop}
+                    onMouseDownCapture={() => setActivePane('right')}
                     sx={{
                         ...treeViewStyle,
-                        marginLeft: 0,
-                        border: rightPaneDragOver
-                            ? '2px dashed var(--accent-primary)'
-                            : (activePane === 'right' ? '1px solid var(--accent-primary)' : treeBorder),
+                        border: rightPaneDragOver ? '1px dashed var(--accent-primary)' : treeBorder,
                         position: 'relative',
                         display: 'flex',
                         flexDirection: 'column',
                         background: rightPaneDragOver ? 'color-mix(in oklab, var(--accent-primary) 10%, transparent)' : treeBackground,
                         transition: 'all 0.2s ease',
+                        ...(activePane === 'right' ? {
+                            boxShadow: 'inset 0 2px 0 0 var(--accent-primary)',
+                        } : {}),
                     }}
                 >
-                    <Box sx={{ p: 1.25, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 1, minHeight: 56 }}>
-                        <div className="dl-search" style={{ flex: 1 }}>
-                            <span className="dl-icon"><Search sx={{ fontSize: 18 }} /></span>
-                            <input
-                                className="dl-input"
-                                value={rightSearchQuery}
-                                onChange={(e) => setRightSearchQuery(e.target.value)}
-                                placeholder="Filter right..."
+                    {rightTreeData.length === 0 ? (
+                        <PaneLoadBlock
+                            pane="right"
+                            paths={rightPaths}
+                            onSelectFile={onSelectFile}
+                            onSetPath={onSetPath}
+                            onParse={onParse}
+                            isLoading={isLoading}
+                        />
+                    ) : (
+                        <>
+                            <div className="bnk-toolbar-row">
+                                <button
+                                    className="dl-btn dl-btn--secondary dl-btn--icon"
+                                    onClick={() => setAddFilesPane('right')}
+                                    title="Add more files to Reference bank"
+                                >
+                                    <FolderOpen sx={{ fontSize: 16 }} />
+                                </button>
+                                <SearchInput
+                                    initialValue={rightSearchQuery}
+                                    placeholder="Filter by name"
+                                    onChange={setRightSearchQuery}
+                                    trailing={(
+                                        <button
+                                            type="button"
+                                            className={`bnk-search-sort${rightSortMode !== 'none' ? ' is-active' : ''}`}
+                                            onClick={() => setRightSortMode((prev) => prev === 'none' ? 'name-asc' : (prev === 'name-asc' ? 'name-desc' : 'none'))}
+                                            title={`Sort alphabetically: ${rightSortMode === 'none' ? 'Off' : (rightSortMode === 'name-asc' ? 'A to Z' : 'Z to A')}`}
+                                        >
+                                            <SortByAlpha sx={{ fontSize: 15, transform: rightSortMode === 'name-desc' ? 'scaleY(-1)' : 'none' }} />
+                                        </button>
+                                    )}
+                                />
+                            </div>
+
+                            <VirtualTreeList
+                                rows={rightRows}
+                                expandedNodes={rightExpandedNodes}
+                                selectedNodes={rightSelectedNodes}
+                                setSelectedNodes={setRightSelectedNodes}
+                                setLastSelectedId={setLastSelectedId}
+                                handleNodeSelect={handleNodeSelect}
+                                playAudio={playAudio}
+                                handleContextMenu={handleContextMenu}
+                                handleToggleExpand={handleToggleExpand}
+                                onDropReplace={handleDropReplace}
+                                onExternalFileDrop={handleExternalFileDrop}
+                                pane="right"
+                                emptyText={rightSearchQuery ? 'No matches' : 'Drop .wem .wav .mp3 files here, autoconvert or load banks to drag replacement audio'}
                             />
-                        </div>
-                        {rightSearchQuery && (
-                            <button
-                                className="dl-btn dl-btn--icon dl-btn--sm dl-btn--ghost"
-                                onClick={() => setRightSearchQuery('')}
-                                title="Clear filter"
-                            >
-                                <span className="dl-icon"><Close sx={{ fontSize: 14 }} /></span>
-                            </button>
-                        )}
-                        <button
-                            className={`dl-btn dl-btn--icon dl-btn--sm ${rightSortMode !== 'none' ? 'dl-btn--primary' : 'dl-btn--ghost'}`}
-                            onClick={() => setRightSortMode((prev) => prev === 'none' ? 'name-asc' : (prev === 'name-asc' ? 'name-desc' : 'none'))}
-                            title={`Sort alphabetically: ${rightSortMode === 'none' ? 'Off' : (rightSortMode === 'name-asc' ? 'A to Z' : 'Z to A')}`}
-                        >
-                            <span className="dl-icon"><SortByAlpha sx={{ fontSize: 16, transform: rightSortMode === 'name-desc' ? 'scaleY(-1)' : 'none' }} /></span>
-                        </button>
-                        {rightSearchQuery && (
-                            <span className="dl-badge">{filteredRightTree.length}</span>
-                        )}
-                    </Box>
+                        </>
+                    )}
 
-                    <VirtualTreeList
-                        rows={rightRows}
-                        expandedNodes={rightExpandedNodes}
-                        selectedNodes={rightSelectedNodes}
-                        setSelectedNodes={setRightSelectedNodes}
-                        setLastSelectedId={setLastSelectedId}
-                        handleNodeSelect={handleNodeSelect}
-                        playAudio={playAudio}
-                        handleContextMenu={handleContextMenu}
-                        handleToggleExpand={handleToggleExpand}
-                        onDropReplace={handleDropReplace}
-                        onExternalFileDrop={handleExternalFileDrop}
-                        pane="right"
-                        emptyText={rightSearchQuery ? 'No matches' : 'Drop .wem .wav .mp3 files here, autoconvert or load banks to drag replacement audio'}
-                    />
-
-                    <Box sx={{ position: 'absolute', top: 4, right: 8, zIndex: 5, pointerEvents: 'none' }}>
-                        <Typography sx={{ fontSize: '0.6rem', color: 'var(--accent-primary)', fontWeight: 800, opacity: 0.6 }}>REFERENCE BANKS</Typography>
-                    </Box>
+                    {rightPaneDragOver && <DropOverlay label="Drop .wem / .wav / .mp3 to import" />}
                 </Box>
             )}
 
             <Box className="bnk-extract-sidebar" sx={sidebarStyle}>
+                {viewMode === 'split' && (
+                    <Box sx={{
+                        display: 'flex',
+                        p: '3px',
+                        mb: 1,
+                        borderRadius: '6px',
+                        border: '1px solid var(--glass-border)',
+                    }}>
+                        {(['left', 'right'] as const).map((p) => {
+                            const isActive = activePane === p;
+                            return (
+                                <Box
+                                    key={p}
+                                    onClick={() => setActivePane(p)}
+                                    sx={{
+                                        flex: 1,
+                                        textAlign: 'center',
+                                        fontSize: '0.65rem',
+                                        fontFamily: 'var(--font-mono)',
+                                        fontWeight: isActive ? 700 : 'normal',
+                                        letterSpacing: '0.04em',
+                                        py: '5px',
+                                        cursor: 'pointer',
+                                        borderRadius: '4px',
+                                        // Active segment = the translucent "Open Bin" (dl-btn--primary) look.
+                                        background: isActive ? 'color-mix(in oklab, var(--accent-primary) 16%, var(--bg-secondary))' : 'transparent',
+                                        border: isActive ? '1px solid color-mix(in oklab, var(--accent-primary) 45%, var(--border))' : '1px solid transparent',
+                                        color: isActive ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                                        transition: 'all 0.15s ease',
+                                        '&:hover': { color: isActive ? 'var(--accent-primary)' : 'var(--text-primary)' },
+                                    }}
+                                >
+                                    {p === 'left' ? 'MAIN' : 'REFERENCE'}
+                                </Box>
+                            );
+                        })}
+                    </Box>
+                )}
+
                 <button className="dl-btn dl-btn--primary" onClick={handleExtract} disabled={selectedNodes.size === 0}>
                     <span className="dl-icon"><Download sx={{ fontSize: 12 }} /></span>
                     <span>Extract</span>
@@ -438,6 +492,17 @@ export default function BnkMainContent(props: Props) {
                     <span>Settings</span>
                 </button>
             </Box>
+
+            <BnkAddFilesModal
+                open={addFilesPane !== null}
+                pane={addFilesPane ?? 'left'}
+                paths={addFilesPane === 'right' ? rightPaths : leftPaths}
+                isLoading={isLoading}
+                onSelectFile={onSelectFile}
+                onSetPath={onSetPath}
+                onParse={onParse}
+                onClose={() => setAddFilesPane(null)}
+            />
         </Box>
     );
 }

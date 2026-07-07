@@ -111,30 +111,7 @@
 }
 
 /* Drag overlay */
-.imgrecolor-drag {
-    position: absolute;
-    inset: 16px;
-    z-index: 100;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    background: color-mix(in oklab, var(--bg-primary) 85%, transparent);
-    backdrop-filter: blur(8px);
-    border: 3px dashed var(--accent-primary);
-    border-radius: var(--radius-lg);
-    pointer-events: none;
-    animation: imgrecolor-pulse 1.5s ease-in-out infinite;
-}
-@keyframes imgrecolor-pulse {
-    0%, 100% { border-color: var(--accent-primary); }
-    50% { border-color: color-mix(in oklab, var(--accent-primary) 55%, var(--border)); }
-}
-@keyframes imgrecolor-float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
-}
+/* Drag overlay: now the shared <DropOverlay variant="scrim" /> component. */
 @keyframes imgrecolor-toast-in {
     from { transform: translateY(12px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }

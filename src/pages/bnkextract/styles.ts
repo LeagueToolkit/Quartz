@@ -13,21 +13,24 @@ export const containerStyle: SxProps<Theme> = {
 export const mainContentStyle: SxProps<Theme> = {
     display: 'flex',
     flex: 1,
+    gap: '20px',
+    padding: '12px',
     overflow: 'hidden',
     // Transparent so the app background (atmosphere/wallpaper) shows through.
     background: 'transparent',
     borderTop: '1px solid var(--glass-border)',
 };
 
+// Container-less pane (Port-style): the two halves split down the middle with a
+// center divider — no bordered/rounded box, no margin. Drag-over highlight is
+// applied in the component.
 export const treeViewStyle: Record<string, unknown> = {
     flex: 1,
-    overflow: 'auto',
-    // Transparent fill; panels stay legible via their border + radius.
+    minWidth: 0,
+    overflow: 'hidden',
     background: 'transparent',
-    border: '1px solid var(--glass-border)',
-    borderRadius: '10px',
-    margin: '1rem',
-    padding: '0.75rem',
+    border: '1px solid transparent',
+    borderRadius: '8px',
 };
 
 export const sidebarStyle: SxProps<Theme> = {

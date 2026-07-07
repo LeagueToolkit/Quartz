@@ -5,22 +5,27 @@ interface DonorSkinListProps {
     skins: DonorSkin[];
     loading: boolean;
     hasChampion: boolean;
-    selectedSkinId: number | null;
+    /** Ids of the currently-selected skins. Single-select callers pass a 0/1 set. */
+    selectedSkinIds: Set<number>;
     onSelect: (skin: DonorSkin) => void;
     onYouTubeSkin: (skinName: string) => void;
     emptyLabel: string;
+    /** Text on the corner badge shown on selected cards (e.g. "DONOR" / "PICKED"). */
+    badgeLabel?: string;
 }
 
-/* Skin grid for the donor modal. Reuses the Asset Extractor's ae-card grid so
-   the splash-tile cards, hover-lift, and accent-selected state match. */
+/* Skin grid for the load-from-game modal. Reuses the Asset Extractor's ae-card
+   grid so the splash-tile cards, hover-lift, and accent-selected state match.
+   Supports single- or multi-select via `selectedSkinIds`. */
 export default function DonorSkinList({
     skins,
     loading,
     hasChampion,
-    selectedSkinId,
+    selectedSkinIds,
     onSelect,
     onYouTubeSkin,
     emptyLabel,
+    badgeLabel = 'DONOR',
 }: DonorSkinListProps) {
     if (loading) return <div className="donor-cols__main"><div className="donor-empty">Loading skins…</div></div>;
     if (!hasChampion) return <div className="donor-cols__main"><div className="donor-empty">{emptyLabel}</div></div>;
@@ -30,7 +35,7 @@ export default function DonorSkinList({
         <div className="donor-cols__main">
             <div className="ae-grid">
                 {skins.map((skin) => {
-                    const isSelected = selectedSkinId === skin.id;
+                    const isSelected = selectedSkinIds.has(skin.id);
                     // tilePath from getCDragonChampionSkins is already a full CDN URL.
                     const art = skin.tilePath;
                     return (
@@ -51,7 +56,7 @@ export default function DonorSkinList({
 
                                 {isSelected && (
                                     <span className="dl-badge" style={{ position: 'absolute', top: 8, right: 8 }}>
-                                        <span className="dl-badge__dot" />DONOR
+                                        <span className="dl-badge__dot" />{badgeLabel}
                                     </span>
                                 )}
 

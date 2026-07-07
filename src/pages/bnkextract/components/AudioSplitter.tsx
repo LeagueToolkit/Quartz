@@ -16,6 +16,7 @@ import {
     Delete, ZoomIn, ZoomOut, ContentCut, SkipPrevious, VolumeUp, AutoFixHigh, ViewStream, Add,
 } from '@mui/icons-material';
 import { pickPath } from '@/components/explorer';
+import { DropOverlay } from '@/components/ui';
 import { tempDir, join } from '@tauri-apps/api/path';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin, { type Region as WsRegion } from 'wavesurfer.js/dist/plugins/regions.esm.js';
@@ -703,10 +704,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                 )}
 
                 {isDragOver && isReady && (
-                    <Box sx={{ position: 'absolute', inset: 0, zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'color-mix(in oklab, var(--bg-primary) 82%, transparent)', pointerEvents: 'none', flexDirection: 'column', gap: 1 }}>
-                        <ContentCut sx={{ fontSize: 48, color: 'var(--accent-primary)', opacity: 0.8 }} />
-                        <Typography sx={{ fontSize: '0.9rem', color: 'var(--accent-primary)', fontFamily: 'inherit' }}>Drop to replace</Typography>
-                    </Box>
+                    <DropOverlay variant="scrim" label="Drop to replace" icon={<ContentCut sx={{ fontSize: 40 }} />} />
                 )}
 
                 {/* Live waveform surface (wavesurfer.js). */}

@@ -10,15 +10,29 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import './ColorPicker.css';
 
+/** Opt-in alpha support: pass `alpha` (0..1) to render an alpha slider; the
+ *  picker then reports alpha changes through `onAlpha`. Omit for RGB-only. */
+export interface ColorPickerOpts {
+    alpha?: number;
+    onAlpha?: (alpha: number) => void;
+}
+
 interface PickerState {
     anchor: { left: number; top: number; bottom: number; right: number };
     hex: string;
     onCommit: (hex: string) => void;
+    alpha: number | null;
+    onAlpha?: (alpha: number) => void;
 }
 
 let openController: ((s: PickerState | null) => void) | null = null;
 
-export function openColorPicker(event: { currentTarget?: Element | null; target?: EventTarget | null }, initialHex: string, onCommit: (hex: string) => void): void {
+export function openColorPicker(
+    event: { currentTarget?: Element | null; target?: EventTarget | null },
+    initialHex: string,
+    onCommit: (hex: string) => void,
+    opts?: ColorPickerOpts,
+): void {
     const el = (event.currentTarget || event.target) as Element | null;
     const rect = el && 'getBoundingClientRect' in el
         ? (el as Element).getBoundingClientRect()
@@ -27,6 +41,8 @@ export function openColorPicker(event: { currentTarget?: Element | null; target?
         anchor: { left: rect.left, top: rect.top, bottom: rect.bottom, right: rect.right },
         hex: initialHex || '#808080',
         onCommit,
+        alpha: opts?.alpha ?? null,
+        onAlpha: opts?.onAlpha,
     });
 }
 
@@ -79,6 +95,7 @@ export function ColorPickerHost() {
     const [s, setS] = useState(0);
     const [v, setV] = useState(0);
     const [hexText, setHexText] = useState('#808080');
+    const [alpha, setAlpha] = useState(1);
     const rootRef = useRef<HTMLDivElement | null>(null);
     const [pos, setPos] = useState({ left: 0, top: 0 });
 
@@ -88,6 +105,7 @@ export function ColorPickerHost() {
                 const [nh, ns, nv] = hexToHsv(next.hex);
                 setH(nh); setS(ns); setV(nv);
                 setHexText(next.hex);
+                setAlpha(next.alpha ?? 1);
             }
             setState(next);
         };
@@ -143,6 +161,13 @@ export function ColorPickerHost() {
         setH(nh); commit(nh, s, v);
     };
 
+    const handleAlpha = (e: React.MouseEvent | MouseEvent, el: HTMLElement) => {
+        const rect = el.getBoundingClientRect();
+        const na = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        setAlpha(na);
+        state?.onAlpha?.(na);
+    };
+
     const startDrag = (e: React.MouseEvent, el: HTMLElement, handler: (e: MouseEvent | React.MouseEvent, el: HTMLElement) => void) => {
         e.preventDefault();
         handler(e, el);
@@ -167,6 +192,17 @@ export function ColorPickerHost() {
             <div className="pcp-hue" onMouseDown={(e) => startDrag(e, e.currentTarget, handleHue)}>
                 <div className="pcp-hue-thumb" style={{ left: `${(h / 360) * 100}%` }} />
             </div>
+            {state.alpha !== null && (
+                <div
+                    className="pcp-alpha"
+                    onMouseDown={(e) => startDrag(e, e.currentTarget, handleAlpha)}
+                    title={`Alpha: ${alpha.toFixed(2)}`}
+                >
+                    {/* Checkerboard shows through the opacity gradient. */}
+                    <div className="pcp-alpha-track" style={{ background: `linear-gradient(to right, transparent, ${currentHex})` }} />
+                    <div className="pcp-alpha-thumb" style={{ left: `${alpha * 100}%` }} />
+                </div>
+            )}
             <div className="pcp-row">
                 <div className="pcp-swatch" style={{ background: currentHex }} />
                 <input

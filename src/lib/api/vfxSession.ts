@@ -329,6 +329,17 @@ export function vfxRenameEmitter(
     return invokeCommand<VfxPortModel>('vfx_rename_emitter', { sessionId, emitter, newName });
 }
 
+/** Rewrite an emitter's texture path. `oldPath` identifies the node (its
+ *  current value); `newPath` replaces it. */
+export function vfxSetTexture(
+    sessionId: number,
+    emitter: VfxPath,
+    oldPath: string,
+    newPath: string,
+): Promise<VfxPortModel> {
+    return invokeCommand<VfxPortModel>('vfx_set_texture', { sessionId, emitter, oldPath, newPath });
+}
+
 /** Rename a system: particleName/particlePath, path hash, and resolver relink. */
 export function vfxRenameSystem(
     sessionId: number,
