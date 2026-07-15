@@ -9,6 +9,7 @@
   "bundle": {
     "active": true,
     "targets": "nsis",
+    "createUpdaterArtifacts": true,
     "icon": ["icons/icon.ico", "icons/icon.png"],
     "resources": [
       "resources/wallpapers/*",
@@ -31,7 +32,7 @@
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ3RDYxQzFBNjI2ODYwM0IKUldRN1lHaGlHaHpXMTNGU1lnWVBTN3VBYjFaRmZNSzN1UzFtS3NKMmh6V20xNzkrOFJmZ2xaVDYK",
       "windows": {
-        "installMode": "passive"
+        "installMode": "quiet"
       }
     }
   },
@@ -39,16 +40,33 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "Quartz",
         "width": 1280,
         "height": 720,
         "minWidth": 1100,
         "minHeight": 720,
+        "center": true,
         "dragDropEnabled": true,
         "resizable": true,
         "fullscreen": false,
-        "visible": true,
+        "visible": false,
         "decorations": false
+      },
+      {
+        "label": "updater",
+        "url": "/updater.html",
+        "title": "Quartz Startup",
+        "width": 500,
+        "height": 400,
+        "center": true,
+        "decorations": false,
+        "shadow": true,
+        "transparent": false,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": true
       }
     ],
     "security": {

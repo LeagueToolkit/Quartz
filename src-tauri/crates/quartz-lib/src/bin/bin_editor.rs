@@ -670,7 +670,10 @@ fn build_new_path_with(original: &str, folder_segments: &str, basename: &str) ->
         .iter()
         .position(|p| p.eq_ignore_ascii_case("assets"))?;
     let assets_literal = parts[i];
-    Some(format!("{}/{}/{}", assets_literal, folder_segments, basename))
+    Some(format!(
+        "{}/{}/{}",
+        assets_literal, folder_segments, basename
+    ))
 }
 
 /// Ensure a unique basename within a single consolidation run, suffixing
@@ -725,7 +728,11 @@ pub fn consolidate_assets_repath(
 /// `<ASSETS>/<folder_segments>/` under `project_dir`, rewrite the strings, and
 /// save the BIN. VFX-exclusive paths only — anything also referenced by a
 /// non-VFX entry is left in place so meshes keep their textures.
-fn consolidate_assets_core(bin_path: &Path, project_dir: &Path, folder_segments: &str) -> Result<ConsolidateResult> {
+fn consolidate_assets_core(
+    bin_path: &Path,
+    project_dir: &Path,
+    folder_segments: &str,
+) -> Result<ConsolidateResult> {
     let vfx_class = fnv1a_lower("VfxSystemDefinitionData");
 
     let data = std::fs::read(bin_path).map_err(|e| Error::io_with_path(e, bin_path))?;
@@ -794,9 +801,7 @@ fn consolidate_assets_core(bin_path: &Path, project_dir: &Path, folder_segments:
     // that same base — NOT a canonicalized form, which on Windows gains a
     // `\\?\` verbatim prefix that a freshly-joined (non-existent) dst lacks,
     // making `starts_with` spuriously false.
-    let is_inside = |p: &Path| -> bool {
-        p != project_dir && p.starts_with(project_dir)
-    };
+    let is_inside = |p: &Path| -> bool { p != project_dir && p.starts_with(project_dir) };
 
     // Only rewrite strings for files that actually ended up at the destination.
     // A string whose source file can't be found must NOT be rewritten, or the
@@ -830,10 +835,12 @@ fn consolidate_assets_core(bin_path: &Path, project_dir: &Path, folder_segments:
         } else {
             match std::fs::rename(&src, &dst) {
                 Ok(_) => true,
-                Err(_) => std::fs::copy(&src, &dst).is_ok() && {
-                    let _ = std::fs::remove_file(&src);
-                    true
-                },
+                Err(_) => {
+                    std::fs::copy(&src, &dst).is_ok() && {
+                        let _ = std::fs::remove_file(&src);
+                        true
+                    }
+                }
             }
         };
         if ok {

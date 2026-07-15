@@ -23,9 +23,50 @@ export interface WriteVariantBinsResult {
     variant2SystemCount: number;
 }
 
+export interface VariantAssetMapping {
+    original: string;
+    repathed: string;
+    filename: string;
+}
+
+export interface VariantAssetMappings {
+    variant1: VariantAssetMapping[];
+    variant2: VariantAssetMapping[];
+}
+
+export interface CopyVariantAssetsResult {
+    success: boolean;
+    copiedFiles: { source: string; dest: string; filename: string }[];
+    skippedFiles: string[];
+    failedFiles: string[];
+    variant1Path: string;
+    variant2Path: string;
+    message: string;
+}
+
 /** Copy bundled screen.dds / screen.scb into <project>/assets/togglescreen. */
 export function fakegearCopyToggleScreenAssets(binPath: string): Promise<CopyAssetsResult> {
     return invokeCommand<CopyAssetsResult>('fakegear_copy_togglescreen_assets', { binPath });
+}
+
+/** Copy repathed VFX assets into FakeGear's variant folders. */
+export function fakegearCopyVariantAssets(
+    binPath: string,
+    assetMappings: VariantAssetMappings,
+    variant1Folder: string,
+    variant2Folder: string,
+): Promise<CopyVariantAssetsResult> {
+    return invokeCommand<CopyVariantAssetsResult>('fakegear_copy_variant_assets', {
+        binPath,
+        assetMappings,
+        variant1Folder,
+        variant2Folder,
+    });
+}
+
+/** Create the adjacent binary backup used by the original FakeGear save flow. */
+export function fakegearBackupBin(binPath: string): Promise<string> {
+    return invokeCommand<string>('fakegear_backup_bin', { binPath });
 }
 
 /** Add a MinimalMesh submesh to the mod .skn and read the true SKL bone count. */

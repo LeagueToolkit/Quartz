@@ -5,8 +5,9 @@ back in its original format. The heavy lifting lives in
 camelCase shapes the frontend consumes. */
 
 use quartz_lib::bineditor::project::{EditorModel, EditorSystem};
-use quartz_lib::bineditor::session::{self, EditOp, UndoOutcome};
+use quartz_lib::bineditor::session::{self, EditOp, StructuralEdit, UndoOutcome};
 use quartz_lib::bineditor::{JsonBinValue, NodePath};
+use quartz_lib::vfx_session::construct::ChildParams;
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -42,6 +43,41 @@ pub async fn bin_editor_model(session_id: u64) -> Result<EditorModel, String> {
     tokio::task::spawn_blocking(move || session::model_of(session_id))
         .await
         .map_err(|e| format!("Model task failed to join: {}", e))?
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn bin_editor_create_system(
+    session_id: u64,
+    name: String,
+) -> Result<EditorModel, String> {
+    tokio::task::spawn_blocking(move || session::create_vfx_system(session_id, &name))
+        .await
+        .map_err(|e| format!("Create system task failed to join: {}", e))?
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn bin_editor_add_emitter(
+    session_id: u64,
+    system: NodePath,
+    name: String,
+) -> Result<EditorModel, String> {
+    tokio::task::spawn_blocking(move || session::add_vfx_emitter(session_id, &system, &name))
+        .await
+        .map_err(|e| format!("Add emitter task failed to join: {}", e))?
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn bin_editor_add_child(
+    session_id: u64,
+    system: NodePath,
+    params: ChildParams,
+) -> Result<EditorModel, String> {
+    tokio::task::spawn_blocking(move || session::add_child_emitter(session_id, &system, &params))
+        .await
+        .map_err(|e| format!("Add child task failed to join: {}", e))?
         .map_err(|e| e.to_string())
 }
 
@@ -81,6 +117,17 @@ pub async fn bin_editor_insert(
     .await
     .map_err(|e| format!("Insert task failed to join: {}", e))?
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn bin_editor_structural(
+    session_id: u64,
+    edits: Vec<StructuralEdit>,
+) -> Result<EditorModel, String> {
+    tokio::task::spawn_blocking(move || session::structural_batch(session_id, &edits))
+        .await
+        .map_err(|e| format!("Structural edit task failed to join: {}", e))?
+        .map_err(|e| e.to_string())
 }
 
 /// Remove a field or list element. Returns the fresh projection.

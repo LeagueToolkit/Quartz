@@ -250,7 +250,9 @@ function FieldRowInner(props: FieldRowProps) {
         const { dynamics, times, values } = dynamicsLists(node);
         const animated = isAnimated(node) && !!values;
         const primary = cv ?? values?.children?.[0] ?? null;
-        const canDyn = depth === 0 && canAnimate(node) && (onAnimate || onDeanimate);
+        // Nested Value* fields (textureMult UV controls, erosion drive/mixer,
+        // trail definitions, etc.) are first-class animated values too.
+        const canDyn = canAnimate(node) && (onAnimate || onDeanimate);
         const extraDynChildren = (dynamics?.children ?? []).filter(
             (c) => !sameKey(c.key, 'times') && !sameKey(c.key, 'values'),
         );
@@ -338,7 +340,11 @@ function FieldRowInner(props: FieldRowProps) {
                     )}
                     {kind === 'struct' && onAddNested && (
                         <span onClick={(e) => e.stopPropagation()}>
-                            <GenericFieldMenu onAdd={(entry) => onAddNested(node, entry)} />
+                            <GenericFieldMenu
+                                className={node.className}
+                                present={kids.map((child) => child.key)}
+                                onAdd={(entry) => onAddNested(node, entry)}
+                            />
                         </span>
                     )}
                     {rowActions}

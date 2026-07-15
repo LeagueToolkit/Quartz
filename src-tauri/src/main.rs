@@ -4,10 +4,11 @@
 mod cli_convert;
 mod commands;
 mod core;
+mod startup;
 mod state;
 
 use commands::settings::{get_quartz_home, initialize_app_home};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 fn main() {
@@ -39,11 +40,33 @@ fn main() {
     tracing::info!("Quartz starting...");
 
     tauri::Builder::default()
+        // Must be first: a second Windows shell launch forwards its model path
+        // into the existing process, focuses it, then exits.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            let startup_pending = app
+                .try_state::<startup::StartupGate>()
+                .map(|gate| !gate.is_resolved())
+                .unwrap_or(false);
+            if startup_pending {
+                if let Some(window) = app.get_webview_window("updater") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            } else if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            if let Some(path) = commands::system::model_path_from_args(&args) {
+                let _ = app.emit("model-inspect-launch", path);
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(startup::StartupGate::default())
         .manage(commands::upscale::UpscaleState::default())
         .setup(|app| {
             if let Err(e) = initialize_app_home() {
@@ -53,10 +76,32 @@ fn main() {
             if let Ok(resource_dir) = app.path().resource_dir() {
                 commands::assets::seed_bundled_assets(&resource_dir);
             }
+
+            if let Some(updater) = app.get_webview_window("updater") {
+                let handle = app.handle().clone();
+                updater.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        let resolved = handle
+                            .try_state::<startup::StartupGate>()
+                            .map(|gate| gate.is_resolved())
+                            .unwrap_or(false);
+                        if !resolved {
+                            api.prevent_close();
+                            handle.exit(0);
+                        }
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            startup::startup_window_ready,
+            startup::startup_main_ready,
+            startup::startup_continue,
+            startup::startup_install_update,
             commands::system::get_app_info,
+            commands::system::get_startup_model_path,
+            commands::jade::jade_open,
             commands::settings::get_app_home,
             commands::settings::get_settings,
             commands::settings::save_settings,
@@ -99,6 +144,8 @@ fn main() {
             commands::wad::wad_read_chunk,
             commands::wad::wad_extract_chunks,
             commands::fakegear::fakegear_copy_togglescreen_assets,
+            commands::fakegear::fakegear_copy_variant_assets,
+            commands::fakegear::fakegear_backup_bin,
             commands::fakegear::fakegear_process_minimal_mesh,
             commands::fakegear::fakegear_validate_anm,
             commands::fakegear::fakegear_write_variant_bins,
@@ -122,8 +169,12 @@ fn main() {
             commands::bineditor::bin_editor_open,
             commands::bineditor::bin_editor_close,
             commands::bineditor::bin_editor_model,
+            commands::bineditor::bin_editor_create_system,
+            commands::bineditor::bin_editor_add_emitter,
+            commands::bineditor::bin_editor_add_child,
             commands::bineditor::bin_editor_apply,
             commands::bineditor::bin_editor_insert,
+            commands::bineditor::bin_editor_structural,
             commands::bineditor::bin_editor_remove,
             commands::bineditor::bin_editor_move,
             commands::bineditor::bin_editor_undo,
@@ -174,6 +225,7 @@ fn main() {
             commands::audio::wwise_check,
             commands::audio::wwise_install,
             commands::audio::audio_convert_to_wem,
+            commands::audio::audio_convert_wavs_to_wem,
             commands::audio::audio_decode_to_wav,
             commands::audio::audio_amplify_wem,
             commands::audio::bnk_scan_mod_folder,
@@ -203,6 +255,7 @@ fn main() {
             commands::explorer::explorer_new_folder,
             commands::explorer::explorer_reveal,
             commands::explorer::explorer_thumbnail,
+            commands::model_inspect::model_inspect_load,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Quartz");

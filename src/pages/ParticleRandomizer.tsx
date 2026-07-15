@@ -15,7 +15,12 @@ import {
     Lock, CheckSquare, Square, Eye, ChevronsDown, ChevronsUp,
 } from 'lucide-react';
 import { useFileExplorer } from '@/components/explorer';
-import { readBin, writeBin } from '@/lib/api';
+import { BinOpenLanding, DropOverlay } from '@/components/ui';
+import { backupCreate, readBin, writeBin } from '@/lib/api';
+import { useUiPrefsStore } from '@/lib/stores';
+import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
+import { useFileDrop } from '@/lib/util/useFileDrop';
+import { useJadeBin } from '@/lib/jade/jadeInterop';
 
 import { parseVfxFile, type ParsedFile, type Emitter } from './particlerandomizer/parser';
 import {
@@ -28,9 +33,14 @@ type StatusType = '' | 'success' | 'error';
 
 export function ParticleRandomizer() {
     const pick = useFileExplorer();
+    const storedRecentBins = useUiPrefsStore((s) => s.recentBins);
+    const removeRecentBin = useUiPrefsStore((s) => s.removeRecentBin);
+    const recentBins = useExistingRecentBins(storedRecentBins, removeRecentBin);
     // File state
     const [pyContent, setPyContent] = useState('');
+    const [originalContent, setOriginalContent] = useState('');
     const [binPath, setBinPath] = useState<string | null>(null);
+    useJadeBin(binPath);
     const [generatedContent, setGeneratedContent] = useState('');
     const [parsedFile, setParsedFile] = useState<ParsedFile | null>(null);
 
@@ -55,6 +65,7 @@ export function ParticleRandomizer() {
     const [statusType, setStatusType] = useState<StatusType>('');
     const [canSave, setCanSave] = useState(false);
     const [canCopyAssets, setCanCopyAssets] = useState(false);
+    const [isDragOver, setIsDragOver] = useState(false);
 
     // Keep prefix/asset-folder arrays in sync with numCopies
     useEffect(() => {
@@ -117,12 +128,22 @@ export function ParticleRandomizer() {
             setIsLoading(true);
             setLoadingText('Reading & parsing .bin file...');
 
-            setBinPath(filePath);
-
             // read_bin converts the .bin to ritobin text on the backend.
             const content = await readBin(filePath);
+            const parsed = parseVfxFile(content);
 
+            // Legacy Particle Randomizer snapshots the converted text as soon
+            // as a BIN is loaded. Duplicate-content suppression keeps the save
+            // pass from creating a redundant second backup.
+            try {
+                await backupCreate(filePath, content, 'ParticleRandomizer');
+            } catch {
+                // Backups are best effort, matching backupManager.js.
+            }
+
+            setBinPath(filePath);
             setPyContent(content);
+            setOriginalContent(content);
             setGeneratedContent('');
             setCanSave(false);
             setCanCopyAssets(false);
@@ -131,7 +152,6 @@ export function ParticleRandomizer() {
             setSelectedSystems(new Set());
             setSearchQuery('');
 
-            const parsed = parseVfxFile(content);
             setParsedFile(parsed);
 
             // Expand all systems by default
@@ -144,6 +164,7 @@ export function ParticleRandomizer() {
             } else {
                 setStatus('File loaded but no VFX systems found', 'error');
             }
+            useUiPrefsStore.getState().pushRecentBin(filePath);
         } catch (error) {
             console.error('Load error:', error);
             setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
@@ -160,10 +181,22 @@ export function ParticleRandomizer() {
                 { name: 'Bin Files', extensions: ['bin'] },
                 { name: 'All Files', extensions: ['*'] },
             ],
+            recentsKey: 'bin',
         });
         if (typeof result !== 'string') return;
         await processFile(result);
     }, [processFile, pick]);
+
+    useFileDrop({
+        onEnter: () => setIsDragOver(true),
+        onOver: () => setIsDragOver(true),
+        onLeave: () => setIsDragOver(false),
+        onDrop: (paths) => {
+            setIsDragOver(false);
+            const file = paths.find((path) => /\.bin$/i.test(path));
+            if (file) void processFile(file);
+        },
+    });
 
     // ── Selection ──
     const toggleEmitter = useCallback((emitterKey: string, systemKey?: string) => {
@@ -332,26 +365,21 @@ export function ParticleRandomizer() {
         if (!generatedContent || !binPath) { setStatus('Nothing to save', 'error'); return; }
         try {
             setIsLoading(true);
-            setLoadingText('Saving modified .bin...');
+            setLoadingText('Creating backup...');
 
-            const out = await pick({
-                mode: 'save',
-                defaultPath: binPath,
-                filters: [{ name: 'Bin Files', extensions: ['bin'] }],
-                recentsKey: 'bin',
-            });
-            if (typeof out !== 'string') {
-                setIsLoading(false);
-                setLoadingText('');
-                return;
+            try {
+                await backupCreate(binPath, originalContent, 'ParticleRandomizer');
+            } catch {
+                // Keep save available if the backup folder is not writable.
             }
 
             // write_bin converts the ritobin text back to a .bin.
-            await writeBin(generatedContent, out);
+            setLoadingText('Saving modified .bin...');
+            await writeBin(generatedContent, binPath);
 
-            setStatus('Saved successfully!', 'success');
-            setBinPath(out);
+            setStatus('Saved successfully! Backup created in zbackups/', 'success');
             setPyContent(generatedContent);
+            setOriginalContent(generatedContent);
             setGeneratedContent('');
             setCanSave(false);
         } catch (error) {
@@ -360,7 +388,7 @@ export function ParticleRandomizer() {
             setIsLoading(false);
             setLoadingText('');
         }
-    }, [generatedContent, binPath, setStatus, pick]);
+    }, [generatedContent, originalContent, binPath, setStatus]);
 
     // ── Copy Assets ──
     const handleCopyAssets = useCallback(async () => {
@@ -397,6 +425,14 @@ export function ParticleRandomizer() {
 
     return (
         <div className="particle-randomizer">
+            {isDragOver && (
+                <DropOverlay
+                    variant="scrim"
+                    label="Drop the BIN here"
+                    icon={<FolderOpen size={48} strokeWidth={1.5} />}
+                />
+            )}
+
             {isLoading && (
                 <div className="pr-spinner-overlay">
                     <div className="pr-spinner" />
@@ -404,13 +440,9 @@ export function ParticleRandomizer() {
                 </div>
             )}
 
-            {/* ── Floating top-right Load button ── */}
-            <button className="dl-btn dl-btn--sm dl-btn--primary pr-load-floating" onClick={loadBinFile}>
-                <span className="dl-icon"><FolderOpen size={13} /></span> Load .bin
-            </button>
-
             {/* ── Main Content ── */}
-            <div className="pr-main">
+            <div className="pr-workspace-shell">
+            <div className={`pr-main${binPath ? '' : ' is-dim'}`}>
 
                 {/* ── Left Panel: VFX Tree ── */}
                 <div className="pr-left-panel">
@@ -698,32 +730,58 @@ export function ParticleRandomizer() {
                     </div>
 
                     {/* ── Action Bar ── */}
-                    <div className="pr-action-bar">
-                        <button
-                            className="dl-btn dl-btn--primary"
-                            onClick={handleGenerate}
-                            disabled={!pyContent || (selected.size === 0 && selectedSystems.size === 0)}
-                        >
-                            <span className="dl-icon"><Dices size={15} /></span> Randomize
-                        </button>
-                        <button
-                            className="dl-btn dl-btn--secondary"
-                            onClick={handleSave}
-                            disabled={!canSave}
-                        >
-                            <span className="dl-icon"><Save size={15} /></span> Save
-                        </button>
-                        {canCopyAssets && (
-                            <button className="dl-btn dl-btn--secondary" onClick={handleCopyAssets}>
-                                <span className="dl-icon"><FolderOpen size={15} /></span> Copy Assets to Folders
-                            </button>
-                        )}
-                        {statusMessage && (
-                            <span className={`pr-action-status ${statusType}`}>{statusMessage}</span>
-                        )}
-                    </div>
                 </div>
             </div>
+
+            {!binPath && (
+                <BinOpenLanding
+                    recentBins={recentBins}
+                    busy={isLoading}
+                    dragActive={isDragOver}
+                    onOpen={() => void loadBinFile()}
+                    onOpenRecent={(path) => void processFile(path)}
+                    onRemoveRecent={removeRecentBin}
+                />
+            )}
+            </div>
+
+            <footer className="pr-action-bar">
+                {binPath && (
+                    <button
+                        type="button"
+                        className="dl-btn dl-btn--primary dl-btn--sm dl-btn--icon"
+                        title="Open Bin"
+                        onClick={loadBinFile}
+                        disabled={isLoading}
+                    >
+                        <span className="dl-icon"><FolderOpen size={15} /></span>
+                    </button>
+                )}
+                {statusMessage && (
+                    <span className={`pr-action-status ${statusType}`}>{statusMessage}</span>
+                )}
+                <div className="pr-action-bar__actions">
+                    <button
+                        className="dl-btn dl-btn--primary dl-btn--sm"
+                        onClick={handleGenerate}
+                        disabled={!pyContent || (selected.size === 0 && selectedSystems.size === 0)}
+                    >
+                        <span className="dl-icon"><Dices size={15} /></span> Randomize
+                    </button>
+                    <button
+                        className="dl-btn dl-btn--secondary dl-btn--sm"
+                        onClick={handleSave}
+                        disabled={!canSave}
+                    >
+                        <span className="dl-icon"><Save size={15} /></span> Save
+                    </button>
+                    {canCopyAssets && (
+                        <button className="dl-btn dl-btn--secondary dl-btn--sm" onClick={handleCopyAssets}>
+                            <span className="dl-icon"><FolderOpen size={15} /></span> Copy Assets to Folders
+                        </button>
+                    )}
+                </div>
+            </footer>
         </div>
     );
 }

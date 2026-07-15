@@ -15,6 +15,7 @@ pub mod hash;
 pub mod linked_bins;
 pub mod mesh;
 pub mod model_bridge;
+pub mod model_preview;
 pub mod paint;
 pub mod port_donor;
 pub mod pyntex;

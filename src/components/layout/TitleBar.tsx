@@ -7,6 +7,7 @@ import { log } from '@/lib/util/logger';
 import { visibleNavItems, SETTINGS_ITEM, type NavItem } from './NavRail';
 import { CommunityPopover } from './CommunityPopover';
 import { useFileExplorer } from '@/components/explorer';
+import { requestOpenCurrentBinInJade } from '@/lib/jade/jadeInterop';
 
 const win = getCurrentWindow();
 
@@ -17,14 +18,20 @@ interface TitleBarProps {
 
 export function TitleBar({ collapsed = false }: TitleBarProps) {
     const setPage = useNavigationStore((s) => s.setPage);
+    const jadeInteropEnabled = useUiPrefsStore((s) => s.communicateWithJade);
     const pick = useFileExplorer();
     const communityRef = useRef<HTMLButtonElement>(null);
     const [communityOpen, setCommunityOpen] = useState(false);
     // Standalone browse: reopens at the last-visited folder (no defaultPath).
-    const openExplorer = () => { void pick({ mode: 'file' }); };
+    const openExplorer = () => { void pick({ mode: 'browse', title: 'Asset Explorer' }); };
     const minimize = () => win.minimize().catch((e) => log.error('minimize', e));
     const maximize = () => win.toggleMaximize().catch((e) => log.error('maximize', e));
     const close = () => win.close().catch((e) => log.error('close', e));
+    const openJade = () => {
+        void requestOpenCurrentBinInJade().catch((error) => {
+            window.alert(error instanceof Error ? error.message : String(error));
+        });
+    };
 
     return (
         <header className="q-titlebar shrink-0">
@@ -41,6 +48,16 @@ export function TitleBar({ collapsed = false }: TitleBarProps) {
             </div>
             <div className="q-titlebar-right">
                 <div className="q-topnav-settings" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+                    <button
+                        type="button"
+                        className="q-topnavbtn q-jade-launch"
+                        data-tip={jadeInteropEnabled ? 'Open in Jade' : 'Jade communication is disabled'}
+                        title={jadeInteropEnabled ? 'Open in Jade' : 'Enable Jade communication in Settings > External Tools'}
+                        disabled={!jadeInteropEnabled}
+                        onClick={openJade}
+                    >
+                        <img src="/jade.webp" alt="Jade" className="q-jade-logo" />
+                    </button>
                     <button
                         type="button"
                         className="q-topnavbtn"

@@ -36,7 +36,9 @@ fn replace_in_value(value: &mut BinValue, re: &Regex, replacement: &str) -> usiz
                 count += replace_in_value(v, re, replacement);
             }
         }
-        BinValue::Option { value: Some(inner), .. } => {
+        BinValue::Option {
+            value: Some(inner), ..
+        } => {
             count += replace_in_value(inner, re, replacement);
         }
         BinValue::Map { entries, .. } => {
@@ -67,10 +69,22 @@ fn write_bin_any(bin: &ritoshark::bin::Bin) -> Result<Vec<u8>> {
     write_bin(bin).map_err(|e| Error::InvalidInput(format!("Failed to write BIN: {}", e)))
 }
 
-fn rename_bin_prefix(content_base: &Path, re: &Regex, replacement: &str, result: &mut RenameResult) -> Result<()> {
-    for entry in WalkDir::new(content_base).into_iter().filter_map(|e| e.ok()) {
+fn rename_bin_prefix(
+    content_base: &Path,
+    re: &Regex,
+    replacement: &str,
+    result: &mut RenameResult,
+) -> Result<()> {
+    for entry in WalkDir::new(content_base)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         let path = entry.path();
-        if !path.extension().map(|e| e.eq_ignore_ascii_case("bin")).unwrap_or(false) {
+        if !path
+            .extension()
+            .map(|e| e.eq_ignore_ascii_case("bin"))
+            .unwrap_or(false)
+        {
             continue;
         }
         let data = match fs::read(path) {
@@ -80,7 +94,9 @@ fn rename_bin_prefix(content_base: &Path, re: &Regex, replacement: &str, result:
         let mut bin = match read_bin_any(&data) {
             Ok(v) => v,
             Err(_) => {
-                result.skipped_bins.push(path.to_string_lossy().into_owned());
+                result
+                    .skipped_bins
+                    .push(path.to_string_lossy().into_owned());
                 continue;
             }
         };
@@ -104,9 +120,17 @@ fn rename_bin_prefix(content_base: &Path, re: &Regex, replacement: &str, result:
 
 /// Renames any directory matching `.../ASSETS/<creator>/<old_seg>` (creator
 /// optional) to sibling `<new_seg>`.
-fn rename_asset_folders(content_base: &Path, dir_re: &Regex, new_seg: &str, result: &mut RenameResult) -> Result<()> {
+fn rename_asset_folders(
+    content_base: &Path,
+    dir_re: &Regex,
+    new_seg: &str,
+    result: &mut RenameResult,
+) -> Result<()> {
     let mut candidates: Vec<PathBuf> = Vec::new();
-    for entry in WalkDir::new(content_base).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(content_base)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         if !entry.file_type().is_dir() {
             continue;
         }
@@ -129,7 +153,11 @@ fn rename_asset_folders(content_base: &Path, dir_re: &Regex, new_seg: &str, resu
 /// Rewrites `ASSETS/{creator}/{old_project}` → `ASSETS/{creator}/{new_project}`
 /// in every BIN under `content_base` and on disk. Spaces become hyphens to match
 /// the refather prefix convention; the creator segment is auto-detected.
-pub fn rename_project_asset_prefix(content_base: &Path, old_project: &str, new_project: &str) -> Result<RenameResult> {
+pub fn rename_project_asset_prefix(
+    content_base: &Path,
+    old_project: &str,
+    new_project: &str,
+) -> Result<RenameResult> {
     let old_seg = old_project.replace(' ', "-");
     let new_seg = new_project.replace(' ', "-");
 

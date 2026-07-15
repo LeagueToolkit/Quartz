@@ -3,9 +3,10 @@ import { FolderOpen as FolderOpenIcon, Redo2 as RedoIcon, Undo2 as UndoIcon, X a
 import { useFileExplorer } from '@/components/explorer';
 import { DropOverlay } from '@/components/ui';
 import {
-    binEditorApply, binEditorClose, binEditorInsert, binEditorModel, binEditorMove, binEditorOpen,
-    binEditorRedo, binEditorRemove, binEditorRestore, binEditorSave, binEditorUndo,
-    type BinEditorUndoResult, type EditorEmitter, type EditorModel, type EditorNode,
+    binEditorAddChild, binEditorAddEmitter, binEditorApply, binEditorClose, binEditorCreateSystem,
+    binEditorModel, binEditorMove, binEditorOpen, binEditorStructural,
+    binEditorRedo, binEditorRestore, binEditorSave, binEditorUndo,
+    type BinEditorChildParams, type BinEditorUndoResult, type EditorEmitter, type EditorModel, type EditorNode,
     type EditorSystem, type JsonBinValue, type NodePath,
 } from '@/lib/api/bineditor';
 import { isStaleFileError, staleFilePaths } from '@/lib/api/staleFile';
@@ -20,6 +21,7 @@ import SystemSidebar, { systemId } from './components/SystemSidebar';
 import CategoryTabs from './components/CategoryTabs';
 import BulkBar from './components/BulkBar';
 import EmitterGroup from './components/EmitterGroup';
+import CreateVfxDialog, { type CreateIntent } from './components/CreateVfxDialog';
 import { categoriesPresent, classify, sameKey } from './model/categories';
 import {
     applyMultiply, applySetFlag, applySetVector, categoryArity, countAffected, type BulkResult,
@@ -31,6 +33,7 @@ import {
 import { buildFieldValue, type SchemaEntry } from './model/emitterSchema';
 import { applyValueToNode, collectTextures, defaultListItem, emitterId, entryKey, fieldByKey, pathKey } from './model/nodes';
 import './BinEditorV2.css';
+import { useJadeBin } from '@/lib/jade/jadeInterop';
 
 /* Bin Editor V2 — dynamic VFX bin editor over the native Rust bin session.
    Port of the Electron BinEditorV3 container: same state orchestration
@@ -65,6 +68,7 @@ function BinEditorV2() {
 
     const [model, setModel] = useState<EditorModel | null>(null);
     const [filePath, setFilePath] = useState<string | null>(null);
+    useJadeBin(filePath);
     const [status, setStatus] = useState('');
     const [busy, setBusy] = useState(false);
     const [dirty, setDirty] = useState(false);
@@ -81,6 +85,7 @@ function BinEditorV2() {
     const [advanced, setAdvanced] = useState(false);
     const [search, setSearch] = useState('');
     const [isDragOver, setIsDragOver] = useState(false);
+    const [createIntent, setCreateIntent] = useState<CreateIntent | null>(null);
 
     const sessionRef = useRef<number | null>(null);
     useEffect(() => () => {
@@ -571,13 +576,8 @@ function BinEditorV2() {
         const list = Array.isArray(ops) ? ops : [ops];
         if (list.length === 0) return false;
         try {
-            let next: EditorModel | null = null;
-            for (const op of list) {
-                next = op.kind === 'insert'
-                    ? await binEditorInsert(sid, op.parentPath, op.key ?? null, op.index ?? null, op.value)
-                    : await binEditorRemove(sid, op.path);
-            }
-            if (next) setModel(next);
+            const next = await binEditorStructural(sid, list);
+            setModel(next);
             markEdited(entries);
             setStatus(successMsg);
             return true;
@@ -695,7 +695,8 @@ function BinEditorV2() {
             const f = em.fields.find((x) => sameKey(classify(x), activeCategory));
             if (!f) continue;
             const op = animate ? buildAnimate(f) : buildDeanimate(f);
-            if (op) ops.push(op);
+            if (Array.isArray(op)) ops.push(...op);
+            else if (op) ops.push(op);
         }
         if (ops.length === 0) {
             setStatus(animate ? 'Nothing to animate in the selection' : 'Nothing to make constant in the selection');
@@ -733,7 +734,7 @@ function BinEditorV2() {
     const handleTextureHover = useCallback((emitter: EditorEmitter, e: MouseEvent<HTMLButtonElement>) => {
         // The shared module owns the debounce + staleness guard; collectTextures
         // already returns { path, label }[] (PreviewTexture-compatible).
-        showTexturePreview(collectTextures(emitter), e.currentTarget, filePath ?? '');
+        showTexturePreview(collectTextures(emitter), e.currentTarget, filePath ?? '', { contextMenu: true });
     }, [filePath]);
 
     const handleTextureLeave = useCallback(() => {
@@ -743,6 +744,45 @@ function BinEditorV2() {
     const handleTextureOpen = useCallback(() => {
         closeTexturePreview();
     }, []);
+
+    const createSystem = useCallback(async (name: string) => {
+        const sid = sessionRef.current;
+        if (sid === null || !name) return;
+        setBusy(true);
+        try {
+            const before = new Set((model?.systems ?? []).map(systemId));
+            const next = await binEditorCreateSystem(sid, name);
+            setModel(next);
+            const created = next.systems.find((s) => !before.has(systemId(s)));
+            if (created) setSelectedSystems(new Set([systemId(created)]));
+            markEdited([]);
+            setCreateIntent(null);
+            setStatus(`Created ${created?.name ?? name} and registered ResourceResolver`);
+        } catch (error) { setStatus(`Create system failed: ${error instanceof Error ? error.message : String(error)}`); }
+        finally { setBusy(false); }
+    }, [model, markEdited]);
+
+    const createEmitter = useCallback(async (system: EditorSystem, name: string) => {
+        const sid = sessionRef.current;
+        if (sid === null || !name) return;
+        setBusy(true);
+        try {
+            setModel(await binEditorAddEmitter(sid, system.path, name));
+            markEdited([]); setCreateIntent(null); setStatus(`Created emitter ${name}`);
+        } catch (error) { setStatus(`Create emitter failed: ${error instanceof Error ? error.message : String(error)}`); }
+        finally { setBusy(false); }
+    }, [markEdited]);
+
+    const createChild = useCallback(async (system: EditorSystem, params: BinEditorChildParams) => {
+        const sid = sessionRef.current;
+        if (sid === null) return;
+        setBusy(true);
+        try {
+            setModel(await binEditorAddChild(sid, system.path, params));
+            markEdited([]); setCreateIntent(null); setStatus(`Created child particle for ${params.effectKey}`);
+        } catch (error) { setStatus(`Create child failed: ${error instanceof Error ? error.message : String(error)}`); }
+        finally { setBusy(false); }
+    }, [markEdited]);
 
     // ── Render ──
 
@@ -763,6 +803,7 @@ function BinEditorV2() {
                         search={search}
                         onSearch={setSearch}
                         onToggleSystem={toggleSystem}
+                        onCreateSystem={() => setCreateIntent({ kind: 'system' })}
                     />
                 </div>
 
@@ -848,6 +889,12 @@ function BinEditorV2() {
                                 pinned={pinned}
                             />
                             <div className="bineditorv2-minirow">
+                                {selectedSystemList.length === 1 && (
+                                    <>
+                                        <button type="button" className="dl-btn dl-btn--secondary dl-btn--sm" onClick={() => setCreateIntent({ kind: 'emitter', system: selectedSystemList[0] })}>+ Emitter</button>
+                                        <button type="button" className="dl-btn dl-btn--secondary dl-btn--sm" onClick={() => setCreateIntent({ kind: 'child', system: selectedSystemList[0] })}>+ Child particle</button>
+                                    </>
+                                )}
                                 <button type="button" className="dl-btn dl-btn--ghost dl-btn--sm" onClick={selectAllEmitters}>
                                     Select all
                                 </button>
@@ -961,6 +1008,14 @@ function BinEditorV2() {
                     </button>
                 </div>
             </div>
+            <CreateVfxDialog
+                intent={createIntent}
+                busy={busy}
+                onClose={() => setCreateIntent(null)}
+                onSystem={(name) => void createSystem(name)}
+                onEmitter={(system, name) => void createEmitter(system, name)}
+                onChild={(system, params) => void createChild(system, params)}
+            />
         </div>
     );
 }

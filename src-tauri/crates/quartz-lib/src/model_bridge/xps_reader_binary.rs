@@ -216,11 +216,7 @@ fn read_vertex_color(cursor: &mut Cursor<&[u8]>) -> Result<[u8; 4], String> {
 }
 
 fn read_xyz(cursor: &mut Cursor<&[u8]>) -> Result<[f32; 3], String> {
-    Ok([
-        read_f32(cursor)?,
-        read_f32(cursor)?,
-        read_f32(cursor)?,
-    ])
+    Ok([read_f32(cursor)?, read_f32(cursor)?, read_f32(cursor)?])
 }
 
 fn read_uv(cursor: &mut Cursor<&[u8]>) -> Result<[f32; 2], String> {
@@ -235,7 +231,9 @@ fn skip_bytes(cursor: &mut Cursor<&[u8]>, amount: u64) -> Result<(), String> {
 }
 
 fn read_u8(cursor: &mut Cursor<&[u8]>) -> Result<u8, String> {
-    cursor.read_u8().map_err(|e| format!("Failed to read u8: {}", e))
+    cursor
+        .read_u8()
+        .map_err(|e| format!("Failed to read u8: {}", e))
 }
 
 fn read_u16(cursor: &mut Cursor<&[u8]>) -> Result<u16, String> {

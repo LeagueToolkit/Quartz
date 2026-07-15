@@ -535,3 +535,112 @@
 /* The per-field texture button; its preview popover is the shared
    .tex-preview panel (src/lib/util/texturePreview.css). */
 .bev2-texbtn { flex-shrink: 0; }
+
+.bev2-knownfields {
+    max-height: 190px;
+    overflow-y: auto;
+    padding-bottom: 6px;
+    margin-bottom: 2px;
+    border-bottom: 1px solid var(--border);
+}
+.bev2-knownfields__title {
+    padding: 3px 5px 6px;
+    color: var(--text-muted);
+    font: 600 9px/1.2 var(--font-mono);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.bev2-knownfields__item {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 11px;
+    text-align: left;
+    cursor: pointer;
+}
+.bev2-knownfields__item:hover { background: var(--bg-hover); }
+.bev2-knownfields__item span { color: var(--text-muted); font: 9px var(--font-mono); }
+
+/* --------------------------------------------------------------------------
+   Design Lab adaptation — preserve the editor's layout, remove the neon/card
+   treatment, and use the same restrained native-tool component language.
+   -------------------------------------------------------------------------- */
+.bineditorv2-root {
+    --dl-radius-sm: 6px;
+    --dl-radius: 8px;
+}
+.bineditorv2-root .dl-btn::after { display: none; }
+.bineditorv2-root .dl-btn { box-shadow: 0 1px 1px rgba(0,0,0,.18); }
+.bineditorv2-root .dl-btn--ghost { box-shadow: none; }
+
+.biev2-row {
+    min-height: 38px;
+    border-radius: 6px;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+.biev2-row::after { display: none; }
+.biev2-row:hover:not(.is-active) {
+    transform: none;
+    background: var(--bg-hover);
+    border-color: var(--border);
+    box-shadow: none;
+}
+.biev2-row.is-active {
+    color: var(--text-primary);
+    background: color-mix(in oklab, var(--accent-primary) 10%, var(--bg-tertiary));
+    border-color: color-mix(in oklab, var(--accent-primary) 28%, var(--border));
+    box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+.biev2-row__count,
+.biev2-row.is-active .biev2-row__count {
+    background: var(--bg-tertiary);
+    border-color: var(--border);
+    color: var(--text-secondary);
+}
+.biev2-emitter,
+.biev2-emitter.is-open,
+.biev2-emitter.is-selected { border-radius: 6px; }
+.biev2-emitter.is-selected {
+    background: color-mix(in oklab, var(--accent-primary) 7%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 25%, var(--border));
+    box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+.bev2-row--expandable:hover { background: var(--bg-hover); }
+.bev2-texinput {
+    border-color: var(--border) !important;
+    background: var(--bg-tertiary) !important;
+}
+.bev2-texinput:hover { border-color: color-mix(in oklab, var(--accent-primary) 30%, var(--border)) !important; }
+.bev2-newsystem { width: 100%; margin-top: 8px; }
+
+.bev2-create { max-width: 560px; }
+.bev2-create__body { display: flex; flex-direction: column; gap: 14px; }
+.bev2-create__target {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font: 11px var(--font-mono);
+}
+.bev2-create__field { display: flex; flex-direction: column; gap: 6px; }
+.bev2-create__field > span {
+    color: var(--text-secondary);
+    font: 600 10px var(--font-mono);
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+.bev2-create__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.bev2-create__axes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bev2-create__check { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12px; }

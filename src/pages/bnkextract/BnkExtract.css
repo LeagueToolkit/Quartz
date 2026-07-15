@@ -1,6 +1,7 @@
 /* BnkExtract.css - Styles for the BNK Extract audio tool */
 
 .bnk-extract-container {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: 100%;

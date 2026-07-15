@@ -4,18 +4,31 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-primary);
+    background: transparent;
     color: var(--text-primary);
     font-family: var(--font-sans);
     overflow: hidden;
     position: relative;
 }
 
-.pr-load-floating {
-    position: absolute;
-    top: 10px;
-    right: 14px;
-    z-index: 10;
+.pr-workspace-shell {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.pr-main {
+    width: 100%;
+    height: 100%;
+    transition: opacity var(--motion-base), filter var(--motion-base);
+}
+
+.pr-main.is-dim {
+    opacity: .28;
+    filter: saturate(.65) brightness(.7);
+    pointer-events: none;
+    user-select: none;
 }
 
 /* ── Buttons (flat tinted tone) ─────────────────────── */
@@ -523,29 +536,40 @@
 
 /* ── Action Bar ─────────────────────────────────────── */
 .pr-action-bar {
-    padding: 10px 16px;
-    border-top: 1px solid var(--border);
-    background: var(--bg-secondary);
+    position: relative;
+    height: 48px;
+    padding: 0 16px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
+    gap: 12px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    border-top: 1px solid var(--border);
+    background: var(--bg-primary);
 }
 
-.pr-action-bar .pr-btn {
-    height: 36px;
-    font-size: 0.8rem;
+.pr-action-bar__actions {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
 }
 
 .pr-action-status {
-    margin-left: auto;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 50%;
     font-size: 0.72rem;
     color: var(--text-secondary);
     font-family: var(--font-mono);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 50%;
+    text-align: center;
+    pointer-events: none;
 }
 
 .pr-action-status.success { color: var(--color-success); }
@@ -787,4 +811,47 @@
 
 @keyframes pr-spin {
     to { transform: rotate(360deg); }
+}
+
+/* Restrained panel/card treatment shared with the Design Lab direction. */
+.pr-left-panel,
+.pr-right-panel {
+    background: color-mix(in oklab, var(--bg-primary) 76%, transparent);
+}
+
+.pr-right-panel {
+    background: color-mix(in oklab, var(--bg-secondary) 48%, transparent);
+}
+
+.pr-config-area {
+    padding: 14px;
+}
+
+.pr-section {
+    margin-bottom: 10px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: color-mix(in oklab, var(--bg-secondary) 78%, transparent);
+    box-shadow: 0 1px 1px rgba(0, 0, 0, .14);
+}
+
+.pr-section-title {
+    color: var(--text-primary);
+    font-size: .76rem;
+}
+
+.pr-system-header {
+    min-height: 35px;
+    padding: 6px 9px;
+    background: color-mix(in oklab, var(--bg-secondary) 82%, transparent);
+    box-shadow: 0 1px 1px rgba(0, 0, 0, .1);
+}
+
+.pr-selection-bar {
+    background: color-mix(in oklab, var(--bg-primary) 90%, transparent);
+}
+
+@media (max-width: 1180px) {
+    .pr-selection-bar { overflow-x: auto; }
 }

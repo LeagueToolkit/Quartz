@@ -5,6 +5,7 @@ quartz-lib::audio. WEM encoding and MP3 decoding need external tools
 (WwiseConsole.exe + vgmstream-cli.exe) fetched from the tarngaina/LtMAO repo into
 %APPDATA%/RitoShark/AudioTools, mirroring the original Electron handler. */
 
+use base64::Engine;
 use quartz_lib::audio::tree::{self, LoadBanksResult};
 use quartz_lib::audio::wem;
 use serde::{Deserialize, Serialize};
@@ -467,6 +468,160 @@ pub async fn audio_convert_to_wem(input_path: String) -> Result<Vec<u8>, String>
         .map_err(|e| format!("convert task failed: {e}"))?
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchWemInput {
+    pub name: String,
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchWemOutput {
+    pub name: String,
+    pub data_base64: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Convert splitter WAV segments in one WwiseConsole invocation, matching the
+/// Electron workflow without exposing temporary paths to the webview.
+#[tauri::command]
+pub async fn audio_convert_wavs_to_wem(
+    inputs: Vec<BatchWemInput>,
+) -> Result<Vec<BatchWemOutput>, String> {
+    tokio::task::spawn_blocking(move || convert_wavs_to_wem_blocking(inputs))
+        .await
+        .map_err(|e| format!("batch convert task failed: {e}"))?
+}
+
+fn xml_attribute(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn safe_audio_stem(name: &str) -> String {
+    let raw = Path::new(name)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("segment");
+    let safe: String = raw
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || character == '_' || character == '-' {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if safe.is_empty() {
+        "segment".to_string()
+    } else {
+        safe
+    }
+}
+
+fn convert_wavs_to_wem_blocking(inputs: Vec<BatchWemInput>) -> Result<Vec<BatchWemOutput>, String> {
+    if inputs.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let console = wwise_console_exe()?;
+    if !console.exists() {
+        return Err("Wwise tools not installed".into());
+    }
+    let temp = wwise_temp_dir()?;
+    std::fs::create_dir_all(&temp).map_err(|error| error.to_string())?;
+    let uid = unique_id();
+    let wsources = temp.join(format!("split_batch_{uid}.wsources"));
+
+    let mut jobs: Vec<(String, String, PathBuf)> = Vec::with_capacity(inputs.len());
+    for (index, input) in inputs.into_iter().enumerate() {
+        let destination = format!("split_{uid}_{index}_{}", safe_audio_stem(&input.name));
+        let wav_path = temp.join(format!("{destination}.wav"));
+        if let Err(error) = std::fs::write(&wav_path, input.data) {
+            for (_, _, path) in &jobs {
+                let _ = std::fs::remove_file(path);
+            }
+            return Err(format!("write splitter wav failed: {error}"));
+        }
+        jobs.push((input.name, destination, wav_path));
+    }
+
+    let mut xml = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ExternalSourcesList SchemaVersion=\"1\" Root=\"{}\">\n",
+        xml_attribute(&temp.to_string_lossy())
+    );
+    for (_, destination, wav_path) in &jobs {
+        xml.push_str(&format!(
+            "  <Source Path=\"{}\" Conversion=\"Vorbis Quality High\" Destination=\"{}\"/>\n",
+            xml_attribute(&wav_path.to_string_lossy()),
+            xml_attribute(destination),
+        ));
+    }
+    xml.push_str("</ExternalSourcesList>");
+    std::fs::write(&wsources, xml).map_err(|error| error.to_string())?;
+
+    let wproj = wwise_wproj()?;
+    let conversion = run_hidden(
+        &console,
+        &[
+            "convert-external-source",
+            &wproj.to_string_lossy(),
+            "--source-file",
+            &wsources.to_string_lossy(),
+            "--output",
+            &temp.to_string_lossy(),
+            "--platform",
+            "Windows",
+        ],
+        console.parent(),
+    );
+
+    let _ = std::fs::remove_file(&wsources);
+    for (_, _, wav_path) in &jobs {
+        let _ = std::fs::remove_file(wav_path);
+    }
+    conversion?;
+
+    let outputs = jobs
+        .into_iter()
+        .map(|(name, destination, _)| {
+            let candidates = [
+                temp.join("Windows").join(format!("{destination}.wem")),
+                temp.join(format!("{destination}.wem")),
+            ];
+            let wem_path = candidates.iter().find(|path| path.exists());
+            let result = match wem_path {
+                Some(path) => std::fs::read(path)
+                    .map(|data| base64::engine::general_purpose::STANDARD.encode(data))
+                    .map_err(|error| format!("read converted WEM failed: {error}")),
+                None => Err("Wwise did not produce a WEM file".to_string()),
+            };
+            if let Some(path) = wem_path {
+                let _ = std::fs::remove_file(path);
+            }
+            match result {
+                Ok(data_base64) => BatchWemOutput {
+                    name,
+                    data_base64: Some(data_base64),
+                    error: None,
+                },
+                Err(error) => BatchWemOutput {
+                    name,
+                    data_base64: None,
+                    error: Some(error),
+                },
+            }
+        })
+        .collect();
+
+    Ok(outputs)
+}
+
 fn unique_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let nanos = SystemTime::now()
@@ -574,8 +729,9 @@ fn convert_to_wem_blocking(input_path: &str) -> Result<Vec<u8>, String> {
     result
 }
 
-/// Decode a WEM/MP3/OGG to a WAV on disk via vgmstream (for the AudioSplitter).
-/// Returns the temp WAV path.
+/// Decode a WEM/MP3/OGG to WAV bytes via the native decoder or vgmstream.
+/// The base64 result avoids leaving splitter temp files behind and is much
+/// smaller on the IPC boundary than a JSON array containing every byte.
 #[tauri::command]
 pub async fn audio_decode_to_wav(data: Vec<u8>) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
@@ -586,9 +742,7 @@ pub async fn audio_decode_to_wav(data: Vec<u8>) -> Result<String, String> {
         // Try the native decoder first (handles WEM directly).
         if let Ok(decoded) = wem::decode_wem(&data) {
             if decoded.format == "wav" {
-                let out = temp.join(format!("split_{uid}.wav"));
-                std::fs::write(&out, &decoded.data).map_err(|e| e.to_string())?;
-                return Ok(out.to_string_lossy().to_string());
+                return Ok(base64::engine::general_purpose::STANDARD.encode(decoded.data));
             }
         }
 
@@ -606,8 +760,13 @@ pub async fn audio_decode_to_wav(data: Vec<u8>) -> Result<String, String> {
             vgm.parent(),
         );
         let _ = std::fs::remove_file(&in_path);
-        res?;
-        Ok(out.to_string_lossy().to_string())
+        if let Err(error) = res {
+            let _ = std::fs::remove_file(&out);
+            return Err(error);
+        }
+        let wav = std::fs::read(&out).map_err(|e| format!("read decoded wav failed: {e}"));
+        let _ = std::fs::remove_file(&out);
+        Ok(base64::engine::general_purpose::STANDARD.encode(wav?))
     })
     .await
     .map_err(|e| format!("decode task failed: {e}"))?
@@ -916,9 +1075,8 @@ pub async fn bnk_scan_mod_folder(
 
         // Keep only sets whose audio file is non-empty (> 150 bytes of header
         // overhead), matching the old Quartz isNonEmpty filter.
-        let is_non_empty = |p: &Path| -> bool {
-            std::fs::metadata(p).map(|m| m.len() > 150).unwrap_or(false)
-        };
+        let is_non_empty =
+            |p: &Path| -> bool { std::fs::metadata(p).map(|m| m.len() > 150).unwrap_or(false) };
 
         let sets: Vec<ModFileSet> = audio_files
             .iter()

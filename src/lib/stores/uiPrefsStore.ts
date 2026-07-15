@@ -64,6 +64,8 @@ interface UiPrefs {
     font: string;
     glassBlur: number;
     performanceMode: boolean;
+    sharpButtonCorners: boolean;
+    globalGlassSurfaces: boolean;
     // Wallpaper
     wallpaperEnabled: boolean;
     wallpaperId: string;
@@ -122,6 +124,8 @@ export const useUiPrefsStore = create<UiPrefs>()(
             font: 'Segoe UI',
             glassBlur: 6,
             performanceMode: false,
+            sharpButtonCorners: false,
+            globalGlassSurfaces: false,
             wallpaperEnabled: true,
             wallpaperId: '',
             wallpaperPath: '',
@@ -130,8 +134,11 @@ export const useUiPrefsStore = create<UiPrefs>()(
             wallpaperVignetteStrength: 0.35,
             clickEffectEnabled: false,
             clickEffectType: 'water',
-            backgroundEffectEnabled: false,
-            backgroundEffectType: 'fireflies',
+            // Fresh installs start with Quartz's constellation atmosphere.
+            // Persisted preferences still win, so updates do not overwrite an
+            // existing user's enabled/type choices.
+            backgroundEffectEnabled: true,
+            backgroundEffectType: 'constellation',
             autoLoadEnabled: false,
             expandSystemsOnLoad: false,
             sidebarCollapsed: true,
@@ -211,10 +218,13 @@ export function isPageVisible(page: Page): boolean {
     return pageVisibility[page] ?? PAGE_DEFAULTS[page] ?? true;
 }
 
-// Apply prefs that affect global CSS (glass blur, performance mode).
+// Apply prefs that affect global CSS. Data attributes keep these rules global
+// without forcing every page/component to subscribe to the settings store.
 export function applyUiPrefs() {
     const s = useUiPrefsStore.getState();
     const root = document.documentElement;
     root.style.setProperty('--glass-blur', `${s.performanceMode ? Math.min(s.glassBlur, 2) : s.glassBlur}px`);
     root.setAttribute('data-performance', s.performanceMode ? 'on' : 'off');
+    root.setAttribute('data-button-corners', s.sharpButtonCorners ? 'sharp' : 'rounded');
+    root.setAttribute('data-global-glass', s.globalGlassSurfaces ? 'on' : 'off');
 }

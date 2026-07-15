@@ -255,9 +255,11 @@ pub fn run(bin_path: &Path) -> Result<BatchSplitResult> {
         // byte — re-tagging Embed<->Pointer produces a bin the engine rejects.
         let (emitter_item, is_list2, original_emitters): (BinType, bool, Vec<BinValue>) =
             match bin.entries[idx].fields.get(&complex_emitter_hash) {
-                Some(BinValue::List { item, is_list2, items }) if !items.is_empty() => {
-                    (*item, *is_list2, items.clone())
-                }
+                Some(BinValue::List {
+                    item,
+                    is_list2,
+                    items,
+                }) if !items.is_empty() => (*item, *is_list2, items.clone()),
                 _ => continue,
             };
 
@@ -267,7 +269,12 @@ pub fn run(bin_path: &Path) -> Result<BatchSplitResult> {
                 get_emitter_name(emitter).unwrap_or_else(|| format!("Emitter_{}", i + 1));
             let trigger_name = format!("REC_{}_{}", short_name, emitter_name);
 
-            triggers.push(make_trigger_emitter(&trigger_name, &emitter_name, i + 1, emitter_item));
+            triggers.push(make_trigger_emitter(
+                &trigger_name,
+                &emitter_name,
+                i + 1,
+                emitter_item,
+            ));
             new_entries.push(make_wrapper_system(
                 &trigger_name,
                 emitter.clone(),
@@ -289,8 +296,8 @@ pub fn run(bin_path: &Path) -> Result<BatchSplitResult> {
     let wrapper_entries = new_entries.len();
     bin.entries.extend(new_entries);
 
-    let bytes =
-        write_bin(&bin).map_err(|e| Error::InvalidInput(format!("Failed to serialize BIN: {}", e)))?;
+    let bytes = write_bin(&bin)
+        .map_err(|e| Error::InvalidInput(format!("Failed to serialize BIN: {}", e)))?;
     fs::write(bin_path, bytes).map_err(|e| Error::io_with_path(e, bin_path))?;
 
     Ok(BatchSplitResult {

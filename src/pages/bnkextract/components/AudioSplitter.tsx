@@ -17,12 +17,18 @@ import {
 } from '@mui/icons-material';
 import { pickPath } from '@/components/explorer';
 import { DropOverlay } from '@/components/ui';
-import { tempDir, join } from '@tauri-apps/api/path';
+import { explorerResolvePath } from '@/lib/api/explorer';
+import { useFileDrop } from '@/lib/util/useFileDrop';
+import { join } from '@tauri-apps/api/path';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin, { type Region as WsRegion } from 'wavesurfer.js/dist/plugins/regions.esm.js';
+import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js';
+import ZoomPlugin from 'wavesurfer.js/dist/plugins/zoom.esm.js';
+import HoverPlugin from 'wavesurfer.js/dist/plugins/hover.esm.js';
 import { log } from '@/lib/util/logger';
-import { decodeToWav, readFileBytes, writeFileBytes, convertToWem } from '../utils/backend';
+import { decodeToWav, readFileBytes, writeFileBytes, convertWavsToWem } from '../utils/backend';
 import type { SplitterFile, SplitterSegment } from '../types';
+import './AudioSplitter.css';
 
 interface Region { id: string; name: string; start: number; end: number }
 interface EditingTime { id: string; field: 'start' | 'end' }
@@ -74,6 +80,95 @@ function encodeWavSlice(buffer: AudioBuffer, start: number, end: number): Uint8A
         }
     }
     return new Uint8Array(out);
+}
+
+const REGION_COLORS = [
+    'rgba(99,179,237,0.28)', 'rgba(154,230,180,0.28)', 'rgba(252,176,64,0.28)',
+    'rgba(183,148,246,0.28)', 'rgba(245,101,101,0.28)', 'rgba(129,230,217,0.28)',
+    'rgba(246,173,85,0.28)', 'rgba(198,246,213,0.28)',
+];
+
+interface DetectOptions {
+    thresholdDb?: number;
+    minSilenceMs?: number;
+    minSegmentMs?: number;
+    padMs?: number;
+}
+
+/* Matches the Electron splitter's RMS-based silence detector. Looking at every
+   channel avoids losing quiet stereo material that is absent from channel 1. */
+function detectSegments(
+    audioBuffer: AudioBuffer,
+    { thresholdDb = -40, minSilenceMs = 300, minSegmentMs = 80, padMs = 30 }: DetectOptions = {},
+): Array<{ start: number; end: number }> {
+    const sampleRate = audioBuffer.sampleRate;
+    const channelCount = audioBuffer.numberOfChannels;
+    const length = audioBuffer.length;
+    const windowSize = Math.max(1, Math.floor(sampleRate * 0.01));
+    const threshold = Math.pow(10, thresholdDb / 20);
+    const minSilentWindows = Math.max(1, Math.ceil(minSilenceMs / 10));
+    const minSegmentSamples = Math.floor(sampleRate * minSegmentMs / 1000);
+    const paddingSamples = Math.floor(sampleRate * padMs / 1000);
+    const windowCount = Math.ceil(length / windowSize);
+    const silent = new Uint8Array(windowCount);
+
+    for (let windowIndex = 0; windowIndex < windowCount; windowIndex++) {
+        const start = windowIndex * windowSize;
+        const end = Math.min(start + windowSize, length);
+        let squareSum = 0;
+        let samples = 0;
+        for (let channel = 0; channel < channelCount; channel++) {
+            const data = audioBuffer.getChannelData(channel);
+            for (let sample = start; sample < end; sample++) {
+                squareSum += data[sample] * data[sample];
+                samples++;
+            }
+        }
+        silent[windowIndex] = Math.sqrt(squareSum / Math.max(1, samples)) < threshold ? 1 : 0;
+    }
+
+    const result: Array<{ start: number; end: number }> = [];
+    let windowIndex = 0;
+    while (windowIndex < windowCount && silent[windowIndex]) windowIndex++;
+    while (windowIndex < windowCount) {
+        const segmentStart = windowIndex;
+        let segmentEnd = windowIndex;
+        while (windowIndex < windowCount) {
+            if (!silent[windowIndex]) {
+                segmentEnd = windowIndex + 1;
+                windowIndex++;
+                continue;
+            }
+            let silenceEnd = windowIndex;
+            while (silenceEnd < windowCount && silent[silenceEnd]) silenceEnd++;
+            if (silenceEnd - windowIndex >= minSilentWindows) break;
+            segmentEnd = silenceEnd;
+            windowIndex = silenceEnd;
+        }
+        const startSample = Math.max(0, segmentStart * windowSize - paddingSamples);
+        const endSample = Math.min(length, segmentEnd * windowSize + paddingSamples);
+        if (endSample - startSample >= minSegmentSamples) {
+            result.push({ start: startSample / sampleRate, end: endSample / sampleRate });
+        }
+        while (windowIndex < windowCount && silent[windowIndex]) windowIndex++;
+    }
+    return result;
+}
+
+function safeFileStem(name: string): string {
+    return name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'segment';
+}
+
+async function uniqueOutputPath(directory: string, stem: string): Promise<string> {
+    const safeStem = safeFileStem(stem);
+    let suffix = 1;
+    while (true) {
+        const fileName = suffix === 1 ? `${safeStem}.wav` : `${safeStem}(${suffix}).wav`;
+        const candidate = await join(directory, fileName);
+        const info = await explorerResolvePath(candidate);
+        if (!info.exists) return candidate;
+        suffix++;
+    }
 }
 
 interface RegionRowProps {
@@ -184,22 +279,25 @@ interface Props {
     onClose: () => void;
     initialFile: SplitterFile | null;
     onReplace: (data: Uint8Array, nodeId: string, pane?: string) => void;
-    onExportSegments: (segments: SplitterSegment[]) => void;
+    onExportSegments: (segments: SplitterSegment[]) => void | Promise<void>;
 }
-
-const REGION_COLOR = 'rgba(100, 200, 255, 0.18)';
 
 export default function AudioSplitter({ open: isOpen, onClose, initialFile, onReplace, onExportSegments }: Props) {
     const waveContainerRef = useRef<HTMLDivElement>(null);
+    const timelineContainerRef = useRef<HTMLDivElement>(null);
     const wsRef = useRef<WaveSurfer | null>(null);
     const regionsPluginRef = useRef<ReturnType<typeof RegionsPlugin.create> | null>(null);
     const audioBufferRef = useRef<AudioBuffer | null>(null);
     const blobUrlRef = useRef<string | null>(null);
     const sourceWasWem = useRef(false);
+    const volumeRef = useRef(0.05);
+    const currentTimeRef = useRef(0);
+    const currentTimeLabelRef = useRef<HTMLSpanElement>(null);
+    const loadGenerationRef = useRef(0);
+    const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [isReady, setIsReady] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [zoom, setZoom] = useState(1);
     const [regions, setRegions] = useState<Region[]>([]);
@@ -211,7 +309,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
     const [editingName, setEditingName] = useState<string | null>(null);
     const [editingTime, setEditingTime] = useState<EditingTime | null>(null);
     const [isDragOver, setIsDragOver] = useState(false);
-    const [volume, setVolume] = useState(0.5);
+    const [volume, setVolume] = useState(0.05);
     const [autoSplitAnchor, setAutoSplitAnchor] = useState<HTMLElement | null>(null);
     const [splitThreshold, setSplitThreshold] = useState(-40);
     const [splitMinSilence, setSplitMinSilence] = useState(300);
@@ -220,7 +318,8 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
 
     const flash = useCallback((msg: string, ms = 3500) => {
         setExportProgress(msg);
-        if (ms > 0) setTimeout(() => setExportProgress(''), ms);
+        if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+        if (ms > 0) flashTimerRef.current = setTimeout(() => setExportProgress(''), ms);
     }, []);
 
     const resetState = useCallback(() => {
@@ -229,7 +328,8 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         setRegions([]);
         setActiveRegionId(null);
         setDuration(0);
-        setCurrentTime(0);
+        currentTimeRef.current = 0;
+        if (currentTimeLabelRef.current) currentTimeLabelRef.current.textContent = fmtTime(0);
         setZoom(1);
         setLoadedName('');
         regionCount.current = 0;
@@ -239,33 +339,56 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
 
     /* (Re)build wavesurfer for a fresh blob URL and decode the same bytes into an
        AudioBuffer for slicing. */
-    const mountWaveform = useCallback(async (wavBytes: Uint8Array, name: string) => {
+    const mountWaveform = useCallback(async (
+        audioBytes: Uint8Array,
+        name: string,
+        mimeType: string,
+        generation: number,
+    ) => {
         const container = waveContainerRef.current;
-        if (!container) return;
+        if (!container) throw new Error('Waveform surface is unavailable');
+
+        // Decode for slicing.
+        const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const ctx = new Ctor();
+        try {
+            const ab = new ArrayBuffer(audioBytes.byteLength);
+            new Uint8Array(ab).set(audioBytes);
+            audioBufferRef.current = await ctx.decodeAudioData(ab);
+        } catch (e) {
+            log.error('[AudioSplitter] decodeAudioData failed', e);
+            audioBufferRef.current = null;
+            throw e;
+        } finally {
+            void ctx.close();
+        }
+        if (generation !== loadGenerationRef.current) return;
 
         wsRef.current?.destroy();
         wsRef.current = null;
         if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
 
-        // Decode for slicing.
-        try {
-            const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-            const ctx = new Ctor();
-            const ab = new ArrayBuffer(wavBytes.byteLength);
-            new Uint8Array(ab).set(wavBytes);
-            audioBufferRef.current = await ctx.decodeAudioData(ab);
-            void ctx.close();
-        } catch (e) {
-            log.error('[AudioSplitter] decodeAudioData failed', e);
-            audioBufferRef.current = null;
-        }
-
-        const blob = new Blob([wavBytes as BlobPart], { type: 'audio/wav' });
+        const blob = new Blob([audioBytes as BlobPart], { type: mimeType });
         const url = URL.createObjectURL(blob);
         blobUrlRef.current = url;
 
         const regionsPlugin = RegionsPlugin.create();
         regionsPluginRef.current = regionsPlugin;
+
+        const plugins = [
+            regionsPlugin,
+            TimelinePlugin.create({
+                container: timelineContainerRef.current || undefined,
+                height: 18,
+                style: { color: 'var(--text-muted)', fontSize: '9px' },
+            }),
+            ZoomPlugin.create({ scale: 0.5, maxZoom: 300 }),
+            HoverPlugin.create({
+                lineColor: 'var(--accent-primary)',
+                labelColor: 'var(--text-primary)',
+                labelBackground: 'var(--bg-elevated)',
+            }),
+        ];
 
         const ws = WaveSurfer.create({
             container,
@@ -273,20 +396,28 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
             waveColor: 'rgba(120, 180, 230, 0.5)',
             progressColor: 'var(--accent)',
             cursorColor: 'rgba(255,255,255,0.6)',
+            cursorWidth: 2,
+            barWidth: 2,
+            barGap: 1,
+            barRadius: 2,
+            normalize: true,
             url,
-            plugins: [regionsPlugin],
+            plugins,
         });
         wsRef.current = ws;
 
         // Drag on empty waveform to create a region.
-        regionsPlugin.enableDragSelection({ color: REGION_COLOR });
+        regionsPlugin.enableDragSelection({ color: REGION_COLORS[0] });
 
         regionsPlugin.on('region-created', (region: WsRegion) => {
             const idx = (regionCount.current += 1);
+            const color = REGION_COLORS[(idx - 1) % REGION_COLORS.length];
             if (!region.content) {
                 const label = document.createElement('span');
                 label.textContent = `segment_${String(idx).padStart(3, '0')}`;
-                region.setOptions({ color: REGION_COLOR, content: label });
+                region.setOptions({ color, content: label });
+            } else {
+                region.setOptions({ color });
             }
             setRegions((prev) => {
                 if (prev.some((r) => r.id === region.id)) return prev;
@@ -309,19 +440,24 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         });
 
         ws.on('ready', () => { setDuration(ws.getDuration()); setIsReady(true); setIsLoading(false); });
-        ws.on('timeupdate', (t: number) => setCurrentTime(t));
+        ws.on('timeupdate', (t: number) => {
+            currentTimeRef.current = t;
+            if (currentTimeLabelRef.current) currentTimeLabelRef.current.textContent = fmtTime(t);
+        });
         ws.on('play', () => setIsPlaying(true));
         ws.on('pause', () => setIsPlaying(false));
         ws.on('finish', () => setIsPlaying(false));
         ws.on('error', (err) => { log.error('[AudioSplitter] wavesurfer error', err); setIsLoading(false); });
-        ws.setVolume(volume);
+        ws.setVolume(volumeRef.current);
         setLoadedName(name);
-    }, [volume]);
+    }, []);
 
     /* Load any source (path / bytes) — decode to WAV in Rust when needed, then
        hand the WAV bytes to the waveform + slicer. */
     const loadSource = useCallback(async (opts: { path?: string; data?: Uint8Array; name: string; isWem?: boolean }) => {
+        const generation = ++loadGenerationRef.current;
         setIsLoading(true);
+        setIsReady(false);
         setRegions([]);
         setActiveRegionId(null);
         regionCount.current = 0;
@@ -337,13 +473,30 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
             }
 
             const nameLower = opts.name.toLowerCase();
-            const isWav = nameLower.endsWith('.wav') || (rawBytes.length >= 4 && rawBytes[0] === 0x52 && rawBytes[1] === 0x49 && rawBytes[2] === 0x46 && rawBytes[3] === 0x46);
-            sourceWasWem.current = !!opts.isWem || nameLower.endsWith('.wem');
+            const isWem = !!opts.isWem || nameLower.endsWith('.wem');
+            const isWav = !isWem && nameLower.endsWith('.wav');
+            const isMp3 = nameLower.endsWith('.mp3');
+            const isOgg = nameLower.endsWith('.ogg');
+            sourceWasWem.current = isWem;
+            if (generation !== loadGenerationRef.current) return;
 
-            // Already-WAV bytes can be fed straight in; everything else is decoded
-            // to WAV in Rust (vgmstream / native WEM decoder).
-            const wavBytes = isWav ? rawBytes : await readFileBytes(await decodeToWav(rawBytes));
-            await mountWaveform(wavBytes, opts.name);
+            if (isWem) {
+                const wavBytes = await decodeToWav(rawBytes);
+                if (generation !== loadGenerationRef.current) return;
+                await mountWaveform(wavBytes, opts.name, 'audio/wav', generation);
+            } else {
+                const mimeType = isWav ? 'audio/wav' : isMp3 ? 'audio/mpeg' : isOgg ? 'audio/ogg' : 'application/octet-stream';
+                try {
+                    // Web Audio handles ordinary WAV/MP3/OGG files directly, so
+                    // opening them does not depend on the optional Wwise tools.
+                    await mountWaveform(rawBytes, opts.name, mimeType, generation);
+                } catch (browserDecodeError) {
+                    log.warn('[AudioSplitter] browser decode failed; trying native decoder', browserDecodeError);
+                    const wavBytes = await decodeToWav(rawBytes);
+                    if (generation !== loadGenerationRef.current) return;
+                    await mountWaveform(wavBytes, opts.name, 'audio/wav', generation);
+                }
+            }
         } catch (e) {
             log.error('[AudioSplitter] load error', e);
             setIsLoading(false);
@@ -353,10 +506,13 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
 
     useEffect(() => {
         if (!isOpen) {
+            loadGenerationRef.current++;
             wsRef.current?.destroy();
             wsRef.current = null;
             if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
             resetState();
+            setIsDragOver(false);
+            if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
         }
     }, [isOpen, resetState]);
 
@@ -390,8 +546,8 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         return () => window.removeEventListener('keydown', onKey);
     }, [isOpen, activeRegionId, onClose, removeRegion]);
 
-    useEffect(() => { wsRef.current?.setVolume(volume); }, [volume]);
-    useEffect(() => { if (wsRef.current && isReady) wsRef.current.zoom(zoom * 20); }, [zoom, isReady]);
+    useEffect(() => { volumeRef.current = volume; wsRef.current?.setVolume(volume); }, [volume]);
+    useEffect(() => { if (wsRef.current && isReady) wsRef.current.zoom(zoom); }, [zoom, isReady]);
 
     const handleOpenFile = useCallback(async () => {
         const picked = await pickPath({ mode: 'file', filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'ogg', 'wem'] }, { name: 'All', extensions: ['*'] }], recentsKey: 'audio' });
@@ -416,24 +572,50 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         const file = e.dataTransfer.files[0];
         if (!file) return;
         const ext = file.name.split('.').pop()?.toLowerCase();
-        if (!ext || !['wav', 'mp3', 'ogg', 'wem'].includes(ext)) return;
+        if (!ext || !['wav', 'mp3', 'ogg', 'wem'].includes(ext)) {
+            flash('Audio Splitter accepts WAV, MP3, OGG, or WEM files');
+            return;
+        }
         const path = (file as File & { path?: string }).path;
-        if (path) void loadSource({ path, name: file.name });
-    }, [loadSource]);
+        if (path) {
+            void loadSource({ path, name: file.name });
+        } else {
+            void file.arrayBuffer()
+                .then((data) => loadSource({ data: new Uint8Array(data), name: file.name }))
+                .catch((error) => flash(`Could not read dropped file: ${(error as Error).message}`));
+        }
+    }, [loadSource, flash]);
+
+    /* Tauri's webview owns native file drops and does not populate File.path.
+       This listener is the authoritative desktop drop route; the DOM handler
+       above remains useful when running the frontend in a normal browser. */
+    useFileDrop({
+        onEnter: () => { if (isOpen) setIsDragOver(true); },
+        onOver: () => { if (isOpen) setIsDragOver(true); },
+        onLeave: () => { if (isOpen) setIsDragOver(false); },
+        onDrop: (paths) => {
+            if (!isOpen) return;
+            setIsDragOver(false);
+            const audioPath = paths.find((path) => /\.(wav|mp3|ogg|wem)$/i.test(path));
+            if (!audioPath) {
+                flash('Audio Splitter accepts WAV, MP3, OGG, or WEM files');
+                return;
+            }
+            const name = audioPath.split(/[\\/]/).pop() || 'audio';
+            void loadSource({ path: audioPath, name, isWem: /\.wem$/i.test(name) });
+        },
+    });
 
     const handlePlayPause = () => wsRef.current?.playPause();
-    const handleStop = () => { wsRef.current?.stop(); };
+    const handleStop = () => { wsRef.current?.stop(); wsRef.current?.seekTo(0); };
 
     const addRegionAtCursor = useCallback(() => {
         const plugin = regionsPluginRef.current;
         if (!plugin) return;
-        const cur = currentTime;
+        const cur = currentTimeRef.current;
         const end = Math.min(duration || cur + 1, cur + 1);
-        const idx = (regionCount.current += 1);
-        const label = document.createElement('span');
-        label.textContent = `segment_${String(idx).padStart(3, '0')}`;
-        plugin.addRegion({ start: cur, end, color: REGION_COLOR, content: label, drag: true, resize: true });
-    }, [currentTime, duration]);
+        plugin.addRegion({ start: cur, end, color: REGION_COLORS[regionCount.current % REGION_COLORS.length], drag: true, resize: true });
+    }, [duration]);
 
     const handleTimeEdit = useCallback((id: string, field: 'start' | 'end', rawVal: string) => {
         setEditingTime(null);
@@ -456,33 +638,12 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         const plugin = regionsPluginRef.current;
         if (!buffer || !plugin) { flash('Load audio before auto-splitting'); return; }
 
-        const data = buffer.getChannelData(0);
-        const sampleRate = buffer.sampleRate;
-        const threshold = Math.pow(10, splitThreshold / 20);
-        const minSilenceSamples = (splitMinSilence / 1000) * sampleRate;
-        const padSec = splitPad / 1000;
-        const win = Math.max(1, Math.floor(sampleRate * 0.01));
-
-        const segments: { start: number; end: number }[] = [];
-        let segStart = -1;
-        let silenceRun = 0;
-        for (let i = 0; i < data.length; i += win) {
-            let peak = 0;
-            for (let j = i; j < Math.min(i + win, data.length); j++) peak = Math.max(peak, Math.abs(data[j]));
-            const loud = peak >= threshold;
-            if (loud) {
-                if (segStart < 0) segStart = i;
-                silenceRun = 0;
-            } else if (segStart >= 0) {
-                silenceRun += win;
-                if (silenceRun >= minSilenceSamples) {
-                    segments.push({ start: segStart / sampleRate, end: (i - silenceRun) / sampleRate });
-                    segStart = -1;
-                    silenceRun = 0;
-                }
-            }
-        }
-        if (segStart >= 0) segments.push({ start: segStart / sampleRate, end: data.length / sampleRate });
+        const segments = detectSegments(buffer, {
+            thresholdDb: splitThreshold,
+            minSilenceMs: splitMinSilence,
+            minSegmentMs: 80,
+            padMs: splitPad,
+        });
 
         if (segments.length === 0) { flash('No segments detected — lower the threshold'); return; }
 
@@ -491,13 +652,13 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         setRegions([]);
         setActiveRegionId(null);
         for (const seg of segments) {
-            const start = Math.max(0, seg.start - padSec);
-            const end = Math.min(buffer.duration, seg.end + padSec);
-            if (end - start < 0.05) continue;
-            const idx = (regionCount.current += 1);
-            const label = document.createElement('span');
-            label.textContent = `segment_${String(idx).padStart(3, '0')}`;
-            plugin.addRegion({ start, end, color: REGION_COLOR, content: label, drag: true, resize: true });
+            plugin.addRegion({
+                start: seg.start,
+                end: seg.end,
+                color: REGION_COLORS[regionCount.current % REGION_COLORS.length],
+                drag: true,
+                resize: true,
+            });
         }
         flash(`Auto-split into ${segments.length} segment(s)`);
     }, [splitThreshold, splitMinSilence, splitPad, flash]);
@@ -527,15 +688,105 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         return encodeWavSlice(buffer, reg.start, reg.end);
     }, []);
 
+    const handleCut = useCallback(() => {
+        const buffer = audioBufferRef.current;
+        const ws = wsRef.current;
+        const plugin = regionsPluginRef.current;
+        const selected = regions.find((region) => region.id === activeRegionId);
+        if (!buffer || !ws || !plugin || !selected) {
+            flash('Select a segment to cut from the audio');
+            return;
+        }
+
+        const sampleRate = buffer.sampleRate;
+        const startSample = Math.max(0, Math.floor(selected.start * sampleRate));
+        const endSample = Math.min(buffer.length, Math.ceil(selected.end * sampleRate));
+        const cutSamples = endSample - startSample;
+        if (cutSamples <= 0 || cutSamples >= buffer.length) {
+            flash('The selected segment cannot remove the entire audio file');
+            return;
+        }
+
+        const edited = new AudioBuffer({
+            length: buffer.length - cutSamples,
+            numberOfChannels: buffer.numberOfChannels,
+            sampleRate,
+        });
+        for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+            const source = buffer.getChannelData(channel);
+            const destination = edited.getChannelData(channel);
+            destination.set(source.subarray(0, startSample));
+            destination.set(source.subarray(endSample), startSample);
+        }
+
+        plugin.getRegions().find((region) => region.id === selected.id)?.remove();
+        const actualCutStart = startSample / sampleRate;
+        const actualCutEnd = endSample / sampleRate;
+        const cutDuration = cutSamples / sampleRate;
+        const nextRegions: Region[] = [];
+
+        for (const region of regions) {
+            if (region.id === selected.id) continue;
+            let start = region.start;
+            let end = region.end;
+            if (end <= actualCutStart) {
+                // Region is entirely before the cut.
+            } else if (start >= actualCutEnd) {
+                start -= cutDuration;
+                end -= cutDuration;
+            } else if (start < actualCutStart && end > actualCutEnd) {
+                end -= cutDuration;
+            } else if (start < actualCutStart) {
+                end = actualCutStart;
+            } else if (end > actualCutEnd) {
+                start = actualCutStart;
+                end -= cutDuration;
+            } else {
+                plugin.getRegions().find((candidate) => candidate.id === region.id)?.remove();
+                continue;
+            }
+
+            if (end - start < 0.01) {
+                plugin.getRegions().find((candidate) => candidate.id === region.id)?.remove();
+                continue;
+            }
+            plugin.getRegions().find((candidate) => candidate.id === region.id)?.setOptions({ start, end });
+            nextRegions.push({ ...region, start, end });
+        }
+
+        audioBufferRef.current = edited;
+        setRegions(nextRegions);
+        setActiveRegionId(null);
+        setDuration(edited.duration);
+        currentTimeRef.current = 0;
+        if (currentTimeLabelRef.current) currentTimeLabelRef.current.textContent = fmtTime(0);
+
+        const wav = encodeWavSlice(edited, 0, edited.duration);
+        if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = URL.createObjectURL(new Blob([wav as BlobPart], { type: 'audio/wav' }));
+        const peaks = Array.from({ length: edited.numberOfChannels }, (_, channel) => edited.getChannelData(channel));
+        void ws.load(blobUrlRef.current, peaks, edited.duration).catch((error) => {
+            log.error('[AudioSplitter] failed to reload cut audio', error);
+            flash(`Cut succeeded, but the waveform could not reload: ${(error as Error).message}`);
+        });
+        flash(`Cut ${fmtTime(cutDuration)} from the audio`);
+    }, [activeRegionId, regions, flash]);
+
     const handleExportOne = useCallback(async (reg: Region) => {
         const wav = sliceRegion(reg);
         if (!wav) { flash('Audio not decoded yet'); return; }
-        const dir = await pickPath({ mode: 'directory' });
-        if (typeof dir !== 'string') return;
+        const safe = safeFileStem(reg.name);
+        const path = await pickPath({
+            mode: 'save',
+            title: 'Export Audio Segment',
+            defaultPath: `${safe}.wav`,
+            filters: [{ name: 'WAV Audio', extensions: ['wav'] }],
+            recentsKey: 'audio',
+        });
+        if (typeof path !== 'string') return;
         setIsExporting(true);
         try {
-            const safe = reg.name.replace(/[<>:"/\\|?*]/g, '_');
-            await writeFileBytes(await join(dir, `${safe}.wav`), wav);
+            await writeFileBytes(path, wav);
             flash(`Exported ${safe}.wav`);
         } catch (e) {
             log.error('[AudioSplitter] export failed', e);
@@ -558,8 +809,8 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                 const wav = sliceRegion(reg);
                 if (!wav) continue;
                 setExportProgress(`Exporting ${reg.name} (${n + 1}/${sorted.length})...`);
-                const safe = reg.name.replace(/[<>:"/\\|?*]/g, '_');
-                await writeFileBytes(await join(dir, `${safe}.wav`), wav);
+                const outPath = await uniqueOutputPath(dir, reg.name);
+                await writeFileBytes(outPath, wav);
                 n++;
             }
             flash(`Exported ${n} segment(s)`);
@@ -577,39 +828,47 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
         if (!buffer) { flash('Audio not decoded yet'); return; }
         setIsExporting(true);
         try {
-            // Replace with the first region if one is set, else the whole clip.
-            const sorted = [...regions].sort((a, b) => a.start - b.start);
-            const region = sorted[0];
-            const wav = region ? encodeWavSlice(buffer, region.start, region.end) : encodeWavSlice(buffer, 0, buffer.duration);
+            // Replace uses the complete edited buffer. Regions mark exports; only
+            // Cut Selection changes the source audio itself.
+            const wav = encodeWavSlice(buffer, 0, buffer.duration);
 
             let outBytes = wav;
             if (sourceWasWem.current) {
-                // Round-trip WAV -> WEM via a temp file so WwiseConsole can read it.
-                const tmp = await join(await tempDir(), `quartz_splitter_${Date.now()}.wav`);
-                await writeFileBytes(tmp, wav);
                 setExportProgress('Encoding WEM...');
-                outBytes = await convertToWem(tmp);
+                const [converted] = await convertWavsToWem([{ name: loadedName || 'replacement.wav', data: wav }]);
+                if (!converted?.data?.length) {
+                    throw new Error(converted?.error || 'Wwise did not return replacement audio');
+                }
+                outBytes = converted.data;
             }
             onReplace(outBytes, initialFile.nodeId, initialFile.pane);
             flash('Replaced original audio');
-            onClose();
         } catch (e) {
             log.error('[AudioSplitter] replace failed', e);
             flash(`Replace failed: ${(e as Error).message}`);
         } finally {
             setIsExporting(false);
         }
-    }, [onReplace, initialFile, regions, flash, onClose]);
+    }, [onReplace, initialFile, loadedName, flash]);
 
-    const handleExportSegmentsToRef = useCallback(() => {
+    const handleExportSegmentsToRef = useCallback(async () => {
         if (regions.length === 0 || !onExportSegments) return;
         if (!audioBufferRef.current) { flash('Audio not decoded yet'); return; }
-        const segments: SplitterSegment[] = [...regions]
-            .sort((a, b) => a.start - b.start)
-            .map((reg) => ({ name: reg.name, data: sliceRegion(reg) || new Uint8Array(0) }))
-            .filter((s) => s.data.length > 0);
-        onExportSegments(segments);
-        flash(`Pushed ${segments.length} segment(s) to reference pane`);
+        setIsExporting(true);
+        setExportProgress(`Preparing ${regions.length} segment(s) for the reference pane...`);
+        try {
+            const segments: SplitterSegment[] = [...regions]
+                .sort((a, b) => a.start - b.start)
+                .map((reg) => ({ name: reg.name, data: sliceRegion(reg) || new Uint8Array(0) }))
+                .filter((s) => s.data.length > 0);
+            await onExportSegments(segments);
+            flash(`Pushed ${segments.length} segment(s) to reference pane`);
+        } catch (error) {
+            log.error('[AudioSplitter] push to reference failed', error);
+            flash(`Push failed: ${(error as Error).message}`);
+        } finally {
+            setIsExporting(false);
+        }
     }, [regions, onExportSegments, sliceRegion, flash]);
 
     const sortedRegions = useMemo(() => [...regions].sort((a, b) => a.start - b.start), [regions]);
@@ -621,25 +880,20 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
 
     return (
         <Box
+            className={`audio-splitter${isDragOver ? ' audio-splitter--dragging' : ''}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            sx={{
-                position: 'fixed', top: '48px', left: '60px', right: 0, bottom: 0, zIndex: 9500,
-                background: 'color-mix(in oklab, var(--bg-primary) 97%, transparent)', display: 'flex', flexDirection: 'column',
-                fontFamily: 'var(--font-mono)',
-                outline: isDragOver ? '2px solid var(--accent-primary)' : '2px solid transparent', outlineOffset: '-3px',
-                transition: 'outline-color 0.1s',
-            }}
         >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, padding: '0.6rem 1rem', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
+            <Box className="audio-splitter__header">
                 <ContentCut sx={{ fontSize: 18, color: 'var(--accent-primary)', mr: 0.5 }} />
-                <Typography sx={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--accent-primary)', letterSpacing: '0.1em', mr: 1 }}>
-                    AUDIO SPLITTER
-                </Typography>
+                <Box className="audio-splitter__heading">
+                    <Typography className="audio-splitter__title">Audio Splitter</Typography>
+                    <Typography className="audio-splitter__subtitle">Mark, cut, and export audio segments</Typography>
+                </Box>
 
                 {loadedName && (
-                    <Typography sx={{ fontSize: '0.72rem', color: 'var(--text-muted)', mr: 1, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <Typography className="audio-splitter__file" title={loadedName}>
                         {loadedName}
                     </Typography>
                 )}
@@ -651,35 +905,13 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
 
                 <Box sx={{ flex: 1 }} />
 
-                {regions.length > 0 && (
-                    <button className="dl-btn dl-btn--primary dl-btn--sm" onClick={handleExportAll} disabled={isExporting || !isReady}>
-                        <span className="dl-icon"><Download sx={{ fontSize: 14 }} /></span>
-                        <span>Export All ({regions.length})</span>
-                    </button>
-                )}
-
-                {regions.length > 0 && (
-                    <button className="dl-btn dl-btn--primary dl-btn--sm" onClick={handleExportSegmentsToRef} disabled={isExporting || !isReady}>
-                        <span className="dl-icon"><ViewStream sx={{ fontSize: 14 }} /></span>
-                        <span>PUSH TO REF</span>
-                    </button>
-                )}
-
-                {initialFile?.nodeId && (
-                    <button className="dl-btn dl-btn--primary dl-btn--sm" onClick={handleReplace} disabled={isExporting || !isReady}>
-                        <span className="dl-icon"><Upload sx={{ fontSize: 14 }} /></span>
-                        <span>REPLACE ORIGINAL</span>
-                    </button>
-                )}
-
-                <button className="dl-btn dl-btn--danger dl-btn--sm" onClick={onClose} style={{ marginLeft: 8 }}>
+                <button className="dl-btn dl-btn--icon dl-btn--sm dl-btn--ghost" onClick={onClose} title="Close Audio Splitter (Esc)">
                     <span className="dl-icon"><Close sx={{ fontSize: 14 }} /></span>
-                    <span>CLOSE</span>
                 </button>
             </Box>
 
             {(isExporting || exportProgress) && (
-                <Box sx={{ px: 2, pt: 0.5, pb: 0.25, borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+                <Box className="audio-splitter__status">
                     {isExporting && <LinearProgress sx={{ height: 2, borderRadius: 1, background: 'var(--bg-tertiary)', '& .MuiLinearProgress-bar': { background: 'var(--accent-primary)' } }} />}
                     <Typography sx={{ fontSize: '0.65rem', color: 'var(--text-muted)', mt: 0.5 }}>{exportProgress}</Typography>
                 </Box>
@@ -694,11 +926,16 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                 )}
 
                 {!isReady && !isLoading && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--text-muted)', flexDirection: 'column', gap: 1 }}>
+                    <Box className="audio-splitter__empty">
                         <ContentCut sx={{ fontSize: 48, opacity: isDragOver ? 0.7 : 0.3, color: isDragOver ? 'var(--accent-primary)' : 'inherit', transition: 'all 0.15s' }} />
-                        <Typography sx={{ fontSize: '0.8rem', fontFamily: 'inherit', color: isDragOver ? 'var(--accent-primary)' : 'inherit', transition: 'color 0.15s' }}>
-                            {isDragOver ? 'Drop to load' : 'Drop a WAV/MP3/OGG/WEM here, or click Open File'}
+                        <Typography className="audio-splitter__empty-title">
+                            {isDragOver ? 'Drop to load audio' : 'Drop audio here'}
                         </Typography>
+                        <Typography className="audio-splitter__empty-copy">WAV, MP3, OGG, and WEM are supported</Typography>
+                        <button className="dl-btn dl-btn--primary dl-btn--sm" onClick={handleOpenFile}>
+                            <span className="dl-icon"><FolderOpen sx={{ fontSize: 14 }} /></span>
+                            <span>Choose Audio File</span>
+                        </button>
                         <Typography sx={{ fontSize: '0.65rem', opacity: 0.6 }}>Drag across the waveform to mark a segment · Space to play/pause</Typography>
                     </Box>
                 )}
@@ -708,15 +945,15 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                 )}
 
                 {/* Live waveform surface (wavesurfer.js). */}
-                <Box sx={{ px: 2, pt: 1.5, display: isReady || isLoading ? 'block' : 'none' }}>
-                    <Box sx={{ background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', minHeight: 110 }}>
+                <Box className="audio-splitter__wave-area" sx={{ display: isReady || isLoading ? 'block' : 'none' }}>
+                    <Box className="audio-splitter__wave-card">
                         <div ref={waveContainerRef} style={{ width: '100%' }} />
                     </Box>
-                    <Box sx={{ mt: 0.25, height: 20 }} />
+                    <div ref={timelineContainerRef} className="audio-splitter__timeline" />
                 </Box>
 
                 {isReady && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 0.75, borderTop: '1px solid var(--border)', mt: 0.5 }}>
+                    <Box className="audio-splitter__controls">
                         <Tooltip title="Go to start (Home)">
                             <button className="dl-btn dl-btn--icon dl-btn--sm dl-btn--ghost" onClick={() => wsRef.current?.seekTo(0)}>
                                 <span className="dl-icon"><SkipPrevious sx={{ fontSize: 18 }} /></span>
@@ -734,7 +971,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                         </Tooltip>
 
                         <Typography sx={{ fontSize: '0.72rem', color: 'var(--text-secondary)', minWidth: 130, ml: 0.5 }}>
-                            {fmtTime(currentTime)} / {fmtTime(duration)}
+                            <span ref={currentTimeLabelRef}>{fmtTime(0)}</span> / {fmtTime(duration)}
                         </Typography>
 
                         <VolumeUp sx={{ fontSize: 16, color: 'var(--text-muted)', ml: 1 }} />
@@ -752,6 +989,15 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                                 <span className="dl-icon"><Add sx={{ fontSize: 14 }} /></span>
                                 <span>Add Segment</span>
                             </button>
+                        </Tooltip>
+
+                        <Tooltip title="Remove the selected segment from the source audio">
+                            <span>
+                                <button className="dl-btn dl-btn--secondary dl-btn--sm" onClick={handleCut} disabled={!activeRegionId}>
+                                    <span className="dl-icon"><ContentCut sx={{ fontSize: 14 }} /></span>
+                                    <span>Cut Selection</span>
+                                </button>
+                            </span>
                         </Tooltip>
 
                         <Tooltip title="Auto-split by silence">
@@ -823,7 +1069,7 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                                 onRename={handleRename}
                                 onSetEditingTime={setEditingTime}
                                 onTimeEdit={handleTimeEdit}
-                                onExport={(r) => void handleExportOne(r)}
+                                onExport={handleExportOne}
                                 onRemove={removeRegion}
                             />
                         ))}
@@ -838,6 +1084,28 @@ export default function AudioSplitter({ open: isOpen, onClose, initialFile, onRe
                         </Box>
                     </Box>
                 )}
+            </Box>
+
+            <Box className="audio-splitter__footer">
+                <Typography className="audio-splitter__footer-copy">
+                    {isReady ? `${regions.length} marked segment${regions.length === 1 ? '' : 's'}` : 'Load audio to begin'}
+                </Typography>
+                <Box className="audio-splitter__footer-actions">
+                    <button className="dl-btn dl-btn--secondary dl-btn--sm" onClick={handleExportAll} disabled={isExporting || !isReady || regions.length === 0}>
+                        <span className="dl-icon"><Download sx={{ fontSize: 14 }} /></span>
+                        <span>Export All ({regions.length})</span>
+                    </button>
+                    <button className="dl-btn dl-btn--secondary dl-btn--sm" onClick={handleExportSegmentsToRef} disabled={isExporting || !isReady || regions.length === 0}>
+                        <span className="dl-icon"><ViewStream sx={{ fontSize: 14 }} /></span>
+                        <span>Push to Reference</span>
+                    </button>
+                    {initialFile?.nodeId && (
+                        <button className="dl-btn dl-btn--primary dl-btn--sm" onClick={handleReplace} disabled={isExporting || !isReady}>
+                            <span className="dl-icon"><Upload sx={{ fontSize: 14 }} /></span>
+                            <span>Replace Original</span>
+                        </button>
+                    )}
+                </Box>
             </Box>
         </Box>
     );

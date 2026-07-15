@@ -27,6 +27,7 @@ export interface VfxEmitter {
     childSystemKey?: string;
     childData: ChildView | null;
     textures: string[];
+    meshes: string[];
     colors: [number, number, number, number][];
     color: { constantValue: string } | null;
 }
@@ -63,6 +64,7 @@ function toUiEmitter(e: PortEmitter): VfxEmitter {
         childSystemKey: e.childData?.effectKey,
         childData: e.childData,
         textures: e.textures,
+        meshes: e.meshes,
         colors: e.colors,
         color: e.colors.length > 0 ? { constantValue: colorCss(e.colors[0]) } : null,
     };

@@ -74,7 +74,7 @@ export {
     type WadTocEntry, type ExtractResult, type DonorResult, type AssetCopyResult, type BackupInfo,
 } from './wad';
 export {
-    fakegearCopyToggleScreenAssets, fakegearProcessMinimalMesh,
+    fakegearCopyToggleScreenAssets, fakegearCopyVariantAssets, fakegearBackupBin, fakegearProcessMinimalMesh,
     fakegearValidateAnm, fakegearWriteVariantBins,
     type CopyAssetsResult, type MinimalMeshResult, type WriteVariantBinsResult,
 } from './fakegear';

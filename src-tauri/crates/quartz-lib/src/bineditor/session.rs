@@ -14,9 +14,12 @@ use crate::bin::write_bin;
 use crate::error::{Error, Result};
 use crate::linked_bins::{self, LoadedBin};
 use crate::undo::UndoFrame;
+use crate::vfx_session::construct::{self, ChildParams};
+use crate::vfx_session::schema::{hash_or_hex, Hashes};
 use indexmap::IndexMap;
 use parking_lot::RwLock;
-use ritoshark::bin::{Bin, BinValue};
+use ritoshark::bin::{Bin, BinEntry, BinType, BinValue};
+use ritoshark::hash::fnv1a;
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -146,6 +149,314 @@ pub fn model_of(id: SessionId) -> Result<EditorModel> {
     with_session(id, |s| project::project_all(&s.bins))
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum StructuralEdit {
+    Insert {
+        #[serde(rename = "parentPath")]
+        parent_path: NodePath,
+        key: Option<String>,
+        index: Option<u32>,
+        value: JsonBinValue,
+    },
+    Remove {
+        path: NodePath,
+    },
+}
+
+fn whole_tree_frame(s: &EditorSession, bins: &[usize]) -> MultiUndoFrame {
+    MultiUndoFrame {
+        parts: bins
+            .iter()
+            .copied()
+            .map(|bin| (bin, UndoFrame::Tree(Box::new(s.bins[bin].tree.clone()))))
+            .collect(),
+    }
+}
+
+fn empty_resource_map() -> BinValue {
+    BinValue::Map {
+        key: BinType::Hash,
+        value: BinType::Link,
+        entries: Vec::new(),
+    }
+}
+
+fn minimal_resolver(h: &Hashes, key: &str, value: &str) -> BinEntry {
+    let mut map = empty_resource_map();
+    let _ = construct::resolver_upsert(&mut map, key, value);
+    let mut fields = IndexMap::new();
+    fields.insert(h.resource_map, map);
+    BinEntry {
+        path_hash: hash_or_hex("Resources"),
+        class_hash: h.resource_resolver,
+        fields,
+    }
+}
+
+/// Create a VFX system in the current editor document and register it in the
+/// first ResourceResolver (or create a minimal resolver in the main bin).
+pub fn create_vfx_system(id: SessionId, requested: &str) -> Result<EditorModel> {
+    let requested = requested.trim();
+    if requested.is_empty() {
+        return Err(Error::InvalidInput(
+            "System name cannot be empty".to_string(),
+        ));
+    }
+    with_session(id, |s| -> Result<EditorModel> {
+        let h = Hashes::new();
+        let mut candidate = requested.to_string();
+        let mut suffix = 2u32;
+        let taken = |name: &str, bins: &[LoadedBin]| {
+            bins.iter().any(|bin| bin.tree.entries.iter().any(|entry| {
+            entry.class_hash == h.vfx_system_definition_data &&
+                (entry.path_hash == hash_or_hex(name) ||
+                 matches!(entry.fields.get(&h.particle_name), Some(BinValue::String(v)) if v.eq_ignore_ascii_case(name)) ||
+                 matches!(entry.fields.get(&h.particle_path), Some(BinValue::String(v)) if v.eq_ignore_ascii_case(name)))
+        }))
+        };
+        while taken(&candidate, &s.bins) {
+            candidate = format!("{}_{}", requested, suffix);
+            suffix += 1;
+        }
+        let target_bin = s
+            .bins
+            .iter()
+            .position(|b| {
+                b.path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.to_lowercase().contains("vfx"))
+            })
+            .unwrap_or(0);
+        let resolver_bin = s
+            .bins
+            .iter()
+            .position(|b| {
+                b.tree
+                    .entries
+                    .iter()
+                    .any(|e| e.class_hash == h.resource_resolver)
+            })
+            .unwrap_or(0);
+        let mut touched = vec![target_bin];
+        if resolver_bin != target_bin {
+            touched.push(resolver_bin);
+        }
+        let frame = whole_tree_frame(s, &touched);
+
+        let display_name = candidate.rsplit('/').next().unwrap_or(&candidate);
+        s.bins[target_bin]
+            .tree
+            .entries
+            .insert(0, construct::new_vfx_system(display_name, &candidate));
+        s.bins[target_bin].dirty = true;
+
+        let short_key = construct::derive_short_key(&candidate, display_name);
+        if let Some(entry) = s.bins[resolver_bin]
+            .tree
+            .entries
+            .iter_mut()
+            .find(|e| e.class_hash == h.resource_resolver)
+        {
+            let map = entry
+                .fields
+                .entry(h.resource_map)
+                .or_insert_with(empty_resource_map);
+            construct::resolver_upsert(map, &short_key, &candidate)?;
+        } else {
+            s.bins[0]
+                .tree
+                .entries
+                .push(minimal_resolver(&h, &short_key, &candidate));
+        }
+        s.bins[resolver_bin].dirty = true;
+        s.push_undo(frame);
+        Ok(project::project_all(&s.bins))
+    })?
+}
+
+fn default_emitter(name: &str) -> BinValue {
+    let h = Hashes::new();
+    let mut fields = IndexMap::new();
+    fields.insert(h.rate, construct::value_float(1.0));
+    fields.insert(h.particle_lifetime, construct::value_float(1.0));
+    fields.insert(h.emitter_name, BinValue::String(name.to_string()));
+    fields.insert(h.bind_weight, construct::value_float(1.0));
+    fields.insert(h.is_single_particle, BinValue::Flag(false));
+    let mut scale = IndexMap::new();
+    scale.insert(h.constant_value, BinValue::Vec3([1.0, 1.0, 1.0]));
+    fields.insert(
+        fnv1a("birthScale0"),
+        BinValue::Embed {
+            class: fnv1a("ValueVector3"),
+            fields: scale.clone(),
+        },
+    );
+    fields.insert(
+        fnv1a("scale0"),
+        BinValue::Embed {
+            class: fnv1a("ValueVector3"),
+            fields: scale,
+        },
+    );
+    let mut color = IndexMap::new();
+    color.insert(h.constant_value, BinValue::Vec4([1.0, 1.0, 1.0, 1.0]));
+    fields.insert(
+        h.birth_color,
+        BinValue::Embed {
+            class: fnv1a("ValueColor"),
+            fields: color,
+        },
+    );
+    fields.insert(
+        fnv1a("primitive"),
+        BinValue::Pointer {
+            class: fnv1a("VfxPrimitiveArbitraryQuad"),
+            fields: IndexMap::new(),
+        },
+    );
+    fields.insert(h.blend_mode, BinValue::U8(1));
+    fields.insert(h.texture, BinValue::String(String::new()));
+    BinValue::Pointer {
+        class: h.vfx_emitter_definition_data,
+        fields,
+    }
+}
+
+fn system_entry_mut<'a>(
+    s: &'a mut EditorSession,
+    path: &NodePath,
+    h: &Hashes,
+) -> Result<&'a mut BinEntry> {
+    if !path.steps.is_empty() {
+        return Err(Error::InvalidInput(
+            "System path must address a top-level entry".to_string(),
+        ));
+    }
+    let entry = s
+        .bins
+        .get_mut(path.bin)
+        .and_then(|b| b.tree.entries.get_mut(path.entry))
+        .ok_or_else(|| Error::InvalidInput("System no longer resolves".to_string()))?;
+    if entry.class_hash != h.vfx_system_definition_data {
+        return Err(Error::InvalidInput("Entry is not a VFX system".to_string()));
+    }
+    Ok(entry)
+}
+
+/// Add a usable default emitter to a system's complex emitter list.
+pub fn add_vfx_emitter(id: SessionId, system: &NodePath, requested: &str) -> Result<EditorModel> {
+    let base = if requested.trim().is_empty() {
+        "Emitter"
+    } else {
+        requested.trim()
+    };
+    with_session(id, |s| -> Result<EditorModel> {
+        let h = Hashes::new();
+        let frame = MultiUndoFrame {
+            parts: vec![(
+                system.bin,
+                UndoFrame::capture(&s.bins[system.bin].tree, [system.entry]),
+            )],
+        };
+        let entry = system_entry_mut(s, system, &h)?;
+        let mut name = base.to_string();
+        let mut suffix = 2;
+        let names: Vec<String> = [
+            h.complex_emitter_definition_data,
+            h.simple_emitter_definition_data,
+        ]
+        .iter()
+        .filter_map(|key| entry.fields.get(key))
+        .flat_map(|v| match v {
+            BinValue::List { items, .. } => items.as_slice(),
+            _ => &[],
+        })
+        .filter_map(|v| match v {
+            BinValue::Pointer { fields, .. } | BinValue::Embed { fields, .. } => {
+                match fields.get(&h.emitter_name) {
+                    Some(BinValue::String(v)) => Some(v.clone()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .collect();
+        while names.iter().any(|v| v.eq_ignore_ascii_case(&name)) {
+            name = format!("{}_{}", base, suffix);
+            suffix += 1;
+        }
+        let list = entry
+            .fields
+            .entry(h.complex_emitter_definition_data)
+            .or_insert_with(|| BinValue::List {
+                is_list2: false,
+                item: BinType::Pointer,
+                items: Vec::new(),
+            });
+        let BinValue::List { item, items, .. } = list else {
+            return Err(Error::InvalidInput(
+                "Complex emitter field is not a list".to_string(),
+            ));
+        };
+        if *item != BinType::Pointer {
+            return Err(Error::InvalidInput(
+                "Complex emitter list does not contain pointers".to_string(),
+            ));
+        }
+        items.push(default_emitter(&name));
+        s.bins[system.bin].dirty = true;
+        s.push_undo(frame);
+        Ok(project::project_all(&s.bins))
+    })?
+}
+
+/// Add Quartz's native child-particle emitter skeleton to a system.
+pub fn add_child_emitter(
+    id: SessionId,
+    system: &NodePath,
+    params: &ChildParams,
+) -> Result<EditorModel> {
+    if params.effect_key.trim().is_empty() {
+        return Err(Error::InvalidInput(
+            "Child effect key is required".to_string(),
+        ));
+    }
+    with_session(id, |s| -> Result<EditorModel> {
+        let h = Hashes::new();
+        let frame = MultiUndoFrame {
+            parts: vec![(
+                system.bin,
+                UndoFrame::capture(&s.bins[system.bin].tree, [system.entry]),
+            )],
+        };
+        let entry = system_entry_mut(s, system, &h)?;
+        let list = entry
+            .fields
+            .entry(h.complex_emitter_definition_data)
+            .or_insert_with(|| BinValue::List {
+                is_list2: false,
+                item: BinType::Pointer,
+                items: Vec::new(),
+            });
+        let BinValue::List { item, items, .. } = list else {
+            return Err(Error::InvalidInput(
+                "Complex emitter field is not a list".to_string(),
+            ));
+        };
+        if *item != BinType::Pointer {
+            return Err(Error::InvalidInput(
+                "Complex emitter list does not contain pointers".to_string(),
+            ));
+        }
+        items.push(construct::new_child_emitter(params));
+        s.bins[system.bin].dirty = true;
+        s.push_undo(frame);
+        Ok(project::project_all(&s.bins))
+    })?
+}
+
 /// Batch leaf overwrites across any resident bins. One undo frame for the whole
 /// batch, capturing only the entries the edit paths touch (per bin), so a
 /// single-field commit is O(one system), not O(whole file). If any edit fails
@@ -262,7 +573,11 @@ pub fn insert(
     with_session(id, |s| -> Result<EditorModel> {
         let frame = match s.bins.get(parent_path.bin) {
             Some(lb) => UndoFrame::capture(&lb.tree, [parent_path.entry]),
-            None => return Err(Error::InvalidInput("Parent path no longer resolves".to_string())),
+            None => {
+                return Err(Error::InvalidInput(
+                    "Parent path no longer resolves".to_string(),
+                ))
+            }
         };
         // A failed insert never mutates, so there is nothing to swap back.
         insert_impl(&mut s.bins, parent_path, key, index, val)?;
@@ -272,6 +587,64 @@ pub fn insert(
         s.push_undo(MultiUndoFrame {
             parts: vec![(parent_path.bin, frame)],
         });
+        Ok(project::project_all(&s.bins))
+    })?
+}
+
+/// Apply a logical group of inserts/removes as one transaction, one undo
+/// frame, and one projection. This is used for curve conversion/keyframes and
+/// bulk property creation so the UI does not reproject the whole document per
+/// sub-operation.
+pub fn structural_batch(id: SessionId, edits: &[StructuralEdit]) -> Result<EditorModel> {
+    if edits.is_empty() {
+        return model_of(id);
+    }
+    with_session(id, |s| -> Result<EditorModel> {
+        let mut by_bin: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for edit in edits {
+            let path = match edit {
+                StructuralEdit::Insert { parent_path, .. } => parent_path,
+                StructuralEdit::Remove { path } => path,
+            };
+            by_bin.entry(path.bin).or_default().push(path.entry);
+        }
+        let mut parts: Vec<(usize, UndoFrame)> = by_bin
+            .iter()
+            .map(|(&bin, entries)| {
+                let tree = &s
+                    .bins
+                    .get(bin)
+                    .ok_or_else(|| {
+                        Error::InvalidInput("Structural edit bin no longer exists".to_string())
+                    })?
+                    .tree;
+                Ok((bin, UndoFrame::capture(tree, entries.iter().copied())))
+            })
+            .collect::<Result<_>>()?;
+        for (index, edit) in edits.iter().enumerate() {
+            let result = match edit {
+                StructuralEdit::Insert {
+                    parent_path,
+                    key,
+                    index,
+                    value,
+                } => insert_impl(&mut s.bins, parent_path, key.as_deref(), *index, value),
+                StructuralEdit::Remove { path } => remove_impl(&mut s.bins, path),
+            };
+            if let Err(error) = result {
+                for (bin, frame) in parts.iter_mut() {
+                    frame.swap_with(&mut s.bins[*bin].tree);
+                }
+                return Err(Error::InvalidInput(format!(
+                    "Structural edit {} failed: {}",
+                    index, error
+                )));
+            }
+        }
+        for bin in by_bin.keys() {
+            s.bins[*bin].dirty = true;
+        }
+        s.push_undo(MultiUndoFrame { parts });
         Ok(project::project_all(&s.bins))
     })?
 }
@@ -1034,17 +1407,13 @@ mod tests {
 
         assert!(!s.bins[0].dirty, "bin 0 must be untouched");
         assert!(s.bins[1].dirty, "bin 1 must be dirty");
-        assert!(
-            matches!(rate_path.resolve_mut(&mut s.bins), Some(BinValue::F32(v)) if *v == 9.0)
-        );
+        assert!(matches!(rate_path.resolve_mut(&mut s.bins), Some(BinValue::F32(v)) if *v == 9.0));
         // Bin 0's rate is unchanged (still the fixture's 4.0).
         let mut bin0_rate = emitter_path().child(Step::Field {
             field: fnv1a("rate"),
         });
         bin0_rate.bin = 0;
-        assert!(
-            matches!(bin0_rate.resolve_mut(&mut s.bins), Some(BinValue::F32(v)) if *v == 4.0)
-        );
+        assert!(matches!(bin0_rate.resolve_mut(&mut s.bins), Some(BinValue::F32(v)) if *v == 4.0));
     }
 
     #[test]

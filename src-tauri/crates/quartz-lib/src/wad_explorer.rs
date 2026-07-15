@@ -145,7 +145,10 @@ pub fn scan_game_wads(game_path: &str) -> Result<ScanResult> {
     // Alphabetical within each group; voiceovers last.
     for arr in groups.values_mut() {
         arr.sort_by(|a, b| match a.is_voiceover.cmp(&b.is_voiceover) {
-            std::cmp::Ordering::Equal => a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()),
+            std::cmp::Ordering::Equal => a
+                .name
+                .to_ascii_lowercase()
+                .cmp(&b.name.to_ascii_lowercase()),
             other => other,
         });
     }
@@ -222,7 +225,12 @@ pub fn mount(path: impl Into<PathBuf>) -> Result<MountId> {
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     registry().write().insert(
         id,
-        MountedWad { id, path, wad, resolved },
+        MountedWad {
+            id,
+            path,
+            wad,
+            resolved,
+        },
     );
     Ok(id)
 }
@@ -409,10 +417,7 @@ pub fn extract_selected(
     let wp = Path::new(wad_path);
     let (wad, plan): (Wad, Vec<PlanEntry>) = {
         let reg = registry().read();
-        match reg
-            .values()
-            .find(|m| m.path.as_os_str() == wp.as_os_str())
-        {
+        match reg.values().find(|m| m.path.as_os_str() == wp.as_os_str()) {
             Some(m) => {
                 let plan = build_plan(&m.wad, &m.resolved, &selected);
                 (m.wad.clone(), plan)
@@ -502,8 +507,15 @@ fn build_plan(
         .filter(|c| selected.is_empty() || selected.contains(&c.path_hash))
         .map(|c| {
             let hex = format!("{:016x}", c.path_hash);
-            let path = resolved.get(&c.path_hash).map(|p| p.to_string()).unwrap_or_else(|| hex.clone());
-            PlanEntry { chunk: *c, path, hex }
+            let path = resolved
+                .get(&c.path_hash)
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| hex.clone());
+            PlanEntry {
+                chunk: *c,
+                path,
+                hex,
+            }
         })
         .collect();
     // Stream forward through the data section.
@@ -523,7 +535,10 @@ fn extract_one(wad: &Wad, wad_path: &str, entry: &PlanEntry, out_dir: &Path) -> 
     let mut reader = std::io::BufReader::new(file);
     let data = wad
         .chunk_data_from(&mut reader, &entry.chunk)
-        .map_err(|e| Error::Wad { message: e.to_string(), path: None })?;
+        .map_err(|e| Error::Wad {
+            message: e.to_string(),
+            path: None,
+        })?;
 
     let final_path = augment_path_with_extension(&entry.path, &data);
     let mut out_path = resolve_output_path(out_dir, &final_path);

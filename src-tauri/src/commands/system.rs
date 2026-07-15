@@ -17,6 +17,30 @@ pub fn get_app_info() -> AppInfo {
     }
 }
 
+/// Model path supplied by the Windows Explorer `Inspect Model` verb.  This is
+/// intentionally read-only; the renderer validates it again through the model
+/// loader before opening the inspector.
+#[tauri::command]
+pub fn get_startup_model_path() -> Option<String> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    model_path_from_args(&args)
+}
+
+pub(crate) fn model_path_from_args(args: &[String]) -> Option<String> {
+    let flagged = args
+        .iter()
+        .position(|arg| arg == "--inspect-model")
+        .and_then(|index| args.get(index + 1));
+    let direct = args.iter().find(|arg| {
+        let lower = arg.to_ascii_lowercase();
+        lower.ends_with(".skn") || lower.ends_with(".scb") || lower.ends_with(".sco")
+    });
+    flagged.or(direct).and_then(|value| {
+        let path = std::path::Path::new(value);
+        path.is_file().then(|| path.to_string_lossy().into_owned())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -27,5 +51,20 @@ mod tests {
         assert_eq!(info.name, "Quartz");
         assert_eq!(info.version, env!("CARGO_PKG_VERSION"));
         assert!(info.tauri);
+    }
+
+    #[test]
+    fn model_launch_args_accept_flagged_model_path() {
+        let path = std::env::temp_dir().join(format!("quartz-launch-{}.skn", std::process::id()));
+        std::fs::write(&path, []).unwrap();
+        let args = vec![
+            "--inspect-model".to_string(),
+            path.to_string_lossy().into_owned(),
+        ];
+        assert_eq!(
+            model_path_from_args(&args),
+            Some(path.to_string_lossy().into_owned())
+        );
+        let _ = std::fs::remove_file(path);
     }
 }

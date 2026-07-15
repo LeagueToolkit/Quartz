@@ -119,6 +119,8 @@ pub struct PortEmitter {
     /// Name ends `_cbdl` or the emitter carries a childParticleSetDefinition.
     pub is_child: bool,
     pub textures: Vec<String>,
+    /// SCB/SCO/SKN paths found anywhere in the emitter subtree.
+    pub meshes: Vec<String>,
     /// Display swatches: color/birthColor constants plus up to 6 keyframes.
     pub colors: Vec<[f32; 4]>,
     pub path: VfxPath,
@@ -450,6 +452,8 @@ fn project_emitter(
     // list - erosion/mult/palette/normal/emissive and friends all surface.
     let mut textures = Vec::new();
     collect_texture_strings(item, &mut textures);
+    let mut meshes = Vec::new();
+    collect_mesh_strings(item, &mut meshes);
 
     let colors = emitter_colors(fields, h);
     let child_data = is_child.then(|| child_view(fields, h, mapper));
@@ -460,10 +464,45 @@ fn project_emitter(
         complex,
         is_child,
         textures,
+        meshes,
         colors,
         path,
         child_data,
     })
+}
+
+/// Every model-path string in the emitter subtree, deduped in walk order.
+fn collect_mesh_strings(value: &BinValue, out: &mut Vec<String>) {
+    match value {
+        BinValue::String(s) => {
+            let lower = s.to_ascii_lowercase();
+            let is_mesh =
+                lower.ends_with(".scb") || lower.ends_with(".sco") || lower.ends_with(".skn");
+            if is_mesh && !out.iter().any(|entry| entry.eq_ignore_ascii_case(s)) {
+                out.push(s.clone());
+            }
+        }
+        BinValue::List { items, .. } => {
+            items
+                .iter()
+                .for_each(|item| collect_mesh_strings(item, out));
+        }
+        BinValue::Option {
+            value: Some(inner), ..
+        } => collect_mesh_strings(inner, out),
+        BinValue::Map { entries, .. } => {
+            for (key, value) in entries {
+                collect_mesh_strings(key, out);
+                collect_mesh_strings(value, out);
+            }
+        }
+        BinValue::Embed { fields, .. } | BinValue::Pointer { fields, .. } => {
+            for value in fields.values() {
+                collect_mesh_strings(value, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Every texture-path string in the emitter subtree, deduped in walk order.
@@ -921,6 +960,26 @@ mod tests {
         self, ChildParams, PersistentPayload, PersistentPresetPayload, PersistentVfxPayload,
     };
     use ritoshark::bin::Bin;
+
+    #[test]
+    fn mesh_projection_collects_supported_paths_in_order() {
+        let value = BinValue::List {
+            is_list2: false,
+            item: ritoshark::bin::BinType::String,
+            items: vec![
+                BinValue::String("assets/fx/screen.scb".into()),
+                BinValue::String("assets/champion/model.skn".into()),
+                BinValue::String("assets/fx/screen.scb".into()),
+                BinValue::String("assets/fx/diffuse.dds".into()),
+            ],
+        };
+        let mut paths = Vec::new();
+        collect_mesh_strings(&value, &mut paths);
+        assert_eq!(
+            paths,
+            vec!["assets/fx/screen.scb", "assets/champion/model.skn"]
+        );
+    }
 
     fn loaded(bin: Bin, role: BinRole) -> LoadedBin {
         LoadedBin {

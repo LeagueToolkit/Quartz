@@ -34,7 +34,7 @@ import type { BanksConfirmArgs } from './port/components/modals/donor/types';
 import {
     loadBanks, wemToPlayable, extractNodes, saveBank, checkWwiseInstalled, installWwise,
     getModFiles, extractBnkBanksFromGame, loadCodebook, pickDirectory,
-    convertToWem, amplifyWem, silenceWem, readFileBytes,
+    convertToWem, convertWavsToWem, amplifyWem, silenceWem, readFileBytes,
 } from './bnkextract/utils/backend';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -758,22 +758,74 @@ export function BnkExtract() {
         setStatusMessage('Replaced source with edited audio');
     }, [pushToHistory, applyAudioToNodes]);
 
-    const handleSplitterExportSegments = useCallback((segments: SplitterSegment[]) => {
-        pushToHistory();
-        const groupNode: BnkNode = {
-            id: `splitseg_${Date.now()}`,
-            name: `Split Segments (${segments.length})`,
-            children: segments.map((s, i) => ({
-                id: `splitseg_${Date.now()}_${i}`,
-                name: s.name,
-                audioData: { id: Date.now() + i, data: s.data, offset: 0, length: s.data.length, isModified: true },
-            })),
-        };
-        setRightTreeData((prev) => [...prev, groupNode]);
-        setRightExpandedNodes((prev) => new Set(prev).add(groupNode.id));
-        setViewMode('split');
-        setStatusMessage(`Pushed ${segments.length} segment(s) to reference pane`);
-    }, [pushToHistory]);
+    const handleSplitterExportSegments = useCallback(async (segments: SplitterSegment[]) => {
+        if (segments.length === 0) return;
+        if (!isWwiseInstalled) {
+            throw new Error('Wwise tools are required to push segments to the reference pane');
+        }
+
+        setShowConvertOverlay(true);
+        setConvertStatus(`Converting ${segments.length} segment(s) with Wwise...`);
+        try {
+            const timestamp = Date.now();
+            const converted = await convertWavsToWem(segments);
+            const audioNodes: BnkNode[] = converted.flatMap((result, index) => {
+                if (!result.data?.length) {
+                    log.warn(`[AudioSplitter] ${result.name} was not converted`, result.error);
+                    return [];
+                }
+                const baseName = result.name.replace(/\.\w+$/, '');
+                return [{
+                    id: `split-segment-${timestamp}-${index}`,
+                    name: `${baseName}.wem`,
+                    isModified: true,
+                    audioData: {
+                        id: timestamp + index,
+                        data: result.data,
+                        offset: 0,
+                        length: result.data.length,
+                        isModified: true,
+                    },
+                    children: [],
+                }];
+            });
+
+            if (audioNodes.length === 0) {
+                throw new Error(converted.find((result) => result.error)?.error || 'No segments could be converted');
+            }
+
+            pushToHistory();
+            setRightTreeData((previous) => {
+                const rootIndex = previous.findIndex((node) => node.id === '__split-segments-root__');
+                if (rootIndex < 0) {
+                    return [{
+                        id: '__split-segments-root__',
+                        name: 'Split Segments',
+                        isRoot: true,
+                        children: audioNodes,
+                    }, ...previous];
+                }
+                const next = [...previous];
+                next[rootIndex] = {
+                    ...next[rootIndex],
+                    children: [...(next[rootIndex].children || []), ...audioNodes],
+                };
+                return next;
+            });
+            setRightExpandedNodes((previous) => new Set(previous).add('__split-segments-root__'));
+            setViewMode('split');
+            const failed = segments.length - audioNodes.length;
+            setStatusMessage(failed > 0
+                ? `Pushed ${audioNodes.length} segment(s); ${failed} failed conversion`
+                : `Converted and pushed ${audioNodes.length} segment(s) to the reference pane`);
+        } catch (error) {
+            setStatusMessage(`Segment export failed: ${(error as Error).message}`);
+            throw error;
+        } finally {
+            setShowConvertOverlay(false);
+            setConvertStatus('');
+        }
+    }, [isWwiseInstalled, pushToHistory]);
 
     // ── Auto-extract / mod folder ─────────────────────────────────────────────
     /* Parse each scanned mod-file set into the left tree, then (if an output dir
@@ -1010,6 +1062,10 @@ export function BnkExtract() {
     // Drive the pane drag-over highlight from the OS drag event (Tauri suppresses
     // DOM dragover while dragDropEnabled is on, so a plain onDragOver never fires).
     const updateDragHover = (pos: FileDropPosition) => {
+        if (showAudioSplitter) {
+            clearDragHover();
+            return;
+        }
         const rightEl = document.querySelector('.bnk-extract-tree-right');
         const leftEl = document.querySelector('.bnk-extract-tree');
         const overRight = rectContains(rightEl, pos);
@@ -1025,6 +1081,7 @@ export function BnkExtract() {
         onLeave: clearDragHover,
         onDrop: (paths, pos) => {
             clearDragHover();
+            if (showAudioSplitter) return;
             if (paths.length === 0) return;
             const { applyExternalFiles: applyFn, importReferenceFiles: importFn, handleLeftPaneFolderDrop: folderFn } = dropHandlersRef.current;
             const audioPaths = paths.filter((p) => /\.(wem|wav|ogg|mp3)$/i.test(p));
@@ -1327,6 +1384,14 @@ export function BnkExtract() {
                 onConfirm={(args: BanksConfirmArgs) => handleConfirmGameBanks({
                     champion: { id: Number(args.champion.id), name: args.champion.name, alias: args.champion.alias },
                     skinIds: args.skinIds,
+                    selections: args.selections.map((selection) => ({
+                        champion: {
+                            id: Number(selection.champion.id),
+                            name: selection.champion.name,
+                            alias: selection.champion.alias,
+                        },
+                        skinIds: selection.skinIds,
+                    })),
                     includeVoiceover: args.includeVoiceover,
                     includeSfx: args.includeSfx,
                 })}

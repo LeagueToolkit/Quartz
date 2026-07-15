@@ -111,9 +111,9 @@ export function collectTextures(emitter: EditorEmitter): Array<{ path: string; l
     for (const f of emitter.fields) {
         for (const leaf of collectLeaves(f)) {
             if (
-                leaf.valueType === 'string' &&
+                (leaf.valueType === 'string' || leaf.valueType === 'file') &&
                 typeof leaf.value === 'string' &&
-                /\.(tex|dds|tga|png|jpg|jpeg|bmp)$/i.test(leaf.value) &&
+                /\.(tex|dds|tga|png|jpg|jpeg|bmp|webp)(?:[?#].*)?$/i.test(leaf.value) &&
                 !seen.has(leaf.value)
             ) {
                 seen.add(leaf.value);
@@ -246,7 +246,7 @@ export function encodeBool(node: EditorNode, value: boolean): JsonBinValue {
     return mkValue({ t: node.numType === 'flag' ? 'flag' : 'bool', v: value });
 }
 
-/** String-ish payload (string / hash / file), re-tagged from the node. */
+/** String-ish payload (string / hash / file / link), re-tagged from the node. */
 export function encodeString(node: EditorNode, value: string): JsonBinValue {
     const t = node.numType ?? (node.valueType === 'hash' ? 'hash' : 'string');
     return mkValue({ t, v: value });
@@ -327,6 +327,8 @@ export function defaultListItem(itemType: string | undefined): JsonBinValue | nu
     if (t === 'string') return mkValue({ t, v: '' });
     if (t === 'bool' || t === 'flag') return mkValue({ t, v: false });
     if (t === 'hash') return mkValue({ t, v: '0x00000000' });
+    if (t === 'link') return mkValue({ t, v: '0x00000000' });
+    if (t === 'file') return mkValue({ t, v: '0x0000000000000000' });
     if (t === 'i64' || t === 'u64') return mkValue({ t, v: '0' });
     if (t === 'f32' || INT_TYPES.has(t)) return mkValue({ t, v: 0 });
     return null; // pointer/embed/link/map: no safe default

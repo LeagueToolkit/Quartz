@@ -286,10 +286,12 @@ pub async fn vfx_set_texture(
     old_path: String,
     new_path: String,
 ) -> Result<VfxPortModel, String> {
-    tokio::task::spawn_blocking(move || ops::set_texture(session_id, &emitter, &old_path, &new_path))
-        .await
-        .map_err(|e| format!("Set texture task failed to join: {}", e))?
-        .map_err(|e| e.to_string())
+    tokio::task::spawn_blocking(move || {
+        ops::set_texture(session_id, &emitter, &old_path, &new_path)
+    })
+    .await
+    .map_err(|e| format!("Set texture task failed to join: {}", e))?
+    .map_err(|e| e.to_string())
 }
 
 /// Rename a system (particleName/particlePath + path hash + resolver relink).

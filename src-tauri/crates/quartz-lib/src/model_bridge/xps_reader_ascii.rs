@@ -158,15 +158,15 @@ fn read_xyz(lines: &[&str], idx: &mut usize, label: &str) -> Result<[f32; 3], St
     Ok([vals[0], vals[1], vals[2]])
 }
 
-fn read_n_ints(
-    lines: &[&str],
-    idx: &mut usize,
-    n: usize,
-    label: &str,
-) -> Result<Vec<i64>, String> {
+fn read_n_ints(lines: &[&str], idx: &mut usize, n: usize, label: &str) -> Result<Vec<i64>, String> {
     let values = read_values_line(lines, idx, label)?;
     if values.len() < n {
-        return Err(format!("Expected {} ints for {}, got {}", n, label, values.len()));
+        return Err(format!(
+            "Expected {} ints for {}, got {}",
+            n,
+            label,
+            values.len()
+        ));
     }
 
     let mut out = Vec::with_capacity(n);
@@ -206,7 +206,12 @@ fn read_n_floats(
 ) -> Result<Vec<f32>, String> {
     let values = read_values_line(lines, idx, label)?;
     if values.len() < n {
-        return Err(format!("Expected {} floats for {}, got {}", n, label, values.len()));
+        return Err(format!(
+            "Expected {} floats for {}, got {}",
+            n,
+            label,
+            values.len()
+        ));
     }
 
     let mut out = Vec::with_capacity(n);

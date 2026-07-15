@@ -19,6 +19,7 @@ interface SystemSidebarProps {
     search: string;
     onSearch: (q: string) => void;
     onToggleSystem: (id: string) => void;
+    onCreateSystem?: () => void;
 }
 
 /* Cursor-following glow: set --mx/--my on the hovered row. */
@@ -37,6 +38,7 @@ export default function SystemSidebar({
     search,
     onSearch,
     onToggleSystem,
+    onCreateSystem,
 }: SystemSidebarProps) {
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -59,6 +61,11 @@ export default function SystemSidebar({
                 placeholder="Search systems…"
                 style={{ flexShrink: 0 }}
             />
+            {onCreateSystem && (
+                <button type="button" className="dl-btn dl-btn--secondary dl-btn--sm bev2-newsystem" onClick={onCreateSystem}>
+                    + New system
+                </button>
+            )}
 
             <div className="biev2-syslist-divider" />
 

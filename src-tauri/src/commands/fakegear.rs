@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use quartz_lib::bin::{text_to_tree, write_bin};
 use quartz_lib::mesh::{self, MinimalMeshResult};
 use quartz_lib::skeleton;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
 /* Walk up from the bin's directory until a folder containing a case-insensitive
@@ -93,6 +93,222 @@ fn bundled_resource(app: &AppHandle, name: &str) -> Option<PathBuf> {
         resource_dir.join(name),
     ];
     candidates.into_iter().find(|p| p.is_file())
+}
+
+// ── Variant asset copy ──────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VariantAssetMapping {
+    pub original: String,
+    pub filename: String,
+}
+
+#[derive(Deserialize, Default)]
+pub struct VariantAssetMappings {
+    #[serde(default)]
+    pub variant1: Vec<VariantAssetMapping>,
+    #[serde(default)]
+    pub variant2: Vec<VariantAssetMapping>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopiedVariantAsset {
+    pub source: String,
+    pub dest: String,
+    pub filename: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyVariantAssetsResult {
+    pub success: bool,
+    pub copied_files: Vec<CopiedVariantAsset>,
+    pub skipped_files: Vec<String>,
+    pub failed_files: Vec<String>,
+    pub variant1_path: String,
+    pub variant2_path: String,
+    pub message: String,
+}
+
+fn has_named_child(dir: &Path, wanted: &str) -> bool {
+    std::fs::read_dir(dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .eq_ignore_ascii_case(wanted)
+        })
+}
+
+fn find_variant_project_root(bin_path: &str) -> PathBuf {
+    let bin = PathBuf::from(bin_path);
+    let start = bin.parent().unwrap_or_else(|| Path::new("."));
+    start
+        .ancestors()
+        .find(|dir| has_named_child(dir, "data") || has_named_child(dir, "assets"))
+        .unwrap_or(start)
+        .to_path_buf()
+}
+
+fn without_assets_prefix(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    normalized
+        .strip_prefix("assets/")
+        .or_else(|| normalized.strip_prefix("ASSETS/"))
+        .unwrap_or(&normalized)
+        .to_string()
+}
+
+fn source_for_variant_asset(
+    original: &str,
+    project_root: &Path,
+    bin_dir: &Path,
+) -> Option<PathBuf> {
+    let relative = PathBuf::from(original.replace(['/', '\\'], std::path::MAIN_SEPARATOR_STR));
+    let without_assets = PathBuf::from(
+        without_assets_prefix(original).replace(['/', '\\'], std::path::MAIN_SEPARATOR_STR),
+    );
+    [
+        project_root.join(&relative),
+        project_root.join("assets").join(&without_assets),
+        project_root.join("ASSETS").join(&without_assets),
+        bin_dir.join(&relative),
+    ]
+    .into_iter()
+    .find(|candidate| candidate.is_file())
+}
+
+fn copy_variant_list(
+    mappings: &[VariantAssetMapping],
+    target_folder: &str,
+    project_root: &Path,
+    bin_dir: &Path,
+    copied: &mut Vec<CopiedVariantAsset>,
+    skipped: &mut Vec<String>,
+    failed: &mut Vec<String>,
+) {
+    let target = project_root.join(target_folder);
+    for asset in mappings {
+        if Path::new(&asset.filename)
+            .file_name()
+            .map(|name| name != std::ffi::OsStr::new(&asset.filename))
+            .unwrap_or(true)
+        {
+            failed.push(asset.original.clone());
+            continue;
+        }
+        let Some(source) = source_for_variant_asset(&asset.original, project_root, bin_dir) else {
+            failed.push(asset.original.clone());
+            continue;
+        };
+        let dest = target.join(&asset.filename);
+        if dest.exists() {
+            skipped.push(asset.filename.clone());
+            continue;
+        }
+        let Some(parent) = dest.parent() else {
+            failed.push(asset.original.clone());
+            continue;
+        };
+        if std::fs::create_dir_all(parent).is_err() || std::fs::copy(&source, &dest).is_err() {
+            failed.push(asset.original.clone());
+            continue;
+        }
+        copied.push(CopiedVariantAsset {
+            source: source.to_string_lossy().into_owned(),
+            dest: dest.to_string_lossy().into_owned(),
+            filename: asset.filename.clone(),
+        });
+    }
+}
+
+/// Copy the source assets repathed by FakeGear into assets/variant1 and
+/// assets/variant2, retaining the old Quartz skip-if-present behavior.
+#[tauri::command]
+pub fn fakegear_copy_variant_assets(
+    bin_path: String,
+    asset_mappings: VariantAssetMappings,
+    variant1_folder: String,
+    variant2_folder: String,
+) -> Result<CopyVariantAssetsResult, String> {
+    let safe_folder = |folder: &str| {
+        !folder.trim().is_empty()
+            && Path::new(folder)
+                .components()
+                .all(|part| matches!(part, std::path::Component::Normal(_)))
+    };
+    if !safe_folder(&variant1_folder) || !safe_folder(&variant2_folder) {
+        return Err("Variant folders must be safe relative paths".into());
+    }
+
+    let bin = PathBuf::from(&bin_path);
+    let bin_dir = bin.parent().unwrap_or_else(|| Path::new("."));
+    let project_root = find_variant_project_root(&bin_path);
+    let mut copied = Vec::new();
+    let mut skipped = Vec::new();
+    let mut failed = Vec::new();
+
+    copy_variant_list(
+        &asset_mappings.variant1,
+        &variant1_folder,
+        &project_root,
+        bin_dir,
+        &mut copied,
+        &mut skipped,
+        &mut failed,
+    );
+    copy_variant_list(
+        &asset_mappings.variant2,
+        &variant2_folder,
+        &project_root,
+        bin_dir,
+        &mut copied,
+        &mut skipped,
+        &mut failed,
+    );
+
+    let message = format!(
+        "Copied {} files, skipped {}, failed {}",
+        copied.len(),
+        skipped.len(),
+        failed.len()
+    );
+    Ok(CopyVariantAssetsResult {
+        success: failed.is_empty(),
+        copied_files: copied,
+        skipped_files: skipped,
+        failed_files: failed,
+        variant1_path: project_root
+            .join(&variant1_folder)
+            .to_string_lossy()
+            .into_owned(),
+        variant2_path: project_root
+            .join(&variant2_folder)
+            .to_string_lossy()
+            .into_owned(),
+        message,
+    })
+}
+
+/// Preserve FakeGear's original save workflow: copy the current BIN to an
+/// adjacent `.bak_YYYYMMDD_HHMMSS` file before overwriting it.
+#[tauri::command]
+pub fn fakegear_backup_bin(bin_path: String) -> Result<String, String> {
+    let source = PathBuf::from(&bin_path);
+    if !source.is_file() {
+        return Err(format!("BIN does not exist: {}", source.display()));
+    }
+    let stamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let backup = PathBuf::from(format!("{}.bak_{}", source.to_string_lossy(), stamp));
+    std::fs::copy(&source, &backup)
+        .map_err(|error| format!("Failed to create {}: {error}", backup.display()))?;
+    Ok(backup.to_string_lossy().into_owned())
 }
 
 /// Copy the bundled screen.dds / screen.scb into <project>/assets/togglescreen.
@@ -404,4 +620,88 @@ fn extract_systems(text: &str) -> Vec<String> {
     }
 
     systems
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "quartz_fakegear_{name}_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn variant_copy_matches_legacy_folder_flow() {
+        let root = scratch("assets");
+        let bin_dir = root.join("data/characters/test");
+        let source = root.join("assets/source/example.dds");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+        std::fs::write(&source, b"dds-data").unwrap();
+        let bin = bin_dir.join("skin.bin");
+        std::fs::write(&bin, b"bin").unwrap();
+
+        let result = fakegear_copy_variant_assets(
+            bin.to_string_lossy().into_owned(),
+            VariantAssetMappings {
+                variant1: vec![VariantAssetMapping {
+                    original: "assets/source/example.dds".into(),
+                    filename: "example.dds".into(),
+                }],
+                variant2: vec![VariantAssetMapping {
+                    original: "assets/source/example.dds".into(),
+                    filename: "example.dds".into(),
+                }],
+            },
+            "assets/variant1".into(),
+            "assets/variant2".into(),
+        )
+        .unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.copied_files.len(), 2);
+        assert_eq!(
+            std::fs::read(root.join("assets/variant1/example.dds")).unwrap(),
+            b"dds-data"
+        );
+        assert_eq!(
+            std::fs::read(root.join("assets/variant2/example.dds")).unwrap(),
+            b"dds-data"
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn fakegear_backup_is_adjacent_and_byte_identical() {
+        let root = scratch("backup");
+        std::fs::create_dir_all(&root).unwrap();
+        let bin = root.join("skin.bin");
+        std::fs::write(&bin, b"original-bin").unwrap();
+
+        let backup = fakegear_backup_bin(bin.to_string_lossy().into_owned()).unwrap();
+        assert!(backup.starts_with(&format!("{}.bak_", bin.to_string_lossy())));
+        assert_eq!(std::fs::read(&backup).unwrap(), b"original-bin");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn togglescreen_assets_are_declared_bundle_resources() {
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let config = std::fs::read_to_string(manifest.join("tauri.conf.json")).unwrap();
+        assert!(config.contains("resources/textures/*"));
+
+        let texture_dir = manifest.join("resources/textures");
+        let dds = std::fs::read(texture_dir.join("screen.dds")).unwrap();
+        let scb = std::fs::read(texture_dir.join("screen.scb")).unwrap();
+        assert_eq!(&dds[..4], b"DDS ");
+        assert!(dds.len() > 128);
+        assert!(scb.len() > 32);
+    }
 }

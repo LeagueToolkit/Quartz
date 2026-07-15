@@ -202,7 +202,7 @@ export default function EmitterItem({
                     justifyContent: 'center',
                     fontSize: '12px',
                 }}
-                title="Preview texture"
+                title="Preview textures and models"
                 onMouseEnter={(e) => handleEmitterMouseEnter(e, emitter, system, isTarget)}
                 onMouseLeave={handleEmitterMouseLeave}
                 onContextMenu={(e) => handleEmitterContextMenu(e, emitter, system, isTarget)}

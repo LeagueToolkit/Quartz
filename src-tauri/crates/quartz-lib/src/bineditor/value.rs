@@ -3,8 +3,8 @@
 //! names may be readable names or `"0x<hex>"`; names hash via FNV1a-32
 //! lowercase (`ritoshark::hash::fnv1a`, the bin convention) except file paths,
 //! which hash via lowercase XXH64 like ritobin. i64/u64 travel as strings to
-//! avoid JS precision loss. Map/Mtx44/Link project as `unsupported` and are
-//! rejected on write.
+//! avoid JS precision loss. Map/Mtx44 remain read-only; Link values use their
+//! resolved name (or `0x<hex8>`) and can be edited without changing BIN type.
 
 use crate::error::{Error, Result};
 use indexmap::IndexMap;
@@ -65,6 +65,9 @@ pub enum JsonBinValue {
         v: String,
     },
     File {
+        v: String,
+    },
+    Link {
         v: String,
     },
     List {
@@ -266,6 +269,7 @@ pub fn json_to_bin(j: &JsonBinValue) -> Result<BinValue> {
         JsonBinValue::String { v } => BinValue::String(v.clone()),
         JsonBinValue::Hash { v } => BinValue::Hash(hash32_of(v)?),
         JsonBinValue::File { v } => BinValue::File(hash64_of(v)?),
+        JsonBinValue::Link { v } => BinValue::Link(hash32_of(v)?),
         JsonBinValue::List { item, items } => {
             let ty = bintype_from_tag(item).ok_or_else(|| {
                 Error::InvalidInput(format!("Unknown list item type: '{}'", item))
@@ -334,7 +338,7 @@ pub fn json_to_bin(j: &JsonBinValue) -> Result<BinValue> {
         JsonBinValue::Flag { v } => BinValue::Flag(*v),
         JsonBinValue::Unsupported { desc } => {
             return Err(Error::InvalidInput(format!(
-                "Unsupported value kind '{}' (map/mtx44/link) is read-only",
+                "Unsupported value kind '{}' (map/mtx44) is read-only",
                 desc
             )));
         }
@@ -365,6 +369,7 @@ pub fn bin_to_json(v: &BinValue, m: &HashMapper) -> JsonBinValue {
         BinValue::String(s) => JsonBinValue::String { v: s.clone() },
         BinValue::Hash(h) => JsonBinValue::Hash { v: name32(*h, m) },
         BinValue::File(h) => JsonBinValue::File { v: name64(*h, m) },
+        BinValue::Link(h) => JsonBinValue::Link { v: name32(*h, m) },
         // List2 flavor is dropped here by design; `apply` re-instates the
         // original is_list2 from the node being overwritten.
         BinValue::List { item, items, .. } => JsonBinValue::List {
@@ -395,9 +400,6 @@ pub fn bin_to_json(v: &BinValue, m: &HashMapper) -> JsonBinValue {
         },
         BinValue::Mtx44(_) => JsonBinValue::Unsupported {
             desc: "mtx44".to_string(),
-        },
-        BinValue::Link(_) => JsonBinValue::Unsupported {
-            desc: "link".to_string(),
         },
     }
 }
@@ -495,7 +497,7 @@ mod tests {
         ));
         assert!(matches!(
             bin_to_json(&BinValue::Link(1), &m),
-            JsonBinValue::Unsupported { .. }
+            JsonBinValue::Link { .. }
         ));
     }
 }

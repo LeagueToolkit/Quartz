@@ -1,11 +1,14 @@
 /* Champion / skin discovery + skin asset extraction.
 
-   Thin Tauri layer over `quartz_lib::extractor`. League detection layers a
-   Windows-registry probe (this crate already depends on `winreg`) and the
-   stored `settings.json` path on top of quartz-lib's common-path scan.
-   Extraction streams `extract-progress` events to the frontend. */
+Thin Tauri layer over `quartz_lib::extractor`. League detection layers a
+Windows-registry probe (this crate already depends on `winreg`) and the
+stored `settings.json` path on top of quartz-lib's common-path scan.
+Extraction streams `extract-progress` events to the frontend. */
 
-use quartz_lib::extractor::{self, ExtractOptions, ExtractProgress, FinalizeOptions, FinalizeSummary, RepathOptions, RepathSummary};
+use quartz_lib::extractor::{
+    self, ExtractOptions, ExtractProgress, FinalizeOptions, FinalizeSummary, RepathOptions,
+    RepathSummary,
+};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
@@ -103,8 +106,9 @@ fn detect_from_registry() -> Option<PathBuf> {
 /// missing.
 #[tauri::command]
 pub async fn discover_champions() -> Result<Vec<Champion>, String> {
-    let league = get_league_path()
-        .ok_or_else(|| "Could not locate a League of Legends install. Set the path in Settings.".to_string())?;
+    let league = get_league_path().ok_or_else(|| {
+        "Could not locate a League of Legends install. Set the path in Settings.".to_string()
+    })?;
     let root = PathBuf::from(league);
 
     // Discovery parses every champion WAD's TOC — run it off the async runtime.
@@ -131,8 +135,9 @@ pub async fn extract_champion_assets(
     preserve_hud_icons2d: Option<bool>,
     skip_sfx: Option<bool>,
 ) -> Result<ExtractResult, String> {
-    let league = get_league_path()
-        .ok_or_else(|| "Could not locate a League of Legends install. Set the path in Settings.".to_string())?;
+    let league = get_league_path().ok_or_else(|| {
+        "Could not locate a League of Legends install. Set the path in Settings.".to_string()
+    })?;
     let include_vo = include_vo.unwrap_or(false);
     let clean = clean.unwrap_or(true);
     let preserve_hud_icons2d = preserve_hud_icons2d.unwrap_or(true);
@@ -189,8 +194,9 @@ pub async fn extract_tft_companion(
     preserve_hud_icons2d: Option<bool>,
     skip_sfx: Option<bool>,
 ) -> Result<ExtractResult, String> {
-    let league = get_league_path()
-        .ok_or_else(|| "Could not locate a League of Legends install. Set the path in Settings.".to_string())?;
+    let league = get_league_path().ok_or_else(|| {
+        "Could not locate a League of Legends install. Set the path in Settings.".to_string()
+    })?;
     let clean = clean.unwrap_or(true);
     let preserve_hud_icons2d = preserve_hud_icons2d.unwrap_or(true);
     let skip_sfx = skip_sfx.unwrap_or(true);

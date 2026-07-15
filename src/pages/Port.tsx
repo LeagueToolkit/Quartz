@@ -8,6 +8,7 @@ import {
     scheduleTexturePreviewClose,
     closeTexturePreview,
     openTexturePreviewContextMenu,
+    type PreviewTexture,
 } from '@/lib/util/texturePreview';
 import { getLeaguePath } from '@/lib/api/league';
 import { readBin, writeBin } from '@/lib/api';
@@ -37,9 +38,11 @@ import { HubBrowserModal } from './port/components/modals/hub/HubBrowserModal';
 import { HubUploadModal, type UploadableSystem } from './port/components/modals/hub/HubUploadModal';
 import { useHubDonor } from './port/components/modals/hub/useHubDonor';
 import { parseCompleteVFXSystems } from './vfxhub/lib/vfxSystemParser';
+import { useJadeBin } from '@/lib/jade/jadeInterop';
 
 function Port() {
     const p = usePort();
+    useJadeBin(p.targetPath);
 
     const [showPortAllModeModal, setShowPortAllModeModal] = useState(false);
     const [showIdleManagerModal, setShowIdleManagerModal] = useState(false);
@@ -135,14 +138,22 @@ function Port() {
     const filterTargetParticles = useCallback((v: string) => p.setTargetFilter(v), [p]);
     const filterDonorParticles = useCallback((v: string) => p.setDonorFilter(v), [p]);
 
-    // Texture hover preview: resolve the emitter's texture to a disk file under
-    // the bin's mod tree, decode it via the imgrecolor backend, and float a
-    // thumbnail. Right-click opens a context menu (reveal / open in ImgRecolor).
+    // Asset hover preview: textures decode through the image pipeline; SCB/SKN
+    // meshes parse natively and render in the same floating card.
     const binPathFor = useCallback((isTarget: boolean) => (isTarget ? p.targetPath : p.donorPath), [p.targetPath, p.donorPath]);
     const handleEmitterMouseEnter = useCallback(
         (e: React.MouseEvent, emitter: VfxEmitter, _system: VfxSystem, isTarget: boolean) => {
-            const textures = (emitter.textures || []).map((path) => ({ path }));
-            showTexturePreview(textures, e.currentTarget as HTMLElement, binPathFor(isTarget), {
+            const primaryTexture = emitter.textures[0];
+            const assets: PreviewTexture[] = [
+                ...emitter.textures.map((path) => ({ path, kind: 'texture' as const })),
+                ...emitter.meshes.map((path) => ({
+                    path,
+                    kind: 'model' as const,
+                    label: path.toLowerCase().endsWith('.skn') ? 'Skinned Mesh' : 'Static Mesh',
+                    texturePath: primaryTexture,
+                })),
+            ];
+            showTexturePreview(assets, e.currentTarget as HTMLElement, binPathFor(isTarget), {
                 contextMenu: true,
                 onEditPath: (oldPath, newPath) => {
                     void p.handleSetTexture(emitter, isTarget, oldPath, newPath);
@@ -158,8 +169,17 @@ function Port() {
     }, []);
     const handleEmitterContextMenu = useCallback(
         (e: React.MouseEvent, emitter: VfxEmitter, _system: VfxSystem, isTarget: boolean) => {
-            const first = (emitter.textures || [])[0];
-            if (first) openTexturePreviewContextMenu(e, { path: first }, binPathFor(isTarget));
+            const mesh = emitter.meshes[0];
+            const texture = emitter.textures[0];
+            if (mesh) {
+                openTexturePreviewContextMenu(e, {
+                    path: mesh,
+                    kind: 'model',
+                    texturePath: texture,
+                }, binPathFor(isTarget));
+            } else if (texture) {
+                openTexturePreviewContextMenu(e, { path: texture }, binPathFor(isTarget));
+            }
         },
         [binPathFor]
     );

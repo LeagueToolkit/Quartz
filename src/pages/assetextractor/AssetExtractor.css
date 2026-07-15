@@ -89,20 +89,35 @@
 }
 .ae-card:hover .ae-card__overlay { opacity: 1; }
 
-/* Top-left action stack, tucked under the rarity badge (badge is 24px @ top:8,
-   left:8, so the stack starts at 40px). Buttons sit vertically. */
+/* Hover action rail, tucked under the rarity badge. It wraps on narrow cards
+   so the Jade/model actions never collide with the name footer. */
 .ae-card__toolstack {
     position: absolute;
     top: 40px;
     left: 8px;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: wrap;
     gap: 6px;
+    max-width: calc(100% - 16px);
     z-index: 2;
 }
 /* Hover-revealed corner actions (download / youtube). */
 .ae-card__action { opacity: 0; transition: opacity var(--dl-base); }
 .ae-card:hover .ae-card__action { opacity: 1; }
+.ae-card__action--persistent { order: -1; opacity: 0.96; }
+.ae-card__action--jade {
+    --_bg: color-mix(in oklab, #2fd6a6 18%, var(--bg-secondary));
+    --_border: color-mix(in oklab, #2fd6a6 55%, var(--border));
+    --_fg: #71e8c3;
+}
+.ae-card__action--model {
+    --_bg: color-mix(in oklab, var(--accent-primary) 20%, var(--bg-secondary));
+    --_border: color-mix(in oklab, var(--accent-primary) 55%, var(--border));
+    --_fg: var(--accent-primary);
+}
+.ae-card__action--persistent:hover:not(:disabled) { opacity: 1; }
+.ae-card__jade-icon { width: 14px !important; height: 14px !important; object-fit: contain !important; }
 
 /* Name + chroma dots overlaid on the bottom of the splash, on a dark gradient
    so text stays legible over any art. Replaces the old separate card body. */
@@ -129,6 +144,15 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+.ae-card__id {
+    display: block;
+    margin-top: 3px;
+    color: rgba(255, 255, 255, 0.68);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.2;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 
 /* ── Champion sidebar ──────────────────────────────────────────────────── */

@@ -130,7 +130,10 @@ pub fn port_copy_assets_to_target(
         "[port assets] copy start: {} asset(s), target_root={}, bases={:?}",
         asset_paths.len(),
         target_root.display(),
-        bases.iter().map(|b| b.display().to_string()).collect::<Vec<_>>()
+        bases
+            .iter()
+            .map(|b| b.display().to_string())
+            .collect::<Vec<_>>()
     );
 
     let mut result = AssetCopyResult::default();
@@ -143,7 +146,10 @@ pub fn port_copy_assets_to_target(
         }
 
         let Some(src) = resolve_asset_under_bases(&bases, &rel) else {
-            tracing::warn!("[port assets] NOT FOUND: rel='{rel}' (searched {} bases)", bases.len());
+            tracing::warn!(
+                "[port assets] NOT FOUND: rel='{rel}' (searched {} bases)",
+                bases.len()
+            );
             result.missing += 1;
             result.missing_paths.push(rel);
             continue;
@@ -166,11 +172,19 @@ pub fn port_copy_assets_to_target(
         }
         match std::fs::copy(&src, &dest) {
             Ok(_) => {
-                tracing::info!("[port assets] copied {} -> {}", src.display(), dest.display());
+                tracing::info!(
+                    "[port assets] copied {} -> {}",
+                    src.display(),
+                    dest.display()
+                );
                 result.copied += 1;
             }
             Err(e) => {
-                tracing::error!("[port assets] copy failed {} -> {}: {e}", src.display(), dest.display());
+                tracing::error!(
+                    "[port assets] copy failed {} -> {}: {e}",
+                    src.display(),
+                    dest.display()
+                );
                 result.missing += 1;
                 result.missing_paths.push(rel);
             }

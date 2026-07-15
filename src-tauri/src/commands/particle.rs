@@ -166,3 +166,55 @@ pub async fn copy_particle_assets(
         .await
         .map_err(|e| format!("copy_particle_assets task panicked: {}", e))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "quartz_particle_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn copy_flow_creates_variant_and_backup_folders() {
+        let root = scratch();
+        let bin_dir = root.join("data/characters/test");
+        let source = root.join("ASSETS/source/particle.dds");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+        std::fs::write(&source, b"particle-data").unwrap();
+        let bin = bin_dir.join("skin.bin");
+        std::fs::write(&bin, b"bin").unwrap();
+
+        let entry = || AssetEntry {
+            original: "ASSETS/source/particle.dds".into(),
+            filename: "particle.dds".into(),
+        };
+        let result = run(CopyParticleAssetsArgs {
+            source_file_path: bin.to_string_lossy().into_owned(),
+            assets_by_folder: HashMap::from([
+                ("variant_1".into(), vec![entry()]),
+                ("variant_2".into(), vec![entry()]),
+                ("_backup".into(), vec![entry()]),
+            ]),
+        });
+
+        assert!(result.success);
+        assert_eq!(result.total_copied, 3);
+        assert_eq!(result.folders_created, 3);
+        for folder in ["variant_1", "variant_2", "_backup"] {
+            assert_eq!(
+                std::fs::read(root.join("ASSETS").join(folder).join("particle.dds")).unwrap(),
+                b"particle-data"
+            );
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
+}

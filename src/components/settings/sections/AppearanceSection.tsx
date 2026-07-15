@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Type, FolderOpen, RefreshCw, Plus, Trash2, Palette, Image, MousePointerClick, Sparkles } from 'lucide-react';
+import { Type, FolderOpen, RefreshCw, Plus, Trash2, Palette, Image, MousePointerClick, Sparkles, PanelsTopLeft } from 'lucide-react';
 import { useFileExplorer } from '@/components/explorer';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { FormGroup, CustomSelect, Button, cardSurface } from '../primitives';
@@ -62,6 +62,10 @@ export function AppearanceSection() {
 
     const onFontChange = (v: string) => { set('font', v); applyFont(v); };
     const onBlur = (v: number) => { set('glassBlur', v); applyUiPrefs(); };
+    const setGlobalAppearance = (key: 'sharpButtonCorners' | 'globalGlassSurfaces', value: boolean) => {
+        set(key, value);
+        applyUiPrefs();
+    };
 
     // Whether a wallpaper is showing drives the translucent surface tokens, so
     // toggling/selecting a wallpaper must re-derive the active theme.
@@ -98,6 +102,29 @@ export function AppearanceSection() {
 
             <FormGroup label="Color Theme" icon={<Palette size={15} />}>
                 <ThemeCardGrid />
+            </FormGroup>
+
+            <FormGroup label="Interface Style" icon={<PanelsTopLeft size={15} />}>
+                <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <Checkbox
+                        checked={prefs.sharpButtonCorners}
+                        onChange={(checked) => setGlobalAppearance('sharpButtonCorners', checked)}
+                    >
+                        Sharp button corners
+                    </Checkbox>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '11px', lineHeight: 1.45, marginTop: '-6px' }}>
+                        Removes rounding from every button and clickable button control across Quartz.
+                    </div>
+                    <Checkbox
+                        checked={prefs.globalGlassSurfaces}
+                        onChange={(checked) => setGlobalAppearance('globalGlassSurfaces', checked)}
+                    >
+                        Glass buttons and containers
+                    </Checkbox>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '11px', lineHeight: 1.45, marginTop: '-6px' }}>
+                        Applies translucent blur, glass borders, and soft depth to buttons, cards, panels, panes, sidebars, and dialogs globally.
+                    </div>
+                </div>
             </FormGroup>
 
             <FormGroup label="Wallpaper" icon={<Image size={15} />}>

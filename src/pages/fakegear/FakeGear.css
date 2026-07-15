@@ -4,7 +4,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-primary);
+    background: transparent;
     color: var(--text-primary);
     font-family: var(--font-sans);
     overflow: hidden;
@@ -416,46 +416,6 @@
     background: color-mix(in oklab, var(--color-success) 22%, var(--bg-tertiary)) !important;
 }
 
-/* Toast Notification */
-.fakegear-toast-container {
-    position: absolute;
-    bottom: 2rem;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1000;
-    pointer-events: none;
-    width: 100%;
-    display: flex;
-    justify-content: center;
-}
-
-.fakegear-toast {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    padding: 0.75rem 1.5rem;
-    border-radius: 50px;
-    box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.25);
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    animation: slide-up 0.3s ease-out forwards;
-    pointer-events: auto;
-    max-width: 80%;
-}
-
-@keyframes slide-up {
-    from {
-        transform: translateY(20px);
-        opacity: 0;
-    }
-
-    to {
-        transform: translateY(0);
-        opacity: 1;
-    }
-}
-
 /* Loading & Empty States */
 .fakegear-loading,
 .fakegear-empty {
@@ -640,4 +600,235 @@
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
+}
+
+/* Full-width tool footer and dimmed no-document workspace. */
+.fakegear-bottom-bar {
+    position: relative;
+    height: 48px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    border-top: 1px solid var(--border);
+    background: var(--bg-primary);
+}
+
+.fakegear-bottom-bar__status {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 50%;
+    overflow: hidden;
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
+    font-size: .72rem;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.fakegear-bottom-bar__unsaved {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
+    font-size: .7rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.fakegear-bottom-bar__unsaved::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+}
+
+.fakegear-bottom-bar__actions {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.fakegear-workspace-shell {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.fakegear-workspace {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    overflow: hidden;
+    transition: opacity var(--motion-base), filter var(--motion-base);
+}
+
+.fakegear-workspace.is-dim {
+    opacity: .28;
+    filter: saturate(.65) brightness(.7);
+    pointer-events: none;
+    user-select: none;
+}
+
+.fakegear-workspace > div {
+    background: color-mix(in oklab, var(--bg-primary) 78%, transparent);
+}
+
+.fakegear-workspace > div:last-child {
+    background: color-mix(in oklab, var(--bg-secondary) 58%, transparent);
+}
+
+.fakegear-workspace .MuiIconButton-root {
+    border-radius: 6px;
+    color: var(--text-muted);
+}
+
+.fakegear-workspace .MuiIconButton-root:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.fakegear-browser-panel,
+.fakegear-action-panel {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.fakegear-browser-panel {
+    flex: 1;
+    border-right: 1px solid var(--border);
+}
+
+.fakegear-action-panel {
+    width: 35%;
+    min-width: 310px;
+}
+
+.fakegear-browser-header,
+.fakegear-browser-search,
+.fakegear-browser-footer,
+.fakegear-action-header {
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklab, var(--bg-secondary) 84%, transparent);
+}
+
+.fakegear-browser-header {
+    min-height: 48px;
+    padding: 0 12px 0 15px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.fakegear-browser-header > div:first-child,
+.fakegear-action-header {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+}
+
+.fakegear-browser-header h6,
+.fakegear-action-header h6 {
+    margin: 0;
+    color: var(--text-primary);
+    font: 650 12px/1.2 var(--font-sans);
+}
+
+.fakegear-browser-header span,
+.fakegear-action-header span {
+    color: var(--text-muted);
+    font: 9px/1.3 var(--font-mono);
+}
+
+.fakegear-browser-header__actions { display: flex; align-items: center; gap: 2px; }
+
+.fakegear-browser-search {
+    height: 43px;
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fakegear-browser-list {
+    flex: 1;
+    min-height: 0;
+    padding: 5px 0;
+    overflow: auto hidden;
+}
+
+.fakegear-browser-footer {
+    min-height: 45px;
+    padding: 7px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-top: 1px solid var(--border);
+    border-bottom: 0;
+    color: var(--text-muted);
+    font: 10px/1.3 var(--font-mono);
+}
+
+.fakegear-action-header {
+    min-height: 48px;
+    padding: 0 15px;
+}
+
+.fakegear-action-list {
+    flex: 1;
+    min-height: 0;
+    padding: 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+}
+
+.fakegear-step {
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: color-mix(in oklab, var(--bg-secondary) 78%, transparent);
+    box-shadow: 0 1px 1px rgba(0, 0, 0, .14);
+    transition: border-color var(--motion-fast), background var(--motion-fast);
+}
+
+.fakegear-step.active {
+    border-color: color-mix(in oklab, var(--accent-primary) 28%, var(--border));
+    background: color-mix(in oklab, var(--accent-primary) 4%, var(--bg-secondary));
+}
+
+.fakegear-step-title { text-transform: none; letter-spacing: .01em; }
+
+.fakegear-step-number {
+    right: 12px;
+    left: auto;
+    top: 12px;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-tertiary);
+}
+
+.fakegear-step.active .fakegear-step-number {
+    border-color: var(--accent-primary);
+    background: color-mix(in oklab, var(--accent-primary) 10%, var(--bg-tertiary));
 }

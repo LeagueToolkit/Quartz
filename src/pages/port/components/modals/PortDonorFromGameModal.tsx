@@ -68,6 +68,7 @@ export default function PortDonorFromGameModal(props: LoadFromGameModalProps) {
     // donor mode: single skin; banks mode: many skins (by id).
     const [selectedSkin, setSelectedSkin] = useState<DonorSkin | null>(null);
     const [selectedSkinIds, setSelectedSkinIds] = useState<Set<number>>(new Set());
+    const [selectedSkinByChampion, setSelectedSkinByChampion] = useState<Map<string, Set<number>>>(new Map());
     const [prefix, setPrefix] = useState(() => {
         try { return localStorage.getItem(PREFIX_KEY) || ''; } catch { return ''; }
     });
@@ -131,6 +132,7 @@ export default function PortDonorFromGameModal(props: LoadFromGameModalProps) {
         setSelectedChampion(null);
         setSelectedSkin(null);
         setSelectedSkinIds(new Set());
+        setSelectedSkinByChampion(new Map());
         setSkins([]);
         setErrorText('');
     }, [open]);
@@ -168,7 +170,15 @@ export default function PortDonorFromGameModal(props: LoadFromGameModalProps) {
                 for (const g of groups) {
                     const champ = champions.find((c) => c.id === g.champion.id) || { id: g.champion.id, name: g.champion.name, alias: g.champion.alias };
                     for (const s of g.skins) {
-                        flat.push({ champion: champ, skin: { id: s.skinNumber, name: s.name, tilePath: null, rarity: s.rarity } });
+                        flat.push({
+                            champion: champ,
+                            skin: {
+                                id: s.skinNumber,
+                                name: s.name,
+                                tilePath: `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${s.championAlias}_${s.skinNumber}.jpg`,
+                                rarity: s.rarity,
+                            },
+                        });
                     }
                 }
                 setSkinlineResults(flat);
@@ -188,7 +198,9 @@ export default function PortDonorFromGameModal(props: LoadFromGameModalProps) {
     const handleSelectChampion = (champion: DonorChampion) => {
         setSelectedChampion(champion);
         setSelectedSkin(null);
-        setSelectedSkinIds(new Set());
+        setSelectedSkinIds(isBanks
+            ? new Set(selectedSkinByChampion.get(String(champion.id)) ?? [])
+            : new Set());
     };
 
     const handleSelectRecent = (donor: RecentPortDonor) => {
@@ -205,9 +217,29 @@ export default function PortDonorFromGameModal(props: LoadFromGameModalProps) {
         setSelectedSkin(entry.skin);
     };
 
+    const toggleBankSkin = (champion: DonorChampion, skinId: number) => {
+        const championKey = String(champion.id);
+        const nextForChampion = new Set(selectedSkinByChampion.get(championKey) ?? []);
+        if (nextForChampion.has(skinId)) nextForChampion.delete(skinId);
+        else nextForChampion.add(skinId);
+
+        const nextSelections = new Map(selectedSkinByChampion);
+        if (nextForChampion.size > 0) nextSelections.set(championKey, nextForChampion);
+        else nextSelections.delete(championKey);
+
+        setSelectedSkinByChampion(nextSelections);
+        setSelectedChampion(champion);
+        setSelectedSkinIds(nextForChampion);
+    };
+
     const activeRecentKey = selectedChampion && selectedSkin ? `${selectedChampion.id}_${selectedSkin.id}` : null;
+    const selectedSkinTotal = useMemo(() => {
+        let total = 0;
+        selectedSkinByChampion.forEach((ids) => { total += ids.size; });
+        return total;
+    }, [selectedSkinByChampion]);
     const canConfirm = isBanks
-        ? Boolean(selectedChampion && selectedSkinIds.size > 0 && (includeVoiceover || includeSfx) && !loading && !loadingChampions && !loadingSkins)
+        ? Boolean(selectedSkinTotal > 0 && (includeVoiceover || includeSfx) && !loading && !loadingChampions && !loadingSkins)
         : Boolean(selectedChampion && selectedSkin && sanitized && !loading && !loadingChampions);
 
     if (!open) return null;
@@ -221,30 +253,26 @@ export default function PortDonorFromGameModal(props: LoadFromGameModalProps) {
     const rightSelectedIds = isBanks
         ? selectedSkinIds
         : (selectedSkin ? new Set([selectedSkin.id]) : new Set<number>());
+    const isRightSkinSelected = (skin: DonorSkin) => {
+        if (!isBanks || !showSkinlineResults) return rightSelectedIds.has(skin.id);
+        const entry = skinlineResults.find((result) => result.skin === skin);
+        return Boolean(entry && selectedSkinByChampion.get(String(entry.champion.id))?.has(skin.id));
+    };
     const emptyLabel = searchMode === 'skinline' ? 'Search a skinline, then pick a skin' : 'Select a champion first';
     const onRightSelect = (skin: DonorSkin) => {
         if (showSkinlineResults) {
-            const entry = skinlineResults.find((r) => r.skin.id === skin.id && r.skin.name === skin.name);
+            const entry = skinlineResults.find((result) => result.skin === skin);
             if (entry) {
-                // A skinline result carries its own champion; select it, then in
-                // banks mode toggle that skin into the multi-select set.
-                handleSelectSkinlineResult(entry);
                 if (isBanks) {
-                    setSelectedSkinIds((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(skin.id)) next.delete(skin.id); else next.add(skin.id);
-                        return next;
-                    });
+                    toggleBankSkin(entry.champion, skin.id);
+                } else {
+                    handleSelectSkinlineResult(entry);
                 }
                 return;
             }
         }
         if (isBanks) {
-            setSelectedSkinIds((prev) => {
-                const next = new Set(prev);
-                if (next.has(skin.id)) next.delete(skin.id); else next.add(skin.id);
-                return next;
-            });
+            if (selectedChampion) toggleBankSkin(selectedChampion, skin.id);
         } else {
             setSelectedSkin(skin);
         }
@@ -254,8 +282,23 @@ export default function PortDonorFromGameModal(props: LoadFromGameModalProps) {
         if (!selectedChampion) return;
         const champion = { id: selectedChampion.id, name: selectedChampion.name, alias: selectedChampion.alias };
         if (props.mode === 'banks') {
-            if (selectedSkinIds.size === 0) return;
-            props.onConfirm({ champion, skinIds: Array.from(selectedSkinIds), includeVoiceover, includeSfx });
+            const selections = Array.from(selectedSkinByChampion.entries()).flatMap(([championId, skinIdSet]) => {
+                const selected = champions.find((entry) => String(entry.id) === championId);
+                if (!selected || skinIdSet.size === 0) return [];
+                return [{
+                    champion: { id: selected.id, name: selected.name, alias: selected.alias },
+                    skinIds: Array.from(skinIdSet),
+                }];
+            });
+            if (selections.length === 0) return;
+            const primary = selections[0];
+            props.onConfirm({
+                champion: primary.champion,
+                skinIds: primary.skinIds,
+                selections,
+                includeVoiceover,
+                includeSfx,
+            });
         } else {
             if (!selectedSkin) return;
             props.onConfirm({
@@ -287,12 +330,37 @@ export default function PortDonorFromGameModal(props: LoadFromGameModalProps) {
                             Extract SFX
                         </button>
                         <span className="donor-banks-opts__hint">
-                            {selectedChampion ? `${selectedChampion.name} · ${selectedSkinIds.size} skin(s) selected` : 'Select a champion first'}
+                            {searchMode === 'skinline'
+                                ? `${selectedSkinTotal} skin(s) selected across ${selectedSkinByChampion.size} champion(s)`
+                                : (selectedChampion ? `${selectedChampion.name} · ${selectedSkinIds.size} skin(s) selected` : 'Select a champion first')}
                         </span>
+                        <button
+                            type="button"
+                            disabled={!canConfirm}
+                            onClick={handleConfirm}
+                            className={`dl-btn dl-btn--primary donor-inline-action ${loading ? 'dl-btn--loading' : ''}`}
+                        >
+                            {loading ? 'Extracting...' : 'Load Banks'}
+                        </button>
                     </div>
                 ) : (
                     <>
-                        <DonorPrefixField value={prefix} sanitized={sanitized} onChange={setPrefix} disabled={loading} />
+                        <DonorPrefixField
+                            value={prefix}
+                            sanitized={sanitized}
+                            onChange={setPrefix}
+                            disabled={loading}
+                            action={(
+                                <button
+                                    type="button"
+                                    disabled={!canConfirm}
+                                    onClick={handleConfirm}
+                                    className={`dl-btn dl-btn--primary donor-inline-action ${loading ? 'dl-btn--loading' : ''}`}
+                                >
+                                    {loading ? 'Preparing...' : 'Use As Donor'}
+                                </button>
+                            )}
+                        />
                         <RecentDonorsRow recentDonors={props.recentDonors ?? []} activeKey={activeRecentKey} onSelect={handleSelectRecent} />
                     </>
                 )}
@@ -316,6 +384,7 @@ export default function PortDonorFromGameModal(props: LoadFromGameModalProps) {
                             loading={loadingSkins}
                             hasChampion={rightHasChampion}
                             selectedSkinIds={rightSelectedIds}
+                            isSkinSelected={isRightSkinSelected}
                             badgeLabel={isBanks ? 'PICKED' : 'DONOR'}
                             emptyLabel={emptyLabel}
                             onSelect={onRightSelect}
@@ -330,19 +399,6 @@ export default function PortDonorFromGameModal(props: LoadFromGameModalProps) {
                     </div>
                 )}
 
-                <div className="dl-modal__foot">
-                    <button type="button" onClick={onClose} disabled={loading} className="dl-btn dl-btn--secondary">
-                        Cancel
-                    </button>
-                    <button
-                        type="button"
-                        disabled={!canConfirm}
-                        onClick={handleConfirm}
-                        className={`dl-btn dl-btn--primary ${loading ? 'dl-btn--loading' : ''}`}
-                    >
-                        {isBanks ? (loading ? 'Extracting…' : 'Load Banks') : (loading ? 'Preparing' : 'Use As Donor')}
-                    </button>
-                </div>
             </div>
         </div>,
         document.body,

@@ -16,6 +16,13 @@ function toBytes(value: unknown): Uint8Array {
     return new Uint8Array();
 }
 
+function base64ToBytes(value: string): Uint8Array {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
+
 /* Walk a freshly-loaded tree and convert every audioData.data array to bytes. */
 function hydrateTree(node: BnkNode): BnkNode {
     if (node.audioData?.data) {
@@ -124,8 +131,26 @@ export async function installWwise(): Promise<{ success: boolean; error?: string
 export async function convertToWem(inputPath: string): Promise<Uint8Array> {
     return toBytes(await invoke<number[]>('audio_convert_to_wem', { inputPath }));
 }
-export async function decodeToWav(inputData: Uint8Array): Promise<string> {
-    return invoke<string>('audio_decode_to_wav', { data: Array.from(inputData) });
+export interface BatchWemResult {
+    name: string;
+    data?: Uint8Array;
+    error?: string;
+}
+export async function convertWavsToWem(
+    inputs: Array<{ name: string; data: Uint8Array }>,
+): Promise<BatchWemResult[]> {
+    const results = await invoke<Array<{ name: string; dataBase64?: string; error?: string }>>(
+        'audio_convert_wavs_to_wem',
+        { inputs: inputs.map((input) => ({ name: input.name, data: Array.from(input.data) })) },
+    );
+    return results.map((result) => ({
+        name: result.name,
+        data: result.dataBase64 ? base64ToBytes(result.dataBase64) : undefined,
+        error: result.error,
+    }));
+}
+export async function decodeToWav(inputData: Uint8Array): Promise<Uint8Array> {
+    return base64ToBytes(await invoke<string>('audio_decode_to_wav', { data: Array.from(inputData) }));
 }
 export async function amplifyWem(data: Uint8Array, gainDb: number): Promise<Uint8Array> {
     return toBytes(await invoke<number[]>('audio_amplify_wem', { data: Array.from(data), gainDb }));
@@ -135,10 +160,7 @@ export async function amplifyWem(data: Uint8Array, gainDb: number): Promise<Uint
    which are already encoded and need no conversion). */
 export async function readFileBytes(path: string): Promise<Uint8Array> {
     const b64 = await invoke<string>('read_file_base64', { path });
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return bytes;
+    return base64ToBytes(b64);
 }
 
 /* Write raw bytes to a path (used by the audio splitter to save WAV segments). */

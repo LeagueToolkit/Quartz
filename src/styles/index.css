@@ -96,3 +96,102 @@ input[type="radio"] { accent-color: var(--accent-primary); }
 /* The work area frosts everything behind it once; its own bg stays transparent
    so page content (which supplies its own translucent surfaces) sits on top. */
 :root[data-wallpaper="on"] .q-main { background: transparent; }
+
+/* ── Global interface style preferences ────────────────────────────────────
+   These attributes are persisted by uiPrefsStore and applied before the main
+   window is revealed, so startup never flashes the default appearance. */
+
+/* Sharp corners target actual button controls rather than changing the radius
+   tokens: cards and windows keep their chosen shape unless Glass Surfaces is
+   enabled independently. !important also catches MUI and inline sx radii. */
+:root[data-button-corners="sharp"] :where(
+    button,
+    [role="button"],
+    .MuiButtonBase-root,
+    [class*="-btn"],
+    [class*="__btn"],
+    [class*="-button"],
+    [class*="__button"]
+) {
+    border-radius: 0 !important;
+}
+
+/* Common glass recipe shared by the global selector groups below. Layout-only
+   wrappers are intentionally excluded; glassing those would cover wallpapers
+   and prevent nested surfaces from blurring what is behind them. */
+:root[data-global-glass="on"] {
+    --global-glass-bg: color-mix(in oklab, var(--glass-bg) 88%, transparent);
+    --global-glass-border: color-mix(in oklab, var(--glass-border) 88%, var(--border));
+    --global-glass-control-shadow: 0 4px 14px color-mix(in oklab, black 24%, transparent), inset 0 1px 0 color-mix(in oklab, white 5%, transparent);
+}
+
+:root[data-global-glass="on"] :where(
+    button,
+    [role="button"],
+    .MuiButtonBase-root,
+    .MuiPaper-root,
+    .q-glass,
+    .dl-card,
+    .dl-modal,
+    [role="dialog"],
+    [role="menu"],
+    [role="listbox"],
+    [class*="-card"],
+    [class*="__card"],
+    [class*="-panel"],
+    [class*="__panel"],
+    [class*="-pane"],
+    [class*="__pane"],
+    [class*="-sidebar"],
+    [class*="__sidebar"],
+    [class*="-toolbar"],
+    [class*="__toolbar"],
+    [class*="-header"],
+    [class*="__header"],
+    [class*="-footer"],
+    [class*="__footer"]
+) {
+    background-color: var(--global-glass-bg) !important;
+    border-color: var(--global-glass-border) !important;
+    box-shadow: var(--glass-shadow) !important;
+    backdrop-filter: blur(var(--glass-blur)) saturate(135%) !important;
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(135%) !important;
+}
+
+/* Controls need a tighter shadow than large cards/panels; using the full modal
+   glass shadow on every toolbar icon would make compact interfaces look muddy. */
+:root[data-global-glass="on"] :where(
+    button,
+    [role="button"],
+    .MuiButtonBase-root,
+    [class*="-btn"],
+    [class*="__btn"],
+    [class*="-button"],
+    [class*="__button"]
+) {
+    box-shadow: var(--global-glass-control-shadow) !important;
+}
+
+/* Preserve the semantic tint of primary/active and destructive controls while
+   still keeping their surface translucent. */
+:root[data-global-glass="on"] :where(
+    .dl-btn--primary,
+    .is-active,
+    .active,
+    [aria-pressed="true"],
+    .MuiButton-containedPrimary
+) {
+    background-color: color-mix(in oklab, var(--accent-primary) 22%, var(--global-glass-bg)) !important;
+    border-color: color-mix(in oklab, var(--accent-primary) 55%, var(--global-glass-border)) !important;
+}
+
+:root[data-global-glass="on"] :where(
+    .dl-btn--danger,
+    .danger,
+    [class*="danger"],
+    [class*="delete"],
+    .MuiButton-containedError
+) {
+    background-color: color-mix(in oklab, var(--color-danger) 18%, var(--global-glass-bg)) !important;
+    border-color: color-mix(in oklab, var(--color-danger) 45%, var(--global-glass-border)) !important;
+}

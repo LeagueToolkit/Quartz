@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import type { Update } from '@tauri-apps/plugin-updater';
 import { Download, RefreshCw, Plug, PanelLeftClose, FolderOpen, ListTree, SlidersHorizontal } from 'lucide-react';
 import { FormGroup, Button, CardRow, Switch, cardSurface } from '../primitives';
-import { useUiPrefsStore } from '@/lib/stores';
+import { useConfigStore, useUiPrefsStore } from '@/lib/stores';
 import { getAppInfo } from '@/lib/api';
 import { checkForUpdate, installUpdate } from '@/lib/api/updater';
 import { log } from '@/lib/util/logger';
 
 export function GeneralSection() {
+    const autoUpdateEnabled = useConfigStore((s) => s.settings.autoUpdateEnabled);
+    const updateSettings = useConfigStore((s) => s.update);
     const communicateWithJade = useUiPrefsStore((s) => s.communicateWithJade);
     const useNative = useUiPrefsStore((s) => s.useNativeFileBrowser);
     const sidebarCollapsed = useUiPrefsStore((s) => s.sidebarCollapsed);
@@ -69,19 +71,28 @@ export function GeneralSection() {
             </FormGroup>
 
             <FormGroup label="App Updates" icon={<RefreshCw size={15} />}>
-                <div style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {version && <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Current Version: {version}</div>}
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        <Button icon={<RefreshCw size={16} style={checking ? { animation: 'spin 1s linear infinite' } : undefined} />} variant="secondary" onClick={checkUpdate} disabled={checking}>
-                            {checking ? 'Checking...' : 'Check for Updates'}
-                        </Button>
-                        {pending && (
-                            <Button icon={<Download size={16} />} variant="primary" onClick={() => installUpdate(pending).catch((e) => { log.error('installUpdate', e); setUpdateMessage('Install failed.'); })}>
-                                Install & Restart
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <CardRow
+                        icon={<Download size={18} />}
+                        label="Automatic Updates"
+                        description="Install updates automatically before Quartz opens"
+                        onActivate={() => void updateSettings({ autoUpdateEnabled: !autoUpdateEnabled })}
+                        control={<Switch checked={autoUpdateEnabled} onChange={(checked) => void updateSettings({ autoUpdateEnabled: checked })} />}
+                    />
+                    <div style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {version && <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Current Version: {version}</div>}
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <Button icon={<RefreshCw size={16} style={checking ? { animation: 'spin 1s linear infinite' } : undefined} />} variant="secondary" onClick={checkUpdate} disabled={checking}>
+                                {checking ? 'Checking...' : 'Check for Updates'}
                             </Button>
-                        )}
+                            {pending && (
+                                <Button icon={<Download size={16} />} variant="primary" onClick={() => installUpdate(pending).catch((e) => { log.error('installUpdate', e); setUpdateMessage('Install failed.'); })}>
+                                    Install & Restart
+                                </Button>
+                            )}
+                        </div>
+                        {updateMessage && <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{updateMessage}</div>}
                     </div>
-                    {updateMessage && <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{updateMessage}</div>}
                 </div>
             </FormGroup>
         </div>

@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quartz Startup</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        background: #0b0d10;
+        color: #f2f4f7;
+      }
+
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #0b0d10;
+        user-select: none;
+      }
+
+      button { font: inherit; }
+
+      .startup {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        border: 1px solid #252a31;
+        background:
+          radial-gradient(circle at 50% 30%, rgba(63, 166, 244, .16), transparent 34%),
+          linear-gradient(180deg, #0d1014 0%, #0a0c0f 100%);
+      }
+
+      .startup::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        opacity: .22;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, .018) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, .018) 1px, transparent 1px);
+        background-size: 24px 24px;
+        mask-image: linear-gradient(to bottom, black, transparent 76%);
+      }
+
+      .visual {
+        position: absolute;
+        inset: 0 0 142px;
+        display: grid;
+        place-items: center;
+      }
+
+      .visual__aura {
+        position: absolute;
+        width: 230px;
+        height: 190px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(63, 166, 244, .24), rgba(63, 166, 244, .05) 46%, transparent 72%);
+        filter: blur(10px);
+        animation: aura 3.6s ease-in-out infinite;
+      }
+
+      .brand {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 11px;
+      }
+
+      .brand__logo {
+        width: 112px;
+        height: 112px;
+        object-fit: contain;
+        filter: drop-shadow(0 12px 24px rgba(0, 0, 0, .42));
+        transform-origin: center;
+        animation: logo-pop .6s cubic-bezier(.34, 1.56, .64, 1) both;
+      }
+
+      .brand__name {
+        display: flex;
+        align-items: baseline;
+        color: #f1f3f6;
+        font-size: 23px;
+        font-weight: 650;
+        letter-spacing: .035em;
+      }
+
+      .brand__word {
+        display: inline-block;
+        white-space: nowrap;
+        animation: type-word .55s cubic-bezier(.65, 0, .35, 1) .55s both;
+      }
+
+      .brand__dot {
+        color: #3fa6f4;
+        opacity: 0;
+        animation: dot-pulse 1.05s ease-in-out 1.1s infinite;
+      }
+
+      .bottom {
+        position: absolute;
+        inset: auto 0 0;
+        height: 142px;
+        padding: 22px 40px 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+      }
+
+      .loading,
+      .error-prompt {
+        width: 100%;
+      }
+
+      .loading[hidden],
+      .error-prompt[hidden] { display: none; }
+
+      .progress {
+        width: 100%;
+        height: 5px;
+        overflow: hidden;
+        border: 1px solid rgba(91, 104, 121, .38);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, .025);
+      }
+
+      .progress__bar {
+        width: 0;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #218bdc, #55b9ff);
+        box-shadow: 0 0 12px rgba(63, 166, 244, .5);
+        transition: width .2s ease;
+      }
+
+      .progress__bar.is-indeterminate {
+        width: 38%;
+        animation: slide 1.35s ease-in-out infinite;
+      }
+
+      .status {
+        margin-top: 12px;
+        color: #8b929d;
+        font-size: 12px;
+        font-weight: 500;
+        text-align: center;
+      }
+
+      .version {
+        margin-top: 7px;
+        color: #555d69;
+        font-size: 10px;
+        text-align: center;
+      }
+
+      .prompt {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+
+      .prompt__title {
+        color: #f2f4f7;
+        font-size: 13px;
+        font-weight: 650;
+      }
+
+      .prompt__copy {
+        max-width: 390px;
+        margin-top: 5px;
+        overflow: hidden;
+        color: #858d99;
+        font-size: 11px;
+        line-height: 1.4;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .prompt__actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .action {
+        min-width: 104px;
+        height: 31px;
+        padding: 0 15px;
+        border: 1px solid #2b313a;
+        border-radius: 6px;
+        background: #14181e;
+        color: #aeb5bf;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: border-color .15s ease, background .15s ease, color .15s ease;
+      }
+
+      .action:hover:not(:disabled) {
+        border-color: #3b4653;
+        background: #1a1f26;
+        color: #e8ebef;
+      }
+
+      .action--primary {
+        border-color: rgba(63, 166, 244, .7);
+        background: linear-gradient(180deg, #278edb, #1478c2);
+        color: #fff;
+        box-shadow: 0 4px 14px rgba(24, 127, 201, .2);
+      }
+
+      .action--primary:hover:not(:disabled) {
+        border-color: #68c1ff;
+        background: linear-gradient(180deg, #35a0ee, #1985d2);
+        color: #fff;
+      }
+
+      .action:disabled {
+        cursor: default;
+        opacity: .5;
+      }
+
+      @keyframes slide {
+        from { margin-left: -38%; }
+        to { margin-left: 100%; }
+      }
+
+      @keyframes aura {
+        0%, 100% { opacity: .55; transform: scale(.92); }
+        50% { opacity: 1; transform: scale(1.06); }
+      }
+
+      @keyframes logo-pop {
+        from { opacity: 0; transform: scale(.3) rotate(-8deg); }
+        to { opacity: 1; transform: scale(1) rotate(0); }
+      }
+
+      @keyframes type-word {
+        from { clip-path: inset(0 100% 0 0); }
+        to { clip-path: inset(0 0 0 0); }
+      }
+
+      @keyframes dot-pulse {
+        0%, 100% { opacity: .28; text-shadow: 0 0 0 rgba(63, 166, 244, 0); }
+        50% { opacity: 1; text-shadow: 0 0 9px rgba(63, 166, 244, .9); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .visual__aura,
+        .brand__logo,
+        .brand__word,
+        .brand__dot { animation: none; }
+        .brand__word { clip-path: none; }
+        .brand__dot { opacity: 1; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="startup">
+      <div class="visual" data-tauri-drag-region>
+        <div class="visual__aura"></div>
+        <div class="brand" data-tauri-drag-region>
+          <img class="brand__logo" src="/your-logo.gif" alt="Quartz" draggable="false" />
+          <div class="brand__name"><span class="brand__word">Quartz</span><span class="brand__dot">.</span></div>
+        </div>
+      </div>
+
+      <div class="bottom">
+        <div class="loading" id="loading-view">
+          <div class="progress"><div class="progress__bar is-indeterminate" id="progress-bar"></div></div>
+          <div class="status" id="status">Starting Quartz...</div>
+          <div class="version" id="version"></div>
+        </div>
+
+        <div class="error-prompt prompt" id="error-view" hidden>
+          <div class="prompt__title">Quartz could not finish startup</div>
+          <div class="prompt__copy" id="error-copy">Continue and check for updates later in Settings.</div>
+          <div class="prompt__actions">
+            <button class="action action--primary" id="continue-anyway" type="button">Continue</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/updater.js"></script>
+  </body>
+</html>

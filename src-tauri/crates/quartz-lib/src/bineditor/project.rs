@@ -98,6 +98,8 @@ pub struct EditorSystem {
     pub name: String,
     /// Which resident bin this system lives in (main at 0, linked bins follow).
     pub bin: usize,
+    /// Path to the VfxSystemDefinitionData top-level entry.
+    pub path: NodePath,
     pub emitters: Vec<EditorEmitter>,
 }
 
@@ -209,6 +211,7 @@ fn project_system(
         key,
         name,
         bin: bin_idx,
+        path: base,
         emitters,
     }
 }
@@ -359,7 +362,7 @@ fn project_node(key: Option<String>, v: &BinValue, path: NodePath, m: &HashMappe
         }
         BinValue::Map { .. } => unsupported(key, path, "map"),
         BinValue::Mtx44(_) => unsupported(key, path, "mtx44"),
-        BinValue::Link(_) => unsupported(key, path, "link"),
+        BinValue::Link(h) => primitive(key, path, "link", "link", NodeValue::Str(name32(*h, m))),
     }
 }
 

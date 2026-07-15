@@ -1,8 +1,4 @@
-import { useEffect } from 'react';
-import { useNavigationStore, useConfigStore, useThemeStore, useUiPrefsStore, applyUiPrefs, type Page } from '@/lib/stores';
-import { applyFont } from '@/lib/fonts/fontManager';
-import { getLeaguePath } from '@/lib/api/league';
-import { log } from '@/lib/util/logger';
+import { useNavigationStore, useUiPrefsStore, type Page } from '@/lib/stores';
 import { useButtonGlow } from '@/lib/util/useButtonGlow';
 import { TitleBar } from '@/components/layout/TitleBar';
 import { NavRail } from '@/components/layout/NavRail';
@@ -25,6 +21,8 @@ import Upscale from '@/pages/Upscale';
 import { Placeholder } from '@/pages/Placeholder';
 import { EffectsLayer } from '@/components/effects/EffectsLayer';
 import { FileExplorerHost } from '@/components/explorer';
+import { ModelInspectHost } from '@/components/model-inspect/ModelInspectHost';
+import { openModelInspect } from '@/lib/model/modelInspectEvent';
 
 const TITLES: Record<Page, string> = {
     home: 'Home',
@@ -78,25 +76,8 @@ function PageView({ page }: { page: Page }) {
 export function App() {
     const page = useNavigationStore((s) => s.page);
     const sidebarCollapsed = useUiPrefsStore((s) => s.sidebarCollapsed);
-    const loadConfig = useConfigStore((s) => s.load);
-    const initThemes = useThemeStore((s) => s.init);
 
     useButtonGlow();
-
-    useEffect(() => {
-        // Load settings first so the theme store can read the saved selection.
-        loadConfig().then(async () => {
-            initThemes();
-            // Auto-detect the League install path on boot if none is saved yet.
-            const { settings, update } = useConfigStore.getState();
-            if (!settings.leaguePath) {
-                const detected = await getLeaguePath().catch((e) => { log.error('boot league auto-detect', e); return null; });
-                if (detected) await update({ leaguePath: detected });
-            }
-        });
-        applyUiPrefs();
-        applyFont(useUiPrefsStore.getState().font);
-    }, [loadConfig, initThemes]);
 
     return (
         <div className="relative flex h-full flex-col">
@@ -123,7 +104,8 @@ export function App() {
                     )}
                 </main>
             </div>
-            <FileExplorerHost />
+            <FileExplorerHost onInspect={(entry) => openModelInspect(entry.path)} />
+            <ModelInspectHost />
         </div>
     );
 }

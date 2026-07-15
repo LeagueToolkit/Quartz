@@ -182,7 +182,9 @@ fn find_file_named(base: &Path, name: &str) -> Option<PathBuf> {
             let p = e.path();
             if p.is_dir() {
                 stack.push(p);
-            } else if p.file_name().map(|n| n.to_string_lossy().to_lowercase()) == Some(target.clone()) {
+            } else if p.file_name().map(|n| n.to_string_lossy().to_lowercase())
+                == Some(target.clone())
+            {
                 return Some(p);
             }
         }
@@ -218,7 +220,10 @@ fn flatten_linked_bins(
                 continue;
             }
             let norm = link.to_lowercase().replace('\\', "/");
-            let actual = path_mappings.get(&norm).cloned().unwrap_or_else(|| norm.clone());
+            let actual = path_mappings
+                .get(&norm)
+                .cloned()
+                .unwrap_or_else(|| norm.clone());
             let Some(disk) = resolve_bin_on_disk(content_base, &actual) else {
                 tracing::warn!("Linked BIN not found on disk, skipping: {}", link);
                 continue;
@@ -278,14 +283,18 @@ pub fn concatenate_linked_bins(
 
     for (link, disk) in &linked {
         let Ok(bytes) = fs::read(disk) else { continue };
-        let src = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| read_bin(&bytes))) {
+        let src = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| read_bin(&bytes)))
+        {
             Ok(Ok(b)) => b,
             Ok(Err(e)) => {
                 tracing::warn!("Failed to parse linked BIN {}: {}", disk.display(), e);
                 continue;
             }
             Err(_) => {
-                tracing::error!("CRASH PREVENTED: parser panicked on {}. Skipping.", disk.display());
+                tracing::error!(
+                    "CRASH PREVENTED: parser panicked on {}. Skipping.",
+                    disk.display()
+                );
                 continue;
             }
         };
@@ -314,7 +323,9 @@ pub fn concatenate_linked_bins(
     fs::write(main_bin_path, &out).map_err(|e| Error::io_with_path(e, main_bin_path))?;
     tracing::info!(
         "Merged {} entries from {} linked BINs into {}",
-        added, merged_disk.len(), main_bin_path.display()
+        added,
+        merged_disk.len(),
+        main_bin_path.display()
     );
 
     // Delete merged source BINs from disk + prune now-empty parent dirs.
@@ -357,7 +368,11 @@ fn link_key(link: &str) -> String {
 fn rel_of(base: &Path, p: &Path) -> String {
     p.strip_prefix(base)
         .map(|r| r.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|_| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
+        .unwrap_or_else(|_| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        })
 }
 
 /// Remove now-empty parent directories of `file` up to (not including) `base`.
@@ -367,7 +382,9 @@ fn cleanup_empty_parents(file: &Path, base: &Path) {
         if d == base || !d.starts_with(base) {
             break;
         }
-        let is_empty = fs::read_dir(&d).map(|mut rd| rd.next().is_none()).unwrap_or(false);
+        let is_empty = fs::read_dir(&d)
+            .map(|mut rd| rd.next().is_none())
+            .unwrap_or(false);
         if !is_empty || fs::remove_dir(&d).is_err() {
             break;
         }

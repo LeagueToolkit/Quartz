@@ -53,11 +53,7 @@ pub fn xps2fbx(input: &Path, output: Option<&Path>) -> Result<(), String> {
         ));
     }
 
-    eprintln!(
-        "OK: {} -> {}",
-        input.display(),
-        output_path.display(),
-    );
+    eprintln!("OK: {} -> {}", input.display(), output_path.display(),);
 
     Ok(())
 }

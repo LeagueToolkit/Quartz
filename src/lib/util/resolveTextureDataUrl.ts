@@ -22,7 +22,7 @@ function cacheSet(key: string, url: string | null): void {
 }
 
 /* Decode a base64 RGBA8 buffer into a PNG data URL via an offscreen canvas. */
-function rgbaToDataUrl(rgbaB64: string, width: number, height: number): string | null {
+export function rgbaToDataUrl(rgbaB64: string, width: number, height: number): string | null {
     try {
         const bin = atob(rgbaB64);
         const bytes = new Uint8ClampedArray(bin.length);
@@ -35,6 +35,23 @@ function rgbaToDataUrl(rgbaB64: string, width: number, height: number): string |
         ctx.putImageData(new ImageData(bytes, width, height), 0, 0);
         return canvas.toDataURL('image/png');
     } catch {
+        return null;
+    }
+}
+
+/** Decode an already-resolved disk texture to a full-resolution PNG data URL.
+ *  Used by the model viewer, which must not stretch the explorer's 96px thumb. */
+export async function resolveDiskTextureDataUrl(diskPath: string): Promise<string | null> {
+    const key = `disk:${diskPath}`;
+    const hit = cache.get(key);
+    if (hit !== undefined) return hit;
+    try {
+        const decoded = await imgRecolorDecodeTexture(diskPath);
+        const url = rgbaToDataUrl(decoded.rgba, decoded.width, decoded.height);
+        cacheSet(key, url);
+        return url;
+    } catch {
+        cacheSet(key, null);
         return null;
     }
 }
@@ -52,8 +69,7 @@ export async function resolveTextureDataUrl(assetPath: string, binPath: string):
         return null;
     }
     try {
-        const decoded = await imgRecolorDecodeTexture(diskPath);
-        const url = rgbaToDataUrl(decoded.rgba, decoded.width, decoded.height);
+        const url = await resolveDiskTextureDataUrl(diskPath);
         cacheSet(key, url);
         return url;
     } catch {

@@ -41,10 +41,7 @@ fn asset_dest_rel(rel: &str) -> Option<String> {
         .filter(|seg| {
             // Reject empty (leading `/`, doubled `//`), current/parent refs, and
             // any Windows drive component like `C:`.
-            !seg.is_empty()
-                && *seg != "."
-                && *seg != ".."
-                && !seg.contains(':')
+            !seg.is_empty() && *seg != "." && *seg != ".." && !seg.contains(':')
         })
         .collect();
 
@@ -84,7 +81,9 @@ pub fn port_stage_hub_donor(
 
     for a in &assets {
         // Reject anything that doesn't sanitize to a safe relative path.
-        let Some(rel) = asset_dest_rel(&a.rel_path) else { continue };
+        let Some(rel) = asset_dest_rel(&a.rel_path) else {
+            continue;
+        };
         let dest = assets_dir.join(&rel);
         // Defense in depth: the normalized dest must still live under assets_dir.
         if !dest.starts_with(&assets_dir) {
@@ -176,7 +175,10 @@ fn repath_assets_to_vfxhub(text: &str) -> (String, Vec<String>) {
 fn mod_root(bin_path: &Path) -> Option<PathBuf> {
     let mut cur = bin_path.parent();
     while let Some(dir) = cur {
-        let seg = dir.file_name().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
+        let seg = dir
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_lowercase());
         if matches!(seg.as_deref(), Some("data") | Some("assets")) {
             return dir.parent().map(|p| p.to_path_buf());
         }
@@ -205,7 +207,10 @@ fn resolve_asset(root: &Path, rel: &str) -> Option<PathBuf> {
         }
     }
     // Basename walk (case-insensitive) as a last resort.
-    let want = Path::new(&norm).file_name()?.to_string_lossy().to_lowercase();
+    let want = Path::new(&norm)
+        .file_name()?
+        .to_string_lossy()
+        .to_lowercase();
     walk_find(root, &want, 0)
 }
 
@@ -219,7 +224,11 @@ fn walk_find(dir: &Path, want_lower: &str, depth: u32) -> Option<PathBuf> {
         let p = e.path();
         if p.is_dir() {
             subdirs.push(p);
-        } else if p.file_name().map(|n| n.to_string_lossy().to_lowercase() == want_lower).unwrap_or(false) {
+        } else if p
+            .file_name()
+            .map(|n| n.to_string_lossy().to_lowercase() == want_lower)
+            .unwrap_or(false)
+        {
             return Some(p);
         }
     }
@@ -244,8 +253,10 @@ pub fn port_prepare_hub_upload(
     let doc = format!(
         "#PROP_text\nversion: u32 = 3\nlinked: list[string] = {{\n}}\nentries: map[hash,embed] = {{\n{repathed}\n}}\n"
     );
-    let tree = quartz_lib::bin::text_to_tree(&doc).map_err(|e| format!("compile upload bin: {e}"))?;
-    let bin_bytes = quartz_lib::bin::write_bin(&tree).map_err(|e| format!("write upload bin: {e}"))?;
+    let tree =
+        quartz_lib::bin::text_to_tree(&doc).map_err(|e| format!("compile upload bin: {e}"))?;
+    let bin_bytes =
+        quartz_lib::bin::write_bin(&tree).map_err(|e| format!("write upload bin: {e}"))?;
     let bin_base64 = base64::engine::general_purpose::STANDARD.encode(&bin_bytes);
     let emitters = system_content.matches("VfxEmitterDefinitionData").count() as u32;
 
@@ -271,7 +282,12 @@ pub fn port_prepare_hub_upload(
         }
     }
 
-    Ok(PreparedHubUpload { bin_base64, emitters, assets, missing })
+    Ok(PreparedHubUpload {
+        bin_base64,
+        emitters,
+        assets,
+        missing,
+    })
 }
 
 #[cfg(test)]
@@ -297,21 +313,42 @@ mod tests {
 
     #[test]
     fn asset_dest_rel_strips_assets_prefix() {
-        assert_eq!(asset_dest_rel("assets/foo/bar.dds").as_deref(), Some("foo/bar.dds"));
-        assert_eq!(asset_dest_rel("ASSETS/foo/BAR.dds").as_deref(), Some("foo/BAR.dds"));
-        assert_eq!(asset_dest_rel("foo/bar.dds").as_deref(), Some("foo/bar.dds"));
+        assert_eq!(
+            asset_dest_rel("assets/foo/bar.dds").as_deref(),
+            Some("foo/bar.dds")
+        );
+        assert_eq!(
+            asset_dest_rel("ASSETS/foo/BAR.dds").as_deref(),
+            Some("foo/BAR.dds")
+        );
+        assert_eq!(
+            asset_dest_rel("foo/bar.dds").as_deref(),
+            Some("foo/bar.dds")
+        );
         assert_eq!(asset_dest_rel("a\\b\\c.tex").as_deref(), Some("a/b/c.tex"));
     }
 
     #[test]
     fn asset_dest_rel_rejects_traversal_and_absolute() {
         // Parent refs are dropped, so an escape attempt collapses to its tail.
-        assert_eq!(asset_dest_rel("../../../../Windows/System32/evil.dll").as_deref(), Some("Windows/System32/evil.dll"));
-        assert_eq!(asset_dest_rel("foo/../../bar.dds").as_deref(), Some("foo/bar.dds"));
+        assert_eq!(
+            asset_dest_rel("../../../../Windows/System32/evil.dll").as_deref(),
+            Some("Windows/System32/evil.dll")
+        );
+        assert_eq!(
+            asset_dest_rel("foo/../../bar.dds").as_deref(),
+            Some("foo/bar.dds")
+        );
         // Leading slash / drive letters are stripped, never rooted.
         assert_eq!(asset_dest_rel("/etc/passwd").as_deref(), Some("etc/passwd"));
-        assert_eq!(asset_dest_rel("C:/Windows/x.dll").as_deref(), Some("Windows/x.dll"));
-        assert_eq!(asset_dest_rel("C:\\Windows\\x.dll").as_deref(), Some("Windows/x.dll"));
+        assert_eq!(
+            asset_dest_rel("C:/Windows/x.dll").as_deref(),
+            Some("Windows/x.dll")
+        );
+        assert_eq!(
+            asset_dest_rel("C:\\Windows\\x.dll").as_deref(),
+            Some("Windows/x.dll")
+        );
         // Nothing safe left.
         assert_eq!(asset_dest_rel("../.."), None);
         assert_eq!(asset_dest_rel("").as_deref(), None);

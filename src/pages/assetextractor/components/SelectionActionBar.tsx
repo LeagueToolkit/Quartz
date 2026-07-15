@@ -5,9 +5,11 @@ interface Props {
     statusMessage: string;
     isExtracting: boolean;
     isRepathing: boolean;
+    isPreviewing: boolean;
     isSetupValid: boolean;
     onExtract: () => void;
     onRepath: () => void;
+    onInspectModel: () => void;
     onClearAll: () => void;
 }
 
@@ -19,13 +21,15 @@ export function SelectionActionBar({
     statusMessage,
     isExtracting,
     isRepathing,
+    isPreviewing,
     isSetupValid,
     onExtract,
     onRepath,
+    onInspectModel,
     onClearAll,
 }: Props) {
     const hasSelection = selectedSkins.length > 0;
-    const busy = isExtracting || isRepathing;
+    const busy = isExtracting || isRepathing || isPreviewing;
     const disabledAction = busy || !isSetupValid || !hasSelection;
     const names = selectedSkins
         .map((s) => `${s.name}${s.champion?.name ? ` (${s.champion.name})` : ''}`)
@@ -48,6 +52,9 @@ export function SelectionActionBar({
                 </button>
                 <button className="dl-btn dl-btn--sm dl-btn--primary" onClick={onRepath} disabled={disabledAction} title="Extract, combine, and repath into an installable mod">
                     {isRepathing ? 'Repathing...' : 'Repath'}
+                </button>
+                <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={onInspectModel} disabled={disabledAction} title="Preview the first selected skin model">
+                    {isPreviewing ? 'Preparing Model...' : 'Inspect Model'}
                 </button>
                 <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={onClearAll} disabled={busy || !hasSelection}>
                     Clear All

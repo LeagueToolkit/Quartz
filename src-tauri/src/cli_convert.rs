@@ -184,9 +184,16 @@ fn separate_vfx(bin_path: &Path) -> Result<String, String> {
 fn separate_anm(bin_path: &Path) -> Result<String, String> {
     let moved = quartz_lib::bin::separate_anm(bin_path).map_err(|e| e.to_string())?;
     if moved == 0 {
-        Ok(format!("no AnimationGraphData to separate in {}", name(bin_path)))
+        Ok(format!(
+            "no AnimationGraphData to separate in {}",
+            name(bin_path)
+        ))
     } else {
-        Ok(format!("moved {} AnimationGraphData entries out of {}", moved, name(bin_path)))
+        Ok(format!(
+            "moved {} AnimationGraphData entries out of {}",
+            moved,
+            name(bin_path)
+        ))
     }
 }
 

@@ -125,7 +125,10 @@ fn file_kind_ext(kind: FileKind) -> Option<&'static str> {
 
 fn default_unpack_output(wad_path: &Path) -> PathBuf {
     let parent = wad_path.parent().unwrap_or_else(|| Path::new("."));
-    let name = wad_path.file_name().and_then(|n| n.to_str()).unwrap_or("wad");
+    let name = wad_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("wad");
     let lower = name.to_ascii_lowercase();
     let folder_name = if lower.ends_with(".wad.client") {
         format!("{}.wad", &name[..name.len() - ".wad.client".len()])
@@ -181,8 +184,25 @@ const PATH_PREFIXES: &[&[u8]] = &[
 ];
 
 const ROOT_ASSET_EXTS: &[&[u8]] = &[
-    b".dds", b".tex", b".skn", b".skl", b".anm", b".bin", b".bnk", b".wpk", b".wem", b".scb",
-    b".sco", b".scn", b".troybin", b".luaobj", b".lua", b".dat", b".png", b".jpg", b".webp",
+    b".dds",
+    b".tex",
+    b".skn",
+    b".skl",
+    b".anm",
+    b".bin",
+    b".bnk",
+    b".wpk",
+    b".wem",
+    b".scb",
+    b".sco",
+    b".scn",
+    b".troybin",
+    b".luaobj",
+    b".lua",
+    b".dat",
+    b".png",
+    b".jpg",
+    b".webp",
     b".mapgeo",
 ];
 
@@ -196,9 +216,9 @@ fn looks_like_path(s: &[u8]) -> bool {
     if !s.contains(&b'/') {
         return false;
     }
-    ROOT_ASSET_EXTS.iter().any(|ext| {
-        s.len() >= ext.len() && s[s.len() - ext.len()..].eq_ignore_ascii_case(ext)
-    })
+    ROOT_ASSET_EXTS
+        .iter()
+        .any(|ext| s.len() >= ext.len() && s[s.len() - ext.len()..].eq_ignore_ascii_case(ext))
 }
 
 fn scan_wad_game_hashes(data: &[u8]) -> Vec<(u64, String)> {
@@ -473,8 +493,9 @@ pub fn unpack(wad_path: &Path, output_dir: Option<&Path>) -> Result<WadExtractRe
         for (k, v) in hashed_files {
             merged.insert(k, v);
         }
-        let text = serde_json::to_string_pretty(&merged)
-            .map_err(|e| Error::InvalidInput(format!("Failed to encode hashed_files.json: {}", e)))?;
+        let text = serde_json::to_string_pretty(&merged).map_err(|e| {
+            Error::InvalidInput(format!("Failed to encode hashed_files.json: {}", e))
+        })?;
         fs::write(&json_path, text).map_err(|e| Error::io_with_path(e, &json_path))?;
     }
 
@@ -519,7 +540,10 @@ pub fn pack_dir_to_wad(input_dir: &Path, output_wad: Option<&Path>) -> Result<us
                 stack.push(p);
                 continue;
             }
-            if p.file_name().map(|n| n == "hashed_files.json").unwrap_or(false) {
+            if p.file_name()
+                .map(|n| n == "hashed_files.json")
+                .unwrap_or(false)
+            {
                 continue;
             }
             let rel = p
@@ -527,13 +551,17 @@ pub fn pack_dir_to_wad(input_dir: &Path, output_wad: Option<&Path>) -> Result<us
                 .map_err(|e| Error::InvalidInput(format!("relative path failed: {}", e)))?
                 .to_string_lossy()
                 .replace('\\', "/");
-            let hash = parse_hex_name_from_root(&rel).unwrap_or_else(|| xxh64(&rel.to_ascii_lowercase()));
+            let hash =
+                parse_hex_name_from_root(&rel).unwrap_or_else(|| xxh64(&rel.to_ascii_lowercase()));
             files.push((hash, p));
         }
     }
 
     if files.is_empty() {
-        return Err(Error::InvalidInput(format!("No files found in {}", input_dir.display())));
+        return Err(Error::InvalidInput(format!(
+            "No files found in {}",
+            input_dir.display()
+        )));
     }
     files.sort_by_key(|(h, _)| *h);
 

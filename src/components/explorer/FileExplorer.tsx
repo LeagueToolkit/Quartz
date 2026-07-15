@@ -9,7 +9,9 @@ import {
     explorerReveal, explorerRename, explorerDelete, explorerCopy, explorerNewFolder,
     type FsEntry,
 } from '@/lib/api/explorer';
+import { openModelInspect } from '@/lib/model/modelInspectEvent';
 import { useNavigationStore } from '@/lib/stores';
+import { openBinInJade } from '@/lib/jade/jadeInterop';
 import { useExplorerNav } from './useExplorerNav';
 import { ExplorerSidebar } from './ExplorerSidebar';
 import { FileTile } from './FileTile';
@@ -20,7 +22,9 @@ import './explorer.css';
 
 const MODEL_EXTS = new Set(['scb', 'sco', 'skn']);
 const TEXTURE_EXTS = new Set(['tex', 'dds', 'png', 'jpg', 'jpeg']);
-const BIN_EXTS = new Set(['bin', 'py']);
+const BIN_EXTS = new Set(['bin', 'py', 'ritobin']);
+
+const entryExtension = (entry: FsEntry): string => entry.extension.replace(/^\./, '').toLowerCase();
 
 interface FilterGroup { label: string; exts: string[] | undefined } // undefined = all files
 
@@ -96,6 +100,7 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     const isSave = options.mode === 'save';
     const isFiles = options.mode === 'files';
     const isDirectory = options.mode === 'directory';
+    const isBrowse = options.mode === 'browse';
 
     // Boot: prune stale recents, then resolve the start folder. Priority:
     // caller defaultPath -> last-visited folder -> Desktop -> Home.
@@ -266,9 +271,23 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
         openInTool(page, entry.path);
     };
 
+    const inspectModel = (entry: FsEntry) => {
+        setCtx(null);
+        if (onInspect) onInspect(entry);
+        else openModelInspect(entry.path);
+    };
+
+    const openInJade = (entry: FsEntry) => {
+        setCtx(null);
+        void openBinInJade(entry.path).catch((error) => {
+            window.alert(error instanceof Error ? error.message : String(error));
+        });
+    };
+
     const handleDouble = (entry: FsEntry) => {
         if (entry.isDirectory) { nav.navigateTo(entry.path); return; }
         if (isDirectory) return; // dirs mode ignores files
+        if (isBrowse) { setSelected(entry.name); return; }
         if (isSave) { setSaveName(entry.name); setSelected(entry.name); return; }
         if (isFiles) { toggleMulti(entry); return; }
         chooseFile(entry); // single-file mode: double-click confirms
@@ -289,6 +308,10 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     };
 
     const confirm = () => {
+        if (isBrowse) {
+            onCancel();
+            return;
+        }
         if (isDirectory) {
             if (!nav.currentPath) return;
             addRecent(recentsKey, nav.currentPath);
@@ -319,8 +342,10 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     // switches (the common case) show nothing and never flash a loader.
     const showSkeleton = useDelayedFlag(nav.loading, 180);
 
-    const confirmLabel = isSave ? 'Save' : isDirectory ? 'Select folder' : isFiles ? `Select (${multi.size})` : 'Open';
-    const confirmDisabled = isDirectory
+    const confirmLabel = isBrowse ? 'Close' : isSave ? 'Save' : isDirectory ? 'Select folder' : isFiles ? `Select (${multi.size})` : 'Open';
+    const confirmDisabled = isBrowse
+        ? false
+        : isDirectory
         ? !nav.currentPath
         : isFiles
             ? multi.size === 0
@@ -444,22 +469,27 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
                 {ctx && (
                     <div className="dl-dd-portal dl-explorer__ctx" style={{ position: 'fixed', top: ctx.y, left: ctx.x }} onClick={(e) => e.stopPropagation()}>
                         {/* Open in tool */}
-                        {TEXTURE_EXTS.has(ctx.entry.extension) && (
+                        {TEXTURE_EXTS.has(entryExtension(ctx.entry)) && (
                             <button className="dl-dd__item" onClick={() => openIn('imgrecolor', ctx.entry)}>
                                 <Palette size={14} /><span>Open in Image Recolor</span>
                             </button>
                         )}
-                        {BIN_EXTS.has(ctx.entry.extension) && (
-                            <button className="dl-dd__item" onClick={() => openIn('bineditor', ctx.entry)}>
-                                <FileCode size={14} /><span>Open in Bin Editor</span>
+                        {BIN_EXTS.has(entryExtension(ctx.entry)) && (
+                            <>
+                                <button className="dl-dd__item" onClick={() => openIn('bineditor', ctx.entry)}>
+                                    <FileCode size={14} /><span>Open in Bin Editor</span>
+                                </button>
+                                <button className="dl-dd__item" onClick={() => openInJade(ctx.entry)}>
+                                    <img src="/jade.webp" alt="" className="dl-explorer__jade-icon" /><span>Open in Jade</span>
+                                </button>
+                            </>
+                        )}
+                        {MODEL_EXTS.has(entryExtension(ctx.entry)) && (
+                            <button className="dl-dd__item" onClick={() => inspectModel(ctx.entry)}>
+                                <Eye size={14} /><span>Inspect Model</span>
                             </button>
                         )}
-                        {MODEL_EXTS.has(ctx.entry.extension) && onInspect && (
-                            <button className="dl-dd__item" onClick={() => { onInspect(ctx.entry); setCtx(null); }}>
-                                <Eye size={14} /><span>Inspect model</span>
-                            </button>
-                        )}
-                        {(TEXTURE_EXTS.has(ctx.entry.extension) || BIN_EXTS.has(ctx.entry.extension) || (MODEL_EXTS.has(ctx.entry.extension) && onInspect)) && (
+                        {(TEXTURE_EXTS.has(entryExtension(ctx.entry)) || BIN_EXTS.has(entryExtension(ctx.entry)) || MODEL_EXTS.has(entryExtension(ctx.entry))) && (
                             <div className="dl-dd__divider" />
                         )}
 
@@ -479,7 +509,7 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
 
                         <div className="dl-dd__divider" />
                         <button className="dl-dd__item" onClick={() => { void explorerReveal(ctx.entry.path); setCtx(null); }}>
-                            <Eye size={14} /><span>Reveal in Explorer</span>
+                            <FolderOpen size={14} /><span>Open in Windows Explorer</span>
                         </button>
                         <button className="dl-dd__item" onClick={makeNewFolder}>
                             <FolderPlus size={14} /><span>New folder</span>

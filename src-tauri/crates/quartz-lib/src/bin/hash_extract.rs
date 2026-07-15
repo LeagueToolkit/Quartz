@@ -115,7 +115,11 @@ pub(crate) fn scan_skn_bin_hashes(data: &[u8]) -> Vec<(u32, String)> {
     results
 }
 
-fn scan_one_file(data: &[u8], game_out: &mut BTreeMap<u64, String>, bin_out: &mut BTreeMap<u32, String>) {
+fn scan_one_file(
+    data: &[u8],
+    game_out: &mut BTreeMap<u64, String>,
+    bin_out: &mut BTreeMap<u32, String>,
+) {
     for (k, v) in scan_bin_game_hashes(data) {
         game_out.entry(k).or_insert(v);
     }
@@ -208,7 +212,10 @@ pub fn extract_hashes_bin(bin_path: &Path) -> Result<(usize, usize)> {
 /// `(files_scanned, game_hashes, bin_hashes)`.
 pub fn extract_hashes_bin_dir(dir: &Path) -> Result<(usize, usize, usize)> {
     if !dir.is_dir() {
-        return Err(Error::InvalidInput(format!("Not a folder: {}", dir.display())));
+        return Err(Error::InvalidInput(format!(
+            "Not a folder: {}",
+            dir.display()
+        )));
     }
     let hash_dir = ensure_hash_dir()?;
 

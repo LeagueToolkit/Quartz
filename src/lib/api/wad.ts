@@ -41,6 +41,8 @@ export interface DonorResult {
     donorPyContent: string;
     tempRoot: string;
     combinedBinPath: string;
+    modelPath: string | null;
+    modelTexturePath: string | null;
     championFileName: string;
     skinId: number;
     selectedBinCount: number;

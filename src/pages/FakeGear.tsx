@@ -33,14 +33,21 @@ import ClearIcon from '@mui/icons-material/Clear';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import { useFileExplorer } from '@/components/explorer';
+import { BinOpenLanding, DropOverlay } from '@/components/ui';
+import { FolderOpen, Save, Undo2 } from 'lucide-react';
 
 import { readBin, writeBin } from '@/lib/api';
-import { useNotificationStore } from '@/lib/stores';
+import { fakegearBackupBin } from '@/lib/api/fakegear';
+import { useNotificationStore, useUiPrefsStore } from '@/lib/stores';
+import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
+import { useFileDrop } from '@/lib/util/useFileDrop';
+import { useJadeBin } from '@/lib/jade/jadeInterop';
 
 import {
     extractVfxSystems,
     convertToSeparateBins,
     writeVariantBinsWithMerge,
+    copyAssetsToVariantFolders,
     hasToggleVariants,
     insertToggleScreen,
     hasToggleScreen,
@@ -61,10 +68,6 @@ import {
 import './fakegear/FakeGear.css';
 
 const DEFAULT_STENCIL = '0xe6deedc4';
-
-function basename(p: string): string {
-    return p.replace(/\\/g, '/').split('/').pop() || p;
-}
 
 interface FlatRow {
     type: 'system' | 'emitter';
@@ -320,9 +323,13 @@ type PendingAction =
 function FakeGear() {
     const pick = useFileExplorer();
     const notify = useNotificationStore((s) => s.push);
+    const storedRecentBins = useUiPrefsStore((s) => s.recentBins);
+    const removeRecentBin = useUiPrefsStore((s) => s.removeRecentBin);
+    const recentBins = useExistingRecentBins(storedRecentBins, removeRecentBin);
 
     // File state
     const [binPath, setBinPath] = useState<string | null>(null);
+    useJadeBin(binPath);
     const [pyContent, setPyContent] = useState('');
     const [originalContent, setOriginalContent] = useState('');
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -333,6 +340,7 @@ function FakeGear() {
     const [statusMessage, setStatusMessage] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [showWarning, setShowWarning] = useState(true);
+    const [isDragOver, setIsDragOver] = useState(false);
 
     // Systems state
     const [systems, setSystems] = useState<VfxSystemInfo[]>([]);
@@ -543,13 +551,13 @@ function FakeGear() {
     // File operations
     const processBinFile = useCallback(async (filePath: string) => {
         try {
-            setBinPath(filePath);
             setIsLoading(true);
             setLoadingText('Processing .bin file...');
 
             setLoadingText('Loading file...');
             const content = await readBin(filePath);
 
+            setBinPath(filePath);
             setPyContent(content);
             setOriginalContent(content);
             setSelectedSystems(new Set());
@@ -558,6 +566,7 @@ function FakeGear() {
 
             const systemCount = extractVfxSystems(content).length;
             setStatusMessage(`Loaded: ${systemCount} VFX systems found`);
+            useUiPrefsStore.getState().pushRecentBin(filePath);
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             setStatusMessage(`Error: ${msg}`);
@@ -573,9 +582,10 @@ function FakeGear() {
             const picked = await pick({
                 mode: 'file',
                 filters: [
-                    { name: 'Bin Files', extensions: ['bin', 'py'] },
+                    { name: 'Bin Files', extensions: ['bin'] },
                     { name: 'All Files', extensions: ['*'] },
                 ],
+                recentsKey: 'bin',
             });
             if (typeof picked === 'string') {
                 await processBinFile(picked);
@@ -586,6 +596,17 @@ function FakeGear() {
         }
     }, [processBinFile, pick]);
 
+    useFileDrop({
+        onEnter: () => setIsDragOver(true),
+        onOver: () => setIsDragOver(true),
+        onLeave: () => setIsDragOver(false),
+        onDrop: (paths) => {
+            setIsDragOver(false);
+            const file = paths.find((path) => /\.bin$/i.test(path));
+            if (file) void processBinFile(file);
+        },
+    });
+
     const saveFile = useCallback(async () => {
         if (!pyContent || !binPath) {
             setStatusMessage('Nothing to save');
@@ -594,14 +615,24 @@ function FakeGear() {
 
         try {
             setIsLoading(true);
-            setLoadingText('Writing .bin file...');
+            setLoadingText('Creating backup...');
 
+            let backupPath: string | null = null;
+            try {
+                backupPath = await fakegearBackupBin(binPath);
+            } catch {
+                // The Electron implementation treated backup creation as best
+                // effort and still allowed the save to proceed.
+            }
+
+            setLoadingText('Writing .bin file...');
             await writeBin(pyContent, binPath);
 
             setOriginalContent(pyContent);
             setHasUnsavedChanges(false);
-            setStatusMessage('Saved successfully');
-            notify('success', 'Saved successfully');
+            const message = `Saved successfully${backupPath ? ' (backup created)' : ''}`;
+            setStatusMessage(message);
+            notify('success', message);
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             setStatusMessage(`Save failed: ${msg}`);
@@ -679,11 +710,30 @@ function FakeGear() {
                     }
                 }
 
+                let assetStatus = '';
+                if (
+                    binPath
+                    && result.assetMappings
+                    && (result.assetMappings.variant1.length > 0 || result.assetMappings.variant2.length > 0)
+                ) {
+                    setLoadingText('Copying assets to variant folders...');
+                    const copied = await copyAssetsToVariantFolders(
+                        binPath,
+                        result.assetMappings,
+                        result.variant1Folder,
+                        result.variant2Folder,
+                    );
+                    assetStatus = copied.success
+                        ? ` | Assets: ${copied.message}`
+                        : ` | Warning: ${copied.message}`;
+                }
+
                 setPyContent(result.mainContent);
                 setHasUnsavedChanges(true);
                 setSelectedSystems(new Set());
-                setStatusMessage(result.message || 'Converted to child particles');
-                notify('success', result.message || 'Converted to child particles');
+                const message = `${result.message || 'Converted to child particles'}${assetStatus}`;
+                setStatusMessage(message);
+                notify(assetStatus.includes('Warning') ? 'info' : 'success', message);
             } else {
                 setStatusMessage(`Error: ${result.error}`);
                 notify('error', `Error: ${result.error}`);
@@ -707,11 +757,29 @@ function FakeGear() {
             const result = convertToInlineVariants(pyContent, [...selectedSystems], stencilId, skipGroundLayer);
 
             if (result.success) {
+                let assetStatus = '';
+                if (
+                    binPath
+                    && result.assetMappings
+                    && (result.assetMappings.variant1.length > 0 || result.assetMappings.variant2.length > 0)
+                ) {
+                    setLoadingText('Copying assets to variant folders...');
+                    const copied = await copyAssetsToVariantFolders(
+                        binPath,
+                        result.assetMappings,
+                        result.variant1Folder,
+                        result.variant2Folder,
+                    );
+                    assetStatus = copied.success
+                        ? ` | Assets: ${copied.message}`
+                        : ` | Warning: ${copied.message}`;
+                }
                 setPyContent(result.content);
                 setHasUnsavedChanges(true);
                 setSelectedSystems(new Set());
-                setStatusMessage(result.message || 'Duplicated as inline variants');
-                notify('success', result.message || 'Duplicated as inline variants');
+                const message = `${result.message || 'Duplicated as inline variants'}${assetStatus}`;
+                setStatusMessage(message);
+                notify(assetStatus.includes('Warning') ? 'info' : 'success', message);
             } else {
                 setStatusMessage(`Error: ${result.error}`);
                 notify('error', `Error: ${result.error}`);
@@ -724,7 +792,7 @@ function FakeGear() {
             setIsLoading(false);
             setLoadingText('');
         }
-    }, [pyContent, selectedSystems, notify]);
+    }, [pyContent, selectedSystems, binPath, notify]);
 
     // Open modal for Child Particles conversion
     const handleConvertToVariants = useCallback(() => {
@@ -946,6 +1014,14 @@ function FakeGear() {
 
     return (
         <Box className="fakegear-container">
+            {isDragOver && (
+                <DropOverlay
+                    variant="scrim"
+                    label="Drop the BIN here"
+                    icon={<FolderOpen size={48} strokeWidth={1.5} />}
+                />
+            )}
+
             {/* Initial Warning Modal */}
             {showWarning && (
                 <div className="fakegear-modal-overlay" style={{ zIndex: 10000 }}>
@@ -986,65 +1062,18 @@ function FakeGear() {
                 </div>
             )}
 
-            {/* Header */}
-            <div style={{
-                padding: '16px 20px',
-                borderBottom: '1px solid var(--border)',
-                background: 'var(--bg-secondary)',
-            }}>
-                {/* Title Bar */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--accent-primary)' }}>
-                        🪄 FakeGearSkin {binPath ? `- ${basename(binPath)}` : ''}
-                    </h1>
-
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        <button className="dl-btn dl-btn--sm" onClick={loadBinFile}>
-                            Open
-                        </button>
-                        <button
-                            className="dl-btn dl-btn--sm dl-btn--secondary"
-                            onClick={handleUndo}
-                            disabled={!originalContent || pyContent === originalContent}
-                            title="Undo changes (restore original)"
-                        >
-                            Undo
-                        </button>
-                        <button
-                            className="dl-btn dl-btn--sm dl-btn--primary"
-                            onClick={saveFile}
-                            disabled={!hasUnsavedChanges}
-                        >
-                            Save
-                        </button>
-                    </div>
-                </div>
-
-                {/* Status */}
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{statusMessage}</div>
-            </div>
-
+            <div className="fakegear-workspace-shell">
             {/* Main Content */}
-            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            <div className={`fakegear-workspace${binPath ? '' : ' is-dim'}`}>
                 {/* Left Panel - System List */}
-                <div style={{
-                    flex: 1,
-                    borderRight: '1px solid var(--border)',
-                    overflow: 'auto',
-                    display: 'flex',
-                    flexDirection: 'column',
-                }}>
+                <div className="fakegear-browser-panel">
                     {/* Header */}
-                    <div style={{
-                        padding: '12px 16px',
-                        borderBottom: '1px solid var(--border)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        background: 'var(--bg-tertiary)',
-                    }}>
-                        <Typography variant="h6" style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>VFX Systems</Typography>
-                        <div style={{ display: 'flex', gap: '4px' }}>
+                    <div className="fakegear-browser-header">
+                        <div>
+                            <Typography variant="h6">VFX Systems</Typography>
+                            <span>{systems.length} systems</span>
+                        </div>
+                        <div className="fakegear-browser-header__actions">
                             <Tooltip title="Select all visible">
                                 <IconButton size="small" onClick={selectAll} sx={{ padding: '4px' }}>
                                     <CheckBoxIcon fontSize="small" />
@@ -1059,14 +1088,7 @@ function FakeGear() {
                     </div>
 
                     {/* Search */}
-                    <div style={{
-                        padding: '8px 16px',
-                        borderBottom: '1px solid var(--border)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        background: 'var(--bg-tertiary)',
-                    }}>
+                    <div className="fakegear-browser-search">
                         <SearchIcon style={{ color: 'var(--text-secondary)', fontSize: '18px' }} />
                         <input
                             type="text"
@@ -1079,7 +1101,7 @@ function FakeGear() {
                     </div>
 
                     {/* System List */}
-                    <div ref={listContainerRef} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 0' }}>
+                    <div ref={listContainerRef} className="fakegear-browser-list">
                         {isLoading ? (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
                                 <CircularProgress size={32} />
@@ -1118,17 +1140,7 @@ function FakeGear() {
                     </div>
 
                     {/* Footer */}
-                    <div style={{
-                        padding: '8px 16px',
-                        borderTop: '1px solid var(--border)',
-                        background: 'var(--bg-tertiary)',
-                        fontSize: '11px',
-                        color: 'var(--text-secondary)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '8px',
-                    }}>
+                    <div className="fakegear-browser-footer">
                         <span>
                             {selectedSystems.size} system{selectedSystems.size !== 1 ? 's' : ''} · {selectedEmitters.size} emitter{selectedEmitters.size !== 1 ? 's' : ''} selected
                         </span>
@@ -1145,24 +1157,15 @@ function FakeGear() {
                 </div>
 
                 {/* Right Panel - Actions & Steps */}
-                <div style={{
-                    width: '35%',
-                    minWidth: '300px',
-                    overflow: 'auto',
-                    display: 'flex',
-                    flexDirection: 'column',
-                }}>
+                <div className="fakegear-action-panel">
                     {/* Header */}
-                    <div style={{
-                        padding: '12px 16px',
-                        borderBottom: '1px solid var(--border)',
-                        background: 'var(--bg-tertiary)',
-                    }}>
-                        <Typography variant="h6" style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Actions</Typography>
+                    <div className="fakegear-action-header">
+                        <Typography variant="h6">Workflow</Typography>
+                        <span>Complete each step, then save the main BIN.</span>
                     </div>
 
                     {/* Content */}
-                    <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
+                    <div className="fakegear-action-list">
 
                         {/* Step 1: Convert */}
                         <Box className={`fakegear-step ${selectedSystems.size > 0 ? 'active' : ''}`}>
@@ -1253,15 +1256,55 @@ function FakeGear() {
                 </div>
             </div>
 
-            {/* Toast Notification */}
-            {statusMessage && (
-                <Box className="fakegear-toast-container">
-                    <Box className="fakegear-toast">
-                        <InfoOutlinedIcon fontSize="small" style={{ color: 'var(--accent-primary)' }} />
-                        <Typography variant="body2">{statusMessage}</Typography>
-                    </Box>
-                </Box>
+            {!binPath && (
+                <BinOpenLanding
+                    recentBins={recentBins}
+                    busy={isLoading}
+                    dragActive={isDragOver}
+                    onOpen={() => void loadBinFile()}
+                    onOpenRecent={(path) => void processBinFile(path)}
+                    onRemoveRecent={removeRecentBin}
+                />
             )}
+            </div>
+
+            <footer className="fakegear-bottom-bar">
+                {binPath && (
+                    <button
+                        type="button"
+                        className="dl-btn dl-btn--primary dl-btn--sm dl-btn--icon"
+                        title="Open Bin"
+                        onClick={loadBinFile}
+                        disabled={isLoading}
+                    >
+                        <span className="dl-icon"><FolderOpen size={15} /></span>
+                    </button>
+                )}
+                {statusMessage && (
+                    <span className="fakegear-bottom-bar__status" title={statusMessage}>{statusMessage}</span>
+                )}
+                {hasUnsavedChanges && <span className="fakegear-bottom-bar__unsaved">Unsaved</span>}
+                <div className="fakegear-bottom-bar__actions">
+                    <button
+                        type="button"
+                        className="dl-btn dl-btn--secondary dl-btn--sm dl-btn--icon"
+                        onClick={handleUndo}
+                        disabled={!originalContent || pyContent === originalContent}
+                        title="Undo changes (restore original)"
+                    >
+                        <span className="dl-icon"><Undo2 size={15} /></span>
+                    </button>
+                    <button
+                        type="button"
+                        className="dl-btn dl-btn--primary dl-btn--sm"
+                        onClick={saveFile}
+                        disabled={!hasUnsavedChanges}
+                    >
+                        <span className="dl-icon"><Save size={15} /></span>
+                        <span>Save</span>
+                    </button>
+                </div>
+            </footer>
 
             {/* Stencil ID Modal */}
             <StencilModal

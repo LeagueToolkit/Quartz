@@ -9,11 +9,12 @@ import { mkValue } from './nodes';
    bineditorV3/model/emitterSchema.js; buildFieldText -> buildFieldValue. */
 
 export type SchemaFieldType =
-    | 'flag' | 'bool' | 'u8' | 'u16' | 'i16' | 'f32'
-    | 'vec2' | 'vec3' | 'vec4' | 'string' | 'option_f32'
+    | 'flag' | 'bool' | 'i8' | 'u8' | 'i16' | 'u16' | 'i32' | 'u32' | 'f32'
+    | 'vec2' | 'vec3' | 'vec4' | 'string' | 'hash' | 'file' | 'link' | 'option_f32'
     | 'list_f32' | 'list_vec3' | 'list_pointer'
     | 'ValueFloat' | 'ValueVector2' | 'ValueVector3' | 'ValueColor'
-    | 'IntegratedValueFloat' | 'IntegratedValueVector2' | 'IntegratedValueVector3';
+    | 'IntegratedValueFloat' | 'IntegratedValueVector2' | 'IntegratedValueVector3'
+    | 'TextureMultDefinition' | 'AlphaErosionDefinition';
 
 export type SchemaDefault = number | boolean | string | number[] | null;
 
@@ -108,7 +109,11 @@ export const EMITTER_SCHEMA: SchemaEntry[] = [
     { name: 'Texture', type: 'string', def: '', group: 'Texture' },
     { name: 'ParticleColorTexture', type: 'string', def: 'ASSETS/Shared/Particles/DefaultColorOverlifetime.dds', group: 'Texture' },
     { name: 'FalloffTexture', type: 'string', def: 'ASSETS/Shared/Particles/DefaultFalloff.DDS', group: 'Texture' },
+    { name: 'TextureMult', type: 'TextureMultDefinition', def: '', group: 'Texture' },
     { name: 'IsTexturePixelated', type: 'bool', def: false, group: 'Texture' },
+
+    // Alpha erosion / dissolve
+    { name: 'AlphaErosionDefinition', type: 'AlphaErosionDefinition', def: '', group: 'Erosion' },
 
     // Rendering
     { name: 'Pass', type: 'i16', def: 0, group: 'Rendering' },
@@ -151,7 +156,7 @@ export const EMITTER_SCHEMA: SchemaEntry[] = [
 
 export const SCHEMA_GROUPS = [
     'Scale', 'Color', 'Lifetime', 'Rate', 'Velocity', 'Rotation',
-    'UV', 'Texture', 'Rendering', 'Position', 'Weight', 'Flags',
+    'UV', 'Texture', 'Erosion', 'Rendering', 'Position', 'Weight', 'Flags',
 ];
 
 /** Grouped catalog for the add-field menu. */
@@ -161,13 +166,51 @@ export const ADD_GROUPS: Array<{ group: string; items: SchemaEntry[] }> = SCHEMA
 
 /** Name+label pairs for the generic "+ field" menu on arbitrary structs. */
 export const GENERIC_TYPES: Array<[SchemaFieldType, string]> = [
-    ['f32', 'Float (f32)'], ['u8', 'Int (u8)'], ['u16', 'Int (u16)'], ['i16', 'Int (i16)'],
-    ['flag', 'Flag'], ['bool', 'Bool'], ['string', 'String'],
+    ['f32', 'Float (f32)'], ['i8', 'Int (i8)'], ['u8', 'Int (u8)'],
+    ['i16', 'Int (i16)'], ['u16', 'Int (u16)'], ['i32', 'Int (i32)'], ['u32', 'Int (u32)'],
+    ['flag', 'Flag'], ['bool', 'Bool'], ['string', 'String'], ['hash', 'Hash'], ['file', 'File'], ['link', 'Link'],
     ['vec2', 'Vec2'], ['vec3', 'Vec3'], ['vec4', 'Vec4 / Color'],
     ['option_f32', 'Option<f32>'],
     ['list_f32', 'List<f32>'], ['list_vec3', 'List<vec3>'], ['list_pointer', 'List<pointer>'],
-    ['ValueFloat', 'ValueFloat'], ['ValueVector3', 'ValueVector3'], ['ValueColor', 'ValueColor'],
+    ['ValueFloat', 'ValueFloat'], ['ValueVector2', 'ValueVector2'], ['ValueVector3', 'ValueVector3'],
+    ['ValueColor', 'ValueColor'], ['IntegratedValueFloat', 'IntegratedValueFloat'],
+    ['IntegratedValueVector2', 'IntegratedValueVector2'], ['IntegratedValueVector3', 'IntegratedValueVector3'],
 ];
+
+/** Known fields for the nested render definitions used by League VFX. Existing
+ * unknown fields still remain fully editable through the generic tree. */
+export const NESTED_SCHEMA: Record<string, SchemaEntry[]> = {
+    VfxTextureMultDefinitionData: [
+        { name: 'textureMult', type: 'string', def: '', group: 'Texture Mult' },
+        { name: 'birthUvScrollRateMult', type: 'ValueVector2', def: [0, 0], group: 'Texture Mult' },
+        { name: 'birthUVOffsetMult', type: 'ValueVector2', def: [0, 0], group: 'Texture Mult' },
+        { name: 'birthUvRotateRateMult', type: 'ValueFloat', def: 0, group: 'Texture Mult' },
+        { name: 'emitterUvScrollRateMult', type: 'vec2', def: [0, 0], group: 'Texture Mult' },
+        { name: 'ParticleIntegratedUvScrollMult', type: 'IntegratedValueVector2', def: [0, 0], group: 'Texture Mult' },
+        { name: 'ParticleIntegratedUvRotateMult', type: 'IntegratedValueFloat', def: 0, group: 'Texture Mult' },
+        { name: 'UvRotationMult', type: 'ValueFloat', def: 0, group: 'Texture Mult' },
+        { name: 'uvScaleMult', type: 'ValueVector2', def: [1, 1], group: 'Texture Mult' },
+        { name: 'texAddressModeMult', type: 'u8', def: 0, group: 'Texture Mult' },
+        { name: 'TextureMultFilpV', type: 'flag', def: false, group: 'Texture Mult' },
+        { name: 'uvScrollAlphaMult', type: 'flag', def: false, group: 'Texture Mult' },
+        { name: 'uvScrollClampMult', type: 'flag', def: false, group: 'Texture Mult' },
+    ],
+    VfxAlphaErosionDefinitionData: [
+        { name: 'erosionDriveCurve', type: 'ValueFloat', def: 0, group: 'Erosion' },
+        { name: 'erosionMapName', type: 'string', def: '', group: 'Erosion' },
+        { name: 'erosionMapAddressMode', type: 'u8', def: 0, group: 'Erosion' },
+        { name: 'erosionMapChannelMixer', type: 'ValueColor', def: [1, 0, 0, 0], group: 'Erosion' },
+        { name: 'erosionFeatherIn', type: 'f32', def: 0, group: 'Erosion' },
+        { name: 'erosionFeatherOut', type: 'f32', def: 0, group: 'Erosion' },
+        { name: 'erosionSliceWidth', type: 'f32', def: 1, group: 'Erosion' },
+    ],
+};
+
+export function nestedSchemaFor(className: string | null | undefined): SchemaEntry[] {
+    if (!className) return [];
+    const hit = Object.entries(NESTED_SCHEMA).find(([key]) => key.toLowerCase() === className.toLowerCase());
+    return hit?.[1] ?? [];
+}
 
 const CONST_TYPE: Partial<Record<SchemaFieldType, string>> = {
     ValueFloat: 'f32', IntegratedValueFloat: 'f32',
@@ -179,10 +222,12 @@ const CONST_TYPE: Partial<Record<SchemaFieldType, string>> = {
 /** Default `def` for a bare type (generic "+ field" without a schema entry). */
 export function defaultDef(type: SchemaFieldType): SchemaDefault {
     if (type === 'flag' || type === 'bool') return false;
-    if (type === 'u8' || type === 'u16' || type === 'i16' || type === 'f32') return 0;
+    if (['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'f32'].includes(type)) return 0;
     if (type === 'vec2') return [0, 0];
     if (type === 'vec3') return [0, 0, 0];
     if (type === 'vec4') return [0, 0, 0, 1];
+    if (type === 'hash' || type === 'link') return '0x00000000';
+    if (type === 'file') return '0x0000000000000000';
     if (type === 'string') return '';
     if (type === 'option_f32') return null;
     if (type === 'ValueFloat' || type === 'IntegratedValueFloat') return 0;
@@ -207,9 +252,7 @@ export function buildFieldValue(entry: SchemaEntry): JsonBinValue | null {
         case 'flag':
         case 'bool':
             return mkValue({ t: type, v: !!def });
-        case 'u8':
-        case 'u16':
-        case 'i16':
+        case 'i8': case 'u8': case 'i16': case 'u16': case 'i32': case 'u32':
         case 'f32':
             return mkValue({ t: type, v: Number(def ?? 0) });
         case 'vec2':
@@ -218,6 +261,10 @@ export function buildFieldValue(entry: SchemaEntry): JsonBinValue | null {
             return mkValue({ t: type, v: Array.isArray(def) ? def : [] });
         case 'string':
             return mkValue({ t: 'string', v: String(def ?? '') });
+        case 'hash': case 'link':
+            return mkValue({ t: type, v: String(def || '0x00000000') });
+        case 'file':
+            return mkValue({ t: 'file', v: String(def || '0x0000000000000000') });
         case 'option_f32':
             return mkValue({
                 t: 'option',
@@ -230,6 +277,31 @@ export function buildFieldValue(entry: SchemaEntry): JsonBinValue | null {
             return mkValue({ t: 'list', item: 'vec3', items: [] });
         case 'list_pointer':
             return mkValue({ t: 'list', item: 'pointer', items: [] });
+        case 'TextureMultDefinition':
+            return mkValue({
+                t: 'pointer', class: 'VfxTextureMultDefinitionData', fields: {
+                    textureMult: mkValue({ t: 'string', v: String(def ?? '') }),
+                    uvScaleMult: mkValue({ t: 'embed', class: 'ValueVector2', fields: {
+                        constantValue: mkValue({ t: 'vec2', v: [1, 1] }),
+                    } }),
+                },
+            });
+        case 'AlphaErosionDefinition':
+            return mkValue({
+                t: 'pointer', class: 'VfxAlphaErosionDefinitionData', fields: {
+                    erosionDriveCurve: mkValue({ t: 'embed', class: 'ValueFloat', fields: {
+                        constantValue: mkValue({ t: 'f32', v: 0 }),
+                    } }),
+                    erosionMapName: mkValue({ t: 'string', v: String(def ?? '') }),
+                    erosionMapAddressMode: mkValue({ t: 'u8', v: 0 }),
+                    erosionMapChannelMixer: mkValue({ t: 'embed', class: 'ValueColor', fields: {
+                        constantValue: mkValue({ t: 'vec4', v: [1, 0, 0, 0] }),
+                    } }),
+                    erosionFeatherIn: mkValue({ t: 'f32', v: 0 }),
+                    erosionFeatherOut: mkValue({ t: 'f32', v: 0 }),
+                    erosionSliceWidth: mkValue({ t: 'f32', v: 1 }),
+                },
+            });
         default: {
             const ct = CONST_TYPE[type];
             if (!ct) return null;

@@ -765,9 +765,10 @@ pub fn separate_anm(bin_path: &Path) -> Result<usize> {
         let input = crate::bin::read_bin(
             &std::fs::read(bin_path).map_err(|e| Error::io_with_path(e, bin_path))?,
         )
-        .map_err(|e| Error::InvalidInput(format!("Failed to parse {}: {}", bin_path.display(), e)))?;
-        if !input.entries.is_empty()
-            && input.entries.iter().all(|e| e.class_hash == anm_type_hash)
+        .map_err(|e| {
+            Error::InvalidInput(format!("Failed to parse {}: {}", bin_path.display(), e))
+        })?;
+        if !input.entries.is_empty() && input.entries.iter().all(|e| e.class_hash == anm_type_hash)
         {
             return Ok(0);
         }
@@ -790,7 +791,10 @@ pub fn separate_anm(bin_path: &Path) -> Result<usize> {
     let mut managed: HashSet<u32> = HashSet::new();
 
     for f_path in &files_to_scan {
-        let mut bin = match std::fs::read(f_path).ok().and_then(|d| crate::bin::read_bin(&d).ok()) {
+        let mut bin = match std::fs::read(f_path)
+            .ok()
+            .and_then(|d| crate::bin::read_bin(&d).ok())
+        {
             Some(b) => b,
             None => continue,
         };
@@ -815,8 +819,9 @@ pub fn separate_anm(bin_path: &Path) -> Result<usize> {
             }
         });
 
-        let bytes = crate::bin::write_bin(&bin)
-            .map_err(|e| Error::InvalidInput(format!("Failed to serialize {}: {}", f_path.display(), e)))?;
+        let bytes = crate::bin::write_bin(&bin).map_err(|e| {
+            Error::InvalidInput(format!("Failed to serialize {}: {}", f_path.display(), e))
+        })?;
         std::fs::write(f_path, &bytes).map_err(|e| Error::io_with_path(e, f_path))?;
     }
 
@@ -858,7 +863,11 @@ pub fn separate_anm(bin_path: &Path) -> Result<usize> {
     )
     .map_err(|e| Error::InvalidInput(format!("Failed to re-parse target BIN: {}", e)))?;
     let link_str = format!("DATA/{}", link_name);
-    if !main.linked.iter().any(|d| d.eq_ignore_ascii_case(&link_str)) {
+    if !main
+        .linked
+        .iter()
+        .any(|d| d.eq_ignore_ascii_case(&link_str))
+    {
         main.linked.push(link_str);
     }
     let main_bytes = crate::bin::write_bin(&main)

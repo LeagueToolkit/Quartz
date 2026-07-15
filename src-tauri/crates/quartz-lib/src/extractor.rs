@@ -91,7 +91,11 @@ pub fn common_league_paths() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     for drive in ['C', 'D', 'E', 'F', 'G'] {
         let base = format!("{}:\\", drive);
-        roots.push(PathBuf::from(&base).join("Riot Games").join("League of Legends"));
+        roots.push(
+            PathBuf::from(&base)
+                .join("Riot Games")
+                .join("League of Legends"),
+        );
         roots.push(
             PathBuf::from(&base)
                 .join("Program Files")
@@ -122,7 +126,9 @@ pub fn is_valid_league_root(path: &Path) -> bool {
 
 /// Scan the common install locations and return the first valid root.
 pub fn detect_league_path_by_common_paths() -> Option<PathBuf> {
-    common_league_paths().into_iter().find(|p| is_valid_league_root(p))
+    common_league_paths()
+        .into_iter()
+        .find(|p| is_valid_league_root(p))
 }
 
 /// `<root>/Game/DATA/FINAL/Champions`.
@@ -186,7 +192,9 @@ pub fn discover_champions(league_root: &Path) -> Result<Vec<Champion>> {
         if !path.is_file() {
             continue;
         }
-        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
         let lower = file_name.to_lowercase();
         if !lower.ends_with(".wad.client") {
             continue;
@@ -201,7 +209,10 @@ pub fn discover_champions(league_root: &Path) -> Result<Vec<Champion>> {
         let id = stem.to_string();
         let skins = read_skins_from_wad(&path).unwrap_or_else(|e| {
             tracing::warn!("Failed to read skins for {}: {}", id, e);
-            vec![SkinEntry { id: 0, name: "Base".to_string() }]
+            vec![SkinEntry {
+                id: 0,
+                name: "Base".to_string(),
+            }]
         });
         champions.push(Champion {
             name: display_name_for_id(&id),
@@ -213,7 +224,11 @@ pub fn discover_champions(league_root: &Path) -> Result<Vec<Champion>> {
     }
 
     champions.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    tracing::info!("Discovered {} champions in {}", champions.len(), dir.display());
+    tracing::info!(
+        "Discovered {} champions in {}",
+        champions.len(),
+        dir.display()
+    );
     Ok(champions)
 }
 
@@ -234,7 +249,10 @@ pub fn read_skins_from_wad(wad_path: &Path) -> Result<Vec<SkinEntry>> {
 
     let mut skins: Vec<SkinEntry> = ids
         .into_iter()
-        .map(|id| SkinEntry { id, name: skin_display_name(id) })
+        .map(|id| SkinEntry {
+            id,
+            name: skin_display_name(id),
+        })
         .collect();
     skins.sort_by_key(|s| s.id);
     Ok(skins)
@@ -283,7 +301,10 @@ pub fn wad_stem_for_name(name: &str) -> String {
         "wukong" => "monkeyking".to_string(),
         "nunu & willump" | "nunu" => "nunu".to_string(),
         "renata glasc" | "renata" => "renata".to_string(),
-        _ => lower.chars().filter(|c| !matches!(c, '\'' | '"' | ' ')).collect(),
+        _ => lower
+            .chars()
+            .filter(|c| !matches!(c, '\'' | '"' | ' '))
+            .collect(),
     }
 }
 
@@ -349,7 +370,12 @@ impl ExtractOptions<'_> {
 /// Build the wrapper folder base name for a skin extraction:
 /// `<stem>_skin<effective>_extracted` (+ `_chroma_<id>` when chroma set,
 /// + `_clean` in clean mode).
-fn skin_folder_name(stem: &str, effective_skin_id: u32, chroma_id: Option<u32>, clean: bool) -> String {
+fn skin_folder_name(
+    stem: &str,
+    effective_skin_id: u32,
+    chroma_id: Option<u32>,
+    clean: bool,
+) -> String {
     let mut name = format!("{}_skin{}_extracted", stem, effective_skin_id);
     if let Some(chroma) = chroma_id {
         name.push_str(&format!("_chroma_{}", chroma));
@@ -392,8 +418,7 @@ where
         opts.output_dir,
         &skin_folder_name(&stem, effective_skin_id, opts.chroma_id, opts.clean),
     );
-    std::fs::create_dir_all(&extract_root)
-        .map_err(|e| Error::io_with_path(e, &extract_root))?;
+    std::fs::create_dir_all(&extract_root).map_err(|e| Error::io_with_path(e, &extract_root))?;
 
     progress(ExtractProgress {
         phase: "preparing".into(),
@@ -408,7 +433,16 @@ where
 
     // Main archive: whole-WAD (empty selection) or the pruned skin-only graph.
     let main = if opts.clean {
-        extract_skin_clean(&main_wad, &stem, effective_skin_id, opts.preserve_hud_icons2d, opts.skip_sfx, None, &extract_root, &progress)?
+        extract_skin_clean(
+            &main_wad,
+            &stem,
+            effective_skin_id,
+            opts.preserve_hud_icons2d,
+            opts.skip_sfx,
+            None,
+            &extract_root,
+            &progress,
+        )?
     } else {
         extract_archive(&main_wad, &extract_root, "extracting", &progress)?
     };
@@ -479,14 +513,18 @@ fn write_hashed_files_json(extract_root: &Path, main_wad: &Path) {
     let mut map: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
     let mut stack = vec![extract_root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for e in rd.flatten() {
             let p = e.path();
             if p.is_dir() {
                 stack.push(p);
                 continue;
             }
-            let Some(name) = p.file_name().and_then(|n| n.to_str()) else { continue };
+            let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
             if name.eq_ignore_ascii_case("hashed_files.json") {
                 continue;
             }
@@ -543,7 +581,10 @@ where
 /// Normalize a WAD-internal rel path: backslashes → `/`, strip leading `/`,
 /// lowercase. Mirrors `port_donor::normalize_rel`.
 fn normalize_rel(value: &str) -> String {
-    value.replace('\\', "/").trim_start_matches('/').to_lowercase()
+    value
+        .replace('\\', "/")
+        .trim_start_matches('/')
+        .to_lowercase()
 }
 
 /// Resolve a WAD's TOC into lookup tables:
@@ -567,7 +608,9 @@ fn resolve_toc(
         if let Some(resolved) = &entry.resolved_path {
             let rel = normalize_rel(resolved);
             by_path.entry(rel.clone()).or_insert(entry.path_hash);
-            by_hex.entry(format!("{:016x}", entry.path_hash)).or_insert(rel);
+            by_hex
+                .entry(format!("{:016x}", entry.path_hash))
+                .or_insert(rel);
         }
     }
     Ok((by_path, by_hex, all_hashes))
@@ -680,8 +723,12 @@ where
     }
 
     while let Some(hash) = queue.pop() {
-        let Ok(bytes) = wad_explorer::read_chunk(&wad_str, hash) else { continue };
-        let Ok(bin) = crate::bin::read_bin(&bytes) else { continue };
+        let Ok(bytes) = wad_explorer::read_chunk(&wad_str, hash) else {
+            continue;
+        };
+        let Ok(bin) = crate::bin::read_bin(&bytes) else {
+            continue;
+        };
 
         for entry in &bin.entries {
             for (_k, v) in &entry.fields {
@@ -793,8 +840,15 @@ where
     }
 
     let pet_alias = opts.pet_alias.to_lowercase();
-    let suffix = if opts.clean { "_extracted_clean" } else { "_extracted" };
-    let extract_root = unique_dir(opts.output_dir, &format!("{}_tier{}{}", pet_alias, opts.skin_id, suffix));
+    let suffix = if opts.clean {
+        "_extracted_clean"
+    } else {
+        "_extracted"
+    };
+    let extract_root = unique_dir(
+        opts.output_dir,
+        &format!("{}_tier{}{}", pet_alias, opts.skin_id, suffix),
+    );
     std::fs::create_dir_all(&extract_root).map_err(|e| Error::io_with_path(e, &extract_root))?;
 
     progress(ExtractProgress {
@@ -951,7 +1005,14 @@ pub fn repath_extracted(opts: RepathOptions<'_>) -> Result<RepathSummary> {
     let (paths_modified, files_relocated, files_removed, missing) = result
         .repath_result
         .as_ref()
-        .map(|r| (r.paths_modified, r.files_relocated, r.files_removed, r.missing_paths.len()))
+        .map(|r| {
+            (
+                r.paths_modified,
+                r.files_relocated,
+                r.files_removed,
+                r.missing_paths.len(),
+            )
+        })
         .unwrap_or((0, 0, 0, 0));
 
     // Post-repath, per old Quartz FrogChanger: split (if enabled) THEN
@@ -959,10 +1020,19 @@ pub fn repath_extracted(opts: RepathOptions<'_>) -> Result<RepathSummary> {
     let repath_prefix = if opts.project_name.is_empty() {
         opts.creator_name.replace(' ', "-")
     } else {
-        format!("{}/{}", opts.creator_name.replace(' ', "-"), opts.project_name.replace(' ', "-"))
+        format!(
+            "{}/{}",
+            opts.creator_name.replace(' ', "-"),
+            opts.project_name.replace(' ', "-")
+        )
     };
     run_split_and_consolidate(
-        opts.content_dir, opts.skin_id, opts.split_vfx, opts.split_anm, opts.consolidate_assets, &repath_prefix,
+        opts.content_dir,
+        opts.skin_id,
+        opts.split_vfx,
+        opts.split_anm,
+        opts.consolidate_assets,
+        &repath_prefix,
     );
 
     Ok(RepathSummary {
@@ -1048,7 +1118,12 @@ pub fn finalize_extracted(opts: FinalizeOptions<'_>) -> Result<FinalizeSummary> 
 
     // Split (if on) THEN consolidate → `ASSETS/[<prefix>/]skin<N>_<champ>_particles/`.
     run_split_and_consolidate(
-        opts.content_dir, opts.skin_id, opts.split_vfx, opts.split_anm, opts.consolidate_assets, opts.consolidate_prefix,
+        opts.content_dir,
+        opts.skin_id,
+        opts.split_vfx,
+        opts.split_anm,
+        opts.consolidate_assets,
+        opts.consolidate_prefix,
     );
 
     Ok(FinalizeSummary {
@@ -1067,7 +1142,9 @@ fn prune_base_character_bins(content_dir: &Path) -> usize {
     let mut removed = 0;
     let mut stack = vec![content_dir.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for e in rd.flatten() {
             let p = e.path();
             if p.is_dir() {
@@ -1075,12 +1152,21 @@ fn prune_base_character_bins(content_dir: &Path) -> usize {
                 continue;
             }
             let s = p.to_string_lossy().to_lowercase().replace('\\', "/");
-            let name = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
-            let folder = p.parent().and_then(|d| d.file_name()).map(|n| n.to_string_lossy().to_lowercase());
+            let name = p
+                .file_name()
+                .map(|n| n.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            let folder = p
+                .parent()
+                .and_then(|d| d.file_name())
+                .map(|n| n.to_string_lossy().to_lowercase());
             let is_base_root = s.contains("/characters/")
                 && !s.contains("/skins/")
                 && !s.contains("/animations/")
-                && folder.as_deref().map(|f| name == format!("{}.bin", f)).unwrap_or(false);
+                && folder
+                    .as_deref()
+                    .map(|f| name == format!("{}.bin", f))
+                    .unwrap_or(false);
             if is_base_root && std::fs::remove_file(&p).is_ok() {
                 removed += 1;
                 tracing::debug!("Pruned base character BIN: {}", s);
@@ -1131,11 +1217,17 @@ fn run_split_and_consolidate(
         for (champ, skin_num, targets) in consolidate_targets(&skin_bins, content_dir, skin_id) {
             for target in targets {
                 match crate::bin::bin_editor::consolidate_assets_repath(
-                    &target, content_dir, prefix, &champ, skin_num,
+                    &target,
+                    content_dir,
+                    prefix,
+                    &champ,
+                    skin_num,
                 ) {
                     Ok(r) => tracing::info!(
                         "Consolidated {} VFX assets (of {} referenced) for '{}'",
-                        r.moved, r.referenced, champ
+                        r.moved,
+                        r.referenced,
+                        champ
                     ),
                     Err(e) => tracing::warn!("Consolidate failed for {}: {}", target.display(), e),
                 }
@@ -1149,7 +1241,9 @@ fn find_skin_bins(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for e in rd.flatten() {
             let p = e.path();
             if p.is_dir() {
@@ -1157,10 +1251,15 @@ fn find_skin_bins(root: &Path) -> Vec<PathBuf> {
                 continue;
             }
             let s = p.to_string_lossy().to_lowercase().replace('\\', "/");
-            let name = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+            let name = p
+                .file_name()
+                .map(|n| n.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
             let is_skin = name.starts_with("skin")
                 && name.ends_with(".bin")
-                && name["skin".len()..name.len() - 4].chars().all(|c| c.is_ascii_digit())
+                && name["skin".len()..name.len() - 4]
+                    .chars()
+                    .all(|c| c.is_ascii_digit())
                 && !name["skin".len()..name.len() - 4].is_empty();
             if is_skin && s.contains("/characters/") && s.contains("/skins/") {
                 out.push(p);
@@ -1181,9 +1280,13 @@ fn consolidate_targets(
     let mut out = Vec::new();
     for sb in skin_bins {
         let s = sb.to_string_lossy().replace('\\', "/").to_lowercase();
-        let Some(i) = s.find("/characters/") else { continue };
+        let Some(i) = s.find("/characters/") else {
+            continue;
+        };
         let after = &s[i + "/characters/".len()..];
-        let Some(slash) = after.find('/') else { continue };
+        let Some(slash) = after.find('/') else {
+            continue;
+        };
         let champ = after[..slash].to_string();
         let vfx_sibling = content_dir
             .join("data")
@@ -1200,11 +1303,15 @@ fn consolidate_targets(
 /// Find `<stem>.<lang>.wad.client` voiceover archives next to the main WAD.
 fn find_voiceover_wads(champions_dir: &Path, stem: &str) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let Ok(entries) = std::fs::read_dir(champions_dir) else { return out };
+    let Ok(entries) = std::fs::read_dir(champions_dir) else {
+        return out;
+    };
     let main_name = format!("{}.wad.client", stem).to_lowercase();
     for entry in entries.flatten() {
         let path = entry.path();
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
         let lower = name.to_lowercase();
         if !lower.ends_with(".wad.client") || lower == main_name {
             continue;
@@ -1276,12 +1383,30 @@ mod tests {
 
     #[test]
     fn skin_id_parsing() {
-        assert_eq!(skin_id_from_path("data/characters/ahri/skins/skin0.bin"), Some(0));
-        assert_eq!(skin_id_from_path("data/characters/ahri/skins/skin14.bin"), Some(14));
-        assert_eq!(skin_id_from_path("ASSETS/Characters/Ahri/Skins/Skin7.bin"), Some(7));
-        assert_eq!(skin_id_from_path("data/characters/ahri/skins/root.bin"), None);
-        assert_eq!(skin_id_from_path("data/characters/ahri/animations/skin0.bin"), None);
-        assert_eq!(skin_id_from_path("data/characters/ahri/skins/skin1.txt"), None);
+        assert_eq!(
+            skin_id_from_path("data/characters/ahri/skins/skin0.bin"),
+            Some(0)
+        );
+        assert_eq!(
+            skin_id_from_path("data/characters/ahri/skins/skin14.bin"),
+            Some(14)
+        );
+        assert_eq!(
+            skin_id_from_path("ASSETS/Characters/Ahri/Skins/Skin7.bin"),
+            Some(7)
+        );
+        assert_eq!(
+            skin_id_from_path("data/characters/ahri/skins/root.bin"),
+            None
+        );
+        assert_eq!(
+            skin_id_from_path("data/characters/ahri/animations/skin0.bin"),
+            None
+        );
+        assert_eq!(
+            skin_id_from_path("data/characters/ahri/skins/skin1.txt"),
+            None
+        );
     }
 
     #[test]
@@ -1328,8 +1453,14 @@ mod tests {
 
     #[test]
     fn folder_name_construction() {
-        assert_eq!(skin_folder_name("ahri", 14, None, false), "ahri_skin14_extracted");
-        assert_eq!(skin_folder_name("ahri", 14, None, true), "ahri_skin14_extracted_clean");
+        assert_eq!(
+            skin_folder_name("ahri", 14, None, false),
+            "ahri_skin14_extracted"
+        );
+        assert_eq!(
+            skin_folder_name("ahri", 14, None, true),
+            "ahri_skin14_extracted_clean"
+        );
         assert_eq!(
             skin_folder_name("ahri", 1, Some(14001), false),
             "ahri_skin1_extracted_chroma_14001"
@@ -1343,29 +1474,71 @@ mod tests {
     #[test]
     fn skin_bin_matcher() {
         // Both roots, exact N, no leading zero.
-        assert_eq!(skin_bin_match("data/characters/ahri/skins/skin14.bin", 14), Some("ahri"));
-        assert_eq!(skin_bin_match("assets/characters/ahri/skins/skin14.bin", 14), Some("ahri"));
+        assert_eq!(
+            skin_bin_match("data/characters/ahri/skins/skin14.bin", 14),
+            Some("ahri")
+        );
+        assert_eq!(
+            skin_bin_match("assets/characters/ahri/skins/skin14.bin", 14),
+            Some("ahri")
+        );
         // Leading zeros: skin0*N.
-        assert_eq!(skin_bin_match("data/characters/ahri/skins/skin014.bin", 14), Some("ahri"));
-        assert_eq!(skin_bin_match("data/characters/ahri/skins/skin0.bin", 0), Some("ahri"));
-        assert_eq!(skin_bin_match("data/characters/ahri/skins/skin00.bin", 0), Some("ahri"));
+        assert_eq!(
+            skin_bin_match("data/characters/ahri/skins/skin014.bin", 14),
+            Some("ahri")
+        );
+        assert_eq!(
+            skin_bin_match("data/characters/ahri/skins/skin0.bin", 0),
+            Some("ahri")
+        );
+        assert_eq!(
+            skin_bin_match("data/characters/ahri/skins/skin00.bin", 0),
+            Some("ahri")
+        );
         // Wrong N.
-        assert_eq!(skin_bin_match("data/characters/ahri/skins/skin7.bin", 14), None);
+        assert_eq!(
+            skin_bin_match("data/characters/ahri/skins/skin7.bin", 14),
+            None
+        );
         // Not a skins/*.bin directly (nested).
-        assert_eq!(skin_bin_match("data/characters/ahri/skins/sub/skin14.bin", 14), None);
+        assert_eq!(
+            skin_bin_match("data/characters/ahri/skins/sub/skin14.bin", 14),
+            None
+        );
         // Wrong extension / not a skin file.
-        assert_eq!(skin_bin_match("data/characters/ahri/skins/skin14.txt", 14), None);
-        assert_eq!(skin_bin_match("data/characters/ahri/skins/root.bin", 0), None);
+        assert_eq!(
+            skin_bin_match("data/characters/ahri/skins/skin14.txt", 14),
+            None
+        );
+        assert_eq!(
+            skin_bin_match("data/characters/ahri/skins/root.bin", 0),
+            None
+        );
         // Wrong root.
-        assert_eq!(skin_bin_match("misc/characters/ahri/skins/skin0.bin", 0), None);
+        assert_eq!(
+            skin_bin_match("misc/characters/ahri/skins/skin0.bin", 0),
+            None
+        );
     }
 
     #[test]
     fn pet_folder_filter() {
-        assert!(pet_folder_match("assets/characters/pettftavatar/skins/skin1.bin", "pettftavatar"));
-        assert!(pet_folder_match("data/characters/pettftavatar/hud/foo.dds", "pettftavatar"));
-        assert!(!pet_folder_match("assets/characters/ahri/skins/skin1.bin", "pettftavatar"));
+        assert!(pet_folder_match(
+            "assets/characters/pettftavatar/skins/skin1.bin",
+            "pettftavatar"
+        ));
+        assert!(pet_folder_match(
+            "data/characters/pettftavatar/hud/foo.dds",
+            "pettftavatar"
+        ));
+        assert!(!pet_folder_match(
+            "assets/characters/ahri/skins/skin1.bin",
+            "pettftavatar"
+        ));
         // Guard against a prefix collision (pettft vs pettftavatar).
-        assert!(!pet_folder_match("assets/characters/pettftavatarx/skins/skin1.bin", "pettftavatar"));
+        assert!(!pet_folder_match(
+            "assets/characters/pettftavatarx/skins/skin1.bin",
+            "pettftavatar"
+        ));
     }
 }

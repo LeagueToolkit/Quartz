@@ -1,4 +1,4 @@
-/* Unified texture preview panel + context menu (see texturePreview.ts).
+/* Unified texture/model preview panel + context menu (see texturePreview.ts).
    Theme-tokened so it matches light/dark across every page that uses it. */
 
 .tex-preview {

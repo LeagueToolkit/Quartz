@@ -1,18 +1,17 @@
 //! Repathing engine: scans BIN files for asset paths (`assets/`, `data/`),
 //! prefixes them with `ASSETS/{creator}/{project}`, and relocates the files.
 
+use super::organizer::find_all_seed_skin_bins;
 use crate::bin::ritoshark_bridge::{read_bin, write_bin};
 use crate::error::{Error, Result};
-use super::organizer::find_all_seed_skin_bins;
+use dashmap::DashSet;
+use rayon::prelude::*;
 use ritoshark::bin::BinValue;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use walkdir::WalkDir;
-use rayon::prelude::*;
-use dashmap::DashSet;
-
 
 #[derive(Debug, Clone)]
 pub struct RepathConfig {
@@ -114,13 +113,16 @@ pub fn repath_project(
             }
         }
     });
-    tracing::info!("Found {} unique asset paths in BINs", all_asset_paths_set.len());
+    tracing::info!(
+        "Found {} unique asset paths in BINs",
+        all_asset_paths_set.len()
+    );
 
     let all_asset_paths: HashSet<String> = all_asset_paths_set.into_iter().collect();
 
     let t_step3 = std::time::Instant::now();
     /* Stat each candidate path in parallel (independent reads, Windows stat is
-       per-call kernel-transition bound). Case-insensitive since the Windows FS is. */
+    per-call kernel-transition bound). Case-insensitive since the Windows FS is. */
     let asset_path_vec: Vec<&String> = all_asset_paths.iter().collect();
     let existing_paths: HashSet<String> = asset_path_vec
         .par_iter()
@@ -152,7 +154,10 @@ pub fn repath_project(
 
     let missing_count = all_asset_paths.len() - existing_paths.len();
     if missing_count > 0 {
-        tracing::warn!("{} asset paths referenced in BINs but not found on disk:", missing_count);
+        tracing::warn!(
+            "{} asset paths referenced in BINs but not found on disk:",
+            missing_count
+        );
         for path in all_asset_paths.difference(&existing_paths).take(10) {
             tracing::warn!("  Missing: {}", path);
         }
@@ -164,7 +169,11 @@ pub fn repath_project(
     for path in all_asset_paths.difference(&existing_paths) {
         result.missing_paths.push(path.clone());
     }
-    tracing::info!("[TIMING] step3 existing_paths filter ({} paths): {:?}", all_asset_paths.len(), t_step3.elapsed());
+    tracing::info!(
+        "[TIMING] step3 existing_paths filter ({} paths): {:?}",
+        all_asset_paths.len(),
+        t_step3.elapsed()
+    );
 
     let t_step4 = std::time::Instant::now();
     let prefix = config.prefix();
@@ -185,21 +194,36 @@ pub fn repath_project(
 
     result.bins_processed = bins_processed.load(Ordering::Relaxed);
     result.paths_modified = paths_modified.load(Ordering::Relaxed);
-    tracing::info!("[TIMING] step4 repath {} BINs in parallel: {:?}", result.bins_processed, t_step4.elapsed());
+    tracing::info!(
+        "[TIMING] step4 repath {} BINs in parallel: {:?}",
+        result.bins_processed,
+        t_step4.elapsed()
+    );
 
     let t_step5 = std::time::Instant::now();
     result.files_relocated = relocate_assets(file_base, &existing_paths, &prefix, config)?;
-    tracing::info!("[TIMING] step5 relocate_assets ({} files): {:?}", result.files_relocated, t_step5.elapsed());
+    tracing::info!(
+        "[TIMING] step5 relocate_assets ({} files): {:?}",
+        result.files_relocated,
+        t_step5.elapsed()
+    );
 
     if config.cleanup_unused {
         let t_step6 = std::time::Instant::now();
         result.files_removed = cleanup_unused_files(file_base, &existing_paths, &prefix, config)?;
-        tracing::info!("[TIMING] step6 cleanup_unused_files ({} removed): {:?}", result.files_removed, t_step6.elapsed());
+        tracing::info!(
+            "[TIMING] step6 cleanup_unused_files ({} removed): {:?}",
+            result.files_removed,
+            t_step6.elapsed()
+        );
     }
 
     let t_step7 = std::time::Instant::now();
     cleanup_irrelevant_bins(file_base, &config.champion, config.target_skin_id)?;
-    tracing::info!("[TIMING] step7 cleanup_irrelevant_bins: {:?}", t_step7.elapsed());
+    tracing::info!(
+        "[TIMING] step7 cleanup_irrelevant_bins: {:?}",
+        t_step7.elapsed()
+    );
 
     let t_step8 = std::time::Instant::now();
     cleanup_empty_dirs(file_base)?;
@@ -218,8 +242,8 @@ pub fn repath_project(
 fn scan_bin_for_paths(bin_path: &Path) -> Result<Vec<String>> {
     let data = fs::read(bin_path).map_err(|e| Error::io_with_path(e, bin_path))?;
 
-    let bin = read_bin(&data)
-        .map_err(|e| Error::InvalidInput(format!("Failed to parse BIN: {}", e)))?;
+    let bin =
+        read_bin(&data).map_err(|e| Error::InvalidInput(format!("Failed to parse BIN: {}", e)))?;
 
     let mut paths = Vec::new();
 
@@ -249,7 +273,9 @@ fn collect_paths_from_value(value: &BinValue, paths: &mut Vec<String>) {
                 collect_paths_from_value(v, paths);
             }
         }
-        BinValue::Option { value: Some(inner), .. } => {
+        BinValue::Option {
+            value: Some(inner), ..
+        } => {
             collect_paths_from_value(inner, paths);
         }
         BinValue::Map { entries, .. } => {
@@ -267,8 +293,8 @@ fn is_asset_path(s: &str) -> bool {
         return false;
     }
 
-    (s.len() >= 7 && s[..7].eq_ignore_ascii_case("assets/")) ||
-    (s.len() >= 5 && s[..5].eq_ignore_ascii_case("data/"))
+    (s.len() >= 7 && s[..7].eq_ignore_ascii_case("assets/"))
+        || (s.len() >= 5 && s[..5].eq_ignore_ascii_case("data/"))
 }
 
 /// Lowercase with forward slashes.
@@ -302,7 +328,8 @@ fn bum_path(file_path: &str, prefix: &str) -> String {
     // Already prefixed? (`/<prefix>/` anywhere, or leading `<prefix>/`)
     let lower = file_path.to_lowercase();
     let pfx_lower = prefix.to_lowercase();
-    if lower.contains(&format!("/{}/", pfx_lower)) || lower.starts_with(&format!("{}/", pfx_lower)) {
+    if lower.contains(&format!("/{}/", pfx_lower)) || lower.starts_with(&format!("{}/", pfx_lower))
+    {
         return file_path.to_string();
     }
     match file_path.find('/') {
@@ -314,24 +341,28 @@ fn bum_path(file_path: &str, prefix: &str) -> String {
 /// old Quartz `_isBlockedSfxPath`: `sounds/wwise2016/sfx/…` ending in bnk/wpk/wem.
 fn is_blocked_sfx_path(path: &str) -> bool {
     let norm = path.replace('\\', "/").to_lowercase();
-    let in_sfx = norm.starts_with("sounds/wwise2016/sfx/")
-        || norm.contains("/sounds/wwise2016/sfx/");
+    let in_sfx =
+        norm.starts_with("sounds/wwise2016/sfx/") || norm.contains("/sounds/wwise2016/sfx/");
     in_sfx && (norm.ends_with(".bnk") || norm.ends_with(".wpk") || norm.ends_with(".wem"))
 }
 
 /// old Quartz `_isBlockedVoPath`: `sounds/wwise2016/vo/…` ending in bnk/wpk/wem.
 fn is_blocked_vo_path(path: &str) -> bool {
     let norm = path.replace('\\', "/").to_lowercase();
-    let in_vo = norm.starts_with("sounds/wwise2016/vo/")
-        || norm.contains("/sounds/wwise2016/vo/");
+    let in_vo = norm.starts_with("sounds/wwise2016/vo/") || norm.contains("/sounds/wwise2016/vo/");
     in_vo && (norm.ends_with(".bnk") || norm.ends_with(".wpk") || norm.ends_with(".wem"))
 }
 
-fn repath_bin_file(bin_path: &Path, existing_paths: &HashSet<String>, prefix: &str, config: &RepathConfig) -> Result<usize> {
+fn repath_bin_file(
+    bin_path: &Path,
+    existing_paths: &HashSet<String>,
+    prefix: &str,
+    config: &RepathConfig,
+) -> Result<usize> {
     let data = fs::read(bin_path).map_err(|e| Error::io_with_path(e, bin_path))?;
 
-    let mut bin = read_bin(&data)
-        .map_err(|e| Error::InvalidInput(format!("Failed to parse BIN: {}", e)))?;
+    let mut bin =
+        read_bin(&data).map_err(|e| Error::InvalidInput(format!("Failed to parse BIN: {}", e)))?;
 
     let mut modified_count = 0;
 
@@ -349,13 +380,22 @@ fn repath_bin_file(bin_path: &Path, existing_paths: &HashSet<String>, prefix: &s
             .map_err(|e| Error::InvalidInput(format!("Failed to write BIN: {}", e)))?;
 
         fs::write(bin_path, new_data).map_err(|e| Error::io_with_path(e, bin_path))?;
-        tracing::debug!("Repathed {} paths in {}", modified_count, bin_path.display());
+        tracing::debug!(
+            "Repathed {} paths in {}",
+            modified_count,
+            bin_path.display()
+        );
     }
 
     Ok(modified_count)
 }
 
-fn repath_value(value: &mut BinValue, existing_paths: &HashSet<String>, prefix: &str, config: &RepathConfig) -> usize {
+fn repath_value(
+    value: &mut BinValue,
+    existing_paths: &HashSet<String>,
+    prefix: &str,
+    config: &RepathConfig,
+) -> usize {
     let mut count = 0;
 
     match value {
@@ -380,7 +420,9 @@ fn repath_value(value: &mut BinValue, existing_paths: &HashSet<String>, prefix: 
                 count += repath_value(v, existing_paths, prefix, config);
             }
         }
-        BinValue::Option { value: Some(inner), .. } => {
+        BinValue::Option {
+            value: Some(inner), ..
+        } => {
             count += repath_value(inner, existing_paths, prefix, config);
         }
         BinValue::Map { entries, .. } => {
@@ -395,9 +437,14 @@ fn repath_value(value: &mut BinValue, existing_paths: &HashSet<String>, prefix: 
     count
 }
 
-fn relocate_assets(content_base: &Path, existing_paths: &HashSet<String>, prefix: &str, config: &RepathConfig) -> Result<usize> {
+fn relocate_assets(
+    content_base: &Path,
+    existing_paths: &HashSet<String>,
+    prefix: &str,
+    config: &RepathConfig,
+) -> Result<usize> {
     /* Pass 1 (serial): plan the moves with first-writer-wins conflict
-       detection (cheap — one HashMap insert per path). */
+    detection (cheap — one HashMap insert per path). */
     let mut destinations: HashMap<String, String> = HashMap::new();
     let mut moves: Vec<(PathBuf, PathBuf)> = Vec::with_capacity(existing_paths.len());
     let mut parent_dirs: HashSet<PathBuf> = HashSet::new();
@@ -411,7 +458,9 @@ fn relocate_assets(content_base: &Path, existing_paths: &HashSet<String>, prefix
 
         // Skip-SFX / Skip-VO: leave the audio bank in place (its bin refs
         // weren't repathed, so moving it would orphan them).
-        if (config.skip_sfx && is_blocked_sfx_path(path)) || (config.skip_vo && is_blocked_vo_path(path)) {
+        if (config.skip_sfx && is_blocked_sfx_path(path))
+            || (config.skip_vo && is_blocked_vo_path(path))
+        {
             continue;
         }
 
@@ -420,7 +469,9 @@ fn relocate_assets(content_base: &Path, existing_paths: &HashSet<String>, prefix
         if let Some(prev_source) = destinations.get(&dest_normalized) {
             tracing::warn!(
                 "Conflict detected: '{}' and '{}' both map to '{}'",
-                prev_source, path, dest_normalized
+                prev_source,
+                path,
+                dest_normalized
             );
             continue;
         }
@@ -440,25 +491,27 @@ fn relocate_assets(content_base: &Path, existing_paths: &HashSet<String>, prefix
     }
 
     /* Pass 3 (parallel): rename each independent file, falling back to
-       copy+delete across devices. Probe exists() only on rename failure. */
+    copy+delete across devices. Probe exists() only on rename failure. */
     let relocated = moves
         .par_iter()
-        .filter(|(source, dest)| {
-            match fs::rename(source, dest) {
-                Ok(_) => true,
-                Err(_) => {
-                    if !source.exists() {
-                        return false;
-                    }
-                    if let Err(e) = fs::copy(source, dest) {
-                        tracing::warn!("relocate copy failed {}: {}", source.display(), e);
-                        return false;
-                    }
-                    if let Err(e) = fs::remove_file(source) {
-                        tracing::warn!("relocate remove-after-copy failed {}: {}", source.display(), e);
-                    }
-                    true
+        .filter(|(source, dest)| match fs::rename(source, dest) {
+            Ok(_) => true,
+            Err(_) => {
+                if !source.exists() {
+                    return false;
                 }
+                if let Err(e) = fs::copy(source, dest) {
+                    tracing::warn!("relocate copy failed {}: {}", source.display(), e);
+                    return false;
+                }
+                if let Err(e) = fs::remove_file(source) {
+                    tracing::warn!(
+                        "relocate remove-after-copy failed {}: {}",
+                        source.display(),
+                        e
+                    );
+                }
+                true
             }
         })
         .count();
@@ -466,14 +519,22 @@ fn relocate_assets(content_base: &Path, existing_paths: &HashSet<String>, prefix
     Ok(relocated)
 }
 
-fn cleanup_unused_files(content_base: &Path, referenced_paths: &HashSet<String>, prefix: &str, config: &RepathConfig) -> Result<usize> {
+fn cleanup_unused_files(
+    content_base: &Path,
+    referenced_paths: &HashSet<String>,
+    prefix: &str,
+    config: &RepathConfig,
+) -> Result<usize> {
     use rayon::prelude::*;
 
     let expected_paths: HashSet<String> = referenced_paths
         .iter()
         .map(|p| normalize_path(&apply_prefix_to_path(p, prefix, config)))
         .collect();
-    let creator_prefix = format!("assets/{}/", config.creator_name.replace(' ', "-").to_lowercase());
+    let creator_prefix = format!(
+        "assets/{}/",
+        config.creator_name.replace(' ', "-").to_lowercase()
+    );
 
     // Walk serially (WalkDir holds file-handle state), then delete in parallel.
     let to_delete: Vec<PathBuf> = WalkDir::new(content_base)
@@ -521,7 +582,11 @@ fn cleanup_unused_files(content_base: &Path, referenced_paths: &HashSet<String>,
 /// in a surviving seed BIN's `linked:` list. DELETE: everything else, and
 /// ALWAYS delete each character's base `<char>.bin` root (redundant after
 /// combine — the link ref is kept, the file is deadweight).
-fn cleanup_irrelevant_bins(content_base: &Path, champion: &str, target_skin_id: u32) -> Result<usize> {
+fn cleanup_irrelevant_bins(
+    content_base: &Path,
+    champion: &str,
+    target_skin_id: u32,
+) -> Result<usize> {
     let mut removed = 0;
 
     // KEEP set, by content-relative key (lowercased, forward slashes).
@@ -533,7 +598,9 @@ fn cleanup_irrelevant_bins(content_base: &Path, champion: &str, target_skin_id: 
         if let Ok(data) = fs::read(seed) {
             if let Ok(bin) = read_bin(&data) {
                 for link in &bin.linked {
-                    if let Some(disk) = crate::bin::concat::resolve_linked_on_disk(content_base, link) {
+                    if let Some(disk) =
+                        crate::bin::concat::resolve_linked_on_disk(content_base, link)
+                    {
                         keep.insert(rel_key(content_base, &disk));
                     }
                 }
@@ -556,15 +623,26 @@ fn cleanup_irrelevant_bins(content_base: &Path, champion: &str, target_skin_id: 
         }
     }
 
-    tracing::info!("Pruning BINs (keep {} seed+linked, always-delete {} base roots)", keep.len(), base_bins.len());
+    tracing::info!(
+        "Pruning BINs (keep {} seed+linked, always-delete {} base roots)",
+        keep.len(),
+        base_bins.len()
+    );
 
     for entry in WalkDir::new(content_base)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map(|x| x.eq_ignore_ascii_case("bin")).unwrap_or(false))
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map(|x| x.eq_ignore_ascii_case("bin"))
+                .unwrap_or(false)
+        })
     {
         let path = entry.path();
-        let Ok(rel_path) = path.strip_prefix(content_base) else { continue };
+        let Ok(rel_path) = path.strip_prefix(content_base) else {
+            continue;
+        };
         let rel = rel_path.to_string_lossy().to_lowercase().replace('\\', "/");
 
         // Always delete base character roots, even though a seed still links them.

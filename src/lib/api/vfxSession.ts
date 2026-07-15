@@ -40,6 +40,7 @@ export interface PortEmitter {
     complex: boolean;
     isChild: boolean;
     textures: string[];
+    meshes: string[];
     /** Display swatches: constants plus up to 6 keyframe colors. */
     colors: [number, number, number, number][];
     path: VfxPath;

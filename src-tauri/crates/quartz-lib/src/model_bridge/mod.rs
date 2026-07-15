@@ -89,8 +89,20 @@ pub(crate) fn find_bridge_exe(
             for build in ["build_release", "build"] {
                 candidates.push(native_root.join(subdir).join(build).join(exe_name));
             }
-            candidates.push(native_root.join(subdir).join("build").join("Release").join(exe_name));
-            candidates.push(native_root.join(subdir).join("build").join("Debug").join(exe_name));
+            candidates.push(
+                native_root
+                    .join(subdir)
+                    .join("build")
+                    .join("Release")
+                    .join(exe_name),
+            );
+            candidates.push(
+                native_root
+                    .join(subdir)
+                    .join("build")
+                    .join("Debug")
+                    .join(exe_name),
+            );
         }
     }
 

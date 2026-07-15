@@ -173,14 +173,8 @@ pub fn recolor_emitters(
             .collect();
         let bins_touched: Vec<usize> = touched.iter().map(|(b, _)| *b).collect();
         let frame = s.capture(touched);
-        let n = recolor::recolor_emitters(
-            &mut s.bins,
-            &s.index,
-            emitter_keys,
-            targets,
-            palette,
-            opts,
-        );
+        let n =
+            recolor::recolor_emitters(&mut s.bins, &s.index, emitter_keys, targets, palette, opts);
         if n > 0 {
             s.dirty_bins(bins_touched);
             s.push_undo(frame);
@@ -201,13 +195,8 @@ pub fn set_material_param(
             return false;
         };
         let frame = s.capture([(path.bin, path.entry)]);
-        let changed = recolor::recolor_material_param(
-            &mut s.bins,
-            &path,
-            new_color,
-            preserve_alpha,
-            false,
-        );
+        let changed =
+            recolor::recolor_material_param(&mut s.bins, &path, new_color, preserve_alpha, false);
         if changed {
             s.dirty_bins([path.bin]);
             s.push_undo(frame);

@@ -52,7 +52,9 @@ fn rekey_entry(bin: &mut Bin, old_key: u32, new_key: u32) -> Result<()> {
         .entries
         .iter_mut()
         .find(|e| e.path_hash == old_key)
-        .ok_or_else(|| Error::InvalidInput(format!("Entry {:08x} not found while rekeying", old_key)))?;
+        .ok_or_else(|| {
+            Error::InvalidInput(format!("Entry {:08x} not found while rekeying", old_key))
+        })?;
     entry.path_hash = new_key;
     Ok(())
 }
@@ -72,7 +74,8 @@ pub fn run(source_bin_path: &Path) -> Result<usize> {
     let source_size = fs::metadata(source_bin_path)
         .map_err(|e| Error::io_with_path(e, source_bin_path))?
         .len();
-    let source_data = fs::read(source_bin_path).map_err(|e| Error::io_with_path(e, source_bin_path))?;
+    let source_data =
+        fs::read(source_bin_path).map_err(|e| Error::io_with_path(e, source_bin_path))?;
     let source_bin = read_bin(&source_data)
         .map_err(|e| Error::InvalidInput(format!("Failed to parse source BIN: {}", e)))?;
 
@@ -127,14 +130,19 @@ pub fn run(source_bin_path: &Path) -> Result<usize> {
             // Rekey the ResourceResolver entry (if any).
             let mut new_rr_hash = None;
             if let Some(rr_old) = base_rr_hash {
-                let new_rr_link = format!("Characters/{}/Skins/Skin{}/Resources", champ, target_idx);
+                let new_rr_link =
+                    format!("Characters/{}/Skins/Skin{}/Resources", champ, target_idx);
                 let rr_hash = fnv1a(&new_rr_link.to_lowercase());
                 rekey_entry(&mut bin, rr_old, rr_hash)?;
                 new_rr_hash = Some(rr_hash);
             }
 
             // Fix the mResourceResolver field on the SCDP entry.
-            if let Some(scdp) = bin.entries.iter_mut().find(|e| e.path_hash == new_scdp_hash) {
+            if let Some(scdp) = bin
+                .entries
+                .iter_mut()
+                .find(|e| e.path_hash == new_scdp_hash)
+            {
                 match scdp.fields.get_mut(&mrr_field) {
                     Some(value) => {
                         if let Some(rr_hash) = new_rr_hash {
@@ -157,8 +165,9 @@ pub fn run(source_bin_path: &Path) -> Result<usize> {
                 }
             }
 
-            let bytes = write_bin(&bin)
-                .map_err(|e| Error::InvalidInput(format!("Failed to serialize {}: {}", out_path.display(), e)))?;
+            let bytes = write_bin(&bin).map_err(|e| {
+                Error::InvalidInput(format!("Failed to serialize {}: {}", out_path.display(), e))
+            })?;
             fs::write(&out_path, bytes).map_err(|e| Error::io_with_path(e, &out_path))?;
             Ok(())
         })?;

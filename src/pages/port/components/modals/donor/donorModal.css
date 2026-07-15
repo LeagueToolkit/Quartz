@@ -134,7 +134,7 @@
 
 .donor-prefix__hint {
     flex: none;
-    min-width: 150px;
+    min-width: 130px;
     text-align: right;
     font-size: 11px;
     font-family: var(--font-mono);
@@ -186,4 +186,9 @@
     color: var(--text-secondary);
     font-family: var(--font-mono);
     font-size: 12px;
+}
+
+.donor-inline-action {
+    flex: none;
+    min-width: 108px;
 }

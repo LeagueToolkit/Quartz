@@ -91,6 +91,15 @@ fn read_settings_from_disk() -> Result<QuartzSettings, String> {
     serde_json::from_str(&data).map_err(|e| format!("Failed to parse settings: {}", e))
 }
 
+pub(crate) fn auto_update_enabled() -> bool {
+    read_settings_from_disk()
+        .map(|settings| settings.auto_update_enabled)
+        .unwrap_or_else(|error| {
+            tracing::warn!("could not read automatic update preference: {error}");
+            true
+        })
+}
+
 fn write_settings_to_disk(settings: &QuartzSettings) -> Result<(), String> {
     let path = settings_path()?;
     if let Some(parent) = path.parent() {

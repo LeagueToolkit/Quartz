@@ -60,7 +60,9 @@ pub fn explorer_list_dir(
         let full = dirent.path();
         // dirent.metadata() reuses the directory-scan handle where the OS
         // supports it, avoiding a second stat syscall per entry.
-        let Ok(meta) = dirent.metadata() else { continue };
+        let Ok(meta) = dirent.metadata() else {
+            continue;
+        };
         let raw_name = dirent.file_name().to_string_lossy().to_string();
         let mut is_dir = meta.is_dir();
         let mut is_shortcut = false;
@@ -128,31 +130,44 @@ fn resolve_shortcut(lnk: &Path) -> Option<std::path::PathBuf> {
 #[cfg(windows)]
 fn parse_lnk_target(data: &[u8]) -> Option<String> {
     // Header is 0x4C bytes; LinkFlags is a u32 at offset 20 (LE).
-    if data.len() < 0x4C { return None; }
+    if data.len() < 0x4C {
+        return None;
+    }
     let flags = u32::from_le_bytes([data[20], data[21], data[22], data[23]]);
-    let has_id_list = flags & 0x1 != 0;   // HasLinkTargetIDList
+    let has_id_list = flags & 0x1 != 0; // HasLinkTargetIDList
     let has_link_info = flags & 0x2 != 0; // HasLinkInfo
-    if !has_link_info { return None; }
+    if !has_link_info {
+        return None;
+    }
 
     let mut off = 0x4C;
     // Skip the LinkTargetIDList (a u16 size prefix + that many bytes).
     if has_id_list {
-        if data.len() < off + 2 { return None; }
+        if data.len() < off + 2 {
+            return None;
+        }
         let id_size = u16::from_le_bytes([data[off], data[off + 1]]) as usize;
         off += 2 + id_size;
     }
 
     // LinkInfo starts here. Read its header fields (all LE u32).
-    if data.len() < off + 32 { return None; }
+    if data.len() < off + 32 {
+        return None;
+    }
     let li = off;
     let read_u32 = |p: usize| -> Option<u32> {
-        data.get(p..p + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        data.get(p..p + 4)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
     };
     let li_size = read_u32(li)? as usize;
-    if data.len() < li + li_size { return None; }
+    if data.len() < li + li_size {
+        return None;
+    }
     let flags2 = read_u32(li + 8)?;
     // Bit 0 = VolumeIDAndLocalBasePath present.
-    if flags2 & 0x1 == 0 { return None; }
+    if flags2 & 0x1 == 0 {
+        return None;
+    }
 
     // Prefer the Unicode base path when the header is large enough to carry the
     // extra optional offsets (LinkInfoHeaderSize >= 0x24).
@@ -161,7 +176,9 @@ fn parse_lnk_target(data: &[u8]) -> Option<String> {
         if let Some(u_off) = read_u32(li + 28) {
             let start = li + u_off as usize;
             if let Some(s) = read_utf16z(&data[..li + li_size], start) {
-                if !s.is_empty() { return Some(s); }
+                if !s.is_empty() {
+                    return Some(s);
+                }
             }
         }
     }
@@ -186,7 +203,9 @@ fn read_utf16z(data: &[u8], start: usize) -> Option<String> {
     let mut i = 0;
     while i + 1 < slice.len() {
         let u = u16::from_le_bytes([slice[i], slice[i + 1]]);
-        if u == 0 { break; }
+        if u == 0 {
+            break;
+        }
         units.push(u);
         i += 2;
     }
@@ -357,16 +376,30 @@ pub fn explorer_copy(path: String, dest_dir: String) -> Result<String, String> {
     if !dest.is_dir() {
         return Err("Destination is not a folder".into());
     }
-    let stem = src.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-    let ext = src.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    let stem = src
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let ext = src
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
     let is_dir = src.is_dir();
 
     // Pick a non-colliding target name.
     let mut target = dest.join(src.file_name().ok_or("Bad source name")?);
     let mut n = 1;
     while target.exists() {
-        let suffix = if n == 1 { " (copy)".to_string() } else { format!(" (copy {n})") };
-        let name = if is_dir { format!("{stem}{suffix}") } else { format!("{stem}{suffix}{ext}") };
+        let suffix = if n == 1 {
+            " (copy)".to_string()
+        } else {
+            format!(" (copy {n})")
+        };
+        let name = if is_dir {
+            format!("{stem}{suffix}")
+        } else {
+            format!("{stem}{suffix}{ext}")
+        };
         target = dest.join(name);
         n += 1;
     }
@@ -433,8 +466,7 @@ pub async fn explorer_thumbnail(path: String) -> Result<String, String> {
                 image::open(&path).map_err(|e| format!("open {path}: {e}"))?
             }
             "tex" | "dds" => {
-                let bytes =
-                    std::fs::read(&path).map_err(|e| format!("read {path}: {e}"))?;
+                let bytes = std::fs::read(&path).map_err(|e| format!("read {path}: {e}"))?;
                 let decoded = quartz_lib::tex::decode_texture(&bytes)?;
                 let buf = image::RgbaImage::from_raw(decoded.width, decoded.height, decoded.rgba)
                     .ok_or("texture rgba dimensions mismatch")?;
@@ -494,7 +526,10 @@ mod tests {
     #[test]
     fn expand_env_replaces_known_vars() {
         std::env::set_var("QZ_TEST_HOME", "C:\\Users\\Frog");
-        assert_eq!(expand_env("%QZ_TEST_HOME%\\Desktop"), "C:\\Users\\Frog\\Desktop");
+        assert_eq!(
+            expand_env("%QZ_TEST_HOME%\\Desktop"),
+            "C:\\Users\\Frog\\Desktop"
+        );
     }
 
     #[test]
@@ -520,14 +555,14 @@ mod tests {
         let base_off = li_header_size; // path immediately after the 28-byte header
         let li_size = li_header_size + target.len() as u32;
         let mut li = Vec::new();
-        li.extend_from_slice(&li_size.to_le_bytes());        // LinkInfoSize
-        li.extend_from_slice(&li_header_size.to_le_bytes());  // LinkInfoHeaderSize (0x1C -> ANSI only)
-        li.extend_from_slice(&1u32.to_le_bytes());            // Flags: VolumeIDAndLocalBasePath
-        li.extend_from_slice(&0u32.to_le_bytes());            // VolumeIDOffset
-        li.extend_from_slice(&base_off.to_le_bytes());        // LocalBasePathOffset
-        li.extend_from_slice(&0u32.to_le_bytes());            // CommonNetworkRelativeLinkOffset
-        li.extend_from_slice(&0u32.to_le_bytes());            // CommonPathSuffixOffset
-        li.extend_from_slice(target);                         // LocalBasePath (ANSI, NUL-terminated)
+        li.extend_from_slice(&li_size.to_le_bytes()); // LinkInfoSize
+        li.extend_from_slice(&li_header_size.to_le_bytes()); // LinkInfoHeaderSize (0x1C -> ANSI only)
+        li.extend_from_slice(&1u32.to_le_bytes()); // Flags: VolumeIDAndLocalBasePath
+        li.extend_from_slice(&0u32.to_le_bytes()); // VolumeIDOffset
+        li.extend_from_slice(&base_off.to_le_bytes()); // LocalBasePathOffset
+        li.extend_from_slice(&0u32.to_le_bytes()); // CommonNetworkRelativeLinkOffset
+        li.extend_from_slice(&0u32.to_le_bytes()); // CommonPathSuffixOffset
+        li.extend_from_slice(target); // LocalBasePath (ANSI, NUL-terminated)
 
         // 0x4C-byte header: only LinkFlags (offset 20) matters here -> HasLinkInfo.
         let mut lnk = vec![0u8; 0x4C];

@@ -24,6 +24,10 @@ export interface DonorConfirmArgs {
 export interface BanksConfirmArgs {
     champion: { id: string; name: string; alias?: string };
     skinIds: number[];
+    selections: Array<{
+        champion: { id: string; name: string; alias?: string };
+        skinIds: number[];
+    }>;
     includeVoiceover: boolean;
     includeSfx: boolean;
 }

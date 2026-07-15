@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Snackbar, Alert, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
 import InfoIcon from '@mui/icons-material/Info';
 import { useFileExplorer } from '@/components/explorer';
+import { useJadeBin } from '@/lib/jade/jadeInterop';
 
 import './aniport/AniPort.css';
 
@@ -46,6 +47,7 @@ function AniPort() {
     const [donorSkinsFile, setDonorSkinsFile] = useState<string | null>(null);
     const [targetAnimationFile, setTargetAnimationFile] = useState<string | null>(null);
     const [targetSkinsFile, setTargetSkinsFile] = useState<string | null>(null);
+    useJadeBin(targetSkinsFile || targetAnimationFile);
 
     // Toast notification state
     const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'info' | 'success' | 'error' | 'warning' }>({ open: false, message: '', severity: 'info' });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Info as InfoIcon } from 'lucide-react';
 
 interface DonorPrefixFieldProps {
@@ -6,9 +6,10 @@ interface DonorPrefixFieldProps {
     sanitized: string;
     onChange: (v: string) => void;
     disabled?: boolean;
+    action?: ReactNode;
 }
 
-export default function DonorPrefixField({ value, sanitized, onChange, disabled }: DonorPrefixFieldProps) {
+export default function DonorPrefixField({ value, sanitized, onChange, disabled, action }: DonorPrefixFieldProps) {
     const [showInfo, setShowInfo] = useState(false);
     const ok = sanitized.length > 0;
 
@@ -38,6 +39,8 @@ export default function DonorPrefixField({ value, sanitized, onChange, disabled 
             <span className={`donor-prefix__hint ${ok ? '' : 'donor-prefix__hint--missing'}`}>
                 {ok ? `assets/${sanitized}/…` : 'required'}
             </span>
+
+            {action}
 
             {showInfo && (
                 <div className="donor-prefix__info">

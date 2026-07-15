@@ -12,11 +12,13 @@
  *   - insertToggleScreen      -> fakegear_copy_togglescreen_assets
  *   - insertAnimationToggle   -> fakegear_validate_anm + fakegear_process_minimal_mesh
  *   - writeVariantBinsWithMerge -> fakegear_write_variant_bins
+ *   - copyAssetsToVariantFolders -> fakegear_copy_variant_assets
  * Those entry points are async; everything else remains a plain string transform.
  */
 
 import {
     fakegearCopyToggleScreenAssets,
+    fakegearCopyVariantAssets,
     fakegearProcessMinimalMesh,
     fakegearValidateAnm,
     fakegearWriteVariantBins,
@@ -724,6 +726,21 @@ export async function writeVariantBinsWithMerge(
     } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
+}
+
+/** Copy assets repathed by a variant conversion into both variant folders. */
+export async function copyAssetsToVariantFolders(
+    binPath: string,
+    assetMappings: { variant1: AssetMapping[]; variant2: AssetMapping[] },
+    variant1Folder: string = VARIANT1_FOLDER,
+    variant2Folder: string = VARIANT2_FOLDER,
+) {
+    return fakegearCopyVariantAssets(
+        binPath,
+        assetMappings,
+        variant1Folder,
+        variant2Folder,
+    );
 }
 
 /* ---- spawner detection ---- */
@@ -1530,19 +1547,14 @@ export async function insertAnimationToggle(pyContent: string, binPath: string):
         let updatedContent = pyContent;
 
         // Edit the SKN to add MinimalMesh and read the true bone count from the SKL.
+        // Mesh processing was best-effort in the original workflow: animation
+        // data still used its 93-bone fallback when the mesh could not be edited.
         let boneCount = 93;
         try {
             const meshResult = await fakegearProcessMinimalMesh(pyContent, binPath);
-            if (meshResult.status === 'error') {
-                return { success: false, error: meshResult.message, content: pyContent };
-            }
             if (meshResult.boneCount > 0) boneCount = meshResult.boneCount;
-        } catch (error) {
-            return {
-                success: false,
-                error: `Failed to process minimal mesh: ${error instanceof Error ? error.message : String(error)}`,
-                content: pyContent,
-            };
+        } catch {
+            // Preserve the legacy fallback rather than blocking Ctrl+5 logic.
         }
 
         const clipDataMapMatch = updatedContent.match(/mClipDataMap:\s*map\[hash,pointer\]\s*=\s*\{/);

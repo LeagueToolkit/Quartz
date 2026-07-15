@@ -200,8 +200,7 @@ pub fn save_dirty_checked(bins: &mut [LoadedBin], force: bool) -> Result<Vec<Pat
                 if let Some(sidecar) = existing_text_sidecar(&lb.path) {
                     let text = tree_to_text_cached(&lb.tree)
                         .map_err(|e| Error::InvalidInput(e.to_string()))?;
-                    std::fs::write(&sidecar, text)
-                        .map_err(|e| Error::io_with_path(e, &sidecar))?;
+                    std::fs::write(&sidecar, text).map_err(|e| Error::io_with_path(e, &sidecar))?;
                 }
             }
             SourceFormat::Text => {
@@ -226,7 +225,10 @@ mod tests {
     fn format_for_path_classifies_by_extension() {
         assert_eq!(format_for_path(Path::new("a/b.bin")), SourceFormat::Bin);
         assert_eq!(format_for_path(Path::new("a/b.py")), SourceFormat::Text);
-        assert_eq!(format_for_path(Path::new("a/b.ritobin")), SourceFormat::Text);
+        assert_eq!(
+            format_for_path(Path::new("a/b.ritobin")),
+            SourceFormat::Text
+        );
         assert_eq!(format_for_path(Path::new("a/b.txt")), SourceFormat::Text);
         // Unknown / no extension defaults to Bin.
         assert_eq!(format_for_path(Path::new("a/b")), SourceFormat::Bin);
@@ -357,8 +359,10 @@ mod tests {
 
     #[test]
     fn save_dirty_noop_when_nothing_dirty() {
-        let root = std::env::temp_dir()
-            .join(format!("quartz_linked_bins_save_noop_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "quartz_linked_bins_save_noop_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         let p = root.join("x.bin");
@@ -383,8 +387,10 @@ mod tests {
     // and confirm an unforced save is blocked as stale while force overrides.
     #[test]
     fn open_then_external_write_makes_save_stale() {
-        let root = std::env::temp_dir()
-            .join(format!("quartz_linked_bins_e2e_stale_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "quartz_linked_bins_e2e_stale_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         let p = root.join("skin.bin");
@@ -405,15 +411,18 @@ mod tests {
             "unforced save of an externally-changed file must be stale"
         );
         // Force overrides.
-        assert_eq!(save_dirty_checked(&mut bins, true).unwrap(), vec![p.clone()]);
+        assert_eq!(
+            save_dirty_checked(&mut bins, true).unwrap(),
+            vec![p.clone()]
+        );
 
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn save_dirty_blocks_stale_file_and_force_overrides() {
-        let root = std::env::temp_dir()
-            .join(format!("quartz_linked_bins_stale_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("quartz_linked_bins_stale_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         let p = root.join("x.bin");

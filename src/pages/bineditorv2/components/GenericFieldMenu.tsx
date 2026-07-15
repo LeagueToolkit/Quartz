@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
     GENERIC_TYPES,
     makeGenericEntry,
+    nestedSchemaFor,
     type SchemaEntry,
     type SchemaFieldType,
 } from '../model/emitterSchema';
@@ -12,13 +13,18 @@ import {
 
 interface GenericFieldMenuProps {
     onAdd: (entry: SchemaEntry) => void;
+    className?: string | null;
+    present?: Array<string | null>;
 }
 
-export default function GenericFieldMenu({ onAdd }: GenericFieldMenuProps) {
+export default function GenericFieldMenu({ onAdd, className, present = [] }: GenericFieldMenuProps) {
     const [open, setOpen] = useState(false);
     const [name, setName] = useState('');
     const [type, setType] = useState<SchemaFieldType>('f32');
     const ref = useRef<HTMLDivElement>(null);
+    const known = nestedSchemaFor(className).filter(
+        (entry) => !present.some((key) => key?.toLowerCase() === entry.name.toLowerCase()),
+    );
 
     useEffect(() => {
         if (!open) return;
@@ -64,12 +70,28 @@ export default function GenericFieldMenu({ onAdd }: GenericFieldMenuProps) {
                         boxShadow: 'var(--dl-shadow-lg)',
                     }}
                 >
+                    {known.length > 0 && (
+                        <div className="bev2-knownfields">
+                            <div className="bev2-knownfields__title">Available {className}</div>
+                            {known.map((entry) => (
+                                <button
+                                    key={entry.name}
+                                    type="button"
+                                    className="bev2-knownfields__item"
+                                    onClick={() => { onAdd(entry); setOpen(false); }}
+                                >
+                                    {entry.name}
+                                    <span>{entry.type}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
                     <input
                         autoFocus
                         className="dl-input"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        placeholder="field name"
+                        placeholder={known.length ? 'or custom field name' : 'field name'}
                         onKeyDown={(e) => {
                             if (e.key === 'Enter') submit();
                         }}

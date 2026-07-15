@@ -44,6 +44,7 @@ import {
     closeTexturePreview, scheduleTexturePreviewClose, showTexturePreview,
 } from '@/lib/util/texturePreview';
 import { useMinecraftStyle } from './paint/useMinecraftStyle';
+import { useJadeBin } from '@/lib/jade/jadeInterop';
 
 const controlLabelStyle = {
     fontFamily: 'var(--font-mono)',
@@ -219,6 +220,7 @@ function Paint() {
 
     // === RESIDENT STATE (persists across page swaps via the store) ===
     const filePath = usePaintStore((s) => s.filePath);
+    useJadeBin(filePath);
     const fileSaved = usePaintStore((s) => s.fileSaved);
     const statusMessage = usePaintStore((s) => s.statusMessage);
     const model = usePaintStore((s) => s.model);
@@ -910,6 +912,7 @@ function Paint() {
         // decodes .tex/.dds (the old Paint util only inlined plain images).
         const textures = (emitter.textures || []).map((t) => ({ label: t.label, path: t.path }));
         showTexturePreview(textures, event.currentTarget as HTMLElement, filePath, {
+            contextMenu: true,
             onEditPath: async (oldPath, newPath) => {
                 if (sessionId === null) return;
                 try {

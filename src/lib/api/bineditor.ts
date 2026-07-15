@@ -87,7 +87,8 @@ export type BinNumType = 'i8' | 'u8' | 'i16' | 'u16' | 'i32' | 'u32' | 'f32';
 /**
  * Tagged JSON encoding of a ritoshark BinValue. Field keys / class names may
  * be readable names or "0x<hex8>". i64/u64 travel as strings to avoid JS
- * precision loss. Map/Mtx44/Link project read-only as `unsupported`.
+ * precision loss. Map/Mtx44 project read-only as `unsupported`; links remain
+ * named/hex strings tagged as `link` so their underlying BIN type is retained.
  */
 export type JsonBinValue =
     | { t: 'none' }
@@ -97,7 +98,7 @@ export type JsonBinValue =
     | { t: 'vec2'; v: [number, number] }
     | { t: 'vec3'; v: [number, number, number] }
     | { t: 'vec4' | 'rgba'; v: [number, number, number, number] }
-    | { t: 'string' | 'hash' | 'file'; v: string }
+    | { t: 'string' | 'hash' | 'file' | 'link'; v: string }
     | { t: 'list'; item: string; items: JsonBinValue[] }
     | { t: 'pointer' | 'embed'; class: string; fields: Record<string, JsonBinValue> }
     | { t: 'option'; inner: string; value: JsonBinValue | null }
@@ -115,7 +116,7 @@ export interface EditorNode {
     key: string | null;
     kind: 'primitive' | 'vector' | 'struct' | 'list' | 'option' | 'unsupported';
     // primitive:
-    valueType?: 'number' | 'string' | 'bool' | 'hash';
+    valueType?: 'number' | 'string' | 'bool' | 'hash' | 'file' | 'link';
     value?: number | string | boolean;
     /** 'f32' | 'u8' | ... so edits are sent back with the right tag. */
     numType?: string;
@@ -147,6 +148,8 @@ export interface EditorSystem {
     name: string;
     /** Which resident bin this system lives in (main at 0, linked bins follow). */
     bin: number;
+    /** Path to the top-level VfxSystemDefinitionData entry. */
+    path: NodePath;
     emitters: EditorEmitter[];
 }
 
@@ -173,6 +176,32 @@ export function binEditorModel(sessionId: number): Promise<EditorModel> {
     return invokeCommand<EditorModel>('bin_editor_model', { sessionId });
 }
 
+export interface BinEditorChildParams {
+    effectKey: string;
+    rate: number;
+    lifetime: number;
+    bindWeight: number;
+    translation: [number, number, number];
+    isSingleParticle: boolean;
+    emitterName?: string | null;
+    timeBeforeFirstEmission: number;
+}
+
+/** Create a VFX system and atomically register it in ResourceResolver. */
+export function binEditorCreateSystem(sessionId: number, name: string): Promise<EditorModel> {
+    return invokeCommand<EditorModel>('bin_editor_create_system', { sessionId, name });
+}
+
+/** Add a native default emitter to a VFX system. */
+export function binEditorAddEmitter(sessionId: number, system: NodePath, name: string): Promise<EditorModel> {
+    return invokeCommand<EditorModel>('bin_editor_add_emitter', { sessionId, system, name });
+}
+
+/** Add a Quartz-compatible child-particle emitter. */
+export function binEditorAddChild(sessionId: number, system: NodePath, params: BinEditorChildParams): Promise<EditorModel> {
+    return invokeCommand<EditorModel>('bin_editor_add_child', { sessionId, system, params });
+}
+
 /** Batch leaf sets; one undo snapshot per batch. The caller mutates its local model copy itself. */
 export function binEditorApply(sessionId: number, edits: EditOp[]): Promise<BinEditorApplyResult> {
     return invokeCommand<BinEditorApplyResult>('bin_editor_apply', { sessionId, edits });
@@ -187,6 +216,15 @@ export function binEditorInsert(
     value: JsonBinValue,
 ): Promise<EditorModel> {
     return invokeCommand<EditorModel>('bin_editor_insert', { sessionId, parentPath, key, index, value });
+}
+
+export type BinEditorStructuralEdit =
+    | { kind: 'insert'; parentPath: NodePath; key?: string; index?: number | null; value: JsonBinValue }
+    | { kind: 'remove'; path: NodePath };
+
+/** Atomic structural transaction: one undo frame and one refreshed model. */
+export function binEditorStructural(sessionId: number, edits: BinEditorStructuralEdit[]): Promise<EditorModel> {
+    return invokeCommand<EditorModel>('bin_editor_structural', { sessionId, edits });
 }
 
 /** Remove a field or list element. Returns the refreshed model. */

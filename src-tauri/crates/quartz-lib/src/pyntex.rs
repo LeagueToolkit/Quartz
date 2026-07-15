@@ -87,7 +87,9 @@ fn collect_mentions_from_value(value: &BinValue, out: &mut HashSet<String>) {
                 collect_mentions_from_value(item, out);
             }
         }
-        BinValue::Option { value: Some(inner), .. } => collect_mentions_from_value(inner, out),
+        BinValue::Option {
+            value: Some(inner), ..
+        } => collect_mentions_from_value(inner, out),
         BinValue::Map { entries, .. } => {
             for (k, v) in entries {
                 collect_mentions_from_value(k, out);
@@ -119,8 +121,9 @@ fn collect_mentions_from_resolved_text(text: &str, out: &mut HashSet<String>) {
 
 fn collect_mentions_from_bin(bin_path: &Path) -> Result<HashSet<String>> {
     let data = fs::read(bin_path).map_err(|e| Error::io_with_path(e, bin_path))?;
-    let bin = read_bin(&data)
-        .map_err(|e| Error::InvalidInput(format!("Failed to parse {}: {}", bin_path.display(), e)))?;
+    let bin = read_bin(&data).map_err(|e| {
+        Error::InvalidInput(format!("Failed to parse {}: {}", bin_path.display(), e))
+    })?;
 
     let mut mentions = HashSet::new();
     for dep in &bin.linked {
@@ -161,7 +164,10 @@ fn walk_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
 /// references, and referenced paths not present on disk.
 fn analyze_dir(dir: &Path) -> Result<(Vec<String>, Vec<String>)> {
     if !dir.is_dir() {
-        return Err(Error::InvalidInput(format!("Not a folder: {}", dir.display())));
+        return Err(Error::InvalidInput(format!(
+            "Not a folder: {}",
+            dir.display()
+        )));
     }
 
     let mut full_files = Vec::new();
@@ -181,7 +187,10 @@ fn analyze_dir(dir: &Path) -> Result<(Vec<String>, Vec<String>)> {
 
     let mut hash_to_rel: HashMap<u64, Vec<String>> = HashMap::new();
     for rel in &rel_files {
-        hash_to_rel.entry(unified_hash(rel)).or_default().push(rel.clone());
+        hash_to_rel
+            .entry(unified_hash(rel))
+            .or_default()
+            .push(rel.clone());
     }
 
     let mut missing_unique: BTreeSet<String> = BTreeSet::new();
@@ -299,7 +308,11 @@ pub fn remove_junk_files(dir: &Path) -> Result<usize> {
     for rel in &junk {
         let full = dir.join(rel);
         if let Err(e) = fs::remove_file(&full) {
-            eprintln!("pyntex: warning: could not remove {}: {}", full.display(), e);
+            eprintln!(
+                "pyntex: warning: could not remove {}: {}",
+                full.display(),
+                e
+            );
         }
     }
 

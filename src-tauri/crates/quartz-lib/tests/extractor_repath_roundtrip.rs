@@ -25,14 +25,22 @@ fn league_root() -> Option<PathBuf> {
     let p = std::env::var("QUARTZ_LEAGUE_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(r"C:\Riot Games\League of Legends"));
-    p.join("Game").join("DATA").join("FINAL").join("Champions").is_dir().then_some(p)
+    p.join("Game")
+        .join("DATA")
+        .join("FINAL")
+        .join("Champions")
+        .is_dir()
+        .then_some(p)
 }
 
 fn champ() -> String {
     std::env::var("QUARTZ_TEST_CHAMP").unwrap_or_else(|_| "annie".to_string())
 }
 fn skin_id() -> u32 {
-    std::env::var("QUARTZ_TEST_SKIN").ok().and_then(|s| s.parse().ok()).unwrap_or(0)
+    std::env::var("QUARTZ_TEST_SKIN")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0)
 }
 
 /// FNV1a-32 lowercase — the BIN class-name hash convention.
@@ -58,7 +66,9 @@ fn find_files(root: &Path, pred: impl Fn(&Path) -> bool) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for e in rd.flatten() {
             let p = e.path();
             if p.is_dir() {
@@ -118,7 +128,11 @@ fn extractor_clean_repath_per_character() {
     .expect("clean extract failed");
 
     let content_dir = PathBuf::from(&summary.output_dir);
-    println!("[test] extracted to: {}  ({} files)", content_dir.display(), summary.files);
+    println!(
+        "[test] extracted to: {}  ({} files)",
+        content_dir.display(),
+        summary.files
+    );
     assert!(content_dir.is_dir(), "extract output dir missing");
 
     // Total VFX systems present across ALL extracted bins (unique per file path
@@ -135,7 +149,12 @@ fn extractor_clean_repath_per_character() {
             }
         }
     }
-    println!("[test] pre-repath: {} bins, {} VFX systems, characters w/ skin bin: {:?}", pre_bins.len(), pre_vfx, pre_chars);
+    println!(
+        "[test] pre-repath: {} bins, {} VFX systems, characters w/ skin bin: {:?}",
+        pre_bins.len(),
+        pre_vfx,
+        pre_chars
+    );
 
     // 2) Repath (per-character combine + repath) in place.
     let rep = repath_extracted(RepathOptions {
@@ -172,30 +191,62 @@ fn extractor_clean_repath_per_character() {
 
     // (a) NO separate `_Concat.bin` file exists — entries merge INTO skin bins.
     for b in &post_bins {
-        let name = b.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
-        assert!(!name.contains("_concat"), "old Quartz produces no _Concat.bin, found: {}", name);
+        let name = b
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_lowercase();
+        assert!(
+            !name.contains("_concat"),
+            "old Quartz produces no _Concat.bin, found: {}",
+            name
+        );
     }
 
     // (b) Every character's seed skin bin survived and is now FAT (holds the
     //     merged VFX itself, no VFX-bearing linked bin left beside it).
-    let skin_bins: Vec<&PathBuf> = post_bins.iter().filter(|b| {
-        let s = b.to_string_lossy().to_lowercase().replace('\\', "/");
-        s.contains("/skins/") && (s.ends_with(&format!("/skin{}.bin", skin)) || s.ends_with(&format!("/skin{:02}.bin", skin)))
-    }).collect();
+    let skin_bins: Vec<&PathBuf> = post_bins
+        .iter()
+        .filter(|b| {
+            let s = b.to_string_lossy().to_lowercase().replace('\\', "/");
+            s.contains("/skins/")
+                && (s.ends_with(&format!("/skin{}.bin", skin))
+                    || s.ends_with(&format!("/skin{:02}.bin", skin)))
+        })
+        .collect();
     let post_chars: HashSet<String> = skin_bins.iter().filter_map(|b| character_of(b)).collect();
     for c in &pre_chars {
-        assert!(post_chars.contains(c), "character '{}' lost its skin BIN after repath", c);
+        assert!(
+            post_chars.contains(c),
+            "character '{}' lost its skin BIN after repath",
+            c
+        );
     }
-    println!("[test] characters w/ skin bin post-repath: {:?}", post_chars);
+    println!(
+        "[test] characters w/ skin bin post-repath: {:?}",
+        post_chars
+    );
 
     // (c) Base `<char>.bin` roots were deleted (old Quartz always prunes them).
     for b in &post_bins {
         let s = b.to_string_lossy().to_lowercase().replace('\\', "/");
-        let name = b.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+        let name = b
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_lowercase();
         let folder = character_of(b);
-        let is_base_root = !s.contains("/skins/") && !s.contains("/animations/")
-            && folder.as_deref().map(|f| name == format!("{}.bin", f)).unwrap_or(false);
-        assert!(!is_base_root, "base character BIN should have been pruned: {}", s);
+        let is_base_root = !s.contains("/skins/")
+            && !s.contains("/animations/")
+            && folder
+                .as_deref()
+                .map(|f| name == format!("{}.bin", f))
+                .unwrap_or(false);
+        assert!(
+            !is_base_root,
+            "base character BIN should have been pruned: {}",
+            s
+        );
     }
 
     // (d) All VFX still reachable, now living inside the skin bins (no loss).
@@ -203,7 +254,11 @@ fn extractor_clean_repath_per_character() {
     for sb in &skin_bins {
         let n = vfx_system_count(sb);
         vfx_in_skin_bins += n;
-        println!("[test] character '{}' skin bin holds {} VFX (merged in)", character_of(sb).unwrap_or_default(), n);
+        println!(
+            "[test] character '{}' skin bin holds {} VFX (merged in)",
+            character_of(sb).unwrap_or_default(),
+            n
+        );
     }
     // Any remaining .bin that still carries VFX must be a still-linked, unmerged
     // one referenced by a skin bin (rare); count those too so the total matches.
@@ -218,8 +273,13 @@ fn extractor_clean_repath_per_character() {
 
     // (e) bumPath prefix applied: at least one asset string under `assets/<prefix>/`
     //     appears in a skin bin (sanity that the new prefix scheme ran).
-    let prefixed = skin_bins.iter().any(|sb| bin_has_prefixed_asset(sb, "testmod"));
-    assert!(prefixed || rep.paths_modified == 0, "no bumPath-prefixed asset string found in any skin bin");
+    let prefixed = skin_bins
+        .iter()
+        .any(|sb| bin_has_prefixed_asset(sb, "testmod"));
+    assert!(
+        prefixed || rep.paths_modified == 0,
+        "no bumPath-prefixed asset string found in any skin bin"
+    );
 
     // (f) SUBCHARACTER REGRESSION: every character's skin bin (incl. Tibbers)
     //     must have its `assets/characters/<char>/…` strings PREFIXED. An
@@ -248,14 +308,21 @@ fn extractor_clean_repath_per_character() {
             leftovers.is_empty(),
             "{} non-icon asset(s) left unprefixed under assets/characters/ (first: {})",
             leftovers.len(),
-            leftovers.first().map(|p| p.display().to_string()).unwrap_or_default(),
+            leftovers
+                .first()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default(),
         );
     }
 
     println!("[test] SUMMARY champ={} skin={}: pre_vfx={} vfx_in_skin_bins={} vfx_elsewhere={} total={} chars={}",
         champ, skin, pre_vfx, vfx_in_skin_bins, vfx_elsewhere, total_reachable, post_chars.len());
     assert!(rep.characters_combined >= 1, "repath combined 0 characters");
-    assert_eq!(total_reachable, pre_vfx, "VFX lost: {} reachable after repath vs {} extracted", total_reachable, pre_vfx);
+    assert_eq!(
+        total_reachable, pre_vfx,
+        "VFX lost: {} reachable after repath vs {} extracted",
+        total_reachable, pre_vfx
+    );
 
     println!("[test] PASS — old-Quartz shape: {} char(s), no _Concat.bin, base roots pruned, {} VFX all in skin bins",
         post_chars.len(), total_reachable);
@@ -264,20 +331,32 @@ fn extractor_clean_repath_per_character() {
 /// True if the BIN contains any asset string already prefixed with `assets/<prefix>/`.
 fn bin_has_prefixed_asset(bin_path: &Path, prefix: &str) -> bool {
     let needle = format!("/{}/", prefix.to_lowercase());
-    let Ok(bytes) = std::fs::read(bin_path) else { return false };
-    let Ok(bin) = read_bin(&bytes) else { return false };
+    let Ok(bytes) = std::fs::read(bin_path) else {
+        return false;
+    };
+    let Ok(bin) = read_bin(&bytes) else {
+        return false;
+    };
     fn walk(v: &quartz_lib::bin::BinValue, needle: &str) -> bool {
         use quartz_lib::bin::BinValue as V;
         match v {
             V::String(s) => s.to_lowercase().contains(needle),
             V::List { items, .. } => items.iter().any(|i| walk(i, needle)),
-            V::Pointer { fields, .. } | V::Embed { fields, .. } => fields.values().any(|x| walk(x, needle)),
-            V::Option { value: Some(inner), .. } => walk(inner, needle),
-            V::Map { entries, .. } => entries.iter().any(|(k, val)| walk(k, needle) || walk(val, needle)),
+            V::Pointer { fields, .. } | V::Embed { fields, .. } => {
+                fields.values().any(|x| walk(x, needle))
+            }
+            V::Option {
+                value: Some(inner), ..
+            } => walk(inner, needle),
+            V::Map { entries, .. } => entries
+                .iter()
+                .any(|(k, val)| walk(k, needle) || walk(val, needle)),
             _ => false,
         }
     }
-    bin.entries.iter().any(|e| e.fields.values().any(|v| walk(v, &needle)))
+    bin.entries
+        .iter()
+        .any(|e| e.fields.values().any(|v| walk(v, &needle)))
 }
 
 /// Returns the first asset string in the BIN that should have been prefixed but
@@ -310,9 +389,16 @@ fn bin_first_unprefixed_asset(bin_path: &Path, prefix: &str) -> Option<String> {
                 }
             }
             V::List { items, .. } => items.iter().for_each(|i| walk(i, pfx, out)),
-            V::Pointer { fields, .. } | V::Embed { fields, .. } => fields.values().for_each(|x| walk(x, pfx, out)),
-            V::Option { value: Some(inner), .. } => walk(inner, pfx, out),
-            V::Map { entries, .. } => entries.iter().for_each(|(k, val)| { walk(k, pfx, out); walk(val, pfx, out); }),
+            V::Pointer { fields, .. } | V::Embed { fields, .. } => {
+                fields.values().for_each(|x| walk(x, pfx, out))
+            }
+            V::Option {
+                value: Some(inner), ..
+            } => walk(inner, pfx, out),
+            V::Map { entries, .. } => entries.iter().for_each(|(k, val)| {
+                walk(k, pfx, out);
+                walk(val, pfx, out);
+            }),
             _ => {}
         }
     }
@@ -369,7 +455,11 @@ fn finalize_skin_files_only_combines_without_prefix() {
     for b in &pre_bins {
         pre_vfx += vfx_system_count(b);
     }
-    println!("[test] pre-finalize: {} bins, {} VFX", pre_bins.len(), pre_vfx);
+    println!(
+        "[test] pre-finalize: {} bins, {} VFX",
+        pre_bins.len(),
+        pre_vfx
+    );
 
     let fin = finalize_extracted(FinalizeOptions {
         content_dir: &content_dir,
@@ -397,35 +487,65 @@ fn finalize_skin_files_only_combines_without_prefix() {
 
     // (a) No _Concat.bin — combine merges INTO the skin bin.
     for b in &post_bins {
-        let name = b.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
-        assert!(!name.contains("_concat"), "finalize produced a _Concat.bin: {}", name);
+        let name = b
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_lowercase();
+        assert!(
+            !name.contains("_concat"),
+            "finalize produced a _Concat.bin: {}",
+            name
+        );
     }
 
     // (b) Base <char>.bin roots pruned.
     for b in &post_bins {
         let s = b.to_string_lossy().to_lowercase().replace('\\', "/");
-        let name = b.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+        let name = b
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_lowercase();
         let folder = character_of(b);
-        let is_base_root = !s.contains("/skins/") && !s.contains("/animations/")
-            && folder.as_deref().map(|f| name == format!("{}.bin", f)).unwrap_or(false);
+        let is_base_root = !s.contains("/skins/")
+            && !s.contains("/animations/")
+            && folder
+                .as_deref()
+                .map(|f| name == format!("{}.bin", f))
+                .unwrap_or(false);
         assert!(!is_base_root, "base character BIN not pruned: {}", s);
     }
 
     // (c) VFX all still present (merged into skin bins), none lost.
     let vfx_after: usize = post_bins.iter().map(|b| vfx_system_count(b)).sum();
-    assert_eq!(vfx_after, pre_vfx, "VFX lost: {} after finalize vs {} extracted", vfx_after, pre_vfx);
+    assert_eq!(
+        vfx_after, pre_vfx,
+        "VFX lost: {} after finalize vs {} extracted",
+        vfx_after, pre_vfx
+    );
 
     // (d) NO repath prefix applied: no skin bin should contain `assets/<mod>/` —
     //     asset strings stay at their original `assets/characters/...` form.
-    let skin_bins: Vec<&PathBuf> = post_bins.iter().filter(|b| {
-        let s = b.to_string_lossy().to_lowercase().replace('\\', "/");
-        s.contains("/skins/")
-    }).collect();
+    let skin_bins: Vec<&PathBuf> = post_bins
+        .iter()
+        .filter(|b| {
+            let s = b.to_string_lossy().to_lowercase().replace('\\', "/");
+            s.contains("/skins/")
+        })
+        .collect();
     for sb in &skin_bins {
-        assert!(!bin_has_prefixed_asset(sb, "testmod"), "finalize must NOT repath-prefix strings in {}", sb.display());
+        assert!(
+            !bin_has_prefixed_asset(sb, "testmod"),
+            "finalize must NOT repath-prefix strings in {}",
+            sb.display()
+        );
     }
 
-    assert!(fin.characters_combined >= 1, "finalize combined 0 characters");
+    assert!(
+        fin.characters_combined >= 1,
+        "finalize combined 0 characters"
+    );
     println!("[test] PASS — skin-files-only: combined into skin bins (no prefix), base pruned, {} VFX intact", vfx_after);
 }
 
@@ -456,10 +576,19 @@ fn clean_extract_skip_sfx_excludes_banks() {
     std::fs::create_dir_all(&with_root).unwrap();
     let with = extract_skin(
         ExtractOptions {
-            league_root: &root, champion: &champ, skin_id: skin, output_dir: &with_root,
-            include_vo: false, clean: true, chroma_id: None, preserve_hud_icons2d: true, skip_sfx: false,
-        }, |_p| {},
-    ).expect("extract with sfx failed");
+            league_root: &root,
+            champion: &champ,
+            skin_id: skin,
+            output_dir: &with_root,
+            include_vo: false,
+            clean: true,
+            chroma_id: None,
+            preserve_hud_icons2d: true,
+            skip_sfx: false,
+        },
+        |_p| {},
+    )
+    .expect("extract with sfx failed");
     let with_sfx = count_sfx(&PathBuf::from(&with.output_dir));
 
     // Without SFX (skip_sfx=true).
@@ -468,18 +597,37 @@ fn clean_extract_skip_sfx_excludes_banks() {
     std::fs::create_dir_all(&without_root).unwrap();
     let without = extract_skin(
         ExtractOptions {
-            league_root: &root, champion: &champ, skin_id: skin, output_dir: &without_root,
-            include_vo: false, clean: true, chroma_id: None, preserve_hud_icons2d: true, skip_sfx: true,
-        }, |_p| {},
-    ).expect("extract without sfx failed");
+            league_root: &root,
+            champion: &champ,
+            skin_id: skin,
+            output_dir: &without_root,
+            include_vo: false,
+            clean: true,
+            chroma_id: None,
+            preserve_hud_icons2d: true,
+            skip_sfx: true,
+        },
+        |_p| {},
+    )
+    .expect("extract without sfx failed");
     let without_sfx = count_sfx(&PathBuf::from(&without.output_dir));
 
-    println!("[test] SFX banks: with_skip_off={} with_skip_on={}", with_sfx, without_sfx);
-    assert_eq!(without_sfx, 0, "skip_sfx=true still exported {} SFX bank(s)", without_sfx);
+    println!(
+        "[test] SFX banks: with_skip_off={} with_skip_on={}",
+        with_sfx, without_sfx
+    );
+    assert_eq!(
+        without_sfx, 0,
+        "skip_sfx=true still exported {} SFX bank(s)",
+        without_sfx
+    );
     // Sanity: this champion actually ships SFX, so skip_sfx=false includes them.
     // (If a champ genuinely has 0 SFX the toggle is a no-op — don't hard-fail.)
     if with_sfx == 0 {
-        println!("[test] NOTE: {} skin{} ships no SFX banks; toggle is a no-op here", champ, skin);
+        println!(
+            "[test] NOTE: {} skin{} ships no SFX banks; toggle is a no-op here",
+            champ, skin
+        );
     }
     println!("[test] PASS — skip_sfx excludes SFX banks from clean extract");
 }
@@ -490,9 +638,19 @@ fn clean_extract_skip_sfx_excludes_banks() {
 #[test]
 #[ignore]
 fn probe_companions_wad_structure() {
-    let Some(root) = league_root() else { eprintln!("no league"); return; };
-    let wad = root.join("Game").join("DATA").join("FINAL").join("Companions.wad.client");
-    if !wad.is_file() { eprintln!("no companions wad"); return; }
+    let Some(root) = league_root() else {
+        eprintln!("no league");
+        return;
+    };
+    let wad = root
+        .join("Game")
+        .join("DATA")
+        .join("FINAL")
+        .join("Companions.wad.client");
+    if !wad.is_file() {
+        eprintln!("no companions wad");
+        return;
+    }
 
     let toc = quartz_lib::wad::read_wad_toc(&wad).expect("toc");
     // Collect resolved character-folder skin bins + character folders.
@@ -512,13 +670,27 @@ fn probe_companions_wad_structure() {
             }
         }
     }
-    println!("[probe] resolved skin bins under characters/*/skins/: {}", skin_bins.len());
-    for s in skin_bins.iter().take(30) { println!("   {}", s); }
+    println!(
+        "[probe] resolved skin bins under characters/*/skins/: {}",
+        skin_bins.len()
+    );
+    for s in skin_bins.iter().take(30) {
+        println!("   {}", s);
+    }
     println!("[probe] distinct character folders: {}", char_folders.len());
-    for c in char_folders.iter().take(40) { println!("   {}", c); }
+    for c in char_folders.iter().take(40) {
+        println!("   {}", c);
+    }
     // Show the full asset tree for one sample pet to see the layout.
-    if let Some(sample) = char_folders.iter().find(|c| skin_bins.iter().any(|s| s.contains(&format!("characters/{}/skins/", c)))) {
-        println!("[probe] SAMPLE pet folder '{}' — its resolved paths:", sample);
+    if let Some(sample) = char_folders.iter().find(|c| {
+        skin_bins
+            .iter()
+            .any(|s| s.contains(&format!("characters/{}/skins/", c)))
+    }) {
+        println!(
+            "[probe] SAMPLE pet folder '{}' — its resolved paths:",
+            sample
+        );
         let mut n = 0;
         for e in &toc {
             if let Some(rel) = &e.resolved_path {
@@ -526,7 +698,10 @@ fn probe_companions_wad_structure() {
                 if r.contains(&format!("characters/{}/", sample)) {
                     println!("     {}", r);
                     n += 1;
-                    if n > 40 { println!("     ..."); break; }
+                    if n > 40 {
+                        println!("     ...");
+                        break;
+                    }
                 }
             }
         }
@@ -539,12 +714,25 @@ fn probe_companions_wad_structure() {
 /// petbunny), QUARTZ_TFT_SKIN (default 8).
 #[test]
 fn tft_companion_clean_extract_and_repath() {
-    let Some(root) = league_root() else { eprintln!("skipping: no league"); return; };
-    let wad = root.join("Game").join("DATA").join("FINAL").join("Companions.wad.client");
-    if !wad.is_file() { eprintln!("skipping: no Companions WAD"); return; }
+    let Some(root) = league_root() else {
+        eprintln!("skipping: no league");
+        return;
+    };
+    let wad = root
+        .join("Game")
+        .join("DATA")
+        .join("FINAL")
+        .join("Companions.wad.client");
+    if !wad.is_file() {
+        eprintln!("skipping: no Companions WAD");
+        return;
+    }
 
     let pet = std::env::var("QUARTZ_TFT_PET").unwrap_or_else(|_| "petbunny".to_string());
-    let skin: u32 = std::env::var("QUARTZ_TFT_SKIN").ok().and_then(|s| s.parse().ok()).unwrap_or(8);
+    let skin: u32 = std::env::var("QUARTZ_TFT_SKIN")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8);
     println!("[tft] pet={} skin={}", pet, skin);
 
     let out_root = std::env::temp_dir().join("quartz-tft-test");
@@ -563,18 +751,30 @@ fn tft_companion_clean_extract_and_repath() {
             skip_sfx: true,
         },
         |_p| {},
-    ).expect("tft clean extract failed");
+    )
+    .expect("tft clean extract failed");
 
     let content_dir = PathBuf::from(&ext.output_dir);
-    println!("[tft] extracted to {} ({} files)", content_dir.display(), ext.files);
+    println!(
+        "[tft] extracted to {} ({} files)",
+        content_dir.display(),
+        ext.files
+    );
     let pre_bins = find_files(&content_dir, is_bin);
     let pre_vfx: usize = pre_bins.iter().map(|b| vfx_system_count(b)).sum();
     println!("[tft] pre-repath: {} bins, {} VFX", pre_bins.len(), pre_vfx);
 
     // ONLY the requested pet folder should be present (filter works).
-    let other_pets: Vec<String> = pre_bins.iter().filter_map(|b| character_of(b))
-        .filter(|c| c != &pet).collect();
-    assert!(other_pets.is_empty(), "clean extract pulled in other pets: {:?}", other_pets);
+    let other_pets: Vec<String> = pre_bins
+        .iter()
+        .filter_map(|b| character_of(b))
+        .filter(|c| c != &pet)
+        .collect();
+    assert!(
+        other_pets.is_empty(),
+        "clean extract pulled in other pets: {:?}",
+        other_pets
+    );
     // The pet's skin bin must exist.
     let has_skin = pre_bins.iter().any(|b| {
         let s = b.to_string_lossy().to_lowercase().replace('\\', "/");
@@ -597,24 +797,42 @@ fn tft_companion_clean_extract_and_repath() {
         split_anm: false,
         consolidate_assets: false,
         wad_folder_override: None,
-    }).expect("tft repath failed");
-    println!("[tft] repath: binsCombined={} chars={} pathsModified={}", rep.bins_combined, rep.characters_combined, rep.paths_modified);
+    })
+    .expect("tft repath failed");
+    println!(
+        "[tft] repath: binsCombined={} chars={} pathsModified={}",
+        rep.bins_combined, rep.characters_combined, rep.paths_modified
+    );
 
     let post_bins = find_files(&content_dir, is_bin);
-    let skin_bins: Vec<&PathBuf> = post_bins.iter().filter(|b| {
-        let s = b.to_string_lossy().to_lowercase().replace('\\', "/");
-        s.contains("/skins/") && (s.ends_with(&format!("/skin{}.bin", skin)) || s.ends_with(&format!("/skin{:02}.bin", skin)))
-    }).collect();
+    let skin_bins: Vec<&PathBuf> = post_bins
+        .iter()
+        .filter(|b| {
+            let s = b.to_string_lossy().to_lowercase().replace('\\', "/");
+            s.contains("/skins/")
+                && (s.ends_with(&format!("/skin{}.bin", skin))
+                    || s.ends_with(&format!("/skin{:02}.bin", skin)))
+        })
+        .collect();
     assert!(!skin_bins.is_empty(), "pet skin bin gone after repath");
 
     // No _Concat.bin; base <pet>.bin pruned; pet's assets prefixed.
     for b in &post_bins {
-        let name = b.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+        let name = b
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_lowercase();
         assert!(!name.contains("_concat"), "TFT repath produced _Concat.bin");
     }
     for sb in &skin_bins {
         let unpref = bin_first_unprefixed_asset(sb, "testmod");
-        assert!(unpref.is_none(), "TFT pet '{}' has UNPREFIXED asset '{}'", pet, unpref.unwrap_or_default());
+        assert!(
+            unpref.is_none(),
+            "TFT pet '{}' has UNPREFIXED asset '{}'",
+            pet,
+            unpref.unwrap_or_default()
+        );
     }
     let loose = content_dir.join("assets").join("characters");
     if loose.is_dir() {
@@ -622,11 +840,22 @@ fn tft_companion_clean_extract_and_repath() {
             let s = p.to_string_lossy().to_lowercase().replace('\\', "/");
             !s.contains("/hud/icons2d/")
         });
-        assert!(leftovers.is_empty(), "{} TFT asset(s) left unprefixed under assets/characters/", leftovers.len());
+        assert!(
+            leftovers.is_empty(),
+            "{} TFT asset(s) left unprefixed under assets/characters/",
+            leftovers.len()
+        );
     }
 
     let vfx_after: usize = post_bins.iter().map(|b| vfx_system_count(b)).sum();
-    assert_eq!(vfx_after, pre_vfx, "TFT VFX lost after repath: {} vs {}", vfx_after, pre_vfx);
+    assert_eq!(
+        vfx_after, pre_vfx,
+        "TFT VFX lost after repath: {} vs {}",
+        vfx_after, pre_vfx
+    );
 
-    println!("[tft] PASS — pet '{}' clean-extracted + repathed like a champion, {} VFX intact", pet, vfx_after);
+    println!(
+        "[tft] PASS — pet '{}' clean-extracted + repathed like a champion, {} VFX intact",
+        pet, vfx_after
+    );
 }

@@ -2,7 +2,10 @@ import type { EditorNode } from '@/lib/api/bineditor';
 
 /* Widget dispatch, ported from bineditorV3/model/widgets.js onto EditorNode. */
 
-const VALUE_STRUCTS = new Set(['ValueFloat', 'ValueVector2', 'ValueVector3', 'ValueColor']);
+const VALUE_STRUCTS = new Set([
+    'ValueFloat', 'ValueVector2', 'ValueVector3', 'ValueColor',
+    'IntegratedValueFloat', 'IntegratedValueVector2', 'IntegratedValueVector3',
+]);
 
 export type WidgetKind =
     | 'number'
@@ -53,8 +56,10 @@ export function widgetFor(node: EditorNode): WidgetKind {
 
     // primitive
     if (node.valueType === 'bool') return 'bool';
-    if (node.valueType === 'string') {
-        return typeof node.value === 'string' && /\.(tex|dds|png|tga)$/i.test(node.value)
+    if (node.valueType === 'string' || node.valueType === 'file') {
+        const assetKey = /texture|mapname|diffuse|normal|emissive|palette|mask|noise/i.test(node.key ?? '');
+        return typeof node.value === 'string' &&
+            (assetKey || /\.(tex|dds|png|tga|jpg|jpeg|bmp|webp)(?:[?#].*)?$/i.test(node.value))
             ? 'texture'
             : 'string';
     }
@@ -62,5 +67,5 @@ export function widgetFor(node: EditorNode): WidgetKind {
         if (node.numType === 'u8' && enumLabelsFor(node.key)) return 'enum';
         return 'number';
     }
-    return 'string'; // hash / ident
+    return 'string'; // hash / link / ident
 }

@@ -28,6 +28,10 @@ pub struct DonorResult {
     pub temp_root: String,
     /// Absolute path of the combined main BIN.
     pub combined_bin_path: String,
+    /// Best matching extracted champion model for the Asset Extractor preview.
+    pub model_path: Option<String>,
+    /// Best matching diffuse texture for `model_path`, when one was extracted.
+    pub model_texture_path: Option<String>,
     /// Resolved champion WAD basename (e.g. `aatrox`, `monkeyking`).
     pub champion_file_name: String,
     /// Normalized skin id actually located.
@@ -216,6 +220,8 @@ pub fn prepare_donor_from_skin(
     // Re-locate the main BIN after finalize (combine may have consolidated
     // characters, but the champion's skin<N>.bin remains the entry point).
     let main_bin = find_extracted_skin_bin(&content_dir, &champ_file, skin).unwrap_or(main_bin);
+    let (model_path, model_texture_path) =
+        find_extracted_model_assets(&content_dir, &champ_file, skin);
 
     // Donor py text (informational — the Port panel loads the .bin directly,
     // which resolves the on-disk linked BINs beside it).
@@ -235,12 +241,145 @@ pub fn prepare_donor_from_skin(
         donor_py_content: text,
         temp_root: temp_root.to_string_lossy().into_owned(),
         combined_bin_path: main_bin.to_string_lossy().into_owned(),
+        model_path: model_path.map(|path| path.to_string_lossy().into_owned()),
+        model_texture_path: model_texture_path.map(|path| path.to_string_lossy().into_owned()),
         champion_file_name: champ_file,
         skin_id: skin,
         selected_bin_count: 0,
         extracted_asset_count: summary.files as usize,
         cache_hit: false,
     })
+}
+
+fn is_skin_path(path: &Path, skin: u32) -> bool {
+    let normalized = path.to_string_lossy().replace('\\', "/").to_lowercase();
+    let markers = [
+        format!("/skins/skin{skin}/"),
+        format!("/skins/skin{skin:02}/"),
+        if skin == 0 {
+            "/skins/base/".to_string()
+        } else {
+            String::new()
+        },
+    ];
+    markers
+        .iter()
+        .any(|marker| !marker.is_empty() && normalized.contains(marker))
+}
+
+/// Locate a useful mesh/texture pair in the already skin-scoped donor output.
+/// Champion meshes are normally SKNs below `skins/skinNN`; SCB/SCO remain valid
+/// fallbacks for skins whose main visible geometry is static.
+fn find_extracted_model_assets(
+    root: &Path,
+    champion: &str,
+    skin: u32,
+) -> (Option<PathBuf>, Option<PathBuf>) {
+    const MODEL_EXTENSIONS: &[&str] = &["skn", "scb", "sco"];
+    const TEXTURE_EXTENSIONS: &[&str] = &["dds", "tex", "png", "jpg", "jpeg", "webp"];
+
+    let mut models = Vec::new();
+    let mut textures = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let extension = path
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if MODEL_EXTENSIONS.contains(&extension.as_str()) {
+                models.push(path);
+            } else if TEXTURE_EXTENSIONS.contains(&extension.as_str()) {
+                textures.push(path);
+            }
+        }
+    }
+
+    let champion = champion.to_ascii_lowercase();
+    models.sort_by(|left, right| {
+        let score = |path: &Path| {
+            let extension = path
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default();
+            let stem = path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let mut value = if extension.eq_ignore_ascii_case("skn") {
+                1_000
+            } else {
+                500
+            };
+            if is_skin_path(path, skin) {
+                value += 500;
+            }
+            if stem.contains(&champion) {
+                value += 120;
+            }
+            if stem.contains("lod") {
+                value -= 80;
+            }
+            value
+        };
+        score(right).cmp(&score(left)).then_with(|| left.cmp(right))
+    });
+
+    let Some(model) = models.into_iter().next() else {
+        return (None, None);
+    };
+    let model_parent = model.parent().map(Path::to_path_buf);
+    let model_stem = model
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let texture_score = |path: &Path| {
+        let stem = path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let mut value = 0_i32;
+        if model_parent.as_deref() == path.parent() {
+            value += 500;
+        }
+        if is_skin_path(path, skin) {
+            value += 300;
+        }
+        if stem == model_stem {
+            value += 1_000;
+        } else if stem.contains(&model_stem) || model_stem.contains(&stem) {
+            value += 350;
+        }
+        if stem.contains("tx_cm") || stem.contains("diffuse") || stem.ends_with("_d") {
+            value += 240;
+        }
+        if stem.contains("normal") || stem.contains("mask") || stem.contains("spec") {
+            value -= 220;
+        }
+        value
+    };
+    textures.sort_by(|left, right| {
+        texture_score(right)
+            .cmp(&texture_score(left))
+            .then_with(|| left.cmp(right))
+    });
+
+    // Avoid applying an arbitrary VFX texture when no credible relationship
+    // with the selected mesh was found. The untextured mesh is still useful.
+    let texture = textures.into_iter().find(|path| texture_score(path) >= 500);
+    (Some(model), texture)
 }
 
 /// Find the extracted `skin<N>.bin` for `champ` anywhere under `root`.

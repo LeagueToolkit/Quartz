@@ -31,6 +31,17 @@ export function pickPath(options: ExplorerOptions): Promise<string | string[] | 
     });
 }
 
+/** Open the in-app Asset Explorer at a path without turning it into a file
+ *  picker. A file path opens its containing folder and selects that file. */
+export function revealInFileManager(defaultPath?: string): void {
+    void pickPath({
+        mode: 'browse',
+        title: 'Asset Explorer',
+        defaultPath,
+        recentsKey: 'default',
+    });
+}
+
 /** Hook form for components. Returns the same picker as `pickPath`. */
 export function useFileExplorer(): PickFn {
     return pickPath;

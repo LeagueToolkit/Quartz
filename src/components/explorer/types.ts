@@ -5,13 +5,13 @@ export interface FileFilter {
     extensions: string[];
 }
 
-export type ExplorerMode = 'directory' | 'file' | 'files' | 'save';
+export type ExplorerMode = 'browse' | 'directory' | 'file' | 'files' | 'save';
 
 export interface ExplorerOptions {
     mode: ExplorerMode;
     title?: string;
     filters?: FileFilter[];
-    /** Pre-fill (save mode) or start folder (open modes). File paths open the
+    /** Pre-fill (save mode) or start folder (open/browse modes). File paths open the
      *  containing folder with the file pre-selected. */
     defaultPath?: string;
     /** Which recents bucket this call site reads/writes (e.g. 'bin', 'audio').

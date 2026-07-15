@@ -1,0 +1,203 @@
+.audio-splitter {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 50% -20%, color-mix(in oklab, var(--accent-primary) 8%, transparent), transparent 42%),
+        color-mix(in oklab, var(--bg-primary) 98%, black);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    outline: 2px solid transparent;
+    outline-offset: -3px;
+    transition: outline-color var(--motion-fast);
+}
+
+.audio-splitter--dragging {
+    outline-color: var(--accent-primary);
+}
+
+.audio-splitter__header {
+    display: flex;
+    min-height: 58px;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklab, var(--bg-secondary) 94%, transparent);
+}
+
+.audio-splitter__heading {
+    display: flex;
+    min-width: 150px;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.audio-splitter__title.MuiTypography-root {
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.84rem;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.audio-splitter__subtitle.MuiTypography-root {
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.58rem;
+    line-height: 1.25;
+}
+
+.audio-splitter__file.MuiTypography-root {
+    max-width: min(32vw, 360px);
+    overflow: hidden;
+    padding: 5px 9px;
+    border: 1px solid color-mix(in oklab, var(--border) 82%, transparent);
+    border-radius: var(--radius-sm);
+    background: color-mix(in oklab, var(--bg-primary) 72%, transparent);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.66rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.audio-splitter__status {
+    flex: 0 0 auto;
+    padding: 5px 16px 6px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+}
+
+.audio-splitter__empty {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 10px;
+    margin: 18px;
+    border: 1px dashed color-mix(in oklab, var(--border) 88%, transparent);
+    border-radius: var(--radius-lg);
+    background: color-mix(in oklab, var(--bg-secondary) 44%, transparent);
+    color: var(--text-muted);
+}
+
+.audio-splitter--dragging .audio-splitter__empty {
+    border-color: color-mix(in oklab, var(--accent-primary) 70%, transparent);
+    background: color-mix(in oklab, var(--accent-primary) 7%, var(--bg-secondary));
+}
+
+.audio-splitter__empty-title.MuiTypography-root {
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.86rem;
+    font-weight: 650;
+}
+
+.audio-splitter__empty-copy.MuiTypography-root,
+.audio-splitter__hint.MuiTypography-root {
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.62rem;
+}
+
+.audio-splitter__wave-area {
+    flex: 0 0 auto;
+    padding: 16px 18px 0;
+}
+
+.audio-splitter__wave-card {
+    min-height: 110px;
+    overflow: hidden;
+    border: 1px solid color-mix(in oklab, var(--border) 92%, transparent);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    background:
+        linear-gradient(180deg, color-mix(in oklab, var(--accent-primary) 3%, transparent), transparent),
+        var(--bg-primary);
+    box-shadow: inset 0 1px 0 color-mix(in oklab, white 3%, transparent);
+}
+
+.audio-splitter__timeline {
+    min-height: 20px;
+    overflow: hidden;
+    border: 1px solid color-mix(in oklab, var(--border) 92%, transparent);
+    border-top: 0;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    background: color-mix(in oklab, var(--bg-secondary) 75%, transparent);
+}
+
+.audio-splitter__controls {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    padding: 8px 18px;
+    border-block: 1px solid var(--border);
+    background: color-mix(in oklab, var(--bg-secondary) 62%, transparent);
+}
+
+.audio-splitter__footer {
+    display: flex;
+    min-height: 52px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    background: color-mix(in oklab, var(--bg-secondary) 96%, transparent);
+}
+
+.audio-splitter__footer-copy.MuiTypography-root {
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.62rem;
+    white-space: nowrap;
+}
+
+.audio-splitter__footer-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.audio-splitter region span {
+    overflow: hidden;
+    padding: 2px 5px;
+    color: color-mix(in oklab, var(--text-primary) 88%, transparent);
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 900px), (max-height: 650px) {
+    .audio-splitter__subtitle,
+    .audio-splitter__file,
+    .audio-splitter__footer-copy {
+        display: none;
+    }
+
+    .audio-splitter__header {
+        min-height: 48px;
+    }
+
+    .audio-splitter__wave-area {
+        padding-top: 10px;
+    }
+
+    .audio-splitter__controls {
+        margin-top: 6px;
+        padding-block: 6px;
+    }
+}

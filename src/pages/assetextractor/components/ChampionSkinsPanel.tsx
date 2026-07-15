@@ -1,4 +1,4 @@
-import { Youtube } from 'lucide-react';
+import { Box, Youtube } from 'lucide-react';
 import type { ExtractorChampion, ExtractorSkin, Chroma } from '../types';
 import { getRarityIconUrl } from '../mediaService';
 import { getDefaultChromaColor } from '../communityDragonApi';
@@ -17,6 +17,8 @@ interface Props {
     onChromaClick: (chroma: Chroma, skin: ExtractorSkin, championName: string) => void;
     onDownloadSplashArt: (championName: string, championAlias: string, skinNumber: number, skinName: string, splashUrlOverride?: string | null) => void;
     onYouTubeSkin: (championName: string, skinName: string) => void;
+    onOpenInJade?: (skin: ExtractorSkin) => void;
+    onInspectModel?: (skin: ExtractorSkin) => void;
     offlineMode?: boolean;
 }
 
@@ -33,6 +35,8 @@ export function ChampionSkinsPanel({
     onChromaClick,
     onDownloadSplashArt,
     onYouTubeSkin,
+    onOpenInJade,
+    onInspectModel,
     offlineMode = false,
 }: Props) {
     return (
@@ -148,6 +152,36 @@ export function ChampionSkinsPanel({
                                         >
                                             <span className="dl-icon"><Youtube size={14} /></span>
                                         </button>
+
+                                        {onOpenInJade && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onOpenInJade(skin);
+                                                }}
+                                                disabled={extractingSkins[skinKey]}
+                                                className="dl-btn dl-btn--icon dl-btn--ghost dl-btn--sm ae-card__action ae-card__action--persistent ae-card__action--jade"
+                                                title="Open combined skin BIN in Jade"
+                                                aria-label={`Open ${skin.name} in Jade`}
+                                            >
+                                                <img src="/jade.webp" alt="" className="ae-card__jade-icon" />
+                                            </button>
+                                        )}
+
+                                        {onInspectModel && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onInspectModel(skin);
+                                                }}
+                                                disabled={extractingSkins[skinKey]}
+                                                className="dl-btn dl-btn--icon dl-btn--ghost dl-btn--sm ae-card__action ae-card__action--persistent ae-card__action--model"
+                                                title="Inspect skin model"
+                                                aria-label={`Inspect ${skin.name} model`}
+                                            >
+                                                <span className="dl-icon"><Box size={14} /></span>
+                                            </button>
+                                        )}
                                     </div>
 
                                     <div className="ae-card__footer">
@@ -174,6 +208,7 @@ export function ChampionSkinsPanel({
                                         <h3 className="ae-card__title" style={{ color: isSelected ? 'var(--accent-primary)' : '#fff' }}>
                                             {skin.name}
                                         </h3>
+                                        <span className="ae-card__id">Skin ID: {skin.id}</span>
                                     </div>
                                 </div>
                             </div>

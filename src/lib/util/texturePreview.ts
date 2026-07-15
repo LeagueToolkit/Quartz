@@ -1,21 +1,21 @@
 /* Unified texture preview — a single DOM-injected floating panel shared by
    Port, Paint, and the Bin Editor. Promoted from Port's textureHoverPreview,
-   generalized to a normalized `PreviewTexture[]` input and theme-tokened CSS
+   generalized to a normalized texture/model input and theme-tokened CSS
    classes (see texturePreview.css).
 
-   On show we float a panel of one tile per texture; each tile resolves its rel
-   path to a disk file and decodes .tex/.dds (and plain images) to a thumbnail
-   through the shared `resolveTextureDataUrl` core (which owns resolution +
-   decode + per-path caching). Right-click opens an opt-in context menu with the
-   actions that make sense in Tauri (reveal in file manager, open in ImgRecolor).
+   Texture tiles decode through the shared image pipeline; SCB/SCO/SKN tiles use
+   the native model projection and shared Three.js scene. Right-click exposes
+   type-appropriate actions, including model inspection.
 
    Hardened against hover storms: show is debounced, every async step is guarded
    by a staleness token so stale hovers can't paint into a newer panel. */
 
 import type React from 'react';
-import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { portResolveAssetPath } from '@/lib/api/wad';
-import { resolveTextureDataUrl } from './resolveTextureDataUrl';
+import { explorerReveal } from '@/lib/api/explorer';
+import { revealInFileManager } from '@/components/explorer/useFileExplorer';
+import { openModelInspect } from '@/lib/model/modelInspectEvent';
+import { resolveDiskTextureDataUrl, resolveTextureDataUrl } from './resolveTextureDataUrl';
 import './texturePreview.css';
 
 const PREVIEW_ID = 'shared-texture-preview';
@@ -30,12 +30,15 @@ const MAX_TILES = 8;
 export interface PreviewTexture {
     path: string;
     label?: string;
+    kind?: 'texture' | 'model';
+    /** Texture to apply to a model preview (asset-relative or absolute). */
+    texturePath?: string;
 }
 
 export interface TexturePreviewOpts {
     /** Enable the right-click context menu (Reveal / Open in ImgRecolor). */
     contextMenu?: boolean;
-    /** Debounce before the panel appears (default 180ms). */
+    /** Debounce before the panel appears (default 320ms). */
     showDelay?: number;
     /** When set, each tile caption gets an edit (pencil) affordance; clicking it
      *  turns the caption into an input. Committing calls this with the tile's
@@ -45,6 +48,8 @@ export interface TexturePreviewOpts {
 
 /* onEditPath for the panel currently on screen (set on each show). */
 let activeEditHandler: ((oldPath: string, newPath: string) => void) | null = null;
+let activeContextMenu = false;
+let activeBinPath = '';
 /* True while a caption is being edited, so hover-out doesn't close the panel. */
 let editing = false;
 
@@ -59,6 +64,19 @@ let hoverToken = 0;
    because the panel opens in a separate DOM subtree next to the trigger). */
 let anchorEl: HTMLElement | null = null;
 let watchdogActive = false;
+const modelDisposers = new Map<number, () => void>();
+
+function isModelAsset(asset: PreviewTexture): boolean {
+    if (asset.kind === 'model') return true;
+    return /\.(?:scb|sco|skn)$/i.test(asset.path);
+}
+
+function disposeModels(): void {
+    for (const dispose of modelDisposers.values()) {
+        try { dispose(); } catch { /* best-effort GPU cleanup */ }
+    }
+    modelDisposers.clear();
+}
 
 function cancelShow() {
     if (showTimer) { clearTimeout(showTimer); showTimer = null; }
@@ -111,6 +129,9 @@ function removePreview() {
     removeMenu();
     activeEditHandler = null;
     editing = false;
+    activeContextMenu = false;
+    activeBinPath = '';
+    disposeModels();
     document.getElementById(PREVIEW_ID)?.remove();
 }
 
@@ -222,6 +243,14 @@ function buildPanel(textures: PreviewTexture[], anchor: DOMRect): void {
 
         const row = document.createElement('div');
         row.className = 'tex-preview__row';
+        row.title = activeContextMenu ? 'Right-click for more actions' : t.path;
+        if (activeContextMenu) {
+            row.oncontextmenu = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openPreviewContextMenu(event.clientX, event.clientY, t, activeBinPath);
+            };
+        }
 
         const tile = document.createElement('div');
         tile.id = tileId(i);
@@ -241,12 +270,13 @@ function buildPanel(textures: PreviewTexture[], anchor: DOMRect): void {
         captionRow.className = 'tex-preview__caption-row';
 
         const caption = document.createElement('div');
-        caption.className = `tex-preview__caption${editable ? ' is-editable' : ''}`;
-        caption.title = editable ? `${t.path}\n(click to edit path)` : t.path;
+        const canEdit = editable && !isModelAsset(t);
+        caption.className = `tex-preview__caption${canEdit ? ' is-editable' : ''}`;
+        caption.title = canEdit ? `${t.path}\n(click to edit path)` : t.path;
         caption.textContent = fileName;
         captionRow.appendChild(caption);
 
-        if (editable) {
+        if (canEdit) {
             const openEditor = () => beginCaptionEdit(caption, t.path);
             caption.onclick = openEditor;
             const pencil = document.createElement('button');
@@ -279,6 +309,41 @@ function buildPanel(textures: PreviewTexture[], anchor: DOMRect): void {
 async function loadTile(index: number, texture: PreviewTexture, binPath: string, token: number): Promise<void> {
     const host = document.getElementById(tileId(index));
     if (!host) return;
+    if (isModelAsset(texture)) {
+        const diskPath = await portResolveAssetPath(texture.path, binPath).catch(() => null);
+        if (token !== hoverToken) return;
+        const liveHost = document.getElementById(tileId(index));
+        if (!liveHost) return;
+        if (!diskPath) {
+            liveHost.textContent = 'MODEL NOT ON DISK';
+            return;
+        }
+        try {
+            const textureDiskPath = texture.texturePath
+                ? await portResolveAssetPath(texture.texturePath, binPath).catch(() => null)
+                : null;
+            const textureUrl = textureDiskPath
+                ? await resolveDiskTextureDataUrl(textureDiskPath)
+                : null;
+            if (token !== hoverToken || !document.getElementById(tileId(index))) return;
+            const { mountModelScene } = await import('@/lib/model/modelScene');
+            const mounted = await mountModelScene(liveHost, diskPath, {
+                textureUrl,
+                interactive: false,
+                autoRotate: true,
+                showGrid: false,
+            });
+            if (token !== hoverToken || !document.getElementById(tileId(index))) {
+                mounted.dispose();
+                return;
+            }
+            modelDisposers.get(index)?.();
+            modelDisposers.set(index, mounted.dispose);
+        } catch {
+            liveHost.textContent = 'FAILED TO LOAD MODEL';
+        }
+        return;
+    }
     const url = await resolveTextureDataUrl(texture.path, binPath);
     if (token !== hoverToken) return;
     const liveHost = document.getElementById(tileId(index));
@@ -295,12 +360,15 @@ function doShow(
     binPath: string,
     anchor: DOMRect,
     onEditPath?: (oldPath: string, newPath: string) => void,
+    contextMenu = false,
 ): void {
     const keepAnchor = anchorEl;
     removePreview();
     anchorEl = keepAnchor;
     const token = hoverToken;
     activeEditHandler = onEditPath ?? null;
+    activeContextMenu = contextMenu;
+    activeBinPath = binPath;
     buildPanel(textures, anchor);
     startWatchdog();
     for (let i = 0; i < textures.length; i++) {
@@ -341,7 +409,7 @@ export function showTexturePreview(
     const onEditPath = opts.onEditPath;
     showTimer = setTimeout(() => {
         showTimer = null;
-        doShow(list, binPath, rect, onEditPath);
+        doShow(list, binPath, rect, onEditPath, !!opts.contextMenu);
     }, delay);
 }
 
@@ -355,12 +423,18 @@ export function openTexturePreviewContextMenu(
 ): void {
     event.preventDefault();
     event.stopPropagation();
+    openPreviewContextMenu(event.clientX, event.clientY, texture, binPath);
+}
+
+function openPreviewContextMenu(
+    clientX: number,
+    clientY: number,
+    texture: PreviewTexture,
+    binPath: string,
+): void {
     cancelShow();
     if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
     if (!texture.path) return;
-
-    const clientX = event.clientX;
-    const clientY = event.clientY;
 
     removeMenu();
     const menu = document.createElement('div');
@@ -387,23 +461,40 @@ export function openTexturePreviewContextMenu(
     void (async () => {
         try {
             const diskPath = await portResolveAssetPath(texture.path, binPath).catch(() => null);
+            const model = isModelAsset(texture);
+            const modelTexturePath = model && texture.texturePath
+                ? await portResolveAssetPath(texture.texturePath, binPath).catch(() => null)
+                : null;
 
             menu.appendChild(
                 makeItem('Reveal in File Manager', () => {
-                    if (diskPath) void revealItemInDir(diskPath).catch(() => {});
+                    if (diskPath) revealInFileManager(diskPath);
                 }, !diskPath),
             );
             menu.appendChild(
-                makeItem('Open in ImgRecolor', () => {
-                    if (!diskPath) return;
-                    const dir = diskPath.replace(/[/\\][^/\\]*$/, '');
-                    sessionStorage.setItem(
-                        'imgRecolorAutoOpen',
-                        JSON.stringify({ autoLoadPath: dir, autoSelectFile: diskPath }),
-                    );
-                    window.location.hash = '#/img-recolor';
+                makeItem('Open in Windows Explorer', () => {
+                    if (diskPath) void explorerReveal(diskPath).catch(() => {});
                 }, !diskPath),
             );
+            if (model) {
+                menu.appendChild(
+                    makeItem('Inspect Model', () => {
+                        if (diskPath) openModelInspect(diskPath, modelTexturePath);
+                    }, !diskPath),
+                );
+            } else {
+                menu.appendChild(
+                    makeItem('Open in ImgRecolor', () => {
+                        if (!diskPath) return;
+                        const dir = diskPath.replace(/[/\\][^/\\]*$/, '');
+                        sessionStorage.setItem(
+                            'imgRecolorAutoOpen',
+                            JSON.stringify({ autoLoadPath: dir, autoSelectFile: diskPath }),
+                        );
+                        window.location.hash = '#/img-recolor';
+                    }, !diskPath),
+                );
+            }
 
             document.body.appendChild(menu);
             const rect = menu.getBoundingClientRect();

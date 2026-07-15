@@ -48,12 +48,13 @@ enum Filter {
 /// Read a BIN off disk, returning a friendly error on failure.
 fn read(path: &Path) -> Result<Bin> {
     let data = fs::read(path).map_err(|e| Error::io_with_path(e, path))?;
-    read_bin(&data).map_err(|e| Error::InvalidInput(format!("Failed to parse {}: {}", path.display(), e)))
+    read_bin(&data)
+        .map_err(|e| Error::InvalidInput(format!("Failed to parse {}: {}", path.display(), e)))
 }
 
 fn write(path: &Path, bin: &Bin) -> Result<()> {
-    let bytes =
-        write_bin(bin).map_err(|e| Error::InvalidInput(format!("Failed to serialize BIN: {}", e)))?;
+    let bytes = write_bin(bin)
+        .map_err(|e| Error::InvalidInput(format!("Failed to serialize BIN: {}", e)))?;
     fs::write(path, bytes).map_err(|e| Error::io_with_path(e, path))
 }
 
@@ -298,7 +299,11 @@ fn combine(bin_path: &Path, filter: Filter, vfx_marker_only: bool) -> Result<Com
 
 /// Merge `VfxSystemDefinitionData` entries from split-vfx linked bins back in.
 pub fn combine_vfx(bin_path: &Path) -> Result<CombineResult> {
-    combine(bin_path, Filter::Class(fnv1a("VfxSystemDefinitionData")), true)
+    combine(
+        bin_path,
+        Filter::Class(fnv1a("VfxSystemDefinitionData")),
+        true,
+    )
 }
 
 /// Merge `AnimationGraphData` entries from linked bins back in.

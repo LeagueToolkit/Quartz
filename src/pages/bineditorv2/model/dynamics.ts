@@ -11,11 +11,14 @@ export type StructuralOp =
     | { kind: 'remove'; path: NodePath };
 
 // Value-struct -> animated pointer class + keyframe element type.
-const ANIM: Record<string, { ptr: string; elem: string }> = {
-    ValueFloat: { ptr: 'VfxAnimatedFloatVariableData', elem: 'f32' },
-    ValueVector2: { ptr: 'VfxAnimatedVector2fVariableData', elem: 'vec2' },
-    ValueVector3: { ptr: 'VfxAnimatedVector3fVariableData', elem: 'vec3' },
-    ValueColor: { ptr: 'VfxAnimatedColorVariableData', elem: 'vec4' },
+const ANIM: Record<string, { ptr: string; elem: string; channels: number }> = {
+    ValueFloat: { ptr: 'VfxAnimatedFloatVariableData', elem: 'f32', channels: 1 },
+    ValueVector2: { ptr: 'VfxAnimatedVector2fVariableData', elem: 'vec2', channels: 2 },
+    ValueVector3: { ptr: 'VfxAnimatedVector3fVariableData', elem: 'vec3', channels: 3 },
+    ValueColor: { ptr: 'VfxAnimatedColorVariableData', elem: 'vec4', channels: 4 },
+    IntegratedValueFloat: { ptr: 'VfxAnimatedFloatVariableData', elem: 'f32', channels: 1 },
+    IntegratedValueVector2: { ptr: 'VfxAnimatedVector2fVariableData', elem: 'vec2', channels: 2 },
+    IntegratedValueVector3: { ptr: 'VfxAnimatedVector3fVariableData', elem: 'vec3', channels: 3 },
 };
 
 export function canAnimate(field: EditorNode | null | undefined): boolean {
@@ -49,7 +52,7 @@ export function buildAnimate(field: EditorNode): StructuralOp | null {
     if (!canAnimate(field) || isAnimated(field)) return null;
     const cv = childByKey(field, 'constantValue');
     if (!cv) return null;
-    const { ptr, elem } = ANIM[field.className ?? ''];
+    const { ptr, elem, channels } = ANIM[field.className ?? ''];
     const seed =
         cv.kind === 'vector'
             ? mkValue({ t: elem, v: vectorComponents(cv) })
@@ -65,7 +68,9 @@ export function buildAnimate(field: EditorNode): StructuralOp | null {
                 probabilityTables: mkValue({
                     t: 'list',
                     item: 'pointer',
-                    items: [mkValue({ t: 'pointer', class: 'VfxProbabilityTableData', fields: {} })],
+                    items: Array.from({ length: channels }, () =>
+                        mkValue({ t: 'pointer', class: 'VfxProbabilityTableData', fields: {} }),
+                    ),
                 }),
                 times: mkValue({ t: 'list', item: 'f32', items: [mkValue({ t: 'f32', v: 0 })] }),
                 values: mkValue({ t: 'list', item: elem, items: [seed] }),
@@ -74,11 +79,21 @@ export function buildAnimate(field: EditorNode): StructuralOp | null {
     };
 }
 
-/** Remove the dynamics block from a field (back to a plain constant). */
-export function buildDeanimate(field: EditorNode): StructuralOp | null {
+/** Remove a dynamics block without leaving an empty Value* wrapper. Older
+ * files often contain dynamics-only values; seed constantValue from the first
+ * curve value before removing the curve in that case. */
+export function buildDeanimate(field: EditorNode): StructuralOp[] | null {
     const dyn = childByKey(field, 'dynamics');
     if (!dyn) return null;
-    return { kind: 'remove', path: dyn.path };
+    const ops: StructuralOp[] = [];
+    if (!childByKey(field, 'constantValue')) {
+        const values = childByKey(dyn, 'values');
+        const first = values?.children?.[0];
+        const seed = first ? encodeNode(first) : null;
+        if (seed) ops.push({ kind: 'insert', parentPath: field.path, key: 'constantValue', value: seed });
+    }
+    ops.push({ kind: 'remove', path: dyn.path });
+    return ops;
 }
 
 /**

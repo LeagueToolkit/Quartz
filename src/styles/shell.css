@@ -157,6 +157,23 @@
     transition: color var(--motion-fast), transform var(--motion-fast);
     pointer-events: none;
 }
+.q-jade-logo {
+    width: 19px;
+    height: 19px;
+    object-fit: contain;
+    opacity: 0.78;
+    transition: opacity var(--motion-fast), transform var(--motion-fast), filter var(--motion-fast);
+    pointer-events: none;
+}
+.q-jade-launch:hover .q-jade-logo {
+    opacity: 1;
+    transform: scale(1.08);
+    filter: brightness(1.1);
+}
+.q-jade-launch:disabled {
+    cursor: not-allowed;
+    opacity: 0.38;
+}
 .q-topnavbtn:hover {
     background: color-mix(in oklab, var(--accent-primary) 10%, transparent);
 }

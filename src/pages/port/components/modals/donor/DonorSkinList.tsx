@@ -7,6 +7,8 @@ interface DonorSkinListProps {
     hasChampion: boolean;
     /** Ids of the currently-selected skins. Single-select callers pass a 0/1 set. */
     selectedSkinIds: Set<number>;
+    /** Optional selector for mixed-champion grids where skin ids can repeat. */
+    isSkinSelected?: (skin: DonorSkin) => boolean;
     onSelect: (skin: DonorSkin) => void;
     onYouTubeSkin: (skinName: string) => void;
     emptyLabel: string;
@@ -22,6 +24,7 @@ export default function DonorSkinList({
     loading,
     hasChampion,
     selectedSkinIds,
+    isSkinSelected,
     onSelect,
     onYouTubeSkin,
     emptyLabel,
@@ -34,13 +37,13 @@ export default function DonorSkinList({
     return (
         <div className="donor-cols__main">
             <div className="ae-grid">
-                {skins.map((skin) => {
-                    const isSelected = selectedSkinIds.has(skin.id);
+                {skins.map((skin, index) => {
+                    const isSelected = isSkinSelected?.(skin) ?? selectedSkinIds.has(skin.id);
                     // tilePath from getCDragonChampionSkins is already a full CDN URL.
                     const art = skin.tilePath;
                     return (
                         <div
-                            key={skin.id}
+                            key={`${skin.id}-${skin.name}-${index}`}
                             onClick={() => onSelect(skin)}
                             className={`ae-card ${isSelected ? 'ae-card--selected' : ''}`}
                         >
@@ -63,17 +66,17 @@ export default function DonorSkinList({
                                 <button
                                     onClick={(e) => { e.stopPropagation(); onYouTubeSkin(skin.name); }}
                                     className="dl-btn dl-btn--icon dl-btn--ghost dl-btn--sm ae-card__action"
-                                    style={{ position: 'absolute', bottom: 8, left: 8 }}
+                                    style={{ position: 'absolute', top: 8, left: 8 }}
                                     title={`Search "${skin.name}" spotlight on YouTube`}
                                 >
                                     <span className="dl-icon"><Youtube size={14} /></span>
                                 </button>
-                            </div>
-                            <div className="ae-card__body">
-                                <h3 style={{ fontWeight: 500, margin: 0, fontSize: 13, color: isSelected ? 'var(--accent-primary)' : 'var(--text-primary)' }}>
-                                    {skin.name}
-                                </h3>
-                                <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>ID: {skin.id}</p>
+                                <div className="ae-card__footer">
+                                    <h3 className="ae-card__title" style={{ color: isSelected ? 'var(--accent-primary)' : '#fff' }}>
+                                        {skin.name}
+                                    </h3>
+                                    <span className="ae-card__id">Skin ID: {skin.id}</span>
+                                </div>
                             </div>
                         </div>
                     );

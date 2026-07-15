@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capabilities for the main and design-lab windows",
-  "windows": ["main", "design-lab"],
+  "description": "Default capabilities for the main, startup, and design-lab windows",
+  "windows": ["main", "updater", "design-lab"],
   "permissions": [
     "core:default",
     "core:window:allow-minimize",

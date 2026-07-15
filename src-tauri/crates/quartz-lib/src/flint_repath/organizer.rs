@@ -1,9 +1,7 @@
 //! Orchestrates concat and refather workflows with independent control.
 
-use crate::bin::concat::{
-    concatenate_linked_bins, ConcatResult,
-};
 use super::refather::{repath_project, RepathConfig, RepathResult};
+use crate::bin::concat::{concatenate_linked_bins, ConcatResult};
 use crate::error::Result;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -63,7 +61,9 @@ pub fn organize_project(
     // League doesn't support spaces in asset paths or folder names.
     let champion_sanitized = config.champion.to_lowercase().replace(' ', "-");
 
-    let wad_folder_name = config.wad_folder_override.clone()
+    let wad_folder_name = config
+        .wad_folder_override
+        .clone()
         .unwrap_or_else(|| format!("{}.wad.client", champion_sanitized));
     let wad_base = content_base.join(&wad_folder_name);
 
@@ -83,7 +83,10 @@ pub fn organize_project(
         // wrong skin BIN and never load.
         let seeds = find_all_seed_skin_bins(&file_base, &champion_sanitized, config.target_skin_id);
         if seeds.is_empty() {
-            tracing::warn!("Cannot run concat: no seed skin BIN found for skin {}", config.target_skin_id);
+            tracing::warn!(
+                "Cannot run concat: no seed skin BIN found for skin {}",
+                config.target_skin_id
+            );
         }
         for seed in &seeds {
             let seed_char = character_folder_of(seed).unwrap_or_else(|| champion_sanitized.clone());
@@ -100,7 +103,8 @@ pub fn organize_project(
                 Ok(concat_result) => {
                     tracing::info!(
                         "Combined {} linked BINs into '{}' skin BIN",
-                        concat_result.source_count, seed_char
+                        concat_result.source_count,
+                        seed_char
                     );
                     result.concat_results.push(concat_result);
                 }
@@ -148,9 +152,16 @@ pub fn organize_project(
 /// main champion AND any subcharacters (Tibbers, Wolf, ghouls…) that ship the
 /// same skin id. Mirrors old Quartz's TOC glob (it does not read pet/child
 /// metadata; it globs the tree). The primary champion's own bin sorts first.
-pub(crate) fn find_all_seed_skin_bins(file_base: &Path, champion: &str, skin_id: u32) -> Vec<PathBuf> {
+pub(crate) fn find_all_seed_skin_bins(
+    file_base: &Path,
+    champion: &str,
+    skin_id: u32,
+) -> Vec<PathBuf> {
     let champ = champion.to_lowercase();
-    let want = [format!("skin{}.bin", skin_id), format!("skin{:02}.bin", skin_id)];
+    let want = [
+        format!("skin{}.bin", skin_id),
+        format!("skin{:02}.bin", skin_id),
+    ];
     let mut seeds: Vec<PathBuf> = Vec::new();
 
     for entry in WalkDir::new(file_base)
