@@ -75,9 +75,11 @@ const parseImportedPalette = (raw: ImportedPalette) => {
 
 /* ── shared styles ──────────────────────────────────────────────────────── */
 const modalStyles: Record<string, React.CSSProperties> = {
-    overlay: { position: 'fixed', inset: 0, zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px' },
+    overlay: { position: 'fixed', inset: 0, zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' },
     backdrop: { position: 'absolute', inset: 0, background: 'color-mix(in oklab, black 60%, transparent)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' },
-    modal: { position: 'relative', width: '100%', maxWidth: 860, height: 720, display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: 'var(--dl-shadow-lg)', overflow: 'hidden' },
+    // Height flexes to content but never taller than the viewport (minus overlay
+    // padding), so short windows don't clip the header/footer.
+    modal: { position: 'relative', width: '100%', maxWidth: 860, height: 'auto', maxHeight: 'min(720px, 100%)', display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: 'var(--dl-shadow-lg)', overflow: 'hidden' },
     accentBar: { height: 3, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%' },
     body: { padding: 20, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: 0 },
     header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
@@ -352,7 +354,7 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
                                 </div>
                             </div>
 
-                            <div style={{ ...modalStyles.section, marginBottom: 0, padding: 0, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ ...modalStyles.section, marginBottom: 0, padding: 0, overflow: 'hidden', flex: '1 1 auto', minHeight: 160, display: 'flex', flexDirection: 'column' }}>
                                 <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: 'var(--border-strong) transparent' }}>
                                     {savedPalettesList.length === 0 && (
                                         <div style={{ padding: '18px 16px' }}>
