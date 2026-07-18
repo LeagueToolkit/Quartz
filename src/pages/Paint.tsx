@@ -792,6 +792,16 @@ function Paint() {
         });
     }, []);
 
+    /* Stable identities so React.memo(SystemList) can skip re-renders when only
+       unrelated Paint state (e.g. the palette) changes. Inline arrows here would
+       give SystemList new props every render and re-render the whole list. */
+    const toggleSystemLock = useCallback((k: string) => {
+        setLockedSystems(prev => { const next = new Set(prev); if (next.has(k)) next.delete(k); else next.add(k); return next; });
+    }, []);
+    const toggleSystemExpand = useCallback((k: string) => {
+        setExpandedSystems(prev => { const next = new Set(prev); if (next.has(k)) next.delete(k); else next.add(k); return next; });
+    }, []);
+
     const toggleMaterialParam = useCallback((selectionKey: string, selected: boolean) => {
         setSelection(prev => {
             const next = new Set(prev);
@@ -1305,8 +1315,8 @@ function Paint() {
                         onToggleEmitter={toggleEmitterSelection}
                         onToggleSystem={selectSystem}
                         onSetBlendMode={handleSingleBlendModeChange}
-                        onToggleLock={(k) => setLockedSystems(prev => { const next = new Set(prev); if (next.has(k)) next.delete(k); else next.add(k); return next; })}
-                        onToggleExpand={(k) => setExpandedSystems(prev => { const next = new Set(prev); if (next.has(k)) next.delete(k); else next.add(k); return next; })}
+                        onToggleLock={toggleSystemLock}
+                        onToggleExpand={toggleSystemExpand}
                         onToggleMaterialExpand={toggleMaterialExpand}
                         onToggleMaterialParam={toggleMaterialParam}
                         onMaterialParamValueChange={handleMaterialParamValueChange}
