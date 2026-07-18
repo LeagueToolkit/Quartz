@@ -84,6 +84,8 @@ const modalStyles: Record<string, React.CSSProperties> = {
     body: { padding: 20, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: 0 },
     section: { borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: 14, marginBottom: 12 },
     input: { width: '100%', boxSizing: 'border-box', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', padding: '8px 12px', fontSize: '0.82rem', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', outline: 'none', transition: 'all var(--motion-fast)' },
+    // Floating X in the modal's top-right corner (no title bar, just the close).
+    closeBtn: { position: 'absolute', top: 12, right: 12, zIndex: 1, width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--text-muted)', border: '1px solid var(--border)', background: 'var(--bg-tertiary)', cursor: 'pointer', transition: 'all var(--motion-fast)', outline: 'none' },
 };
 
 
@@ -324,10 +326,11 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
                     <div style={modalStyles.backdrop} onClick={() => setManagerOpen(false)} />
                     <div style={modalStyles.modal} onClick={(e) => e.stopPropagation()}>
                         <div style={modalStyles.accentBar} />
+                        <button onClick={() => setManagerOpen(false)} style={modalStyles.closeBtn} title="Close">{'✕'}</button>
                         <div style={modalStyles.body}>
                             {/* Single compact action bar: name + Save + Import, no wasted
                                titled sections. Backdrop click closes the modal. */}
-                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, paddingRight: 40 }}>
                                 <input type="text" value={paletteName} onChange={(e) => setPaletteName(e.target.value)} placeholder="Palette name…" style={{ ...modalStyles.input, flex: 1 }} />
                                 <button onClick={handleSaveCurrent} className="dl-btn dl-btn--primary dl-btn--sm" style={{ whiteSpace: 'nowrap' }}>
                                     <span className="dl-icon"><SaveIcon style={{ fontSize: 14 }} /></span> Save
