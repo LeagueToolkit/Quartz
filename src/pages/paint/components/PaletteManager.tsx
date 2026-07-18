@@ -139,11 +139,13 @@ interface PaletteManagerProps {
     savedPalettesList?: SavedPaletteItem[];
     onPalettesChanged?: () => void;
     onStatus?: (msg: string) => void;
+    /* Rendered at the right edge of the controls row (used for the Mode selector). */
+    rightSlot?: React.ReactNode;
 }
 
 const PaletteManager: React.FC<PaletteManagerProps> = ({
     mode, palette, setPalette, colorCount, setColorCount, onLoadPalette,
-    savedPalettesList = [], onPalettesChanged, onStatus,
+    savedPalettesList = [], onPalettesChanged, onStatus, rightSlot,
 }) => {
     const pick = useFileExplorer();
     const isMinecraftStyle = useMinecraftStyle();
@@ -316,6 +318,7 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
                     <button onClick={() => setManagerOpen(true)} className="dl-btn dl-btn--primary dl-btn--sm">
                         Palette Manager
                     </button>
+                    {rightSlot}
                 </Box>
             </Box>
 

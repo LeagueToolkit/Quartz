@@ -1013,25 +1013,18 @@ function Paint() {
                shows the drop card). */}
             <div style={model ? undefined : { opacity: 0.4, pointerEvents: 'none', userSelect: 'none' }} aria-disabled={!model}>
             {(<>
-            {/* Top toolbar — Open Bin + filename + Mode (old Quartz layout). */}
-            <Box className="paint2-toolbar" sx={{
-                display: 'flex', alignItems: 'center', gap: 2, padding: '4px 16px',
-                background: isMinecraftStyle ? '#2f2f2f' : 'var(--bg-secondary)',
-                borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)', flexShrink: 0,
-            }}>
-                <button onClick={handleFileOpen} disabled={isLoading} className="dl-btn dl-btn--primary dl-btn--sm">
-                    <span className="dl-icon"><FolderOpenIcon size={14} /></span>
-                    <span>Open Bin</span>
-                </button>
-                <Typography title={filePath || 'No file loaded'} sx={{
-                    flex: 1, fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-secondary)',
-                    fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.85,
+            {/* Mode lives on the right of the Palette Manager row, but that row
+               unmounts in shift / shift-hue modes — surface Mode here too so the
+               user is never trapped in those modes. */}
+            {(mode === 'shift' || mode === 'shift-hue') && (
+                <Box sx={{
+                    display: 'flex', justifyContent: 'flex-end', padding: '6px 16px',
+                    background: isMinecraftStyle ? '#353535' : 'var(--bg-secondary)',
+                    borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)', flexShrink: 0,
                 }}>
-                    {filePath ? (filePath.split(/[\\/]/).pop() as string) : 'No file loaded'}
-                </Typography>
-                <ModeSelect value={mode} onChange={(v) => setMode(v as typeof mode)} />
-            </Box>
-
+                    <ModeSelect value={mode} onChange={(v) => setMode(v as typeof mode)} />
+                </Box>
+            )}
             {mode === 'shift-hue' && (
                 <ShiftHueControl value={hueTarget} onCommit={setHueTarget} onStatus={setStatusMessage} />
             )}
@@ -1049,6 +1042,7 @@ function Paint() {
                 onLoadPalette={handleLoadPalette}
                 onPalettesChanged={refreshSavedPalettes}
                 onStatus={setStatusMessage}
+                rightSlot={<ModeSelect value={mode} onChange={(v) => setMode(v as typeof mode)} />}
             />
 
             {/* Sub-Toolbar Row 1: BM & Color Targets — collapses via the toggle in
@@ -1395,6 +1389,14 @@ function Paint() {
                 borderTop: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)',
                 display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0,
             }}>
+                {/* Left: open a different bin — hidden when no bin is loaded (the empty
+                    state shows the main Open Bin button instead). */}
+                {model && (
+                    <button onClick={handleFileOpen} disabled={isLoading} className="dl-btn dl-btn--primary dl-btn--sm dl-btn--icon" title="Open Bin">
+                        <span className="dl-icon"><FolderOpenIcon size={15} /></span>
+                    </button>
+                )}
+
                 {/* Compact status readout */}
                 {statusMessage && (
                     <Typography sx={{
