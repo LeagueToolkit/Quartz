@@ -21,8 +21,8 @@ import LockOpenIcon from '@mui/icons-material/LockOpen';
 import { FolderOpen as FolderOpenIcon, Undo2 as UndoIcon, Redo2 as RedoIcon, SlidersHorizontal as SlidersIcon, ChevronDown as ChevronDownIcon, X as CloseIcon } from 'lucide-react';
 import { useFileExplorer } from '@/components/explorer';
 import {
-    paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintSetTexture, paintSetColorAlpha, paintUndo, paintRedo, paintSave,
-    isStaleFileError, staleFilePaths,
+    paintOpen, paintClose, paintReloadIfChanged, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintSetTexture, paintSetColorAlpha, paintUndo, paintRedo, paintSave,
+    isStaleFileError,
     type VfxEmitter, type ColorTargetId,
     type PaletteStopInput, type RecolorOptionsInput,
 } from '@/lib/api';
@@ -30,6 +30,7 @@ import { useNotificationStore, usePaintStore, useUiPrefsStore, type HslValues, t
 import { useFileDrop } from '@/lib/util/useFileDrop';
 import { DropOverlay } from '@/components/ui';
 import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
+import { useSessionFileWatcher } from '@/lib/util/useSessionFileWatcher';
 
 import './paint/Paint.css';
 import ColorHandler from './paint/utils/ColorHandler';
@@ -303,6 +304,22 @@ function Paint() {
     const [filterAnchor, setFilterAnchor] = useState<null | HTMLElement>(null);
     const [deleteTargetIndex, setDeleteTargetIndex] = useState<number | null>(null);
 
+    const handleExternalReload = useCallback((nextModel: NonNullable<typeof model>) => {
+        setModel(nextModel);
+        setFileSaved(true);
+        setCanUndo(false);
+        setCanRedo(false);
+        setSelection(new Set());
+        setStatusMessage(`BIN changed externally and was reloaded (${nextModel.stats.systemCount} systems)`);
+    }, []);
+
+    useSessionFileWatcher({
+        sessionId,
+        reload: paintReloadIfChanged,
+        onReload: handleExternalReload,
+        paused: isLoading,
+    });
+
     // ============================================================
     // FILE OPERATIONS
     // ============================================================
@@ -393,18 +410,15 @@ function Paint() {
                 notify('success', savedPaths.length === 1 ? `Saved ${names}` : `Saved ${savedPaths.length} files: ${names}`);
             }
         } catch (error) {
-            // A file changed on disk since opening (e.g. saved from Port/Bin Editor).
-            // Ask before clobbering; on confirm, retry with force.
+            // Close the watcher race by reparsing immediately instead of
+            // offering to overwrite the external edit.
             if (!force && isStaleFileError(error)) {
-                const paths = staleFilePaths(error);
-                const names = paths.map((p) => p.split(/[\\/]/).pop()).join(', ') || 'this file';
-                setIsLoading(false);
-                const ok = window.confirm(
-                    `${names} was modified outside Paint since you opened it.\n\n`
-                    + `Saving now will overwrite those changes. Overwrite?`,
-                );
-                if (ok) await handleSave(true);
-                else setStatusMessage('Save cancelled (file changed on disk)');
+                try {
+                    const reloaded = await paintReloadIfChanged(sessionId);
+                    if (reloaded) handleExternalReload(reloaded);
+                } catch (reloadError) {
+                    setStatusMessage(`External change detected; reload deferred: ${(reloadError as Error).message}`);
+                }
                 return;
             }
             const msg = error instanceof Error ? error.message : String(error);
@@ -413,7 +427,7 @@ function Paint() {
         } finally {
             setIsLoading(false);
         }
-    }, [sessionId, notify]);
+    }, [sessionId, notify, handleExternalReload]);
 
     // ============================================================
     // MODEL LOOKUPS
@@ -1001,6 +1015,25 @@ function Paint() {
                shows the drop card). */}
             <div style={model ? undefined : { opacity: 0.4, pointerEvents: 'none', userSelect: 'none' }} aria-disabled={!model}>
             {(<>
+            {/* Top toolbar — Open Bin + filename + Mode (old Quartz layout). */}
+            <Box className="paint2-toolbar" sx={{
+                display: 'flex', alignItems: 'center', gap: 2, padding: '4px 16px',
+                background: isMinecraftStyle ? '#2f2f2f' : 'var(--bg-secondary)',
+                borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)', flexShrink: 0,
+            }}>
+                <button onClick={handleFileOpen} disabled={isLoading} className="dl-btn dl-btn--primary dl-btn--sm">
+                    <span className="dl-icon"><FolderOpenIcon size={14} /></span>
+                    <span>Open Bin</span>
+                </button>
+                <Typography title={filePath || 'No file loaded'} sx={{
+                    flex: 1, fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-secondary)',
+                    fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.85,
+                }}>
+                    {filePath ? (filePath.split(/[\\/]/).pop() as string) : 'No file loaded'}
+                </Typography>
+                <ModeSelect value={mode} onChange={(v) => setMode(v as typeof mode)} />
+            </Box>
+
             {mode === 'shift-hue' && (
                 <ShiftHueControl value={hueTarget} onCommit={setHueTarget} onStatus={setStatusMessage} />
             )}
