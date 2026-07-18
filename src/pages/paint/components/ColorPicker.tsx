@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Pipette } from 'lucide-react';
 import './ColorPicker.css';
 
 /** Opt-in alpha support: pass `alpha` (0..1) to render an alpha slider; the
@@ -171,10 +172,43 @@ export function ColorPickerHost() {
     const startDrag = (e: React.MouseEvent, el: HTMLElement, handler: (e: MouseEvent | React.MouseEvent, el: HTMLElement) => void) => {
         e.preventDefault();
         handler(e, el);
-        const move = (ev: MouseEvent) => handler(ev, el);
-        const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+        let frame = 0;
+        let latest: MouseEvent | null = null;
+        const flush = () => { frame = 0; if (latest) { handler(latest, el); latest = null; } };
+        const move = (ev: MouseEvent) => {
+            latest = ev;
+            // Coalesce to one commit per animation frame so a fast drag never
+            // fires a full setPalette clone per pixel.
+            if (!frame) frame = requestAnimationFrame(flush);
+        };
+        const up = () => {
+            if (frame) { cancelAnimationFrame(frame); frame = 0; }
+            if (latest) { handler(latest, el); latest = null; }
+            window.removeEventListener('mousemove', move);
+            window.removeEventListener('mouseup', up);
+        };
         window.addEventListener('mousemove', move);
         window.addEventListener('mouseup', up);
+    };
+
+    const pickScreenColor = async () => {
+        const EyeDropperCtor = (window as Window & { EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> } }).EyeDropper;
+        if (!EyeDropperCtor) {
+            return;
+        }
+        try {
+            const eyeDropper = new EyeDropperCtor();
+            const result = await eyeDropper.open();
+            if (result?.sRGBHex) {
+                const hex = result.sRGBHex.startsWith('#') ? result.sRGBHex : `#${result.sRGBHex}`;
+                const [nh, ns, nv] = hexToHsv(hex);
+                setH(nh); setS(ns); setV(nv);
+                setHexText(hex);
+                state?.onCommit(hex);
+            }
+        } catch {
+            // User cancelled or the webview blocked the picker; keep the modal open.
+        }
     };
 
     const currentHex = hsvToHex(h, s, v);
@@ -204,6 +238,14 @@ export function ColorPickerHost() {
                 </div>
             )}
             <div className="pcp-row">
+                <button
+                    type="button"
+                    className="pcp-pipette"
+                    onClick={pickScreenColor}
+                    title="Pick a color from the screen"
+                >
+                    <Pipette size={13} />
+                </button>
                 <div className="pcp-swatch" style={{ background: currentHex }} />
                 <input
                     className="pcp-hex"
