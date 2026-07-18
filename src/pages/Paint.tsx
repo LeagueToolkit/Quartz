@@ -18,7 +18,7 @@ import PaletteIcon from '@mui/icons-material/Palette';
 import TuneIcon from '@mui/icons-material/Tune';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
-import { FolderOpen as FolderOpenIcon, Undo2 as UndoIcon, Redo2 as RedoIcon, SlidersHorizontal as SlidersIcon, ChevronDown as ChevronDownIcon, X as CloseIcon } from 'lucide-react';
+import { FolderOpen as FolderOpenIcon, Undo2 as UndoIcon, Redo2 as RedoIcon, X as CloseIcon } from 'lucide-react';
 import { useFileExplorer } from '@/components/explorer';
 import {
     paintOpen, paintClose, paintReloadIfChanged, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintSetTexture, paintSetColorAlpha, paintUndo, paintRedo, paintSave,
@@ -294,8 +294,6 @@ function Paint() {
     const removeRecentBin = useUiPrefsStore((s) => s.removeRecentBin);
     // Only show recent bins whose file still exists; prune vanished ones.
     const recentBins = useExistingRecentBins(storedRecentBins, removeRecentBin);
-    // The BM / color-target row collapses into a toggle to save vertical space.
-    const [bmRowOpen, setBmRowOpen] = useState(false);
     const [paletteNameDialogOpen, setPaletteNameDialogOpen] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [paletteToDelete, setPaletteToDelete] = useState<number | null>(null);
@@ -1057,8 +1055,6 @@ function Paint() {
                the search row. Hidden entirely in materials mode. The wrapper
                animates grid-template-rows 0fr→1fr for the slide-down. */}
             {mode !== 'materials' && (
-                <div className={`paint2-bmrow-wrap${bmRowOpen ? ' is-open' : ''}`}>
-                  <div className="paint2-bmrow-inner">
                 <Box className="paint2-subtoolbar-main" sx={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 16px', gap: 2,
                     borderBottom: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)',
@@ -1100,12 +1096,8 @@ function Paint() {
                             <Checkbox size="small" checked={targetBaseColor} onChange={e => setTargetBaseColor(e.target.checked)} sx={{ color: 'var(--text-muted)', '&.Mui-checked': { color: 'var(--accent-primary)' }, padding: '2px' }} /> Color
                         </Box>
 
-                        <Box sx={{ width: '1px', height: '20px', background: 'var(--border)', mx: 0.5 }} />
-                        <ModeSelect value={mode} onChange={(v) => setMode(v as typeof mode)} />
                     </Box>
                 </Box>
-                  </div>
-                </div>
             )}
 
             {/* Materials Mode Info Bar */}
@@ -1117,11 +1109,8 @@ function Paint() {
                 }}>
                     <PaletteIcon sx={{ color: 'var(--accent-primary)', fontSize: 18 }} />
                     <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--accent-primary)', fontWeight: 500 }}>
-                        Materials Only Mode — VFX systems hidden
+                        Materials Only Mode / VFX systems hidden
                     </Typography>
-                    <Box sx={{ ml: 'auto' }}>
-                        <ModeSelect value={mode} onChange={(v) => setMode(v as typeof mode)} />
-                    </Box>
                 </Box>
             )}
 
@@ -1252,19 +1241,6 @@ function Paint() {
                         <MenuItem value="v2">Variant 2</MenuItem>
                     </Select>
                 </Box>
-
-                {mode !== 'materials' && (
-                    <button
-                        type="button"
-                        className={`paint2-bmrow-toggle${bmRowOpen ? ' is-open' : ''}`}
-                        onClick={() => setBmRowOpen((v) => !v)}
-                        title={bmRowOpen ? 'Hide blend mode & color targets' : 'Show blend mode & color targets'}
-                    >
-                        <SlidersIcon size={14} />
-                        <span>Targets</span>
-                        <ChevronDownIcon size={14} className="paint2-bmrow-toggle__chev" />
-                    </button>
-                )}
 
                 <IconButton size="small" onClick={toggleLockAll} sx={{ color: 'var(--text-secondary)', opacity: 0.6, mr: 0.5 }}>
                     {lockedSystems.size > 0 ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}
@@ -1419,14 +1395,6 @@ function Paint() {
                 borderTop: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)',
                 display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0,
             }}>
-                {/* Left: open a different bin — hidden when no bin is loaded (the empty
-                    state shows the main Open Bin button instead). */}
-                {model && (
-                    <button onClick={handleFileOpen} disabled={isLoading} className="dl-btn dl-btn--primary dl-btn--sm dl-btn--icon" title="Open Bin">
-                        <span className="dl-icon"><FolderOpenIcon size={15} /></span>
-                    </button>
-                )}
-
                 {/* Compact status readout */}
                 {statusMessage && (
                     <Typography sx={{
