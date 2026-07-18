@@ -7,8 +7,8 @@
  * a JSON blob, and persistence lives in localStorage via paletteManager.ts.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Typography, Slider, Tooltip } from '@mui/material';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Box, Typography, Slider } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
 import FileOpenIcon from '@mui/icons-material/FileOpen';
@@ -93,7 +93,15 @@ const modalStyles: Record<string, React.CSSProperties> = {
 interface PaletteCountSliderProps { value: number; onCommit: (v: number) => void }
 const PaletteCountSlider = React.memo(function PaletteCountSlider({ value, onCommit }: PaletteCountSliderProps) {
     const [draft, setDraft] = useState(value);
+    const frameRef = useRef(0);
     useEffect(() => { setDraft(value); }, [value]);
+    useEffect(() => () => { if (frameRef.current) cancelAnimationFrame(frameRef.current); }, []);
+    const scheduleCommit = (next: number) => {
+        if (frameRef.current) cancelAnimationFrame(frameRef.current);
+        // Rebuild the palette at most once per frame during a drag; the thumb
+        // (draft) still updates every tick so it never feels stuck.
+        frameRef.current = requestAnimationFrame(() => { frameRef.current = 0; onCommit(next); });
+    };
     return (
         <>
             <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--accent-primary)', minWidth: '94px', fontWeight: 600 }}>
@@ -101,14 +109,16 @@ const PaletteCountSlider = React.memo(function PaletteCountSlider({ value, onCom
             </Typography>
             <Slider
                 value={draft}
-                /* Update the thumb position immediately, then regenerate the
-                   palette in a microtask so a fast drag never blocks the thumb
-                   (it used to only catch up on release). */
                 onChange={(_, v) => {
                     const next = Array.isArray(v) ? v[0] : v;
                     if (next === draft) return;
                     setDraft(next);
-                    queueMicrotask(() => onCommit(next));
+                    scheduleCommit(next);
+                }}
+                onChangeCommitted={(_, v) => {
+                    const next = Array.isArray(v) ? v[0] : v;
+                    if (frameRef.current) { cancelAnimationFrame(frameRef.current); frameRef.current = 0; }
+                    onCommit(next);
                 }}
                 min={1}
                 max={20}
@@ -264,37 +274,37 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
         >
             <Box className="paint-palette-strip" sx={{ padding: '6px 16px 2px 16px', display: 'flex', gap: 1, height: '30px', alignItems: 'stretch', background: isMinecraftStyle ? '#353535' : 'transparent' }}>
                 {palette.map((color, idx) => (
-                    <Tooltip key={idx} title={`Stop: ${Math.round(color.time * 100)}%`}>
-                        <Box
-                            sx={{
-                                flex: 1, background: color.ToHEX(), border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                                cursor: 'pointer', transition: 'all 0.2s',
-                                '&:hover': { border: '1px solid var(--accent-primary)', transform: 'translateY(-1px)', boxShadow: '0 2px 8px rgba(0,0,0,.3)' },
-                            }}
-                            onClick={(event) => {
-                                const startAlpha = color.vec4?.[3] ?? 1;
-                                // Both the hex commit and the alpha slider mutate stop `idx`.
-                                const patchStop = (mutate: (h: ColorHandler) => void) => {
-                                    setPalette((prev) => {
-                                        if (!Array.isArray(prev) || !prev[idx]) return prev;
-                                        const current = prev[idx];
-                                        const next = [...prev];
-                                        const updated = new ColorHandler(current?.ToVec4?.() || current?.vec4 || [0.5, 0.5, 0.5, 1]);
-                                        mutate(updated);
-                                        updated.time = current?.time ?? (prev.length === 1 ? 0 : idx / (prev.length - 1));
-                                        next[idx] = updated;
-                                        return next;
-                                    });
-                                };
-                                openColorPicker(
-                                    event,
-                                    color.ToHEX(),
-                                    (hex) => patchStop((h) => h.InputHex(hex)),
-                                    { alpha: startAlpha, onAlpha: (a) => patchStop((h) => { h.vec4[3] = a; }) },
-                                );
-                            }}
-                        />
-                    </Tooltip>
+                    <Box
+                        key={idx}
+                        title={`Stop: ${Math.round(color.time * 100)}%`}
+                        sx={{
+                            flex: 1, background: color.ToHEX(), border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                            cursor: 'pointer', transition: 'all 0.2s',
+                            '&:hover': { border: '1px solid var(--accent-primary)', transform: 'translateY(-1px)', boxShadow: '0 2px 8px rgba(0,0,0,.3)' },
+                        }}
+                        onClick={(event) => {
+                            const startAlpha = color.vec4?.[3] ?? 1;
+                            // Both the hex commit and the alpha slider mutate stop `idx`.
+                            const patchStop = (mutate: (h: ColorHandler) => void) => {
+                                setPalette((prev) => {
+                                    if (!Array.isArray(prev) || !prev[idx]) return prev;
+                                    const current = prev[idx];
+                                    const next = [...prev];
+                                    const updated = new ColorHandler(current?.ToVec4?.() || current?.vec4 || [0.5, 0.5, 0.5, 1]);
+                                    mutate(updated);
+                                    updated.time = current?.time ?? (prev.length === 1 ? 0 : idx / (prev.length - 1));
+                                    next[idx] = updated;
+                                    return next;
+                                });
+                            };
+                            openColorPicker(
+                                event,
+                                color.ToHEX(),
+                                (hex) => patchStop((h) => h.InputHex(hex)),
+                                { alpha: startAlpha, onAlpha: (a) => patchStop((h) => { h.vec4[3] = a; }) },
+                            );
+                        }}
+                    />
                 ))}
             </Box>
 
@@ -302,7 +312,7 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
                     <PaletteCountSlider value={colorCount} onCommit={handleColorCountChange} />
                 </Box>
-                <Box sx={{ display: 'flex', gap: 1, ml: 'auto' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, ml: 'auto' }}>
                     <button onClick={() => setManagerOpen(true)} className="dl-btn dl-btn--primary dl-btn--sm">
                         Palette Manager
                     </button>
