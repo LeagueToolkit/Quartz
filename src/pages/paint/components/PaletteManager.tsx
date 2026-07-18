@@ -78,17 +78,12 @@ const modalStyles: Record<string, React.CSSProperties> = {
     overlay: { position: 'fixed', inset: 0, zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' },
     backdrop: { position: 'absolute', inset: 0, background: 'color-mix(in oklab, black 60%, transparent)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' },
     // Height flexes to content but never taller than the viewport (minus overlay
-    // padding), so short windows don't clip the header/footer.
+    // padding), so short windows don't clip content.
     modal: { position: 'relative', width: '100%', maxWidth: 860, height: 'auto', maxHeight: 'min(720px, 100%)', display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: 'var(--dl-shadow-lg)', overflow: 'hidden' },
     accentBar: { height: 3, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-primary))', backgroundSize: '200% 100%' },
     body: { padding: 20, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: 0 },
-    header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
-    title: { fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-primary)', margin: 0, fontFamily: 'var(--font-mono)' },
-    closeBtn: { width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--text-muted)', border: '1px solid var(--border)', background: 'var(--bg-tertiary)', cursor: 'pointer', transition: 'all var(--motion-fast)', outline: 'none' },
     section: { borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', padding: 14, marginBottom: 12 },
-    sectionTitle: { color: 'var(--accent-primary)', fontSize: '0.76rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: 0, marginBottom: 10, fontFamily: 'var(--font-mono)' },
     input: { width: '100%', boxSizing: 'border-box', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', padding: '8px 12px', fontSize: '0.82rem', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', outline: 'none', transition: 'all var(--motion-fast)' },
-    footer: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' },
 };
 
 
@@ -330,28 +325,16 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
                     <div style={modalStyles.modal} onClick={(e) => e.stopPropagation()}>
                         <div style={modalStyles.accentBar} />
                         <div style={modalStyles.body}>
-                            <div style={modalStyles.header}>
-                                <h2 style={modalStyles.title}>Palette Manager</h2>
-                                <button onClick={() => setManagerOpen(false)} style={modalStyles.closeBtn}>{'✕'}</button>
-                            </div>
-
-                            <div style={modalStyles.section}>
-                                <h3 style={modalStyles.sectionTitle}>Save Current</h3>
-                                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                                    <input type="text" value={paletteName} onChange={(e) => setPaletteName(e.target.value)} placeholder="Palette name…" style={modalStyles.input} />
-                                    <button onClick={handleSaveCurrent} className="dl-btn dl-btn--primary dl-btn--sm" style={{ whiteSpace: 'nowrap' }}>
-                                        <span className="dl-icon"><SaveIcon style={{ fontSize: 14 }} /></span> Save Current
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div style={modalStyles.section}>
-                                <h3 style={modalStyles.sectionTitle}>Library Actions</h3>
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    <button onClick={handleImportJson} className="dl-btn dl-btn--primary dl-btn--sm">
-                                        <span className="dl-icon"><UploadFileIcon style={{ fontSize: 14 }} /></span> Import JSON
-                                    </button>
-                                </div>
+                            {/* Single compact action bar: name + Save + Import, no wasted
+                               titled sections. Backdrop click closes the modal. */}
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                                <input type="text" value={paletteName} onChange={(e) => setPaletteName(e.target.value)} placeholder="Palette name…" style={{ ...modalStyles.input, flex: 1 }} />
+                                <button onClick={handleSaveCurrent} className="dl-btn dl-btn--primary dl-btn--sm" style={{ whiteSpace: 'nowrap' }}>
+                                    <span className="dl-icon"><SaveIcon style={{ fontSize: 14 }} /></span> Save
+                                </button>
+                                <button onClick={handleImportJson} className="dl-btn dl-btn--secondary dl-btn--sm" style={{ whiteSpace: 'nowrap' }}>
+                                    <span className="dl-icon"><UploadFileIcon style={{ fontSize: 14 }} /></span> Import JSON
+                                </button>
                             </div>
 
                             <div style={{ ...modalStyles.section, marginBottom: 0, padding: 0, overflow: 'hidden', flex: '1 1 auto', minHeight: 160, display: 'flex', flexDirection: 'column' }}>
@@ -384,10 +367,6 @@ const PaletteManager: React.FC<PaletteManagerProps> = ({
                                         </div>
                                     ))}
                                 </div>
-                            </div>
-
-                            <div style={modalStyles.footer}>
-                                <button onClick={() => setManagerOpen(false)} className="dl-btn dl-btn--secondary dl-btn--sm">Close</button>
                             </div>
                         </div>
                     </div>
