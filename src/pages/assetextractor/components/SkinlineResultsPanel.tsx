@@ -121,10 +121,10 @@ export function SkinlineResultsPanel({
                                         )}
                                     </div>
 
-                                    <span className="dl-badge dl-badge--success" style={{ position: 'absolute', top: 8, left: 40 }}>{champion.name}</span>
+                                    <span className="dl-badge dl-badge--success" style={{ position: 'absolute', top: 40, left: 8 }}>{champion.name}</span>
 
                                     {isSelected && (
-                                        <span className="dl-badge" style={{ position: 'absolute', top: 8, right: 8 }}>
+                                        <span className="dl-badge" style={{ position: 'absolute', top: 8, left: 40 }}>
                                             <span className="dl-badge__dot" />SELECTED
                                         </span>
                                     )}
@@ -132,7 +132,7 @@ export function SkinlineResultsPanel({
                                     {isPreparing && (
                                         <span
                                             className="dl-badge dl-badge--warn"
-                                            style={{ position: 'absolute', top: 40, right: 8 }}
+                                            style={{ position: 'absolute', top: 64, left: 8 }}
                                             title={extractionProgress[skinKey] || 'Preparing skin assets'}
                                         >
                                             <span className="dl-badge__dot" />Preparing

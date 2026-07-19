@@ -1,0 +1,34 @@
+.q-tooltip-trigger {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+}
+
+.q-tooltip {
+    position: fixed;
+    z-index: 100010;
+    max-width: min(260px, calc(100vw - 12px));
+    padding: 7px 10px;
+    pointer-events: none;
+    border: 1px solid color-mix(in oklab, var(--border) 86%, var(--text-muted));
+    border-radius: var(--radius-sm);
+    background: color-mix(in oklab, var(--bg-secondary) 96%, black);
+    color: var(--text-primary);
+    box-shadow: var(--dl-shadow-md, 0 8px 20px rgba(0, 0, 0, .4));
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    animation: q-tooltip-in 140ms ease-out both;
+}
+
+@keyframes q-tooltip-in {
+    from { opacity: 0; transform: translateY(-3px) scale(.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .q-tooltip { animation: none; }
+}

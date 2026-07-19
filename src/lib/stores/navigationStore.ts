@@ -8,6 +8,7 @@ export type Page =
     | 'port'
     | 'bineditor'
     | 'assetextractor'
+    | 'wadexplorer'
     | 'imgrecolor'
     | 'upscale'
     | 'rgba'

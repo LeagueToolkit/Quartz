@@ -9,6 +9,7 @@ pub mod hash_extract;
 pub mod jade;
 pub mod noskinlite;
 pub mod ritoshark_bridge;
+pub mod sort_vfx;
 pub mod split;
 
 // Re-export the ritoshark-backed BIN read/write helpers from the bridge.
@@ -44,3 +45,4 @@ pub use noskinlite::run as noskinlite;
 
 // Re-export batch-split-VFX (right-click "Batch Split VFX" — trigger-emitter rewrite)
 pub use batch_split_vfx::{run as batch_split_vfx, BatchSplitResult};
+pub use sort_vfx::{sort_vfx_systems, SortVfxReport};

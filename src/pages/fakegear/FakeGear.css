@@ -613,7 +613,7 @@
     flex-shrink: 0;
     box-sizing: border-box;
     border-top: 1px solid var(--border);
-    background: var(--bg-primary);
+    background: color-mix(in oklab, var(--bg-secondary) 94%, transparent);
 }
 
 .fakegear-bottom-bar__status {

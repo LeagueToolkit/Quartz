@@ -149,6 +149,21 @@ pub fn model_of(id: SessionId) -> Result<EditorModel> {
     with_session(id, |s| project::project_all(&s.bins))
 }
 
+/// Reparse this session when one of its source BINs changed externally.
+/// External disk state becomes the new restore baseline and clears history.
+pub fn reload_if_changed(id: SessionId) -> Result<Option<EditorModel>> {
+    with_session(id, |session| -> Result<Option<EditorModel>> {
+        let Some(bins) = linked_bins::reload_if_changed(&session.bins)? else {
+            return Ok(None);
+        };
+        session.initial = bins.iter().map(|bin| bin.tree.clone()).collect();
+        session.bins = bins;
+        session.undo.clear();
+        session.redo.clear();
+        Ok(Some(project::project_all(&session.bins)))
+    })?
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum StructuralEdit {

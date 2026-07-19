@@ -44,7 +44,12 @@ export function LoadingSkeletonView({ sidebarWidth = 256 }: { sidebarWidth?: num
     const stagger = (i: number) => ['', 'ae-skel--d1', 'ae-skel--d2', 'ae-skel--d3'][i % 4];
 
     return (
-        <div className="flex" style={{ height: '100%', minHeight: 0 }}>
+        // Mirror the real page's root structure (column wrapper -> flex row) so
+        // React reconciles the sidebar/divider/main in place when the champion
+        // list arrives instead of tearing down and remounting the whole tree
+        // (which is what made the page flash + reflow on load).
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div className="flex" style={{ flex: 1, minHeight: 0 }}>
             {/* Sidebar skeleton */}
             <aside className="ae-sb" style={{ width: sidebarWidth }} aria-hidden="true">
                 {/* Category tabs */}
@@ -78,10 +83,17 @@ export function LoadingSkeletonView({ sidebarWidth = 256 }: { sidebarWidth?: num
             {/* Resize handle placeholder (matches the real 8px divider) */}
             <div style={{ width: 8, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.06)', borderRight: '1px solid rgba(255,255,255,0.06)' }} />
 
-            {/* Main area keeps the real empty state — no champion selected yet. */}
-            <main className="flex-1" style={{ minWidth: 0, padding: '12px 16px 16px', overflow: 'hidden' }}>
-                <NoChampionSelectedView loading />
+            {/* Main area keeps the real empty state — no champion selected yet.
+                Same classes/padding + stable gutter as the loaded <main> so the
+                swap doesn't shift when a scrollbar appears. */}
+            <main className="flex-1 overflow-y-auto relative" style={{ minWidth: 0, padding: '12px 16px 16px', scrollbarGutter: 'stable' }}>
+                <NoChampionSelectedView />
             </main>
+          </div>
+          {/* Placeholder for the real SelectionActionBar so the content row is the
+              same height before and after load — otherwise the bar pops in on
+              load and shoves everything up (the stutter). */}
+          <div className="ae-bottom-bar" aria-hidden="true" />
         </div>
     );
 }
@@ -99,13 +111,26 @@ export function ErrorStateView({ error, onRetry }: { error: string; onRetry: () 
     );
 }
 
-export function NoChampionSelectedView({ loading }: { loading: boolean }) {
+export function NoChampionSelectedView() {
     return (
         <div style={{ ...centerWrap, height: '100%' }}>
-            <div style={{ textAlign: 'center' }}>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                {/* Bare icon — no tile, so it matches the other empty states. */}
+                <span
+                    aria-hidden="true"
+                    style={{
+                        width: 44, height: 52, display: 'block', marginBottom: 15,
+                        backgroundColor: 'var(--accent-primary)',
+                        WebkitMaskImage: 'url(/champion.svg)', maskImage: 'url(/champion.svg)',
+                        WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+                        WebkitMaskPosition: 'center', maskPosition: 'center',
+                        WebkitMaskSize: 'contain', maskSize: 'contain',
+                    }}
+                />
                 <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 8px', color: 'var(--text-primary)' }}>Select a Champion</h2>
+                {/* The skeleton view covers the loading state, so no "Loading…" line
+                    here — it used to flash in and reflow the centered column. */}
                 <p style={{ color: 'var(--text-muted)', margin: 0 }}>Choose a champion from the sidebar to view their skins</p>
-                {loading && <p style={{ color: 'var(--accent-primary)', marginTop: 8 }}>Loading champions...</p>}
             </div>
         </div>
     );

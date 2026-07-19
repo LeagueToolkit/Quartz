@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, CircularProgress, List, ListItem, Typography } from '@mui/material';
-import { ChevronRight as ChevronRightIcon, ExpandMore as ExpandMoreIcon, Check as CheckIcon, CheckBox as CheckBoxIcon, Clear as ClearIcon } from '@mui/icons-material';
+import { ChevronRight as ChevronRightIcon, ExpandMore as ExpandMoreIcon, Check as CheckIcon, CheckBox as CheckBoxIcon, Clear as ClearIcon, Settings as SettingsIcon } from '@mui/icons-material';
 import { groupReferencedFiles } from '../utils/referencedFiles';
 import type { ScannedData, ScannedEntry } from '../utils/types';
 
@@ -12,6 +12,7 @@ interface EntriesPanelProps {
     selectedEntries: Set<string>;
     expandedFilePaths: Set<string>;
     appliedPrefixes: Map<string, string>;
+    globalPrefix: string;
     showMissingOnly: boolean;
     setShowMissingOnly: (value: boolean) => void;
     selectedEntriesSize: number;
@@ -21,6 +22,9 @@ interface EntriesPanelProps {
     handleEntryExpand: (entryHash: string) => void;
     handleEntrySelect: (entryHash: string) => void;
     handleFilePathExpand: (filePath: string) => void;
+    settingsExpanded: boolean;
+    setSettingsExpanded: (expanded: boolean) => void;
+    setSettingsAutoOpened: (value: boolean) => void;
 }
 
 const EntriesPanel = React.memo(function EntriesPanel({
@@ -31,6 +35,7 @@ const EntriesPanel = React.memo(function EntriesPanel({
     selectedEntries,
     expandedFilePaths,
     appliedPrefixes,
+    globalPrefix,
     showMissingOnly,
     setShowMissingOnly,
     selectedEntriesSize,
@@ -40,6 +45,9 @@ const EntriesPanel = React.memo(function EntriesPanel({
     handleEntryExpand,
     handleEntrySelect,
     handleFilePathExpand,
+    settingsExpanded,
+    setSettingsExpanded,
+    setSettingsAutoOpened,
 }: EntriesPanelProps) {
     return (
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -107,6 +115,19 @@ const EntriesPanel = React.memo(function EntriesPanel({
                         Show Missing Files Only
                     </span>
                 </label>
+
+                <button
+                    type="button"
+                    className="dl-btn dl-btn--icon dl-btn--sm dl-btn--secondary"
+                    onClick={() => {
+                        setSettingsExpanded(!settingsExpanded);
+                        setSettingsAutoOpened(false);
+                    }}
+                    data-bumpath-settings
+                    title="Bumpath settings"
+                >
+                    <span className="dl-icon"><SettingsIcon /></span>
+                </button>
             </Box>
 
             <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
@@ -202,7 +223,7 @@ const EntriesPanel = React.memo(function EntriesPanel({
                                                             whiteSpace: 'nowrap',
                                                         }}
                                                     >
-                                                        {appliedPrefixes.get(entryHash) || entryData.prefix || 'No Prefix'}
+                                                        {appliedPrefixes.get(entryHash) || globalPrefix.trim() || entryData.prefix || 'bum'}
                                                     </Typography>
                                                 </Box>
                                             </Box>

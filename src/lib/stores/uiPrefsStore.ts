@@ -14,6 +14,7 @@ export const PAGE_DEFAULTS: Partial<Record<Page, boolean>> = {
     tools: false,
     filehandler: false,
     soundbanks: true,
+    wadexplorer: true,
     bumpath: false,
     aniport: false,
     fakegear: false,
@@ -29,6 +30,7 @@ export const PAGE_LABELS: { page: Page; label: string }[] = [
     { page: 'tools', label: 'Tools' },
     { page: 'filehandler', label: 'File Randomizer' },
     { page: 'soundbanks', label: 'Sound Banks' },
+    { page: 'wadexplorer', label: 'WAD Explorer' },
     { page: 'bumpath', label: 'Bumpath' },
     { page: 'aniport', label: 'AniPort' },
     { page: 'fakegear', label: 'FakeGear' },
@@ -96,6 +98,8 @@ interface UiPrefs {
     showGithubToken: boolean;
     // Recently opened bins (Paint / Bin Editor share this list)
     recentBins: RecentBin[];
+    // WAD Explorer: WADs the user opened via "Open WADs" (not indexed game files).
+    recentWads: RecentBin[];
     // Port keeps a separate recent list per column.
     recentTargetBins: RecentBin[];
     recentDonorBins: RecentBin[];
@@ -106,6 +110,8 @@ interface UiPrefs {
     setPageVisible: (page: Page, visible: boolean) => void;
     pushRecentBin: (path: string) => void;
     removeRecentBin: (path: string) => void;
+    pushRecentWad: (path: string) => void;
+    removeRecentWad: (path: string) => void;
     /* Slot-scoped variants for Port's Target / Donor columns. */
     pushRecentBinFor: (slot: 'target' | 'donor', path: string) => void;
     removeRecentBinFor: (slot: 'target' | 'donor', path: string) => void;
@@ -152,6 +158,7 @@ export const useUiPrefsStore = create<UiPrefs>()(
             githubRepoUrl: 'https://github.com/FrogCsLoL/Vfx-Hub-Rust',
             showGithubToken: false,
             recentBins: [],
+            recentWads: [],
             recentTargetBins: [],
             recentDonorBins: [],
             recentPortDonors: [],
@@ -169,6 +176,17 @@ export const useUiPrefsStore = create<UiPrefs>()(
                 }),
             removeRecentBin: (path) =>
                 set((s) => ({ recentBins: s.recentBins.filter((b) => b.path !== path) })),
+            pushRecentWad: (path) =>
+                set((s) => {
+                    const name = path.split(/[\\/]/).pop() || path;
+                    const next = [
+                        { path, name, lastOpened: new Date().toISOString() },
+                        ...s.recentWads.filter((b) => b.path !== path),
+                    ].slice(0, RECENT_BINS_MAX);
+                    return { recentWads: next };
+                }),
+            removeRecentWad: (path) =>
+                set((s) => ({ recentWads: s.recentWads.filter((b) => b.path !== path) })),
             pushRecentBinFor: (slot, path) =>
                 set((s) => {
                     const key = RECENT_KEY[slot];

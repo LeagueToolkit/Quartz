@@ -7,6 +7,7 @@ import { Settings } from '@/pages/Settings';
 import { Rgba } from '@/pages/Rgba';
 import BinEditorV2 from '@/pages/BinEditorV2';
 import AssetExtractor from '@/pages/AssetExtractor';
+import WadExplorer from '@/pages/WadExplorer';
 import FileRandomizer from '@/pages/FileRandomizer';
 import Paint from '@/pages/Paint';
 import Port from '@/pages/Port';
@@ -23,6 +24,7 @@ import { EffectsLayer } from '@/components/effects/EffectsLayer';
 import { FileExplorerHost } from '@/components/explorer';
 import { ModelInspectHost } from '@/components/model-inspect/ModelInspectHost';
 import { openModelInspect } from '@/lib/model/modelInspectEvent';
+import { UpdateShowcase } from '@/components/update/UpdateShowcase';
 
 const TITLES: Record<Page, string> = {
     home: 'Home',
@@ -30,6 +32,7 @@ const TITLES: Record<Page, string> = {
     port: 'Port',
     bineditor: 'Bin Editor',
     assetextractor: 'Asset Extractor',
+    wadexplorer: 'WAD Explorer',
     imgrecolor: 'Image Recolor',
     upscale: 'Upscale',
     rgba: 'RGBA',
@@ -47,7 +50,7 @@ const TITLES: Record<Page, string> = {
    should fill the work area with no outer frame. Content/card pages keep the
    default p-6 gutter. */
 const FULL_BLEED_PAGES = new Set<Page>([
-    'home', 'paint', 'bineditor', 'assetextractor', 'port', 'soundbanks', 'fakegear', 'aniport', 'particlerandomizer', 'upscale', 'rgba', 'imgrecolor', 'bumpath',
+    'home', 'paint', 'bineditor', 'assetextractor', 'wadexplorer', 'port', 'soundbanks', 'fakegear', 'aniport', 'particlerandomizer', 'upscale', 'rgba', 'imgrecolor', 'bumpath',
 ]);
 
 function PageView({ page }: { page: Page }) {
@@ -57,6 +60,7 @@ function PageView({ page }: { page: Page }) {
         case 'rgba': return <Rgba />;
         case 'bineditor': return <BinEditorV2 />;
         case 'assetextractor': return <AssetExtractor />;
+        case 'wadexplorer': return <WadExplorer />;
         case 'filehandler': return <FileRandomizer />;
         case 'paint': return <Paint />;
         case 'port': return <Port />;
@@ -106,6 +110,7 @@ export function App() {
             </div>
             <FileExplorerHost onInspect={(entry) => openModelInspect(entry.path)} />
             <ModelInspectHost />
+            <UpdateShowcase />
         </div>
     );
 }

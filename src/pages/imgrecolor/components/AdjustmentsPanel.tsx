@@ -1,4 +1,5 @@
-import { Box, Typography, Slider, Checkbox } from '@mui/material';
+import { Slider } from '@mui/material';
+import { Switch as DlSwitch } from '@/components/settings/primitives';
 import { sliderSx } from './sliderSx';
 
 interface AdjustSliderProps {
@@ -11,25 +12,17 @@ interface AdjustSliderProps {
     onChange: (v: number) => void;
 }
 
-/* One labeled adjustment slider (label + value chip + track). Replaces the four
-   near-identical copies the page used to inline. */
+/* One labeled adjustment slider (label + value chip + track), Design Lab styled
+   via .imgrecolor-adjust__* classes. Replaces the four inlined MUI copies. */
 function AdjustSlider({ label, value, display, min, max, disabled, onChange }: AdjustSliderProps) {
     return (
-        <Box sx={{ marginBottom: '20px', flexShrink: 0 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <Typography sx={{ color: 'var(--text-secondary)', fontWeight: 600, fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
-                    {label}
-                </Typography>
-                <Typography sx={{
-                    color: 'var(--accent-primary)', fontWeight: 600, fontSize: '12px', fontFamily: 'var(--font-mono)',
-                    background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '3px 7px',
-                    borderRadius: 'var(--radius-sm)', minWidth: '46px', textAlign: 'center',
-                }}>
-                    {display}
-                </Typography>
-            </Box>
+        <div className="imgrecolor-adjust__row">
+            <div className="imgrecolor-adjust__row-top">
+                <span className="imgrecolor-adjust__label">{label}</span>
+                <span className="imgrecolor-adjust__value">{display}</span>
+            </div>
             <Slider value={value} onChange={(_, v) => onChange(v as number)} min={min} max={max} disabled={disabled} sx={sliderSx} />
-        </Box>
+        </div>
     );
 }
 
@@ -42,21 +35,15 @@ export interface AdjustmentsPanelProps {
     preserveOriginalColors: boolean; setPreserveOriginalColors: (v: boolean) => void;
 }
 
-/* Left-side Color Adjustments panel — Upscale-sidebar styling (blue uppercase
-   header + divider). */
+/* Left-side Color Adjustments panel — Design Lab sidebar styling (uppercase
+   tracked section header + hairline rule, chip'd value readouts, DlSwitch). */
 export function AdjustmentsPanel(props: AdjustmentsPanelProps) {
     const { disabled, preserveOriginalColors, setPreserveOriginalColors } = props;
     return (
         <>
-            {/* Header — larger than the slider labels, accent-tinted, with a divider rule. */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-                <span style={{
-                    fontSize: '15px', fontWeight: 800, letterSpacing: '0.04em',
-                    color: 'color-mix(in srgb, var(--accent-primary) 75%, white 22%)', whiteSpace: 'nowrap',
-                }}>
-                    Color Adjustments
-                </span>
-                <div style={{ flex: 1, height: '1px', background: 'var(--border)' }} />
+            <div className="imgrecolor-adjust__head">
+                <span>Color Adjustments</span>
+                <div className="rule" />
             </div>
 
             <AdjustSlider label="Target Hue" value={props.hueShift} display={`${props.hueShift}°`} min={0} max={360} disabled={disabled} onChange={props.setHueShift} />
@@ -64,23 +51,12 @@ export function AdjustmentsPanel(props: AdjustmentsPanelProps) {
             <AdjustSlider label="Lightness" value={props.lightnessAdjust} display={`${props.lightnessAdjust}%`} min={-100} max={100} disabled={disabled} onChange={props.setLightnessAdjust} />
             <AdjustSlider label="Opacity" value={props.opacity} display={`${props.opacity}%`} min={0} max={100} disabled={disabled} onChange={props.setOpacity} />
 
-            <Box sx={{ marginBottom: '20px', display: 'flex', alignItems: 'center', paddingLeft: '4px' }}>
-                <Checkbox
-                    checked={preserveOriginalColors}
-                    onChange={(e) => setPreserveOriginalColors(e.target.checked)}
-                    sx={{
-                        color: 'var(--text-muted)', padding: '4px', marginRight: '4px',
-                        '&.Mui-checked': { color: 'var(--accent-primary)' },
-                        '&:hover': { background: 'var(--bg-hover)' },
-                    }}
-                />
-                <Typography
-                    sx={{ color: 'var(--text-primary)', fontSize: '13px', fontFamily: 'var(--font-mono)', cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => setPreserveOriginalColors(!preserveOriginalColors)}
-                >
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
+                <DlSwitch checked={preserveOriginalColors} onChange={setPreserveOriginalColors} disabled={disabled} />
+                <span style={{ color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, userSelect: 'none' }}>
                     Preserve original colors
-                </Typography>
-            </Box>
+                </span>
+            </label>
         </>
     );
 }

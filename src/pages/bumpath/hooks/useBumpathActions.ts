@@ -13,10 +13,14 @@ interface UseBumpathActionsArgs {
     outputPath: string;
     ignoreMissing: boolean;
     combineLinked: boolean;
+    splitVfx: boolean;
+    consolidateAssets: boolean;
     sourceDirs: string[];
+    sourceBins: SourceBins;
     hashesPath: string;
     addLog: (message: string) => void;
     fetchLogs: () => Promise<void>;
+    confirmOutputMerge: (path: string) => Promise<boolean>;
     setError: (value: string | null) => void;
     setSuccess: (value: string | null) => void;
     setScannedData: (value: ScannedData | null) => void;
@@ -40,10 +44,14 @@ export default function useBumpathActions({
     outputPath,
     ignoreMissing,
     combineLinked,
+    splitVfx,
+    consolidateAssets,
     sourceDirs,
+    sourceBins,
     hashesPath,
     addLog,
     fetchLogs,
+    confirmOutputMerge,
     setError,
     setSuccess,
     setScannedData,
@@ -69,9 +77,10 @@ export default function useBumpathActions({
         }
 
         try {
+            const prefix = prefixText.trim();
             const result = await apiCall('apply-prefix', {
                 entryHashes: Array.from(selectedEntries),
-                prefix: debouncedPrefixText.trim(),
+                prefix,
             });
 
             if (!result.success) {
@@ -89,7 +98,7 @@ export default function useBumpathActions({
                     if (updatedData.entries[entryHash]) {
                         updatedData.entries[entryHash] = {
                             ...updatedData.entries[entryHash],
-                            prefix: debouncedPrefixText.trim(),
+                            prefix,
                         };
                     }
                 });
@@ -99,11 +108,11 @@ export default function useBumpathActions({
 
             const newAppliedPrefixes = new Map(appliedPrefixes);
             selectedEntries.forEach((entryHash) => {
-                newAppliedPrefixes.set(entryHash, debouncedPrefixText.trim());
+                newAppliedPrefixes.set(entryHash, prefix);
             });
             setAppliedPrefixes(newAppliedPrefixes);
 
-            setSuccess(`Applied prefix "${debouncedPrefixText}" to ${selectedEntries.size} entries`);
+            setSuccess(`Applied prefix "${prefix}" to ${selectedEntries.size} entries`);
         } catch (applyError) {
             const message = applyError instanceof Error ? applyError.message : String(applyError);
             setError('Failed to apply prefix: ' + message);
@@ -134,28 +143,37 @@ export default function useBumpathActions({
             return;
         }
 
+        if (!(await confirmOutputMerge(outputPath))) {
+            addLog('Processing cancelled: output folder already contains files');
+            return;
+        }
+
         setIsProcessing(true);
         setError(null);
-        addLog('Starting bumpath process...');
-        addLog(`Output directory: ${outputPath}`);
-        addLog(`Combine linked: ${combineLinked}`);
-        addLog(`Ignore missing: ${ignoreMissing}`);
+        addLog('Processing...');
 
         try {
             const result = await apiCall('process', {
                 folders: sourceDirs,
-                prefix: debouncedPrefixText.trim() || prefixText.trim(),
+                // The bottom field is the global fallback. Explicit prefixes
+                // applied to individual entries override it in the backend.
+                prefix: prefixText.trim() || debouncedPrefixText.trim() || 'bum',
+                selectedBinPaths: Object.entries(sourceBins)
+                    .filter(([, bin]) => bin?.selected)
+                    .map(([path, bin]) => bin.path || path),
+                entryPrefixes: Object.fromEntries(appliedPrefixes),
                 outputPath,
                 ignoreMissing,
                 combineLinked,
+                splitVfx,
+                consolidateAssets,
                 hashesPath,
             });
 
             if (result.success) {
                 const message = `Processing completed: ${result.total_files || result.processedFiles || 0} files processed`;
                 setSuccess(message);
-                addLog(message);
-                addLog(`Output: ${result.output_dir || outputPath}`);
+                addLog(`Done: ${result.total_files || result.processedFiles || 0} files`);
 
                 if (result.warnings && result.warnings.length > 0) {
                     result.warnings.forEach((warning) => addLog(`Warning: ${warning}`));
@@ -163,7 +181,6 @@ export default function useBumpathActions({
 
                 await fetchLogs();
 
-                addLog('Clearing state after successful processing...');
                 setScannedData(null);
                 setSelectedEntries(new Set());
                 setExpandedEntries(new Set());
@@ -173,9 +190,6 @@ export default function useBumpathActions({
                 setError(errorMsg);
                 addLog(`Error: ${errorMsg}`);
 
-                if (errorMsg.includes('Malformed') || errorMsg.includes('path') || errorMsg.includes('skins_skin')) {
-                    addLog('Tip: This may be caused by Windows path length limits. Try shorter folder names or move files closer to the drive root.');
-                }
             }
         } catch (processError) {
             const message = processError instanceof Error ? processError.message : String(processError);
@@ -183,9 +197,6 @@ export default function useBumpathActions({
             setError(errorMsg);
             addLog(`Error: ${errorMsg}`);
 
-            if (message.includes('path') || message.includes('ENAMETOOLONG')) {
-                addLog('Tip: Windows path length limit may be causing this. Try shorter folder names or move files closer to root.');
-            }
         } finally {
             setIsProcessing(false);
         }
@@ -193,6 +204,8 @@ export default function useBumpathActions({
         addLog,
         apiCall,
         combineLinked,
+        consolidateAssets,
+        confirmOutputMerge,
         debouncedPrefixText,
         fetchLogs,
         hashesPath,
@@ -201,6 +214,8 @@ export default function useBumpathActions({
         prefixText,
         scannedData,
         sourceDirs,
+        sourceBins,
+        splitVfx,
         setAppliedPrefixes,
         setError,
         setExpandedEntries,

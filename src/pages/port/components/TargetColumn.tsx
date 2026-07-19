@@ -4,7 +4,7 @@ import { SearchInput } from './common/Inputs';
 import { useBinFileDrop } from './common/binFileDrop';
 import PortRecentBins from './common/PortRecentBins';
 import ParticleSystemList from './ParticleSystemList/ParticleSystemList';
-import { SkeletonCardList } from '@/components/ui/Skeleton';
+import { PortSystemSkeleton } from './ParticleSystemList/PortSystemSkeleton';
 import { DropOverlay } from '@/components/ui';
 import { usePortDropZone, type PortDragPayload } from '../usePortDrag';
 import type { VfxSystem, VfxSystemMap } from '../model';
@@ -145,7 +145,7 @@ export default function TargetColumn(props: TargetColumnProps) {
             >
                 {isDragOverVfx && <DropOverlay label="Drop to add VFX system" />}
                 {binLoading ? (
-                    <SkeletonCardList count={7} />
+                    <PortSystemSkeleton isTarget />
                 ) : Object.keys(safeTargetSystems).length > 0 ? (
                     <div
                         ref={targetListRef}

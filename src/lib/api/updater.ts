@@ -1,5 +1,6 @@
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { markUpdateShowcasePending } from '@/components/update/updateShowcaseState';
 
 export interface UpdateInfo {
     available: boolean;
@@ -18,5 +19,6 @@ export async function checkForUpdate(): Promise<{ info: UpdateInfo; update: Upda
 
 export async function installUpdate(update: Update): Promise<void> {
     await update.downloadAndInstall();
+    markUpdateShowcasePending(update.version);
     await relaunch();
 }

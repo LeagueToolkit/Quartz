@@ -1,0 +1,66 @@
+.update-showcase-backdrop {
+    position: fixed; inset: 0; z-index: 13000; display: grid; place-items: center; padding: 24px;
+    background: color-mix(in oklab, #050509 76%, transparent); backdrop-filter: blur(10px);
+    animation: update-showcase-fade var(--dl-base) both;
+}
+
+.update-showcase {
+    width: min(760px, 94vw); max-height: min(760px, 90vh); display: flex; flex-direction: column; overflow: hidden;
+    border: var(--dl-border); border-radius: var(--dl-radius-lg);
+    background: color-mix(in oklab, var(--bg-secondary) 94%, transparent);
+    box-shadow: var(--dl-shadow-lg), 0 0 60px -28px color-mix(in oklab, var(--accent-primary) 65%, transparent);
+    animation: update-showcase-enter var(--dl-slow) both;
+}
+
+.update-showcase__head {
+    display: flex; align-items: center; gap: 13px; padding: 18px 22px;
+    border-bottom: var(--dl-border-soft);
+    background: linear-gradient(135deg, color-mix(in oklab, var(--accent-primary) 13%, var(--bg-tertiary)), var(--bg-secondary) 70%);
+}
+.update-showcase__logo { width: 46px; height: 46px; flex: 0 0 46px; object-fit: contain; filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent-primary) 28%, transparent)); }
+.update-showcase__heading { min-width: 0; flex: 1; }
+.update-showcase__heading h2 { margin: 0; color: var(--text-primary); font-size: 20px; letter-spacing: -.015em; }
+.update-showcase__details { display: flex; align-items: center; gap: 9px; margin-top: 4px; color: var(--text-muted); font: 10px var(--font-mono); }
+.update-showcase__details time { display: block; }
+.update-showcase__details button { appearance: none; padding: 0 0 0 9px; border: 0; border-left: var(--dl-border-soft); background: none; color: var(--text-muted); font: inherit; cursor: pointer; }
+.update-showcase__details button:hover { color: var(--accent-primary); }
+.update-showcase__head-actions { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+
+.update-showcase__body { min-height: 210px; flex: 1; padding: 22px 26px; overflow-y: auto; }
+.update-showcase__loading { height: 190px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--text-muted); font-size: 12px; }
+.update-showcase__error { padding: 14px; border: 1px solid color-mix(in oklab, var(--color-warning) 40%, var(--border)); border-radius: var(--dl-radius-sm); background: color-mix(in oklab, var(--color-warning) 9%, transparent); color: var(--text-secondary); font-size: 12px; }
+
+.update-showcase__markdown { color: var(--text-secondary); font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.update-showcase__markdown > :first-child { margin-top: 0; }
+.update-showcase__markdown > :last-child { margin-bottom: 0; }
+.update-showcase__markdown h1, .update-showcase__markdown h2, .update-showcase__markdown h3 { margin: 1.35em 0 .55em; color: var(--text-primary); line-height: 1.25; }
+.update-showcase__markdown h1 { font-size: 20px; }
+.update-showcase__markdown h2 { padding-bottom: 7px; border-bottom: var(--dl-border-soft); font-size: 16px; }
+.update-showcase__markdown h3 { font-size: 14px; }
+.update-showcase__markdown a { color: var(--accent-primary); text-decoration: none; cursor: pointer; }
+.update-showcase__markdown a:hover { text-decoration: underline; }
+/* Explicit list markers + outside positioning so bullets/numbers always show
+   and are not clipped by the container. The webview UA / any upstream reset can
+   otherwise leave list-style unset, which is why the "dots" went missing. */
+.update-showcase__markdown ul, .update-showcase__markdown ol { margin: 8px 0; padding-left: 24px; list-style-position: outside; }
+.update-showcase__markdown ul { list-style-type: disc; }
+.update-showcase__markdown ol { list-style-type: decimal; }
+.update-showcase__markdown ul ul { list-style-type: circle; }
+.update-showcase__markdown ul ul ul { list-style-type: square; }
+.update-showcase__markdown li { margin: 4px 0; display: list-item; }
+/* GitHub task lists ([ ] / [x]) keep the checkbox and drop the bullet. */
+.update-showcase__markdown li.task-list-item { list-style-type: none; }
+.update-showcase__markdown blockquote { margin: 14px 0; padding: 8px 13px; border-left: 3px solid var(--accent-primary); background: color-mix(in oklab, var(--accent-primary) 7%, transparent); color: var(--text-muted); }
+.update-showcase__markdown code { padding: 2px 5px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-primary); color: color-mix(in oklab, var(--accent-primary) 65%, var(--text-primary)); font: 11px var(--font-mono); }
+.update-showcase__markdown pre { padding: 13px; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-primary); }
+.update-showcase__markdown pre code { padding: 0; border: 0; background: transparent; }
+.update-showcase__markdown table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.update-showcase__markdown th, .update-showcase__markdown td { padding: 7px 9px; border: 1px solid var(--border); text-align: left; }
+.update-showcase__markdown th { background: var(--bg-tertiary); color: var(--text-primary); }
+.update-showcase__markdown img { display: block; max-width: 100%; height: auto; margin: 14px auto; border: 1px solid var(--border); border-radius: 9px; }
+.update-showcase__markdown input[type='checkbox'] { accent-color: var(--accent-primary); }
+
+
+@keyframes update-showcase-fade { from { opacity: 0; } }
+@keyframes update-showcase-enter { from { opacity: 0; transform: translateY(12px) scale(.975); } }
+@media (prefers-reduced-motion: reduce) { .update-showcase-backdrop, .update-showcase { animation: none; } }

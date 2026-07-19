@@ -39,6 +39,14 @@ export function ModelInspectHost() {
             key={request.id}
             path={request.path}
             initialTexturePath={request.texturePath}
+            initialTexturePaths={request.texturePaths}
+            initialHiddenGroups={request.hiddenGroups}
+            modelScale={request.modelScale}
+            anmPaths={request.anmPaths}
+            anmClips={request.anmClips}
+            chromaOptions={request.chromaOptions}
+            selectedChromaId={request.selectedChromaId}
+            onSelectChroma={request.onSelectChroma}
             onClose={close}
         />
     );

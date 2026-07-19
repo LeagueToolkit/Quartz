@@ -11,7 +11,8 @@ use serde::Serialize;
 
 use crate::error::{Error, Result};
 
-/// One joint of a skeleton, flattened for the mask viewer.
+/// One joint of a skeleton. Carries the local + inverse-bind transforms and the
+/// joint-name hash so the model viewer can compute skinning matrices per frame.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JointInfo {
@@ -19,6 +20,16 @@ pub struct JointInfo {
     pub name: String,
     /// Parent joint id, or -1 for a root joint.
     pub parent_id: i16,
+    /// Joint-name hash used to match animation tracks to this joint.
+    pub hash: u32,
+    pub local_translation: [f32; 3],
+    pub local_scale: [f32; 3],
+    /// Quaternion `[x, y, z, w]`.
+    pub local_rotation: [f32; 4],
+    pub inverse_bind_translation: [f32; 3],
+    pub inverse_bind_scale: [f32; 3],
+    /// Quaternion `[x, y, z, w]`.
+    pub inverse_bind_rotation: [f32; 4],
 }
 
 /// A parsed skeleton: joint list plus the skeleton/asset names.
@@ -28,6 +39,8 @@ pub struct SkeletonInfo {
     pub name: String,
     pub asset_name: String,
     pub joints: Vec<JointInfo>,
+    /// Maps a mesh's local bone-influence index to a joint id.
+    pub influences: Vec<u16>,
 }
 
 /// Parse a skeleton from raw .skl bytes into its joint list.
@@ -42,6 +55,13 @@ pub fn read_skeleton(bytes: &[u8]) -> Result<SkeletonInfo> {
             id: j.id,
             name: j.name.clone(),
             parent_id: j.parent_id,
+            hash: j.hash,
+            local_translation: j.local_translation.to_array(),
+            local_scale: j.local_scale.to_array(),
+            local_rotation: j.local_rotation.to_array(),
+            inverse_bind_translation: j.inverse_bind_translation.to_array(),
+            inverse_bind_scale: j.inverse_bind_scale.to_array(),
+            inverse_bind_rotation: j.inverse_bind_rotation.to_array(),
         })
         .collect();
 
@@ -49,6 +69,7 @@ pub fn read_skeleton(bytes: &[u8]) -> Result<SkeletonInfo> {
         name: skeleton.name.clone(),
         asset_name: skeleton.asset.clone(),
         joints,
+        influences: skeleton.influences.clone(),
     })
 }
 

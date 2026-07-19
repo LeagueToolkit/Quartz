@@ -27,13 +27,16 @@
     z-index: 1;
 }
 
-/* Left: Color Adjustments panel (Upscale-sidebar styling). Slim, 1px divider. */
+/* Left: Color Adjustments panel — Design Lab sidebar styling (surface tint +
+   1px seam), matching the WAD Explorer / Asset Extractor sidebars so it reads as
+   part of the app instead of a bare floating strip. */
 .imgrecolor-adjust {
-    width: 260px;
+    width: 264px;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    background: color-mix(in oklab, var(--bg-secondary) 60%, transparent);
     border-right: 1px solid var(--border);
     transition: opacity var(--motion-base);
 }
@@ -42,14 +45,59 @@
 .imgrecolor-adjust__scroll {
     flex: 1;
     min-height: 0;
-    padding: 16px 22px;
+    padding: 18px 18px 16px;
     display: flex;
     flex-direction: column;
     overflow-y: auto;
     overflow-x: hidden;
+    scrollbar-gutter: stable;
 }
 .imgrecolor-adjust__scroll::-webkit-scrollbar { width: 4px; }
 .imgrecolor-adjust__scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+
+/* Section header — the app's uppercase, tracked, muted style with a hairline
+   rule (mirrors .wad-toolbar__label / Design Lab section titles). */
+.imgrecolor-adjust__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+.imgrecolor-adjust__head span {
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.imgrecolor-adjust__head .rule { flex: 1; height: 1px; background: var(--border); }
+
+/* One adjustment row: label + value chip above a slider. */
+.imgrecolor-adjust__row { margin-bottom: 18px; flex-shrink: 0; }
+.imgrecolor-adjust__row-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 9px;
+}
+.imgrecolor-adjust__label {
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 12px;
+}
+.imgrecolor-adjust__value {
+    color: var(--accent-primary);
+    font-weight: 650;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    min-width: 48px;
+    text-align: center;
+}
 
 /* Right: the image grid / preview / empty-state area. */
 .imgrecolor-images {
@@ -93,7 +141,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    background: var(--bg-primary);
+    background: color-mix(in oklab, var(--bg-secondary) 94%, transparent);
     border-top: 1px solid var(--border);
 }
 .imgrecolor-footer__spacer { flex: 1; min-width: 0; }

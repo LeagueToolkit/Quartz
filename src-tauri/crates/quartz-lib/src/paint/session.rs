@@ -150,6 +150,20 @@ fn with_session<R>(id: SessionId, f: impl FnOnce(&mut BinSession) -> R) -> Resul
     Ok(f(session))
 }
 
+/// Reparse this session when one of its source BINs changed externally.
+/// External disk state is authoritative, so local history is reset.
+pub fn reload_if_changed(id: SessionId) -> Result<Option<VfxModel>> {
+    with_session(id, |session| -> Result<Option<VfxModel>> {
+        let Some(bins) = linked_bins::reload_if_changed(&session.bins)? else {
+            return Ok(None);
+        };
+        session.bins = bins;
+        session.undo.clear();
+        session.redo.clear();
+        Ok(Some(session.reproject()))
+    })?
+}
+
 /// Recolor selected emitters. Snapshots for undo, mutates the tree, returns the
 /// count modified. The caller fetches refreshed colors via [`model_of`] /
 /// [`emitter_colors`] as needed.

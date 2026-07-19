@@ -195,6 +195,11 @@ export function vfxModel(sessionId: number): Promise<VfxPortModel> {
     return invokeCommand<VfxPortModel>('vfx_model', { sessionId });
 }
 
+/** Reparse the session when any loaded BIN changed outside Quartz. */
+export function vfxReloadIfChanged(sessionId: number): Promise<VfxPortModel | null> {
+    return invokeCommand<VfxPortModel | null>('vfx_reload_if_changed', { sessionId });
+}
+
 /** Write every dirty bin back to its own file. Returns the paths written.
  *  Rejects with a `STALE_FILE:` error if a file changed on disk since opening,
  *  unless `force` is true (see {@link isStaleFileError}). */

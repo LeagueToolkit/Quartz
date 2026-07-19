@@ -117,12 +117,33 @@
     flex: 1;
     min-width: 0;
 }
+/* The folder icon is a reveal-in-file-manager button; strip button chrome so it
+   looks like the plain icon it replaced, and give it its own hover cue. */
+.paint2-recent__reveal {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    margin: -2px;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background var(--motion-fast);
+}
+.paint2-recent__reveal:hover {
+    background: color-mix(in oklab, var(--accent-primary) 16%, transparent);
+}
 .paint2-recent__icon {
     color: var(--text-muted);
     flex-shrink: 0;
     transition: color var(--motion-fast);
 }
 .paint2-recent__item:hover .paint2-recent__icon {
+    color: var(--accent-primary);
+}
+.paint2-recent__reveal:hover .paint2-recent__icon {
     color: var(--accent-primary);
 }
 .paint2-recent__name {

@@ -211,6 +211,15 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                                 })()}
                             </span>
                             {selectedTargetSystem === system.key && isTarget && <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>✓</span>}
+                            {system.childParents.length > 0 && (
+                                <span
+                                    className="port-relation-badge port-relation-badge--child"
+                                    data-relation-tooltip={`Parent: ${system.childParents.map((parent) => `${parent.system} / ${parent.emitter}`).join(', ')}`}
+                                    title={`Child VFX of ${system.childParents.map((parent) => `${parent.system} / ${parent.emitter}`).join(', ')}`}
+                                >
+                                    CHILD
+                                </span>
+                            )}
                             <span
                                 style={{
                                     marginLeft: 'auto',

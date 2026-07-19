@@ -9,6 +9,10 @@ interface BumpathSettingsPanelProps {
     setIgnoreMissing: (value: boolean) => void;
     combineLinked: boolean;
     setCombineLinked: (value: boolean) => void;
+    splitVfx: boolean;
+    setSplitVfx: (value: boolean) => void;
+    consolidateAssets: boolean;
+    setConsolidateAssets: (value: boolean) => void;
     hideDataFolderBins: boolean;
     setHideDataFolderBins: (value: boolean) => void;
     saveSettings: (key: string, value: boolean) => void;
@@ -42,6 +46,10 @@ const BumpathSettingsPanel = React.memo(function BumpathSettingsPanel({
     setIgnoreMissing,
     combineLinked,
     setCombineLinked,
+    splitVfx,
+    setSplitVfx,
+    consolidateAssets,
+    setConsolidateAssets,
     hideDataFolderBins,
     setHideDataFolderBins,
     saveSettings,
@@ -66,6 +74,14 @@ const BumpathSettingsPanel = React.memo(function BumpathSettingsPanel({
                 {toggleRow('Combine Linked BINs to Source BINs', combineLinked, (v) => {
                     setCombineLinked(v);
                     saveSettings('BumpathCombineLinked', v);
+                })}
+                {toggleRow('Split VFX into separate BINs', splitVfx, (v) => {
+                    setSplitVfx(v);
+                    saveSettings('BumpathSplitVfx', v);
+                })}
+                {toggleRow('Organize VFX assets into particle folders', consolidateAssets, (v) => {
+                    setConsolidateAssets(v);
+                    saveSettings('BumpathConsolidateAssets', v);
                 })}
                 {toggleRow('Hide path in bin list', hideDataFolderBins, (v) => {
                     setHideDataFolderBins(v);

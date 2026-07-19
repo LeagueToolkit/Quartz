@@ -42,19 +42,19 @@ export function ChampionSkinsPanel({
     return (
         <div>
             {loadingSkins[selectedChampion.name] || championSkins.length === 0 ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>
-                    <div style={{ textAlign: 'center' }}>
-                        <div
-                            style={{
-                                width: 48, height: 48, margin: '0 auto 16px',
-                                borderRadius: '50%',
-                                border: '3px solid var(--border)',
-                                borderTopColor: 'var(--accent-primary)',
-                                animation: 'dl-spin 0.9s linear infinite',
-                            }}
-                        />
-                        <p style={{ color: 'var(--text-secondary)', margin: 0 }}>{`Loading ${selectedChampion.name} skins...`}</p>
-                    </div>
+                // Skeleton cards in the real grid so there's no layout shift when
+                // the actual skins load.
+                <div className="ae-grid">
+                    {Array.from({ length: 8 }).map((_, i) => (
+                        <div key={i} className="ae-card ae-card--skeleton" aria-hidden="true">
+                            <div className="ae-skel-media ae-skel-shimmer">
+                                <div className="ae-skel-footer">
+                                    <div className="ae-skel-line ae-skel-line--title" />
+                                    <div className="ae-skel-line ae-skel-line--id" />
+                                </div>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             ) : (
                 <div className="ae-grid">
@@ -107,7 +107,7 @@ export function ChampionSkinsPanel({
                                     )}
 
                                     {isSelected && (
-                                        <span className="dl-badge" style={{ position: 'absolute', top: 8, right: 8 }}>
+                                        <span className="dl-badge" style={{ position: 'absolute', top: 8, left: 40 }}>
                                             <span className="dl-badge__dot" />SELECTED
                                         </span>
                                     )}

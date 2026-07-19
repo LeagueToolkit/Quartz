@@ -28,7 +28,7 @@ export function RecolorFooter(p: RecolorFooterProps) {
     return (
         <Box className="imgrecolor-footer" sx={{
             height: '48px', padding: '0 16px', boxSizing: 'border-box',
-            background: 'var(--bg-primary)', borderTop: '1px solid var(--border)',
+            background: 'color-mix(in oklab, var(--bg-secondary) 94%, transparent)', borderTop: '1px solid var(--border)',
             display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0,
         }}>
             {!p.nothingLoaded && (

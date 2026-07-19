@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X as CloseIcon } from 'lucide-react';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import {
     getCDragonChampions,
     getCDragonChampionSkins,
@@ -26,7 +27,10 @@ const sanitizePrefix = (v: string) => String(v || '').trim().toLowerCase().repla
 function openYouTube(query: string) {
     const q = query.trim();
     if (!q) return;
-    try { window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ }
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+    void openUrl(url).catch(() => {
+        try { window.open(url, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ }
+    });
 }
 
 /* One modal, two modes:

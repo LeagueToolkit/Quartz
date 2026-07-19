@@ -3,7 +3,7 @@ into every asset/data reference, copying assets, and optionally combining
 linked BINs. Ported from Quartz's bumpath:repath IPC + bumpathCore.js. */
 
 use quartz_lib::bumpath::{
-    enumerate_source_bins, repath, scan_entries, RepathOptions, RepathResult,
+    enumerate_source_bins, repath_many, scan_entries, RepathOptions, RepathResult,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -18,10 +18,18 @@ pub struct BumpathOptions {
     pub output_path: String,
     #[serde(default)]
     pub selected_skin_ids: Vec<u32>,
+    #[serde(default)]
+    pub selected_bin_paths: Vec<String>,
+    #[serde(default)]
+    pub entry_prefixes: HashMap<String, String>,
     #[serde(default = "default_true")]
     pub ignore_missing: bool,
     #[serde(default = "default_true")]
     pub combine_linked: bool,
+    #[serde(default = "default_true")]
+    pub split_vfx: bool,
+    #[serde(default = "default_true")]
+    pub consolidate_assets: bool,
     /// Accepted for frontend parity; hashes are resolved via the shared LMDB.
     #[serde(default)]
     pub hashes_path: Option<String>,
@@ -39,6 +47,8 @@ pub struct BumpathResult {
     pub assets_copied: usize,
     pub missing: usize,
     pub combined: usize,
+    pub vfx_split: usize,
+    pub assets_consolidated: usize,
 }
 
 impl From<RepathResult> for BumpathResult {
@@ -49,28 +59,48 @@ impl From<RepathResult> for BumpathResult {
             assets_copied: r.assets_copied,
             missing: r.missing,
             combined: r.combined,
+            vfx_split: r.vfx_split,
+            assets_consolidated: r.assets_consolidated,
         }
     }
 }
 
-/// Repath `folder` into `options.outputPath`, applying `options`.
+/// Repath all source `folders` into `options.outputPath`, applying `options`.
 #[tauri::command]
 pub async fn bumpath_repath(
-    folder: String,
+    folders: Vec<String>,
     options: BumpathOptions,
 ) -> Result<BumpathResult, String> {
     let _ = &options.hashes_path; // resolved via the shared LMDB, kept for parity
     let output_dir = options.output_path.clone();
+    let entry_prefixes = options
+        .entry_prefixes
+        .into_iter()
+        .filter_map(|(hash, prefix)| {
+            u32::from_str_radix(hash.trim_start_matches("0x"), 16)
+                .ok()
+                .map(|value| (value, prefix))
+        })
+        .collect();
     let opts = RepathOptions {
         custom_prefix: options.prefix,
         selected_skin_ids: options.selected_skin_ids,
+        selected_bin_paths: options
+            .selected_bin_paths
+            .into_iter()
+            .map(PathBuf::from)
+            .collect(),
+        entry_prefixes,
         ignore_missing: options.ignore_missing,
         combine_linked: options.combine_linked,
+        split_vfx: options.split_vfx,
+        consolidate_assets: options.consolidate_assets,
     };
 
     // Repath is CPU/IO-bound; keep the async runtime responsive.
     tokio::task::spawn_blocking(move || {
-        repath(&PathBuf::from(&folder), &PathBuf::from(&output_dir), &opts)
+        let source_dirs: Vec<PathBuf> = folders.into_iter().map(PathBuf::from).collect();
+        repath_many(&source_dirs, &PathBuf::from(&output_dir), &opts)
             .map(BumpathResult::from)
             .map_err(|e| e.to_string())
     })

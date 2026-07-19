@@ -15,7 +15,7 @@ use crate::bin::ritoshark_bridge::read_bin;
 use crate::error::{Error, Result};
 use crate::wad;
 use ritoshark::bin::{Bin, BinValue};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Result of preparing a donor from a live skin.
@@ -32,6 +32,17 @@ pub struct DonorResult {
     pub model_path: Option<String>,
     /// Best matching diffuse texture for `model_path`, when one was extracted.
     pub model_texture_path: Option<String>,
+    /// BIN-authored per-submesh textures. `*` is the base material.
+    pub model_texture_paths: HashMap<String, String>,
+    /// Submeshes authored as hidden in `initialSubmeshToHide`.
+    pub model_hidden_submeshes: Vec<String>,
+    /// Authored SkinMeshDataProperties.SkinScale.
+    pub model_scale: f32,
+    /// Extracted `.anm` clip paths for the model (for the animation viewer).
+    pub anm_paths: Vec<String>,
+    /// Resolved clips (submesh-visibility events + sequencer queues) with anm refs
+    /// remapped to the extracted disk files.
+    pub anm_clips: Vec<crate::anim_graph::PreparedClip>,
     /// Resolved champion WAD basename (e.g. `aatrox`, `monkeyking`).
     pub champion_file_name: String,
     /// Normalized skin id actually located.
@@ -113,7 +124,7 @@ pub(crate) fn collect_assets(value: &BinValue, out: &mut HashSet<String>) {
 const PIPELINE_VERSION: u32 = 5;
 
 /// Per-skin cache root: `%TEMP%/Quartz/port-donor-cache/<champ>_skin<N>_v<V>_<tag>`.
-fn cache_root(champ: &str, skin: u32, wad_path: &Path) -> PathBuf {
+fn cache_root(champ: &str, skin: u32, chroma_id: Option<u32>, wad_path: &Path) -> PathBuf {
     let tag = std::fs::metadata(wad_path)
         .ok()
         .map(|m| {
@@ -128,10 +139,13 @@ fn cache_root(champ: &str, skin: u32, wad_path: &Path) -> PathBuf {
         })
         .unwrap_or_else(|| "w0_m0".to_string());
 
+    let selection = chroma_id
+        .map(|chroma| format!("skin{skin}_chroma{chroma}"))
+        .unwrap_or_else(|| format!("skin{skin}"));
     std::env::temp_dir()
         .join("Quartz")
         .join("port-donor-cache")
-        .join(format!("{champ}_skin{skin}_v{PIPELINE_VERSION}_{tag}"))
+        .join(format!("{champ}_{selection}_v{PIPELINE_VERSION}_{tag}"))
 }
 
 /// Read a BIN file off disk, tolerating missing/unparseable files.
@@ -157,13 +171,15 @@ pub fn prepare_donor_from_skin(
     league_path: &Path,
     champion: &str,
     skin_id: u32,
+    chroma_id: Option<u32>,
     prefix: &str,
 ) -> Result<DonorResult> {
     let champ_file = wad::normalize_champion(champion);
-    let skin = normalize_skin_id(skin_id);
+    let model_skin = normalize_skin_id(skin_id);
+    let texture_skin = normalize_skin_id(chroma_id.unwrap_or(skin_id));
     let clean_prefix = sanitize_prefix(prefix);
 
-    let temp_root = cache_root(&champ_file, skin, &league_path.join(&champ_file));
+    let temp_root = cache_root(&champ_file, model_skin, chroma_id, &league_path.join(&champ_file));
     let extract_root = temp_root.join("extracted");
 
     // Extract the skin exactly like the Asset Extractor's "skin files only" mode:
@@ -178,11 +194,11 @@ pub fn prepare_donor_from_skin(
         crate::extractor::ExtractOptions {
             league_root: league_path,
             champion,
-            skin_id: skin,
+            skin_id: model_skin,
             output_dir: &extract_root,
             include_vo: false,
             clean: true,
-            chroma_id: None,
+            chroma_id,
             preserve_hud_icons2d: false,
             skip_sfx: true,
         },
@@ -192,9 +208,9 @@ pub fn prepare_donor_from_skin(
     // Locate the extracted main skin BIN (extract_skin nests everything in an
     // auto-named wrapper folder). Its mod root — the folder holding `data/` —
     // is what finalize operates on.
-    let main_bin = find_extracted_skin_bin(&extract_root, &champ_file, skin).ok_or_else(|| {
+    let main_bin = find_extracted_skin_bin(&extract_root, &champ_file, texture_skin).ok_or_else(|| {
         Error::InvalidInput(format!(
-            "Extracted skin BIN not found for {champion} skin {skin} under {}",
+            "Extracted skin BIN not found for {champion} skin {texture_skin} under {}",
             extract_root.display()
         ))
     })?;
@@ -209,7 +225,7 @@ pub fn prepare_donor_from_skin(
     let fin = crate::extractor::finalize_extracted(crate::extractor::FinalizeOptions {
         content_dir: &content_dir,
         champion: &champ_file,
-        skin_id: skin,
+        skin_id: texture_skin,
         split_vfx: false,
         split_anm: false,
         consolidate_assets: true,
@@ -219,9 +235,75 @@ pub fn prepare_donor_from_skin(
 
     // Re-locate the main BIN after finalize (combine may have consolidated
     // characters, but the champion's skin<N>.bin remains the entry point).
-    let main_bin = find_extracted_skin_bin(&content_dir, &champ_file, skin).unwrap_or(main_bin);
-    let (model_path, model_texture_path) =
-        find_extracted_model_assets(&content_dir, &champ_file, skin);
+    let main_bin = find_extracted_skin_bin(&content_dir, &champ_file, texture_skin).unwrap_or(main_bin);
+    let preview_definition = try_read_bin(&main_bin)
+        .and_then(|bin| crate::skin_preview::resolve_skin_preview(&bin));
+    let authored_model = preview_definition
+        .as_ref()
+        .and_then(|definition| definition.simple_skin.as_deref())
+        .map(|asset| crate::skin_preview::resolve_asset_path(&content_dir, asset))
+        .filter(|path| path.is_file());
+    let model_texture_paths = preview_definition
+        .as_ref()
+        .map(|definition| crate::skin_preview::resolve_disk_textures(definition, &content_dir))
+        .unwrap_or_default();
+    let model_hidden_submeshes = preview_definition
+        .as_ref()
+        .map(|definition| definition.hidden_submeshes.clone())
+        .unwrap_or_default();
+    let model_scale = preview_definition
+        .as_ref()
+        .map(|definition| definition.skin_scale)
+        .unwrap_or(1.0);
+    let (fallback_model, fallback_texture) =
+        find_extracted_model_assets(&content_dir, &champ_file, model_skin);
+    let model_path = authored_model.or(fallback_model);
+    let model_texture_path = model_texture_paths
+        .get("*")
+        .map(PathBuf::from)
+        .or(fallback_texture);
+
+    // Resolve the clip graph (submesh-visibility events + sequencer queues) from
+    // the extracted bins and remap each ASSETS anm ref to its on-disk file. The
+    // graph may live in a linked animations bin, which the extraction pulled in;
+    // gather every extracted .bin so resolve_clip_graph sees the whole graph.
+    let anm_clips = resolve_clip_graph_on_disk(&content_dir, &champ_file, model_skin);
+
+    // The dropdown list. Prefer the graph's resolved .anm paths: a non-base skin's
+    // model sits under `.../skins/skinNN/` while its clips are base-shared under
+    // `.../skins/base/animations/`, so a model-dir scan would miss them entirely.
+    // Fall back to a whole-champion .anm scan only when the graph yields nothing.
+    let mut anm_paths: Vec<String> = Vec::new();
+    {
+        let mut seen = std::collections::HashSet::new();
+        for clip in &anm_clips {
+            for anm in clip
+                .anm_path
+                .iter()
+                .chain(clip.members.iter().map(|m| &m.anm_path))
+            {
+                if seen.insert(anm.to_ascii_lowercase()) {
+                    anm_paths.push(anm.clone());
+                }
+            }
+        }
+        anm_paths.sort();
+    }
+    if anm_paths.is_empty() {
+        // No graph clips resolved: scan the champion subtree so a base-shared
+        // `animations/` folder is still found regardless of the model's location.
+        let scan_root = content_dir.join("assets/characters").join(&champ_file);
+        let mut out = Vec::new();
+        collect_anm_files(&scan_root, &mut out);
+        if out.is_empty() {
+            collect_anm_files(&content_dir, &mut out);
+        }
+        out.sort();
+        anm_paths = out
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+    }
 
     // Donor py text (informational — the Port panel loads the .bin directly,
     // which resolves the on-disk linked BINs beside it).
@@ -230,7 +312,7 @@ pub fn prepare_donor_from_skin(
         .unwrap_or_default();
 
     tracing::info!(
-        "[port donor] {champ_file} skin{skin}: {} file(s) extracted, {} bin(s) combined, {} char(s), main bin = {}",
+        "[port donor] {champ_file} skin{model_skin} texture skin{texture_skin}: {} file(s) extracted, {} bin(s) combined, {} char(s), main bin = {}",
         summary.files,
         fin.bins_combined,
         fin.characters_combined,
@@ -243,12 +325,71 @@ pub fn prepare_donor_from_skin(
         combined_bin_path: main_bin.to_string_lossy().into_owned(),
         model_path: model_path.map(|path| path.to_string_lossy().into_owned()),
         model_texture_path: model_texture_path.map(|path| path.to_string_lossy().into_owned()),
+        model_texture_paths,
+        model_hidden_submeshes,
+        model_scale,
+        anm_paths,
+        anm_clips,
         champion_file_name: champ_file,
-        skin_id: skin,
+        skin_id: model_skin,
         selected_bin_count: 0,
         extracted_asset_count: summary.files as usize,
         cache_hit: false,
     })
+}
+
+/// Resolve the clip graph from the extracted bins and remap each ASSETS anm ref
+/// to its on-disk file under `content_dir`. Parses every extracted `.bin` for the
+/// champion so a linked animations bin is included. `_skin` is reserved for future
+/// skin-specific scoping. Returns [] on any resolution miss (read-only).
+fn resolve_clip_graph_on_disk(
+    content_dir: &Path,
+    _champ: &str,
+    _skin: u32,
+) -> Vec<crate::anim_graph::PreparedClip> {
+    let mut bin_paths = Vec::new();
+    collect_bin_files(content_dir, &mut bin_paths);
+    let bins: Vec<Bin> = bin_paths
+        .iter()
+        .filter_map(|p| std::fs::read(p).ok().and_then(|b| read_bin(&b).ok()))
+        .collect();
+    if bins.is_empty() {
+        return Vec::new();
+    }
+    let clips = crate::anim_graph::resolve_clip_graph(&bins);
+    crate::anim_graph::prepare_clips(clips, |asset_ref| {
+        let p = crate::skin_preview::resolve_asset_path(content_dir, asset_ref);
+        p.is_file().then(|| p.to_string_lossy().into_owned())
+    })
+}
+
+/// Recursively collect `.bin` files under `dir`.
+fn collect_bin_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_bin_files(&path, out);
+        } else if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("bin")) {
+            out.push(path);
+        }
+    }
+}
+
+/// Recursively collect `.anm` files under `dir` (the model's skin directory).
+fn collect_anm_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_anm_files(&path, out);
+        } else if path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("anm"))
+        {
+            out.push(path);
+        }
+    }
 }
 
 fn is_skin_path(path: &Path, skin: u32) -> bool {

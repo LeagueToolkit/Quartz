@@ -343,6 +343,9 @@ pub fn port_system(
         // Insert ported systems at the top so they render first in the list.
         s.bins[target_bin].tree.entries.insert(0, clone);
         s.mark_dirty(target_bin);
+        // The top insert shifted every entry in `target_bin` by one; re-point
+        // the resolver so the upsert below cannot land on a neighbor entry.
+        let resolver = resolver.map(|(rb, re)| (rb, if rb == target_bin { re + 1 } else { re }));
 
         if !preserved_resolver_entries.is_empty() {
             match resolver {
@@ -2336,5 +2339,108 @@ mod tests {
         assert_ne!(bytes(&bin2), pristine2);
         f3.swap_with(&mut bin2);
         assert_eq!(bytes(&bin2), pristine2);
+    }
+
+    /// Porting inserts the clone at index 0 of the target bin, which shifts
+    /// every entry after it. The resolver upsert must land on the resolver
+    /// entry, not on whatever entry the pre-insert index now points at.
+    #[test]
+    fn port_system_registers_in_resolver_not_neighbor_entry() {
+        let h = hs();
+        let dir = std::env::temp_dir().join(format!(
+            "quartz_vfx_port_resolver_test_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Donor: one system plus its resolver pair.
+        let donor_path_str =
+            "Characters/Katarina/Skins/Skin0/Particles/Katarina_Base_Dagger_Ground_Indicator";
+        let mut donor_sys = system_entry(&h, hash_or_hex(donor_path_str));
+        donor_sys.fields.insert(
+            h.particle_name,
+            BinValue::String("Katarina_Base_Dagger_Ground_Indicator".to_string()),
+        );
+        donor_sys
+            .fields
+            .insert(h.particle_path, BinValue::String(donor_path_str.to_string()));
+        let mut donor_resolver = BinEntry {
+            path_hash: hash_or_hex("Characters/Katarina/Skins/Skin0/Resources"),
+            class_hash: h.resource_resolver,
+            fields: IndexMap::new(),
+        };
+        resolver_upsert_core(
+            &mut donor_resolver,
+            &h,
+            "Katarina_Dagger_Ground_Indicator",
+            donor_path_str,
+        )
+        .unwrap();
+
+        // Target: a VfxSystem entry sits BEFORE the resolver in the same bin,
+        // so a stale index after the top insert lands on the system.
+        let milio_path_str = "Characters/Milio/Skins/Skin0/Particles/Milio_Base_W_AoE_OnGoing";
+        let mut milio_sys = system_entry(&h, hash_or_hex(milio_path_str));
+        milio_sys.fields.insert(
+            h.particle_name,
+            BinValue::String("Milio_Base_W_AoE_OnGoing".to_string()),
+        );
+        milio_sys
+            .fields
+            .insert(h.particle_path, BinValue::String(milio_path_str.to_string()));
+        let target_resolver = BinEntry {
+            path_hash: hash_or_hex("Characters/Milio/Skins/Skin0/Resources"),
+            class_hash: h.resource_resolver,
+            fields: IndexMap::new(),
+        };
+
+        let donor_file = dir.join("donor.bin");
+        let target_file = dir.join("target.bin");
+        std::fs::write(&donor_file, bytes(&bin_of(vec![donor_sys, donor_resolver]))).unwrap();
+        std::fs::write(
+            &target_file,
+            bytes(&bin_of(vec![skin_entry(&h), milio_sys, target_resolver])),
+        )
+        .unwrap();
+
+        let donor_id = session::open(&donor_file).unwrap().session_id;
+        let target_id = session::open(&target_file).unwrap().session_id;
+
+        let res = port_system(
+            target_id,
+            donor_id,
+            &VfxPath {
+                bin: 0,
+                entry: 0,
+                steps: Vec::new(),
+            },
+            None,
+            true,
+        )
+        .unwrap();
+        assert_eq!(res.final_name, "Katarina_Base_Dagger_Ground_Indicator");
+
+        session::with_session(target_id, |s| {
+            for (b, e) in s.entries_by_class(h.vfx_system_definition_data) {
+                assert!(
+                    !s.bins[b].tree.entries[e].fields.contains_key(&h.resource_map),
+                    "resourceMap leaked onto a VfxSystem entry"
+                );
+            }
+            let (rb, re) = find_resolver(s, &h).expect("resolver still present");
+            let entry = &s.bins[rb].tree.entries[re];
+            let Some(BinValue::Map { entries, .. }) = entry.fields.get(&h.resource_map) else {
+                panic!("resolver did not receive a resourceMap");
+            };
+            assert!(entries.contains(&(
+                BinValue::Hash(hash_or_hex("Katarina_Dagger_Ground_Indicator")),
+                BinValue::Link(hash_or_hex(donor_path_str)),
+            )));
+        })
+        .unwrap();
+
+        session::close(donor_id);
+        session::close(target_id);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

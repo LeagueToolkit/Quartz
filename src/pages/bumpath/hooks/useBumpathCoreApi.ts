@@ -33,10 +33,14 @@ interface ApiCallData {
     outputPath?: string;
     ignoreMissing?: boolean;
     combineLinked?: boolean;
+    splitVfx?: boolean;
+    consolidateAssets?: boolean;
     // The selected source folder(s) the real backend should repath.
     folders?: string[];
     // Skin ids to repath, parity with backend `selectedSkinIds`.
     selectedSkinIds?: number[];
+    selectedBinPaths?: string[];
+    entryPrefixes?: Record<string, string>;
 }
 
 interface UseBumpathCoreApiArgs {
@@ -93,23 +97,25 @@ export default function useBumpathCoreApi({ addLog }: UseBumpathCoreApiArgs): Bu
                     if (folders.length === 0) {
                         return { success: false, error: 'No source folders selected' };
                     }
-                    let total = 0;
-                    let lastOutput = data.outputPath || '';
-                    const warnings: string[] = [];
-                    for (const folder of folders) {
-                        const result = await bumpathRepath(folder, {
-                            prefix: data.prefix || '',
-                            outputPath: data.outputPath || '',
-                            selectedSkinIds: data.selectedSkinIds,
-                            ignoreMissing: data.ignoreMissing ?? false,
-                            combineLinked: data.combineLinked ?? false,
-                            hashesPath: data.hashesPath || undefined,
-                        });
-                        total += result.binsProcessed;
-                        lastOutput = result.outputDir;
-                        addLog(`Repathed "${folder}": ${result.binsProcessed} bins, ${result.assetsCopied} assets, ${result.combined} combined, ${result.missing} missing`);
-                    }
-                    return { success: true, total_files: total, output_dir: lastOutput, warnings };
+                    const result = await bumpathRepath(folders, {
+                        prefix: data.prefix || '',
+                        outputPath: data.outputPath || '',
+                        selectedSkinIds: data.selectedSkinIds,
+                        selectedBinPaths: data.selectedBinPaths,
+                        entryPrefixes: data.entryPrefixes,
+                        ignoreMissing: data.ignoreMissing ?? false,
+                        combineLinked: data.combineLinked ?? false,
+                        splitVfx: data.splitVfx ?? true,
+                        consolidateAssets: data.consolidateAssets ?? true,
+                        hashesPath: data.hashesPath || undefined,
+                    });
+                    addLog(`Done: ${result.binsProcessed} bins · ${result.assetsCopied} assets`);
+                    return {
+                        success: true,
+                        total_files: result.binsProcessed + result.assetsCopied,
+                        output_dir: result.outputDir,
+                        warnings: [],
+                    };
                 }
 
                 case 'reset':

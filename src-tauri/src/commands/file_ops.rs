@@ -255,6 +255,24 @@ pub fn paths_exist(paths: Vec<String>) -> Vec<bool> {
     paths.iter().map(|p| Path::new(p).exists()).collect()
 }
 
+/// Modified time (unix seconds, fractional) of each path, or 0.0 when missing /
+/// unreadable. Used by the model viewer to hot-reload edited textures via cheap
+/// mtime polling (no native fs-notify dependency).
+#[tauri::command]
+pub fn paths_mtimes(paths: Vec<String>) -> Vec<f64> {
+    paths
+        .iter()
+        .map(|p| {
+            std::fs::metadata(p)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs_f64())
+                .unwrap_or(0.0)
+        })
+        .collect()
+}
+
 /// Run an external EXE. With `open_console` (Windows), launches it detached in
 /// its own console window; otherwise runs it and captures stdout/stderr.
 #[tauri::command]

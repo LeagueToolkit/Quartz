@@ -151,6 +151,26 @@ async function fetchBase64(url: string): Promise<string | null> {
     return btoa(bin);
 }
 
+/** Fetch a repo file's BASE64, preferring raw.githubusercontent (fast/public)
+ *  but falling back to the GitHub contents API when the raw edge is blocked,
+ *  stale, or otherwise unavailable in packaged builds. */
+async function fetchRepoBase64(owner: string, repo: string, filePath: string): Promise<string | null> {
+    const bust = `?t=${Math.floor(Date.now() / 30000)}`;
+    const direct = await fetchBase64(rawUrl(owner, repo, filePath) + bust);
+    if (direct) return direct;
+
+    const api = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${encPath(filePath)}`).catch(() => null);
+    if (!api) return null;
+    if (api.status === 429) throw new HubRateLimitError();
+    if (!api.ok) return null;
+
+    const j = (await api.json()) as { content?: string; encoding?: string };
+    if (j.encoding === 'base64' && j.content) {
+        return j.content.replace(/\n/g, '');
+    }
+    throw new Error(`Unexpected contents response for ${filePath}`);
+}
+
 export interface DownloadedHubSystem { binBase64: string; assets: HubAssetBytesInput[] }
 
 /**
@@ -160,7 +180,7 @@ export interface DownloadedHubSystem { binBase64: string; assets: HubAssetBytesI
  */
 export async function downloadHubSystem(system: HubSystem): Promise<DownloadedHubSystem> {
     const { owner, repo } = getCreds();
-    const binBase64 = await fetchBase64(rawUrl(owner, repo, system.binFile));
+    const binBase64 = await fetchRepoBase64(owner, repo, system.binFile);
     if (!binBase64) throw new Error(`Failed to download ${system.binFile}`);
 
     // system.assets holds the full reference paths the bin uses, e.g.
@@ -170,7 +190,7 @@ export async function downloadHubSystem(system: HubSystem): Promise<DownloadedHu
     const assets: HubAssetBytesInput[] = [];
     for (const ref of system.assets) {
         const rel = ref.replace(/\\/g, '/').replace(/^ASSETS\//i, '');
-        const b64 = await fetchBase64(rawUrl(owner, repo, `assets/${rel}`));
+        const b64 = await fetchRepoBase64(owner, repo, `assets/${rel}`);
         if (b64) assets.push({ relPath: rel, base64: b64 });
     }
     return { binBase64, assets };

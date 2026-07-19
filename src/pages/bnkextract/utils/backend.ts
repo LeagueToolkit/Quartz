@@ -188,7 +188,7 @@ export async function extractBnkBanksFromGame(args: unknown): Promise<{ success:
 /* A tiny silent WEM (the same 340-byte payload Quartz shipped in public/silence.wem),
    embedded so "Make Silent" works without touching disk or external tooling. */
 const SILENCE_WEM_B64 =
-    'UklGRkwBAABXQVZFZm10IEIAAAD//wIARKwAAP8FAAAAAAAAMAAAAAIxAACXGwAA2QAAAPYAAAAAAKkCAAAAANkAAAADAKkC0D4AALBAAADoqEvVCAtkYXRh9gAAANcAKSacgEIKKqzAQgsuvABDDD78AEQQQgxBRBFGHIFEEkoswYRroYk2GmmlmXYaaqmpthprrYEWEAiZQKAACgxkAMABQoIUAFBYYOgQIQLEKDAwLi4tghCZIRIRi0FiQjVQVEwHAIsLDPkAkKGxkXZxAV0GuKCLuw6EEIQgBLE4gAIScHDCDU+84Qk3OEGnqNSBAAAA0AAADwAAyQYQERHNHEeHxwdIiMgISYnJCYoAAACgBgAfAABJChAREc0cR4fHB0iIyAhJickJSiCAAAAACCAAAQEBgAEBAAABAAEBAAEBAAEBAAEBAAEBAAEBAAEDAAEAAA=';
+    'UklGRkwBAABXQVZFZm10IEIAAAD//wIARKwAAP8FAAAAAAAAMAAAAAIxAACXGwAA2QAAAPYAAAAAAKkCAAAAANkAAAADAKkC0D4AALBAAADoqEvVCAtkYXRh9gAAANcAKSacgEIKKqzAQgsuvABDDD78AEQQQgxBRBFGHIFEEkoswYRroYk2GmmlmXYaaqmpthprrYEWEAiZQKAACgxkAMABQoIUAFBYYOgQIQLEKDAwLi4tghCZIRIRi0FiQjVQVEwHAIsLDPkAkKGxkXZxAV0GuKCLuw6EEIQgBLE4gAIScHDCDU+84Qk3OEGnqNSBAAAA0AAADwAAyQYQERHNHEeHxwdIiMgISYnJCYoAAACgBgAfAABJChAREc0cR4fHB0iIyAhJickJSiCAAAAACCAAAQEBgAEBAAABAAEBAAEBAAEBAAEBAAEBAAEBAAEDAAEAAA==';
 
 let silenceWemCache: Uint8Array | null = null;
 
@@ -198,6 +198,9 @@ export function silenceWem(): Uint8Array {
     const bin = atob(SILENCE_WEM_B64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    if (bytes.length !== 340 || bytes[0] !== 0x52 || bytes[1] !== 0x49 || bytes[2] !== 0x46 || bytes[3] !== 0x46) {
+        throw new Error('Bundled silence WEM is invalid');
+    }
     silenceWemCache = bytes;
     return bytes;
 }

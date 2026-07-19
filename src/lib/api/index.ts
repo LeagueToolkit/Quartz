@@ -15,7 +15,7 @@ export {
 } from './assets';
 export {
     binScaleParams, binSplitSkin, binConsolidateAssets,
-    binEditorOpen, binEditorModel, binEditorApply, binEditorInsert, binEditorRemove,
+    binEditorOpen, binEditorModel, binEditorReloadIfChanged, binEditorApply, binEditorInsert, binEditorRemove,
     binEditorUndo, binEditorRedo, binEditorRestore, binEditorSave, binEditorClose,
     type ScaleParamsResult, type SplitFile, type ConsolidateResult,
     type EditorModel, type EditorSystem, type EditorEmitter, type EditorNode,
@@ -23,7 +23,7 @@ export {
     type BinEditorOpenResult, type BinEditorApplyResult,
 } from './bineditor';
 export {
-    paintOpen, paintClose, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintSetTexture, paintSetColorAlpha, paintUndo, paintRedo, paintSave,
+    paintOpen, paintClose, paintReloadIfChanged, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintSetTexture, paintSetColorAlpha, paintUndo, paintRedo, paintSave,
     type VfxModel, type VfxSystem, type VfxEmitter, type VfxMaterial, type MaterialParam,
     type ColorData, type ColorKeyframe, type EmitterColors, type EmitterTexture,
     type PaintOpenResult, type RecolorResult, type RecolorModeId, type ColorTargetId,

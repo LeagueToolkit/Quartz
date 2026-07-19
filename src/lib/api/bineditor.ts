@@ -176,6 +176,11 @@ export function binEditorModel(sessionId: number): Promise<EditorModel> {
     return invokeCommand<EditorModel>('bin_editor_model', { sessionId });
 }
 
+/** Reparse the session when any loaded BIN changed outside Quartz. */
+export function binEditorReloadIfChanged(sessionId: number): Promise<EditorModel | null> {
+    return invokeCommand<EditorModel | null>('bin_editor_reload_if_changed', { sessionId });
+}
+
 export interface BinEditorChildParams {
     effectKey: string;
     rate: number;

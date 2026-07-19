@@ -9,6 +9,8 @@ mod imp {
     use winreg::enums::*;
     use winreg::RegKey;
 
+    const MENU_SCHEMA: u32 = 2;
+
     /// A single child verb inside the Quartz submenu.
     struct Verb {
         /// Ordered key name (the leading digits control menu order).
@@ -62,6 +64,7 @@ mod imp {
         vs("30combinelinked", "Combine Linked", "combine-linked"),
         v("31noskinlite", "NoSkinLite", "noskinlite"),
         v("32batchsplitvfx", "Batch Split VFX", "batch-split-vfx"),
+        v("33sortvfx", "Sort VFX by ability", "sort-vfx-systems"),
         // Hash extraction (last group).
         vs("99extracthashesbin", "Extract hashes", "extract-hashes-bin"),
     ];
@@ -239,6 +242,30 @@ mod imp {
         }))
     }
 
+    /// Refresh an already-enabled Explorer integration after Quartz adds or
+    /// changes verbs. Users who disabled it remain untouched.
+    pub fn refresh_if_enabled() -> Result<(), String> {
+        if !is_enabled()? {
+            return Ok(());
+        }
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let first = format!(r"Software\Classes\{}", MENUS[0].root);
+        let current_exe = exe()?;
+        let first_key = hkcu.open_subkey(first).ok();
+        let installed_schema = first_key
+            .as_ref()
+            .and_then(|key| key.get_value::<u32, _>("QuartzMenuSchema").ok())
+            .unwrap_or_default();
+        let installed_exe = first_key
+            .as_ref()
+            .and_then(|key| key.get_value::<String, _>("Icon").ok())
+            .unwrap_or_default();
+        if installed_schema != MENU_SCHEMA || !installed_exe.eq_ignore_ascii_case(&current_exe) {
+            enable()?;
+        }
+        Ok(())
+    }
+
     pub fn enable() -> Result<(), String> {
         // Clean first so removed/renamed verbs from older versions don't linger.
         disable()?;
@@ -258,6 +285,9 @@ mod imp {
             // Empty SubCommands makes Explorer read the child `shell\*` verbs.
             root_key
                 .set_value("SubCommands", &"")
+                .map_err(|e| e.to_string())?;
+            root_key
+                .set_value("QuartzMenuSchema", &MENU_SCHEMA)
                 .map_err(|e| e.to_string())?;
 
             for verb in menu.verbs {
@@ -299,6 +329,13 @@ mod imp {
     pub fn disable() -> Result<(), String> {
         Ok(())
     }
+    pub fn refresh_if_enabled() -> Result<(), String> {
+        Ok(())
+    }
+}
+
+pub fn context_menu_refresh_if_enabled() -> Result<(), String> {
+    imp::refresh_if_enabled()
 }
 
 #[tauri::command]

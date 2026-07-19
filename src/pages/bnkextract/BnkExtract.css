@@ -305,9 +305,9 @@
     gap: 16px;
     height: 48px;
     padding: 0 16px;
-    /* Transparent so the app background shows through, matching the panels. */
-    background: transparent;
-    border-top: 1px solid var(--glass-border);
+    /* Bar background matching the WAD Explorer toolbar (translucent secondary). */
+    background: color-mix(in oklab, var(--bg-secondary) 94%, transparent);
+    border-top: 1px solid var(--border);
     flex-shrink: 0;
     box-sizing: border-box;
 }

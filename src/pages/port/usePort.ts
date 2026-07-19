@@ -6,6 +6,7 @@ import { pickBinPath } from './utils/loadBin';
 import {
     vfxOpen,
     vfxClose,
+    vfxReloadIfChanged,
     vfxSave,
     vfxUndo,
     vfxRedo,
@@ -28,7 +29,8 @@ import {
     type VfxPath,
     type VfxPortModel,
 } from '@/lib/api/vfxSession';
-import { isStaleFileError, staleFilePaths } from '@/lib/api/staleFile';
+import { useSessionFileWatcher } from '@/lib/util/useSessionFileWatcher';
+import { isStaleFileError } from '@/lib/api/staleFile';
 import { portCopyAssetsToTarget } from '@/lib/api/wad';
 import {
     buildSystemMap,
@@ -262,6 +264,33 @@ export default function usePort() {
         setCanUndo(true);
         setCanRedo(false);
     }, []);
+
+    const handleTargetExternalReload = useCallback((model: VfxPortModel) => {
+        setTargetModel(model);
+        setFileSaved(true);
+        setCanUndo(false);
+        setCanRedo(false);
+        setSelectedTargetSystem((current) => current && model.systems.some((system) => system.key === current) ? current : null);
+        setStatusMessage('Target BIN changed externally and was reloaded');
+    }, []);
+
+    const handleDonorExternalReload = useCallback((model: VfxPortModel) => {
+        setDonorModel(model);
+        setStatusMessage('Donor BIN changed externally and was reloaded');
+    }, []);
+
+    useSessionFileWatcher({
+        sessionId: targetSessionId,
+        reload: vfxReloadIfChanged,
+        onReload: handleTargetExternalReload,
+        paused: isProcessing,
+    });
+    useSessionFileWatcher({
+        sessionId: donorSessionId,
+        reload: vfxReloadIfChanged,
+        onReload: handleDonorExternalReload,
+        paused: isProcessing,
+    });
 
     /* Rewrite a texture path on an emitter (target or donor session). */
     const handleSetTexture = useCallback(
@@ -503,24 +532,22 @@ export default function usePort() {
                 setFileSaved(true);
                 setStatusMessage(written.length > 0 ? `Successfully saved ${written.length} file(s)` : 'No changes to save');
             } catch (e) {
-                // A file changed on disk since opening (e.g. saved from Paint/Bin Editor).
-                // Ask before clobbering; on confirm, retry with force.
+                // Close the watcher race by reparsing immediately instead of
+                // offering to overwrite the external edit.
                 if (!force && isStaleFileError(e)) {
-                    const paths = staleFilePaths(e);
-                    const names = paths.map((p) => p.split(/[\\/]/).pop()).join(', ') || 'this file';
-                    const ok = window.confirm(
-                        `${names} was modified outside Port since you opened it.\n\n`
-                        + `Saving now will overwrite those changes. Overwrite?`,
-                    );
-                    if (ok) await handleSave(true);
-                    else setStatusMessage('Save cancelled (file changed on disk)');
+                    try {
+                        const reloaded = await vfxReloadIfChanged(targetSessionId);
+                        if (reloaded) handleTargetExternalReload(reloaded);
+                    } catch (reloadError) {
+                        setStatusMessage(`External change detected; reload deferred: ${(reloadError as Error).message}`);
+                    }
                     return;
                 }
                 setStatusMessage(`Error saving file: ${(e as Error).message}`);
                 setFileSaved(false);
             }
         }, 'Saving .bin...');
-    }, [targetSessionId, runTargetSessionTask]);
+    }, [targetSessionId, runTargetSessionTask, handleTargetExternalReload]);
 
     const hasChangesToSave = useCallback(() => !fileSaved, [fileSaved]);
 

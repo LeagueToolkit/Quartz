@@ -40,11 +40,15 @@ export function rgbaToDataUrl(rgbaB64: string, width: number, height: number): s
 }
 
 /** Decode an already-resolved disk texture to a full-resolution PNG data URL.
- *  Used by the model viewer, which must not stretch the explorer's 96px thumb. */
-export async function resolveDiskTextureDataUrl(diskPath: string): Promise<string | null> {
+ *  Used by the model viewer, which must not stretch the explorer's 96px thumb.
+ *  Pass `force` to bypass the cache and re-read the file from disk (needed by the
+ *  live texture reload/watcher: the file may have been edited in place). */
+export async function resolveDiskTextureDataUrl(diskPath: string, force = false): Promise<string | null> {
     const key = `disk:${diskPath}`;
-    const hit = cache.get(key);
-    if (hit !== undefined) return hit;
+    if (!force) {
+        const hit = cache.get(key);
+        if (hit !== undefined) return hit;
+    }
     try {
         const decoded = await imgRecolorDecodeTexture(diskPath);
         const url = rgbaToDataUrl(decoded.rgba, decoded.width, decoded.height);

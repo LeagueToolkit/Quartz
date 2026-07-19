@@ -4,6 +4,8 @@ lmdb-hashes GitHub releases (stored under %APPDATA%/RitoShark/Requirements/Hashe
 and BINs are parsed with the `ritoshark` crate — no ritobin, no CommunityDragon
 text hashes. */
 
+pub mod anim_graph;
+pub mod anim_preview;
 pub mod audio;
 pub mod bin;
 pub mod bineditor;
@@ -20,6 +22,7 @@ pub mod paint;
 pub mod port_donor;
 pub mod pyntex;
 pub mod skeleton;
+pub mod skin_preview;
 pub mod tex;
 mod undo;
 pub mod vfx_session;

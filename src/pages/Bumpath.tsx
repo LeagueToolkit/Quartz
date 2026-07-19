@@ -5,12 +5,12 @@ import { log } from '@/lib/util/logger';
 import './bumpath/Bumpath.css';
 import { useFileExplorer } from '@/components/explorer';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { explorerListDir } from '@/lib/api/explorer';
 import CelestiaGuide from './bumpath/components/CelestiaGuide';
 import SourceBinsPanel from './bumpath/components/SourceBinsPanel';
 import EntriesPanel from './bumpath/components/EntriesPanel';
 import BumpathBottomControls from './bumpath/components/BumpathBottomControls';
 import BumpathSettingsPanel from './bumpath/components/BumpathSettingsPanel';
-import BumpathStatusOverlays from './bumpath/components/BumpathStatusOverlays';
 import BumpathSettingsDialog from './bumpath/components/BumpathSettingsDialog';
 import CelestiaTriggerButton from './bumpath/components/CelestiaTriggerButton';
 import CelestiaTutorialOverlays from './bumpath/components/CelestiaTutorialOverlays';
@@ -25,9 +25,7 @@ import type { ScannedData, SourceBins, QuickBinOption } from './bumpath/utils/ty
 import type { SpotlightRect } from './bumpath/components/SpotlightOverlay';
 
 /* Hash files in the Rust build are resolved by the backend via the shared
-   RitoShark LMDB, so there is no user-facing hash directory to derive. We use
-   a stable marker so the scan gating (which requires a non-empty hashesPath)
-   stays enabled, matching the Electron behavior. */
+   RitoShark LMDB. The marker is only shown for parity in Bumpath settings. */
 const INTEGRATED_HASHES_PATH = 'RitoShark hash database (Integrated)';
 
 function readBoolPref(key: string): boolean | undefined {
@@ -40,11 +38,26 @@ function readBoolPref(key: string): boolean | undefined {
     }
 }
 
+function shortStatus(value: string): string {
+    return value
+        .replace(/^Processing completed:\s*/i, 'Done · ')
+        .replace(/^Quick Repath completed:\s*/i, 'Quick Repath · ')
+        .replace(/^Scan completed:\s*Found\s*/i, '')
+        .replace(/^Added source directory and discovered\s*/i, '')
+        .replace(/^Viewing\s*/i, 'Viewing ')
+        .replace(/^Failed to discover BIN files:\s*/i, 'Source error · ')
+        .replace(/^Processing failed:\s*/i, 'Failed · ')
+        .replace(/^Quick Repath failed:\s*/i, 'Quick Repath failed · ')
+        .replace(/\s+files processed$/i, ' files')
+        .trim();
+}
+
 export function Bumpath() {
     const pick = useFileExplorer();
     const [sourceDirs, setSourceDirs] = useState<string[]>([]);
     const [, setSourceFiles] = useState<Record<string, unknown>>({});
     const [sourceBins, setSourceBins] = useState<SourceBins>({});
+    const [activeBinPath, setActiveBinPath] = useState('');
     const [scannedData, setScannedData] = useState<ScannedData | null>(null);
     const [isScanning, setIsScanning] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -56,6 +69,8 @@ export function Bumpath() {
     const [appliedPrefixes, setAppliedPrefixes] = useState<Map<string, string>>(new Map()); // Track applied prefixes per entry
     const [ignoreMissing, setIgnoreMissing] = useState(false);
     const [combineLinked, setCombineLinked] = useState(false);
+    const [splitVfx, setSplitVfx] = useState(true);
+    const [consolidateAssets, setConsolidateAssets] = useState(true);
     const [hideDataFolderBins, setHideDataFolderBins] = useState(false);
     const [hashesPath, setHashesPath] = useState('');
     const [outputPath, setOutputPath] = useState('');
@@ -79,6 +94,9 @@ export function Bumpath() {
     const [sourceAddModeOpen, setSourceAddModeOpen] = useState(false);
     const [lastAddedSourceDir, setLastAddedSourceDir] = useState('');
     const [isDragOverSource, setIsDragOverSource] = useState(false);
+    const [outputConflictOpen, setOutputConflictOpen] = useState(false);
+    const [outputConflictPath, setOutputConflictPath] = useState('');
+    const outputConflictResolver = useRef<((replace: boolean) => void) | null>(null);
     const scanDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Reset simulated state when step changes or guide closes
@@ -177,6 +195,28 @@ export function Bumpath() {
     /* Kept for the hook contract; the native flow logs via addLog directly. */
     const fetchLogs = useCallback(async () => {}, []);
 
+    const confirmOutputMerge = useCallback(async (path: string): Promise<boolean> => {
+        try {
+            const entries = await explorerListDir(path);
+            if (entries.length === 0) return true;
+        } catch {
+            // A destination that does not exist yet is safe; the backend creates it.
+            return true;
+        }
+        setOutputConflictPath(path);
+        setOutputConflictOpen(true);
+        return new Promise<boolean>((resolve) => {
+            outputConflictResolver.current = resolve;
+        });
+    }, []);
+
+    const resolveOutputConflict = useCallback((replace: boolean) => {
+        setOutputConflictOpen(false);
+        const resolve = outputConflictResolver.current;
+        outputConflictResolver.current = null;
+        resolve?.(replace);
+    }, []);
+
     // Load settings on mount
     useEffect(() => {
         // Hashes are integrated via the shared LMDB; use the marker path.
@@ -185,6 +225,8 @@ export function Bumpath() {
         // Check if this is the first time (preferences not set)
         const savedIgnore = readBoolPref('BumpathIgnoreMissing');
         const savedCombine = readBoolPref('BumpathCombineLinked');
+        const savedSplitVfx = readBoolPref('BumpathSplitVfx');
+        const savedConsolidateAssets = readBoolPref('BumpathConsolidateAssets');
         const isFirstTime = savedIgnore === undefined && savedCombine === undefined;
 
         if (isFirstTime) {
@@ -204,6 +246,24 @@ export function Bumpath() {
             setIgnoreMissing(savedIgnore || false);
             setCombineLinked(savedCombine || false);
             setHideDataFolderBins(readBoolPref('BumpathHideDataFolderBins') || false);
+        }
+        const splitVfxDefault = savedSplitVfx ?? true;
+        setSplitVfx(splitVfxDefault);
+        if (savedSplitVfx === undefined) {
+            try {
+                localStorage.setItem('BumpathSplitVfx', 'true');
+            } catch {
+                /* ignore */
+            }
+        }
+        const consolidateDefault = savedConsolidateAssets ?? true;
+        setConsolidateAssets(consolidateDefault);
+        if (savedConsolidateAssets === undefined) {
+            try {
+                localStorage.setItem('BumpathConsolidateAssets', 'true');
+            } catch {
+                /* ignore */
+            }
         }
     }, []);
 
@@ -248,12 +308,15 @@ export function Bumpath() {
         const addedPath = payload?.sourceDir || '';
         setLastAddedSourceDir(addedPath);
         setQuickRepathOpen(false);
-        setSourceAddModeOpen(true);
+        // Loading a source should never interrupt the user with a workflow
+        // choice. Quick Repath remains available as an explicit action.
+        setSourceAddModeOpen(false);
     }, []);
 
     const {
         handleSelectSourceDir,
         handleBinSelect,
+        handleBinView: scanViewedBin,
         addSourceDirByPath,
     } = useBumpathSourceScan({
         apiCall,
@@ -267,12 +330,15 @@ export function Bumpath() {
         setScannedData,
         setSelectedEntries,
         setExpandedEntries,
-        setAppliedPrefixes,
         setIsScanning,
         setError,
         setSuccess,
         onSourceDirAdded: handleSourceDirAdded,
     });
+    const handleBinView = useCallback((unifyPath: string) => {
+        setActiveBinPath(unifyPath);
+        void scanViewedBin(unifyPath);
+    }, [scanViewedBin]);
     const {
         handleApplyPrefix,
         handleProcess,
@@ -287,10 +353,14 @@ export function Bumpath() {
         outputPath,
         ignoreMissing,
         combineLinked,
+        splitVfx,
+        consolidateAssets,
         sourceDirs,
+        sourceBins,
         hashesPath,
         addLog,
         fetchLogs,
+        confirmOutputMerge,
         setError,
         setSuccess,
         setScannedData,
@@ -410,19 +480,44 @@ export function Bumpath() {
             setError('Select an output directory first');
             return;
         }
-        if (!hashesPath) {
-            setError('Hashes path is not ready yet');
-            return;
-        }
-
         setIsQuickRepathRunning(true);
         setError(null);
-        addLog('Quick Repath: starting...');
+        addLog('Quick Repath...');
 
         try {
+            if (!(await confirmOutputMerge(outPath))) {
+                addLog('Quick Repath cancelled: output folder already contains files');
+                return;
+            }
+            const normalizeQuickPath = (value: string) => value.replace(/\\/g, '/').toLowerCase();
+            const mainBinFolder = sourceDirs.find((dir) =>
+                normalizeQuickPath(quickMainBin).startsWith(normalizeQuickPath(dir)),
+            ) || sourceDirs[0] || quickMainBin;
+            const mainPath = sourceBins[quickMainBin]?.rel_path
+                || sourceBins[quickMainBin]?.path
+                || quickMainBin;
+            const selectedSkinFile = normalizeQuickPath(mainPath).match(/(?:^|\/)(skin\d+)\.bin$/)?.[1];
+
+            // A mod can contain the main character skin BIN and one or more
+            // subcharacter BINs with the same skin number. The original flow
+            // needs all of them selected so their entries and links are repathed.
             const newSelections: SourceBins = {};
             Object.entries(sourceBins || {}).forEach(([path, data]) => {
-                newSelections[path] = { ...data, selected: path === quickMainBin };
+                const candidatePath = data?.rel_path || data?.path || path;
+                const candidateNormalized = normalizeQuickPath(candidatePath);
+                const candidateSkinFile = candidateNormalized.match(/(?:^|\/)(skin\d+)\.bin$/)?.[1];
+                const belongsToSource = normalizeQuickPath(data?.path || path)
+                    .startsWith(normalizeQuickPath(mainBinFolder));
+                const isMatchingSkinBin = Boolean(
+                    selectedSkinFile
+                    && candidateSkinFile === selectedSkinFile
+                    && belongsToSource
+                    && !candidateNormalized.includes('/animations/'),
+                );
+                newSelections[path] = {
+                    ...data,
+                    selected: path === quickMainBin || isMatchingSkinBin,
+                };
             });
             setSourceBins(newSelections);
 
@@ -431,9 +526,9 @@ export function Bumpath() {
                 binSelections[path] = Boolean(data?.selected);
             });
             await apiCall('update-bin-selection', { binSelections });
-
-            // The main bin's folder drives the real backend repath.
-            const mainBinFolder = sourceDirs.find((dir) => quickMainBin.startsWith(dir)) || sourceDirs[0] || quickMainBin;
+            const selectedQuickBinPaths = Object.entries(newSelections)
+                .filter(([, data]) => data?.selected)
+                .map(([path, data]) => data?.path || path);
 
             setPrefixText(prefix);
             setDebouncedPrefixText(prefix);
@@ -443,9 +538,13 @@ export function Bumpath() {
             const processResult = await apiCall('process', {
                 folders: [mainBinFolder],
                 prefix,
+                selectedBinPaths: selectedQuickBinPaths,
+                entryPrefixes: {},
                 outputPath: outPath,
                 ignoreMissing,
                 combineLinked,
+                splitVfx,
+                consolidateAssets,
                 hashesPath,
             });
             setIsProcessing(false);
@@ -457,7 +556,7 @@ export function Bumpath() {
 
             const processedCount = processResult.total_files || processResult.processedFiles || 0;
             setSuccess(`Quick Repath completed: ${processedCount} files processed`);
-            addLog(`Quick Repath: completed (${processedCount} files)`);
+            addLog(`Done: ${processedCount} files`);
 
             setScannedData(null);
             setSelectedEntries(new Set());
@@ -479,6 +578,9 @@ export function Bumpath() {
         addLog,
         apiCall,
         combineLinked,
+        confirmOutputMerge,
+        splitVfx,
+        consolidateAssets,
         hashesPath,
         ignoreMissing,
         quickMainBin,
@@ -508,6 +610,12 @@ export function Bumpath() {
         [sourceBins],
     );
     const totalBinCount = useMemo(() => Object.keys(sourceBins || {}).length, [sourceBins]);
+
+    useEffect(() => {
+        if (activeBinPath && !sourceBins[activeBinPath]) {
+            setActiveBinPath('');
+        }
+    }, [activeBinPath, sourceBins]);
 
     // Filter bins based on search (exclude animation BINs from display)
     const filteredBins = useMemo<Array<[string, SourceBins[string]]>>(() => {
@@ -610,7 +718,9 @@ export function Bumpath() {
                             filteredBins={filteredBins}
                             selectedBinCount={selectedBinCount}
                             totalBinCount={totalBinCount}
+                            activeBinPath={activeBinPath}
                             handleBinSelect={handleBinSelect}
+                            handleBinView={handleBinView}
                         />
                         <EntriesPanel
                             isScanning={isScanning}
@@ -620,6 +730,7 @@ export function Bumpath() {
                             selectedEntries={selectedEntries}
                             expandedFilePaths={expandedFilePaths}
                             appliedPrefixes={appliedPrefixes}
+                            globalPrefix={prefixText}
                             showMissingOnly={showMissingOnly}
                             setShowMissingOnly={setShowMissingOnly}
                             selectedEntriesSize={selectedEntries.size}
@@ -629,6 +740,9 @@ export function Bumpath() {
                             handleEntryExpand={handleEntryExpand}
                             handleEntrySelect={handleEntrySelect}
                             handleFilePathExpand={handleFilePathExpand}
+                            settingsExpanded={settingsExpanded}
+                            setSettingsExpanded={setSettingsExpanded}
+                            setSettingsAutoOpened={setSettingsAutoOpened}
                         />
                     </Box>
                 )}
@@ -640,7 +754,6 @@ export function Bumpath() {
                         handlePrefixTextChange={handlePrefixTextChange}
                         handleApplyPrefix={handleApplyPrefix}
                         selectedEntriesSize={selectedEntries.size}
-                        debouncedPrefixText={debouncedPrefixText}
                         handleSelectOutputDir={handleSelectOutputDir}
                         isProcessing={isProcessing}
                         handleProcess={handleProcess}
@@ -648,9 +761,8 @@ export function Bumpath() {
                         quickRepathDisabled={isProcessing || Object.keys(sourceBins || {}).length === 0}
                         scannedData={scannedData}
                         outputPath={outputPath}
-                        settingsExpanded={settingsExpanded}
-                        setSettingsExpanded={setSettingsExpanded}
-                        setSettingsAutoOpened={setSettingsAutoOpened}
+                        statusMessage={shortStatus(error || success || (isProcessing ? 'Processing…' : isScanning ? 'Scanning…' : ''))}
+                        statusKind={error ? 'error' : 'normal'}
                     />
                 </div>
                 {/* Collapsible Settings Panel */}
@@ -661,14 +773,13 @@ export function Bumpath() {
                     setIgnoreMissing={setIgnoreMissing}
                     combineLinked={combineLinked}
                     setCombineLinked={setCombineLinked}
+                    splitVfx={splitVfx}
+                    setSplitVfx={setSplitVfx}
+                    consolidateAssets={consolidateAssets}
+                    setConsolidateAssets={setConsolidateAssets}
                     hideDataFolderBins={hideDataFolderBins}
                     setHideDataFolderBins={setHideDataFolderBins}
                     saveSettings={saveSettings}
-                />
-                <BumpathStatusOverlays
-                    error={error}
-                    success={success}
-                    setSuccess={setSuccess}
                 />
             </Box>
 
@@ -677,6 +788,33 @@ export function Bumpath() {
                 setSettingsOpen={setSettingsOpen}
                 hashesPath={hashesPath}
             />
+            {outputConflictOpen && (
+                <div className="dl-modal-backdrop" onMouseDown={(event) => {
+                    if (event.target === event.currentTarget) resolveOutputConflict(false);
+                }}>
+                    <div className="dl-modal" onMouseDown={(event) => event.stopPropagation()}>
+                        <div className="dl-modal__head">
+                            <h2 className="dl-modal__title">Output folder is not empty</h2>
+                        </div>
+                        <div className="dl-modal__body">
+                            <p style={{ margin: 0, color: 'var(--text-secondary)' }}>
+                                Bumpath will merge into this folder and replace files with matching paths. It will not delete unrelated files.
+                            </p>
+                            <div className="dl-code" style={{ marginTop: 12, wordBreak: 'break-all' }}>
+                                {outputConflictPath}
+                            </div>
+                        </div>
+                        <div className="dl-modal__foot">
+                            <button type="button" className="dl-btn dl-btn--secondary" onClick={() => resolveOutputConflict(false)}>
+                                Cancel
+                            </button>
+                            <button type="button" className="dl-btn dl-btn--primary" onClick={() => resolveOutputConflict(true)}>
+                                Merge &amp; Replace
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <QuickRepathWizardModal
                 open={quickRepathOpen}
                 step={quickRepathStep}

@@ -104,6 +104,23 @@ input[type="radio"] { accent-color: var(--accent-primary); }
 /* Sharp corners target actual button controls rather than changing the radius
    tokens: cards and windows keep their chosen shape unless Glass Surfaces is
    enabled independently. !important also catches MUI and inline sx radii. */
+:root[data-button-corners="sharp"] {
+    --radius-sm: 0px;
+    --radius: 0px;
+    --radius-lg: 0px;
+    --border-radius: 0px;
+    --dl-radius-sm: 0px;
+    --dl-radius: 0px;
+    --dl-radius-lg: 0px;
+}
+
+:root[data-button-corners="sharp"] .dl-root,
+:root[data-button-corners="sharp"] .bineditorv2-root {
+    --dl-radius-sm: 0px;
+    --dl-radius: 0px;
+    --dl-radius-lg: 0px;
+}
+
 :root[data-button-corners="sharp"] :where(
     button,
     [role="button"],
@@ -111,7 +128,33 @@ input[type="radio"] { accent-color: var(--accent-primary); }
     [class*="-btn"],
     [class*="__btn"],
     [class*="-button"],
-    [class*="__button"]
+    [class*="__button"],
+    .MuiPaper-root,
+    .MuiDialog-paper,
+    .MuiPopover-paper,
+    .MuiMenu-paper,
+    .MuiSelect-select,
+    .MuiInputBase-root,
+    .MuiOutlinedInput-root,
+    .MuiAutocomplete-paper,
+    .q-glass,
+    .dl-card,
+    .dl-modal,
+    .dl-select,
+    [class*="-card"],
+    [class*="__card"],
+    [class*="-panel"],
+    [class*="__panel"],
+    [class*="-pane"],
+    [class*="__pane"],
+    [class*="-sidebar"],
+    [class*="__sidebar"],
+    [class*="-toolbar"],
+    [class*="__toolbar"],
+    [class*="-header"],
+    [class*="__header"],
+    [class*="-footer"],
+    [class*="__footer"]
 ) {
     border-radius: 0 !important;
 }
@@ -146,16 +189,74 @@ input[type="radio"] { accent-color: var(--accent-primary); }
     [class*="__sidebar"],
     [class*="-toolbar"],
     [class*="__toolbar"],
+    [class*="-topbar"],
+    [class*="__topbar"],
     [class*="-header"],
     [class*="__header"],
     [class*="-footer"],
-    [class*="__footer"]
+    [class*="__footer"],
+    [class*="-props"],
+    [class*="__props"],
+    .settings-card,
+    .dl-toggle-row
 ) {
     background-color: var(--global-glass-bg) !important;
     border-color: var(--global-glass-border) !important;
     box-shadow: var(--glass-shadow) !important;
     backdrop-filter: blur(var(--glass-blur)) saturate(135%) !important;
     -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(135%) !important;
+}
+
+/* The model-viewer floating controls stay solid: they overlay a busy 3D scene
+   where a translucent blur reads as muddy and hurts legibility. Opt them out of
+   global glass explicitly (their class contains `-panel`, which the group above
+   would otherwise match). */
+:root[data-global-glass="on"] .model-controls__panel,
+:root[data-global-glass="on"] .model-controls__btn {
+    background-color: var(--bg-secondary) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+:root[data-global-glass="on"] .model-controls__btn { background-color: var(--bg-tertiary) !important; }
+
+/* De-nest: a glass surface inside another glass surface must NOT re-frost the
+   same area (blur-over-blur + panel-in-panel reads as ugly stacked boxes, e.g.
+   the recent-bins container with each row also glassed). Nested glass surfaces
+   keep only a faint separator, so they read as content within the parent panel
+   rather than their own floating panels. Buttons/controls are excluded — those
+   SHOULD stay glass even when nested (that is the whole point of the toggle). */
+:root[data-global-glass="on"] :where(
+    .MuiPaper-root, .q-glass, .dl-card, .dl-modal,
+    [role="dialog"], [role="menu"], [role="listbox"],
+    [class*="-card"], [class*="__card"],
+    [class*="-panel"], [class*="__panel"],
+    [class*="-pane"], [class*="__pane"],
+    [class*="-sidebar"], [class*="__sidebar"],
+    [class*="-toolbar"], [class*="__toolbar"],
+    [class*="-topbar"], [class*="__topbar"],
+    [class*="-header"], [class*="__header"],
+    [class*="-footer"], [class*="__footer"],
+    [class*="-props"], [class*="__props"],
+    .settings-card, .dl-toggle-row
+) :where(
+    .MuiPaper-root, .q-glass, .dl-card, .dl-modal,
+    [role="dialog"], [role="menu"], [role="listbox"],
+    [class*="-card"], [class*="__card"],
+    [class*="-panel"], [class*="__panel"],
+    [class*="-pane"], [class*="__pane"],
+    [class*="-sidebar"], [class*="__sidebar"],
+    [class*="-toolbar"], [class*="__toolbar"],
+    [class*="-topbar"], [class*="__topbar"],
+    [class*="-header"], [class*="__header"],
+    [class*="-footer"], [class*="__footer"],
+    [class*="-props"], [class*="__props"],
+    .settings-card, .dl-toggle-row
+):not(button):not([role="button"]):not([class*="-btn"]):not([class*="__btn"]):not([class*="-button"]):not([class*="__button"]) {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-color: var(--global-glass-border) !important;
 }
 
 /* Controls need a tighter shadow than large cards/panels; using the full modal

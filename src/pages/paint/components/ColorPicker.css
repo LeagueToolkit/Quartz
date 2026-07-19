@@ -97,6 +97,27 @@
     align-items: center;
 }
 
+.paint-color-picker .pcp-pipette {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast), transform var(--motion-fast);
+}
+
+.paint-color-picker .pcp-pipette:hover {
+    color: var(--text-primary);
+    border-color: color-mix(in oklab, var(--accent-primary) 40%, var(--border));
+    background: color-mix(in oklab, var(--accent-primary) 10%, var(--bg-tertiary));
+    transform: translateY(-1px);
+}
+
 .paint-color-picker .pcp-swatch {
     width: 28px;
     height: 28px;

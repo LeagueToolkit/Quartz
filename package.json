@@ -1,14 +1,15 @@
 {
   "name": "quartz",
   "productName": "Quartz",
-  "version": "4.0.0",
+  "version": "4.1.1",
   "description": "Quartz - League of Legends Modding Suite (Tauri)",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri",
+    "tauri": "node scripts/tauri-wrapper.js",
+    "release:bundle": "node scripts/generate-release-bundle.js",
     "typecheck": "tsc --noEmit",
     "sync-version": "node scripts/sync-version.js",
     "version:patch": "npm version patch --no-git-tag-version && npm run sync-version",
@@ -29,7 +30,9 @@
     "lucide-react": "^0.539.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
     "react-window": "^2.2.3",
+    "remark-gfm": "^4.0.1",
     "three": "^0.182.0",
     "wavesurfer.js": "^7.12.8",
     "zustand": "^5.0.11"

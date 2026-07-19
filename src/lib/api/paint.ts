@@ -111,6 +111,11 @@ export function paintClose(sessionId: number): Promise<boolean> {
     return invokeCommand<boolean>('paint_close', { sessionId });
 }
 
+/** Reparse the session when any loaded BIN changed outside Quartz. */
+export function paintReloadIfChanged(sessionId: number): Promise<VfxModel | null> {
+    return invokeCommand<VfxModel | null>('paint_reload_if_changed', { sessionId });
+}
+
 /** Recolor selected emitters' selected color slots. Returns the count changed
  *  plus refreshed colors for just the touched emitters. */
 export function paintRecolor(

@@ -295,17 +295,13 @@ fn display_name_for_id(id: &str) -> String {
 }
 
 /// Map a user-facing champion name (or internal id) to its WAD file stem.
+///
+/// Delegates to [`crate::wad::normalize_champion`], the canonical normalizer, so
+/// display names with periods/spaces resolve correctly. A previous local copy
+/// stripped quotes/spaces but KEPT the period, turning "Dr. Mundo" into the
+/// non-existent stem "dr.mundo" (the real file is `DrMundo.wad.client`).
 pub fn wad_stem_for_name(name: &str) -> String {
-    let lower = name.to_lowercase();
-    match lower.as_str() {
-        "wukong" => "monkeyking".to_string(),
-        "nunu & willump" | "nunu" => "nunu".to_string(),
-        "renata glasc" | "renata" => "renata".to_string(),
-        _ => lower
-            .chars()
-            .filter(|c| !matches!(c, '\'' | '"' | ' '))
-            .collect(),
-    }
+    crate::wad::normalize_champion(name)
 }
 
 fn title_case(id: &str) -> String {
@@ -1424,6 +1420,10 @@ mod tests {
         assert_eq!(wad_stem_for_name("Kai'Sa"), "kaisa");
         assert_eq!(wad_stem_for_name("Ahri"), "ahri");
         assert_eq!(display_name_for_id("ahri"), "Ahri");
+        // Regression: "Dr. Mundo" must resolve to the real stem "drmundo"
+        // (DrMundo.wad.client), never the dotted "dr.mundo".
+        assert_eq!(wad_stem_for_name("Dr. Mundo"), "drmundo");
+        assert_eq!(wad_stem_for_name("DrMundo"), "drmundo");
     }
 
     fn opts_with<'a>(skin_id: u32, chroma_id: Option<u32>) -> ExtractOptions<'a> {

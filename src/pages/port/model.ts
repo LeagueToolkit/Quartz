@@ -25,6 +25,7 @@ export interface VfxEmitter {
     complex: boolean;
     isChildParticle: boolean;
     childSystemKey?: string;
+    childSystemName?: string;
     childData: ChildView | null;
     textures: string[];
     meshes: string[];
@@ -41,6 +42,7 @@ export interface VfxSystem {
     path: VfxPath;
     transform: number[] | null;
     emitters: VfxEmitter[];
+    childParents: Array<{ system: string; emitter: string }>;
 }
 
 export type VfxSystemMap = Record<string, VfxSystem>;
@@ -54,14 +56,41 @@ function colorCss(c: [number, number, number, number]): string {
     return `rgba(${to255(c[0])}, ${to255(c[1])}, ${to255(c[2])}, ${Math.max(0, Math.min(1, c[3]))})`;
 }
 
-function toUiEmitter(e: PortEmitter): VfxEmitter {
+function normalizeVfxLink(value: string | null | undefined): string {
+    return (value ?? '').trim().replace(/\\/g, '/').toLowerCase();
+}
+
+/** Ruby's resolution order: ResourceResolver effectKey -> system path first,
+ * then particleName, then the system path basename. */
+function resolveChildSystemName(model: VfxPortModel, effectKey: string | null | undefined): string | undefined {
+    const key = normalizeVfxLink(effectKey);
+    if (!key) return undefined;
+    const resolvedPath = model.resolver?.entries.find((entry) => normalizeVfxLink(entry.key) === key)?.value;
+    const wantedPath = normalizeVfxLink(resolvedPath);
+    const resolved = (wantedPath
+        ? model.systems.find((system) => [system.particlePath, system.name, system.key, `0x${system.key.split('@')[0]}`]
+            .some((candidate) => normalizeVfxLink(candidate) === wantedPath))
+        : undefined)
+        ?? model.systems.find((system) => normalizeVfxLink(system.particleName) === key)
+        ?? model.systems.find((system) => normalizeVfxLink(system.particlePath).split('/').pop() === key)
+        ?? (() => {
+            const option = model.effectKeys.find((candidate) => normalizeVfxLink(candidate.key) === key);
+            if (!option) return undefined;
+            return model.systems.find((system) => normalizeVfxLink(system.particleName) === normalizeVfxLink(option.particleName));
+        })();
+    return resolved?.particleName || resolved?.name || resolved?.particlePath?.split(/[/\\]/).pop();
+}
+
+function toUiEmitter(e: PortEmitter, model: VfxPortModel): VfxEmitter {
+    const childSystemKey = e.childData?.effectKey;
     return {
         key: e.key,
         name: e.name,
         path: e.path,
         complex: e.complex,
         isChildParticle: e.isChild,
-        childSystemKey: e.childData?.effectKey,
+        childSystemKey,
+        childSystemName: resolveChildSystemName(model, childSystemKey),
         childData: e.childData,
         textures: e.textures,
         meshes: e.meshes,
@@ -70,7 +99,7 @@ function toUiEmitter(e: PortEmitter): VfxEmitter {
     };
 }
 
-function toUiSystem(s: PortSystem): VfxSystem {
+function toUiSystem(s: PortSystem, model: VfxPortModel): VfxSystem {
     return {
         key: s.key,
         name: s.name,
@@ -79,8 +108,27 @@ function toUiSystem(s: PortSystem): VfxSystem {
         binIndex: s.binIndex,
         path: s.path,
         transform: s.transform,
-        emitters: s.emitters.map(toUiEmitter),
+        emitters: s.emitters.map((emitter) => toUiEmitter(emitter, model)),
+        childParents: [],
     };
+}
+
+function buildUiSystems(model: VfxPortModel): VfxSystem[] {
+    const systems = model.systems.map((system) => toUiSystem(system, model));
+    for (const parent of systems) {
+        for (const emitter of parent.emitters) {
+            if (!emitter.childSystemName) continue;
+            const wanted = normalizeVfxLink(emitter.childSystemName);
+            const child = systems.find((system) => [system.particleName, system.name, system.particlePath]
+                .some((candidate) => normalizeVfxLink(candidate) === wanted));
+            if (!child) continue;
+            child.childParents.push({
+                system: parent.particleName || parent.name || parent.key,
+                emitter: emitter.name,
+            });
+        }
+    }
+    return systems;
 }
 
 /* Build the key -> system map the columns use for O(1) lookups by key. Order is
@@ -88,8 +136,7 @@ function toUiSystem(s: PortSystem): VfxSystem {
 export function buildSystemMap(model: VfxPortModel | null): VfxSystemMap {
     const map: VfxSystemMap = {};
     if (!model) return map;
-    for (const raw of model.systems) {
-        const sys = toUiSystem(raw);
+    for (const sys of buildUiSystems(model)) {
         map[sys.key] = sys;
     }
     return map;
@@ -100,7 +147,7 @@ export function buildSystemMap(model: VfxPortModel | null): VfxSystemMap {
    systems are inserted at the top natively, so bin order = list order. */
 export function buildSystemList(model: VfxPortModel | null): VfxSystem[] {
     if (!model) return [];
-    return model.systems.map(toUiSystem);
+    return buildUiSystems(model);
 }
 
 // ── Resolver / effect keys ──

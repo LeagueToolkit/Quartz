@@ -148,13 +148,28 @@
     place-items: center;
     border-radius: var(--radius-sm);
     background-color: transparent;
-    transition: background-color var(--motion-fast);
+    transition: color 0.2s ease;
+}
+/* Navigation icons deliberately stay surface-free, including when the global
+   glass option applies its generic active-control tint. */
+.q-topnavbtn,
+.q-topnavbtn:hover,
+.q-topnavbtn.is-active,
+.q-navbtn,
+.q-navbtn:hover,
+.q-navbtn.is-active {
+    background: transparent !important;
+    background-color: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 .q-topnavbtn svg {
     width: 17px;
     height: 17px;
     color: var(--text-muted);
-    transition: color var(--motion-fast), transform var(--motion-fast);
+    transition: color 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
     pointer-events: none;
 }
 .q-jade-logo {
@@ -162,30 +177,32 @@
     height: 19px;
     object-fit: contain;
     opacity: 0.78;
-    transition: opacity var(--motion-fast), transform var(--motion-fast), filter var(--motion-fast);
+    transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
     pointer-events: none;
 }
 .q-jade-launch:hover .q-jade-logo {
     opacity: 1;
-    transform: scale(1.08);
-    filter: brightness(1.1);
+    transform: scale(1.18);
+    filter: brightness(1.1) drop-shadow(0 0 8px color-mix(in oklab, var(--accent-primary) 70%, transparent));
 }
 .q-jade-launch:disabled {
     cursor: not-allowed;
     opacity: 0.38;
 }
 .q-topnavbtn:hover {
-    background: color-mix(in oklab, var(--accent-primary) 10%, transparent);
+    background: transparent;
 }
 .q-topnavbtn:hover svg {
-    color: var(--text-secondary);
-    transform: scale(1.08);
+    color: var(--accent-primary);
+    transform: scale(1.18);
+    filter: drop-shadow(0 0 8px color-mix(in oklab, var(--accent-primary) 70%, transparent));
 }
 .q-topnavbtn.is-active {
-    background: color-mix(in oklab, var(--accent-primary) 14%, transparent);
+    background: transparent;
 }
 .q-topnavbtn.is-active svg {
     color: var(--accent-primary);
+    filter: drop-shadow(0 0 5px color-mix(in oklab, var(--accent-primary) 70%, transparent));
 }
 /* Active marker sits on the bottom edge here (the rail uses a left pill; a
    horizontal strip reads better with an underline). */
@@ -334,29 +351,31 @@
     place-items: center;
     border-radius: var(--radius-sm);
     background-color: transparent;
-    transition: background-color var(--motion-fast);
+    transition: color 0.2s ease;
 }
 .q-navbtn svg {
     width: 21px;
     height: 21px;
     color: var(--text-muted);
-    transition: color var(--motion-fast), transform var(--motion-fast);
+    transition: color 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
     pointer-events: none;
 }
 .q-navbtn:hover {
-    background: color-mix(in oklab, var(--accent-primary) 10%, transparent);
+    background: transparent;
 }
 .q-navbtn:hover svg {
-    color: var(--text-secondary);
-    transform: scale(1.08);
+    color: var(--accent-primary);
+    transform: scale(1.18);
+    filter: drop-shadow(0 0 8px color-mix(in oklab, var(--accent-primary) 70%, transparent));
 }
 
 /* Active: subtle accent-tinted tile + accent icon + left-edge pill. */
 .q-navbtn.is-active {
-    background: color-mix(in oklab, var(--accent-primary) 14%, transparent);
+    background: transparent;
 }
 .q-navbtn.is-active svg {
     color: var(--accent-primary);
+    filter: drop-shadow(0 0 5px color-mix(in oklab, var(--accent-primary) 70%, transparent));
 }
 .q-navbtn.is-active::before {
     content: '';

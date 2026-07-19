@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 pub fn port_prepare_donor_from_skin(
     champion_name: String,
     skin_id: u32,
+    chroma_id: Option<u32>,
     league_path: String,
     porting_prefix: Option<String>,
 ) -> Result<DonorResult, String> {
@@ -21,6 +22,7 @@ pub fn port_prepare_donor_from_skin(
         &PathBuf::from(league_path),
         &champion_name,
         skin_id,
+        chroma_id,
         &prefix,
     )
     .map_err(|e| e.to_string())

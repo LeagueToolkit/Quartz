@@ -112,7 +112,7 @@ export function ToolsSection() {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <FormGroup label="League Install Path" icon={<FolderTree size={15} />}>
-                <div style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div className="settings-card" style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <InputWithButton
                         value={leaguePath}
                         onChange={(e) => update({ leaguePath: e.target.value })}
@@ -133,7 +133,7 @@ export function ToolsSection() {
             </FormGroup>
 
             <FormGroup label="WAD Extraction Output Path" icon={<PackageOpen size={15} />}>
-                <div style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div className="settings-card" style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <InputWithButton
                         value={wadOutputPath}
                         onChange={(e) => update({ wadOutputPath: e.target.value })}
@@ -149,7 +149,7 @@ export function ToolsSection() {
             </FormGroup>
 
             <FormGroup label="Jade Executable Path" icon={<Terminal size={15} />}>
-                <div style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div className="settings-card" style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <InputWithButton
                         value={jadePath}
                         onChange={(e) => set('jadeExecutablePath', e.target.value)}
@@ -165,7 +165,7 @@ export function ToolsSection() {
             </FormGroup>
 
             <FormGroup label="Hash Files" icon={<Database size={15} />}>
-                <div style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div className="settings-card" style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {hashStatus && (
                         <div>
                             <StatusBadge
@@ -233,7 +233,7 @@ function UpscaleCard() {
         : '';
 
     return (
-        <div style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div className="settings-card" style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {status && <StatusBadge status={binOk ? 'success' : 'warning'} text={modelLabel} />}
             {busy && (
                 <div>

@@ -49,3 +49,20 @@ windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_UI_
 opt-level = 3
 lto = true
 strip = true
+
+# Texture preview is CPU-heavy even in the development app. Keep the app
+# crate debuggable while optimizing the decoder/resize/PNG dependencies.
+[profile.dev.package.ritoshark]
+opt-level = 3
+
+[profile.dev.package.rs_tex]
+opt-level = 3
+
+[profile.dev.package.texpresso]
+opt-level = 3
+
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.dev.package.png]
+opt-level = 3

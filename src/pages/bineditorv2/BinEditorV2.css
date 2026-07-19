@@ -278,105 +278,7 @@
     margin-bottom: 18px;
 }
 
-/* Recent bins list */
-.bineditorv2-recent {
-    width: min(520px, 90%);
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    max-height: 268px;
-    margin-bottom: 8px;
-}
-.bineditorv2-recent__title {
-    flex-shrink: 0;
-    margin-bottom: 12px;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-}
-.bineditorv2-recent__list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    overflow-y: auto;
-    min-height: 0;
-    padding-right: 4px;
-}
-.bineditorv2-recent__item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: var(--bg-tertiary);
-    cursor: pointer;
-    transition: background var(--motion-fast), border-color var(--motion-fast);
-}
-.bineditorv2-recent__item:hover {
-    background: var(--bg-hover);
-    border-color: color-mix(in oklab, var(--accent-primary) 30%, var(--border));
-}
-.bineditorv2-recent__info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex: 1;
-    min-width: 0;
-}
-.bineditorv2-recent__icon {
-    color: var(--text-muted);
-    flex-shrink: 0;
-    transition: color var(--motion-fast);
-}
-.bineditorv2-recent__item:hover .bineditorv2-recent__icon {
-    color: var(--accent-primary);
-}
-.bineditorv2-recent__name {
-    font-family: var(--font-mono);
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.bineditorv2-recent__actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-}
-.bineditorv2-recent__date {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--text-muted);
-}
-.bineditorv2-recent__delete {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity var(--motion-fast), color var(--motion-fast), background var(--motion-fast);
-}
-.bineditorv2-recent__item:hover .bineditorv2-recent__delete {
-    opacity: 1;
-}
-.bineditorv2-recent__delete:hover {
-    color: var(--color-danger);
-    background: color-mix(in oklab, var(--color-danger) 12%, transparent);
-}
+/* Recent-bins list styling is shared via RecentBinsList (`.paint2-recent*`). */
 
 /* Footer — full-width bottom action bar (Paint-consistent, fixed 48px). */
 .bineditorv2-footer {
@@ -388,7 +290,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    background: var(--bg-primary);
+    background: color-mix(in oklab, var(--bg-secondary) 94%, transparent);
     border-top: 1px solid var(--border);
 }
 /* Absolutely centered in the whole bar so it's truly middle regardless of how

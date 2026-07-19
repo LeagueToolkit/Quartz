@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { FolderOpen as FolderOpenIcon, Redo2 as RedoIcon, Undo2 as UndoIcon, X as CloseIcon } from 'lucide-react';
+import { FolderOpen as FolderOpenIcon, Redo2 as RedoIcon, Undo2 as UndoIcon } from 'lucide-react';
 import { useFileExplorer } from '@/components/explorer';
-import { DropOverlay } from '@/components/ui';
+import { DropOverlay, RecentBinsList } from '@/components/ui';
 import {
     binEditorAddChild, binEditorAddEmitter, binEditorApply, binEditorClose, binEditorCreateSystem,
-    binEditorModel, binEditorMove, binEditorOpen, binEditorStructural,
+    binEditorModel, binEditorReloadIfChanged, binEditorMove, binEditorOpen, binEditorStructural,
     binEditorRedo, binEditorRestore, binEditorSave, binEditorUndo,
     type BinEditorChildParams, type BinEditorUndoResult, type EditorEmitter, type EditorModel, type EditorNode,
     type EditorSystem, type JsonBinValue, type NodePath,
 } from '@/lib/api/bineditor';
-import { isStaleFileError, staleFilePaths } from '@/lib/api/staleFile';
+import { isStaleFileError } from '@/lib/api/staleFile';
 import { useNavigationStore, useNotificationStore, useUiPrefsStore } from '@/lib/stores';
 import { useFileDrop } from '@/lib/util/useFileDrop';
 import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
+import { useSessionFileWatcher } from '@/lib/util/useSessionFileWatcher';
 import { Switch } from '@/components/settings/primitives';
 import {
     closeTexturePreview, scheduleTexturePreviewClose, showTexturePreview,
@@ -41,21 +42,6 @@ import { useJadeBin } from '@/lib/jade/jadeInterop';
    edit flows through the bin_editor_* commands instead of text splicing. */
 
 const DROP_RE = /\.(bin|py|ritobin)$/i;
-
-/* "3m ago" / "2h ago" / "5d ago" stamp for the recent bins list. */
-function relativeTime(iso: string): string {
-    const then = new Date(iso).getTime();
-    if (Number.isNaN(then)) return '';
-    const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
-    if (secs < 60) return 'just now';
-    const mins = Math.floor(secs / 60);
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    const days = Math.floor(hrs / 24);
-    if (days < 30) return `${days}d ago`;
-    return new Date(iso).toLocaleDateString();
-}
 
 function BinEditorV2() {
     const pick = useFileExplorer();
@@ -101,6 +87,24 @@ function BinEditorV2() {
         setExpandedFields(new Set());
         setActiveCategory('all');
     }, []);
+
+    const handleExternalReload = useCallback((nextModel: EditorModel) => {
+        setModel(nextModel);
+        setDirty(false);
+        setDirtyKeys(new Set());
+        setCanUndo(false);
+        setCanRedo(false);
+        collapseEditorView(true);
+        const emitterCount = nextModel.systems.reduce((count, system) => count + system.emitters.length, 0);
+        setStatus(`BIN changed externally and was reloaded: ${nextModel.systems.length} systems, ${emitterCount} emitters`);
+    }, [collapseEditorView]);
+
+    useSessionFileWatcher({
+        sessionId: sessionRef.current,
+        reload: binEditorReloadIfChanged,
+        onReload: handleExternalReload,
+        paused: busy,
+    });
 
     const prevPageRef = useRef<string | null>(null);
     useEffect(() => {
@@ -253,18 +257,15 @@ function BinEditorV2() {
                 notify('success', savedPaths.length === 1 ? `Saved ${names}` : `Saved ${savedPaths.length} files: ${names}`);
             }
         } catch (error) {
-            // A file changed on disk since opening (e.g. saved from Paint/Port).
-            // Ask before clobbering; on confirm, retry with force.
+            // Close the watcher race by reparsing immediately instead of
+            // offering to overwrite the external edit.
             if (!force && isStaleFileError(error)) {
-                const paths = staleFilePaths(error);
-                const names = paths.map((p) => p.split(/[\\/]/).pop()).join(', ') || 'this file';
-                setBusy(false);
-                const ok = window.confirm(
-                    `${names} was modified outside the Bin Editor since you opened it.\n\n`
-                    + `Saving now will overwrite those changes. Overwrite?`,
-                );
-                if (ok) await handleSave(true);
-                else setStatus('Save cancelled (file changed on disk)');
+                try {
+                    const reloaded = await binEditorReloadIfChanged(sid);
+                    if (reloaded) handleExternalReload(reloaded);
+                } catch (reloadError) {
+                    setStatus(`External change detected; reload deferred: ${(reloadError as Error).message}`);
+                }
                 return;
             }
             const msg = error instanceof Error ? error.message : String(error);
@@ -273,7 +274,7 @@ function BinEditorV2() {
         } finally {
             setBusy(false);
         }
-    }, [notify]);
+    }, [notify, handleExternalReload]);
 
     /* Apply an undo/redo response: partial results patch only the touched
        systems into the resident model (and bump their revs); full results
@@ -830,36 +831,7 @@ function BinEditorV2() {
                                 </button>
                             </div>
 
-                            {recentBins.length > 0 && (
-                                <div className="bineditorv2-recent">
-                                    <div className="bineditorv2-recent__title">Recent Bins</div>
-                                    <div className="bineditorv2-recent__list">
-                                        {recentBins.map((bin) => (
-                                            <div
-                                                key={bin.path}
-                                                className="bineditorv2-recent__item"
-                                                onClick={() => void loadBinFile(bin.path)}
-                                                title={bin.path}
-                                            >
-                                                <div className="bineditorv2-recent__info">
-                                                    <FolderOpenIcon size={15} className="bineditorv2-recent__icon" />
-                                                    <span className="bineditorv2-recent__name">{bin.name}</span>
-                                                </div>
-                                                <div className="bineditorv2-recent__actions">
-                                                    <span className="bineditorv2-recent__date">{relativeTime(bin.lastOpened)}</span>
-                                                    <button
-                                                        className="bineditorv2-recent__delete"
-                                                        title="Remove from recent"
-                                                        onClick={(e) => { e.stopPropagation(); removeRecentBin(bin.path); }}
-                                                    >
-                                                        <CloseIcon size={13} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+                            <RecentBinsList bins={recentBins} onOpen={(path) => void loadBinFile(path)} onRemove={removeRecentBin} />
                         </div>
                     )}
 

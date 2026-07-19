@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
     ArrowLeft, ArrowRight, ArrowUp, RefreshCw, Search, X,
     LayoutGrid, List as ListIcon, FolderOpen, Eye, Star,
-    Pencil, Trash2, Copy, ClipboardCopy, FolderPlus, Palette, FileCode,
+    Pencil, Trash2, Copy, ClipboardCopy, ClipboardPaste, FolderPlus, Palette, FileCode,
+    ArrowUpNarrowWide, ArrowDownNarrowWide,
 } from 'lucide-react';
 import {
     explorerReveal, explorerRename, explorerDelete, explorerCopy, explorerNewFolder,
@@ -23,6 +24,15 @@ import './explorer.css';
 const MODEL_EXTS = new Set(['scb', 'sco', 'skn']);
 const TEXTURE_EXTS = new Set(['tex', 'dds', 'png', 'jpg', 'jpeg']);
 const BIN_EXTS = new Set(['bin', 'py', 'ritobin']);
+
+// Explorer-local file clipboard. It intentionally survives closing one picker
+// so a user can copy in one in-app explorer and paste in the next one.
+let fileClipboard: string[] = [];
+
+const isTextEditing = (target: EventTarget | null): boolean => {
+    const element = target instanceof HTMLElement ? target : null;
+    return Boolean(element?.closest('input, textarea, select, [contenteditable="true"]'));
+};
 
 const entryExtension = (entry: FsEntry): string => entry.extension.replace(/^\./, '').toLowerCase();
 
@@ -63,6 +73,24 @@ function matchesSearch(entry: FsEntry, query: string): boolean {
 }
 
 interface ContextState { x: number; y: number; entry: FsEntry }
+type SortKey = 'name' | 'modified' | 'type' | 'size';
+type SortDirection = 'asc' | 'desc';
+
+const typeName = (entry: FsEntry): string => entry.isDirectory
+    ? 'File folder'
+    : (entry.extension ? `${entry.extension.toUpperCase()} file` : 'File');
+
+function compareEntries(a: FsEntry, b: FsEntry, key: SortKey, direction: SortDirection): number {
+    // Keep folders together above files, matching Windows Explorer.
+    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+    let result = 0;
+    if (key === 'modified') result = a.modified - b.modified;
+    else if (key === 'size') result = a.size - b.size;
+    else if (key === 'type') result = typeName(a).localeCompare(typeName(b), undefined, { numeric: true, sensitivity: 'base' });
+    else result = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    if (result === 0) result = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    return direction === 'asc' ? result : -result;
+}
 
 export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: {
     open: boolean;
@@ -74,6 +102,8 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     const recentsKey = options.recentsKey ?? 'default';
     const filterGroups = useMemo(() => filterGroupsFrom(options), [options]);
     const [filterIdx, setFilterIdx] = useState(0);
+    const [sortKey, setSortKey] = useState<SortKey>('name');
+    const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     const extFilter = filterGroups[filterIdx]?.exts;
     const nav = useExplorerNav(extFilter);
     const addRecent = useExplorerStore((s) => s.addRecent);
@@ -86,7 +116,8 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     const [search, setSearch] = useState('');
     // Tracks the folder the current search applies to, so navigating away clears it.
     const lastSearchPath = useRef<string | null>(null);
-    const [selected, setSelected] = useState<string | null>(null); // entry.name
+    const [selected, setSelected] = useState<string | null>(null); // absolute entry.path
+    const [selection, setSelection] = useState<Set<string>>(new Set());
     const [multi, setMulti] = useState<Set<string>>(new Set()); // entry.path, files mode
     const [saveName, setSaveName] = useState('');
     const [editingAddr, setEditingAddr] = useState(false);
@@ -95,6 +126,8 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     // Inline rename: the entry being renamed + its draft name.
     const [renaming, setRenaming] = useState<{ entry: FsEntry; draft: string } | null>(null);
     const gridRef = useRef<HTMLDivElement>(null);
+    const marqueeStart = useRef<{ x: number; y: number } | null>(null);
+    const [marquee, setMarquee] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
     const openInTool = useNavigationStore((s) => s.openInTool);
 
     const isSave = options.mode === 'save';
@@ -106,14 +139,14 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     // caller defaultPath -> last-visited folder -> Desktop -> Home.
     useEffect(() => {
         if (!open) return;
-        setSearch(''); setSelected(null); setMulti(new Set()); setCtx(null); setFilterIdx(0);
+        setSearch(''); setSelected(null); setSelection(new Set()); setMulti(new Set()); setCtx(null); setFilterIdx(0);
         lastSearchPath.current = null; // fresh session: don't clear on the boot navigation
         void pruneRecents();
         (async () => {
             const start = options.defaultPath;
             if (start) {
                 const r = await nav.resolveAndGo(start);
-                if (r.file) { setSelected(r.file); if (isSave) setSaveName(r.file); }
+                if (r.file) { setSelected(r.file); if (isSave) setSaveName(r.file.replace(/^.*[\\/]/, '')); }
                 if (r.ok) return;
             }
             // This picker's own most-recent entry (e.g. the last opened .bin),
@@ -155,30 +188,72 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filterIdx]);
 
-    // Esc closes; also dismiss the context menu on any outside click.
+    // Esc closes. Ctrl+C/Ctrl+V operate on files/folders unless the user is
+    // editing text, in which case normal text clipboard behavior wins.
     useEffect(() => {
         if (!open) return;
-        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { if (ctx) setCtx(null); else onCancel(); } };
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (ctx) setCtx(null); else onCancel();
+                return;
+            }
+            if (!(e.ctrlKey || e.metaKey) || isTextEditing(e.target)) return;
+            if (e.key.toLowerCase() === 'c') {
+                const paths = selection.size ? [...selection] : isFiles && multi.size ? [...multi] : selected ? [selected] : [];
+                if (!paths.length) return;
+                fileClipboard = paths;
+                e.preventDefault();
+            } else if (e.key.toLowerCase() === 'v' && fileClipboard.length && nav.currentPath) {
+                e.preventDefault();
+                const sources = [...fileClipboard];
+                void (async () => {
+                    const copied: string[] = [];
+                    try {
+                        // Keep large directory copies serialized to avoid a burst
+                        // of recursive filesystem work.
+                        for (const source of sources) copied.push(await explorerCopy(source, nav.currentPath));
+                        nav.refresh();
+                        setSelection(new Set(copied));
+                        setSelected(copied.length ? copied[copied.length - 1] : null);
+                    } catch (error) {
+                        window.alert(error instanceof Error ? error.message : String(error));
+                    }
+                })();
+            }
+        };
         const onClick = () => setCtx(null);
         document.addEventListener('keydown', onKey);
         document.addEventListener('click', onClick);
         return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('click', onClick); };
-    }, [open, ctx, onCancel]);
+    }, [open, ctx, onCancel, selection, isFiles, multi, selected, nav.currentPath, nav.refresh]);
 
     // Scroll the selected tile into view (case-insensitive name match).
     useEffect(() => {
         if (!selected || !gridRef.current) return;
-        const el = gridRef.current.querySelector<HTMLElement>(`[data-name="${CSS.escape(selected)}"]`);
+        const el = gridRef.current.querySelector<HTMLElement>(`[data-path="${CSS.escape(selected)}"]`);
         el?.scrollIntoView({ block: 'nearest' });
     }, [selected, nav.entries]);
 
-    const visible = useMemo(
-        () => nav.entries.filter((e) => matchesSearch(e, search)),
-        [nav.entries, search],
-    );
+    const visible = useMemo(() => nav.entries
+        .filter((entry) => matchesSearch(entry, search))
+        .sort((a, b) => compareEntries(a, b, sortKey, sortDirection)),
+    [nav.entries, search, sortDirection, sortKey]);
     const selectedEntry = useMemo(
-        () => nav.entries.find((e) => e.name === selected) ?? null,
+        () => nav.entries.find((e) => e.path === selected) ?? null,
         [nav.entries, selected],
+    );
+    const selectedDirectoryPath = isDirectory && selectedEntry?.isDirectory
+        ? selectedEntry.path
+        : nav.currentPath;
+    const showPreview = Boolean(
+        !isDirectory
+        && selectedEntry
+        && !selectedEntry.isDirectory
+        && (
+            TEXTURE_EXTS.has(entryExtension(selectedEntry))
+            || MODEL_EXTS.has(entryExtension(selectedEntry))
+            || BIN_EXTS.has(entryExtension(selectedEntry))
+        ),
     );
 
     if (!open) return null;
@@ -194,7 +269,7 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     // a folder navigates in, a dead path is ignored (no read_dir on a file).
     const handleSidebarNavigate = async (path: string) => {
         const r = await nav.resolveAndGo(path);
-        if (r.file) { setSelected(r.file); if (isSave) setSaveName(r.file); }
+        if (r.file) { setSelected(r.file); if (isSave) setSaveName(r.file.replace(/^.*[\\/]/, '')); }
     };
 
     const chooseFile = (entry: FsEntry) => {
@@ -220,9 +295,9 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
         setRenaming(null);
         if (!name || name === entry.name) return;
         try {
-            await explorerRename(entry.path, name);
+            const renamedPath = await explorerRename(entry.path, name);
             nav.refresh();
-            setSelected(name);
+            setSelected(renamedPath);
         } catch (e) {
             window.alert(e instanceof Error ? e.message : String(e));
         }
@@ -234,7 +309,7 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
         if (!window.confirm(`Delete this ${kind}?\n\n${entry.name}\n\nThis cannot be undone.`)) return;
         try {
             await explorerDelete(entry.path);
-            if (selected === entry.name) setSelected(null);
+            if (selected === entry.path) setSelected(null);
             nav.refresh();
         } catch (e) {
             window.alert(e instanceof Error ? e.message : String(e));
@@ -246,7 +321,7 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
         try {
             const newPath = await explorerCopy(entry.path, nav.currentPath);
             nav.refresh();
-            setSelected(newPath.replace(/^.*[\\/]/, ''));
+            setSelected(newPath);
         } catch (e) {
             window.alert(e instanceof Error ? e.message : String(e));
         }
@@ -259,7 +334,7 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
         try {
             const path = await explorerNewFolder(nav.currentPath, name);
             nav.refresh();
-            setSelected(path.replace(/^.*[\\/]/, ''));
+            setSelected(path);
         } catch (e) {
             window.alert(e instanceof Error ? e.message : String(e));
         }
@@ -287,15 +362,97 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     const handleDouble = (entry: FsEntry) => {
         if (entry.isDirectory) { nav.navigateTo(entry.path); return; }
         if (isDirectory) return; // dirs mode ignores files
-        if (isBrowse) { setSelected(entry.name); return; }
-        if (isSave) { setSaveName(entry.name); setSelected(entry.name); return; }
+        if (isBrowse) { setSelected(entry.path); return; }
+        if (isSave) { setSaveName(entry.name); setSelected(entry.path); return; }
         if (isFiles) { toggleMulti(entry); return; }
         chooseFile(entry); // single-file mode: double-click confirms
     };
 
-    const handleClick = (entry: FsEntry) => {
-        setSelected(entry.name);
+    const handleClick = (entry: FsEntry, event: React.MouseEvent) => {
+        if (event.ctrlKey || event.metaKey) {
+            setSelection((current) => {
+                const next = new Set(current);
+                if (next.has(entry.path)) next.delete(entry.path); else next.add(entry.path);
+                setSelected(next.has(entry.path) ? entry.path : (next.values().next().value ?? null));
+                return next;
+            });
+            if (isFiles && !entry.isDirectory) toggleMulti(entry);
+        } else {
+            setSelection(new Set([entry.path]));
+            setSelected(entry.path);
+        }
         if (isSave && !entry.isDirectory) setSaveName(entry.name);
+    };
+
+    const beginMarquee = (event: ReactPointerEvent<HTMLDivElement>) => {
+        if (event.button !== 0 || (event.target as HTMLElement).closest('.dl-explorer-tile')) return;
+        marqueeStart.current = { x: event.clientX, y: event.clientY };
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setSelection(new Set());
+        if (isFiles) setMulti(new Set());
+        setSelected(null);
+        setMarquee({ left: event.clientX, top: event.clientY, width: 0, height: 0 });
+    };
+
+    const moveMarquee = (event: ReactPointerEvent<HTMLDivElement>) => {
+        const start = marqueeStart.current;
+        if (!start || !gridRef.current) return;
+        const left = Math.min(start.x, event.clientX);
+        const top = Math.min(start.y, event.clientY);
+        const right = Math.max(start.x, event.clientX);
+        const bottom = Math.max(start.y, event.clientY);
+        setMarquee({ left, top, width: right - left, height: bottom - top });
+        const hits = new Set<string>();
+        gridRef.current.querySelectorAll<HTMLElement>('[data-path]').forEach((tile) => {
+            const box = tile.getBoundingClientRect();
+            if (box.right >= left && box.left <= right && box.bottom >= top && box.top <= bottom) {
+                const path = tile.dataset.path;
+                if (path) hits.add(path);
+            }
+        });
+        setSelection(hits);
+        if (isFiles) {
+            const files = new Set(
+                nav.entries.filter((entry) => !entry.isDirectory && hits.has(entry.path)).map((entry) => entry.path),
+            );
+            setMulti(files);
+        }
+        setSelected(hits.values().next().value ?? null);
+    };
+
+    const endMarquee = (event: ReactPointerEvent<HTMLDivElement>) => {
+        if (!marqueeStart.current) return;
+        marqueeStart.current = null;
+        setMarquee(null);
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    };
+
+    const copyToFileClipboard = (entry: FsEntry) => {
+        fileClipboard = selection.has(entry.path) && selection.size ? [...selection] : [entry.path];
+        setCtx(null);
+    };
+
+    const pasteFileClipboard = async () => {
+        setCtx(null);
+        if (!fileClipboard.length) return;
+        try {
+            const copied: string[] = [];
+            for (const source of fileClipboard) copied.push(await explorerCopy(source, nav.currentPath));
+            nav.refresh();
+            setSelection(new Set(copied));
+            setSelected(copied.length ? copied[copied.length - 1] : null);
+        } catch (error) {
+            window.alert(error instanceof Error ? error.message : String(error));
+        }
+    };
+
+    const changeSort = (key: SortKey) => {
+        if (sortKey === key) {
+            setSortDirection((current) => current === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortKey(key);
+            setSortDirection(key === 'modified' ? 'desc' : 'asc');
+        }
     };
 
     const toggleMulti = (entry: FsEntry) => {
@@ -313,9 +470,9 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
             return;
         }
         if (isDirectory) {
-            if (!nav.currentPath) return;
-            addRecent(recentsKey, nav.currentPath);
-            onResolve(nav.currentPath);
+            if (!selectedDirectoryPath) return;
+            addRecent(recentsKey, selectedDirectoryPath);
+            onResolve(selectedDirectoryPath);
             return;
         }
         if (isFiles) {
@@ -346,7 +503,7 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     const confirmDisabled = isBrowse
         ? false
         : isDirectory
-        ? !nav.currentPath
+        ? !selectedDirectoryPath
         : isFiles
             ? multi.size === 0
             : isSave
@@ -389,9 +546,29 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
                         {search && <button className="dl-explorer__search-clear" onClick={() => setSearch('')}><X size={12} /></button>}
                     </div>
 
-                    <div className="dl-explorer__view">
-                        <button className={`dl-btn dl-btn--icon dl-btn--sm ${view === 'grid' ? 'dl-btn--active' : ''}`} onClick={() => setView('grid')} title="Grid"><LayoutGrid size={15} /></button>
-                        <button className={`dl-btn dl-btn--icon dl-btn--sm ${view === 'list' ? 'dl-btn--active' : ''}`} onClick={() => setView('list')} title="List"><ListIcon size={15} /></button>
+                    <div className="dl-explorer__sort-tools">
+                        <select
+                            className="dl-explorer__sort"
+                            value={sortKey}
+                            onChange={(event) => {
+                                const key = event.target.value as SortKey;
+                                setSortKey(key);
+                                setSortDirection(key === 'modified' ? 'desc' : 'asc');
+                            }}
+                            title="Sort by"
+                        >
+                            <option value="name">Name</option>
+                            <option value="modified">Date modified</option>
+                            <option value="type">Type</option>
+                            <option value="size">Size</option>
+                        </select>
+                        <button
+                            className="dl-btn dl-btn--icon dl-btn--sm"
+                            onClick={() => setSortDirection((current) => current === 'asc' ? 'desc' : 'asc')}
+                            title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+                        >
+                            {sortDirection === 'asc' ? <ArrowUpNarrowWide size={15} /> : <ArrowDownNarrowWide size={15} />}
+                        </button>
                     </div>
                     <button className="dl-btn dl-btn--icon dl-btn--sm" onClick={onCancel} title="Close"><X size={16} /></button>
                 </div>
@@ -401,6 +578,20 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
                     <ExplorerSidebar recentsKey={recentsKey} currentPath={nav.currentPath} onNavigate={handleSidebarNavigate} />
 
                     <div className="dl-explorer__main">
+                        {view === 'list' && (
+                            <div className="dl-explorer__list-head">
+                                {(['name', 'modified', 'type', 'size'] as SortKey[]).map((key) => (
+                                    <button
+                                        key={key}
+                                        className={sortKey === key ? 'is-active' : ''}
+                                        onClick={() => changeSort(key)}
+                                    >
+                                        <span>{key === 'name' ? 'Name' : key === 'modified' ? 'Date modified' : key === 'type' ? 'Type' : 'Size'}</span>
+                                        {sortKey === key && (sortDirection === 'asc' ? '↑' : '↓')}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                         {nav.loading ? (
                             // Show a skeleton only for slow loads; quick switches stay blank
                             // (no spinner flash). Blank area holds layout meanwhile.
@@ -410,30 +601,46 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
                         ) : visible.length === 0 ? (
                             <div className="dl-explorer__state">{search ? 'No matches' : 'Empty folder'}</div>
                         ) : (
-                            <div ref={gridRef} className={`dl-explorer__grid dl-explorer__grid--${view}`}>
+                            <div
+                                ref={gridRef}
+                                className={`dl-explorer__grid dl-explorer__grid--${view}`}
+                                onPointerDown={beginMarquee}
+                                onPointerMove={moveMarquee}
+                                onPointerUp={endMarquee}
+                                onPointerCancel={endMarquee}
+                            >
                                 {visible.map((entry) => (
                                     <FileTile
                                         key={entry.path}
                                         entry={entry}
                                         view={view}
-                                        selected={selected === entry.name}
+                                        selected={selection.has(entry.path) || selected === entry.path}
                                         checked={multi.has(entry.path)}
                                         showCheckbox={isFiles && !entry.isDirectory}
-                                        onClick={() => handleClick(entry)}
+                                        onClick={(event) => handleClick(entry, event)}
                                         onDoubleClick={() => handleDouble(entry)}
                                         onToggleCheck={() => toggleMulti(entry)}
-                                        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtx({ x: e.clientX, y: e.clientY, entry }); }}
+                                        onContextMenu={(e) => {
+                                            e.preventDefault(); e.stopPropagation();
+                                            if (!selection.has(entry.path)) { setSelection(new Set([entry.path])); setSelected(entry.path); }
+                                            setCtx({ x: e.clientX, y: e.clientY, entry });
+                                        }}
                                     />
                                 ))}
+                                {marquee && <div className="dl-explorer__marquee" style={marquee} />}
                             </div>
                         )}
                     </div>
 
-                    <PreviewPane entry={selectedEntry} onInspect={onInspect} />
+                    {showPreview && <PreviewPane entry={selectedEntry} onInspect={onInspect} />}
                 </div>
 
                 {/* Footer */}
                 <div className="dl-explorer__foot">
+                    <div className="dl-explorer__view" aria-label="View mode">
+                        <button className={`dl-btn dl-btn--icon dl-btn--sm ${view === 'grid' ? 'dl-btn--active' : ''}`} onClick={() => setView('grid')} title="Grid"><LayoutGrid size={15} /></button>
+                        <button className={`dl-btn dl-btn--icon dl-btn--sm ${view === 'list' ? 'dl-btn--active' : ''}`} onClick={() => setView('list')} title="List"><ListIcon size={15} /></button>
+                    </div>
                     {filterGroups.length > 1 && (
                         <select
                             className="dl-explorer__filter"
@@ -455,8 +662,8 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
                             onKeyDown={(e) => { if (e.key === 'Enter') confirm(); }}
                         />
                     ) : (
-                        <span className="dl-explorer__selpath" title={selectedEntry?.path ?? nav.currentPath}>
-                            {isDirectory ? nav.currentPath : isFiles ? `${multi.size} selected` : (selectedEntry?.path ?? '')}
+                        <span className="dl-explorer__selpath" title={isDirectory ? selectedDirectoryPath : (selectedEntry?.path ?? nav.currentPath)}>
+                            {isDirectory ? selectedDirectoryPath : isFiles ? `${multi.size} selected` : (selectedEntry?.path ?? '')}
                         </span>
                     )}
                     <div className="dl-explorer__foot-actions">
@@ -496,6 +703,12 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
                         {/* File operations */}
                         <button className="dl-dd__item" onClick={() => startRename(ctx.entry)}>
                             <Pencil size={14} /><span>Rename</span>
+                        </button>
+                        <button className="dl-dd__item" onClick={() => copyToFileClipboard(ctx.entry)}>
+                            <ClipboardCopy size={14} /><span>Copy</span><kbd>Ctrl+C</kbd>
+                        </button>
+                        <button className="dl-dd__item" disabled={!fileClipboard.length} onClick={() => void pasteFileClipboard()}>
+                            <ClipboardPaste size={14} /><span>Paste</span><kbd>Ctrl+V</kbd>
                         </button>
                         <button className="dl-dd__item" onClick={() => copyEntry(ctx.entry)}>
                             <Copy size={14} /><span>Duplicate</span>

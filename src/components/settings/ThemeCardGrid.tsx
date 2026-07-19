@@ -20,7 +20,6 @@ export function ThemeCardGrid() {
     const tokensFor = useThemeStore((s) => s.tokensFor);
 
     const seedFor = (t: Theme) => BUILTIN_VARIANTS.find((v) => v.id === t.id)?.accent ?? t.tokens.accent;
-
     return (
         <div className="q-themegrid">
             <ColorPickerHost />

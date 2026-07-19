@@ -12,6 +12,7 @@
     "core:window:allow-set-focus",
     "core:webview:allow-create-webview-window",
     "dialog:default",
+    "dialog:allow-confirm",
     "process:default",
     "opener:default",
     "opener:allow-open-path",

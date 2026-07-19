@@ -80,6 +80,30 @@ fn mtime_of(path: &Path) -> Option<std::time::SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
+/// True when any resident source file has changed since it was parsed.
+/// Missing/unreadable files are left alone so a temporary external write does
+/// not destroy the resident session; the next poll retries once the file is
+/// readable again.
+pub fn has_external_changes(bins: &[LoadedBin]) -> bool {
+    bins.iter().any(|bin| match (bin.mtime, mtime_of(&bin.path)) {
+        (Some(recorded), Some(current)) => recorded != current,
+        _ => false,
+    })
+}
+
+/// Reparse the main BIN and all of its currently-resolvable linked BINs when
+/// any resident source changed on disk. Returns `None` when nothing changed.
+pub fn reload_if_changed(bins: &[LoadedBin]) -> Result<Option<Vec<LoadedBin>>> {
+    if !has_external_changes(bins) {
+        return Ok(None);
+    }
+    let main_path = bins
+        .first()
+        .map(|bin| bin.path.clone())
+        .ok_or_else(|| Error::InvalidInput("BIN session has no main file".to_string()))?;
+    open_with_linked(&main_path).map(Some)
+}
+
 /// Read + parse one bin from disk in the format implied by its extension.
 fn load_tree(path: &Path) -> Result<(Bin, SourceFormat)> {
     let format = format_for_path(path);

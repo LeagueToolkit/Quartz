@@ -9,7 +9,7 @@
     gap: 16px;
     min-height: 56px;
     padding: 0 16px;
-    background: var(--bg-primary);
+    background: color-mix(in oklab, var(--bg-secondary) 94%, transparent);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
     box-sizing: border-box;
@@ -27,12 +27,30 @@
    border-box keeps their padding inside the cell so nothing bloats past 132px.
    Icon-only buttons (the folder re-select) keep their square shape. */
 .bumpath-bottom-bar__cells {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
     display: flex;
     align-items: center;
     gap: 10px;
 }
+.bumpath-bottom-bar__actions {
+    margin-left: auto;
+}
+.bumpath-bottom-bar__status {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 34%;
+    overflow: hidden;
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+}
+.bumpath-bottom-bar__status.is-error { color: var(--color-danger); }
 .bumpath-bottom-bar__cells > .dl-btn:not(.dl-btn--icon),
 .bumpath-bottom-bar__cells > .dl-input {
     box-sizing: border-box !important;

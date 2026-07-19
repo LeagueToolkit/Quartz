@@ -122,19 +122,11 @@ export default function EmitterItem({
                     </span>
                     {emitter.isChildParticle && (
                         <span
-                            style={{
-                                marginLeft: '6px',
-                                fontSize: '10px',
-                                background: 'color-mix(in oklab, var(--color-warning) 20%, transparent)',
-                                color: 'var(--color-warning)',
-                                padding: '1px 4px',
-                                borderRadius: '3px',
-                                border: '1px solid color-mix(in oklab, var(--color-warning) 35%, transparent)',
-                                fontWeight: 'bold',
-                            }}
-                            title={`Child particle referencing: ${emitter.childSystemKey}`}
+                            className="port-relation-badge port-relation-badge--parent"
+                            data-relation-tooltip={`Child VFX: ${emitter.childSystemName || emitter.childSystemKey || 'Unknown'}`}
+                            title={`Child VFX: ${emitter.childSystemName || emitter.childSystemKey || 'Unknown'}`}
                         >
-                            CHILD
+                            PARENT
                         </span>
                     )}
                 </div>

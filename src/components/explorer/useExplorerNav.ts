@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from 'react';
 import { explorerListDir, explorerResolvePath, type FsEntry } from '@/lib/api/explorer';
 
 const parentOf = (p: string) => p.replace(/[\\/]+$/, '').replace(/[\\/][^\\/]+$/, '');
-const basenameOf = (p: string) => p.replace(/[\\/]+$/, '').replace(/^.*[\\/]/, '');
 
 /** Directory navigation with back/forward/up history. Pure logic + fetch,
  *  no rendering. `extFilter` restricts which file extensions list. */
@@ -77,7 +76,7 @@ export function useExplorerNav(extFilter?: string[]) {
             return { ok: true, file: null };
         }
         navigateTo(parentOf(r.resolved));
-        return { ok: true, file: basenameOf(r.resolved) };
+        return { ok: true, file: r.resolved };
     }, [navigateTo]);
 
     // `tick` is referenced so canBack/canForward recompute on history changes.

@@ -8,6 +8,7 @@ use crate::error::{Error, Result};
 use ritoshark::mesh::{SkinnedMesh, StaticMesh};
 use ritoshark::prelude::Parse;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize)]
@@ -30,12 +31,21 @@ pub struct ModelPreview {
     pub normals: Vec<f32>,
     pub uvs: Vec<f32>,
     pub colors: Vec<f32>,
+    /// 4 bone influence indices per vertex, into the mesh's local influence
+    /// table (SKL `influences` maps these to joint ids). Empty for static meshes.
+    pub bone_indices: Vec<u32>,
+    /// 4 bone weights per vertex, parallel to `bone_indices`.
+    pub bone_weights: Vec<f32>,
     pub indices: Vec<u32>,
     pub groups: Vec<ModelGroup>,
     pub vertex_count: usize,
     pub triangle_count: usize,
     /// Same-stem texture next to the mesh, when one is present.
     pub suggested_texture: Option<String>,
+    /// BIN-authored SKN texture map (`*` base + submesh overrides).
+    pub suggested_textures: HashMap<String, String>,
+    pub suggested_hidden_groups: Vec<String>,
+    pub suggested_model_scale: f32,
 }
 
 pub fn load_model_preview(path: &Path) -> Result<ModelPreview> {
@@ -62,7 +72,14 @@ pub fn load_model_preview(path: &Path) -> Result<ModelPreview> {
             let mesh = SkinnedMesh::from_bytes(&bytes).map_err(|e| {
                 Error::InvalidInput(format!("failed to parse {}: {e}", path.display()))
             })?;
-            Ok(project_skinned(mesh, path))
+            let mut preview = project_skinned(mesh, path);
+            if let Some((definition, textures)) = crate::skin_preview::resolve_skn_disk_preview(path) {
+                preview.suggested_texture = textures.get("*").cloned().or(preview.suggested_texture);
+                preview.suggested_textures = textures;
+                preview.suggested_hidden_groups = definition.hidden_submeshes;
+                preview.suggested_model_scale = definition.skin_scale;
+            }
+            Ok(preview)
         }
         _ => Err(Error::InvalidInput(format!(
             "unsupported model format '.{ext}' (expected .scb, .sco, or .skn)"
@@ -128,11 +145,16 @@ fn project_static(mesh: StaticMesh, path: &Path) -> ModelPreview {
         normals: Vec::new(), // Three computes smooth normals after upload.
         uvs,
         colors,
+        bone_indices: Vec::new(), // static meshes have no skinning
+        bone_weights: Vec::new(),
         indices,
         groups,
         vertex_count,
         triangle_count,
         suggested_texture: find_companion_texture(path),
+        suggested_textures: HashMap::new(),
+        suggested_hidden_groups: Vec::new(),
+        suggested_model_scale: 1.0,
     }
 }
 
@@ -146,6 +168,8 @@ fn project_skinned(mesh: SkinnedMesh, path: &Path) -> ModelPreview {
     } else {
         Vec::new()
     };
+    let mut bone_indices = Vec::with_capacity(mesh.vertices.len() * 4);
+    let mut bone_weights = Vec::with_capacity(mesh.vertices.len() * 4);
 
     for vertex in &mesh.vertices {
         positions.extend_from_slice(&vertex.position.to_array());
@@ -155,6 +179,8 @@ fn project_skinned(mesh: SkinnedMesh, path: &Path) -> ModelPreview {
             let c = vertex.color.unwrap_or([255, 255, 255, 255]);
             colors.extend(c.map(|v| v as f32 / 255.0));
         }
+        bone_indices.extend(vertex.blend_indices.iter().map(|v| u32::from(*v)));
+        bone_weights.extend_from_slice(&vertex.blend_weights);
     }
 
     let indices: Vec<u32> = mesh.indices.iter().map(|v| u32::from(*v)).collect();
@@ -190,11 +216,16 @@ fn project_skinned(mesh: SkinnedMesh, path: &Path) -> ModelPreview {
         normals,
         uvs,
         colors,
+        bone_indices,
+        bone_weights,
         indices,
         groups,
         vertex_count,
         triangle_count,
         suggested_texture: find_companion_texture(path),
+        suggested_textures: HashMap::new(),
+        suggested_hidden_groups: Vec::new(),
+        suggested_model_scale: 1.0,
     }
 }
 

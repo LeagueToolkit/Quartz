@@ -5,6 +5,17 @@ import { explorerThumbnail, type FsEntry } from '@/lib/api/explorer';
 
 const THUMBNAIL_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'ico', 'tex', 'dds']);
 
+const formatSize = (bytes: number): string => {
+    if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
+    if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
+    if (bytes >= 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    return `${bytes} B`;
+};
+
+const formatDate = (timestamp: number): string => timestamp > 0
+    ? new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(timestamp))
+    : '';
+
 /** One explorer entry. Lazily decodes a thumbnail (via IntersectionObserver +
  *  the shared texture queue) for image / game-texture files; everything else
  *  shows a typed icon. */
@@ -14,7 +25,7 @@ export function FileTile({ entry, selected, checked, view, showCheckbox, onClick
     checked: boolean;
     view: 'grid' | 'list';
     showCheckbox: boolean;
-    onClick: () => void;
+    onClick: (event: React.MouseEvent) => void;
     onDoubleClick: () => void;
     onToggleCheck: () => void;
     onContextMenu: (e: React.MouseEvent) => void;
@@ -51,6 +62,7 @@ export function FileTile({ entry, selected, checked, view, showCheckbox, onClick
             onContextMenu={onContextMenu}
             title={entry.path}
             data-name={entry.name}
+            data-path={entry.path}
         >
             {showCheckbox && (
                 <input
@@ -68,6 +80,15 @@ export function FileTile({ entry, selected, checked, view, showCheckbox, onClick
                 {entry.isShortcut && <span className="dl-explorer-tile__shortcut" title="Shortcut">↗</span>}
             </div>
             <span className="dl-explorer-tile__name">{entry.name}</span>
+            {view === 'list' && (
+                <>
+                    <span className="dl-explorer-tile__modified">{formatDate(entry.modified)}</span>
+                    <span className="dl-explorer-tile__type">
+                        {entry.isDirectory ? 'File folder' : (entry.extension ? `${entry.extension.toUpperCase()} file` : 'File')}
+                    </span>
+                    <span className="dl-explorer-tile__size">{entry.isDirectory ? '' : formatSize(entry.size)}</span>
+                </>
+            )}
         </div>
     );
 }

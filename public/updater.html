@@ -55,13 +55,15 @@
         position: absolute;
         inset: 0 0 142px;
         display: grid;
-        place-items: center;
+        place-items: end center;
+        padding-bottom: 44px;
+        transform: translateY(52px);
       }
 
       .visual__aura {
         position: absolute;
-        width: 230px;
-        height: 190px;
+        width: 320px;
+        height: 260px;
         border-radius: 50%;
         background: radial-gradient(circle, rgba(63, 166, 244, .24), rgba(63, 166, 244, .05) 46%, transparent 72%);
         filter: blur(10px);
@@ -73,13 +75,16 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 11px;
+        gap: 13px;
+        width: 100%;
       }
 
       .brand__logo {
-        width: 112px;
-        height: 112px;
+        width: 166px;
+        height: 166px;
         object-fit: contain;
+        display: block;
+        margin-inline: auto;
         filter: drop-shadow(0 12px 24px rgba(0, 0, 0, .42));
         transform-origin: center;
         animation: logo-pop .6s cubic-bezier(.34, 1.56, .64, 1) both;
@@ -88,14 +93,18 @@
       .brand__name {
         display: flex;
         align-items: baseline;
+        justify-content: center;
+        width: 100%;
         color: #f1f3f6;
-        font-size: 23px;
+        font-size: 30px;
         font-weight: 650;
         letter-spacing: .035em;
       }
 
       .brand__word {
         display: inline-block;
+        max-width: 0;
+        overflow: hidden;
         white-space: nowrap;
         animation: type-word .55s cubic-bezier(.65, 0, .35, 1) .55s both;
       }
@@ -248,8 +257,8 @@
       }
 
       @keyframes type-word {
-        from { clip-path: inset(0 100% 0 0); }
-        to { clip-path: inset(0 0 0 0); }
+        from { max-width: 0; }
+        to { max-width: 6.5ch; }
       }
 
       @keyframes dot-pulse {
@@ -262,7 +271,7 @@
         .brand__logo,
         .brand__word,
         .brand__dot { animation: none; }
-        .brand__word { clip-path: none; }
+        .brand__word { max-width: none; }
         .brand__dot { opacity: 1; }
       }
     </style>

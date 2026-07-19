@@ -20,7 +20,6 @@ interface UseBumpathSourceScanArgs {
     setScannedData: (value: ScannedData | null) => void;
     setSelectedEntries: (value: Set<string>) => void;
     setExpandedEntries: (value: Set<string>) => void;
-    setAppliedPrefixes: (value: Map<string, string>) => void;
     setIsScanning: (value: boolean) => void;
     setError: (value: string | null) => void;
     setSuccess: (value: string | null) => void;
@@ -39,7 +38,6 @@ export default function useBumpathSourceScan({
     setScannedData,
     setSelectedEntries,
     setExpandedEntries,
-    setAppliedPrefixes,
     setIsScanning,
     setError,
     setSuccess,
@@ -55,14 +53,11 @@ export default function useBumpathSourceScan({
     }, [scanDebounceTimerRef]);
 
     const runScanForSelectedBins = useCallback(async (binState: SourceBins) => {
-        if (!hashesPath) return;
-
         const selectedBinsList = Object.values(binState || {}).filter((bin) => bin?.selected);
         if (selectedBinsList.length === 0) {
             setScannedData(null);
             setSelectedEntries(new Set());
             setExpandedEntries(new Set());
-            setAppliedPrefixes(new Map());
             return;
         }
 
@@ -84,7 +79,6 @@ export default function useBumpathSourceScan({
 
             if (result.success && result.data) {
                 setScannedData(result.data);
-                setAppliedPrefixes(new Map());
                 setSuccess(`Scan completed: Found ${Object.keys(result.data.entries).length} entries`);
             } else {
                 setError(result.error || 'Scan failed');
@@ -99,7 +93,6 @@ export default function useBumpathSourceScan({
         apiCall,
         hashesPath,
         sourceDirs,
-        setAppliedPrefixes,
         setError,
         setExpandedEntries,
         setIsScanning,
@@ -135,16 +128,11 @@ export default function useBumpathSourceScan({
 
             setError(response.error || 'Failed to discover BIN files');
             return { success: false, skipped: false };
-        } catch {
-            setError(null);
-            setSuccess(`Added source directory: ${dirPath}`);
-            if (typeof onSourceDirAdded === 'function') {
-                onSourceDirAdded({
-                    sourceDir: dirPath,
-                    sourceBins: null,
-                });
-            }
-            return { success: true };
+        } catch (sourceError) {
+            const message = sourceError instanceof Error ? sourceError.message : String(sourceError);
+            setSourceDirs(sourceDirs);
+            setError(`Failed to discover BIN files: ${message}`);
+            return { success: false, skipped: false };
         }
     }, [apiCall, onSourceDirAdded, setError, setSourceBins, setSourceDirs, setSourceFiles, setSuccess, sourceDirs]);
 
@@ -184,9 +172,34 @@ export default function useBumpathSourceScan({
         }
     }, [apiCall, runScanForSelectedBins, scanDebounceTimerRef, setSourceBins, sourceBins]);
 
+    const handleBinView = useCallback(async (unifyPath: string) => {
+        setIsScanning(true);
+        setError(null);
+        setSelectedEntries(new Set());
+        try {
+            const result = await apiCall('scan', {
+                hashesPath,
+                folders: sourceDirs,
+                binSelections: { [unifyPath]: true },
+            });
+            if (result.success && result.data) {
+                setScannedData(result.data);
+                setSuccess(`Viewing ${Object.keys(result.data.entries).length} entries`);
+            } else {
+                setError(result.error || 'Failed to view BIN');
+            }
+        } catch (viewError) {
+            const message = viewError instanceof Error ? viewError.message : String(viewError);
+            setError(`Failed to view BIN: ${message}`);
+        } finally {
+            setIsScanning(false);
+        }
+    }, [apiCall, hashesPath, setError, setIsScanning, setScannedData, setSelectedEntries, setSuccess, sourceDirs]);
+
     return {
         handleSelectSourceDir,
         handleBinSelect,
+        handleBinView,
         runScanForSelectedBins,
         addSourceDirByPath,
     };

@@ -114,7 +114,7 @@ const QuickRepathWizardModal = React.memo(function QuickRepathWizardModal({
                     {step === 0 && (
                         <div>
                             <p style={{ color: 'var(--text-secondary)', marginBottom: '10px', fontSize: '0.85rem' }}>
-                                Pick the main BIN file that should drive repathing.
+                                Pick the main BIN. Matching subcharacter BINs with the same skin number are included automatically.
                             </p>
                             <CustomSelect
                                 value={selectedMainBin}

@@ -9,7 +9,6 @@ interface Props {
     isSetupValid: boolean;
     onExtract: () => void;
     onRepath: () => void;
-    onInspectModel: () => void;
     onClearAll: () => void;
 }
 
@@ -25,7 +24,6 @@ export function SelectionActionBar({
     isSetupValid,
     onExtract,
     onRepath,
-    onInspectModel,
     onClearAll,
 }: Props) {
     const hasSelection = selectedSkins.length > 0;
@@ -52,9 +50,6 @@ export function SelectionActionBar({
                 </button>
                 <button className="dl-btn dl-btn--sm dl-btn--primary" onClick={onRepath} disabled={disabledAction} title="Extract, combine, and repath into an installable mod">
                     {isRepathing ? 'Repathing...' : 'Repath'}
-                </button>
-                <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={onInspectModel} disabled={disabledAction} title="Preview the first selected skin model">
-                    {isPreviewing ? 'Preparing Model...' : 'Inspect Model'}
                 </button>
                 <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={onClearAll} disabled={busy || !hasSelection}>
                     Clear All

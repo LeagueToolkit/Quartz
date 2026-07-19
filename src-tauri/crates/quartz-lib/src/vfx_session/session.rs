@@ -200,6 +200,20 @@ pub fn model_of(id: SessionId) -> Result<VfxPortModel> {
     with_session(id, |s| project::project(s))
 }
 
+/// Reparse this session when one of its source BINs changed externally.
+/// External disk state is authoritative, so undo/redo history is reset.
+pub fn reload_if_changed(id: SessionId) -> Result<Option<VfxPortModel>> {
+    with_session(id, |session| -> Result<Option<VfxPortModel>> {
+        let Some(bins) = linked_bins::reload_if_changed(&session.bins)? else {
+            return Ok(None);
+        };
+        session.bins = bins;
+        session.undo.clear();
+        session.redo.clear();
+        Ok(Some(project::project(session)))
+    })?
+}
+
 /// Write ONLY the dirty bins, each to its own original path, and clear their
 /// dirty flags. Untouched bins are never rewritten. A mid-way failure
 /// propagates; bins already written stay written (their flags are already

@@ -43,6 +43,15 @@ pub async fn vfx_model(session_id: u64) -> Result<VfxPortModel, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Reparse the session if any source BIN changed outside Quartz.
+#[tauri::command]
+pub async fn vfx_reload_if_changed(session_id: u64) -> Result<Option<VfxPortModel>, String> {
+    tokio::task::spawn_blocking(move || session::reload_if_changed(session_id))
+        .await
+        .map_err(|e| format!("Reload task failed to join: {}", e))?
+        .map_err(|e| e.to_string())
+}
+
 /// Write every dirty bin back to its own original file. Returns the paths
 /// written. Unless `force` is true, a bin whose file changed on disk since
 /// opening aborts the save with a `STALE_FILE:` error so the UI can prompt.

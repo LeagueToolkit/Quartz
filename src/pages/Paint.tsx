@@ -18,7 +18,7 @@ import PaletteIcon from '@mui/icons-material/Palette';
 import TuneIcon from '@mui/icons-material/Tune';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
-import { FolderOpen as FolderOpenIcon, Undo2 as UndoIcon, Redo2 as RedoIcon, X as CloseIcon } from 'lucide-react';
+import { FolderOpen as FolderOpenIcon, Undo2 as UndoIcon, Redo2 as RedoIcon } from 'lucide-react';
 import { useFileExplorer } from '@/components/explorer';
 import {
     paintOpen, paintClose, paintReloadIfChanged, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintSetTexture, paintSetColorAlpha, paintUndo, paintRedo, paintSave,
@@ -28,7 +28,7 @@ import {
 } from '@/lib/api';
 import { useNotificationStore, usePaintStore, useUiPrefsStore, type HslValues, type PaintState as PaintStoreState } from '@/lib/stores';
 import { useFileDrop } from '@/lib/util/useFileDrop';
-import { DropOverlay } from '@/components/ui';
+import { DropOverlay, RecentBinsList } from '@/components/ui';
 import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
 import { useSessionFileWatcher } from '@/lib/util/useSessionFileWatcher';
 
@@ -85,21 +85,6 @@ const ddTriggerSx = {
     '&.Mui-focused': { borderColor: 'var(--accent-primary)', boxShadow: '0 0 0 2px color-mix(in oklab, var(--accent-primary) 55%, transparent)' },
     '& fieldset': { border: 'none' }, '&:hover fieldset': { border: 'none' }, '&.Mui-focused fieldset': { border: 'none' },
 } as const;
-
-/* "3m ago" / "2h ago" / "5d ago" style stamp for the recent bins list. */
-function relativeTime(iso: string): string {
-    const then = new Date(iso).getTime();
-    if (Number.isNaN(then)) return '';
-    const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
-    if (secs < 60) return 'just now';
-    const mins = Math.floor(secs / 60);
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    const days = Math.floor(hrs / 24);
-    if (days < 30) return `${days}d ago`;
-    return new Date(iso).toLocaleDateString();
-}
 
 /* Mode picker — lives in the sub-toolbar so it's reachable from every mode
    (it used to sit inside PaletteManager, which unmounts in HSL/Shift modes and
@@ -1327,18 +1312,17 @@ function Paint() {
                         onColorAlpha={handleColorAlpha}
                     />
                 ) : (
-                    /* Empty state: the drop zone is centered in the available space
-                       (the always-on toolbar sits above), with the recent-bins list
-                       anchored below it. */
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', padding: 4, overflow: 'hidden', minHeight: 0 }}>
+                    /* Empty state: the drop zone + recent-bins list are centered as a
+                       single group so the list sits around the middle rather than
+                       being pushed to the bottom. */
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, height: '100%', padding: 4, paddingBottom: '14vh', overflow: 'hidden', minHeight: 0 }}>
                         <Box
                             onClick={handleFileOpen}
                             sx={{
                                 width: 'min(560px, 90%)',
                                 flexShrink: 0,
-                                margin: 'auto 0',
-                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2.5,
-                                padding: '44px 40px',
+                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1.5,
+                                padding: '16px 40px',
                                 borderRadius: 'var(--radius-lg)',
                                 background: isDragOver ? 'color-mix(in oklab, var(--accent-primary) 10%, transparent)' : 'transparent',
                                 cursor: 'pointer', transition: 'all var(--motion-base)',
@@ -1354,38 +1338,7 @@ function Paint() {
                             </button>
                         </Box>
 
-                        {recentBins.length > 0 && (
-                            <div className="paint2-recent">
-                                <div className="paint2-recent__title">
-                                    <span>Recent Bins</span>
-                                </div>
-                                <div className="paint2-recent__list">
-                                    {recentBins.map((bin) => (
-                                        <div
-                                            key={bin.path}
-                                            className="paint2-recent__item"
-                                            onClick={() => loadBinFile(bin.path)}
-                                            title={bin.path}
-                                        >
-                                            <div className="paint2-recent__info">
-                                                <FolderOpenIcon size={15} className="paint2-recent__icon" />
-                                                <span className="paint2-recent__name">{bin.name}</span>
-                                            </div>
-                                            <div className="paint2-recent__actions">
-                                                <span className="paint2-recent__date">{relativeTime(bin.lastOpened)}</span>
-                                                <button
-                                                    className="paint2-recent__delete"
-                                                    title="Remove from recent"
-                                                    onClick={(e) => { e.stopPropagation(); removeRecentBin(bin.path); }}
-                                                >
-                                                    <CloseIcon size={13} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+                        <RecentBinsList bins={recentBins} onOpen={loadBinFile} onRemove={removeRecentBin} />
                     </Box>
                 )}
             </Box>
@@ -1395,7 +1348,7 @@ function Paint() {
                to act on (empty selection / unsaved), and Open Bin stays usable. */}
             <Box className="paint2-footer" sx={{
                 height: '48px', padding: '0 16px', boxSizing: 'border-box',
-                background: isMinecraftStyle ? '#2f2f2f' : 'var(--bg-primary)',
+                background: isMinecraftStyle ? '#2f2f2f' : 'color-mix(in oklab, var(--bg-secondary) 94%, transparent)',
                 borderTop: isMinecraftStyle ? '1px solid #000000' : '1px solid var(--border)',
                 display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0,
             }}>

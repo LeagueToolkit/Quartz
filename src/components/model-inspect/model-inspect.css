@@ -19,22 +19,24 @@
 }
 .model-inspect {
     width: min(1180px, 96vw); height: min(780px, 92vh); min-height: 520px;
-    display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 16px;
-    background: color-mix(in oklab, var(--bg-secondary) 94%, transparent);
+    position: relative; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 16px;
+    background: var(--glass-bg, color-mix(in oklab, var(--bg-secondary) 92%, transparent));
+    backdrop-filter: saturate(150%) blur(14px);
     box-shadow: 0 28px 90px rgba(0,0,0,.62), inset 0 1px rgba(255,255,255,.035);
 }
+.model-inspect__accent {
+    display: none;
+    background: linear-gradient(90deg, var(--accent-primary), color-mix(in oklab, var(--accent-primary) 62%, #b88cff), var(--accent-primary));
+    background-size: 200% 100%;
+    animation: model-inspect-accent 3s linear infinite;
+}
+@keyframes model-inspect-accent { to { background-position: 200% 0; } }
 .model-inspect__head {
-    height: 66px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    padding: 0 16px; border-bottom: 1px solid var(--border);
-    background: color-mix(in oklab, var(--bg-primary) 58%, transparent);
+    position: absolute; top: 12px; right: 12px; z-index: 20; height: 34px; display: block;
+    padding: 0; background: transparent;
 }
-.model-inspect__heading { min-width: 0; display: flex; align-items: center; gap: 11px; }
-.model-inspect__mark {
-    width: 36px; height: 36px; flex-shrink: 0; display: grid; place-items: center; border-radius: 10px;
-    color: var(--accent-primary); background: color-mix(in oklab, var(--accent-primary) 15%, transparent);
-    border: 1px solid color-mix(in oklab, var(--accent-primary) 38%, transparent);
-}
-.model-inspect__heading h2 { max-width: 620px; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: 15px; }
+.model-inspect__heading { display: none; }
+.model-inspect__heading h2 { max-width: 620px; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: .92rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .model-inspect__heading span { display: block; margin-top: 3px; color: var(--text-muted); font: 10.5px var(--font-mono); text-transform: uppercase; letter-spacing: .06em; }
 .model-inspect__tools { display: flex; gap: 5px; }
 .model-inspect__tool {
@@ -55,25 +57,67 @@
     background: color-mix(in oklab, var(--bg-primary) 78%, transparent); font: 10px var(--font-mono); white-space: nowrap;
 }
 .model-inspect__side {
-    width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px; padding: 15px;
+    width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px; padding: 58px 15px 15px;
     border-left: 1px solid var(--border); background: color-mix(in oklab, var(--bg-primary) 45%, transparent); overflow-y: auto;
 }
+
+/* ── Floating controls (top-right of the viewport) ─────────────────────────── */
+.model-controls { position: absolute; top: 56px; right: 12px; z-index: 15; display: flex; align-items: flex-start; gap: 8px; }
+.model-controls__bar { display: flex; flex-direction: column; gap: 8px; order: 2; }
+.model-controls__btn {
+    width: 36px; height: 36px; display: grid; place-items: center; flex-shrink: 0;
+    border: 1px solid var(--border); border-radius: 9px; color: var(--text-secondary); cursor: pointer;
+    background: var(--bg-tertiary); transition: all var(--dl-fast);
+}
+.model-controls__btn:hover { color: var(--text-primary); border-color: var(--border-strong); background: var(--bg-hover); }
+.model-controls__btn.is-active {
+    color: var(--accent-primary); border-color: color-mix(in oklab, var(--accent-primary) 55%, var(--border));
+    background: color-mix(in oklab, var(--accent-primary) 15%, var(--bg-tertiary));
+}
+/* Popover floats to the LEFT of the button stack (order:1 puts it first). */
+.model-controls__panel {
+    order: 1; width: 260px; max-height: calc(100% - 8px); overflow-y: auto;
+    display: flex; flex-direction: column; gap: 9px; padding: 13px;
+    border: 1px solid var(--border-strong); border-radius: 12px;
+    background: var(--bg-secondary);
+    box-shadow: 0 18px 50px rgba(0,0,0,.5);
+}
+.model-controls__panel h4 { margin: 0; color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: .075em; }
+.model-controls__panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.model-controls__panel-head > button { padding: 3px 9px; border: 1px solid color-mix(in oklab, var(--accent-primary) 35%, var(--border)); border-radius: 6px; background: transparent; color: var(--accent-primary); font-size: 10px; cursor: pointer; }
+.model-controls__panel-head > button:hover:not(:disabled) { background: color-mix(in oklab, var(--accent-primary) 10%, transparent); }
+.model-controls__panel-head > button:disabled { opacity: .4; cursor: default; }
 .model-inspect__section { display: flex; flex-direction: column; gap: 9px; }
 .model-inspect__section--grow { min-height: 0; }
+.model-inspect__section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.model-inspect__section-head > button { padding: 3px 9px; border: 1px solid color-mix(in oklab, var(--accent-primary) 35%, var(--border)); border-radius: 6px; background: transparent; color: var(--accent-primary); font-size: 10px; cursor: pointer; }
+.model-inspect__section-head > button:hover:not(:disabled) { background: color-mix(in oklab, var(--accent-primary) 10%, transparent); }
+.model-inspect__section-head > button:disabled { opacity: .4; cursor: default; }
 .model-inspect__section h3 { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: .075em; }
 .model-inspect__stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 0; }
 .model-inspect__stats div { min-width: 0; padding: 9px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-tertiary); text-align: center; }
 .model-inspect__stats dt { color: var(--text-muted); font-size: 9px; text-transform: uppercase; }
 .model-inspect__stats dd { margin: 4px 0 0; color: var(--text-primary); font: 11px var(--font-mono); }
-.model-inspect__groups { display: flex; flex-direction: column; gap: 3px; max-height: 300px; overflow-y: auto; }
-.model-inspect__groups button {
-    width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 7px 8px;
-    border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--text-secondary); cursor: pointer; text-align: left;
+.model-inspect__groups { display: flex; flex-direction: column; gap: 2px; max-height: 260px; padding-right: 3px; overflow-y: auto; }
+.model-inspect__group-row { display: flex; align-items: center; gap: 4px; }
+.model-inspect__group-toggle {
+    flex: 1; min-width: 0; min-height: 30px; display: grid; grid-template-columns: 15px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 5px 7px;
+    border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; text-align: left;
 }
-.model-inspect__groups button:hover { border-color: var(--border); background: var(--bg-hover); color: var(--text-primary); }
-.model-inspect__groups button.is-hidden { opacity: .48; }
-.model-inspect__groups button span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
-.model-inspect__groups button small { color: var(--text-muted); font: 9.5px var(--font-mono); }
+.model-inspect__group-toggle:hover { border-color: var(--border); background: var(--bg-hover); color: var(--text-primary); }
+.model-inspect__group-toggle.is-hidden { opacity: .55; }
+.model-inspect__group-toggle .model-inspect__checkbox { width: 14px; height: 14px; min-width: 14px; max-width: 14px; display: grid; place-items: center; border: 1px solid var(--border-strong); border-radius: 3px; background: var(--bg-primary); }
+.model-inspect__checkbox i { width: 7px; height: 4px; border-left: 1.5px solid white; border-bottom: 1.5px solid white; transform: translateY(-1px) rotate(-45deg); opacity: 0; }
+.model-inspect__checkbox.is-checked { border-color: var(--accent-primary); background: var(--accent-primary); }
+.model-inspect__checkbox.is-checked i { opacity: 1; }
+.model-inspect__group-toggle .model-inspect__group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
+.model-inspect__group-toggle small { justify-self: end; color: var(--text-muted); font: 9.5px var(--font-mono); }
+.model-inspect__group-pick {
+    flex-shrink: 0; width: 26px; height: 26px; display: grid; place-items: center;
+    border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer;
+    transition: all var(--dl-fast);
+}
+.model-inspect__group-pick:hover { border-color: var(--accent-primary); color: var(--accent-primary); background: var(--bg-hover); }
 .model-inspect__muted, .model-inspect__path { margin: 0; color: var(--text-muted); font-size: 10.5px; }
 .model-inspect__path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
 .model-inspect__option {
@@ -94,9 +138,29 @@
 }
 .model-inspect__switch.is-on { background: color-mix(in oklab, var(--accent-primary) 28%, var(--bg-primary)); border-color: var(--accent-primary); }
 .model-inspect__switch.is-on i { transform: translateX(12px); background: var(--accent-primary); }
+.model-inspect__select {
+    width: 100%; height: 34px; padding: 0 9px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg-tertiary); color: var(--text-primary); font-size: 11px; outline: none;
+}
+.model-inspect__select:focus { border-color: var(--accent-primary); }
+.model-inspect__select:disabled { opacity: .55; }
+
+/* Animation controls */
+.model-inspect__anim-controls { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.model-inspect__anim-btn {
+    flex-shrink: 0; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border); border-radius: 7px; background: var(--bg-tertiary); color: var(--text-secondary);
+    cursor: pointer; transition: all var(--motion-fast);
+}
+.model-inspect__anim-btn:hover { border-color: var(--accent-primary); color: var(--accent-primary); background: var(--bg-hover); }
+.model-inspect__anim-scrub { flex: 1; min-width: 0; accent-color: var(--accent-primary); cursor: pointer; }
+.model-inspect__anim-time { flex-shrink: 0; font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
+.model-inspect__anim-rate { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 10.5px; color: var(--text-muted); }
+.model-inspect__anim-rate > span { flex-shrink: 0; min-width: 62px; }
+.model-inspect__anim-rate input { flex: 1; accent-color: var(--accent-primary); cursor: pointer; }
 
 @media (max-width: 760px) {
-    .model-inspect__side { width: 210px; }
+    .model-inspect__side { width: 220px; }
     .model-inspect__heading h2 { max-width: 260px; }
 }
 @media (prefers-reduced-motion: reduce) { .model-viewport__spinner { animation: none; } }

@@ -46,6 +46,15 @@ pub async fn bin_editor_model(session_id: u64) -> Result<EditorModel, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Reparse the session if any source BIN changed outside Quartz.
+#[tauri::command]
+pub async fn bin_editor_reload_if_changed(session_id: u64) -> Result<Option<EditorModel>, String> {
+    tokio::task::spawn_blocking(move || session::reload_if_changed(session_id))
+        .await
+        .map_err(|e| format!("Reload task failed to join: {}", e))?
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn bin_editor_create_system(
     session_id: u64,

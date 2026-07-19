@@ -25,7 +25,7 @@ use ritoshark::hash::xxh64;
 use ritoshark::wad::{Wad, WadBuilder};
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
-use std::io::{Cursor, Write};
+use std::io::{BufReader, Cursor, Write};
 use std::path::{Path, PathBuf};
 
 /// Summary counts for the CLI success line.
@@ -300,7 +300,12 @@ fn mount(wad_path: &Path) -> Result<Wad> {
 /// number of game + bin hashes now present.
 pub fn extract_hashes(wad_path: &Path) -> Result<(usize, usize)> {
     let hash_dir = ensure_hash_dir()?;
-    let wad = mount(wad_path)?;
+    let file = fs::File::open(wad_path).map_err(|e| Error::io_with_path(e, wad_path))?;
+    let mut reader = BufReader::new(file);
+    let wad = Wad::from_reader_toc(&mut reader).map_err(|e| Error::Wad {
+        message: format!("Failed to parse WAD TOC: {e}"),
+        path: Some(wad_path.to_path_buf()),
+    })?;
 
     let mut game_hashes: BTreeMap<u64, String> = BTreeMap::new();
     let mut bin_hashes: BTreeMap<u32, String> = BTreeMap::new();
@@ -309,7 +314,7 @@ pub fn extract_hashes(wad_path: &Path) -> Result<(usize, usize)> {
     eprintln!("[HASH] Scanning {} chunks for hashes", total);
     let mut progress = Progress::new(total, "HASH");
     for (idx, chunk) in wad.chunks.iter().enumerate() {
-        if let Ok(data) = wad.chunk_data(chunk) {
+        if let Ok(data) = wad.chunk_data_from(&mut reader, chunk) {
             for (k, v) in scan_wad_game_hashes(&data) {
                 game_hashes.entry(k).or_insert(v);
             }

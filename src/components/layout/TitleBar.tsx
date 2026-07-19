@@ -8,6 +8,7 @@ import { visibleNavItems, SETTINGS_ITEM, type NavItem } from './NavRail';
 import { CommunityPopover } from './CommunityPopover';
 import { useFileExplorer } from '@/components/explorer';
 import { requestOpenCurrentBinInJade } from '@/lib/jade/jadeInterop';
+import { Tooltip } from '@/components/ui/Tooltip';
 
 const win = getCurrentWindow();
 
@@ -37,7 +38,7 @@ export function TitleBar({ collapsed = false }: TitleBarProps) {
         <header className="q-titlebar shrink-0">
             <div data-tauri-drag-region className="q-titlebar-brand">
                 <img
-                    src="/quartz-logo.png"
+                    src="/your-logo.gif"
                     alt=""
                     onClick={() => setPage('home')}
                     className="q-titlebar-logo"
@@ -48,33 +49,38 @@ export function TitleBar({ collapsed = false }: TitleBarProps) {
             </div>
             <div className="q-titlebar-right">
                 <div className="q-topnav-settings" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-                    <button
-                        type="button"
-                        className="q-topnavbtn q-jade-launch"
-                        data-tip={jadeInteropEnabled ? 'Open in Jade' : 'Jade communication is disabled'}
-                        title={jadeInteropEnabled ? 'Open in Jade' : 'Enable Jade communication in Settings > External Tools'}
-                        disabled={!jadeInteropEnabled}
-                        onClick={openJade}
-                    >
-                        <img src="/jade.webp" alt="Jade" className="q-jade-logo" />
-                    </button>
-                    <button
-                        type="button"
-                        className="q-topnavbtn"
-                        data-tip="File explorer"
-                        onClick={openExplorer}
-                    >
-                        <FolderOpen size={17} />
-                    </button>
-                    <button
-                        ref={communityRef}
-                        type="button"
-                        className={`q-topnavbtn ${communityOpen ? 'is-active' : ''}`}
-                        data-tip="Community"
-                        onClick={() => setCommunityOpen((v) => !v)}
-                    >
-                        <Globe size={17} />
-                    </button>
+                    <Tooltip content={jadeInteropEnabled ? 'Open in Jade' : 'Jade communication is disabled'} side="bottom">
+                        <button
+                            type="button"
+                            className="q-topnavbtn q-jade-launch"
+                            aria-label={jadeInteropEnabled ? 'Open in Jade' : 'Jade communication is disabled'}
+                            disabled={!jadeInteropEnabled}
+                            onClick={openJade}
+                        >
+                            <img src="/jade.webp" alt="" className="q-jade-logo" />
+                        </button>
+                    </Tooltip>
+                    <Tooltip content="Asset Explorer" side="bottom">
+                        <button
+                            type="button"
+                            className="q-topnavbtn"
+                            aria-label="Asset Explorer"
+                            onClick={openExplorer}
+                        >
+                            <FolderOpen size={17} />
+                        </button>
+                    </Tooltip>
+                    <Tooltip content="Community" side="bottom">
+                        <button
+                            ref={communityRef}
+                            type="button"
+                            className={`q-topnavbtn ${communityOpen ? 'is-active' : ''}`}
+                            aria-label="Community"
+                            onClick={() => setCommunityOpen((v) => !v)}
+                        >
+                            <Globe size={17} />
+                        </button>
+                    </Tooltip>
                     {collapsed && <TopNavBtn item={SETTINGS_ITEM} />}
                     <span className="q-topnav-sep" />
                 </div>
@@ -100,13 +106,16 @@ function TopNavBtn({ item }: { item: NavItem }) {
     const setPage = useNavigationStore((s) => s.setPage);
     const Icon = item.icon;
     return (
-        <button
-            className={`q-topnavbtn ${page === item.id ? 'is-active' : ''}`}
-            data-tip={item.label}
-            onClick={() => setPage(item.id)}
-        >
-            <Icon size={17} />
-        </button>
+        <Tooltip content={item.label} side="bottom">
+            <button
+                type="button"
+                className={`q-topnavbtn ${page === item.id ? 'is-active' : ''}`}
+                aria-label={item.label}
+                onClick={() => setPage(item.id)}
+            >
+                <Icon size={17} />
+            </button>
+        </Tooltip>
     );
 }
 

@@ -37,6 +37,15 @@ pub async fn paint_close(session_id: u64) -> Result<bool, String> {
     Ok(session::close(session_id))
 }
 
+/// Reparse the session if any source BIN changed outside Quartz.
+#[tauri::command]
+pub async fn paint_reload_if_changed(session_id: u64) -> Result<Option<VfxModel>, String> {
+    tokio::task::spawn_blocking(move || session::reload_if_changed(session_id))
+        .await
+        .map_err(|e| format!("Reload task failed to join: {}", e))?
+        .map_err(|e| e.to_string())
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PaletteStopInput {

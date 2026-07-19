@@ -598,12 +598,12 @@ export function AssetExtractor() {
         openYouTubeSearch(`${championName} ${skinName} skin spotlight League of Legends`);
     };
 
-    const prepareCardAssets = (championName: string, skinId: number): Promise<DonorResult> => {
-        const cacheKey = `${leaguePath}|${championName.toLowerCase()}|${skinId}`;
+    const prepareCardAssets = (championName: string, skinId: number, chromaId: number | null = null): Promise<DonorResult> => {
+        const cacheKey = `${leaguePath}|${championName.toLowerCase()}|${skinId}|${chromaId ?? 'base'}`;
         const cached = preparedCardAssetsRef.current.get(cacheKey);
         if (cached) return cached;
 
-        const task = portPrepareDonorFromSkin({ championName, skinId, leaguePath });
+        const task = portPrepareDonorFromSkin({ championName, skinId, chromaId, leaguePath });
         preparedCardAssetsRef.current.set(cacheKey, task);
         void task.catch(() => preparedCardAssetsRef.current.delete(cacheKey));
         return task;
@@ -614,6 +614,8 @@ export function AssetExtractor() {
         championName: string,
         skinId: number,
         skinName: string,
+        chromaId: number | null = null,
+        chromaOptions: Chroma[] = [],
     ) => {
         if (!leaguePath) {
             addConsoleLog(`Set your League install path in Settings before opening ${skinName}.`, 'error');
@@ -631,7 +633,7 @@ export function AssetExtractor() {
         }));
 
         try {
-            const prepared = await prepareCardAssets(championName, skinId);
+            const prepared = await prepareCardAssets(championName, skinId, action === 'model' ? chromaId : null);
             if (action === 'jade') {
                 if (!prepared.combinedBinPath) throw new Error('No combined skin BIN was produced');
                 setExtractionProgress((current) => ({ ...current, [skinKey]: 'Opening in Jade...' }));
@@ -640,7 +642,22 @@ export function AssetExtractor() {
                 notify('success', `Opened ${skinName} in Jade`);
             } else {
                 if (!prepared.modelPath) throw new Error('No SKN, SCB, or SCO model was found for this skin');
-                openModelInspect(prepared.modelPath, prepared.modelTexturePath);
+                openModelInspect(
+                    prepared.modelPath,
+                    prepared.modelTexturePath,
+                    prepared.modelTexturePaths,
+                    prepared.modelHiddenSubmeshes,
+                    prepared.modelScale,
+                    {
+                        chromaOptions,
+                        selectedChromaId: chromaId,
+                        onSelectChroma: (nextChromaId) => runCardAssetAction(
+                            'model', championName, skinId, skinName, nextChromaId, chromaOptions,
+                        ),
+                    },
+                    prepared.anmPaths,
+                    prepared.anmClips,
+                );
                 addConsoleLog(`Opened the model viewer for ${skinName}.`, 'success');
             }
         } catch (error) {
@@ -662,17 +679,13 @@ export function AssetExtractor() {
     };
 
     const handleInspectSkinModel = (skin: ExtractorSkin) => {
-        if (selectedChampion) void runCardAssetAction('model', selectedChampion.name, skin.id, skin.name);
-    };
-
-    const handleInspectSelectedModel = () => {
-        const target = selectedSkins[0];
-        if (!target?.champion?.name) return;
-        if (target.wadAlias || target.petAlias) {
-            addConsoleLog('Model preview from the selection bar currently supports champion skins.', 'warning');
-            return;
-        }
-        void runCardAssetAction('model', target.champion.name, target.id, target.name);
+        if (!selectedChampion) return;
+        const skinKey = `${selectedChampion.name}_${skin.id}`;
+        void runCardAssetAction(
+            'model', selectedChampion.name, skin.id, skin.name,
+            selectedChromas[skinKey]?.id ?? null,
+            chromaData[skinKey] ?? [],
+        );
     };
 
     /* Download splash art: fetch the skin's splash and let the user pick where to
@@ -1063,7 +1076,7 @@ export function AssetExtractor() {
                     }}
                 />
 
-                <main className="flex-1 overflow-y-auto relative" style={{ minWidth: 0, padding: '12px 16px 16px' }}>
+                <main className="flex-1 overflow-y-auto relative" style={{ minWidth: 0, padding: '12px 16px 16px', scrollbarGutter: 'stable' }}>
                     {offlineMode && (
                         <div
                             style={{
@@ -1101,7 +1114,12 @@ export function AssetExtractor() {
                                 void runCardAssetAction('jade', champion.name, skin.skinNumber, skin.name);
                             }}
                             onInspectModel={(champion, skin) => {
-                                void runCardAssetAction('model', champion.name, skin.skinNumber, skin.name);
+                                const skinKey = `${champion.name}_${skin.skinNumber}`;
+                                void runCardAssetAction(
+                                    'model', champion.name, skin.skinNumber, skin.name,
+                                    selectedChromas[skinKey]?.id ?? null,
+                                    chromaData[skinKey] ?? [],
+                                );
                             }}
                             offlineMode={offlineMode}
                         />
@@ -1124,7 +1142,7 @@ export function AssetExtractor() {
                             offlineMode={offlineMode}
                         />
                     ) : (
-                        <NoChampionSelectedView loading={loading} />
+                        <NoChampionSelectedView />
                     )}
                 </main>
               </div>
@@ -1138,7 +1156,6 @@ export function AssetExtractor() {
                   isSetupValid={isSetupValid}
                   onExtract={handleExtractWad}
                   onRepath={handleRepath}
-                  onInspectModel={handleInspectSelectedModel}
                   onClearAll={() => setSelectedSkins([])}
               />
             </div>

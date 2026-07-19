@@ -79,7 +79,7 @@ export function GeneralSection() {
                         onActivate={() => void updateSettings({ autoUpdateEnabled: !autoUpdateEnabled })}
                         control={<Switch checked={autoUpdateEnabled} onChange={(checked) => void updateSettings({ autoUpdateEnabled: checked })} />}
                     />
-                    <div style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div className="settings-card" style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {version && <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Current Version: {version}</div>}
                         <div style={{ display: 'flex', gap: '8px' }}>
                             <Button icon={<RefreshCw size={16} style={checking ? { animation: 'spin 1s linear infinite' } : undefined} />} variant="secondary" onClick={checkUpdate} disabled={checking}>

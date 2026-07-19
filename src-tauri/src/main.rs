@@ -72,6 +72,9 @@ fn main() {
             if let Err(e) = initialize_app_home() {
                 tracing::error!("Failed to initialize app home: {}", e);
             }
+            if let Err(e) = commands::context_menu::context_menu_refresh_if_enabled() {
+                tracing::warn!("Failed to refresh Explorer context menu: {}", e);
+            }
             // Seed bundled wallpapers/cursors so themed presets have their images.
             if let Ok(resource_dir) = app.path().resource_dir() {
                 commands::assets::seed_bundled_assets(&resource_dir);
@@ -143,6 +146,18 @@ fn main() {
             commands::wad::wad_read_toc,
             commands::wad::wad_read_chunk,
             commands::wad::wad_extract_chunks,
+            commands::wad::wad_explorer_scan,
+            commands::wad::wad_explorer_index,
+            commands::wad::wad_explorer_index_many,
+            commands::wad::wad_explorer_search,
+            commands::wad::wad_explorer_entries,
+            commands::wad::wad_explorer_unmount,
+            commands::wad::wad_explorer_unmount_all,
+            commands::wad::wad_explorer_texture,
+            commands::wad::wad_explorer_text,
+            commands::wad::wad_explorer_extract,
+            commands::wad::wad_explorer_extract_hashes,
+            commands::wad::wad_explorer_prepare_model,
             commands::fakegear::fakegear_copy_togglescreen_assets,
             commands::fakegear::fakegear_copy_variant_assets,
             commands::fakegear::fakegear_backup_bin,
@@ -158,6 +173,7 @@ fn main() {
             commands::backups::backup_restore,
             commands::paint::paint_open,
             commands::paint::paint_close,
+            commands::paint::paint_reload_if_changed,
             commands::paint::paint_recolor,
             commands::paint::paint_set_blend_mode,
             commands::paint::paint_set_material_param,
@@ -169,6 +185,7 @@ fn main() {
             commands::bineditor::bin_editor_open,
             commands::bineditor::bin_editor_close,
             commands::bineditor::bin_editor_model,
+            commands::bineditor::bin_editor_reload_if_changed,
             commands::bineditor::bin_editor_create_system,
             commands::bineditor::bin_editor_add_emitter,
             commands::bineditor::bin_editor_add_child,
@@ -183,6 +200,7 @@ fn main() {
             commands::bineditor::bin_editor_save,
             commands::vfx_session::vfx_open,
             commands::vfx_session::vfx_model,
+            commands::vfx_session::vfx_reload_if_changed,
             commands::vfx_session::vfx_save,
             commands::vfx_session::vfx_close,
             commands::vfx_session::vfx_undo,
@@ -209,6 +227,7 @@ fn main() {
             commands::file_ops::file_randomize,
             commands::file_ops::file_rename,
             commands::file_ops::paths_exist,
+            commands::file_ops::paths_mtimes,
             commands::file_ops::tools_execute,
             commands::imgrecolor::imgrecolor_decode_texture,
             commands::imgrecolor::imgrecolor_save_texture,
@@ -256,6 +275,10 @@ fn main() {
             commands::explorer::explorer_reveal,
             commands::explorer::explorer_thumbnail,
             commands::model_inspect::model_inspect_load,
+            commands::model_inspect::model_inspect_scene_assets,
+            commands::model_inspect::model_inspect_skeleton,
+            commands::model_inspect::model_inspect_animation,
+            commands::model_inspect::model_inspect_disk_animations,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Quartz");

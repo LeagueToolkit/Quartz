@@ -1,9 +1,10 @@
 import {
     Brush, ArrowLeftRight, Code, Image, PackageOpen,
     Waypoints, Shuffle, Maximize, Pipette, FileDigit, Wrench, Music, Sparkles, Dices,
-    Settings as SettingsIcon, type LucideIcon,
+    Settings as SettingsIcon, FolderSearch, type LucideIcon,
 } from 'lucide-react';
 import { useNavigationStore, useUiPrefsStore, type Page } from '@/lib/stores';
+import { Tooltip } from '@/components/ui/Tooltip';
 
 // Paint and Port always appear, like the original Quartz nav.
 export const ALWAYS_VISIBLE: Page[] = ['paint', 'port'];
@@ -20,6 +21,7 @@ export const ITEMS: NavItem[] = [
     { id: 'port', label: 'Port', icon: ArrowLeftRight },
     { id: 'bineditor', label: 'Bin Editor', icon: Code },
     { id: 'assetextractor', label: 'Asset Extractor', icon: PackageOpen },
+    { id: 'wadexplorer', label: 'WAD Explorer', icon: FolderSearch },
     { id: 'imgrecolor', label: 'Image Recolor', icon: Image },
     { id: 'soundbanks', label: 'Sound Banks', icon: Music },
     { id: 'bumpath', label: 'Bumpath', icon: Waypoints },
@@ -47,13 +49,16 @@ function NavBtn({ item }: { item: NavItem }) {
     const setPage = useNavigationStore((s) => s.setPage);
     const Icon = item.icon;
     return (
-        <button
-            className={`q-navbtn ${page === item.id ? 'is-active' : ''}`}
-            data-tip={item.label}
-            onClick={() => setPage(item.id)}
-        >
-            <Icon size={21} />
-        </button>
+        <Tooltip content={item.label} side="right">
+            <button
+                type="button"
+                className={`q-navbtn ${page === item.id ? 'is-active' : ''}`}
+                aria-label={item.label}
+                onClick={() => setPage(item.id)}
+            >
+                <Icon size={21} />
+            </button>
+        </Tooltip>
     );
 }
 

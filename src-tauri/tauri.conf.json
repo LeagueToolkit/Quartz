@@ -16,12 +16,11 @@
       "resources/cursors/*",
       "resources/textures/*",
       "resources/audio/*",
-      "resources/bin/*",
-      "resources/UxYW2KY_x2.png"
+      "resources/bin/*"
     ]
   },
   "productName": "Quartz",
-  "version": "4.0.0",
+  "version": "4.1.1",
   "identifier": "com.github.ritoshark.quartz",
   "plugins": {
     "updater": {
@@ -30,7 +29,7 @@
         "https://github.com/FrogCsLoL/Quartz/releases/latest/download/latest.json",
         "https://github.com/DexalGT/Quartz/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ3RDYxQzFBNjI2ODYwM0IKUldRN1lHaGlHaHpXMTNGU1lnWVBTN3VBYjFaRmZNSzN1UzFtS3NKMmh6V20xNzkrOFJmZ2xaVDYK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUxNTBCQkMxM0E3Mjg1ODEKUldTQmhYSTZ3YnRRVWN3OUZSWUNZLytLTUVTUjdTSEdIQzA1Y2FLT0NuZUJDVHE4Zi92eGpHc0sK",
       "windows": {
         "installMode": "quiet"
       }
@@ -74,10 +73,10 @@
         "default-src": "'self'",
         "style-src": "'self' 'unsafe-inline'",
         "script-src": "'self' blob: 'unsafe-eval'",
-        "img-src": "'self' data: https: blob: asset: https://asset.localhost",
-        "connect-src": "'self' http://ipc.localhost https://github.com https://api.github.com asset: https://asset.localhost",
+        "img-src": "'self' data: https: blob: asset: http://asset.localhost https://asset.localhost",
+        "connect-src": "'self' http://ipc.localhost https://github.com https://api.github.com https://raw.githubusercontent.com https://ddragon.leagueoflegends.com https://raw.communitydragon.org asset: http://asset.localhost https://asset.localhost",
         "worker-src": "'self' blob:",
-        "media-src": "'self' blob: asset: https://asset.localhost"
+        "media-src": "'self' blob: asset: http://asset.localhost https://asset.localhost"
       },
       "assetProtocol": {
         "enable": true,

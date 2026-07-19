@@ -35,6 +35,154 @@ export function wadExtractChunks(
     return invokeCommand<ExtractResult>('wad_extract_chunks', { wadPath, hashes, outDir, preservePaths });
 }
 
+// ── WAD Explorer ───────────────────────────────────────────────────────────
+
+export interface ScannedWad {
+    name: string;
+    path: string;
+    relPath: string;
+    size: number;
+    isVoiceover: boolean;
+}
+
+export interface WadExplorerScanResult {
+    groups: Record<string, ScannedWad[]>;
+    finalDir: string;
+    total: number;
+}
+
+export interface WadExplorerIndex {
+    mountId: number;
+    path: string;
+    name: string;
+    version: string;
+    chunkCount: number;
+    paths: string[];
+}
+
+export interface WadExplorerBatchIndex {
+    mountId: number | null;
+    path: string;
+    name: string;
+    version: string;
+    chunkCount: number;
+    paths: string[];
+    error: string | null;
+}
+
+export interface WadExplorerSearchGroup {
+    mountId: number;
+    wadPath: string;
+    entries: WadExplorerEntry[];
+}
+
+export interface WadExplorerSearchResult {
+    groups: WadExplorerSearchGroup[];
+    returnedMatches: number;
+    truncated: boolean;
+}
+
+export interface WadExplorerEntry {
+    pathHash: string;
+    path: string;
+    size: number;
+    compressedSize: number;
+    type: 'None' | 'Gzip' | 'Satellite' | 'Zstd' | 'ZstdMulti' | string;
+    unknown: boolean;
+}
+
+export interface WadExplorerExtractResult {
+    written: number;
+    skipped: number;
+    errors: number;
+    outputDir: string;
+}
+
+export interface WadHashExtractResult {
+    gameHashes: number;
+    binHashes: number;
+}
+
+export interface WadPreviewItem {
+    pathHash: string;
+    path: string;
+}
+
+export interface WadPreparedPreview {
+    root: string;
+    primaryPath: string;
+    texturePath: string | null;
+    texturePaths: Record<string, string>;
+    hiddenSubmeshes: string[];
+    modelScale: number;
+    /** Prepared companion .anm paths on disk (for the animation viewer). */
+    anmPaths: string[];
+    /** Resolved clips (submesh-visibility events + sequencer queues). */
+    anmClips: import('./modelInspect').PreparedClip[];
+}
+
+export function wadExplorerScan(gamePath: string): Promise<WadExplorerScanResult> {
+    return invokeCommand<WadExplorerScanResult>('wad_explorer_scan', { gamePath });
+}
+
+export function wadExplorerIndex(wadPath: string): Promise<WadExplorerIndex> {
+    return invokeCommand<WadExplorerIndex>('wad_explorer_index', { wadPath });
+}
+
+export function wadExplorerIndexMany(wadPaths: string[]): Promise<WadExplorerBatchIndex[]> {
+    return invokeCommand<WadExplorerBatchIndex[]>('wad_explorer_index_many', { wadPaths });
+}
+
+export function wadExplorerSearch(query: string, limit = 10_000): Promise<WadExplorerSearchResult> {
+    return invokeCommand<WadExplorerSearchResult>('wad_explorer_search', { query, limit });
+}
+
+export function wadExplorerEntries(mountId: number): Promise<WadExplorerEntry[]> {
+    return invokeCommand<WadExplorerEntry[]>('wad_explorer_entries', { mountId });
+}
+
+export function wadExplorerUnmount(mountId: number): Promise<boolean> {
+    return invokeCommand<boolean>('wad_explorer_unmount', { mountId });
+}
+
+export function wadExplorerUnmountAll(): Promise<number> {
+    return invokeCommand<number>('wad_explorer_unmount_all');
+}
+
+export function wadExplorerTexture(wadPath: string, pathHash: string, maxDimension?: number): Promise<ArrayBuffer> {
+    return invokeCommand<ArrayBuffer>('wad_explorer_texture', { wadPath, pathHash, maxDimension: maxDimension ?? null });
+}
+
+export function wadExplorerText(wadPath: string, pathHash: string, extension: string): Promise<string> {
+    return invokeCommand<string>('wad_explorer_text', { wadPath, pathHash, extension });
+}
+
+export function wadExplorerExtract(args: {
+    wadPath: string;
+    hashes: string[];
+    outputDir: string;
+    replaceExisting: boolean;
+    preservePaths: boolean;
+}): Promise<WadExplorerExtractResult> {
+    return invokeCommand<WadExplorerExtractResult>('wad_explorer_extract', args);
+}
+
+export function wadExplorerExtractHashes(wadPath: string): Promise<WadHashExtractResult> {
+    return invokeCommand<WadHashExtractResult>('wad_explorer_extract_hashes', { wadPath });
+}
+
+export function wadExplorerPrepareModel(args: {
+    wadPath: string;
+    files: WadPreviewItem[];
+    primaryPath: string;
+    texturePath?: string | null;
+}): Promise<WadPreparedPreview> {
+    return invokeCommand<WadPreparedPreview>('wad_explorer_prepare_model', {
+        ...args,
+        texturePath: args.texturePath ?? null,
+    });
+}
+
 // ── Port "load donor from game" ──
 
 export interface DonorResult {
@@ -43,6 +191,13 @@ export interface DonorResult {
     combinedBinPath: string;
     modelPath: string | null;
     modelTexturePath: string | null;
+    modelTexturePaths: Record<string, string>;
+    modelHiddenSubmeshes: string[];
+    modelScale: number;
+    /** Extracted .anm clip paths for the animation viewer. */
+    anmPaths: string[];
+    /** Resolved clips (submesh-visibility events + sequencer queues). */
+    anmClips: import('./modelInspect').PreparedClip[];
     championFileName: string;
     skinId: number;
     selectedBinCount: number;
@@ -54,12 +209,14 @@ export interface DonorResult {
 export function portPrepareDonorFromSkin(args: {
     championName: string;
     skinId: number;
+    chromaId?: number | null;
     leaguePath: string;
     portingPrefix?: string;
 }): Promise<DonorResult> {
     return invokeCommand<DonorResult>('port_prepare_donor_from_skin', {
         championName: args.championName,
         skinId: args.skinId,
+        chromaId: args.chromaId ?? null,
         leaguePath: args.leaguePath,
         portingPrefix: args.portingPrefix ?? null,
     });

@@ -425,6 +425,27 @@ export function BnkExtract() {
         else setTreeData((p) => patch(p));
     }, []);
 
+    // BNK event trees may expose the same underlying WEM in several branches.
+    // Mutating only the clicked row leaves duplicate event nodes with the old
+    // bytes; the bank writer then deduplicates by WEM id and can retain that
+    // unchanged copy. Old Quartz therefore applied silence to every node that
+    // references any selected WEM id, which is the behavior we preserve here.
+    const applyAudioToWemIds = useCallback((pane: Pane, wemIds: Set<number>, data: Uint8Array) => {
+        const patch = (nodes: BnkNode[]): BnkNode[] => nodes.map((n) => {
+            if (n.audioData && wemIds.has(n.audioData.id)) {
+                return {
+                    ...n,
+                    isModified: true,
+                    audioData: { ...n.audioData, data, length: data.length, isModified: true },
+                };
+            }
+            if (n.children) return { ...n, children: patch(n.children) };
+            return n;
+        });
+        if (pane === 'right') setRightTreeData((p) => patch(p));
+        else setTreeData((p) => patch(p));
+    }, []);
+
     const handleDeleteSelected = useCallback(() => {
         const pane = activePane;
         const sel = pane === 'left' ? selectedNodes : rightSelectedNodes;
@@ -510,16 +531,66 @@ export function BnkExtract() {
         }
     }, [hasAudioSelection, isWwiseInstalled, collectSelectedAudioNodes, activePane, pushToHistory, applyAudioToNodes]);
 
-    const handleMakeSilent = useCallback(() => {
-        if (!hasAudioSelection()) return;
-        const targets = collectSelectedAudioNodes();
-        if (targets.length === 0) return;
+    const handleMakeSilent = useCallback((options?: { pane?: Pane; nodeIds?: string[] }) => {
+        const pane = options?.pane ?? activePane;
+        const tree = pane === 'left' ? treeData : rightTreeData;
+        const selected = options?.nodeIds?.length
+            ? new Set(options.nodeIds)
+            : (pane === 'left' ? selectedNodes : rightSelectedNodes);
+
+        if (selected.size === 0) {
+            setStatusMessage('Select tracks to silence first');
+            return;
+        }
+
+        const targets: BnkNode[] = [];
+        const collectedNodeIds = new Set<string>();
+        for (const id of selected) {
+            const node = findNode(tree, id);
+            if (!node) continue;
+            const audioNodes = collectAudioUnder(node);
+            for (const audioNode of audioNodes) {
+                if (!collectedNodeIds.has(audioNode.id)) {
+                    collectedNodeIds.add(audioNode.id);
+                    targets.push(audioNode);
+                }
+            }
+        }
+        if (targets.length === 0) {
+            setStatusMessage('No audio files found in selection');
+            handleCloseContextMenu();
+            return;
+        }
+
+        const wemIds = new Set(targets.map((node) => node.audioData!.id));
+        let silencedEvents = 0;
+        const countMatches = (nodes: BnkNode[]) => {
+            for (const node of nodes) {
+                if (node.audioData && wemIds.has(node.audioData.id)) silencedEvents += 1;
+                if (node.children) countMatches(node.children);
+            }
+        };
+        countMatches(tree);
+
+        let silentAudio: Uint8Array;
+        try {
+            silentAudio = silenceWem();
+        } catch (error) {
+            log.error('[BnkExtract] failed to load silence WEM', error);
+            setStatusMessage(`Make Silent failed: ${(error as Error).message}`);
+            handleCloseContextMenu();
+            return;
+        }
+
         pushToHistory();
-        const ids = new Set(targets.map((n) => n.id));
-        applyAudioToNodes(activePane, ids, silenceWem());
-        setStatusMessage(`Silenced ${targets.length} track(s)`);
+        applyAudioToWemIds(pane, wemIds, silentAudio);
+        setStatusMessage(
+            silencedEvents > wemIds.size
+                ? `Silenced ${wemIds.size} WEM(s) across ${silencedEvents} event(s)`
+                : `Silenced ${silencedEvents} track(s)`,
+        );
         handleCloseContextMenu();
-    }, [hasAudioSelection, collectSelectedAudioNodes, activePane, pushToHistory, applyAudioToNodes, handleCloseContextMenu]);
+    }, [activePane, treeData, rightTreeData, selectedNodes, rightSelectedNodes, pushToHistory, applyAudioToWemIds, handleCloseContextMenu]);
 
     const handleSave = useCallback(async () => {
         if (!hasRootSelection()) return;
@@ -1304,7 +1375,10 @@ export function BnkExtract() {
                 onPlay={() => { if (contextMenu?.node?.audioData) void playAudio(contextMenu.node); handleCloseContextMenu(); }}
                 onExtract={() => { void handleExtract(); handleCloseContextMenu(); }}
                 onReplace={() => { void handleReplace(); handleCloseContextMenu(); }}
-                onMakeSilent={handleMakeSilent}
+                onMakeSilent={() => handleMakeSilent({
+                    pane: contextMenu?.pane ?? activePane,
+                    nodeIds: getContextTargetIds(),
+                })}
                 onAdjustGain={() => {
                     const pane = contextMenu?.pane || 'left';
                     const nodeIds = getContextTargetIds();

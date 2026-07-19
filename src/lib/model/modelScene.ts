@@ -1,22 +1,106 @@
 import * as THREE from 'three';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { modelInspectLoad, type ModelGroup, type ModelPreviewData } from '@/lib/api/modelInspect';
+import { DDSLoader } from 'three/examples/jsm/loaders/DDSLoader.js';
+import {
+    modelInspectLoad,
+    modelInspectSceneAssets,
+    type ModelGroup,
+    type ModelPreviewData,
+    type ModelSceneAssets,
+} from '@/lib/api/modelInspect';
+import {
+    evaluateWorldMatrices,
+    evaluateSkeletonSegments,
+    inverseBindMatrix,
+    type SkeletonRuntime,
+    type AnimClip,
+} from './skinning';
+
+/** A submesh-visibility event for the scene: show/hide tokens (names or `0x`
+ *  hashes) over a frame window (null = 0 / clip end). */
+export interface SceneVisEvent {
+    startFrame: number | null;
+    endFrame: number | null;
+    show: string[];
+    hide: string[];
+}
+
+/** League fnv1a-32 (lowercased) as a `0x`-padded hex string, for matching a
+ *  submesh-visibility hash token against a submesh name. */
+function fnv1a32Hex(name: string): string {
+    let h = 0x811c9dc5;
+    const s = name.toLowerCase();
+    for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return `0x${h.toString(16).padStart(8, '0')}`;
+}
+
+/** Does an event token (a submesh NAME or a `0x…` hash) refer to `groupName`? */
+function tokenMatchesGroup(token: string, groupName: string): boolean {
+    if (token.toLowerCase() === groupName.toLowerCase()) return true;
+    if (/^0x[0-9a-f]+$/i.test(token)) return token.toLowerCase() === fnv1a32Hex(groupName);
+    return false;
+}
 
 export interface ModelSceneOptions {
     textureUrl?: string | null;
+    /** Per-submesh texture URLs. `*` is the BIN-authored base material. */
+    textureUrls?: Record<string, string>;
     autoRotate?: boolean;
     interactive?: boolean;
     wireframe?: boolean;
     showGrid?: boolean;
+    showSkybox?: boolean;
     hiddenGroups?: ReadonlySet<string>;
+    modelScale?: number;
+    modelData?: ModelPreviewData;
+    /** Skeleton for skinned playback (built from model_inspect_skeleton). */
+    skeleton?: SkeletonRuntime | null;
+    /** Show the bone-line overlay. */
+    showSkeleton?: boolean;
 }
 
 export interface MountedModelScene {
     data: ModelPreviewData;
+    setHiddenGroups: (hidden: ReadonlySet<string>) => void;
+    /** True when the mesh has bones + a skeleton was supplied (animatable). */
+    readonly skinned: boolean;
+    /** Set the active animation clip (null = bind pose / stopped). */
+    setClip: (clip: AnimClip | null) => void;
+    /** Set playback time in seconds (also updates the skeleton overlay). */
+    setTime: (seconds: number) => void;
+    setShowSkeleton: (show: boolean) => void;
+    /** Submesh-visibility events for the active clip (null = none). Applied per
+     *  frame during playback: a submesh is shown/hidden while an event's frame
+     *  window is live, over the base hidden set. */
+    setVisibilityEvents: (events: SceneVisEvent[] | null, fps: number) => void;
+    /** Live render toggles (no scene remount). */
+    setWireframe: (on: boolean) => void;
+    setAutoRotate: (on: boolean) => void;
+    setShowGrid: (on: boolean) => void;
+    setShowSkybox: (on: boolean) => void;
+    /** Hot-swap one submesh group's texture in place (no scene remount). Pass a
+     *  file:// or disk URL; the base group is keyed `*`. Rejects on decode
+     *  failure, keeping the previous texture. */
+    setGroupTexture: (groupName: string, url: string) => Promise<void>;
+    /** Current groupName -> applied texture URL (base under `*`). For the file
+     *  watcher + texture picker to know what to watch / replace. */
+    appliedTextures: () => Record<string, string>;
+    /** Submesh group names in render order (for the per-submesh picker UI). */
+    groupNames: () => string[];
     dispose: () => void;
 }
 
 const PALETTE = [0x8b5cf6, 0x38bdf8, 0x2dd4bf, 0xf59e0b, 0xfb7185, 0xa3e635, 0xe879f9];
+let sceneAssetsPromise: Promise<ModelSceneAssets> | null = null;
+
+function sceneAssets(): Promise<ModelSceneAssets> {
+    sceneAssetsPromise ??= modelInspectSceneAssets().catch(() => ({ groundPath: null, skyboxPath: null }));
+    return sceneAssetsPromise;
+}
 
 function displayGroups(data: ModelPreviewData): ModelGroup[] {
     if (data.groups.length > 0) return data.groups;
@@ -56,12 +140,40 @@ export async function mountModelScene(
     path: string,
     options: ModelSceneOptions = {},
 ): Promise<MountedModelScene> {
-    const [data, texture] = await Promise.all([
-        modelInspectLoad(path),
-        loadTexture(options.textureUrl),
+    const [data, assetPaths] = await Promise.all([
+        options.modelData ? Promise.resolve(options.modelData) : modelInspectLoad(path),
+        sceneAssets(),
     ]);
+    const requestedTextures = { ...(options.textureUrls ?? {}) };
+    if (options.textureUrl && !requestedTextures['*']) requestedTextures['*'] = options.textureUrl;
+    const textureCache = new Map<string, Promise<THREE.Texture | null>>();
+    const loadedEntries = await Promise.all(Object.entries(requestedTextures).map(async ([, url]) => {
+        let pending = textureCache.get(url);
+        if (!pending) {
+            pending = loadTexture(url);
+            textureCache.set(url, pending);
+        }
+        return [url, await pending] as const;
+    }));
+    // Keyed by URL (not the submesh key) so textureForGroup and the hot-swap can
+    // look up a loaded texture by its URL.
+    const textures = new Map(loadedEntries.filter((entry): entry is readonly [string, THREE.Texture] => !!entry[1]));
+    // Which requested key (if any) a group name binds to (same matching as
+    // textureForGroup): exact/normalized submesh override, else the base `*`.
+    const keyForGroup = (name: string): string | null => {
+        const wanted = name.toLowerCase();
+        for (const key of Object.keys(requestedTextures)) {
+            const normalized = key.replace(/_\d+Material$/i, '').toLowerCase();
+            if (key !== '*' && (key.toLowerCase() === wanted || normalized === wanted)) return key;
+        }
+        return requestedTextures['*'] != null ? '*' : null;
+    };
+    const textureForGroup = (name: string): THREE.Texture | null => {
+        const key = keyForGroup(name);
+        return key != null ? (textures.get(requestedTextures[key]) ?? null) : null;
+    };
     if (data.positions.length === 0 || data.indices.length === 0) {
-        texture?.dispose();
+        new Set(textures.values()).forEach((texture) => texture.dispose());
         throw new Error('The model contains no renderable triangles');
     }
 
@@ -87,49 +199,201 @@ export async function mountModelScene(
         if (count > 0) geometry.addGroup(start, count, index);
     });
 
-    const materials = groups.map((group, index) => new THREE.MeshStandardMaterial({
-        color: texture || colors ? 0xffffff : PALETTE[index % PALETTE.length],
-        map: texture,
-        vertexColors: !!colors,
-        roughness: 0.68,
-        metalness: 0.025,
-        side: THREE.DoubleSide,
-        wireframe: !!options.wireframe,
-        transparent: !!texture,
-        alphaTest: texture ? 0.08 : 0,
-        depthWrite: true,
-        visible: !options.hiddenGroups?.has(group.name),
-    }));
+    const materials = groups.map((group, index) => {
+        const texture = textureForGroup(group.name);
+        return new THREE.MeshBasicMaterial({
+            color: texture || colors ? 0xffffff : PALETTE[index % PALETTE.length],
+            map: texture,
+            vertexColors: !!colors,
+            side: THREE.DoubleSide,
+            wireframe: !!options.wireframe,
+            // League character materials are opaque cutouts: discard low alpha,
+            // but do not blend/sort the entire mesh as transparent geometry.
+            transparent: false,
+            alphaTest: texture ? 0.5 : 0,
+            depthWrite: true,
+            visible: !options.hiddenGroups?.has(group.name),
+        });
+    });
 
     const scene = new THREE.Scene();
     const root = new THREE.Group();
-    const mesh = new THREE.Mesh(geometry, materials);
+    const modelScale = Number.isFinite(options.modelScale) && (options.modelScale ?? 1) > 0 ? (options.modelScale ?? 1) : 1;
+    root.scale.setScalar(modelScale);
+
+    // Skinned path: the mesh carries bone influences AND a skeleton was supplied.
+    // We drive skinning by writing our own skin matrices into skeleton.boneMatrices
+    // each frame (three's bone hierarchy is bypassed), matching old Quartz's CPU
+    // skinning while letting the GPU do the vertex blend.
+    const skeletonRt = options.skeleton ?? null;
+    const canSkin = !!skeletonRt
+        && data.boneIndices?.length === data.vertexCount * 4
+        && data.boneWeights?.length === data.vertexCount * 4
+        && skeletonRt.sortedIds.length > 0;
+
+    let mesh: THREE.Mesh | THREE.SkinnedMesh;
+    let threeSkeleton: THREE.Skeleton | null = null;
+    let bonesBySlot: THREE.Bone[] = [];
+    let boneSlotByJointId: Map<number, number> | null = null;
+
+    if (canSkin && skeletonRt) {
+        // Bone slot order = joints sorted by id; build the lookup mesh vertices use.
+        boneSlotByJointId = new Map(skeletonRt.sortedIds.map((id, slot) => [id, slot]));
+        const influences = skeletonRt.influences;
+        const vcount = data.vertexCount;
+        const skinIndex = new Uint16Array(vcount * 4);
+        const skinWeight = new Float32Array(vcount * 4);
+        for (let i = 0; i < vcount * 4; i++) {
+            // mesh-local influence index -> joint id -> compact bone slot.
+            const local = data.boneIndices[i] ?? 0;
+            const jointId = influences[local] ?? -1;
+            skinIndex[i] = jointId >= 0 ? (boneSlotByJointId.get(jointId) ?? 0) : 0;
+            skinWeight[i] = data.boneWeights[i] ?? 0;
+        }
+        geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndex, 4));
+        geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeight, 4));
+
+        // Canonical three.js skinning: give each bone its own matrix (we drive it
+        // per frame), and hand three the inverse-bind list. three then computes
+        // boneMatrices[i] = bone.matrixWorld * boneInverses[i] in skeleton.update().
+        bonesBySlot = skeletonRt.sortedIds.map((jointId) => {
+            const bone = new THREE.Bone();
+            bone.matrixAutoUpdate = false;
+            const joint = skeletonRt.jointById.get(jointId)!;
+            bone.name = joint.name;
+            return bone;
+        });
+        const boneInverses = skeletonRt.sortedIds.map((jointId) =>
+            inverseBindMatrix(skeletonRt.jointById.get(jointId)!));
+        threeSkeleton = new THREE.Skeleton(bonesBySlot, boneInverses);
+
+        const skinned = new THREE.SkinnedMesh(geometry, materials);
+        const boneRoot = new THREE.Group();
+        boneRoot.matrixAutoUpdate = false; // stays at identity; bones carry world matrices
+        bonesBySlot.forEach((b) => boneRoot.add(b));
+        skinned.add(boneRoot);
+        skinned.bind(threeSkeleton, new THREE.Matrix4());
+        mesh = skinned;
+    } else {
+        mesh = new THREE.Mesh(geometry, materials);
+    }
     root.add(mesh);
     scene.add(root);
+
+    // Skeleton overlay (bone lines), toggled by showSkeleton.
+    const overlayGeom = new THREE.BufferGeometry();
+    overlayGeom.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(0), 3));
+    const overlay = new THREE.LineSegments(
+        overlayGeom,
+        new THREE.LineBasicMaterial({ color: 0x00e0ff, depthTest: false, transparent: true, opacity: 0.9 }),
+    );
+    overlay.renderOrder = 999;
+    overlay.visible = !!options.showSkeleton && canSkin;
+    root.add(overlay);
+
+    // Playback state.
+    let activeClip: AnimClip | null = null;
+    let currentTime = 0;
+    // Submesh-visibility events for the active clip + the base hidden set.
+    let visEvents: SceneVisEvent[] | null = null;
+    let visFps = 30;
+    let baseHidden: ReadonlySet<string> = options.hiddenGroups ?? new Set();
+
+    /** Effective per-frame submesh visibility: start from the base hidden set,
+     *  then apply the live events (show wins over hide within a window). */
+    const applyVisibility = () => {
+        const clipEndFrame = activeClip ? activeClip.durationSeconds * visFps : 0;
+        const frame = currentTime * visFps;
+        // Collect forced show/hide from events whose window is live this frame.
+        const forceShow: string[] = [];
+        const forceHide: string[] = [];
+        if (visEvents) {
+            for (const ev of visEvents) {
+                const start = ev.startFrame ?? 0;
+                const end = ev.endFrame ?? clipEndFrame;
+                if (frame < start || (end > 0 && frame > end)) continue;
+                forceShow.push(...ev.show);
+                forceHide.push(...ev.hide);
+            }
+        }
+        materials.forEach((material, index) => {
+            const gName = groups[index]?.name ?? '';
+            let visible = !baseHidden.has(gName);
+            if (forceHide.some((t) => tokenMatchesGroup(t, gName))) visible = false;
+            if (forceShow.some((t) => tokenMatchesGroup(t, gName))) visible = true;
+            material.visible = visible;
+        });
+    };
+
+    const applyPose = () => {
+        if (!canSkin || !skeletonRt || !threeSkeleton || !boneSlotByJointId) return;
+        // World transform per joint at the current time; write into each bone's
+        // matrix + matrixWorld, then let three build the skin matrices.
+        const worldById = evaluateWorldMatrices(skeletonRt, activeClip, currentTime);
+        for (const [jointId, slot] of boneSlotByJointId) {
+            const world = worldById.get(jointId);
+            const bone = bonesBySlot[slot];
+            if (!world || !bone) continue;
+            bone.matrix.copy(world);
+            bone.matrixWorld.copy(world);
+        }
+        threeSkeleton.update();
+        if (overlay.visible) {
+            const seg = evaluateSkeletonSegments(skeletonRt, activeClip, currentTime);
+            overlay.geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(seg), 3));
+            overlay.geometry.attributes.position.needsUpdate = true;
+            overlay.geometry.setDrawRange(0, seg.length / 3);
+        }
+        applyVisibility();
+    };
+    // Prime bind pose immediately so a skinned mesh renders correctly at rest.
+    applyPose();
 
     geometry.computeBoundingBox();
     geometry.computeBoundingSphere();
     const center = geometry.boundingBox?.getCenter(new THREE.Vector3()) ?? new THREE.Vector3();
-    root.position.copy(center).multiplyScalar(-1);
+    root.position.copy(center).multiplyScalar(-modelScale);
     const size = geometry.boundingBox?.getSize(new THREE.Vector3()) ?? new THREE.Vector3(1, 1, 1);
-    const radius = Math.max(geometry.boundingSphere?.radius ?? size.length() * 0.5, 0.05);
+    const radius = Math.max((geometry.boundingSphere?.radius ?? size.length() * 0.5) * modelScale, 0.05);
 
-    scene.add(new THREE.HemisphereLight(0xe7efff, 0x202030, 1.45));
-    const key = new THREE.DirectionalLight(0xffffff, 2.2);
-    key.position.set(radius * 2.4, radius * 3.2, radius * 3.6);
-    scene.add(key);
-    const rim = new THREE.DirectionalLight(0x8b5cf6, 1.1);
-    rim.position.set(-radius * 2.2, radius * 1.2, -radius * 2.4);
-    scene.add(rim);
+    // Ground + skybox are always loaded (small bundled assets) and toggled by
+    // visibility, so flipping them doesn't remount the scene.
+    let groundTexture: THREE.Texture | null = null;
+    let ground: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null = null;
+    if (assetPaths.groundPath) {
+        try {
+            groundTexture = await new THREE.TextureLoader().loadAsync(convertFileSrc(assetPaths.groundPath));
+            groundTexture.colorSpace = THREE.SRGBColorSpace;
+            groundTexture.wrapS = THREE.ClampToEdgeWrapping;
+            groundTexture.wrapT = THREE.ClampToEdgeWrapping;
+            const groundSize = Math.max(size.x * modelScale, size.z * modelScale, radius) * 4;
+            ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(groundSize, groundSize),
+                new THREE.MeshBasicMaterial({ map: groundTexture, side: THREE.DoubleSide }),
+            );
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -size.y * modelScale * 0.5 - radius * 0.005;
+            ground.visible = !!options.showGrid;
+            scene.add(ground);
+        } catch {
+            groundTexture?.dispose();
+            groundTexture = null;
+        }
+    }
 
-    let grid: THREE.GridHelper | null = null;
-    if (options.showGrid) {
-        const gridSize = Math.max(size.x, size.z, radius) * 3;
-        grid = new THREE.GridHelper(gridSize, 18, 0x6d5dfc, 0x343449);
-        grid.position.y = -size.y * 0.5;
-        (grid.material as THREE.Material).transparent = true;
-        (grid.material as THREE.Material).opacity = 0.42;
-        scene.add(grid);
+    let skybox: THREE.CompressedTexture | null = null;
+    const applySkyboxVisible = (show: boolean) => { scene.background = show && skybox ? skybox : null; };
+    if (assetPaths.skyboxPath) {
+        try {
+            skybox = await new DDSLoader().loadAsync(convertFileSrc(assetPaths.skyboxPath));
+            Object.assign(skybox, { isCubeTexture: true });
+            skybox.mapping = THREE.CubeReflectionMapping;
+            skybox.colorSpace = THREE.SRGBColorSpace;
+            applySkyboxVisible(options.showSkybox !== false);
+        } catch {
+            skybox?.dispose();
+            skybox = null;
+        }
     }
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
@@ -182,8 +446,94 @@ export async function mountModelScene(
         renderer.render(scene, camera);
     });
 
+    // Live groupName -> current texture URL (base under `*`), seeded from what
+    // each group actually resolved to at mount. Drives the watcher + picker.
+    const groupUrl: Record<string, string> = {};
+    for (const g of groups) {
+        const key = keyForGroup(g.name);
+        if (key != null && requestedTextures[key]) groupUrl[g.name] = requestedTextures[key];
+    }
+    if (requestedTextures['*']) groupUrl['*'] = requestedTextures['*'];
+
     return {
         data,
+        skinned: canSkin,
+        setHiddenGroups: (hidden) => {
+            baseHidden = hidden;
+            applyVisibility();
+        },
+        setVisibilityEvents: (events, fps) => {
+            visEvents = events;
+            visFps = fps > 0 ? fps : 30;
+            applyVisibility();
+        },
+        setGroupTexture: async (groupName, url) => {
+            // Cache-bust file/http URLs so an edited-in-place file is refetched
+            // instead of served from the browser cache. NEVER append a query to a
+            // data: URL - that makes it an invalid URL (ERR_INVALID_URL). Data
+            // URLs are already unique per decode, so no cache-bust is needed.
+            const bustUrl = url.startsWith('data:')
+                ? url
+                : url + (url.includes('?') ? '&' : '?') + '_r=' + Date.now();
+            const next = await loadTexture(bustUrl);
+            if (!next) throw new Error('Could not decode texture');
+            // Update every material whose resolved texture key matches `groupName`.
+            // `groupName` is a texture key (e.g. `Body`, `Tails`, or `*` for base),
+            // the same space `keyForGroup` resolves to. Matching by that key (not by
+            // raw submesh name) is what makes the base `*` and per-submesh overrides
+            // both hit the right materials. A submesh with no override resolves to
+            // `*`, so a `*` reload also refreshes those.
+            const wantKey = groupName.toLowerCase();
+            const stale = new Set<THREE.Texture>();
+            let applied = 0;
+            materials.forEach((material, index) => {
+                const gName = groups[index]?.name ?? '';
+                const key = (keyForGroup(gName) ?? '').toLowerCase();
+                if (key !== wantKey) return;
+                if (material.map && material.map !== next) stale.add(material.map);
+                material.map = next;
+                material.color.setHex(0xffffff);
+                material.alphaTest = 0.5;
+                material.needsUpdate = true;
+                applied++;
+            });
+            groupUrl[groupName] = url;
+            // If the key didn't match any material's resolved key (naming drift),
+            // fall back to a direct submesh-name match so the reload still lands.
+            if (applied === 0 && groupName !== '*') {
+                materials.forEach((material, index) => {
+                    const gName = (groups[index]?.name ?? '').toLowerCase();
+                    if (gName !== wantKey && gName.replace(/_\d+material$/i, '') !== wantKey) return;
+                    if (material.map && material.map !== next) stale.add(material.map);
+                    material.map = next;
+                    material.color.setHex(0xffffff);
+                    material.alphaTest = 0.5;
+                    material.needsUpdate = true;
+                });
+            }
+            // Dispose textures no longer referenced by any material.
+            const live = new Set(materials.map((m) => m.map).filter(Boolean) as THREE.Texture[]);
+            stale.forEach((t) => { if (!live.has(t)) t.dispose(); });
+        },
+        appliedTextures: () => ({ ...groupUrl }),
+        groupNames: () => groups.map((g) => g.name),
+        setClip: (clip) => {
+            activeClip = clip;
+            currentTime = 0;
+            applyPose();
+        },
+        setTime: (seconds) => {
+            currentTime = seconds;
+            applyPose();
+        },
+        setShowSkeleton: (show) => {
+            overlay.visible = show && canSkin;
+            if (overlay.visible) applyPose();
+        },
+        setWireframe: (on) => { materials.forEach((m) => { m.wireframe = on; }); },
+        setAutoRotate: (on) => { controls.autoRotate = on && controls.enabled; },
+        setShowGrid: (on) => { if (ground) ground.visible = on; },
+        setShowSkybox: (on) => { applySkyboxVisible(on); },
         dispose: () => {
             if (disposed) return;
             disposed = true;
@@ -191,13 +541,15 @@ export async function mountModelScene(
             renderer.setAnimationLoop(null);
             controls.dispose();
             geometry.dispose();
+            overlay.geometry.dispose();
+            (overlay.material as THREE.Material).dispose();
+            threeSkeleton?.dispose();
             materials.forEach((material) => material.dispose());
-            texture?.dispose();
-            grid?.geometry.dispose();
-            if (grid) {
-                const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
-                gridMaterials.forEach((material) => material.dispose());
-            }
+            new Set(textures.values()).forEach((texture) => texture.dispose());
+            ground?.geometry.dispose();
+            ground?.material.dispose();
+            groundTexture?.dispose();
+            skybox?.dispose();
             renderer.dispose();
             renderer.forceContextLoss();
             if (renderer.domElement.parentElement === host) renderer.domElement.remove();

@@ -10,7 +10,9 @@ interface SourceBinsPanelProps {
     filteredBins: Array<[string, SourceBin]>;
     selectedBinCount: number;
     totalBinCount: number;
+    activeBinPath: string;
     handleBinSelect: (unifyPath: string, selected: boolean) => void;
+    handleBinView: (unifyPath: string) => void;
 }
 
 const SourceBinsPanel = React.memo(function SourceBinsPanel({
@@ -19,7 +21,9 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
     filteredBins,
     selectedBinCount,
     totalBinCount,
+    activeBinPath,
     handleBinSelect,
+    handleBinView,
 }: SourceBinsPanelProps) {
     return (
         <Box
@@ -105,11 +109,18 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                             return (
                                 <ListItem
                                     key={unifyPath}
+                                    onClick={() => handleBinView(unifyPath)}
                                     sx={{
                                         px: 1,
                                         py: 0.75,
                                         minHeight: 'auto',
-                                        backgroundColor: 'transparent',
+                                        backgroundColor: activeBinPath === unifyPath
+                                            ? 'color-mix(in oklab, var(--accent-primary) 12%, transparent)'
+                                            : 'transparent',
+                                        borderLeft: activeBinPath === unifyPath
+                                            ? '2px solid var(--accent-primary)'
+                                            : '2px solid transparent',
+                                        cursor: 'pointer',
                                         borderRadius: '4px',
                                         mb: 0.25,
                                         '&:hover': {
@@ -122,6 +133,7 @@ const SourceBinsPanel = React.memo(function SourceBinsPanel({
                                         <input
                                             type="checkbox"
                                             checked={data.selected}
+                                            onClick={(e) => e.stopPropagation()}
                                             onChange={(e) => handleBinSelect(unifyPath, e.target.checked)}
                                         />
                                         <span className="dl-check__box">

@@ -23,10 +23,18 @@ pub struct RepathOptions {
     pub custom_prefix: String,
     /// Skin ids to repath (e.g. `[1, 14]` → `skins/skin1.bin`). Empty = all BINs.
     pub selected_skin_ids: Vec<u32>,
+    /// Exact source BIN paths selected in the UI. Takes precedence over skin ids.
+    pub selected_bin_paths: Vec<PathBuf>,
+    /// Prefix overrides keyed by BIN entry path hash.
+    pub entry_prefixes: HashMap<u32, String>,
     /// Don't error on missing referenced files; skip them instead.
     pub ignore_missing: bool,
     /// Merge linked BINs into their main BIN and drop the link.
     pub combine_linked: bool,
+    /// Split VFX entries from each selected output skin BIN after combining.
+    pub split_vfx: bool,
+    /// Move VFX-only assets into per-skin particle folders after splitting.
+    pub consolidate_assets: bool,
 }
 
 /// Outcome of a repath pass.
@@ -41,6 +49,10 @@ pub struct RepathResult {
     pub missing: usize,
     /// Linked BINs combined into their main BIN.
     pub combined: usize,
+    /// Selected skin BINs that produced a separate VFX sibling BIN.
+    pub vfx_split: usize,
+    /// VFX asset files moved into per-skin particle folders.
+    pub assets_consolidated: usize,
 }
 
 fn normalize(p: &str) -> String {
@@ -200,18 +212,52 @@ fn bum_link(link: &str, prefix: &str) -> String {
 }
 
 /// Repath every string/link in a parsed BIN in place.
-fn repath_bin(bin: &mut Bin, prefix: &str) {
+fn repath_bin(bin: &mut Bin, prefix: &str, entry_prefixes: &HashMap<u32, String>) {
     for link in bin.linked.iter_mut() {
         *link = bum_link(link, prefix);
     }
     for entry in bin.entries.iter_mut() {
+        let entry_prefix = entry_prefixes
+            .get(&entry.path_hash)
+            .map(String::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(prefix);
         for (_k, v) in entry.fields.iter_mut() {
-            repath_value(v, prefix);
+            repath_value(v, entry_prefix);
         }
     }
     for patch in bin.patches.iter_mut() {
         repath_value(&mut patch.value, prefix);
     }
+}
+
+fn collect_bin_assets_with_prefixes(
+    bin: &Bin,
+    fallback_prefix: &str,
+    entry_prefixes: &HashMap<u32, String>,
+    out: &mut HashSet<(String, String)>,
+) {
+    for entry in &bin.entries {
+        let prefix = entry_prefixes
+            .get(&entry.path_hash)
+            .map(String::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(fallback_prefix);
+        let mut entry_assets = HashSet::new();
+        for (_k, value) in &entry.fields {
+            collect_assets(value, &mut entry_assets);
+        }
+        out.extend(entry_assets.into_iter().map(|asset| (asset, prefix.to_string())));
+    }
+    let mut patch_assets = HashSet::new();
+    for patch in &bin.patches {
+        collect_assets(&patch.value, &mut patch_assets);
+    }
+    out.extend(
+        patch_assets
+            .into_iter()
+            .map(|asset| (asset, fallback_prefix.to_string())),
+    );
 }
 
 /// Collect every asset/data string referenced anywhere in a BIN value.
@@ -245,17 +291,6 @@ fn collect_assets(value: &BinValue, out: &mut HashSet<String>) {
             }
         }
         _ => {}
-    }
-}
-
-fn collect_bin_assets(bin: &Bin, out: &mut HashSet<String>) {
-    for entry in &bin.entries {
-        for (_k, v) in &entry.fields {
-            collect_assets(v, out);
-        }
-    }
-    for patch in &bin.patches {
-        collect_assets(&patch.value, out);
     }
 }
 
@@ -326,29 +361,52 @@ pub fn repath(
     output_dir: &Path,
     options: &RepathOptions,
 ) -> Result<RepathResult> {
-    if options.custom_prefix.trim().is_empty() {
-        return Err(Error::InvalidInput("custom_prefix is required".into()));
+    repath_many(&[source_dir.to_path_buf()], output_dir, options)
+}
+
+/// Run one repath pass over all source folders, matching the original core's
+/// shared source-file map and first-source-wins behavior.
+pub fn repath_many(
+    source_dirs: &[PathBuf],
+    output_dir: &Path,
+    options: &RepathOptions,
+) -> Result<RepathResult> {
+    if source_dirs.is_empty() {
+        return Err(Error::InvalidInput("at least one source directory is required".into()));
     }
-    if !source_dir.exists() {
+    if let Some(source_dir) = source_dirs.iter().find(|path| !path.exists()) {
         return Err(Error::InvalidInput(format!(
             "source directory not found: {}",
             source_dir.display()
         )));
     }
-    let prefix = options.custom_prefix.trim();
+    // Old Quartz falls back to `bum` when no entry-specific or global prefix
+    // was applied. Keeping the fallback here also protects direct API calls.
+    let prefix = if options.custom_prefix.trim().is_empty() {
+        "bum"
+    } else {
+        options.custom_prefix.trim()
+    };
 
     // 1. Discover every source file.
     let mut files: HashMap<String, SourceFile> = HashMap::new();
-    let base = source_dir;
-    discover_files(source_dir, base, &mut files);
-    apply_hashed_files_map(source_dir, &mut files);
+    for source_dir in source_dirs {
+        discover_files(source_dir, source_dir, &mut files);
+        apply_hashed_files_map(source_dir, &mut files);
+    }
 
     // 2. Pick seed BINs: skin BINs matching the requested ids, or all BINs.
     let seeds: Vec<String> = files
         .keys()
         .filter(|rel| rel.ends_with(".bin") && !is_character_bin(rel))
         .filter(|rel| {
-            if options.selected_skin_ids.is_empty() {
+            if !options.selected_bin_paths.is_empty() {
+                let Some(source) = files.get(*rel) else { return false; };
+                let source_path = normalize(&source.full_path.to_string_lossy());
+                options.selected_bin_paths.iter().any(|selected| {
+                    normalize(&selected.to_string_lossy()) == source_path
+                })
+            } else if options.selected_skin_ids.is_empty() {
                 true
             } else {
                 matches_skin(rel, &options.selected_skin_ids)
@@ -376,7 +434,7 @@ pub fn repath(
 
     // 4. Gather referenced assets (from the unmodified source BINs) and
     //    repath + write each BIN to the output under its original rel path.
-    let mut referenced: HashSet<String> = HashSet::new();
+    let mut referenced: HashSet<(String, String)> = HashSet::new();
     // outputs of each processed bin: rel -> absolute output path
     let mut bin_outputs: HashMap<String, PathBuf> = HashMap::new();
 
@@ -394,8 +452,13 @@ pub fn repath(
                 continue;
             }
         };
-        collect_bin_assets(&bin, &mut referenced);
-        repath_bin(&mut bin, prefix);
+        collect_bin_assets_with_prefixes(
+            &bin,
+            prefix,
+            &options.entry_prefixes,
+            &mut referenced,
+        );
+        repath_bin(&mut bin, prefix, &options.entry_prefixes);
 
         let out_path = output_dir.join(rel);
         if let Some(parent) = out_path.parent() {
@@ -411,7 +474,7 @@ pub fn repath(
     }
 
     // 5. Copy referenced asset files to the output under repathed paths.
-    for asset in &referenced {
+    for (asset, asset_prefix) in &referenced {
         let asset_rel = rel_normalize(asset);
         let src = match files.get(&asset_rel) {
             Some(s) => s,
@@ -426,7 +489,7 @@ pub fn repath(
                 continue;
             }
         };
-        let repathed = bum_path(asset, prefix);
+        let repathed = bum_path(asset, asset_prefix);
         let out_path = output_dir.join(rel_normalize(&repathed));
         if let Some(parent) = out_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| Error::io_with_path(e, parent))?;
@@ -439,6 +502,73 @@ pub fn repath(
     if options.combine_linked {
         for seed in &seed_set {
             result.combined += combine_into(seed, &links_of, &bin_outputs)?;
+        }
+    }
+
+    // Match the old post-repath splitter: operate only on selected skin BINs,
+    // after linked content has been combined into them.
+    let mut split_outputs: HashMap<String, PathBuf> = HashMap::new();
+    if options.split_vfx {
+        for seed in &seed_set {
+            let is_skin_bin = Path::new(seed)
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .map(|stem| {
+                    let lower = stem.to_lowercase();
+                    lower.strip_prefix("skin")
+                        .is_some_and(|number| !number.is_empty() && number.chars().all(|ch| ch.is_ascii_digit()))
+                })
+                .unwrap_or(false);
+            if !is_skin_bin {
+                continue;
+            }
+            if let Some(path) = bin_outputs.get(seed) {
+                match crate::bin::bin_editor::split_one_kind(path, "vfx") {
+                    Ok(Some(split)) => {
+                        result.vfx_split += 1;
+                        split_outputs.insert(seed.clone(), split.file);
+                    }
+                    Ok(None) => {}
+                    Err(error) => tracing::warn!("VFX split failed for {}: {}", path.display(), error),
+                }
+            }
+        }
+    }
+
+    if options.consolidate_assets {
+        for seed in &seed_set {
+            let normalized = normalize(seed);
+            let Some(after_characters) = normalized.split("characters/").nth(1) else {
+                continue;
+            };
+            let Some(champ) = after_characters.split('/').next().filter(|value| !value.is_empty()) else {
+                continue;
+            };
+            let Some(stem) = Path::new(seed).file_stem().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            let Some(skin_num) = stem.to_lowercase().strip_prefix("skin").and_then(|value| value.parse::<u32>().ok()) else {
+                continue;
+            };
+            let mut targets = Vec::new();
+            if let Some(main) = bin_outputs.get(seed) {
+                targets.push(main.clone());
+            }
+            if let Some(split) = split_outputs.get(seed) {
+                targets.push(split.clone());
+            }
+            for target in targets {
+                match crate::bin::bin_editor::consolidate_assets_repath(
+                    &target,
+                    output_dir,
+                    prefix,
+                    champ,
+                    skin_num,
+                ) {
+                    Ok(consolidated) => result.assets_consolidated += consolidated.moved,
+                    Err(error) => tracing::warn!("VFX asset organization failed for {}: {}", target.display(), error),
+                }
+            }
         }
     }
 

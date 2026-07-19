@@ -3,6 +3,8 @@ import type { LucideIcon } from 'lucide-react';
 
 export { DropOverlay, type DropOverlayProps } from './DropOverlay';
 export { BinOpenLanding, type BinOpenLandingProps } from './BinOpenLanding';
+export { default as RecentBinsList, type RecentBinEntry } from './RecentBinsList';
+export { Dropdown, type DropdownOption, type DropdownProps } from './Dropdown';
 
 export function PageHeader({ icon: Icon, title, subtitle, actions }: {
     icon: LucideIcon;

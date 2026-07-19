@@ -105,7 +105,7 @@ export function AppearanceSection() {
             </FormGroup>
 
             <FormGroup label="Interface Style" icon={<PanelsTopLeft size={15} />}>
-                <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div className="settings-card" style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <Checkbox
                         checked={prefs.sharpButtonCorners}
                         onChange={(checked) => setGlobalAppearance('sharpButtonCorners', checked)}
@@ -128,7 +128,7 @@ export function AppearanceSection() {
             </FormGroup>
 
             <FormGroup label="Wallpaper" icon={<Image size={15} />}>
-                <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div className="settings-card" style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <Checkbox checked={prefs.wallpaperEnabled} onChange={setWallpaperEnabled}>Enable wallpaper</Checkbox>
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <Button icon={<Plus size={16} />} variant="secondary" onClick={addWallpaper}>Add Wallpaper</Button>
@@ -167,7 +167,7 @@ export function AppearanceSection() {
             </FormGroup>
 
             <FormGroup label="Click Effect" icon={<MousePointerClick size={15} />}>
-                <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div className="settings-card" style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <Checkbox checked={prefs.clickEffectEnabled} onChange={(c) => set('clickEffectEnabled', c)}>Enable click effect</Checkbox>
                     <CustomSelect value={prefs.clickEffectType} onChange={(v) => set('clickEffectType', v)}
                         disabled={!prefs.clickEffectEnabled || prefs.performanceMode}
@@ -176,7 +176,7 @@ export function AppearanceSection() {
             </FormGroup>
 
             <FormGroup label="Background Effect" icon={<Sparkles size={15} />}>
-                <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div className="settings-card" style={{ ...card, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <Checkbox checked={prefs.backgroundEffectEnabled} onChange={(c) => set('backgroundEffectEnabled', c)}>Enable background effect</Checkbox>
                     <CustomSelect value={prefs.backgroundEffectType} onChange={(v) => set('backgroundEffectType', v)}
                         disabled={!prefs.backgroundEffectEnabled || prefs.performanceMode}

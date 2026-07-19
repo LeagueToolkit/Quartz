@@ -261,55 +261,67 @@ pub fn resolve_hashes_lmdb(hashes: &[u64], env: &heed::Env) -> Vec<String> {
 /// ~80ms. The whole call returns the FxHashMap directly so callers don't
 /// re-pay the conversion.
 ///
-/// Parallelized across the rayon thread pool. LMDB is built for concurrent
-/// readers — every thread opens its own short-lived `RoTxn` and walks its
-/// own slice. With 720K lookups, single-threaded was page-fault-bound at
-/// ~14s cold; the parallel version pipelines those faults across cores.
+/// Lookups use one read transaction after sorting and deduplicating the keys.
+/// This keeps LMDB page access local and avoids a full Rayon pool issuing
+/// random faults against the same memory-mapped file.
 pub fn resolve_hashes_lmdb_bulk(hashes: &[u64], env: &heed::Env) -> ResolvedHashes {
-    use rayon::prelude::*;
-
     if hashes.is_empty() {
         return ResolvedHashes::default();
     }
 
-    // Confirm the named DB exists once on the calling thread.
-    let Some((probe_txn, _)) = open_read_db(env, "wad") else {
+    let Some((rtxn, db)) = open_read_db(env, "wad") else {
         return ResolvedHashes::default();
     };
-    drop(probe_txn);
 
-    // ~64K hashes per chunk: amortizes txn open/close while keeping all
-    // cores busy for inputs above ~500K. Each worker writes resolved paths
-    // directly into a per-thread arena — no per-hit `String` allocation.
-    const CHUNK: usize = 64 * 1024;
-    // ~40 bytes/path is the empirical mean for resolved League WAD paths;
-    // sized down/2 because not every hash resolves.
-    const ARENA_GUESS_PER_HASH: usize = 20;
+    // TOC hashes are effectively random. Sort the big-endian keys, then merge
+    // them with LMDB's ordered cursor. This visits the mapped database once in
+    // page order instead of issuing hundreds of thousands of B-tree searches
+    // (or random page faults from every Rayon worker at once).
+    let mut ordered = hashes.to_vec();
+    ordered.sort_unstable();
+    ordered.dedup();
 
-    let partials: Vec<ResolvedHashes> = hashes
-        .par_chunks(CHUNK)
-        .map(|chunk| {
-            let Some((rtxn, db)) = open_read_db(env, "wad") else {
-                return ResolvedHashes::default();
-            };
-            let mut local =
-                ResolvedHashes::with_capacity(chunk.len() / 2, chunk.len() * ARENA_GUESS_PER_HASH);
-            for h in chunk {
-                let key = h.to_be_bytes();
-                if let Ok(Some(s)) = db.get(&rtxn, &key[..]) {
-                    local.insert(*h, s);
-                }
+    let mut out = ResolvedHashes::with_capacity(ordered.len(), ordered.len() * 40);
+    // A cursor scan is ideal for a full-game index, but it would read the
+    // entire database just to open one champion WAD. Keep ordinary extractor,
+    // port, and preview calls on cheap point lookups.
+    const CURSOR_MERGE_MIN_KEYS: usize = 100_000;
+    if ordered.len() < CURSOR_MERGE_MIN_KEYS {
+        for hash in ordered {
+            let key = hash.to_be_bytes();
+            if let Ok(Some(path)) = db.get(&rtxn, &key[..]) {
+                out.insert(hash, path);
             }
-            local
-        })
-        .collect();
+        }
+        return out;
+    }
 
-    // Merge into one arena. Pre-size to the sum of partials.
-    let total_entries: usize = partials.iter().map(|p| p.len()).sum();
-    let total_arena: usize = partials.iter().map(|p| p.arena.len()).sum();
-    let mut out = ResolvedHashes::with_capacity(total_entries, total_arena);
-    for p in partials {
-        out.extend_arena(p);
+    let Ok(cursor) = db.iter(&rtxn) else {
+        return out;
+    };
+    let mut wanted = ordered.into_iter().peekable();
+    for item in cursor {
+        let Ok((key, path)) = item else {
+            continue;
+        };
+        let Ok(bytes) = <&[u8; 8]>::try_from(key) else {
+            continue;
+        };
+        let database_hash = u64::from_be_bytes(*bytes);
+        loop {
+            let Some(&wanted_hash) = wanted.peek() else {
+                return out;
+            };
+            if wanted_hash < database_hash {
+                wanted.next();
+                continue;
+            }
+            if wanted_hash == database_hash {
+                out.insert(wanted_hash, path);
+                wanted.next();
+            }
+            break;
+        }
     }
     out
 }

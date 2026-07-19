@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use quartz_lib::bin::{converter, ritoshark_bridge};
 use quartz_lib::tex;
+use quartz_lib::wad_explorer;
 
 /// Inspect argv for a convert verb. Returns `Some(exit_code)` when a verb was
 /// handled (caller must exit with it); `None` to continue to the normal app.
@@ -51,6 +52,7 @@ fn is_convert_verb(verb: &str) -> bool {
     matches!(
         verb,
         "to-py" | "to-bin" | "separate-vfx" | "batch-split-vfx"
+            | "sort-vfx-systems"
             | "separate-anm" | "combine-vfx" | "combine-anm" | "combine-linked"
             | "extract-hashes-bin" | "extract-hashes-bin-dir"
             | "extract-hashes-wad" | "unpack-wad" | "extract-unpack-wad" | "pack-wad"
@@ -70,6 +72,7 @@ fn dispatch(verb: &str, path: &Path) -> Result<String, String> {
         "to-bin" => py_to_bin(path),
         "separate-vfx" => separate_vfx(path),
         "batch-split-vfx" => batch_split_vfx(path),
+        "sort-vfx-systems" => sort_vfx_systems(path),
 
         "tex2dds" => convert_texture(path, "dds", "dds:bc3"),
         "tex2png" => convert_texture(path, "png", "png"),
@@ -172,12 +175,79 @@ fn separate_vfx(bin_path: &Path) -> Result<String, String> {
         .file_stem()
         .map(|s| s.to_string_lossy().to_lowercase())
         .unwrap_or_default();
-    let out_name = format!("{stem}_vfx.bin");
+    // Name the split BIN `<champ>_vfx_<stem>.bin` (e.g. `lux_vfx_skin0.bin`),
+    // mirroring the separate-anm convention. Fall back to `<stem>_vfx.bin` when
+    // the champion can't be read from the path.
+    let out_name = match champ_from_path(bin_path) {
+        Some(champ) => format!("{champ}_vfx_{stem}.bin"),
+        None => format!("{stem}_vfx.bin"),
+    };
     let res = quartz_lib::bin::split::split_bin(bin_path, &root, &out_name, &vfx)
         .map_err(|e| e.to_string())?;
     Ok(format!(
         "moved {} VFX systems → {} (link {})",
         res.moved, out_name, res.link_added
+    ))
+}
+
+/// Sort top-level VFX systems in place, retaining a neighboring copy of the
+/// exact original. A temporary file + rename keeps a failed write from
+/// truncating the user's BIN.
+fn sort_vfx_systems(bin_path: &Path) -> Result<String, String> {
+    let data = std::fs::read(bin_path).map_err(|e| e.to_string())?;
+    let mut tree = ritoshark_bridge::read_bin(&data).map_err(|e| e.to_string())?;
+    let report = quartz_lib::bin::sort_vfx_systems(&mut tree);
+    if report.systems == 0 {
+        return Ok(format!("no VFX systems in {}", name(bin_path)));
+    }
+    if report.moved == 0 {
+        return Ok(format!(
+            "{} is already sorted ({} VFX systems)",
+            name(bin_path),
+            report.systems
+        ));
+    }
+
+    let bytes = ritoshark_bridge::write_bin(&tree).map_err(|e| e.to_string())?;
+    let file_name = bin_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "BIN has no valid file name".to_string())?;
+    let parent = bin_path
+        .parent()
+        .ok_or_else(|| "BIN has no parent folder".to_string())?;
+    let temp_path = parent.join(format!(".{file_name}.quartz-sort.tmp"));
+
+    let mut backup_path = parent.join(format!("{file_name}.quartz-unsorted.bak"));
+    let mut suffix = 2usize;
+    while backup_path.exists() {
+        backup_path = parent.join(format!("{file_name}.quartz-unsorted.{suffix}.bak"));
+        suffix += 1;
+    }
+
+    std::fs::write(&temp_path, bytes).map_err(|e| format!("write temporary BIN: {e}"))?;
+    std::fs::rename(bin_path, &backup_path).map_err(|e| {
+        let _ = std::fs::remove_file(&temp_path);
+        format!("create backup: {e}")
+    })?;
+    if let Err(error) = std::fs::rename(&temp_path, bin_path) {
+        let _ = std::fs::rename(&backup_path, bin_path);
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(format!("replace sorted BIN: {error}"));
+    }
+
+    Ok(format!(
+        "sorted {} VFX systems ({} moved): P {}, BA/AA {}, Q {}, W {}, E {}, R {}, misc {}. Backup: {}",
+        report.systems,
+        report.moved,
+        report.passive,
+        report.basic_attack,
+        report.q,
+        report.w,
+        report.e,
+        report.r,
+        report.miscellaneous,
+        name(&backup_path),
     ))
 }
 
@@ -350,9 +420,26 @@ fn batch_split_vfx(bin_path: &Path) -> Result<String, String> {
 
 fn convert_texture(src: &Path, out_ext: &str, fmt: &str) -> Result<String, String> {
     let bytes = std::fs::read(src).map_err(|e| e.to_string())?;
+    let out = src.with_extension(out_ext);
+
+    if out_ext.eq_ignore_ascii_case("png") {
+        let png = match wad_explorer::decode_texture_to_png(&bytes) {
+            Ok(png) => png,
+            Err(primary_err) => {
+                let decoded = tex::decode_any(&bytes)
+                    .map_err(|secondary_err| format!("{primary_err}; fallback failed: {secondary_err}"))?;
+                tex::encode_texture(decoded.rgba, decoded.width, decoded.height, "png")
+                    .map_err(|secondary_err| {
+                        format!("{primary_err}; fallback failed: {secondary_err}")
+                    })?
+            }
+        };
+        std::fs::write(&out, png).map_err(|e| e.to_string())?;
+        return Ok(format!("{} -> {}", name(src), name(&out)));
+    }
+
     let decoded = tex::decode_any(&bytes)?;
     let encoded = tex::encode_texture(decoded.rgba, decoded.width, decoded.height, fmt)?;
-    let out = src.with_extension(out_ext);
     std::fs::write(&out, encoded).map_err(|e| e.to_string())?;
     Ok(format!("{} -> {}", name(src), name(&out)))
 }
@@ -408,6 +495,16 @@ fn walk_ext(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
             out.push(p);
         }
     }
+}
+
+/// Extract the champion name from a path like `.../characters/<champ>/skins/...`.
+fn champ_from_path(path: &Path) -> Option<String> {
+    let posix = path.to_string_lossy().replace('\\', "/").to_lowercase();
+    let marker = "/characters/";
+    let start = posix.find(marker)? + marker.len();
+    let rest = &posix[start..];
+    let end = rest.find('/')?;
+    Some(rest[..end].to_string())
 }
 
 /// The WAD project root used as the base for engine-relative link paths.

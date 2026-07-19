@@ -685,6 +685,12 @@ impl<'a> TextReader<'a> {
         Some(BinValue::Vec4([x, y, z, w]))
     }
 
+    /// Reads a 4x4 matrix, accepting both the canonical flat form (one brace, 16 bare floats) and
+    /// the legacy per-row-brace form `{ {..}, {..}, {..}, {..} }` that a broken writer once emitted.
+    ///
+    /// The per-row form is not valid ritobin; we tolerate it on read so upgrading does not reject
+    /// `.py` files already generated with it. The writer always emits the flat form, so re-saving a
+    /// tolerated file repairs it.
     fn read_mtx44(&mut self) -> Option<BinValue> {
         if !self.expect_symbol(b'{') {
             return None;
@@ -695,23 +701,41 @@ impl<'a> TextReader<'a> {
             return None;
         }
         let mut values = [0.0f32; 16];
-        for (i, value) in values.iter_mut().enumerate().take(16) {
-            *value = self.read_float_value()?;
-            match self.read_nested_separator_or_end() {
-                Some(end) => {
-                    if i < 15 && end {
-                        self.add_error(format!("Mtx44 requires 16 values, only got {}", i + 1));
-                        return None;
-                    }
-                    if i == 15 && !end {
+        let mut i = 0usize;
+        loop {
+            if i >= 16 {
+                self.add_error("Mtx44 can only have 16 values");
+                return None;
+            }
+            self.skip_whitespace();
+            if self.peek() == b'{' {
+                // Legacy row wrapper: read a nested brace of floats and splice them in flat.
+                self.read_char();
+                self.next_newline();
+                loop {
+                    if i >= 16 {
                         self.add_error("Mtx44 can only have 16 values");
                         return None;
                     }
+                    values[i] = self.read_float_value()?;
+                    i += 1;
+                    match self.read_nested_separator_or_end()? {
+                        true => break,
+                        false => continue,
+                    }
                 }
-                None => {
-                    return None;
-                }
+            } else {
+                values[i] = self.read_float_value()?;
+                i += 1;
             }
+            match self.read_nested_separator_or_end()? {
+                true => break,
+                false => continue,
+            }
+        }
+        if i != 16 {
+            self.add_error(format!("Mtx44 requires 16 values, only got {}", i));
+            return None;
         }
         Some(BinValue::Mtx44(values))
     }
@@ -984,4 +1008,90 @@ pub fn format_errors(errors: &[ParseError]) -> String {
         ));
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Walk every value in the parsed tree and collect each mtx44 found.
+    fn collect_matrices(value: &BinValue, out: &mut Vec<[f32; 16]>) {
+        match value {
+            BinValue::Mtx44(m) => out.push(*m),
+            BinValue::Pointer { fields, .. } | BinValue::Embed { fields, .. } => {
+                for f in fields {
+                    collect_matrices(&f.value, out);
+                }
+            }
+            BinValue::List { items, .. }
+            | BinValue::List2 { items, .. }
+            | BinValue::Option { items, .. } => {
+                for it in items {
+                    collect_matrices(it, out);
+                }
+            }
+            BinValue::Map { items, .. } => {
+                for (_, v) in items {
+                    collect_matrices(v, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn matrices_in(bin: &Bin) -> Vec<[f32; 16]> {
+        let mut out = Vec::new();
+        for value in bin.sections.values() {
+            collect_matrices(value, &mut out);
+        }
+        out
+    }
+
+    const EXPECTED: [f32; 16] = [
+        1.0, 0.0, 0.0, 0.0, //
+        0.0, 1.0, 0.0, 0.0, //
+        0.0, 0.0, 1.0, 0.0, //
+        -10.0, 95.0, 140.0, 1.0,
+    ];
+
+    /// The canonical flat form (16 bare floats, four per line) parses.
+    #[test]
+    fn flat_mtx44_parses() {
+        let text = r#"#PROP_text
+version: u32 = 3
+entries: map[hash,embed] = {
+    0x12345678 = 0x9abcdef0 {
+        0xe1ad931b: mtx44 = {
+            1, 0, 0, 0
+            0, 1, 0, 0
+            0, 0, 1, 0
+            -10, 95, 140, 1
+        }
+    }
+}
+"#;
+        let bin = read(text).expect("flat mtx44 must parse");
+        assert_eq!(matrices_in(&bin), vec![EXPECTED]);
+    }
+
+    /// The legacy per-row-brace form must still be tolerated so upgrading does not reject files the
+    /// old writer produced. See `read_mtx44`.
+    #[test]
+    fn legacy_per_row_brace_mtx44_is_tolerated() {
+        let text = r#"#PROP_text
+version: u32 = 3
+entries: map[hash,embed] = {
+    0x12345678 = 0x9abcdef0 {
+        0xe1ad931b: mtx44 = {
+            { 1, 0, 0, 0 }
+            { 0, 1, 0, 0 }
+            { 0, 0, 1, 0 }
+            { -10, 95, 140, 1 }
+        }
+    }
+}
+"#;
+        let bin = read(text).expect("legacy mtx44 must be tolerated");
+        assert_eq!(matrices_in(&bin), vec![EXPECTED]);
+    }
 }

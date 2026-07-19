@@ -5,10 +5,8 @@ import {
     Folder as FolderIcon,
     PlayArrow as PlayArrowIcon,
     AutoFixHigh as AutoFixHighIcon,
-    Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { FolderOpen as FolderOpenIcon } from 'lucide-react';
-import DebouncedTextField from './DebouncedTextField';
 import type { ScannedData } from '../utils/types';
 
 interface BumpathBottomControlsProps {
@@ -17,7 +15,6 @@ interface BumpathBottomControlsProps {
     handlePrefixTextChange: (value: string) => void;
     handleApplyPrefix: () => void;
     selectedEntriesSize: number;
-    debouncedPrefixText: string;
     handleSelectOutputDir: () => void;
     isProcessing: boolean;
     handleProcess: () => void;
@@ -25,9 +22,8 @@ interface BumpathBottomControlsProps {
     quickRepathDisabled: boolean;
     scannedData: ScannedData | null;
     outputPath: string;
-    settingsExpanded: boolean;
-    setSettingsExpanded: (expanded: boolean) => void;
-    setSettingsAutoOpened: (value: boolean) => void;
+    statusMessage: string;
+    statusKind: 'normal' | 'error';
 }
 
 const BumpathBottomControls = React.memo(function BumpathBottomControls({
@@ -36,7 +32,6 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
     handlePrefixTextChange,
     handleApplyPrefix,
     selectedEntriesSize,
-    debouncedPrefixText,
     handleSelectOutputDir,
     isProcessing,
     handleProcess,
@@ -44,9 +39,8 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
     quickRepathDisabled,
     scannedData,
     outputPath,
-    settingsExpanded,
-    setSettingsExpanded,
-    setSettingsAutoOpened,
+    statusMessage,
+    statusKind,
 }: BumpathBottomControlsProps) {
     return (
         <div className="bumpath-bottom-bar">
@@ -60,10 +54,11 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
                     <span className="dl-icon"><FolderOpenIcon size={16} /></span>
                 </button>
 
-                <DebouncedTextField
+                <input
+                    className="dl-input"
                     value={prefixText}
-                    onValueChange={handlePrefixTextChange}
-                    debounceMs={100}
+                    onChange={(event) => handlePrefixTextChange(event.target.value)}
+                    placeholder="Custom prefix"
                     data-bumpath-prefix
                     style={{ textAlign: 'center', fontWeight: 600 }}
                 />
@@ -72,12 +67,33 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
                     type="button"
                     className="dl-btn dl-btn--primary dl-btn--sm"
                     onClick={handleApplyPrefix}
-                    disabled={selectedEntriesSize === 0 || !debouncedPrefixText.trim()}
+                    disabled={selectedEntriesSize === 0 || !prefixText.trim()}
                 >
                     <span className="dl-icon"><EditIcon /></span>
                     <span>Apply Prefix</span>
                 </button>
 
+                <button
+                    type="button"
+                    className="dl-btn dl-btn--primary dl-btn--sm"
+                    onClick={handleOpenQuickRepath}
+                    disabled={quickRepathDisabled}
+                >
+                    <span className="dl-icon"><AutoFixHighIcon /></span>
+                    <span>Quick Repath</span>
+                </button>
+            </div>
+
+            {statusMessage && (
+                <span
+                    className={`bumpath-bottom-bar__status${statusKind === 'error' ? ' is-error' : ''}`}
+                    title={statusMessage}
+                >
+                    {statusMessage}
+                </span>
+            )}
+
+            <div className="bumpath-bottom-bar__group bumpath-bottom-bar__cells bumpath-bottom-bar__actions">
                 <button
                     type="button"
                     className="dl-btn dl-btn--secondary dl-btn--sm"
@@ -99,31 +115,6 @@ const BumpathBottomControls = React.memo(function BumpathBottomControls({
                         {isProcessing ? <CircularProgress size={14} /> : <PlayArrowIcon />}
                     </span>
                     <span>{isProcessing ? 'Processing...' : 'Bum'}</span>
-                </button>
-
-                <button
-                    type="button"
-                    className="dl-btn dl-btn--primary dl-btn--sm"
-                    onClick={handleOpenQuickRepath}
-                    disabled={quickRepathDisabled}
-                >
-                    <span className="dl-icon"><AutoFixHighIcon /></span>
-                    <span>Quick Repath</span>
-                </button>
-            </div>
-
-            <div className="bumpath-bottom-bar__group">
-                <button
-                    type="button"
-                    className="dl-btn dl-btn--icon dl-btn--sm dl-btn--primary"
-                    onClick={() => {
-                        setSettingsExpanded(!settingsExpanded);
-                        setSettingsAutoOpened(false);
-                    }}
-                    data-bumpath-settings
-                    title="Settings"
-                >
-                    <span className="dl-icon"><SettingsIcon /></span>
                 </button>
             </div>
         </div>
