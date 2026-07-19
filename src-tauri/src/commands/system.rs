@@ -41,6 +41,25 @@ pub(crate) fn model_path_from_args(args: &[String]) -> Option<String> {
     })
 }
 
+/// BIN handed off from another tool (e.g. Flint) via `--paint-bin <path>` to
+/// open directly in the Paint page. Same CLI-argument contract as
+/// `--inspect-model`; no temp files or interop directory.
+#[tauri::command]
+pub fn get_startup_paint_bin() -> Option<String> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    paint_bin_from_args(&args)
+}
+
+pub(crate) fn paint_bin_from_args(args: &[String]) -> Option<String> {
+    args.iter()
+        .position(|arg| arg == "--paint-bin")
+        .and_then(|index| args.get(index + 1))
+        .and_then(|value| {
+            let path = std::path::Path::new(value);
+            path.is_file().then(|| path.to_string_lossy().into_owned())
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,6 +82,21 @@ mod tests {
         ];
         assert_eq!(
             model_path_from_args(&args),
+            Some(path.to_string_lossy().into_owned())
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn paint_launch_args_accept_flagged_bin_path() {
+        let path = std::env::temp_dir().join(format!("quartz-paint-{}.bin", std::process::id()));
+        std::fs::write(&path, []).unwrap();
+        let args = vec![
+            "--paint-bin".to_string(),
+            path.to_string_lossy().into_owned(),
+        ];
+        assert_eq!(
+            paint_bin_from_args(&args),
             Some(path.to_string_lossy().into_owned())
         );
         let _ = std::fs::remove_file(path);

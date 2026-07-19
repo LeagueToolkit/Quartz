@@ -26,7 +26,7 @@ import {
     type VfxEmitter, type ColorTargetId,
     type PaletteStopInput, type RecolorOptionsInput,
 } from '@/lib/api';
-import { useNotificationStore, usePaintStore, useUiPrefsStore, type HslValues, type PaintState as PaintStoreState } from '@/lib/stores';
+import { useNavigationStore, useNotificationStore, usePaintStore, useUiPrefsStore, type HslValues, type PaintState as PaintStoreState } from '@/lib/stores';
 import { useFileDrop } from '@/lib/util/useFileDrop';
 import { DropOverlay, RecentBinsList } from '@/components/ui';
 import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
@@ -376,6 +376,14 @@ function Paint() {
             if (file) void loadBinFile(file);
         },
     });
+
+    /* A bin routed here from another tool (e.g. Flint's "Open in Quartz paint"
+       via --paint-bin) or the file explorer's "Open in Paint" context menu. */
+    const consumePendingFile = useNavigationStore((s) => s.consumePendingFile);
+    useEffect(() => {
+        const path = consumePendingFile('paint');
+        if (path) void loadBinFile(path);
+    }, [consumePendingFile, loadBinFile]);
 
     const handleSave = useCallback(async (force = false) => {
         if (sessionId === null) return;

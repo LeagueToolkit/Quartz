@@ -23,6 +23,7 @@ import { Placeholder } from '@/pages/Placeholder';
 import { EffectsLayer } from '@/components/effects/EffectsLayer';
 import { FileExplorerHost } from '@/components/explorer';
 import { ModelInspectHost } from '@/components/model-inspect/ModelInspectHost';
+import { PaintLaunchHost } from '@/components/paint-launch/PaintLaunchHost';
 import { openModelInspect } from '@/lib/model/modelInspectEvent';
 import { UpdateShowcase } from '@/components/update/UpdateShowcase';
 
@@ -110,6 +111,7 @@ export function App() {
             </div>
             <FileExplorerHost onInspect={(entry) => openModelInspect(entry.path)} />
             <ModelInspectHost />
+            <PaintLaunchHost />
             <UpdateShowcase />
         </div>
     );

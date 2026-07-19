@@ -60,6 +60,9 @@ fn main() {
             if let Some(path) = commands::system::model_path_from_args(&args) {
                 let _ = app.emit("model-inspect-launch", path);
             }
+            if let Some(path) = commands::system::paint_bin_from_args(&args) {
+                let _ = app.emit("paint-bin-launch", path);
+            }
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
@@ -104,6 +107,7 @@ fn main() {
             startup::startup_install_update,
             commands::system::get_app_info,
             commands::system::get_startup_model_path,
+            commands::system::get_startup_paint_bin,
             commands::jade::jade_open,
             commands::settings::get_app_home,
             commands::settings::get_settings,
