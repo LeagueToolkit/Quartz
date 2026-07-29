@@ -9,7 +9,23 @@ mod imp {
     use winreg::enums::*;
     use winreg::RegKey;
 
-    const MENU_SCHEMA: u32 = 2;
+    // Bumped again for the Merge BINs addition (shifts SkinLite/batch-split/sort
+    // to 32/33/34 so upgraders drop the old 31skinlite verb key and pick up the
+    // new numbering + new "Merge BINs" entry underneath Combine Linked).
+    // Bumped 4 -> 5 after Merge BINs switched from the `--merge-bin` boot-the-app
+    // arg to the fully-headless `merge-bins` verb; without this, upgraders keep
+    // the stale command line and every right-click just focuses the running app.
+    // Bumped 5 -> 6 after Merge BINs switched to MultiSelectModel=Player + `%*`
+    // so Explorer fires the verb once with every selected .bin (instead of once
+    // per file scanning the whole folder).
+    // Bumped 6 -> 7 after Merge BINs reverted MultiSelectModel/`%*` — Explorer
+    // still fires per-file, but cli_convert now batches concurrent invocations
+    // through a temp file. This bump wipes the stale MultiSelectModel value.
+    // Bumped 7 -> 8 after re-adding the sco→scb converter (new .sco file menu
+    // + `sco2scbdir` folder verb ported from Quartz 3.6).
+    // Bumped 8 -> 9 to drop the "SCO→SCB: " prefix on the folder verb label.
+    // Bumped 9 -> 10 to relabel both .sco verbs to "Quartz: Convert all .sco to .scb".
+    const MENU_SCHEMA: u32 = 10;
 
     /// A single child verb inside the Quartz submenu.
     struct Verb {
@@ -62,9 +78,14 @@ mod imp {
         v("21combineanm", "Combine Animations", "combine-anm"),
         // General tools group.
         vs("30combinelinked", "Combine Linked", "combine-linked"),
-        v("31noskinlite", "NoSkinLite", "noskinlite"),
-        v("32batchsplitvfx", "Batch Split VFX", "batch-split-vfx"),
-        v("33sortvfx", "Sort VFX by ability", "sort-vfx-systems"),
+        // Merge BINs lives in the same group as Combine Linked (no separator).
+        // Explorer fires string-command verbs per file — cli_convert's
+        // merge_bins_verb batches concurrent invocations through a temp file
+        // so all selected paths land in the same merge run.
+        v("31mergebins", "Merge BINs", "merge-bins"),
+        v("32skinlite", "SkinLite", "skinlite"),
+        v("33batchsplitvfx", "Batch Split VFX", "batch-split-vfx"),
+        v("34sortvfx", "Sort VFX by ability", "sort-vfx-systems"),
         // Hash extraction (last group).
         vs("99extracthashesbin", "Extract hashes", "extract-hashes-bin"),
     ];
@@ -111,6 +132,13 @@ mod imp {
         v("02png2dds", "QuartzTex: Convert to .dds", "png2dds"),
     ];
     const SKN: &[Verb] = &[v("01inspectmodel", "Inspect Model", "--inspect-model")];
+    // .sco (ASCII object) → .scb (binary r3d2Mesh). Output written next to
+    // the input; original .sco is preserved.
+    const SCO: &[Verb] = &[v(
+        "01sco2scb",
+        "Quartz: Convert all .sco to .scb",
+        "sco2scb",
+    )];
 
     // ── Folder menu ─────────────────────────────────────────────────────────
     const DIR: &[Verb] = &[
@@ -145,6 +173,7 @@ mod imp {
         v("13dds2pngdir", "QuartzTex: All .dds to .png", "dds2pngdir"),
         v("14png2texdir", "QuartzTex: All .png to .tex", "png2texdir"),
         v("15png2ddsdir", "QuartzTex: All .png to .dds", "png2ddsdir"),
+        vs("16sco2scbdir", "Quartz: Convert all .sco to .scb", "sco2scbdir"),
         vs(
             "20packwadclient",
             "WadTool: Pack to .wad.client",
@@ -202,6 +231,11 @@ mod imp {
         Menu {
             root: r"SystemFileAssociations\.skn\shell\Quartz",
             verbs: SKN,
+            arg: "%1",
+        },
+        Menu {
+            root: r"SystemFileAssociations\.sco\shell\Quartz",
+            verbs: SCO,
             arg: "%1",
         },
         // WAD tools. `.wad.client` is seen by Windows both as `.wad.client`

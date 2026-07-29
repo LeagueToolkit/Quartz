@@ -3,11 +3,12 @@ pub mod batch_split_vfx;
 pub mod bin_editor;
 pub mod bin_json;
 pub mod combine;
+pub mod merge;
 pub mod concat;
 pub mod converter;
 pub mod hash_extract;
 pub mod jade;
-pub mod noskinlite;
+pub mod skinlite;
 pub mod ritoshark_bridge;
 pub mod sort_vfx;
 pub mod split;
@@ -37,11 +38,13 @@ pub use split::{
 // Re-export linked-BIN merge utilities (right-click "Combine VFX/Animations/Linked")
 pub use combine::{combine_anm, combine_linked, combine_vfx, CombineResult};
 
+pub use merge::{merge_bins, MergeStats};
+
 // Re-export BIN hash extraction (right-click "Extract hashes")
 pub use hash_extract::{extract_hashes_bin, extract_hashes_bin_dir};
 
-// Re-export NoSkinLite (right-click "NoSkinLite")
-pub use noskinlite::run as noskinlite;
+// Re-export SkinLite (right-click "SkinLite")
+pub use skinlite::run as skinlite;
 
 // Re-export batch-split-VFX (right-click "Batch Split VFX" — trigger-emitter rewrite)
 pub use batch_split_vfx::{run as batch_split_vfx, BatchSplitResult};

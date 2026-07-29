@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Wand2, FolderOpen, Play, X, File as FileIcon, Folder as FolderIcon } from 'lucide-react';
+import { Wand2, Play, X, File as FileIcon, Folder as FolderIcon } from 'lucide-react';
 import { pickPath } from '@/components/explorer';
 import { Button } from '@/components/settings/primitives';
 import { Checkbox } from '@/components/ui/Checkbox';
@@ -28,7 +28,6 @@ interface FixResult {
 }
 
 export function FixVfxShapeCard({ onNotify }: { onNotify?: (a: NotifyArg) => void }) {
-    const [mode, setMode] = useState<'file' | 'folder'>('file');
     const [targetPath, setTargetPath] = useState('');
     const [createBackup, setCreateBackup] = useState(true);
     const [busy, setBusy] = useState(false);
@@ -37,16 +36,15 @@ export function FixVfxShapeCard({ onNotify }: { onNotify?: (a: NotifyArg) => voi
     const notify = (message: string, severity: NotifyArg['severity'] = 'info') => onNotify?.({ message, severity });
 
     const handleRun = async () => {
-        if (!targetPath) { notify(`Select a ${mode} first`, 'warning'); return; }
+        if (!targetPath) { notify('Pick a .bin file or a folder first', 'warning'); return; }
         setBusy(true);
         setLastResult(null);
         try {
-            const res = await toolsFixVfxShape(
-                mode === 'folder' ? { folderPath: targetPath } : { filePath: targetPath },
-                createBackup,
-            );
+            // Backend auto-detects file-vs-folder via stat and routes to the
+            // right code path, so we just hand it the target and let it decide.
+            const res = await toolsFixVfxShape({ filePath: targetPath }, createBackup);
             const total = res.shapesRewrittenRadius + res.shapesRewrittenVec3 + res.shapesRewrittenEmpty;
-            const where = mode === 'folder'
+            const where = res.filesProcessed > 1
                 ? `${res.filesModified}/${res.filesProcessed} file(s) in ${basename(targetPath)}`
                 : basename(targetPath);
             const failed = res.filesFailed > 0 ? ` — ${res.filesFailed} failed` : '';
@@ -68,7 +66,8 @@ export function FixVfxShapeCard({ onNotify }: { onNotify?: (a: NotifyArg) => voi
         }
     };
 
-    const pick = async () => { const p = mode === 'file' ? await pickBinFile() : await pickFolder(); if (p) setTargetPath(p); };
+    const pickFile = async () => { const p = await pickBinFile(); if (p) setTargetPath(p); };
+    const pickDir = async () => { const p = await pickFolder(); if (p) setTargetPath(p); };
 
     return (
         <div className="tc-card">
@@ -76,25 +75,21 @@ export function FixVfxShapeCard({ onNotify }: { onNotify?: (a: NotifyArg) => voi
                 <div className="tc-card__icon"><Wand2 size={20} /></div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                     <h3 className="tc-card__title">Fix VFX Shape</h3>
-                    <p className="tc-card__desc">Rewrites legacy Shape pointers (and lifts BirthTranslation) in VfxEmitterDefinitionData. Ports ltmao&apos;s FixVfxShape script.</p>
+                    <p className="tc-card__desc">Rewrites legacy Shape pointers (and lifts BirthTranslation) in VfxEmitterDefinitionData. Accepts a single .bin or a folder (recurses for .bin files). Ports ltmao&apos;s FixVfxShape script.</p>
                 </div>
             </div>
 
             <div className="tc-card__body">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div className="dl-tabs tc-seg">
-                        <button className={`dl-tab ${mode === 'file' ? 'dl-tab--active' : ''}`} onClick={() => { setMode('file'); setTargetPath(''); }}>
-                            <FileIcon size={13} style={{ marginRight: 5 }} />Single .bin
-                        </button>
-                        <button className={`dl-tab ${mode === 'folder' ? 'dl-tab--active' : ''}`} onClick={() => { setMode('folder'); setTargetPath(''); }}>
-                            <FolderIcon size={13} style={{ marginRight: 5 }} />Folder (recursive)
-                        </button>
-                    </div>
-                    <div className="tc-picker" style={{ flex: 1 }}>
-                        <input className="dl-input" placeholder={mode === 'file' ? '.bin file path…' : 'Folder path (scans for .bin)…'} value={targetPath} onChange={(e) => setTargetPath(e.target.value)} />
-                        <button className="tc-iconbtn" title={`Browse for ${mode}`} onClick={pick}><FolderOpen size={16} /></button>
-                        {targetPath && <button className="tc-iconbtn tc-iconbtn--danger" title="Clear" onClick={() => setTargetPath('')}><X size={16} /></button>}
-                    </div>
+                <div className="tc-picker">
+                    <input
+                        className="dl-input"
+                        placeholder="Paste a .bin file OR folder path — or use the pickers →"
+                        value={targetPath}
+                        onChange={(e) => setTargetPath(e.target.value)}
+                    />
+                    <button className="tc-iconbtn" title="Browse for .bin" onClick={pickFile}><FileIcon size={16} /></button>
+                    <button className="tc-iconbtn" title="Browse for folder (recursive)" onClick={pickDir}><FolderIcon size={16} /></button>
+                    {targetPath && <button className="tc-iconbtn tc-iconbtn--danger" title="Clear" onClick={() => setTargetPath('')}><X size={16} /></button>}
                 </div>
 
                 <div className="tc-foot">

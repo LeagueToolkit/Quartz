@@ -21,6 +21,7 @@ pub mod model_preview;
 pub mod paint;
 pub mod port_donor;
 pub mod pyntex;
+pub mod sco_scb;
 pub mod skeleton;
 pub mod skin_preview;
 pub mod tex;

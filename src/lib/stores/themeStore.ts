@@ -62,6 +62,17 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
 
     tokensFor: (theme) => {
         const { overrides, base } = get();
+        // Handcrafted builtins (Sakura, any future ones) ship a full palette
+        // deriveTheme can't reproduce from one accent — e.g. Sakura's pink
+        // primary + light-blue secondary. Return their tokens verbatim when
+        // there's no user override in play. Base is ignored for these because
+        // the palette is baked; a light-mode variant would need a full second
+        // token block (or the user saving one via the theme creator).
+        const isHandcraftedBuiltin =
+            theme.builtin && !BUILTIN_VARIANTS.some((v) => v.id === theme.id);
+        if (isHandcraftedBuiltin && !overrides[theme.id]) {
+            return theme.tokens;
+        }
         return deriveTheme(overrides[theme.id] ?? seedAccent(theme), base);
     },
 

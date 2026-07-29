@@ -375,6 +375,7 @@ const VFX_COLOR_BASE: &[&str] = &[
     "endColor",
     "peakColor",
     "lingerColor",
+    "separateLingerColor",
     "birthColor",
     "deathColor",
     // Indexed slots
@@ -477,6 +478,23 @@ pub fn copy_bin_colors(src: &Bin, dst: &mut Bin) -> CopyColorStats {
     stats
 }
 
+/// If a Pointer/Embed carries an identifying string field (VFX emitters have
+/// `emitterName`, some structs use `mName` or `name`), return it so the list
+/// pairing above can key on it instead of on list position. Position is not
+/// stable across skins — Riot inserts/reorders emitters between versions.
+fn extract_item_name(item: &BinValue) -> Option<String> {
+    let fields = match item {
+        BinValue::Pointer { fields, .. } | BinValue::Embed { fields, .. } => fields,
+        _ => return None,
+    };
+    for key in ["emitterName", "mName", "name"] {
+        if let Some(BinValue::String(s)) = fields.get(&fnv1a_lower(key)) {
+            return Some(s.clone());
+        }
+    }
+    None
+}
+
 /// Copy color values between two paired field maps (entries, struct bodies).
 fn copy_container(
     src_fields: &IndexMap<u32, BinValue>,
@@ -516,7 +534,18 @@ fn copy_field(
     in_color_context: bool,
     stats: &mut CopyColorStats,
 ) {
-    if src.ty() != dst.ty() {
+    // Pointer↔Embed and List↔List2 hold the same shape internally — only the
+    // storage flavour differs. Riot occasionally flips them between versions
+    // (or between skins of the same champ). Treat them as compatible so a
+    // per-emitter Color: pointer=ValueColor still copies onto a Color:
+    // embed=ValueColor sibling, instead of the whole subtree being skipped.
+    fn types_compatible(a: BinType, b: BinType) -> bool {
+        if a == b { return true; }
+        matches!((a, b),
+            (BinType::Pointer, BinType::Embed) | (BinType::Embed, BinType::Pointer) |
+            (BinType::List, BinType::List2)   | (BinType::List2, BinType::List))
+    }
+    if !types_compatible(src.ty(), dst.ty()) {
         stats.mismatches += 1;
         return;
     }
@@ -549,12 +578,17 @@ fn copy_field(
                 ..
             },
         ) => {
-            if si != di {
+            // Treat Pointer/Embed lists as interchangeable — the per-item
+            // struct shape is what actually matters when copying colors.
+            let (si, di) = (*si, *di);
+            let compatible = si == di
+                || matches!((si, di), (BinType::Pointer, BinType::Embed) | (BinType::Embed, BinType::Pointer));
+            if !compatible {
                 stats.mismatches += 1;
                 return;
             }
             let len = sa.len().min(da.len());
-            match *si {
+            match si {
                 BinType::Rgba => {
                     for i in 0..len {
                         if let (BinValue::Rgba(s), BinValue::Rgba(d)) = (&sa[i], &mut da[i]) {
@@ -574,8 +608,54 @@ fn copy_field(
                     }
                 }
                 BinType::Pointer | BinType::Embed => {
-                    for i in 0..len {
-                        copy_struct_value(&sa[i], &mut da[i], color_hashes, color_ctx, stats);
+                    // Try to pair items by a stable name field. Riot's VFX
+                    // emitter lists (VfxSystemDefinitionData.mEmitters etc.)
+                    // may be reordered / inserted-into between skins, so
+                    // pairing by list index copies each emitter's colors
+                    // onto the wrong sibling. When every item on both sides
+                    // exposes an emitterName / mName / name, match by that
+                    // string; otherwise fall back to index (animation-like
+                    // ordered lists have no name to key on).
+                    let src_names: Vec<Option<String>> = sa.iter().map(extract_item_name).collect();
+                    let dst_names: Vec<Option<String>> = da.iter().map(extract_item_name).collect();
+                    let all_named = !sa.is_empty()
+                        && !da.is_empty()
+                        && src_names.iter().all(|n| n.is_some())
+                        && dst_names.iter().all(|n| n.is_some());
+                    if all_named {
+                        // Group source items by exact name, preserving source
+                        // order. When several emitters share a name, the Nth
+                        // in source pairs with the Nth in dest — falling back
+                        // to positional matching *within* that name group.
+                        // Names are byte-exact (Rust String equality); case
+                        // and digits are significant.
+                        let mut src_by_name: std::collections::HashMap<&str, Vec<&BinValue>> =
+                            std::collections::HashMap::new();
+                        for (name, item) in src_names.iter().zip(sa.iter()) {
+                            if let Some(n) = name.as_deref() {
+                                src_by_name.entry(n).or_default().push(item);
+                            }
+                        }
+                        // Per-name cursor: tracks how many dest items of a
+                        // given name we've already paired, so dst emitter #2
+                        // named "Trail" pairs with src emitter #2 named
+                        // "Trail" (not with #1 again).
+                        let mut cursor: std::collections::HashMap<&str, usize> =
+                            std::collections::HashMap::new();
+                        for (i, dst_item) in da.iter_mut().enumerate() {
+                            let Some(name) = dst_names[i].as_deref() else { continue; };
+                            let idx = cursor.entry(name).or_insert(0);
+                            if let Some(bucket) = src_by_name.get(name) {
+                                if let Some(&src_item) = bucket.get(*idx) {
+                                    copy_struct_value(src_item, dst_item, color_hashes, color_ctx, stats);
+                                    *idx += 1;
+                                }
+                            }
+                        }
+                    } else {
+                        for i in 0..len {
+                            copy_struct_value(&sa[i], &mut da[i], color_hashes, color_ctx, stats);
+                        }
                     }
                 }
                 _ => {}
