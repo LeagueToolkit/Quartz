@@ -104,7 +104,7 @@ fn is_convert_verb(verb: &str) -> bool {
             | "tex2ddsdir" | "dds2texdir" | "tex2pngdir" | "dds2pngdir" | "png2texdir" | "png2ddsdir"
             | "sco2scb" | "sco2scbdir"
             // Listed in the menu but their conversion logic lands in a later slice.
-            | "skinlite"
+            | "noskinlite"
     )
 }
 
@@ -135,7 +135,7 @@ fn dispatch(verb: &str, path: &Path) -> Result<String, String> {
         "pack-wad" => pack_wad(path),
         "pyntex-missing" => pyntex_missing(path),
         "pyntex-deljunk" => pyntex_deljunk(path),
-        "skinlite" => skinlite(path),
+        "noskinlite" => noskinlite(path),
 
         "xps2fbx" => xps2fbx(path),
         "xps2fbxdir" => xps2fbxdir(path),
@@ -687,10 +687,10 @@ fn pmx2fbxdir(dir: &Path) -> Result<String, String> {
     Ok(format!("{} converted, {} failed", ok, failed))
 }
 
-/* ── skinlite ────────────────────────────────────────────────────────────── */
+/* ── noskinlite ──────────────────────────────────────────────────────────── */
 
-fn skinlite(bin_path: &Path) -> Result<String, String> {
-    let n = quartz_lib::bin::skinlite(bin_path).map_err(|e| e.to_string())?;
+fn noskinlite(bin_path: &Path) -> Result<String, String> {
+    let n = quartz_lib::bin::noskinlite(bin_path).map_err(|e| e.to_string())?;
     Ok(format!("wrote {} skin bins from {}", n, name(bin_path)))
 }
 

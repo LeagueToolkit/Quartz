@@ -27,7 +27,9 @@ mod imp {
     // Bumped 9 -> 10 to relabel both .sco verbs to "Quartz: Convert all .sco to .scb".
     // Bumped 10 -> 11 for the new folder verb "Merge all .bin in this folder".
     // Bumped 11 -> 12 to relabel that folder verb to "Quartz: Merge all BINs".
-    const MENU_SCHEMA: u32 = 12;
+    // Bumped 12 -> 13 to revert SkinLite → NoSkinLite (verb key + label);
+    // needed so the stale `32skinlite` registry entry gets wiped by disable().
+    const MENU_SCHEMA: u32 = 13;
 
     /// A single child verb inside the Quartz submenu.
     struct Verb {
@@ -85,7 +87,7 @@ mod imp {
         // merge_bins_verb batches concurrent invocations through a temp file
         // so all selected paths land in the same merge run.
         v("31mergebins", "Merge BINs", "merge-bins"),
-        v("32skinlite", "SkinLite", "skinlite"),
+        v("32noskinlite", "NoSkinLite", "noskinlite"),
         v("33batchsplitvfx", "Batch Split VFX", "batch-split-vfx"),
         v("34sortvfx", "Sort VFX by ability", "sort-vfx-systems"),
         // Hash extraction (last group).

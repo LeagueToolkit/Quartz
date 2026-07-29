@@ -8,7 +8,7 @@ pub mod concat;
 pub mod converter;
 pub mod hash_extract;
 pub mod jade;
-pub mod skinlite;
+pub mod noskinlite;
 pub mod ritoshark_bridge;
 pub mod sort_vfx;
 pub mod split;
@@ -43,8 +43,8 @@ pub use merge::{merge_bins, MergeStats};
 // Re-export BIN hash extraction (right-click "Extract hashes")
 pub use hash_extract::{extract_hashes_bin, extract_hashes_bin_dir};
 
-// Re-export SkinLite (right-click "SkinLite")
-pub use skinlite::run as skinlite;
+// Re-export NoSkinLite (right-click "NoSkinLite")
+pub use noskinlite::run as noskinlite;
 
 // Re-export batch-split-VFX (right-click "Batch Split VFX" — trigger-emitter rewrite)
 pub use batch_split_vfx::{run as batch_split_vfx, BatchSplitResult};

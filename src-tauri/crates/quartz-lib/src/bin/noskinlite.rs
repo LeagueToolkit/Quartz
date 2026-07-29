@@ -1,4 +1,4 @@
-//! SkinLite — clone a source skin BIN into every existing skin slot
+//! NoSkinLite — clone a source skin BIN into every existing skin slot
 //! (`skin0.bin`..`skin{max}.bin`) for that champion, rekeying the
 //! `SkinCharacterDataProperties` / `ResourceResolver` entries and fixing the
 //! `mResourceResolver` reference so each clone resolves to its own skin
@@ -9,8 +9,8 @@
 //! because the marketing `champion-summary`/`champions/{id}` endpoints only
 //! list officially released skins and miss chroma / PBE / unreleased slots
 //! (Akali max=101, not 92; Bel'Veth max=28, not 5). We add
-//! `SKINLITE_FUTURE_MARGIN` on top so the next Riot release still fits
-//! without re-running. Fetch failures fall back to `SKINLITE_FALLBACK_MAX`.
+//! `NOSKINLITE_FUTURE_MARGIN` on top so the next Riot release still fits
+//! without re-running. Fetch failures fall back to `NOSKINLITE_FALLBACK_MAX`.
 //!
 //! Any existing `skinN.bin` in the folder is skipped unconditionally so the
 //! user's hand-edited skins never get clobbered.
@@ -25,11 +25,11 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Extra skin slots generated above the current CDragon max, so newly-shipped
-/// Riot skins still land in an existing clone without re-running SkinLite.
-const SKINLITE_FUTURE_MARGIN: u32 = 20;
+/// Riot skins still land in an existing clone without re-running NoSkinLite.
+const NOSKINLITE_FUTURE_MARGIN: u32 = 20;
 /// Ceiling used when the CDragon lookup fails (offline, unknown champ, etc.).
 /// Matches the old hardcoded upper bound so behaviour degrades gracefully.
-const SKINLITE_FALLBACK_MAX: u32 = 99;
+const NOSKINLITE_FALLBACK_MAX: u32 = 99;
 /// Timeout budget for the CDragon fetch. Small so an unreachable network
 /// doesn't leave the user staring at a frozen right-click menu.
 const CDRAGON_TIMEOUT: Duration = Duration::from_secs(10);
@@ -80,7 +80,7 @@ fn fetch_max_skin_index(champ_alias: &str) -> Result<u32> {
     let body: String = rt.block_on(async {
         let client = reqwest::Client::builder()
             .timeout(CDRAGON_TIMEOUT)
-            .user_agent("quartz-skinlite")
+            .user_agent("quartz-noskinlite")
             .build()
             .map_err(|e| Error::InvalidInput(format!("cdragon client: {}", e)))?;
         let resp = client
@@ -141,8 +141,8 @@ fn rekey_entry(bin: &mut Bin, old_key: u32, new_key: u32) -> Result<()> {
 
 /// Clone `source_bin_path` into `skin0.bin`..`skin{ceiling}.bin` (skipping
 /// the source skin's own index) in the same directory. The ceiling is
-/// `cdragon_max + SKINLITE_FUTURE_MARGIN`, falling back to
-/// `SKINLITE_FALLBACK_MAX` if CDragon is unreachable. Any existing
+/// `cdragon_max + NOSKINLITE_FUTURE_MARGIN`, falling back to
+/// `NOSKINLITE_FALLBACK_MAX` if CDragon is unreachable. Any existing
 /// `skinN.bin` file is skipped — the source skin is never touched, and
 /// hand-edited skins are never clobbered.
 pub fn run(source_bin_path: &Path) -> Result<usize> {
@@ -185,19 +185,19 @@ pub fn run(source_bin_path: &Path) -> Result<usize> {
     // Ceiling from CDragon (or fallback), padded so future Riot releases fit.
     let ceiling = match fetch_max_skin_index(&champ) {
         Ok(n) => {
-            let padded = n.saturating_add(SKINLITE_FUTURE_MARGIN);
+            let padded = n.saturating_add(NOSKINLITE_FUTURE_MARGIN);
             eprintln!(
-                "[skinlite] {}: cdragon max {}, generating skin0..skin{} (+{} margin)",
-                champ, n, padded, SKINLITE_FUTURE_MARGIN
+                "[noskinlite] {}: cdragon max {}, generating skin0..skin{} (+{} margin)",
+                champ, n, padded, NOSKINLITE_FUTURE_MARGIN
             );
             padded
         }
         Err(e) => {
             eprintln!(
-                "[skinlite] cdragon lookup failed ({}); falling back to skin0..skin{}",
-                e, SKINLITE_FALLBACK_MAX
+                "[noskinlite] cdragon lookup failed ({}); falling back to skin0..skin{}",
+                e, NOSKINLITE_FALLBACK_MAX
             );
-            SKINLITE_FALLBACK_MAX
+            NOSKINLITE_FALLBACK_MAX
         }
     };
 
