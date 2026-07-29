@@ -167,9 +167,9 @@ git commit -m "feat(scope): short imperative message"
 
 ### Contributors
 
-- **[SirDexal](https://github.com/DexalGT)** — the Rust port. Designed and built this rewrite from the ground up: the Tauri 2 + React architecture, the Rust backend and `quartz-lib` format layer on top of the RitoShark crates, and the port of every page across from the Electron app.
-- **[Wiko](https://github.com/wiko3)** — contributions to both the original Electron app and the Rust port.
-- **[FrogCsLoL](https://github.com/FrogCsLoL)** — original author of Quartz and its Electron build, which this rewrite is based on.
+- **[FrogCsLoL](https://github.com/FrogCsLoL)** — creator of Quartz. Built the original Electron app that this rewrite is based on, and continues to work on it.
+- **[SirDexal](https://github.com/DexalGT)** — scaffolded the Rust port and wrote most of it: the Tauri 2 + React architecture, the Rust backend and the `quartz-lib` format layer over the RitoShark crates.
+- **[Wiko](https://github.com/wiko3)** — current maintainer, and a contributor to both the Electron app and the Rust port. **Reach out to him about updates and new releases.**
 
 ### Built on
 
