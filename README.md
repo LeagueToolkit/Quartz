@@ -33,8 +33,7 @@ between champions, then repath and ship the result.
 
 This is the Rust rewrite. The original Electron build lives on the
 [`electron-legacy`](https://github.com/RitoShark/Quartz/tree/electron-legacy)
-branch; everything here runs on Tauri 2 with a Rust backend over the
-[RitoShark](https://github.com/RitoShark/RitoShark-Crates) format crates, so no
+branch; everything here runs on Tauri 2 with a native Rust backend, so no
 external CLIs or bundled Python are required.
 
 ---
@@ -64,6 +63,29 @@ external CLIs or bundled Python are required.
 - **Bumpath** — repath a mod's file references using the integrated hash database.
 - **File Handler** — bulk file processing in two modes: randomize textures across a folder (great for custom emotes), or add and strip prefixes/suffixes for map mods.
 - **Tools** — drop your own executables in and drag folders onto them to run custom fixes.
+
+---
+
+## Under the hood
+
+Every League file Quartz touches is parsed in Rust by
+**[RitoShark Crates](https://github.com/RitoShark/RitoShark-Crates)** — the
+`ritoshark` workspace of `rs_*` crates written for this ecosystem, where the
+contract is correct and lossless round-trips. Quartz uses it for:
+
+| Crate | Used for |
+|---|---|
+| `rs_bin` | BIN read/write — the backbone of Paint, Port, VFX Hub, Bin Editor and Bumpath |
+| `rs_wad` | WAD archives — Asset Extractor and WAD Explorer |
+| `rs_tex` | TEX / DDS decode and encode — Image Recolor, RGBA, Upscale, texture previews |
+| `rs_hash` | WAD and BIN hash resolution against the LMDB hash database |
+| `rs_mesh` / `rs_anim` | SKN / SKL meshes and animations — 3D preview and AniPort |
+| `rs_troybin` / `rs_luabin` | Legacy VFX and script formats |
+
+Because parsing lives in the library rather than the app, a format fix lands once
+and every RitoShark tool gets it. `src-tauri/crates/quartz-lib/` is a thin wrapper
+over those crates; the command modules in `src-tauri/src/commands/` stay thin on
+top of that. No `ritobin` CLI, no Python sidecar, no shelling out.
 
 ---
 
@@ -143,6 +165,15 @@ git commit -m "feat(scope): short imperative message"
 
 ## Credits
 
+### Contributors
+
+- **[SirDexal](https://github.com/DexalGT)** — the Rust port. Designed and built this rewrite from the ground up: the Tauri 2 + React architecture, the Rust backend and `quartz-lib` format layer on top of the RitoShark crates, and the port of every page across from the Electron app.
+- **[Wiko](https://github.com/wiko3)** — contributions to both the original Electron app and the Rust port.
+- **[FrogCsLoL](https://github.com/FrogCsLoL)** — original author of Quartz and its Electron build, which this rewrite is based on.
+
+### Built on
+
+- **[RitoShark Crates](https://github.com/RitoShark/RitoShark-Crates)** — the Rust format library doing all of Quartz's BIN, WAD, TEX, mesh and animation parsing.
 - **[LtMAO](https://github.com/tarngaina/LtMAO)** by [tarngaina](https://github.com/tarngaina) — one of the most impressive toolpacks in League modding. Quartz would not exist without it.
 - **[Jade](https://github.com/LeagueToolkit/Jade-League-Bin-Editor)** by Bud — the BIN editor Quartz hands files off to.
 - **[Upscayl](https://github.com/upscayl)** and **[upscayl-ncnn](https://github.com/upscayl/upscayl-ncnn)** — the free and open source AI upscaler behind the Upscale page.
