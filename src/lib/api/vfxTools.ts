@@ -63,3 +63,4 @@ export function toolsBinCopyColors(
         createBackup,
     });
 }
+

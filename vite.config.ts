@@ -20,7 +20,13 @@ function tauriCSSFix(): Plugin {
 export default defineConfig({
     plugins: [react(), tauriCSSFix()],
     clearScreen: false,
-    server: { port: 3169, strictPort: true },
+    server: {
+        port: 3169,
+        strictPort: true,
+        // Vite otherwise walks into src-tauri/target/ and trips over Cargo's
+        // build-artifact locks (EBUSY on .exe files Cargo is currently writing).
+        watch: { ignored: ['**/src-tauri/**'] },
+    },
     envPrefix: ['VITE_', 'TAURI_'],
     build: {
         target: ['es2021', 'chrome100', 'safari13'],

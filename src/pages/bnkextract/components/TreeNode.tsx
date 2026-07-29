@@ -1,8 +1,74 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
 import { ExpandMore, ChevronRight, VolumeUp, ArrowForward } from '@mui/icons-material';
-import { log } from '@/lib/util/logger';
 import type { BnkNode, DroppedFile, Pane } from '../types';
+
+/* Pointer-event drag layer.
+   Tauri's `dragDropEnabled: true` (needed for OS file drops on other pages)
+   hijacks the webview's IDropTarget on Windows, so DOM dragstart/dragover/
+   drop never fire for internal element drags. Pointer events are untouched
+   by the native layer, so we rebuild "drag a right-pane node onto a left-
+   pane node" on top of them. Mirrors the pattern in src/pages/port/usePortDrag. */
+const DRAG_THRESHOLD = 5;
+interface DragSession {
+    sourceIds: string[];
+    sourcePane: Pane;
+    onDropReplace: (ids: string[], targetId: string) => void;
+    lastTargetEl: Element | null;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    active: boolean; // becomes true only after DRAG_THRESHOLD is crossed
+}
+let session: DragSession | null = null;
+
+function clearHover() {
+    document.querySelectorAll('.bnk-drop-over').forEach((el) => el.classList.remove('bnk-drop-over'));
+}
+function endSession() {
+    if (!session) return;
+    clearHover();
+    document.body.classList.remove('bnk-dragging');
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    session = null;
+}
+function onMove(e: PointerEvent) {
+    if (!session) return;
+    if (!session.active) {
+        const dx = e.clientX - session.startX;
+        const dy = e.clientY - session.startY;
+        if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
+        session.active = true;
+        document.body.classList.add('bnk-dragging');
+    }
+    // Hit-test what's under the cursor. Only tree rows tagged with
+    // data-node-id[data-pane="left"] are valid targets — right-pane can
+    // only be a source.
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const targetRow = el?.closest('[data-node-id][data-pane="left"]') ?? null;
+    if (targetRow !== session.lastTargetEl) {
+        clearHover();
+        if (targetRow) targetRow.classList.add('bnk-drop-over');
+        session.lastTargetEl = targetRow;
+    }
+}
+function onUp(e: PointerEvent) {
+    if (!session) return;
+    const s = session;
+    // Only commit a drop if we actually crossed the drag threshold, otherwise
+    // this was a click — let the click handler on the row deal with it.
+    if (s.active) {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const targetRow = el?.closest('[data-node-id][data-pane="left"]') as HTMLElement | null;
+        const targetId = targetRow?.getAttribute('data-node-id');
+        if (targetId && s.sourcePane === 'right') {
+            s.onDropReplace(s.sourceIds, targetId);
+        }
+    }
+    endSession();
+}
 
 const formatSize = (bytes?: number): string => {
     if (bytes === undefined || bytes === null) return '';
@@ -51,6 +117,10 @@ const TreeNode = React.memo<TreeNodeProps>(({
 
     const handleClick = (e: React.MouseEvent) => {
         e.stopPropagation();
+        // If a pointer drag was in progress and just completed, the "click"
+        // that browsers synthesise afterward isn't a real click — swallow it
+        // so we don't select/play right after a successful drop.
+        if (document.body.classList.contains('bnk-dragging')) return;
         onSelect(node, e.ctrlKey || e.metaKey, e.shiftKey, pane);
         if (isAudioFile) {
             onPlay(node);
@@ -62,76 +132,36 @@ const TreeNode = React.memo<TreeNodeProps>(({
         onToggleExpand(node.id, e.shiftKey, pane);
     };
 
-    const handleDragStart = (e: React.DragEvent) => {
+    /* Start a pointer drag from a right-pane draggable row. Left-pane rows are
+       drop targets, not sources. We defer "is this actually a drag?" until the
+       pointer crosses DRAG_THRESHOLD so clicks on the row still work normally. */
+    const handlePointerDown = (e: React.PointerEvent) => {
+        if (pane !== 'right') return;
         if (!isAudioFile && !hasChildren) return;
-        e.stopPropagation();
+        // Only main-button presses; ignore right-click (context menu) etc.
+        if (e.button !== 0) return;
         const sourceIds = selectedNodes.has(node.id) ? Array.from(selectedNodes) : [node.id];
-        e.dataTransfer.setData('sourceNode', JSON.stringify({ ids: sourceIds, pane }));
-        e.dataTransfer.effectAllowed = 'copy';
-    };
-
-    const handleDragOver = (e: React.DragEvent) => {
-        if (!isAudioFile && !hasChildren) return;
-
-        const isExternal = e.dataTransfer?.types?.includes('Files');
-        const isInternalNode = e.dataTransfer?.types?.some((t) => t.toLowerCase() === 'sourcenode');
-
-        if (pane === 'right' && !isExternal) return;
-        if (!isExternal && !isInternalNode) return;
-
-        e.preventDefault();
-        e.stopPropagation();
-        e.currentTarget.classList.add('bnk-drop-over');
-    };
-
-    const handleDragLeave = (e: React.DragEvent) => {
-        e.stopPropagation();
-        e.currentTarget.classList.remove('bnk-drop-over');
-    };
-
-    const handleDrop = (e: React.DragEvent) => {
-        if (!isAudioFile && !hasChildren) return;
-        e.preventDefault();
-        e.stopPropagation();
-        e.currentTarget.classList.remove('bnk-drop-over');
-
-        if (e.dataTransfer?.files?.length > 0) {
-            const VALID_EXTS = ['wem', 'wav', 'mp3', 'ogg'];
-            // Tauri delivers real absolute paths through the webview file-drop event;
-            // this DOM drop just stamps the target node so that event can route them.
-            const validFiles: DroppedFile[] = Array.from(e.dataTransfer.files)
-                .filter((f) => VALID_EXTS.includes((f.name.toLowerCase().split('.').pop() ?? '')))
-                .map((f) => ({ path: (f as File & { path?: string }).path ?? f.name, name: f.name }));
-            if (validFiles.length > 0) {
-                onExternalFileDrop(validFiles, node.id, pane);
-            }
-            return;
-        }
-
-        if (pane === 'right') return;
-        const sourceData = e.dataTransfer.getData('sourceNode');
-        if (sourceData) {
-            try {
-                const sourceInfo = JSON.parse(sourceData) as { ids?: string[]; id?: string; pane: Pane };
-                if (sourceInfo.pane === 'right') {
-                    const ids = sourceInfo.ids || (sourceInfo.id ? [sourceInfo.id] : []);
-                    onDropReplace(ids, node.id);
-                }
-            } catch (err) {
-                log.error('[TreeNode] Drop failed:', err);
-            }
-        }
+        session = {
+            sourceIds,
+            sourcePane: pane,
+            onDropReplace,
+            lastTargetEl: null,
+            pointerId: e.pointerId,
+            startX: e.clientX,
+            startY: e.clientY,
+            active: false,
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
     };
 
     return (
         <Box>
             <Box
                 data-node-id={node.id}
-                draggable={isAudioFile || hasChildren}
-                onDragStart={handleDragStart}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
+                data-pane={pane}
+                onPointerDown={handlePointerDown}
                 onClick={handleClick}
                 onContextMenu={(e) => onContextMenu(e, node, pane)}
                 sx={{

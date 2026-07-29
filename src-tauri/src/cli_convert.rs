@@ -18,6 +18,47 @@ pub fn try_run() -> Option<i32> {
         return None;
     }
     let verb = args[1].as_str();
+
+    // Multi-path verbs (Explorer MultiSelectModel = "Player") get every selected
+    // file as its own argv entry via `%*`. Handle them before the single-path
+    // dispatch below.
+    if verb == "merge-bins" {
+        attach_console();
+        let paths: Vec<PathBuf> = args.iter().skip(2).map(PathBuf::from).collect();
+        return Some(match merge_bins_verb(&paths) {
+            Ok(msg) => {
+                println!("Quartz: {msg}");
+                0
+            }
+            Err(e) => {
+                eprintln!("Quartz: merge-bins failed — {e}");
+                1
+            }
+        });
+    }
+
+    // Folder variant: one invocation with a single directory path. Merges every
+    // `.bin` directly inside that folder (non-recursive) into `merged.bin`. No
+    // batching needed — Explorer fires this once when the user right-clicks
+    // the folder itself.
+    if verb == "merge-bins-folder" {
+        attach_console();
+        let dir = args
+            .get(2)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(""));
+        return Some(match merge_bins_folder_verb(&dir) {
+            Ok(msg) => {
+                println!("Quartz: {msg}");
+                0
+            }
+            Err(e) => {
+                eprintln!("Quartz: merge-bins-folder failed — {e}");
+                1
+            }
+        });
+    }
+
     if !is_convert_verb(verb) {
         return None;
     }
@@ -61,6 +102,7 @@ fn is_convert_verb(verb: &str) -> bool {
             | "tex2dds" | "tex2png" | "dds2tex" | "dds2png" | "png2tex" | "png2dds"
             | "ritobindir2py" | "ritobindir2bin"
             | "tex2ddsdir" | "dds2texdir" | "tex2pngdir" | "dds2pngdir" | "png2texdir" | "png2ddsdir"
+            | "sco2scb" | "sco2scbdir"
             // Listed in the menu but their conversion logic lands in a later slice.
             | "noskinlite"
     )
@@ -109,6 +151,9 @@ fn dispatch(verb: &str, path: &Path) -> Result<String, String> {
         "dds2pngdir" => texture_dir(path, "dds", "png", "png"),
         "png2texdir" => texture_dir(path, "png", "tex", "tex:bc3"),
         "png2ddsdir" => texture_dir(path, "png", "dds", "dds:bc3"),
+
+        "sco2scb" => sco_to_scb(path),
+        "sco2scbdir" => sco_to_scb_dir(path),
 
         _ => Err(format!("unknown verb '{verb}'")),
     }
@@ -299,6 +344,267 @@ fn combine_linked(bin_path: &Path) -> Result<String, String> {
     ))
 }
 
+/* ── merge selected .bins → merged.bin ──────────────────────────────────── */
+
+/// Merge exactly the .bin files the user selected in Explorer into
+/// `merged.bin` next to the first-selected file.
+///
+/// Explorer fires string-command verbs once per selected file (there is no
+/// reliable way to force one-invocation-with-all-paths via pure registry
+/// entries — `MultiSelectModel = Player` is honoured only by IContextMenu
+/// handlers, not by our `shell\Verb\command` string). To reunite the
+/// concurrent invocations we use a shared temp file:
+///
+/// 1. Every invocation appends its path to `%TEMP%\quartz-merge-batch.txt`.
+/// 2. The first arrival wins an atomic create on a leader lock, sleeps
+///    briefly to let the rest write in, then reads the batch and runs the
+///    merge. Other arrivals just append and exit.
+/// 3. Leader deletes both files after merging.
+///
+/// Everything is logged to `%TEMP%\quartz-merge.log` so silent failures from
+/// the console-less Explorer launch are still recoverable.
+fn merge_bins_verb(paths: &[PathBuf]) -> Result<String, String> {
+    const OUTPUT_NAME: &str = "merged.bin";
+    const BATCH_FILE: &str = "quartz-merge-batch.txt";
+    const LEADER_FILE: &str = "quartz-merge-leader.lock";
+    // Enough time for Explorer to fire every per-file invocation for the same
+    // user click (empirically ~50-200ms even for 15+ files).
+    const COLLECT_MS: u64 = 800;
+    // Anything older than this is considered a crashed previous run.
+    const STALE_LOCK_MS: u128 = 30_000;
+
+    let temp_dir = std::env::temp_dir();
+    let batch_path = temp_dir.join(BATCH_FILE);
+    let leader_path = temp_dir.join(LEADER_FILE);
+
+    log_line(&format!(
+        "invocation with {} arg(s): {:?}",
+        paths.len(),
+        paths
+    ));
+
+    if paths.is_empty() {
+        return Err("no paths provided".to_string());
+    }
+
+    // Nuke stale scratch files from a previous crashed run before we start.
+    remove_if_stale(&leader_path, STALE_LOCK_MS);
+    remove_if_stale(&batch_path, STALE_LOCK_MS);
+
+    // Append our own paths to the shared batch file. FIFO order across
+    // processes is not important — the merger dedupes anyway.
+    append_paths(&batch_path, paths)
+        .map_err(|e| format!("append to batch file: {e}"))?;
+
+    // Try to become the leader. `create_new` is atomic on NTFS — exactly one
+    // concurrent process wins; the rest hit AlreadyExists.
+    let leader = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&leader_path)
+        .is_ok();
+
+    if !leader {
+        log_line("not leader — appended paths and exited");
+        return Ok("queued".to_string());
+    }
+
+    log_line("leader — waiting for other invocations to enqueue");
+    std::thread::sleep(std::time::Duration::from_millis(COLLECT_MS));
+
+    // Collect every path across concurrent invocations, dedup preserving
+    // first-seen order (matches the merger's own dedupe semantics).
+    let content = std::fs::read_to_string(&batch_path)
+        .map_err(|e| format!("read batch file: {e}"))?;
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut collected: Vec<PathBuf> = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let key = trimmed.to_ascii_lowercase();
+        if seen.insert(key) {
+            collected.push(PathBuf::from(trimmed));
+        }
+    }
+
+    // Clean up regardless of merge outcome so the next right-click starts fresh.
+    let _ = std::fs::remove_file(&batch_path);
+    let _ = std::fs::remove_file(&leader_path);
+
+    log_line(&format!("leader collected {} path(s)", collected.len()));
+
+    if collected.len() < 2 {
+        return Err(format!(
+            "select at least 2 .bin files (got {})",
+            collected.len()
+        ));
+    }
+    for p in &collected {
+        if !p.exists() {
+            return Err(format!("path not found: {}", p.display()));
+        }
+    }
+
+    let dir = collected[0]
+        .parent()
+        .ok_or_else(|| format!("no parent directory for {}", name(&collected[0])))?;
+    let out = dir.join(OUTPUT_NAME);
+
+    let stats = quartz_lib::bin::merge_bins(&collected, &out).map_err(|e| e.to_string())?;
+    for (p, entries, linked) in &stats.per_input {
+        log_line(&format!(
+            "  input: {} — {} entries, {} linked",
+            p.display(),
+            entries,
+            linked
+        ));
+    }
+    let msg = format!(
+        "merged {} bin(s) → {} ({} entries, {} duplicate(s) dropped, {} linked deps)",
+        stats.inputs,
+        OUTPUT_NAME,
+        stats.entries_written,
+        stats.duplicates_skipped,
+        stats.linked_deps,
+    );
+    log_line(&msg);
+
+    // Round-trip verification: read merged.bin back off disk and log its entry
+    // count. If this diverges from `entries_written`, the ritoshark serializer
+    // is inflating/deflating during write — otherwise the file on disk is
+    // exactly what we intended.
+    match std::fs::read(&out) {
+        Ok(bytes) => match quartz_lib::bin::read_bin(&bytes) {
+            Ok(bin) => log_line(&format!(
+                "  round-trip: {} on-disk entries, {} on-disk linked ({} bytes)",
+                bin.entries.len(),
+                bin.linked.len(),
+                bytes.len()
+            )),
+            Err(e) => log_line(&format!("  round-trip read failed: {e}")),
+        },
+        Err(e) => log_line(&format!("  round-trip disk read failed: {e}")),
+    }
+    Ok(msg)
+}
+
+/// Fold every `.bin` sitting directly in `dir` (non-recursive) into
+/// `<dir>/merged.bin`. The pre-existing `merged.bin` is excluded from the
+/// inputs so re-running never feeds the output back into itself. Requires ≥2
+/// input bins.
+fn merge_bins_folder_verb(dir: &Path) -> Result<String, String> {
+    const OUTPUT_NAME: &str = "merged.bin";
+
+    log_line(&format!("folder invocation: {}", dir.display()));
+
+    if !dir.is_dir() {
+        return Err(format!("not a directory: {}", dir.display()));
+    }
+
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| format!("read {}: {}", dir.display(), e))?;
+    let mut inputs: Vec<PathBuf> = entries
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s.eq_ignore_ascii_case("bin"))
+                .unwrap_or(false)
+        })
+        .filter(|p| {
+            p.file_name()
+                .and_then(|s| s.to_str())
+                .map(|s| !s.eq_ignore_ascii_case(OUTPUT_NAME))
+                .unwrap_or(true)
+        })
+        .collect();
+
+    if inputs.len() < 2 {
+        return Err(format!(
+            "need at least 2 .bin files in {} (found {})",
+            dir.display(),
+            inputs.len()
+        ));
+    }
+
+    // Deterministic order — Windows `read_dir` order is not stable.
+    inputs.sort();
+
+    let out = dir.join(OUTPUT_NAME);
+    let stats = quartz_lib::bin::merge_bins(&inputs, &out).map_err(|e| e.to_string())?;
+    for (p, entries_n, linked) in &stats.per_input {
+        log_line(&format!(
+            "  input: {} — {} entries, {} linked",
+            p.display(),
+            entries_n,
+            linked
+        ));
+    }
+    let msg = format!(
+        "merged {} bin(s) → {} ({} entries, {} duplicate(s) dropped, {} linked deps)",
+        stats.inputs,
+        OUTPUT_NAME,
+        stats.entries_written,
+        stats.duplicates_skipped,
+        stats.linked_deps,
+    );
+    log_line(&msg);
+    Ok(msg)
+}
+
+/// Delete `path` if its mtime is older than `max_age_ms`. Best-effort — any
+/// filesystem error is swallowed. Used to recover from previous crashed runs
+/// that left leader-lock or batch files behind.
+fn remove_if_stale(path: &Path, max_age_ms: u128) {
+    if let Ok(meta) = std::fs::metadata(path) {
+        if let Ok(mtime) = meta.modified() {
+            if let Ok(age) = mtime.elapsed() {
+                if age.as_millis() > max_age_ms {
+                    log_line(&format!("removing stale scratch file: {}", path.display()));
+                    let _ = std::fs::remove_file(path);
+                }
+            }
+        }
+    }
+}
+
+/// Append every path (one per line) to `batch_path`, creating the file if it
+/// doesn't exist. Uses append-mode which on Windows/NTFS is safe against
+/// concurrent writers for single-line writes.
+fn append_paths(batch_path: &Path, paths: &[PathBuf]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(batch_path)?;
+    let mut buf = String::new();
+    for p in paths {
+        buf.push_str(&p.to_string_lossy());
+        buf.push('\n');
+    }
+    f.write_all(buf.as_bytes())?;
+    Ok(())
+}
+
+/// Append a diagnostic line to `%TEMP%\quartz-merge.log`. Best-effort — if
+/// the log itself can't be opened, we silently drop the line.
+fn log_line(msg: &str) {
+    use std::io::Write;
+    let path = std::env::temp_dir().join("quartz-merge.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let pid = std::process::id();
+        let _ = writeln!(f, "[pid {pid}] {msg}");
+    }
+}
+
 /* ── hash extraction ─────────────────────────────────────────────────────── */
 
 fn extract_hashes_bin(bin_path: &Path) -> Result<String, String> {
@@ -475,6 +781,31 @@ fn file_stem(p: &Path) -> String {
     p.file_stem()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default()
+}
+
+/* ── sco -> scb ──────────────────────────────────────────────────────────── */
+
+fn sco_to_scb(sco_path: &Path) -> Result<String, String> {
+    let scb = quartz_lib::sco_scb::convert_one(sco_path)?;
+    Ok(format!("{} -> {}", name(sco_path), name(&scb)))
+}
+
+fn sco_to_scb_dir(dir: &Path) -> Result<String, String> {
+    let r = quartz_lib::sco_scb::convert_dir(dir)?;
+    if r.scanned == 0 {
+        return Ok(format!("no .sco files under {}", name(dir)));
+    }
+    // Surface individual failures to the console; overall message is a summary.
+    for (p, err) in &r.errors {
+        eprintln!("  {} — {err}", name(p));
+    }
+    if r.failed > 0 {
+        return Err(format!(
+            "{} converted, {} failed (of {})",
+            r.converted, r.failed, r.scanned
+        ));
+    }
+    Ok(format!("{} converted (of {})", r.converted, r.scanned))
 }
 
 /// Walk `dir` recursively, collecting files whose extension matches `ext`.

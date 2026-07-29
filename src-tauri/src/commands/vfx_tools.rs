@@ -114,20 +114,26 @@ pub async fn tools_fix_vfx_shape(
     create_backup: bool,
 ) -> Result<FixVfxShapeResult, String> {
     tokio::task::spawn_blocking(move || {
-        let targets: Vec<PathBuf> = if let Some(fp) = file_path.filter(|s| !s.is_empty()) {
-            let p = PathBuf::from(&fp);
-            if !p.exists() {
-                return Err("Bin not found".to_string());
-            }
-            vec![p]
-        } else if let Some(folder) = folder_path.filter(|s| !s.is_empty()) {
-            let p = PathBuf::from(&folder);
-            if !p.exists() {
-                return Err("Folder not found".to_string());
-            }
+        // Accept the target via either `file_path` or `folder_path` (kept for
+        // backward-compat with callers that still distinguish them), then
+        // route on the actual filesystem type: dir → recurse for .bin files,
+        // file → process that one. The frontend picker UI dropped the
+        // file-vs-folder mode toggle, so it just passes whatever the user
+        // picked / typed.
+        let raw = file_path
+            .filter(|s| !s.is_empty())
+            .or_else(|| folder_path.filter(|s| !s.is_empty()));
+        let Some(target) = raw else {
+            return Err("Provide a file or folder path".to_string());
+        };
+        let p = PathBuf::from(&target);
+        if !p.exists() {
+            return Err(format!("Path not found: {}", p.display()));
+        }
+        let targets: Vec<PathBuf> = if p.is_dir() {
             collect_bins_recursive(&p)
         } else {
-            return Err("Provide filePath or folderPath".to_string());
+            vec![p]
         };
 
         let mut out = FixVfxShapeResult {
@@ -235,3 +241,4 @@ pub async fn tools_bin_copy_colors(
     .await
     .map_err(|e| format!("task join error: {}", e))?
 }
+

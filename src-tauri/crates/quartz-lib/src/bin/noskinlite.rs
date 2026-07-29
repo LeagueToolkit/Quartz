@@ -1,14 +1,19 @@
-//! NoSkinLite — clone a source skin BIN into `skin0.bin`..`skin99.bin`,
-//! rekeying the `SkinCharacterDataProperties` / `ResourceResolver` entries and
-//! fixing the `mResourceResolver` reference so each clone resolves to its own
-//! skin index. 1:1 port of old quartz_cli `noskinlite.rs`, retargeted from
-//! `ltk_meta` onto ritoshark's `Bin`.
+//! NoSkinLite — clone a source skin BIN into every existing skin slot
+//! (`skin0.bin`..`skin{max}.bin`) for that champion, rekeying the
+//! `SkinCharacterDataProperties` / `ResourceResolver` entries and fixing the
+//! `mResourceResolver` reference so each clone resolves to its own skin
+//! index.
 //!
-//! ltk → ritoshark mapping: `bin.objects.shift_remove/insert` +
-//! `obj.path_hash` → mutate the matching `BinEntry.path_hash` in `bin.entries`;
-//! `obj.properties` → `entry.fields`; `PropertyValueEnum::{String,ObjectLink}` →
-//! `BinValue::{String,Link}`; `BinProperty{name_hash,value}` → an
-//! `entry.fields` insert keyed by the field hash.
+//! Skin ceiling is fetched at runtime from CommunityDragon's raw game-data
+//! directory listing (`raw.communitydragon.org/json/latest/game/data/...`)
+//! because the marketing `champion-summary`/`champions/{id}` endpoints only
+//! list officially released skins and miss chroma / PBE / unreleased slots
+//! (Akali max=101, not 92; Bel'Veth max=28, not 5). We add
+//! `NOSKINLITE_FUTURE_MARGIN` on top so the next Riot release still fits
+//! without re-running. Fetch failures fall back to `NOSKINLITE_FALLBACK_MAX`.
+//!
+//! Any existing `skinN.bin` in the folder is skipped unconditionally so the
+//! user's hand-edited skins never get clobbered.
 
 use crate::bin::{read_bin, write_bin};
 use crate::error::{Error, Result};
@@ -17,6 +22,17 @@ use ritoshark::bin::{Bin, BinValue};
 use ritoshark::hash::fnv1a;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
+
+/// Extra skin slots generated above the current CDragon max, so newly-shipped
+/// Riot skins still land in an existing clone without re-running NoSkinLite.
+const NOSKINLITE_FUTURE_MARGIN: u32 = 20;
+/// Ceiling used when the CDragon lookup fails (offline, unknown champ, etc.).
+/// Matches the old hardcoded upper bound so behaviour degrades gracefully.
+const NOSKINLITE_FALLBACK_MAX: u32 = 99;
+/// Timeout budget for the CDragon fetch. Small so an unreachable network
+/// doesn't leave the user staring at a frozen right-click menu.
+const CDRAGON_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Parse `(champion, skin_index)` out of a path like
 /// `.../characters/<champ>/skins/skin<N>...`.
@@ -42,6 +58,70 @@ fn parse_skin_info(path: &Path) -> (String, u32) {
     ("unknown".to_string(), 0)
 }
 
+/// Look up the highest live skin index for `champ_alias` on CommunityDragon.
+///
+/// Uses the raw game-data directory listing at
+/// `raw.communitydragon.org/json/latest/game/data/characters/{alias}/skins/`.
+/// The response is a JSON array of `{name, ...}` file entries; we filter for
+/// `skin<N>.bin` and take the max `N`. Runs a self-contained tokio runtime so
+/// the sync `run()` signature (called from a sync CLI dispatcher) doesn't
+/// have to become async.
+fn fetch_max_skin_index(champ_alias: &str) -> Result<u32> {
+    let url = format!(
+        "https://raw.communitydragon.org/json/latest/game/data/characters/{}/skins/",
+        champ_alias.to_lowercase()
+    );
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| Error::InvalidInput(format!("cdragon runtime: {}", e)))?;
+
+    let body: String = rt.block_on(async {
+        let client = reqwest::Client::builder()
+            .timeout(CDRAGON_TIMEOUT)
+            .user_agent("quartz-noskinlite")
+            .build()
+            .map_err(|e| Error::InvalidInput(format!("cdragon client: {}", e)))?;
+        let resp = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| Error::InvalidInput(format!("cdragon get: {}", e)))?;
+        if !resp.status().is_success() {
+            return Err(Error::InvalidInput(format!(
+                "cdragon http {} for {}",
+                resp.status(),
+                url
+            )));
+        }
+        resp.text()
+            .await
+            .map_err(|e| Error::InvalidInput(format!("cdragon read: {}", e)))
+    })?;
+
+    let listing: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| Error::InvalidInput(format!("cdragon parse: {}", e)))?;
+    let entries = listing
+        .as_array()
+        .ok_or_else(|| Error::InvalidInput("cdragon listing not an array".to_string()))?;
+    entries
+        .iter()
+        .filter_map(|e| e.get("name").and_then(|v| v.as_str()))
+        .filter_map(parse_skin_bin_index)
+        .max()
+        .ok_or_else(|| Error::InvalidInput("no skinN.bin in cdragon listing".to_string()))
+}
+
+/// Parse `<digits>` out of a `skin<digits>.bin` filename (case-insensitive).
+fn parse_skin_bin_index(name: &str) -> Option<u32> {
+    let low = name.to_lowercase();
+    low.strip_prefix("skin")?
+        .strip_suffix(".bin")?
+        .parse::<u32>()
+        .ok()
+}
+
 /// Change the `path_hash` of the entry currently keyed by `old_key` to
 /// `new_key`, in place. No-op when the keys match.
 fn rekey_entry(bin: &mut Bin, old_key: u32, new_key: u32) -> Result<()> {
@@ -59,10 +139,12 @@ fn rekey_entry(bin: &mut Bin, old_key: u32, new_key: u32) -> Result<()> {
     Ok(())
 }
 
-/// Clone `source_bin_path` into `skin0.bin`..`skin99.bin` (skipping the source
-/// skin's own index) in the same directory. Skips any target that already
-/// exists with a different byte size (assumed hand-edited). Returns the number
-/// of skin bins written.
+/// Clone `source_bin_path` into `skin0.bin`..`skin{ceiling}.bin` (skipping
+/// the source skin's own index) in the same directory. The ceiling is
+/// `cdragon_max + NOSKINLITE_FUTURE_MARGIN`, falling back to
+/// `NOSKINLITE_FALLBACK_MAX` if CDragon is unreachable. Any existing
+/// `skinN.bin` file is skipped — the source skin is never touched, and
+/// hand-edited skins are never clobbered.
 pub fn run(source_bin_path: &Path) -> Result<usize> {
     if !source_bin_path.exists() {
         return Err(Error::InvalidInput(format!(
@@ -71,9 +153,6 @@ pub fn run(source_bin_path: &Path) -> Result<usize> {
         )));
     }
 
-    let source_size = fs::metadata(source_bin_path)
-        .map_err(|e| Error::io_with_path(e, source_bin_path))?
-        .len();
     let source_data =
         fs::read(source_bin_path).map_err(|e| Error::io_with_path(e, source_bin_path))?;
     let source_bin = read_bin(&source_data)
@@ -103,17 +182,30 @@ pub fn run(source_bin_path: &Path) -> Result<usize> {
         .parent()
         .ok_or_else(|| Error::InvalidInput("Source bin has no parent directory".to_string()))?;
 
-    // Targets: skin0..99 except the source's own index, skipping any existing
-    // file whose size differs from the source (likely hand-edited).
-    let targets: Vec<u32> = (0u32..100u32)
+    // Ceiling from CDragon (or fallback), padded so future Riot releases fit.
+    let ceiling = match fetch_max_skin_index(&champ) {
+        Ok(n) => {
+            let padded = n.saturating_add(NOSKINLITE_FUTURE_MARGIN);
+            eprintln!(
+                "[noskinlite] {}: cdragon max {}, generating skin0..skin{} (+{} margin)",
+                champ, n, padded, NOSKINLITE_FUTURE_MARGIN
+            );
+            padded
+        }
+        Err(e) => {
+            eprintln!(
+                "[noskinlite] cdragon lookup failed ({}); falling back to skin0..skin{}",
+                e, NOSKINLITE_FALLBACK_MAX
+            );
+            NOSKINLITE_FALLBACK_MAX
+        }
+    };
+
+    // Targets: every slot up to the ceiling except the source's own index,
+    // skipping anything that already has a bin on disk (no overwrite).
+    let targets: Vec<u32> = (0u32..=ceiling)
         .filter(|&i| i != source_skin_idx)
-        .filter(|&i| {
-            let out_path = out_dir.join(format!("skin{}.bin", i));
-            match out_path.metadata() {
-                Ok(meta) => meta.len() == source_size,
-                Err(_) => true, // doesn't exist → write it
-            }
-        })
+        .filter(|&i| !out_dir.join(format!("skin{}.bin", i)).exists())
         .collect();
 
     targets

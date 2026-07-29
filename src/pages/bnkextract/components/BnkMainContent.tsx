@@ -1,5 +1,25 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { Box, Typography, Divider, Slider } from '@mui/material';
+import { Box, CircularProgress, Typography, Divider, Slider } from '@mui/material';
+
+/* Small pane-local parsing indicator. Sits inside the pane's Box (which is
+   position:relative) so it centres over the tree area without blurring the
+   rest of the window — the old full-window Backdrop was doing that. */
+function PaneParsingIndicator({ label = 'Parsing…' }: { label?: string }) {
+    return (
+        <Box
+            sx={{
+                position: 'absolute', inset: 0, zIndex: 5,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: 1.5,
+                background: 'color-mix(in oklab, var(--bg-primary) 30%, transparent)',
+                pointerEvents: 'none',
+            }}
+        >
+            <CircularProgress size={32} sx={{ color: 'var(--accent-primary)' }} />
+            <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-primary)' }}>{label}</Typography>
+        </Box>
+    );
+}
 import {
     SortByAlpha, Download, Upload, VolumeOff, Save, PlayArrow, Stop, VolumeUp, Settings, AutoFixHigh, FolderOpen,
 } from '@mui/icons-material';
@@ -181,6 +201,10 @@ interface Props {
     onSetPath: (pane: Pane, kind: keyof PathSet, value: string) => void;
     onParse: (pane: Pane) => void;
     isLoading: boolean;
+    /* When set, an in-pane parsing spinner is shown inside that pane. Distinct
+       from `isLoading` (which drives the full-window blur backdrop for
+       extract/save/auto-extract). */
+    parsingPane: Pane | null;
 }
 
 export default function BnkMainContent(props: Props) {
@@ -197,7 +221,7 @@ export default function BnkMainContent(props: Props) {
         handleExtract, handleReplace, hasAudioSelection, handleMakeSilent, handleSave, hasRootSelection,
         handlePlaySelected, stopAudio, volume, setVolume, treeData, rightTreeData,
         setShowSettingsModal,
-        leftPaths, rightPaths, onSelectFile, onSetPath, onParse, isLoading,
+        leftPaths, rightPaths, onSelectFile, onSetPath, onParse, isLoading, parsingPane,
     } = props;
 
     const treeBorder = treeViewStyle.border as string;
@@ -241,7 +265,7 @@ export default function BnkMainContent(props: Props) {
                     } : {}),
                 }}
             >
-                {treeData.length === 0 ? (
+                {treeData.length === 0 && parsingPane !== 'left' ? (
                     <PaneLoadBlock
                         pane="left"
                         paths={leftPaths}
@@ -250,7 +274,7 @@ export default function BnkMainContent(props: Props) {
                         onParse={onParse}
                         isLoading={isLoading}
                     />
-                ) : (
+                ) : treeData.length > 0 ? (
                     <>
                         <div className="bnk-toolbar-row">
                             <button
@@ -293,9 +317,10 @@ export default function BnkMainContent(props: Props) {
                             emptyText={leftSearchQuery ? 'No matches' : 'Drag & drop a mod folder here'}
                         />
                     </>
-                )}
+                ) : null}
 
                 {leftDragOver && <DropOverlay label="Drop a mod folder to load" />}
+                {parsingPane === 'left' && <PaneParsingIndicator />}
             </Box>
 
             {/* Single center divider splitting the two halves (Port-style). */}
@@ -323,7 +348,7 @@ export default function BnkMainContent(props: Props) {
                         } : {}),
                     }}
                 >
-                    {rightTreeData.length === 0 ? (
+                    {rightTreeData.length === 0 && parsingPane !== 'right' ? (
                         <PaneLoadBlock
                             pane="right"
                             paths={rightPaths}
@@ -332,7 +357,7 @@ export default function BnkMainContent(props: Props) {
                             onParse={onParse}
                             isLoading={isLoading}
                         />
-                    ) : (
+                    ) : rightTreeData.length > 0 ? (
                         <>
                             <div className="bnk-toolbar-row">
                                 <button
@@ -375,9 +400,10 @@ export default function BnkMainContent(props: Props) {
                                 emptyText={rightSearchQuery ? 'No matches' : 'Drop .wem .wav .mp3 files here, autoconvert or load banks to drag replacement audio'}
                             />
                         </>
-                    )}
+                    ) : null}
 
                     {rightPaneDragOver && <DropOverlay label="Drop .wem / .wav / .mp3 to import" />}
+                    {parsingPane === 'right' && <PaneParsingIndicator />}
                 </Box>
             )}
 

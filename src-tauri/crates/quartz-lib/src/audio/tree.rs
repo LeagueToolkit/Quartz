@@ -123,12 +123,24 @@ fn group_audio_files(
     mappings: &[EventMapping],
     root_name: &str,
 ) -> BnkNode {
+    // Pre-index mappings by wem_id so the per-entry lookup below is O(1)
+    // instead of a full scan of `mappings`. The old shape was O(entries ×
+    // mappings) which explodes for champs with lots of skins × events.
+    let mut mappings_by_wem: std::collections::HashMap<u32, Vec<&EventMapping>> =
+        std::collections::HashMap::with_capacity(mappings.len());
+    for m in mappings {
+        mappings_by_wem.entry(m.wem_id).or_default().push(m);
+    }
+
     let mut root = BnkNode::dir(root_name.to_string());
 
     for entry in entries {
         let mut inserted = false;
+        let matches = mappings_by_wem.get(&entry.id);
+        let empty: Vec<&EventMapping> = Vec::new();
+        let ms = matches.map(|v| v.as_slice()).unwrap_or(empty.as_slice());
 
-        for m in mappings.iter().filter(|m| m.wem_id == entry.id) {
+        for m in ms {
             // Navigate switch -> event -> container -> music-segment.
             let mut path: Vec<String> = Vec::new();
             if let Some(switch_id) = m.switch_id {
@@ -172,25 +184,37 @@ fn group_audio_files(
 }
 
 fn sanitize_scope(value: &str) -> String {
-    let mut out: String = value
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' {
-                c
-            } else {
-                '_'
+    // Sanitize + collapse consecutive underscores + trim leading/trailing
+    // underscores in a single pass. The old version replaced disallowed chars
+    // with '_' and then ran `while out.contains("__") { replace("__", "_") }`
+    // — quadratic on strings with long runs of underscores, and called for
+    // every tree node during parse. This is O(n).
+    let mut out = String::with_capacity(value.len());
+    let mut prev_was_underscore = true; // start "true" so leading _'s are dropped
+    for c in value.chars() {
+        let mapped = if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
+            c
+        } else {
+            '_'
+        };
+        if mapped == '_' {
+            if !prev_was_underscore {
+                out.push('_');
+                prev_was_underscore = true;
             }
-        })
-        .collect();
-    // Collapse runs of underscores produced by the replace above.
-    while out.contains("__") {
-        out = out.replace("__", "_");
+        } else {
+            out.push(mapped);
+            prev_was_underscore = false;
+        }
     }
-    let trimmed = out.trim_matches('_').to_string();
-    if trimmed.is_empty() {
+    // Drop trailing underscore if present.
+    if out.ends_with('_') {
+        out.pop();
+    }
+    if out.is_empty() {
         "root".to_string()
     } else {
-        trimmed
+        out
     }
 }
 

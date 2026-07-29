@@ -176,6 +176,10 @@ export function BnkExtract() {
     const [viewMode, setViewMode] = useState<ViewMode>('split');
     const [activePane, setActivePane] = useState<Pane>('left');
     const [isLoading, setIsLoading] = useState(false);
+    // Parse-only loading state, scoped to the pane being parsed. Renders a
+    // small pane-local spinner instead of the full-window blur backdrop that
+    // `isLoading` triggers (which we keep for extract/save/auto-extract).
+    const [parsingPane, setParsingPane] = useState<Pane | null>(null);
     const [statusMessage, setStatusMessage] = useState('Ready');
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
     const [rightPaneDragOver, setRightPaneDragOver] = useState(false);
@@ -378,7 +382,9 @@ export function BnkExtract() {
 
     const handleParseFiles = useCallback(async (pane: Pane) => {
         const paths = pane === 'right' ? rightPaths : leftPaths;
-        setIsLoading(true);
+        // Pane-scoped spinner instead of the full-window blur — the rest of
+        // the app stays interactive while one pane parses.
+        setParsingPane(pane);
         setStatusMessage('Parsing...');
         try {
             pushToHistory();
@@ -394,7 +400,7 @@ export function BnkExtract() {
             log.error('[BnkExtract] parse failed', e);
             setStatusMessage(`Parse failed: ${(e as Error).message}`);
         } finally {
-            setIsLoading(false);
+            setParsingPane(null);
         }
     }, [leftPaths, rightPaths, pushToHistory]);
 
@@ -666,21 +672,58 @@ export function BnkExtract() {
     }, [hasRootSelection, activePane, selectedNodes, rightSelectedNodes, treeData, rightTreeData]);
 
     // ── Drop / auto-match ops ─────────────────────────────────────────────────
-    /* Drag a right-pane (reference) node onto a left-pane (main) node: copy the
-       source's WEM bytes onto the target leaf, keeping the target's audio id. */
+    /* Drag one or more right-pane (reference) nodes onto a left-pane (main)
+       node. Works for sounds, groups, or whole events: every audio leaf under
+       the dragged sources is paired 1-to-1 with every audio leaf under the
+       drop target (cycling the source list if the target has more leaves).
+       Each replacement is keyed by the target's wem id so events that share
+       the same underlying wem all update together — matching old Quartz. */
     const handleDropReplace = useCallback((ids: string[], targetId: string) => {
-        const sources: BnkNode[] = [];
+        const sourceLeaves: BnkNode[] = [];
         for (const id of ids) {
             const n = findNode(rightTreeData, id);
-            if (n) collectAudioUnder(n, sources);
+            if (n) collectAudioUnder(n, sourceLeaves);
         }
-        const src = sources.find((n) => n.audioData?.data?.length);
+        const sources = sourceLeaves.filter((n) => n.audioData?.data?.length);
+        if (sources.length === 0) { setStatusMessage('No audio in reference selection'); return; }
+
         const target = findNode(treeData, targetId);
-        if (!src?.audioData || !target?.audioData) { setStatusMessage('Nothing to copy from reference'); return; }
+        if (!target) { setStatusMessage('Drop target not found'); return; }
+        const targetLeaves: BnkNode[] = [];
+        collectAudioUnder(target, targetLeaves);
+        if (targetLeaves.length === 0) { setStatusMessage('Drop target has no audio'); return; }
+
+        // Map target-wem-id -> replacement bytes. First write wins per id so a
+        // shared wem doesn't get overwritten later in the loop by a different
+        // source (which would break the "all references stay consistent" invariant).
+        const wemIdToData = new Map<number, Uint8Array>();
+        targetLeaves.forEach((t, i) => {
+            if (t.audioData?.id == null) return;
+            const src = sources[i % sources.length];
+            if (src.audioData?.data && !wemIdToData.has(t.audioData.id)) {
+                wemIdToData.set(t.audioData.id, src.audioData.data);
+            }
+        });
+        if (wemIdToData.size === 0) { setStatusMessage('Nothing to replace'); return; }
+
         pushToHistory();
-        applyAudioToNodes('left', new Set([targetId]), src.audioData.data);
-        setStatusMessage(`Replaced ${target.name} from reference`);
-    }, [rightTreeData, treeData, pushToHistory, applyAudioToNodes]);
+        // Single tree walk that hits every node whose wem id is in the map,
+        // propagating across shared wems so duplicate event branches stay in sync.
+        const patch = (nodes: BnkNode[]): BnkNode[] => nodes.map((n) => {
+            const data = n.audioData ? wemIdToData.get(n.audioData.id) : undefined;
+            if (data && n.audioData) {
+                return {
+                    ...n,
+                    isModified: true,
+                    audioData: { ...n.audioData, data, length: data.length, isModified: true },
+                };
+            }
+            if (n.children) return { ...n, children: patch(n.children) };
+            return n;
+        });
+        setTreeData((p) => patch(p));
+        setStatusMessage(`Replaced ${wemIdToData.size} wem(s) across ${target.name}`);
+    }, [rightTreeData, treeData, pushToHistory]);
 
     /* Convert dropped wem/wav/ogg/mp3 files to WEM and apply to the target node. */
     const applyExternalFiles = useCallback(async (files: { path: string; name: string }[], targetId: string, pane: Pane) => {
@@ -1351,6 +1394,7 @@ export function BnkExtract() {
                 onSetPath={handleSetPath}
                 onParse={handleParseFiles}
                 isLoading={isLoading}
+                parsingPane={parsingPane}
             />
 
             {/* Bottom bar: splitter + view-mode toggles (left), centered status,
