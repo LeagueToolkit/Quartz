@@ -14,6 +14,7 @@ import {
     vfxPortEmitters,
     vfxPortSystem,
     vfxDeleteEmitter,
+    vfxDeleteEmitters,
     vfxDeleteSystem,
     vfxSetMatrix,
     vfxIdleAdd,
@@ -66,6 +67,11 @@ export interface PendingDrop {
     donorSystemPath: VfxPath;
     defaultName: string;
 }
+
+/* How long a session task must run before the UI shows it as busy. Below this,
+   the operation completes without ever disabling a button - avoiding the flash
+   that made the toolbar look like it was blinking on every edit. */
+const BUSY_INDICATOR_DELAY_MS = 500;
 
 const typeOptions = [
     { value: 'IsAnimationPlaying', label: 'Animation Playing', description: 'Trigger when specific animation is playing' },
@@ -209,6 +215,12 @@ export default function usePort() {
     const dragStartedKeyRef = useRef<string | null>(null);
     const targetSessionQueueRef = useRef<Promise<void>>(Promise.resolve());
     const targetSessionBusyCountRef = useRef(0);
+    // Pending timer for the delayed busy indicator (see runTargetSessionTask).
+    const busyTimerRef = useRef<number | null>(null);
+
+    useEffect(() => () => {
+        if (busyTimerRef.current !== null) window.clearTimeout(busyTimerRef.current);
+    }, []);
 
     const setDragStartedKey = useCallback((key: string | null) => {
         dragStartedKeyRef.current = key;
@@ -225,8 +237,20 @@ export default function usePort() {
             targetSessionQueueRef.current = prev.then(() => gate);
 
             targetSessionBusyCountRef.current += 1;
-            setIsProcessing(true);
-            setProcessingText((current) => current || processingLabel);
+            /* Only announce "busy" once the work has actually lasted long enough
+               to be worth showing. Most edits finish in ~20ms, and flipping
+               isProcessing for that long just made the toolbar buttons flash
+               disabled (and the floating actions blink out) on every click.
+               A task that finishes before the threshold never touches the UI. */
+            if (busyTimerRef.current === null) {
+                busyTimerRef.current = window.setTimeout(() => {
+                    busyTimerRef.current = null;
+                    if (targetSessionBusyCountRef.current > 0) {
+                        setIsProcessing(true);
+                        setProcessingText((current) => current || processingLabel);
+                    }
+                }, BUSY_INDICATOR_DELAY_MS);
+            }
 
             await prev;
             try {
@@ -235,6 +259,10 @@ export default function usePort() {
                 release();
                 targetSessionBusyCountRef.current = Math.max(0, targetSessionBusyCountRef.current - 1);
                 if (targetSessionBusyCountRef.current === 0) {
+                    if (busyTimerRef.current !== null) {
+                        window.clearTimeout(busyTimerRef.current);
+                        busyTimerRef.current = null;
+                    }
                     setIsProcessing(false);
                     setProcessingText('');
                 }
@@ -777,14 +805,17 @@ export default function usePort() {
             if (targetSessionId === null) return;
             const system = targetSystems[systemKey];
             if (!system || system.emitters.length === 0) return;
+            const count = system.emitters.length;
             await runTargetSessionTask(async () => {
                 try {
-                    let model: VfxPortModel | null = null;
-                    for (let i = system.emitters.length - 1; i >= 0; i--) {
-                        model = await vfxDeleteEmitter(targetSessionId, system.emitters[i].path);
-                    }
-                    if (model) applyTargetModel(model);
-                    setStatusMessage(`Deleted all emitters from "${system.particleName || system.name || systemKey}"`);
+                    // One call, not one per emitter: this is a single edit, so it
+                    // costs one reprojection and undoes in a single step.
+                    const model = await vfxDeleteEmitters(
+                        targetSessionId,
+                        system.emitters.map((e) => e.path),
+                    );
+                    applyTargetModel(model);
+                    setStatusMessage(`Deleted ${count} emitter${count === 1 ? '' : 's'} from "${system.particleName || system.name || systemKey}"`);
                 } catch (error) {
                     setStatusMessage(`Error deleting emitters: ${(error as Error).message}`);
                 }

@@ -119,6 +119,9 @@ fn file_kind_ext(kind: FileKind) -> Option<&'static str> {
         FileKind::Rman => "manifest",
         FileKind::Wpk => "wpk",
         FileKind::Bnk => "bnk",
+        FileKind::LuaBin | FileKind::LuaBin64 => "luabin",
+        FileKind::TroyBin => "troybin",
+        FileKind::Preload => "preload",
         FileKind::Unknown => return None,
     })
 }

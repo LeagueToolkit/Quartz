@@ -213,6 +213,7 @@ fn main() {
             commands::vfx_session::vfx_port_emitters,
             commands::vfx_session::vfx_port_system,
             commands::vfx_session::vfx_delete_emitter,
+            commands::vfx_session::vfx_delete_emitters,
             commands::vfx_session::vfx_delete_system,
             commands::vfx_session::vfx_set_matrix,
             commands::vfx_session::vfx_idle_add,

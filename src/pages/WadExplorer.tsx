@@ -754,7 +754,7 @@ function Landing({
             {hashStatus && !hashStatus.present && (
                 <div className="wad-hash-card"><Zap size={17} /><div><strong>Path hashes are not installed</strong><span>Archives still open, but unresolved files appear as hex.</span></div><button className="dl-btn dl-btn--sm dl-btn--secondary" disabled={hashBusy} onClick={onDownloadHashes}>{hashBusy ? 'Downloading…' : 'Download Hashes'}</button></div>
             )}
-            <RecentBinsList bins={recentWads} onOpen={onOpenPath} onRemove={removeRecentWad} />
+            <RecentBinsList bins={recentWads} onOpen={onOpenPath} onRemove={removeRecentWad} title="Recent WADs" />
         </div>
     );
 }

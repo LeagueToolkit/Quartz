@@ -43,8 +43,7 @@ impl VfxUndoFrame {
     }
 }
 
-/// Bounded push for the session's frame stacks. Local because
-/// `crate::undo::push_bounded` is monomorphic over `UndoFrame`.
+/// Bounded push for the session's frame stacks: evicts the oldest past `cap`.
 fn push_frame_bounded(stack: &mut Vec<VfxUndoFrame>, frame: VfxUndoFrame, cap: usize) {
     if stack.len() >= cap {
         stack.remove(0);

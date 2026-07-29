@@ -21,6 +21,10 @@ export interface BnkNode {
     audioData?: AudioData | null;
     children?: BnkNode[];
     isRoot?: boolean;
+    /** A folder the user created in the reference pane (not a loaded bank or an
+     *  event/wem container from the parsed tree). Only these are valid
+     *  "Add to Group" targets and drag-to-sort destinations. */
+    isFolder?: boolean;
     isModified?: boolean;
     originalPath?: string;
     bnkPath?: string;
@@ -31,7 +35,8 @@ export interface BnkNode {
 export interface ContextMenuState {
     mouseX: number;
     mouseY: number;
-    node: BnkNode;
+    /** Undefined when the menu was opened on empty pane space rather than a row. */
+    node?: BnkNode;
     pane: Pane;
 }
 
@@ -102,6 +107,8 @@ export interface AutoExtractRequest {
     outputPath: string | null;
     loadToTree: boolean;
     skinId?: string;
+    /** Which tree the parsed banks load into. Defaults to the main (left) pane. */
+    targetPane?: Pane;
 }
 
 export interface GameChampion {

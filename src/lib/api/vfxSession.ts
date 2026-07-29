@@ -257,6 +257,13 @@ export function vfxDeleteEmitter(sessionId: number, emitter: VfxPath): Promise<V
     return invokeCommand<VfxPortModel>('vfx_delete_emitter', { sessionId, emitter });
 }
 
+/** Delete several emitters as ONE edit: a single undo step and a single model
+ *  rebuild. Looping `vfxDeleteEmitter` instead costs one IPC round-trip plus a
+ *  full reprojection per emitter, and makes undo restore them one by one. */
+export function vfxDeleteEmitters(sessionId: number, emitters: VfxPath[]): Promise<VfxPortModel> {
+    return invokeCommand<VfxPortModel>('vfx_delete_emitters', { sessionId, emitters });
+}
+
 /** Remove a system entry and any resolver entries pointing at it. */
 export function vfxDeleteSystem(sessionId: number, system: VfxPath): Promise<VfxPortModel> {
     return invokeCommand<VfxPortModel>('vfx_delete_system', { sessionId, system });

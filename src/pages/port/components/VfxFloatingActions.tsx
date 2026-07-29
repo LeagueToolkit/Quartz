@@ -74,11 +74,13 @@ function VfxFloatingActions({
             return next;
         });
 
-    if (!hasTarget || isProcessing) return null;
+    // Stay MOUNTED while a task runs and disable instead. Unmounting here made
+    // the whole button cluster vanish and reappear on every edit.
+    if (!hasTarget) return null;
 
-    const pDis = !hasResourceResolver || !hasSkinCharacterData;
-    const nDis = !hasResourceResolver;
-    const paDis = disablePortAll || isPortAllLoading;
+    const pDis = isProcessing || !hasResourceResolver || !hasSkinCharacterData;
+    const nDis = isProcessing || !hasResourceResolver;
+    const paDis = isProcessing || disablePortAll || isPortAllLoading;
 
     const buttons = [
         ...(showPortAllButton
@@ -129,7 +131,7 @@ function VfxFloatingActions({
                   },
               ]
             : []),
-        { id: 'backup', color: 'var(--accent-secondary)', title: 'Backup History', icon: <FolderIcon sx={{ fontSize: 16 }} />, onClick: handleOpenBackupViewer, disabled: false },
+        { id: 'backup', color: 'var(--accent-secondary)', title: 'Backup History', icon: <FolderIcon sx={{ fontSize: 16 }} />, onClick: handleOpenBackupViewer, disabled: isProcessing },
     ];
 
     const ttSx = { fontFamily: 'var(--font-mono)', fontSize: '0.72rem' };

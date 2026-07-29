@@ -159,6 +159,18 @@ pub async fn vfx_delete_emitter(session_id: u64, emitter: VfxPath) -> Result<Vfx
         .map_err(|e| e.to_string())
 }
 
+/// Remove several emitters as one edit (one undo step, one reprojection).
+#[tauri::command]
+pub async fn vfx_delete_emitters(
+    session_id: u64,
+    emitters: Vec<VfxPath>,
+) -> Result<VfxPortModel, String> {
+    tokio::task::spawn_blocking(move || ops::delete_emitters(session_id, &emitters))
+        .await
+        .map_err(|e| format!("Delete emitters task failed to join: {}", e))?
+        .map_err(|e| e.to_string())
+}
+
 /// Remove a system entry and any resolver entries pointing at it.
 #[tauri::command]
 pub async fn vfx_delete_system(session_id: u64, system: VfxPath) -> Result<VfxPortModel, String> {

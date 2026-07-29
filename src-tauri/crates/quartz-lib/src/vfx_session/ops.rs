@@ -472,6 +472,91 @@ pub fn delete_emitter(id: SessionId, emitter: &VfxPath) -> Result<VfxPortModel> 
     })?
 }
 
+/// Delete several emitters in one pass: a single undo frame, a single
+/// reprojection.
+///
+/// Deleting N emitters by calling `delete_emitter` N times costs N IPC
+/// round-trips and N full `project()` rebuilds, and leaves N separate undo
+/// steps - so undoing a "delete all" restored emitters one at a time. This
+/// treats the whole set as one edit.
+///
+/// Paths are removed deepest-index-first within each parent list so that
+/// earlier removals cannot shift the indices of later ones.
+pub fn delete_emitters(id: SessionId, emitters: &[VfxPath]) -> Result<VfxPortModel> {
+    if emitters.is_empty() {
+        return Err(Error::InvalidInput("No emitters selected".to_string()));
+    }
+    session::with_session(id, |s| -> Result<VfxPortModel> {
+        // Validate every path up front so a bad one aborts before any mutation.
+        for emitter in emitters {
+            let Some((last, parent_steps)) = emitter.steps.split_last() else {
+                return Err(Error::InvalidInput(
+                    "Emitter path must end in a list index".to_string(),
+                ));
+            };
+            let Step::Index { index } = *last else {
+                return Err(Error::InvalidInput(
+                    "Emitter path must end in a list index".to_string(),
+                ));
+            };
+            let entry = emitter.entry_of(&mut s.bins).ok_or_else(|| {
+                Error::InvalidInput("Emitter path no longer resolves".to_string())
+            })?;
+            let resolves = matches!(
+                walk_steps(entry, parent_steps),
+                Some(BinValue::List { items, .. }) if index < items.len()
+            );
+            if !resolves {
+                return Err(Error::InvalidInput(
+                    "Emitter path no longer resolves".to_string(),
+                ));
+            }
+        }
+
+        // One frame covering every touched entry, so undo restores the whole
+        // batch in a single step.
+        let mut touched: Vec<(usize, Vec<usize>)> = Vec::new();
+        for emitter in emitters {
+            match touched.iter_mut().find(|(bin, _)| *bin == emitter.bin) {
+                Some((_, entries)) => {
+                    if !entries.contains(&emitter.entry) {
+                        entries.push(emitter.entry);
+                    }
+                }
+                None => touched.push((emitter.bin, vec![emitter.entry])),
+            }
+        }
+        let frame = s.capture(&touched);
+
+        // Remove highest list index first: a lower-index removal would shift
+        // every later element down and invalidate the remaining indices.
+        let mut ordered: Vec<&VfxPath> = emitters.iter().collect();
+        ordered.sort_by_key(|p| match p.steps.last() {
+            Some(Step::Index { index }) => std::cmp::Reverse(*index),
+            _ => std::cmp::Reverse(0),
+        });
+
+        for emitter in ordered {
+            let Some((last, parent_steps)) = emitter.steps.split_last() else {
+                continue;
+            };
+            let Step::Index { index } = *last else { continue };
+            let Some(entry) = emitter.entry_of(&mut s.bins) else {
+                continue;
+            };
+            if let Some(BinValue::List { items, .. }) = walk_steps(entry, parent_steps) {
+                if index < items.len() {
+                    items.remove(index);
+                }
+            }
+            s.mark_dirty(emitter.bin);
+        }
+
+        s.push_frame(frame);
+        Ok(project::project(s))
+    })?
+}
+
 /// Remove a whole system entry plus every resolver mapping whose Link targets
 /// its path hash.
 pub fn delete_system(id: SessionId, system: &VfxPath) -> Result<VfxPortModel> {

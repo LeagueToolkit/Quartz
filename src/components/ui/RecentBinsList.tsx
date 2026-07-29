@@ -34,17 +34,20 @@ function relativeTime(iso: string): string {
     return new Date(iso).toLocaleDateString();
 }
 
-export default function RecentBinsList({ bins, onOpen, onRemove }: {
+export default function RecentBinsList({ bins, onOpen, onRemove, title = 'Recent Bins' }: {
     bins: RecentBinEntry[];
     onOpen: (path: string) => void;
     onRemove: (path: string) => void;
+    /** Heading text. Callers listing something other than bins (e.g. WAD
+     *  Explorer's recent WADs) override it. */
+    title?: string;
 }) {
     if (bins.length === 0) return null;
 
     return (
         <div className="paint2-recent">
             <div className="paint2-recent__title">
-                <span>Recent Bins</span>
+                <span>{title}</span>
             </div>
             <div className="paint2-recent__list">
                 {bins.map((bin) => (

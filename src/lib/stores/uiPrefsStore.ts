@@ -140,10 +140,10 @@ export const useUiPrefsStore = create<UiPrefs>()(
             wallpaperVignetteStrength: 0.35,
             clickEffectEnabled: false,
             clickEffectType: 'water',
-            // Fresh installs start with Quartz's constellation atmosphere.
-            // Persisted preferences still win, so updates do not overwrite an
-            // existing user's enabled/type choices.
-            backgroundEffectEnabled: true,
+            // Fresh installs start with no background effect - it is opt-in from
+            // Settings. Persisted preferences still win, so an existing user who
+            // turned it on keeps it after an update.
+            backgroundEffectEnabled: false,
             backgroundEffectType: 'constellation',
             autoLoadEnabled: false,
             expandSystemsOnLoad: false,

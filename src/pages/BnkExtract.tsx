@@ -218,6 +218,9 @@ export function BnkExtract() {
     const [showAutoMatchModal, setShowAutoMatchModal] = useState(false);
     const [modDropModalOpen, setModDropModalOpen] = useState(false);
     const [pendingModFolder, setPendingModFolder] = useState<string | null>(null);
+    // Which pane the pending mod folder was dropped on, so the parsed banks load
+    // back into that pane rather than always the main one.
+    const pendingModFolderPane = useRef<Pane>('left');
     const [groupNameModalOpen, setGroupNameModalOpen] = useState(false);
     const [addToGroupModalOpen, setAddToGroupModalOpen] = useState(false);
     const [showGameBanksModal, setShowGameBanksModal] = useState(false);
@@ -439,6 +442,15 @@ export function BnkExtract() {
     const handleContextMenu = useCallback((e: React.MouseEvent, node: BnkNode, pane: Pane) => {
         e.preventDefault();
         setContextMenu({ mouseX: e.clientX, mouseY: e.clientY, node, pane });
+    }, []);
+
+    /* Right-click on empty pane space (not a row). Opens the same menu with no
+       target node, so only the pane-level actions show (e.g. New Folder). */
+    const handlePaneContextMenu = useCallback((e: React.MouseEvent, pane: Pane) => {
+        if ((e.target as HTMLElement).closest('[data-node-id]')) return; // a row handles its own
+        e.preventDefault();
+        setActivePane(pane);
+        setContextMenu({ mouseX: e.clientX, mouseY: e.clientY, pane });
     }, []);
 
     const getContextTargetIds = useCallback((): string[] => {
@@ -820,7 +832,9 @@ export function BnkExtract() {
         setShowConvertOverlay(false);
         if (children.length === 0) { setStatusMessage('No files imported'); return; }
         pushToHistory();
-        const group: BnkNode = { id: `refgroup_${Date.now()}`, name: `Imported (${children.length})`, children };
+        // A real folder: the row renders its own live count, so the name must not
+        // bake one in (it would go stale as soon as anything is moved in or out).
+        const group: BnkNode = { id: `refgroup_${Date.now()}`, name: 'Imported', children, isFolder: true };
         setRightTreeData((prev) => [...prev, group]);
         setRightExpandedNodes((prev) => new Set(prev).add(group.id));
         setActivePane('right');
@@ -1025,7 +1039,8 @@ export function BnkExtract() {
 
             if (req?.loadToTree !== false) {
                 pushToHistory();
-                setTreeData((prev) => [...prev, ...loaded]);
+                const setTree = req?.targetPane === 'right' ? setRightTreeData : setTreeData;
+                setTree((prev) => [...prev, ...loaded]);
             }
 
             if (req?.outputPath) {
@@ -1048,8 +1063,11 @@ export function BnkExtract() {
         }
     }, [pushToHistory, extractFormats, mp3Bitrate]);
 
-    const handleLeftPaneFolderDrop = useCallback((folderPath: string) => {
+    /* A mod folder dropped on either pane: ask which skin, then load the parsed
+       banks into the pane it was dropped on. */
+    const handleLeftPaneFolderDrop = useCallback((folderPath: string, pane: Pane = 'left') => {
         setPendingModFolder(folderPath);
+        pendingModFolderPane.current = pane;
         setModDropModalOpen(true);
     }, []);
 
@@ -1069,19 +1087,26 @@ export function BnkExtract() {
                 ...s,
                 modFolderName: s.type ? `${folderName}_${s.type}` : folderName,
             }));
-            await handleAutoExtractProcess({ batchFiles, outputPath: null, loadToTree: true, skinId: skinId ?? undefined });
+            await handleAutoExtractProcess({
+                batchFiles,
+                outputPath: null,
+                loadToTree: true,
+                skinId: skinId ?? undefined,
+                targetPane: pendingModFolderPane.current,
+            });
         } catch (e) {
             setStatusMessage(`Mod folder error: ${(e as Error).message}`);
         }
     }, [pendingModFolder, handleAutoExtractProcess]);
 
     // ── Groups (right pane) ───────────────────────────────────────────────────
+    /* Only user-created folders. Every parsed bank, event, and wem-id container
+       also has children, so matching on `children` alone listed the entire tree
+       as a drop target. */
     const collectRightGroups = useCallback((nodes: BnkNode[], result: BnkNode[] = []): BnkNode[] => {
         for (const node of nodes) {
-            if (!node.audioData && node.children) {
-                result.push(node);
-                collectRightGroups(node.children, result);
-            }
+            if (node.isFolder) result.push(node);
+            if (node.children) collectRightGroups(node.children, result);
         }
         return result;
     }, []);
@@ -1098,63 +1123,82 @@ export function BnkExtract() {
         return false;
     }, []);
 
+    /* Create an EMPTY folder in the reference pane. It deliberately does not move
+       the current selection into it - use "Add to Group..." or drag files in. */
     const handleCreateGroup = useCallback((groupName: string) => {
         setGroupNameModalOpen(false);
         pushToHistory();
-        const selectedIds = new Set(pendingGroupIds.current);
-        const collected: BnkNode[] = [];
-        const removeAndCollect = (nodes: BnkNode[]): BnkNode[] => {
-            const remaining: BnkNode[] = [];
-            for (const node of nodes) {
-                if (selectedIds.has(node.id)) collected.push(node);
-                else remaining.push(node.children ? { ...node, children: removeAndCollect(node.children) } : node);
-            }
-            return remaining;
-        };
-        const newTree = removeAndCollect(rightTreeData);
-        setRightTreeData([...newTree, { id: `group_${Date.now()}`, name: groupName, children: collected }]);
+        setRightTreeData((prev) => [...prev, { id: `group_${Date.now()}`, name: groupName, children: [], isFolder: true }]);
         setRightSelectedNodes(new Set());
-        setStatusMessage(`Grouped ${collected.length} file${collected.length !== 1 ? 's' : ''} into "${groupName}"`);
+        setStatusMessage(`Created folder "${groupName}"`);
+    }, [pushToHistory]);
+
+    /* Move sounds into a folder, or back out to the pane root (targetFolderId =
+       null). Only audio leaves move - folders and parsed bank/event containers
+       stay where they are, which keeps this a single lift-and-insert with no
+       self-containment cases to guard against. */
+    const handleMoveIntoGroup = useCallback((ids: string[], targetFolderId: string | null) => {
+        const wanted = new Set(ids);
+        if (wanted.size === 0) return;
+
+        // Lift only the audio leaves, leaving every container in place.
+        const lifted: BnkNode[] = [];
+        const lift = (nodes: BnkNode[]): BnkNode[] => {
+            const kept: BnkNode[] = [];
+            for (const n of nodes) {
+                if (wanted.has(n.id) && n.audioData) { lifted.push(n); continue; }
+                kept.push(n.children ? { ...n, children: lift(n.children) } : n);
+            }
+            return kept;
+        };
+        /* A user folder that just lost its last sound is dead weight, so drop it.
+           Parsed banks are kept even when empty - they are still the file you
+           loaded, and removing them would misrepresent what is open. */
+        const pruneEmptyFolders = (nodes: BnkNode[]): BnkNode[] => nodes
+            .map((n) => (n.children ? { ...n, children: pruneEmptyFolders(n.children) } : n))
+            .filter((n) => !(n.isFolder && n.id !== targetFolderId && (n.children?.length ?? 0) === 0));
+
+        const stripped = pruneEmptyFolders(lift(rightTreeData));
+        if (lifted.length === 0) { setStatusMessage('Only sounds can be moved into folders'); return; }
+
+        const label = lifted.length === 1 ? `"${lifted[0].name}"` : `${lifted.length} sounds`;
+
+        pushToHistory();
+        setRightSelectedNodes(new Set());
+
+        if (!targetFolderId) {
+            setRightTreeData([...stripped, ...lifted]);
+            setStatusMessage(`Moved ${label} out of folders`);
+            return;
+        }
+
+        let folderName = '';
+        const insert = (nodes: BnkNode[]): BnkNode[] => nodes.map((n) => {
+            if (n.id === targetFolderId) {
+                folderName = n.name;
+                return { ...n, children: [...(n.children ?? []), ...lifted] };
+            }
+            return n.children ? { ...n, children: insert(n.children) } : n;
+        });
+        const next = insert(stripped);
+        // Target still exists (folders are never lifted), but stay defensive.
+        setRightTreeData(folderName ? next : [...stripped, ...lifted]);
+        setStatusMessage(folderName ? `Moved ${label} into "${folderName}"` : `Moved ${label}`);
+        // Reveal the result.
+        if (folderName) setRightExpandedNodes((prev) => new Set(prev).add(targetFolderId));
     }, [rightTreeData, pushToHistory]);
 
     const handleAddToGroup = useCallback((groupId: string) => {
         setAddToGroupModalOpen(false);
-        pushToHistory();
-        const selectedIds = new Set(pendingGroupIds.current);
-        const collected: BnkNode[] = [];
-        const removeAndCollect = (nodes: BnkNode[]): BnkNode[] => {
-            const remaining: BnkNode[] = [];
-            for (const node of nodes) {
-                if (selectedIds.has(node.id)) collected.push(node);
-                else remaining.push(node.children ? { ...node, children: removeAndCollect(node.children) } : node);
-            }
-            return remaining;
-        };
-        const insertIntoGroup = (nodes: BnkNode[]): BnkNode[] => nodes.map((node) => {
-            if (node.id === groupId) return { ...node, children: [...(node.children || []), ...collected] };
-            if (node.children) return { ...node, children: insertIntoGroup(node.children) };
-            return node;
-        });
-        setRightTreeData(insertIntoGroup(removeAndCollect(rightTreeData)));
-        setRightSelectedNodes(new Set());
-        setStatusMessage(`Added ${collected.length} file${collected.length !== 1 ? 's' : ''} to group`);
-    }, [rightTreeData, pushToHistory]);
+        // Same operation as a drag onto the folder - share one implementation so
+        // the menu and drag paths cannot drift apart.
+        handleMoveIntoGroup(pendingGroupIds.current, groupId);
+    }, [handleMoveIntoGroup]);
 
+    /* Move sounds back out of their folder to the pane root. */
     const handleRemoveFromGroup = useCallback(() => {
-        pushToHistory();
-        const selectedIds = new Set(pendingGroupIds.current);
-        const removed: BnkNode[] = [];
-        const strip = (nodes: BnkNode[]): BnkNode[] => nodes
-            .map((node): BnkNode | null => {
-                if (selectedIds.has(node.id)) { removed.push(node); return null; }
-                if (node.children) return { ...node, children: strip(node.children).filter(Boolean) as BnkNode[] };
-                return node;
-            })
-            .filter(Boolean) as BnkNode[];
-        setRightTreeData([...strip(rightTreeData), ...removed]);
-        setRightSelectedNodes(new Set());
-        setStatusMessage(`Removed ${removed.length} file${removed.length !== 1 ? 's' : ''} from group`);
-    }, [rightTreeData, pushToHistory]);
+        handleMoveIntoGroup(pendingGroupIds.current, null);
+    }, [handleMoveIntoGroup]);
 
     // ── Game banks ────────────────────────────────────────────────────────────
     const handleConfirmGameBanks = useCallback(async ({ champion, skinIds, selections, includeVoiceover, includeSfx }: GameBanksConfirm) => {
@@ -1252,10 +1296,8 @@ export function BnkExtract() {
             const { applyExternalFiles: applyFn, importReferenceFiles: importFn, handleLeftPaneFolderDrop: folderFn } = dropHandlersRef.current;
             const audioPaths = paths.filter((p) => /\.(wem|wav|ogg|mp3)$/i.test(p));
 
-            const leftEl = document.querySelector('.bnk-extract-tree');
             const rightEl = document.querySelector('.bnk-extract-tree-right');
             const overRight = rectContains(rightEl, pos);
-            const overLeft = !overRight && rectContains(leftEl, pos);
 
             // A specific tree row under the cursor → replace that node's audio.
             const nodeEl = (document.elementFromPoint(pos.x, pos.y) as Element | null)?.closest('[data-node-id]');
@@ -1266,27 +1308,20 @@ export function BnkExtract() {
                 return;
             }
 
-            // Reference (right) pane → import dropped audio as a reference group.
-            if (overRight) {
-                if (audioPaths.length === 0) { setStatusMessage('Drop .wem/.wav/.ogg/.mp3 files into the reference pane'); return; }
-                void importFn(audioPaths);
-                return;
-            }
-
-            // Main (left) pane (or anywhere else): a dropped directory is a mod
-            // folder for the auto-extract scan; loose audio files import as ref.
-            if (overLeft || (!overRight && !overLeft)) {
-                void (async () => {
-                    for (const p of paths) {
-                        try {
-                            const info = await invoke<{ isDir: boolean }>('explorer_resolve_path', { path: p });
-                            if (info?.isDir) { folderFn(p); return; }
-                        } catch (e) { log.error('[BnkExtract] resolve path failed', e); }
-                    }
-                    if (audioPaths.length > 0) importFn(audioPaths);
-                    else setStatusMessage('Drop a mod folder, or .wem/.wav/.ogg/.mp3 files');
-                })();
-            }
+            // Either pane accepts a mod folder (loaded into the pane it was dropped
+            // on) or loose audio. Only the extension check differs, so resolve the
+            // directory case first for both.
+            const pane: Pane = overRight ? 'right' : 'left';
+            void (async () => {
+                for (const p of paths) {
+                    try {
+                        const info = await invoke<{ isDir: boolean }>('explorer_resolve_path', { path: p });
+                        if (info?.isDir) { folderFn(p, pane); return; }
+                    } catch (e) { log.error('[BnkExtract] resolve path failed', e); }
+                }
+                if (audioPaths.length > 0) { importFn(audioPaths); return; }
+                setStatusMessage('Drop a mod folder, or .wem/.wav/.ogg/.mp3 files');
+            })();
         },
     });
 
@@ -1355,6 +1390,8 @@ export function BnkExtract() {
                 handleNodeSelect={handleNodeSelect}
                 playAudio={(n) => void playAudio(n)}
                 handleContextMenu={handleContextMenu}
+                handlePaneContextMenu={handlePaneContextMenu}
+                handleMoveIntoGroup={handleMoveIntoGroup}
                 expandedNodes={expandedNodes}
                 handleToggleExpand={handleToggleExpand}
                 handleDropReplace={handleDropReplace}
@@ -1488,7 +1525,9 @@ export function BnkExtract() {
                 onDeleteNode={handleDeleteNode}
                 onCopyName={handleCopyName}
                 onCreateGroup={() => { pendingGroupIds.current = getContextTargetIds(); handleCloseContextMenu(); setGroupNameModalOpen(true); }}
-                showCreateGroup={contextMenu?.pane === 'right' && !!contextMenu?.node?.id}
+                // Creates an empty folder, so it is offered anywhere in the
+                // reference pane - including a right-click on blank space.
+                showCreateGroup={contextMenu?.pane === 'right'}
                 onAddToGroup={() => { pendingGroupIds.current = getContextTargetIds(); handleCloseContextMenu(); setAddToGroupModalOpen(true); }}
                 showAddToGroup={contextMenu?.pane === 'right' && !!contextMenu?.node?.id && collectRightGroups(rightTreeData).length > 0}
                 onRemoveFromGroup={() => { pendingGroupIds.current = getContextTargetIds(); handleCloseContextMenu(); handleRemoveFromGroup(); }}

@@ -974,6 +974,22 @@ pub fn read(text: &str) -> std::result::Result<Bin, Vec<ParseError>> {
     let mut reader = TextReader::new(text);
     let mut bin = Bin::new();
 
+    /* Seed `type` from the `#PROP_text` / `#PTCH_text` header.
+       ritobin historically emitted a redundant `type: string = "PROP"` section,
+       but ritoshark's writer (which Port saves through) encodes PROP vs PTCH in
+       the header line ALONE. The header is skipped here as a comment, so without
+       this the section is simply absent and `writer::write` fails with
+       "Missing 'type' section". An explicit `type:` line later in the file still
+       overwrites this, so both dialects round-trip. */
+    let header = text.trim_start();
+    if header.starts_with("#PTCH") {
+        bin.sections
+            .insert("type".to_string(), BinValue::String("PTCH".to_string()));
+    } else if header.starts_with("#PROP") {
+        bin.sections
+            .insert("type".to_string(), BinValue::String("PROP".to_string()));
+    }
+
     reader.skip_whitespace_and_comments();
     while !reader.is_eof() {
         if !reader.read_section(&mut bin) {

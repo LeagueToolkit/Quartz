@@ -67,10 +67,3 @@ impl UndoFrame {
     }
 }
 
-/// Push a frame onto a bounded undo stack, evicting the oldest past `cap`.
-pub fn push_bounded(stack: &mut Vec<UndoFrame>, frame: UndoFrame, cap: usize) {
-    if stack.len() >= cap {
-        stack.remove(0);
-    }
-    stack.push(frame);
-}
