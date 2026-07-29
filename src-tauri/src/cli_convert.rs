@@ -37,6 +37,28 @@ pub fn try_run() -> Option<i32> {
         });
     }
 
+    // Folder variant: one invocation with a single directory path. Merges every
+    // `.bin` directly inside that folder (non-recursive) into `merged.bin`. No
+    // batching needed — Explorer fires this once when the user right-clicks
+    // the folder itself.
+    if verb == "merge-bins-folder" {
+        attach_console();
+        let dir = args
+            .get(2)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(""));
+        return Some(match merge_bins_folder_verb(&dir) {
+            Ok(msg) => {
+                println!("Quartz: {msg}");
+                0
+            }
+            Err(e) => {
+                eprintln!("Quartz: merge-bins-folder failed — {e}");
+                1
+            }
+        });
+    }
+
     if !is_convert_verb(verb) {
         return None;
     }
@@ -465,6 +487,72 @@ fn merge_bins_verb(paths: &[PathBuf]) -> Result<String, String> {
         },
         Err(e) => log_line(&format!("  round-trip disk read failed: {e}")),
     }
+    Ok(msg)
+}
+
+/// Fold every `.bin` sitting directly in `dir` (non-recursive) into
+/// `<dir>/merged.bin`. The pre-existing `merged.bin` is excluded from the
+/// inputs so re-running never feeds the output back into itself. Requires ≥2
+/// input bins.
+fn merge_bins_folder_verb(dir: &Path) -> Result<String, String> {
+    const OUTPUT_NAME: &str = "merged.bin";
+
+    log_line(&format!("folder invocation: {}", dir.display()));
+
+    if !dir.is_dir() {
+        return Err(format!("not a directory: {}", dir.display()));
+    }
+
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| format!("read {}: {}", dir.display(), e))?;
+    let mut inputs: Vec<PathBuf> = entries
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s.eq_ignore_ascii_case("bin"))
+                .unwrap_or(false)
+        })
+        .filter(|p| {
+            p.file_name()
+                .and_then(|s| s.to_str())
+                .map(|s| !s.eq_ignore_ascii_case(OUTPUT_NAME))
+                .unwrap_or(true)
+        })
+        .collect();
+
+    if inputs.len() < 2 {
+        return Err(format!(
+            "need at least 2 .bin files in {} (found {})",
+            dir.display(),
+            inputs.len()
+        ));
+    }
+
+    // Deterministic order — Windows `read_dir` order is not stable.
+    inputs.sort();
+
+    let out = dir.join(OUTPUT_NAME);
+    let stats = quartz_lib::bin::merge_bins(&inputs, &out).map_err(|e| e.to_string())?;
+    for (p, entries_n, linked) in &stats.per_input {
+        log_line(&format!(
+            "  input: {} — {} entries, {} linked",
+            p.display(),
+            entries_n,
+            linked
+        ));
+    }
+    let msg = format!(
+        "merged {} bin(s) → {} ({} entries, {} duplicate(s) dropped, {} linked deps)",
+        stats.inputs,
+        OUTPUT_NAME,
+        stats.entries_written,
+        stats.duplicates_skipped,
+        stats.linked_deps,
+    );
+    log_line(&msg);
     Ok(msg)
 }
 

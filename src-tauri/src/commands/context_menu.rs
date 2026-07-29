@@ -25,7 +25,9 @@ mod imp {
     // + `sco2scbdir` folder verb ported from Quartz 3.6).
     // Bumped 8 -> 9 to drop the "SCO→SCB: " prefix on the folder verb label.
     // Bumped 9 -> 10 to relabel both .sco verbs to "Quartz: Convert all .sco to .scb".
-    const MENU_SCHEMA: u32 = 10;
+    // Bumped 10 -> 11 for the new folder verb "Merge all .bin in this folder".
+    // Bumped 11 -> 12 to relabel that folder verb to "Quartz: Merge all BINs".
+    const MENU_SCHEMA: u32 = 12;
 
     /// A single child verb inside the Quartz submenu.
     struct Verb {
@@ -174,6 +176,9 @@ mod imp {
         v("14png2texdir", "QuartzTex: All .png to .tex", "png2texdir"),
         v("15png2ddsdir", "QuartzTex: All .png to .dds", "png2ddsdir"),
         vs("16sco2scbdir", "Quartz: Convert all .sco to .scb", "sco2scbdir"),
+        // Merge every .bin directly in the clicked folder (non-recursive) into
+        // `merged.bin`. See cli_convert::merge_bins_folder_verb.
+        vs("17mergebinsfolder", "Quartz: Merge all BINs", "merge-bins-folder"),
         vs(
             "20packwadclient",
             "WadTool: Pack to .wad.client",
