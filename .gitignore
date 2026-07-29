@@ -45,3 +45,4 @@ Flint-ref/
 
 # Agent tooling scratch (progress ledgers, etc.)
 .superpowers/
+.codex-analysis/
