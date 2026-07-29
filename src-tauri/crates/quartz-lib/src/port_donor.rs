@@ -527,8 +527,18 @@ fn find_extracted_model_assets(
 /// extract_skin nests everything in an auto-named wrapper dir, and the skin BIN
 /// can live under either a `data/` or `assets/` root with `skinN` or `skin0N`
 /// spelling — so we walk the tree and match by shape rather than a fixed path.
-fn find_extracted_skin_bin(root: &Path, _champ: &str, skin: u32) -> Option<PathBuf> {
+fn find_extracted_skin_bin(root: &Path, champ: &str, skin: u32) -> Option<PathBuf> {
     let want_files = [format!("skin{skin}.bin"), format!("skin{skin:02}.bin")];
+    // The extraction is NOT single-character: champions with a buddy/pet
+    // (Milio+MilioMinion, Annie+Tibbers, Kindred+Wolf, ...) drop a `skin<N>.bin`
+    // for EACH character. A blind first-match walk can return the near-empty
+    // sub-character bin, opening an empty donor. So prefer the bin whose
+    // `/characters/<folder>/` matches the requested champion; only fall back to
+    // any shape-valid match when the champion's own bin isn't present.
+    let want_champ = champ.to_lowercase();
+    let champ_segment = format!("/characters/{want_champ}/");
+
+    let mut any_match: Option<PathBuf> = None;
 
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -549,15 +559,21 @@ fn find_extracted_skin_bin(root: &Path, _champ: &str, skin: u32) -> Option<PathB
             if !want_files.contains(&name) {
                 continue;
             }
-            // Must be a champion skins/ bin (the extraction is champion-scoped,
-            // so we don't need to re-check the champ name — just the shape).
             let norm = p.to_string_lossy().replace('\\', "/").to_lowercase();
-            if norm.contains("/characters/") && norm.contains("/skins/") {
+            if !(norm.contains("/characters/") && norm.contains("/skins/")) {
+                continue;
+            }
+            // Exact champion folder wins immediately.
+            if norm.contains(&champ_segment) {
                 return Some(p);
+            }
+            // Otherwise remember the first shape-valid match as a fallback.
+            if any_match.is_none() {
+                any_match = Some(p);
             }
         }
     }
-    None
+    any_match
 }
 
 /// Delete a previously created donor temp cache root.
@@ -574,5 +590,99 @@ mod tests {
         assert_eq!(normalize_skin_id(0), 0);
         assert_eq!(normalize_skin_id(14), 14);
         assert_eq!(normalize_skin_id(14001), 1);
+    }
+
+    /// Build a throwaway tree under a unique temp dir and touch each given rel
+    /// file (creating parents). Returns the tree root. No external test deps.
+    fn scratch_tree(tag: &str, rels: &[&str]) -> PathBuf {
+        // Unique-per-test dir name from the tag + a compile-time counter so
+        // parallel test runs don't collide (no Date/rand available here).
+        let root = std::env::temp_dir().join(format!("quartz_donor_test_{tag}"));
+        let _ = std::fs::remove_dir_all(&root);
+        for rel in rels {
+            let p = root.join(rel);
+            if let Some(parent) = p.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(&p, b"bin").unwrap();
+        }
+        root
+    }
+
+    /// The wrapper folder the extractor nests output in, e.g.
+    /// `milio_skin0_extracted/data/characters/milio/skins/skin0.bin`.
+    /// A NON-base skin under this exact layout must be found.
+    #[test]
+    fn find_extracted_skin_bin_finds_nonbase() {
+        let root = scratch_tree(
+            "nonbase",
+            &["milio_skin1_extracted/data/characters/milio/skins/skin1.bin"],
+        );
+        let found = find_extracted_skin_bin(&root, "milio", 1);
+        assert!(found.is_some(), "skin1 should resolve under skins/");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// REPRO: base Milio. The Asset Extractor pipeline succeeds because
+    /// `skin_bin_match` parses digits and accepts `skin0.bin`. This asserts the
+    /// donor finder ALSO resolves the base skin from the same on-disk layout.
+    #[test]
+    fn find_extracted_skin_bin_finds_base_milio() {
+        let root = scratch_tree(
+            "base_skins",
+            &["milio_skin0_extracted/data/characters/milio/skins/skin0.bin"],
+        );
+        let found = find_extracted_skin_bin(&root, "milio", 0);
+        assert!(
+            found.is_some(),
+            "base Milio (skin0) must resolve from data/characters/milio/skins/skin0.bin"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// THE base-Milio "opens empty" bug. Champions with a buddy/pet extract a
+    /// `skin0.bin` for BOTH characters. The finder must return the CHAMPION's
+    /// bin (`milio`), never the near-empty sub-character bin (`miliominion`) —
+    /// which is what the live log showed being opened as the donor's main bin.
+    #[test]
+    fn find_extracted_skin_bin_prefers_champion_over_buddy() {
+        // `miliominion` deliberately listed first so a naive first-match walk
+        // would pick it. Order of touch mimics readdir returning the buddy.
+        let root = scratch_tree(
+            "buddy_skins",
+            &[
+                "milio_skin0_extracted/data/characters/miliominion/skins/skin0.bin",
+                "milio_skin0_extracted/data/characters/milio/skins/skin0.bin",
+            ],
+        );
+        let found = find_extracted_skin_bin(&root, "milio", 0)
+            .expect("a skin0.bin must resolve");
+        let norm = found.to_string_lossy().replace('\\', "/").to_lowercase();
+        assert!(
+            norm.contains("/characters/milio/skins/"),
+            "must open milio's bin, not the buddy's — got {norm}"
+        );
+        assert!(
+            !norm.contains("/miliominion/"),
+            "must NOT open miliominion's near-empty bin — got {norm}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The buddy-only case: if somehow only the sub-character bin exists, fall
+    /// back to it rather than failing outright (better a partial donor than
+    /// none).
+    #[test]
+    fn find_extracted_skin_bin_falls_back_when_champ_absent() {
+        let root = scratch_tree(
+            "buddy_only",
+            &["milio_skin0_extracted/data/characters/miliominion/skins/skin0.bin"],
+        );
+        let found = find_extracted_skin_bin(&root, "milio", 0);
+        assert!(
+            found.is_some(),
+            "fall back to any shape-valid skin bin when the champ's own is missing"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

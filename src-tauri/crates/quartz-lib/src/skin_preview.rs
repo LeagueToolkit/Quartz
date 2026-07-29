@@ -264,6 +264,14 @@ pub fn resolve_disk_textures(
 /// `assets/.../characters/X/skins/base/foo.skn` maps to
 /// `data/characters/X/skins/skin0.bin` (`skinNN` maps to `skinN.bin`).
 pub fn find_skin_bin(skn_path: &Path) -> Option<(PathBuf, PathBuf)> {
+    find_skin_bin_indexed(skn_path).map(|(bin, root, _)| (bin, root))
+}
+
+/// As `find_skin_bin`, additionally reporting the resolved skin index so callers
+/// can target that skin's `SkinCharacterDataProperties` (`skinNN` -> N, `base` ->
+/// 0). A champion's combined data bin holds EVERY skin's SCDP, so the index is
+/// required to bind the right one.
+pub fn find_skin_bin_indexed(skn_path: &Path) -> Option<(PathBuf, PathBuf, u32)> {
     let assets_dir = skn_path.ancestors().find(|path| {
         path.file_name()
             .and_then(|name| name.to_str())
@@ -300,7 +308,7 @@ pub fn find_skin_bin(skn_path: &Path) -> Option<(PathBuf, PathBuf)> {
         .join("skins");
     let exact = skins_dir.join(format!("skin{skin}.bin"));
     if exact.is_file() {
-        return Some((exact, project_root));
+        return Some((exact, project_root, skin));
     }
     let fallback = std::fs::read_dir(&skins_dir)
         .ok()?
@@ -311,14 +319,62 @@ pub fn find_skin_bin(skn_path: &Path) -> Option<(PathBuf, PathBuf)> {
                 && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("bin"))
                 && path.file_stem().is_some_and(|stem| stem.to_string_lossy().to_ascii_lowercase().starts_with("skin"))
         })?;
-    Some((fallback, project_root))
+    Some((fallback, project_root, skin))
+}
+
+/// Sibling bins that may hold the `StaticMaterialDef`s a skin bin links to.
+/// A skin's material defs frequently live in a DIFFERENT bin than its SCDP
+/// (see `resolve_skin_preview_combined`), so the disk resolver must feed the
+/// whole `data/characters/<champ>/skins/` set to the resolver, not just the one
+/// skin bin. `primary` is returned first so first-definition-wins prefers it.
+fn sibling_skin_bins(primary: &Path) -> Vec<PathBuf> {
+    let mut bins = vec![primary.to_path_buf()];
+    let Some(dir) = primary.parent() else { return bins };
+    let mut siblings: Vec<PathBuf> = match std::fs::read_dir(dir) {
+        Ok(entries) => entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.is_file()
+                    && path != primary
+                    && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("bin"))
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+    // Stable order so resolution is deterministic across runs.
+    siblings.sort();
+    bins.extend(siblings);
+    bins
 }
 
 pub fn resolve_skn_disk_preview(skn_path: &Path) -> Option<(SkinPreviewDefinition, HashMap<String, String>)> {
-    let (bin_path, root) = find_skin_bin(skn_path)?;
-    let bytes = std::fs::read(bin_path).ok()?;
-    let bin = crate::bin::read_bin(&bytes).ok()?;
-    let definition = resolve_skin_preview(&bin)?;
+    let (bin_path, root, skin) = find_skin_bin_indexed(skn_path)?;
+    // Parse the skin bin AND its siblings: the `StaticMaterialDef`s that the
+    // base/override `Material` links point to often live in a different bin, and
+    // resolving against one bin alone silently yields no base texture (every
+    // submesh then falls back to a flat palette colour in the viewer).
+    let bins: Vec<Bin> = sibling_skin_bins(&bin_path)
+        .into_iter()
+        .filter_map(|path| crate::bin::read_bin(&std::fs::read(path).ok()?).ok())
+        .collect();
+    if bins.is_empty() {
+        return None;
+    }
+    // Target this skin's SCDP by path: a combined champion data bin holds every
+    // skin's SCDP, so the untargeted resolver would bind skin0's materials.
+    let champion = skn_path.ancestors().find_map(|path| {
+        let parent = path.parent()?;
+        parent
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| name.eq_ignore_ascii_case("characters"))
+            .and(path.file_name().and_then(|name| name.to_str()))
+    });
+    let definition = champion
+        .map(|champion| format!("characters/{champion}/skins/skin{skin}").to_ascii_lowercase())
+        .and_then(|target| resolve_skin_preview_for(&bins, &target))
+        .or_else(|| resolve_skin_preview_combined(&bins))?;
     let textures = resolve_disk_textures(&definition, &root);
     Some((definition, textures))
 }
@@ -330,13 +386,17 @@ pub fn resolve_skn_disk_animations(skn_path: &Path) -> Vec<String> {
     let Some((bin_path, root)) = find_skin_bin(skn_path) else {
         return Vec::new();
     };
-    let Ok(bytes) = std::fs::read(&bin_path) else {
-        return Vec::new();
-    };
-    let Ok(bin) = crate::bin::read_bin(&bytes) else {
-        return Vec::new();
-    };
-    resolve_animations(&bin)
+    // Same multi-bin treatment as the preview resolver: a skin's AnimationGraphData
+    // may live in a sibling bin.
+    let mut found = Vec::new();
+    for path in sibling_skin_bins(&bin_path) {
+        let Ok(bytes) = std::fs::read(&path) else { continue };
+        let Ok(bin) = crate::bin::read_bin(&bytes) else { continue };
+        found.extend(resolve_animations(&bin));
+    }
+    let mut seen = std::collections::HashSet::new();
+    found.retain(|p| seen.insert(p.to_ascii_lowercase()));
+    found
         .into_iter()
         .filter_map(|asset| {
             let path = resolve_asset_path(&root, &asset);

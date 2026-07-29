@@ -37,26 +37,35 @@ export default function PortBottomControls({
     actions = [],
 }: PortBottomControlsProps) {
     const canSave = !isProcessing && hasChangesToSave();
-    const showActions = hasTarget && !isProcessing && actions.length > 0;
+    // Keep the action buttons MOUNTED whenever there's a target. Every port/
+    // delete/save/undo runs through a task that briefly flips `isProcessing`
+    // true→false; if that gated the group's *mount*, the whole button row would
+    // unmount and remount on every action — the buttons "despawn"/flicker (e.g.
+    // pressing Undo). So gate only their *enabled* state on `isProcessing`, not
+    // their presence.
+    const showActions = hasTarget && actions.length > 0;
 
     return (
         <div className="port-bottom-bar">
             <div className="port-bottom-bar__actions port-bottom-bar__actions--left">
                 {showActions &&
-                    actions.map(({ id, title, color, icon, onClick, disabled }) => (
+                    actions.map(({ id, title, color, icon, onClick, disabled }) => {
+                        const isDisabled = disabled || isProcessing;
+                        return (
                         <Tooltip key={id} title={title} arrow placement="top" componentsProps={{ tooltip: { sx: { fontFamily: 'var(--font-mono)', fontSize: '0.72rem' } } }}>
                             <span>
                                 <button
                                     className="port-action-btn"
-                                    onClick={disabled ? undefined : onClick}
-                                    disabled={disabled}
+                                    onClick={isDisabled ? undefined : onClick}
+                                    disabled={isDisabled}
                                     style={{ '--action-color': color } as React.CSSProperties}
                                 >
                                     {icon}
                                 </button>
                             </span>
                         </Tooltip>
-                    ))}
+                        );
+                    })}
             </div>
 
             <span className="port-bottom-bar__status">{statusMessage}</span>

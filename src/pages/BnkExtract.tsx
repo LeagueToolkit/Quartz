@@ -55,6 +55,47 @@ const MP3_KEY = 'bnk-extract-mp3-bitrate';
 /* One pane's BIN/Audio(WPK)/Events(BNK) file paths. */
 export type PathSet = { bin: string; wpk: string; bnk: string };
 
+// ── playback format sniffing ─────────────────────────────────────────────────
+/* WAVE format tags the browser's <audio> can actually decode. A Wwise WEM is
+   also a RIFF/WAVE file, but its fmt tag is a Wwise codec (0xFFFF extensible
+   Vorbis, 0x0166 XMA, ...) that Chromium cannot play, so the container magic
+   alone is not enough to decide. */
+const PLAYABLE_WAVE_FORMATS = new Set([
+    0x0001, // PCM
+    0x0003, // IEEE float
+    0x0006, // A-law
+    0x0007, // mu-law
+]);
+
+/** Read the `fmt ` chunk's format tag from a RIFF/WAVE buffer, or null if the
+ *  buffer has no readable `fmt ` chunk. Walks the chunk list rather than
+ *  assuming `fmt ` sits at offset 20, since WEMs often carry other chunks first. */
+function waveFormatTag(bytes: Uint8Array): number | null {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let offset = 12; // past "RIFF" + size + "WAVE"
+    while (offset + 8 <= bytes.length) {
+        const id = String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
+        const size = view.getUint32(offset + 4, true);
+        if (id === 'fmt ') {
+            return offset + 10 <= bytes.length ? view.getUint16(offset + 8, true) : null;
+        }
+        // Chunks are word-aligned.
+        offset += 8 + size + (size & 1);
+    }
+    return null;
+}
+
+/** Can this buffer go straight to <audio>, or must Rust decode it first? */
+function browserPlayable(bytes: Uint8Array): boolean {
+    if (bytes.length < 12) return false;
+    const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (magic === 'OggS') return true;
+    if (magic === 'ID3' || (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0)) return true; // MP3
+    if (magic !== 'RIFF') return false;
+    const tag = waveFormatTag(bytes);
+    return tag !== null && PLAYABLE_WAVE_FORMATS.has(tag);
+}
+
 // ── tree helpers ─────────────────────────────────────────────────────────────
 function findNode(nodes: BnkNode[], id: string): BnkNode | null {
     for (const n of nodes) {
@@ -189,6 +230,9 @@ export function BnkExtract() {
         return saved !== null ? parseInt(saved, 10) : 100;
     });
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    // Object URL of the clip currently loaded into `audioRef`, so it can be
+    // revoked when playback stops or another clip replaces it.
+    const playingUrlRef = useRef<string | null>(null);
     const codebookDataRef = useRef<Uint8Array | null>(null);
 
     const pendingConversion = useRef<{ filePath: string; targetNodeId: string } | null>(null);
@@ -253,6 +297,10 @@ export function BnkExtract() {
             audioRef.current.pause();
             audioRef.current.removeAttribute('src');
         }
+        if (playingUrlRef.current) {
+            URL.revokeObjectURL(playingUrlRef.current);
+            playingUrlRef.current = null;
+        }
         setStatusMessage('Playback stopped');
     }, []);
 
@@ -262,28 +310,32 @@ export function BnkExtract() {
         try {
             setStatusMessage(`Playing ${node.name}...`);
             const raw = node.audioData.data;
-            const nameLower = node.name.toLowerCase();
-            let playable: Uint8Array | null = null;
-
-            if ((nameLower.endsWith('.wav') || nameLower.endsWith('.ogg')) && raw.length >= 4) {
-                const magic = String.fromCharCode(raw[0], raw[1], raw[2], raw[3]);
-                if (magic === 'RIFF' || magic === 'OggS') playable = raw;
-            }
-            if (!playable) {
+            // Decide by INSPECTING the bytes, never by the node name: an imported
+            // file keeps its original `.wav`/`.mp3` name while its bytes are
+            // transcoded to WEM, and a WEM is itself a RIFF container. Trusting
+            // the extension handed raw Wwise-Vorbis to <audio> as audio/wav,
+            // which fails with NotSupportedError.
+            const playable = browserPlayable(raw)
+                ? raw
                 // Decode the WEM to a playable OGG/WAV container in Rust.
-                playable = await wemToPlayable(raw, codebookDataRef.current);
-            }
+                : await wemToPlayable(raw, codebookDataRef.current);
             if (!playable || playable.length === 0) {
                 setStatusMessage(`Cannot decode ${node.name} for playback`);
                 return;
             }
-            const isWav = playable[0] === 0x52 && playable[1] === 0x49 && playable[2] === 0x46 && playable[3] === 0x46;
-            const blob = new Blob([playable as BlobPart], { type: isWav ? 'audio/wav' : 'audio/ogg' });
+            const magic = String.fromCharCode(playable[0], playable[1], playable[2], playable[3]);
+            const mime = magic === 'RIFF' ? 'audio/wav' : magic === 'OggS' ? 'audio/ogg' : 'audio/mpeg';
+            const blob = new Blob([playable as BlobPart], { type: mime });
             const url = URL.createObjectURL(blob);
+            // Release the previous clip's blob before replacing it.
+            if (playingUrlRef.current) URL.revokeObjectURL(playingUrlRef.current);
+            playingUrlRef.current = url;
             if (!audioRef.current) audioRef.current = new Audio();
             audioRef.current.src = url;
             audioRef.current.volume = volume / 100;
-            audioRef.current.onended = () => { URL.revokeObjectURL(url); setStatusMessage('Ready'); };
+            // The URL stays alive (owned by playingUrlRef) so the clip can be
+            // replayed; it is revoked when another clip loads or playback stops.
+            audioRef.current.onended = () => setStatusMessage('Ready');
             await audioRef.current.play();
         } catch (e) {
             log.error('[BnkExtract] playback error', e);

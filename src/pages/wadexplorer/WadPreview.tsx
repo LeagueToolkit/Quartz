@@ -183,11 +183,11 @@ function TextureGallery({ files, wadPath }: { files: WadFileNode[]; wadPath: str
     );
 }
 
-export function WadPreview({ selected, runtime, onClose, onOpenBinEditor, onExtract }: {
+export function WadPreview({ selected, runtime, onClose, onOpenInJade, onExtract }: {
     selected: SelectedWadNode;
     runtime: WadRuntimeState;
     onClose: () => void;
-    onOpenBinEditor: (file: WadFileNode) => void;
+    onOpenInJade: (file: WadFileNode) => void;
     onExtract: (file: WadFileNode) => void;
 }) {
     const node = selected.node;
@@ -262,11 +262,14 @@ export function WadPreview({ selected, runtime, onClose, onOpenBinEditor, onExtr
                 subtitle={node.path}
                 onClose={onClose}
             />
-            <div className="wad-preview__actions">
-                <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={() => onExtract(node)}><Download size={13} /> Extract</button>
-                {binLike && <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={() => onOpenBinEditor(node)}><FileCode2 size={13} /> Open in Bin Editor</button>}
-                {prepared && <button className="dl-btn dl-btn--sm dl-btn--primary" onClick={() => openModelInspect(prepared.primaryPath, prepared.texturePath, prepared.texturePaths, prepared.hiddenSubmeshes, prepared.modelScale, undefined, prepared.anmPaths, prepared.anmClips)}><Eye size={13} /> Full Model Viewer</button>}
-            </div>
+            {/* For BIN text the actions live inside the viewer's own toolbar
+                (see below) so the panel doesn't stack three separate bars. */}
+            {!(binLike && text !== null) && (
+                <div className="wad-preview__actions">
+                    <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={() => onExtract(node)}><Download size={13} /> Extract</button>
+                    {prepared && <button className="dl-btn dl-btn--sm dl-btn--primary" onClick={() => openModelInspect(prepared.primaryPath, prepared.texturePath, prepared.texturePaths, prepared.hiddenSubmeshes, prepared.modelScale, undefined, prepared.anmPaths, prepared.anmClips)}><Eye size={13} /> Full Model Viewer</button>}
+                </div>
+            )}
             <div className="wad-preview__content">
                 {loading && <Loading label={MODEL_EXTENSIONS.has(node.extension) ? 'Preparing model assets…' : 'Reading preview…'} />}
                 {error && <div className="wad-preview__error">{error}</div>}
@@ -285,7 +288,23 @@ export function WadPreview({ selected, runtime, onClose, onOpenBinEditor, onExtr
                     </div>
                 )}
                 {!loading && imageUrl && <div className="wad-preview__single-image"><img src={imageUrl} alt={node.name} /></div>}
-                {!loading && text !== null && <BinTextViewer content={text} />}
+                {!loading && text !== null && (
+                    <BinTextViewer
+                        content={text}
+                        actions={
+                            <>
+                                <button className="dl-btn dl-btn--sm dl-btn--ghost" onClick={() => onExtract(node)}>
+                                    <Download size={13} /> Extract
+                                </button>
+                                {binLike && (
+                                    <button className="dl-btn dl-btn--sm dl-btn--ghost" onClick={() => onOpenInJade(node)}>
+                                        <img src="/jade.webp" alt="" className="wad-preview__jade-icon" /> Open in Jade
+                                    </button>
+                                )}
+                            </>
+                        }
+                    />
+                )}
                 {!loading && !error && !prepared && !imageUrl && text === null && (
                     <div className="wad-preview__state"><Info size={24} />No inline renderer for this file type.</div>
                 )}

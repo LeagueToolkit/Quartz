@@ -39,6 +39,10 @@
 .update-showcase__markdown h3 { font-size: 14px; }
 .update-showcase__markdown a { color: var(--accent-primary); text-decoration: none; cursor: pointer; }
 .update-showcase__markdown a:hover { text-decoration: underline; }
+/* Images/GIFs in release notes: honor any explicit width/height, but never let
+   one overflow the modal. `height: auto` keeps the aspect ratio when width is
+   capped. */
+.update-showcase__markdown img { max-width: 100%; height: auto; border-radius: 8px; }
 /* Explicit list markers + outside positioning so bullets/numbers always show
    and are not clipped by the container. The webview UA / any upstream reset can
    otherwise leave list-style unset, which is why the "dots" went missing. */

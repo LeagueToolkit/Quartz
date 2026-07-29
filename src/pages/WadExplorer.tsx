@@ -13,9 +13,10 @@ import {
     type ScannedWad, type WadExplorerIndex,
 } from '@/lib/api/wad';
 import { downloadHashes, getHashStatus, type HashStatus } from '@/lib/api/hashes';
-import { useConfigStore, useNavigationStore, useUiPrefsStore } from '@/lib/stores';
+import { useConfigStore, useUiPrefsStore } from '@/lib/stores';
 import { RecentBinsList } from '@/components/ui';
 import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
+import { openBinInJade } from '@/lib/jade/jadeInterop';
 import { WadTree } from './wadexplorer/WadTree';
 import { WadPreview } from './wadexplorer/WadPreview';
 import { WadCheatSheet, WadNotice, WadSettingsModal } from './wadexplorer/WadExplorerModals';
@@ -76,7 +77,6 @@ function flattenRows(
 
 export default function WadExplorer() {
     const configuredLeaguePath = useConfigStore((state) => state.settings.leaguePath) || '';
-    const openInTool = useNavigationStore((state) => state.openInTool);
 
     const [gamePath, setGamePath] = useState(() => localStorage.getItem(GAME_PATH_KEY) || gamePathFromLeague(configuredLeaguePath));
     const [groups, setGroups] = useState<Record<string, ScannedWad[]>>({});
@@ -606,7 +606,9 @@ export default function WadExplorer() {
         if (action === 'flat' || action === 'paths') void runExtraction([{ wad: row.wad, files }], action === 'paths');
     }, [context, ensureLoaded, reloadWad, resolveNode, runExtraction, updateRuntime]);
 
-    const openBinFromWad = useCallback(async (file: WadFileNode) => {
+    // A WAD entry has no disk path, so extract it first; Jade opens the
+    // resulting file.
+    const openBinInJadeFromWad = useCallback(async (file: WadFileNode) => {
         if (!selected) return;
         try {
             const prepared = await wadExplorerPrepareModel({
@@ -614,9 +616,9 @@ export default function WadExplorer() {
                 files: [{ pathHash: file.pathHash, path: file.path }],
                 primaryPath: file.path,
             });
-            openInTool('bineditor', prepared.primaryPath);
-        } catch (reason) { setNotice({ title: 'Could Not Open BIN', message: errorMessage(reason) }); }
-    }, [openInTool, selected]);
+            await openBinInJade(prepared.primaryPath);
+        } catch (reason) { setNotice({ title: 'Could Not Open In Jade', message: errorMessage(reason) }); }
+    }, [selected]);
 
     const extractOne = useCallback((file: WadFileNode) => {
         if (selected) void runExtraction([{ wad: selected.wad, files: [file] }], true);
@@ -669,7 +671,7 @@ export default function WadExplorer() {
                             selected={selected}
                             runtime={runtime[selected.wad.path] || { status: 'idle' }}
                             onClose={() => setSelected(null)}
-                            onOpenBinEditor={openBinFromWad}
+                            onOpenInJade={openBinInJadeFromWad}
                             onExtract={extractOne}
                         />
                     ) : (

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { getVersion } from '@tauri-apps/api/app';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { log } from '@/lib/util/logger';
@@ -10,6 +12,32 @@ import {
     UPDATE_SHOWCASE_SEEN_KEY,
 } from './updateShowcaseState';
 import './update-showcase.css';
+
+/* Update notes come from our own GitHub releases, but we still sanitize the
+   rendered HTML so a compromised/edited release body can't inject scripts. This
+   schema starts from rehype-sanitize's safe default (which already strips
+   <script>, event handlers, javascript: URLs, etc.) and re-allows just the
+   media bits release notes actually use: sized <img>, animated GIFs, and a
+   couple of GitHub-style layout tags. External https/data image sources are
+   permitted (the app CSP also allows them); other protocols are dropped. */
+const releaseNotesSchema = {
+    ...defaultSchema,
+    tagNames: [...(defaultSchema.tagNames ?? []), 'img', 'video', 'source', 'picture', 'details', 'summary'],
+    attributes: {
+        ...defaultSchema.attributes,
+        img: [
+            ...((defaultSchema.attributes?.img as unknown[]) ?? []),
+            'src', 'alt', 'title', 'width', 'height', 'loading', 'align',
+        ],
+        video: ['src', 'width', 'height', 'controls', 'autoplay', 'loop', 'muted', 'poster'],
+        source: ['src', 'srcset', 'type', 'media'],
+    },
+    // Allow http/https/data image sources (GitHub user-attachment GIFs, etc.).
+    protocols: {
+        ...defaultSchema.protocols,
+        src: ['http', 'https', 'data'],
+    },
+};
 
 interface GithubRelease {
     name: string | null;
@@ -178,6 +206,11 @@ export function UpdateShowcase() {
                         <article className="update-showcase__markdown">
                             <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
+                                /* rehypeRaw parses inline HTML (e.g. a sized
+                                   <img> GIF) into the tree; rehypeSanitize then
+                                   strips anything unsafe. Order matters: raw
+                                   must run before sanitize. */
+                                rehypePlugins={[rehypeRaw, [rehypeSanitize, releaseNotesSchema]]}
                                 components={{
                                     a: ({ href, children }) => (
                                         <a href={href} onClick={(event) => { event.preventDefault(); if (href) void openUrl(href); }}>{children}</a>

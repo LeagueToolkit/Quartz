@@ -22,38 +22,59 @@ function lerp3(a: [number, number, number], b: [number, number, number], t: numb
     return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }
 
+/** Index of the last key at or before `time`, via binary search. Dense League
+ *  tracks carry one key per animation frame (hundreds per joint), so the old
+ *  linear scan cost O(keys) per joint per component per frame. */
+function seekKey(keys: { time: number }[], time: number): number {
+    let low = 0;
+    let high = keys.length - 1;
+    while (low < high) {
+        const mid = (low + high + 1) >> 1;
+        if (keys[mid].time <= time) low = mid;
+        else high = mid - 1;
+    }
+    return low;
+}
+
 function sampleVecKeys(keys: VecKey[], time: number): [number, number, number] | null {
     if (!keys.length) return null;
     if (time <= keys[0].time) return keys[0].value;
     if (time >= keys[keys.length - 1].time) return keys[keys.length - 1].value;
-    for (let i = 0; i < keys.length - 1; i++) {
-        const left = keys[i];
-        const right = keys[i + 1];
-        if (time < left.time || time > right.time) continue;
-        const dt = right.time - left.time;
-        if (dt <= 1e-6) return left.value;
-        return lerp3(left.value, right.value, (time - left.time) / dt);
-    }
-    return keys[keys.length - 1].value;
+    const i = seekKey(keys, time);
+    const left = keys[i];
+    const right = keys[i + 1] ?? left;
+    const dt = right.time - left.time;
+    if (dt <= 1e-6) return left.value;
+    return lerp3(left.value, right.value, (time - left.time) / dt);
 }
+
+// Scratch quaternions for slerp, reused across every sample (this runs per joint
+// per frame; allocating here was a major source of GC churn during playback).
+const _q0 = new THREE.Quaternion();
+const _q1 = new THREE.Quaternion();
+const _qOut = new THREE.Quaternion();
+const _quatResult: [number, number, number, number] = [0, 0, 0, 1];
 
 function sampleQuatKeys(keys: QuatKey[], time: number): [number, number, number, number] | null {
     if (!keys.length) return null;
     if (time <= keys[0].time) return keys[0].value;
     if (time >= keys[keys.length - 1].time) return keys[keys.length - 1].value;
-    for (let i = 0; i < keys.length - 1; i++) {
-        const left = keys[i];
-        const right = keys[i + 1];
-        if (time < left.time || time > right.time) continue;
-        const dt = right.time - left.time;
-        if (dt <= 1e-6) return left.value;
-        const t = (time - left.time) / dt;
-        const q0 = new THREE.Quaternion(left.value[0], left.value[1], left.value[2], left.value[3]);
-        const q1 = new THREE.Quaternion(right.value[0], right.value[1], right.value[2], right.value[3]);
-        const q = new THREE.Quaternion().slerpQuaternions(q0, q1, t).normalize();
-        return [q.x, q.y, q.z, q.w];
-    }
-    return keys[keys.length - 1].value;
+    const i = seekKey(keys, time);
+    const left = keys[i];
+    const right = keys[i + 1] ?? left;
+    const dt = right.time - left.time;
+    if (dt <= 1e-6) return left.value;
+    const t = (time - left.time) / dt;
+    _q0.set(left.value[0], left.value[1], left.value[2], left.value[3]);
+    _q1.set(right.value[0], right.value[1], right.value[2], right.value[3]);
+    _qOut.slerpQuaternions(_q0, _q1, t).normalize();
+    // Reused tuple: the caller consumes it immediately (composes it into a
+    // matrix) and never retains it.
+    _quatResult[0] = _qOut.x;
+    _quatResult[1] = _qOut.y;
+    _quatResult[2] = _qOut.z;
+    _quatResult[3] = _qOut.w;
+    return _quatResult;
 }
 
 /* ── runtime skeleton ─────────────────────────────────────────────────────── */
@@ -117,14 +138,39 @@ const _t = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _s = new THREE.Vector3();
 
-/** World transform per joint id at `timeSeconds` (identity clip → bind pose). */
+/* Per-skeleton scratch: the world-matrix pool and its Map are allocated once and
+ * rewritten in place every frame. Previously this allocated a Map plus ~2
+ * Matrix4 per joint per frame (~500 objects/frame on a champion skeleton), which
+ * was the dominant source of GC pressure during playback. */
+interface PoseScratch {
+    worldById: Map<number, THREE.Matrix4>;
+    local: THREE.Matrix4;
+}
+const poseScratch = new WeakMap<SkeletonRuntime, PoseScratch>();
+
+function scratchFor(skeleton: SkeletonRuntime): PoseScratch {
+    let scratch = poseScratch.get(skeleton);
+    if (!scratch) {
+        const worldById = new Map<number, THREE.Matrix4>();
+        for (const id of skeleton.sortedIds) worldById.set(id, new THREE.Matrix4());
+        scratch = { worldById, local: new THREE.Matrix4() };
+        poseScratch.set(skeleton, scratch);
+    }
+    return scratch;
+}
+
+/** World transform per joint id at `timeSeconds` (identity clip → bind pose).
+ *
+ *  NOTE: the returned Map and its Matrix4 values are scratch storage owned by
+ *  `skeleton` and are overwritten by the next call. Consume them before calling
+ *  again; copy anything you need to retain. */
 export function evaluateWorldMatrices(skeleton: SkeletonRuntime, clip: AnimClip | null, timeSeconds: number): Map<number, THREE.Matrix4> {
     // Loop the clip.
     const time = clip && clip.durationSeconds > 0
         ? ((timeSeconds % clip.durationSeconds) + clip.durationSeconds) % clip.durationSeconds
         : 0;
 
-    const worldById = new Map<number, THREE.Matrix4>();
+    const { worldById, local } = scratchFor(skeleton);
     for (const id of skeleton.sortedIds) {
         const joint = skeleton.jointById.get(id)!;
         const track = clip?.tracks.get(joint.hash >>> 0);
@@ -133,17 +179,23 @@ export function evaluateWorldMatrices(skeleton: SkeletonRuntime, clip: AnimClip 
         const r = (track && sampleQuatKeys(track.rotate, time)) || joint.localRotation;
         const s = (track && sampleVecKeys(track.scale, time)) || joint.localScale;
 
-        const local = new THREE.Matrix4().compose(
+        local.compose(
             _t.set(t[0], t[1], t[2]),
             _q.set(r[0], r[1], r[2], r[3]),
             _s.set(s[0], s[1], s[2]),
         );
 
-        let world = local;
-        if (joint.parentId >= 0 && worldById.has(joint.parentId)) {
-            world = new THREE.Matrix4().multiplyMatrices(worldById.get(joint.parentId)!, local);
+        // Reuse this joint's pooled matrix. sortedIds is ascending and parents
+        // always have a lower id than their children, so the parent's world
+        // matrix for this frame is already final when we read it here.
+        let world = worldById.get(id);
+        if (!world) {
+            world = new THREE.Matrix4();
+            worldById.set(id, world);
         }
-        worldById.set(id, world);
+        const parent = joint.parentId >= 0 ? worldById.get(joint.parentId) : undefined;
+        if (parent) world.multiplyMatrices(parent, local);
+        else world.copy(local);
     }
     return worldById;
 }
@@ -180,21 +232,37 @@ export function inverseBindMatrix(joint: JointPreview): THREE.Matrix4 {
     );
 }
 
-/** Bone line segments (parent→child) for the skeleton overlay, at `timeSeconds`. */
-export function evaluateSkeletonSegments(skeleton: SkeletonRuntime, clip: AnimClip | null, timeSeconds: number): number[] {
-    const worldById = evaluateWorldMatrices(skeleton, clip, timeSeconds);
-    const posById = new Map<number, THREE.Vector3>();
-    for (const joint of skeleton.joints) {
-        const world = worldById.get(joint.id);
-        posById.set(joint.id, new THREE.Vector3().setFromMatrixPosition(world ?? new THREE.Matrix4()));
-    }
-    const flat: number[] = [];
+/** Bone line segments (parent→child) for the skeleton overlay.
+ *
+ *  Takes an already-evaluated `worldById` (from `evaluateWorldMatrices`) rather
+ *  than re-evaluating the pose: the caller needs the same matrices for skinning
+ *  in the same frame, and computing them twice doubled the per-frame cost.
+ *
+ *  Writes into `out` and returns the number of floats written, so the caller can
+ *  keep one Float32Array and re-upload it instead of reallocating per frame.
+ *  A matrix's translation is elements 12/13/14 (column-major). */
+export function writeSkeletonSegments(
+    skeleton: SkeletonRuntime,
+    worldById: Map<number, THREE.Matrix4>,
+    out: Float32Array,
+): number {
+    let n = 0;
     for (const joint of skeleton.joints) {
         if (joint.parentId < 0) continue;
-        const a = posById.get(joint.id);
-        const b = posById.get(joint.parentId);
-        if (!a || !b) continue;
-        flat.push(a.x, a.y, a.z, b.x, b.y, b.z);
+        const a = worldById.get(joint.id);
+        const b = worldById.get(joint.parentId);
+        if (!a || !b || n + 6 > out.length) continue;
+        out[n++] = a.elements[12];
+        out[n++] = a.elements[13];
+        out[n++] = a.elements[14];
+        out[n++] = b.elements[12];
+        out[n++] = b.elements[13];
+        out[n++] = b.elements[14];
     }
-    return flat;
+    return n;
+}
+
+/** Upper bound on floats `writeSkeletonSegments` can emit (6 per parented joint). */
+export function skeletonSegmentCapacity(skeleton: SkeletonRuntime): number {
+    return skeleton.joints.reduce((n, j) => (j.parentId >= 0 ? n + 6 : n), 0);
 }

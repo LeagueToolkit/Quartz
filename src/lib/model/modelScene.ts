@@ -11,7 +11,8 @@ import {
 } from '@/lib/api/modelInspect';
 import {
     evaluateWorldMatrices,
-    evaluateSkeletonSegments,
+    writeSkeletonSegments,
+    skeletonSegmentCapacity,
     inverseBindMatrix,
     type SkeletonRuntime,
     type AnimClip,
@@ -36,13 +37,6 @@ function fnv1a32Hex(name: string): string {
         h = Math.imul(h, 0x01000193) >>> 0;
     }
     return `0x${h.toString(16).padStart(8, '0')}`;
-}
-
-/** Does an event token (a submesh NAME or a `0x…` hash) refer to `groupName`? */
-function tokenMatchesGroup(token: string, groupName: string): boolean {
-    if (token.toLowerCase() === groupName.toLowerCase()) return true;
-    if (/^0x[0-9a-f]+$/i.test(token)) return token.toLowerCase() === fnv1a32Hex(groupName);
-    return false;
 }
 
 export interface ModelSceneOptions {
@@ -280,9 +274,15 @@ export async function mountModelScene(
     root.add(mesh);
     scene.add(root);
 
-    // Skeleton overlay (bone lines), toggled by showSkeleton.
+    // Skeleton overlay (bone lines), toggled by showSkeleton. The position buffer
+    // is allocated once at max capacity and rewritten in place each frame; a new
+    // BufferAttribute per frame forced a fresh GPU upload every frame.
     const overlayGeom = new THREE.BufferGeometry();
-    overlayGeom.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(0), 3));
+    const overlayCapacity = skeletonRt ? skeletonSegmentCapacity(skeletonRt) : 0;
+    const overlayPositions = new Float32Array(overlayCapacity);
+    const overlayAttr = new THREE.Float32BufferAttribute(overlayPositions, 3);
+    overlayAttr.setUsage(THREE.DynamicDrawUsage);
+    overlayGeom.setAttribute('position', overlayAttr);
     const overlay = new THREE.LineSegments(
         overlayGeom,
         new THREE.LineBasicMaterial({ color: 0x00e0ff, depthTest: false, transparent: true, opacity: 0.9 }),
@@ -290,6 +290,12 @@ export async function mountModelScene(
     overlay.renderOrder = 999;
     overlay.visible = !!options.showSkeleton && canSkin;
     root.add(overlay);
+
+    // Render-on-demand: the loop only draws when something actually changed.
+    // Previously it re-rendered at full display refresh forever, so an idle
+    // static model burned a core + GPU continuously.
+    let needsRender = true;
+    function invalidate() { needsRender = true; }
 
     // Playback state.
     let activeClip: AnimClip | null = null;
@@ -299,14 +305,30 @@ export async function mountModelScene(
     let visFps = 30;
     let baseHidden: ReadonlySet<string> = options.hiddenGroups ?? new Set();
 
+    // Per-group identity precomputed once: lowercased name + fnv1a-32 hash. This
+    // ran per material per frame before, rehashing strings that never change.
+    const groupKeys = groups.map((g) => ({
+        name: g.name,
+        lower: g.name.toLowerCase(),
+        hash: fnv1a32Hex(g.name),
+    }));
+    const matchesKey = (token: string, key: { lower: string; hash: string }): boolean => {
+        const t = token.toLowerCase();
+        return t === key.lower || t === key.hash;
+    };
+    // Reused across frames so a live event window doesn't allocate two arrays
+    // per frame.
+    const forceShow: string[] = [];
+    const forceHide: string[] = [];
+
     /** Effective per-frame submesh visibility: start from the base hidden set,
      *  then apply the live events (show wins over hide within a window). */
     const applyVisibility = () => {
         const clipEndFrame = activeClip ? activeClip.durationSeconds * visFps : 0;
         const frame = currentTime * visFps;
         // Collect forced show/hide from events whose window is live this frame.
-        const forceShow: string[] = [];
-        const forceHide: string[] = [];
+        forceShow.length = 0;
+        forceHide.length = 0;
         if (visEvents) {
             for (const ev of visEvents) {
                 const start = ev.startFrame ?? 0;
@@ -316,19 +338,26 @@ export async function mountModelScene(
                 forceHide.push(...ev.hide);
             }
         }
-        materials.forEach((material, index) => {
-            const gName = groups[index]?.name ?? '';
-            let visible = !baseHidden.has(gName);
-            if (forceHide.some((t) => tokenMatchesGroup(t, gName))) visible = false;
-            if (forceShow.some((t) => tokenMatchesGroup(t, gName))) visible = true;
-            material.visible = visible;
-        });
+        for (let index = 0; index < materials.length; index++) {
+            const key = groupKeys[index];
+            if (!key) continue;
+            let visible = !baseHidden.has(key.name);
+            if (forceHide.length && forceHide.some((t) => matchesKey(t, key))) visible = false;
+            if (forceShow.length && forceShow.some((t) => matchesKey(t, key))) visible = true;
+            const material = materials[index];
+            if (material.visible !== visible) {
+                material.visible = visible;
+                invalidate();
+            }
+        }
     };
 
     const applyPose = () => {
         if (!canSkin || !skeletonRt || !threeSkeleton || !boneSlotByJointId) return;
         // World transform per joint at the current time; write into each bone's
-        // matrix + matrixWorld, then let three build the skin matrices.
+        // matrix + matrixWorld, then let three build the skin matrices. The
+        // returned map is scratch owned by the skeleton - consume it before the
+        // next evaluate call (the overlay below reuses it deliberately).
         const worldById = evaluateWorldMatrices(skeletonRt, activeClip, currentTime);
         for (const [jointId, slot] of boneSlotByJointId) {
             const world = worldById.get(jointId);
@@ -338,13 +367,14 @@ export async function mountModelScene(
             bone.matrixWorld.copy(world);
         }
         threeSkeleton.update();
-        if (overlay.visible) {
-            const seg = evaluateSkeletonSegments(skeletonRt, activeClip, currentTime);
-            overlay.geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(seg), 3));
-            overlay.geometry.attributes.position.needsUpdate = true;
-            overlay.geometry.setDrawRange(0, seg.length / 3);
+        if (overlay.visible && overlayCapacity > 0) {
+            // Same frame's matrices - no second pose evaluation.
+            const written = writeSkeletonSegments(skeletonRt, worldById, overlayPositions);
+            overlayAttr.needsUpdate = true;
+            overlay.geometry.setDrawRange(0, written / 3);
         }
         applyVisibility();
+        invalidate();
     };
     // Prime bind pose immediately so a skinned mesh renders correctly at rest.
     applyPose();
@@ -433,18 +463,37 @@ export async function mountModelScene(
         renderer.setSize(width, height, false);
         camera.aspect = width / height;
         camera.updateProjectionMatrix();
+        invalidate();
     };
     resize();
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(host);
 
+    // Any user interaction (orbit/zoom/pan) or damping settle needs a redraw.
+    controls.addEventListener('change', invalidate);
+
     let disposed = false;
+    let spinning = false;
     renderer.setAnimationLoop(() => {
         if (disposed) return;
-        if (options.autoRotate && options.interactive === false) root.rotation.y += 0.006;
-        controls.update();
+        if (spinning) {
+            if (options.autoRotate && options.interactive === false) root.rotation.y += 0.006;
+            needsRender = true;
+        }
+        // With damping on, update() returns true while the camera is still
+        // settling; it also fires 'change', which sets needsRender.
+        if (controls.enabled && controls.update()) needsRender = true;
+        if (!needsRender) return;
+        needsRender = false;
         renderer.render(scene, camera);
     });
+    // autoRotate is driven by OrbitControls when interactive, and by the manual
+    // root spin otherwise; either way the loop must keep drawing while it is on.
+    const setSpinning = (on: boolean) => {
+        spinning = on;
+        invalidate();
+    };
+    setSpinning(!!options.autoRotate);
 
     // Live groupName -> current texture URL (base under `*`), seeded from what
     // each group actually resolved to at mount. Drives the watcher + picker.
@@ -514,6 +563,7 @@ export async function mountModelScene(
             // Dispose textures no longer referenced by any material.
             const live = new Set(materials.map((m) => m.map).filter(Boolean) as THREE.Texture[]);
             stale.forEach((t) => { if (!live.has(t)) t.dispose(); });
+            invalidate();
         },
         appliedTextures: () => ({ ...groupUrl }),
         groupNames: () => groups.map((g) => g.name),
@@ -529,17 +579,24 @@ export async function mountModelScene(
         setShowSkeleton: (show) => {
             overlay.visible = show && canSkin;
             if (overlay.visible) applyPose();
+            else invalidate();
         },
-        setWireframe: (on) => { materials.forEach((m) => { m.wireframe = on; }); },
-        setAutoRotate: (on) => { controls.autoRotate = on && controls.enabled; },
-        setShowGrid: (on) => { if (ground) ground.visible = on; },
-        setShowSkybox: (on) => { applySkyboxVisible(on); },
+        setWireframe: (on) => { materials.forEach((m) => { m.wireframe = on; }); invalidate(); },
+        setAutoRotate: (on) => {
+            controls.autoRotate = on && controls.enabled;
+            setSpinning(on);
+        },
+        setShowGrid: (on) => { if (ground) ground.visible = on; invalidate(); },
+        setShowSkybox: (on) => { applySkyboxVisible(on); invalidate(); },
         dispose: () => {
             if (disposed) return;
             disposed = true;
             resizeObserver.disconnect();
             renderer.setAnimationLoop(null);
+            controls.removeEventListener('change', invalidate);
             controls.dispose();
+            // Drop the skybox reference so the scene doesn't retain it past dispose.
+            scene.background = null;
             geometry.dispose();
             overlay.geometry.dispose();
             (overlay.material as THREE.Material).dispose();

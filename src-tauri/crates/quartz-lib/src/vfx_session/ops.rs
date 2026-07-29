@@ -88,12 +88,27 @@ pub fn create_system(id: SessionId, name: &str) -> Result<VfxPortModel> {
         }
         let frame = s.capture_tree(&touched);
 
-        // Insert new systems at the top so they render first in the list.
+        // Place new systems JUST AFTER the target bin's SkinCharacterData-
+        // Properties (Riot's layout: systems live under SCDP, never above it).
+        // Falls back to the top when the bin has no SCDP (dedicated vfx bin).
+        let insert_idx = s.bins[target_bin]
+            .tree
+            .entries
+            .iter()
+            .position(|e| e.class_hash == h.skin_character_data_properties)
+            .map(|scdp| scdp + 1)
+            .unwrap_or(0);
         s.bins[target_bin]
             .tree
             .entries
-            .insert(0, construct::new_vfx_system(&final_name, &unique_path));
+            .insert(insert_idx, construct::new_vfx_system(&final_name, &unique_path));
         s.mark_dirty(target_bin);
+
+        // The insert shifted every entry at/after `insert_idx` in `target_bin`
+        // by one; re-point the resolver so the upsert can't land on a neighbor.
+        let resolver = resolver.map(|(rb, re)| {
+            (rb, if rb == target_bin && re >= insert_idx { re + 1 } else { re })
+        });
 
         let short_key = construct::derive_short_key(&unique_path, &final_name);
         match resolver {
@@ -340,12 +355,27 @@ pub fn port_system(
         let frame = s.capture_tree(&touched);
 
         let system_key = format!("{:08x}", clone.path_hash);
-        // Insert ported systems at the top so they render first in the list.
-        s.bins[target_bin].tree.entries.insert(0, clone);
+        // Place the ported system JUST AFTER the target bin's
+        // SkinCharacterDataProperties, matching Riot's authored layout (systems
+        // live under SCDP, never above it). Inserting at index 0 would push the
+        // system over SCDP, which reads as corrupt. When the target bin has no
+        // SCDP (e.g. a dedicated `*_vfx.bin`), fall back to the top so the new
+        // system still renders first.
+        let insert_idx = s.bins[target_bin]
+            .tree
+            .entries
+            .iter()
+            .position(|e| e.class_hash == h.skin_character_data_properties)
+            .map(|scdp| scdp + 1)
+            .unwrap_or(0);
+        s.bins[target_bin].tree.entries.insert(insert_idx, clone);
         s.mark_dirty(target_bin);
-        // The top insert shifted every entry in `target_bin` by one; re-point
-        // the resolver so the upsert below cannot land on a neighbor entry.
-        let resolver = resolver.map(|(rb, re)| (rb, if rb == target_bin { re + 1 } else { re }));
+        // The insert shifted every entry at/after `insert_idx` in `target_bin`
+        // by one; re-point the resolver so the upsert below cannot land on a
+        // neighbor entry.
+        let resolver = resolver.map(|(rb, re)| {
+            (rb, if rb == target_bin && re >= insert_idx { re + 1 } else { re })
+        });
 
         if !preserved_resolver_entries.is_empty() {
             match resolver {
@@ -2436,6 +2466,38 @@ mod tests {
                 BinValue::Hash(hash_or_hex("Katarina_Dagger_Ground_Indicator")),
                 BinValue::Link(hash_or_hex(donor_path_str)),
             )));
+
+            // Placement: the ported system must sit UNDER SkinCharacterData-
+            // Properties, never above it. The target bin led with SCDP at
+            // index 0, so the clone belongs at index 1 (right after SCDP).
+            let scdp_idx = s.bins[0]
+                .tree
+                .entries
+                .iter()
+                .position(|e| e.class_hash == h.skin_character_data_properties)
+                .expect("target keeps its SCDP");
+            let ported_idx = s.bins[0]
+                .tree
+                .entries
+                .iter()
+                .position(|e| {
+                    e.class_hash == h.vfx_system_definition_data
+                        && matches!(
+                            e.fields.get(&h.particle_name),
+                            Some(BinValue::String(n)) if n == "Katarina_Base_Dagger_Ground_Indicator"
+                        )
+                })
+                .expect("ported system present in target bin");
+            assert!(
+                ported_idx > scdp_idx,
+                "ported system landed ABOVE SkinCharacterDataProperties \
+                 (idx {ported_idx} <= scdp {scdp_idx}) — the over-SCDP bug"
+            );
+            assert_eq!(
+                ported_idx,
+                scdp_idx + 1,
+                "ported system should sit directly under SCDP"
+            );
         })
         .unwrap();
 

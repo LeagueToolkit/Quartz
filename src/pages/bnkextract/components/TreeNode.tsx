@@ -141,6 +141,13 @@ const TreeNode = React.memo<TreeNodeProps>(({
                     paddingLeft: `${level * 18 + 6}px`,
                     cursor: 'pointer',
                     borderRadius: '5px',
+                    // Must sit on the draggable row itself. Without it, pressing and
+                    // dragging a row starts a native text selection that sweeps the
+                    // whole pane instead of an HTML5 drag, so drag-to-replace never
+                    // begins. (The .tree-node CSS rule does not apply here - these
+                    // rows are MUI Boxes and carry no such class.)
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
                     border: isSelected ? '1px solid color-mix(in oklab, var(--accent-primary) 38%, transparent)' : '1px solid transparent',
                     background: isSelected ? 'color-mix(in oklab, var(--accent-primary) 16%, transparent)' : 'transparent',
                     marginBottom: '2px',

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
     ArrowLeft, ArrowRight, ArrowUp, RefreshCw, Search, X,
@@ -123,6 +123,12 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     const [editingAddr, setEditingAddr] = useState(false);
     const [addrDraft, setAddrDraft] = useState('');
     const [ctx, setCtx] = useState<ContextState | null>(null);
+    // Context menu position, clamped to the viewport after it measures. Starts
+    // at the raw cursor coords, then a layout effect flips it up/left if it
+    // would overflow the bottom/right edge (otherwise a tall menu clips off the
+    // bottom near the address bar).
+    const ctxMenuRef = useRef<HTMLDivElement>(null);
+    const [ctxPos, setCtxPos] = useState<{ top: number; left: number } | null>(null);
     // Inline rename: the entry being renamed + its draft name.
     const [renaming, setRenaming] = useState<{ entry: FsEntry; draft: string } | null>(null);
     const gridRef = useRef<HTMLDivElement>(null);
@@ -188,6 +194,30 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filterIdx]);
 
+    // Keep the context menu inside the viewport. Seed at the raw cursor coords,
+    // then (after it renders and we can measure it) flip up / clamp left so a
+    // tall menu opened near the bottom edge doesn't clip. Runs before paint via
+    // useLayoutEffect so there's no visible reposition jump.
+    useLayoutEffect(() => {
+        if (!ctx) { setCtxPos(null); return; }
+        setCtxPos({ top: ctx.y, left: ctx.x });
+    }, [ctx]);
+    useLayoutEffect(() => {
+        const el = ctxMenuRef.current;
+        if (!ctx || !el) return;
+        const { width, height } = el.getBoundingClientRect();
+        const margin = 8;
+        const maxLeft = window.innerWidth - width - margin;
+        const maxTop = window.innerHeight - height - margin;
+        // If the menu would overflow the bottom, prefer opening ABOVE the
+        // cursor; if even that overflows the top, just clamp to the margin.
+        let top = ctx.y;
+        if (ctx.y > maxTop) top = Math.max(margin, ctx.y - height);
+        top = Math.min(top, Math.max(margin, maxTop));
+        const left = Math.min(Math.max(margin, ctx.x), Math.max(margin, maxLeft));
+        setCtxPos((prev) => (prev && prev.top === top && prev.left === left ? prev : { top, left }));
+    }, [ctx]);
+
     // Esc closes. Ctrl+C/Ctrl+V operate on files/folders unless the user is
     // editing text, in which case normal text clipboard behavior wins.
     useEffect(() => {
@@ -245,6 +275,10 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     const selectedDirectoryPath = isDirectory && selectedEntry?.isDirectory
         ? selectedEntry.path
         : nav.currentPath;
+    // Only show the preview pane for files that actually render something
+    // (textures decode to a thumbnail, models to a 3D viewport). A .bin/.py has
+    // no visual preview — it only produced a generic icon + "Open in Jade", so
+    // the pane is dead space there. Hide it for those; the list reclaims the room.
     const showPreview = Boolean(
         !isDirectory
         && selectedEntry
@@ -252,7 +286,6 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
         && (
             TEXTURE_EXTS.has(entryExtension(selectedEntry))
             || MODEL_EXTS.has(entryExtension(selectedEntry))
-            || BIN_EXTS.has(entryExtension(selectedEntry))
         ),
     );
 
@@ -674,7 +707,18 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
 
                 {/* Context menu */}
                 {ctx && (
-                    <div className="dl-dd-portal dl-explorer__ctx" style={{ position: 'fixed', top: ctx.y, left: ctx.x }} onClick={(e) => e.stopPropagation()}>
+                    <div
+                        ref={ctxMenuRef}
+                        className="dl-dd-portal dl-explorer__ctx"
+                        style={{
+                            position: 'fixed',
+                            top: ctxPos?.top ?? ctx.y,
+                            left: ctxPos?.left ?? ctx.x,
+                            maxHeight: `calc(100vh - 16px)`,
+                            overflowY: 'auto',
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         {/* Open in tool */}
                         {TEXTURE_EXTS.has(entryExtension(ctx.entry)) && (
                             <button className="dl-dd__item" onClick={() => openIn('imgrecolor', ctx.entry)}>

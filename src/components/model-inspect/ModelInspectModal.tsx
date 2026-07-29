@@ -78,8 +78,14 @@ export function ModelInspectModal({ path, initialTexturePath, initialTexturePath
     // can restore them.
     const visRef = useRef<{ events: SubmeshVisEvent[] | null; fps: number }>({ events: null, fps: 30 });
     // Live values for the rAF loop without re-subscribing every frame.
+    // `time` is owned by the loop (NOT mirrored from `currentTime`): committing
+    // playback time to React state every frame re-rendered the whole modal at
+    // display refresh rate, which was the dominant source of app-wide lag.
+    // `currentTime` is now only a throttled copy for the scrubber display.
     const playStateRef = useRef({ playing: false, rate: 1, time: 0, duration: 0 });
-    playStateRef.current = { playing, rate: playRate, time: currentTime, duration: clip?.durationSeconds ?? 0 };
+    playStateRef.current.playing = playing;
+    playStateRef.current.rate = playRate;
+    playStateRef.current.duration = clip?.durationSeconds ?? 0;
 
     const handleSceneReady = useCallback((ready: ModelSceneReady | null) => {
         sceneRef.current = ready;
@@ -125,6 +131,7 @@ export function ModelInspectModal({ path, initialTexturePath, initialTexturePath
     // Load the selected .anm clip.
     useEffect(() => {
         if (!selectedAnm) {
+            playStateRef.current.time = 0;
             setClip(null); setCurrentTime(0); setPlaying(false);
             sceneRef.current?.scene.setVisibilityEvents(null, 30);
             return;
@@ -134,6 +141,7 @@ export function ModelInspectModal({ path, initialTexturePath, initialTexturePath
         void modelInspectAnimation(selectedAnm)
             .then((anm) => {
                 if (cancelled) return;
+                playStateRef.current.time = 0;
                 setClip(buildClip(anm)); setCurrentTime(0); setPlaying(true);
                 const info = clipForAnm(selectedAnm);
                 sceneRef.current?.scene.setVisibilityEvents(info?.events ?? null, anm.fps);
@@ -147,19 +155,29 @@ export function ModelInspectModal({ path, initialTexturePath, initialTexturePath
     useEffect(() => { sceneRef.current?.scene.setShowSkeleton(showSkeleton); }, [showSkeleton]);
 
     // Playback loop: advance time while playing, drive the scene pose.
+    // The scene is posed every frame (cheap, no React involved); the scrubber's
+    // React state is committed at ~15Hz, which is plenty for a readout and keeps
+    // the modal from re-rendering on every animation frame.
     useEffect(() => {
         let raf = 0;
         let last = performance.now();
+        let lastCommit = 0;
         const tick = (now: number) => {
-            const dt = (now - last) / 1000;
-            last = now;
             const st = playStateRef.current;
             if (st.playing && st.duration > 0) {
+                const dt = (now - last) / 1000;
                 let next = st.time + dt * st.rate;
                 if (next >= st.duration) next = next % st.duration;
-                setCurrentTime(next);
+                st.time = next;
                 sceneRef.current?.scene.setTime(next);
+                if (now - lastCommit >= 66) {
+                    lastCommit = now;
+                    setCurrentTime(next);
+                }
             }
+            // Track `last` even while paused so resuming doesn't jump by the
+            // whole paused duration.
+            last = now;
             raf = requestAnimationFrame(tick);
         };
         raf = requestAnimationFrame(tick);
@@ -167,6 +185,7 @@ export function ModelInspectModal({ path, initialTexturePath, initialTexturePath
     }, []);
 
     const scrubTo = (seconds: number) => {
+        playStateRef.current.time = seconds;
         setCurrentTime(seconds);
         sceneRef.current?.scene.setTime(seconds);
     };

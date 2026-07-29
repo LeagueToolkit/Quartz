@@ -583,8 +583,15 @@ function Port() {
     const pDis = !p.hasResourceResolver || !p.hasSkinCharacterData;
     const nDis = !p.hasResourceResolver;
     const portAllDisabled = !p.hasResourceResolver || Object.values(p.donorSystems).length === 0 || p.isPortAllLoading;
-    const portActions: PortActionButton[] = [
-        ...(p.targetModel && p.donorModel
+    // Memoized so the button elements (and their inline <Icon> JSX) keep a
+    // stable identity across the frequent full re-renders of this page. Without
+    // this the array + every icon are freshly allocated each render, which
+    // churns the MUI <Tooltip> wrappers and makes the whole action bar flicker
+    // on any state change. Only rebuild when something the buttons actually
+    // depend on changes.
+    const hasBothModels = Boolean(p.targetModel && p.donorModel);
+    const portActions: PortActionButton[] = useMemo(() => [
+        ...(hasBothModels
             ? [{
                 id: 'portAll',
                 color: 'var(--accent-primary)',
@@ -625,7 +632,17 @@ function Port() {
             icon: <FolderIcon sx={{ fontSize: 16 }} />,
             onClick: handleOpenBackupViewer,
         },
-    ];
+    ], [
+        hasBothModels,
+        portAllDisabled,
+        pDis,
+        nDis,
+        p.isPortAllLoading,
+        p.handleOpenNewSystemModal,
+        p.handleOpenPersistent,
+        handleOpenIdleManager,
+        handleOpenBackupViewer,
+    ]);
 
     return (
         <PortDragProvider>

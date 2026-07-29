@@ -44,6 +44,12 @@ export default function EmitterItem({
                 // Don't start a drag from the row's action buttons.
                 const tgt = e.target as HTMLElement;
                 if (tgt.closest('button')) return;
+                // CRITICAL: stop the event before it bubbles to the parent
+                // system row's onPointerDown, which would overwrite this
+                // emitter drag with a whole-system drag (both call startDrag,
+                // last write wins). Without this, dragging a single emitter
+                // silently ports the entire system instead.
+                e.stopPropagation();
                 startDrag(
                     {
                         kind: 'emitter',

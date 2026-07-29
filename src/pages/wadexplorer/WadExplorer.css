@@ -134,36 +134,15 @@
 .wad-bin-viewer { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; overflow: hidden; outline: none; color: var(--text-secondary); background: color-mix(in oklab, var(--bg-primary) 96%, #07090d); font-family: var(--font-mono, 'Cascadia Mono', Consolas, monospace); }
 .wad-bin-viewer__toolbar { min-height: 35px; flex: 0 0 35px; display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-bottom: 1px solid var(--border); background: var(--bg-secondary); }
 .wad-bin-viewer__toolbar > span { flex: 1; }
-.wad-bin-search { min-height: 38px; flex: 0 0 38px; display: flex; align-items: center; gap: 5px; padding: 5px 8px; border-bottom: 1px solid var(--border); background: color-mix(in oklab, var(--bg-secondary) 92%, var(--bg-primary)); }
-.wad-bin-search > svg { flex: 0 0 auto; color: var(--text-muted); }
-.wad-bin-search .dl-input { width: min(360px, 42%); height: 27px; font: 11px var(--font-mono, monospace); }
-.wad-bin-search .dl-input.is-error { border-color: var(--color-danger); }
-.wad-bin-search__mode { width: 29px; height: 25px; display: grid; place-items: center; padding: 0; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); background: var(--bg-tertiary); font: 10px var(--font-mono, monospace); cursor: pointer; }
-.wad-bin-search__mode:hover, .wad-bin-search__mode.is-active { color: var(--accent-primary); border-color: color-mix(in oklab, var(--accent-primary) 45%, var(--border)); background: color-mix(in oklab, var(--accent-primary) 10%, var(--bg-tertiary)); }
-.wad-bin-search small { min-width: 84px; flex: 1; overflow: hidden; color: var(--text-muted); font: 9px var(--font-mono, monospace); text-overflow: ellipsis; white-space: nowrap; }
-.wad-bin-viewer__list { position: relative; flex: 1; min-height: 0; overflow: hidden; user-select: text; cursor: text; }
-.wad-bin-line { display: flex; align-items: center; min-width: max-content; color: var(--text-secondary); font: 11px/20px var(--font-mono, 'Cascadia Mono', Consolas, monospace); white-space: pre; }
-.wad-bin-line:hover { background: rgba(255,255,255,.025); }
-.wad-bin-line.is-current { background: color-mix(in oklab, var(--accent-primary) 5%, transparent); }
-.wad-bin-line__gutter { position: sticky; left: 0; z-index: 2; width: 58px; height: 20px; flex: 0 0 58px; display: flex; align-items: center; justify-content: flex-end; gap: 5px; padding-right: 9px; color: color-mix(in oklab, var(--text-muted) 62%, transparent); background: color-mix(in oklab, var(--bg-primary) 97%, #07090d); font-size: 9px; user-select: none; }
-.wad-bin-line__fold { width: 14px; height: 14px; display: grid; place-items: center; padding: 0; border: 0; color: var(--text-muted); background: transparent; cursor: pointer; }
-.wad-bin-line__fold i { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid currentColor; transform: translateY(1px); }
-.wad-bin-line__fold.is-collapsed i { border: 0; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 6px solid currentColor; transform: translateX(1px); }
-.wad-bin-line__code { min-width: max-content; padding-right: 28px; color: var(--text-secondary); font: inherit; white-space: pre; tab-size: 4; user-select: text; }
-.wad-bin-line__summary { color: var(--text-muted); font-style: italic; }
-.wad-bin-token--plain { color: #c6cbd3; }
-.wad-bin-token--comment { color: #6a9955; font-style: italic; }
-.wad-bin-token--string { color: #ce9178; }
-.wad-bin-token--number { color: #b5cea8; }
-.wad-bin-token--type { color: #6aa9e9; }
-.wad-bin-token--class { color: #4ec9b0; }
-.wad-bin-token--property { color: #dcdcaa; }
-.wad-bin-token--brace { color: #ffd75f; }
-.wad-bin-token--bracket { color: #da70d6; }
-.wad-bin-token--paren { color: #4aa5f0; }
-.wad-bin-token--punctuation { color: #d4d4d4; }
-.wad-bin-token--plain.is-match, .wad-bin-token--comment.is-match, .wad-bin-token--string.is-match, .wad-bin-token--number.is-match, .wad-bin-token--type.is-match, .wad-bin-token--class.is-match, .wad-bin-token--property.is-match, .wad-bin-token--brace.is-match, .wad-bin-token--bracket.is-match, .wad-bin-token--paren.is-match, .wad-bin-token--punctuation.is-match { background: color-mix(in oklab, var(--accent-primary) 28%, #304866); }
-.wad-bin-token--plain.is-current, .wad-bin-token--comment.is-current, .wad-bin-token--string.is-current, .wad-bin-token--number.is-current, .wad-bin-token--type.is-current, .wad-bin-token--class.is-current, .wad-bin-token--property.is-current, .wad-bin-token--brace.is-current, .wad-bin-token--bracket.is-current, .wad-bin-token--paren.is-current, .wad-bin-token--punctuation.is-current { color: #101419; background: #e8c84a; }
+/* Divides the file actions (Extract / Jade) from the viewer's own controls. */
+.wad-bin-viewer__sep { flex: 0 0 auto !important; width: 1px; height: 17px; margin: 0 4px; background: var(--border); }
+.wad-preview__jade-icon { width: 13px; height: 13px; object-fit: contain; flex: 0 0 auto; }
+/* CodeMirror host. Syntax colours, gutters, selection, and the search panel are
+   themed in BinTextViewer.tsx (EditorView.theme) so they live with the editor
+   config; only the layout box belongs here. */
+.wad-bin-viewer__editor { flex: 1; min-height: 0; overflow: hidden; }
+.wad-bin-viewer__editor .cm-editor { height: 100%; }
+.wad-bin-viewer__editor .cm-editor.cm-focused { outline: none; }
 
 .wad-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 9px; padding: 12px; }
 .wad-gallery__item { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-secondary); }
