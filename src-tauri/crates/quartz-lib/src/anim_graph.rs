@@ -164,8 +164,11 @@ pub struct ParticlePair {
 /// Field spellings are byte-verified against ritobin dumps; the odd ones are
 /// called out per variant. Anything unrecognised lands in [`Self::Unknown`]
 /// rather than being dropped.
+// `rename_all` renames the VARIANTS; `rename_all_fields` is also needed or a
+// struct variant's fields would serialize snake_case (`start_frame`) inside an
+// otherwise camelCase model. The frontend switches on `type`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum AnimEventKind {
     /// `ParticleEventData`: spawns a VFX system.
     ///
@@ -265,8 +268,10 @@ pub struct ClipPair {
 /// (`mConditionFloatPairDataList` of `ConditionFloatPairData`) rather than
 /// sharing the parametric ones, and that `ConditionBoolClipData` has no pair
 /// list at all - it branches on two named clips.
+// See [`AnimEventKind`] on why `rename_all_fields` is needed alongside
+// `rename_all`: without it `ConditionBool`'s two fields serialize snake_case.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ClipKind {
     /// `AtomicClipData` - the leaf that actually names a `.anm`.
     Atomic,

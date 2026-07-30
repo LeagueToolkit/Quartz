@@ -129,6 +129,176 @@ export interface VfxPortModel {
     hasSkinCharacterData: boolean;
 }
 
+/* ── Animation read layer ────────────────────────────────────────────────────
+   The clip graph, its blend masks and tracks, and the skeleton those masks
+   index into. Read-only: these shapes mirror `quartz_lib::anim_graph` and
+   `vfx_session::anm`, which model the fields the viewer needs and NOT every
+   field a clip can carry — every node keeps a `BinAddr` so a write path can
+   reach the unmodelled ones without reconstructing the node. */
+
+/** Same wire shape as {@link VfxPath}: where a parsed node lives in the bins.
+ *  A map hop (clip / event maps) is recorded as the entry's POSITION. */
+export interface BinAddr {
+    bin: number;
+    entry: number;
+    steps: Step[];
+}
+
+/** While `[startFrame, endFrame]` is live, hide `hide` and show `show`.
+ *  Tokens are submesh names, or `0x`-hashes the hash DB could not resolve. */
+export interface SubmeshVisEvent {
+    startFrame: number | null;
+    endFrame: number | null;
+    show: string[];
+    hide: string[];
+}
+
+/** A `mBoneName` / `mTargetBoneName` pair on a particle event. It has no name
+ *  and no hash of its own, so `addr` is the only way to address one. */
+export interface ParticlePair {
+    boneName: string | null;
+    targetBoneName: string | null;
+    addr: BinAddr;
+}
+
+/** Typed payload of one clip event; switch on `type`. `unknown` preserves an
+ *  unmodelled event class with its hash rather than dropping it. */
+export type AnimEventKind =
+    | {
+          type: 'particle';
+          effectKey: string | null;
+          startFrame: number | null;
+          isLoop: boolean | null;
+          pairs: ParticlePair[];
+      }
+    | { type: 'sound'; soundName: string | null; isLoop: boolean | null }
+    | {
+          type: 'submeshVisibility';
+          startFrame: number | null;
+          endFrame: number | null;
+          show: string[];
+          hide: string[];
+      }
+    | { type: 'faceTarget'; endFrame: number | null; yRotationDegrees: number | null }
+    | {
+          type: 'conformToPath';
+          maskDataName: string | null;
+          blendInTime: number | null;
+          blendOutTime: number | null;
+      }
+    | {
+          type: 'lockRootOrientation';
+          startFrame: number | null;
+          endFrame: number | null;
+          jointName: string | null;
+          blendOutTime: number | null;
+      }
+    | { type: 'stopAnimation'; stopAnimationName: string | null }
+    | { type: 'unknown'; classHash: number };
+
+export interface AnimEvent {
+    /** Resolved map key, or `0x{hash}` when the hash DB could not name it. */
+    name: string;
+    classHash: number;
+    kind: AnimEventKind;
+    addr: BinAddr;
+}
+
+/** One entry of a selector / parametric / condition-float pair list. */
+export interface ClipPair {
+    clipName: string | null;
+    probability: number | null;
+    value: number | null;
+    addr: BinAddr;
+}
+
+/** Which class a clip is, with its class-specific payload; switch on `type`. */
+export type ClipKind =
+    | { type: 'atomic' }
+    | { type: 'sequencer' }
+    | { type: 'parallel' }
+    | { type: 'selector' }
+    | { type: 'parametric' }
+    | { type: 'conditionFloat' }
+    | { type: 'conditionBool'; trueClip: string | null; falseClip: string | null }
+    | { type: 'unknown' };
+
+/** One member of a composite clip's queue: a leaf clip naming a `.anm`. */
+export interface ClipMember {
+    name: string;
+    anmPath: string;
+    /** Legacy submesh-only view; a strict subset of `allEvents`. */
+    events: SubmeshVisEvent[];
+    loops: boolean;
+    kind: ClipKind;
+    classHash: number;
+    /** Raw `mFlags`, unmasked. `loops` is bit 2 of this. */
+    flags: number;
+    trackDataName: string | null;
+    maskDataName: string | null;
+    startFrame: number | null;
+    endFrame: number | null;
+    allEvents: AnimEvent[];
+    addr: BinAddr;
+}
+
+export interface ClipInfo {
+    name: string;
+    /** `.anm` asset path; for a composite clip, its first member's. */
+    anmPath: string | null;
+    /** A composite clip's ordered queue; empty for a plain atomic clip. */
+    members: ClipMember[];
+    /** Legacy submesh-only view; a strict subset of `allEvents`. */
+    events: SubmeshVisEvent[];
+    loops: boolean;
+    kind: ClipKind;
+    classHash: number;
+    /** Raw `mFlags`, unmasked. `loops` is bit 2 of this. */
+    flags: number;
+    trackDataName: string | null;
+    maskDataName: string | null;
+    startFrame: number | null;
+    endFrame: number | null;
+    /** Pair list for a selector / parametric / condition-float clip. */
+    pairs: ClipPair[];
+    allEvents: AnimEvent[];
+    addr: BinAddr;
+}
+
+/** One blend mask. `weights[i]` is the weight of skeleton joint `i` — the index
+ *  IS the joint link, so never sort, filter or reorder this array. */
+export interface MaskData {
+    name: string;
+    weights: number[];
+}
+
+/** One track. Both fields are optional in the file format; `null` means the
+ *  field was absent, which is NOT the same as 0. */
+export interface TrackData {
+    name: string;
+    priority: number | null;
+    blendMode: number | null;
+}
+
+/** The `.skl` a set of masks applies to, found via the owning skin entry. */
+export interface SkeletonLink {
+    /** The raw `ASSETS/...` string exactly as authored in the bin. */
+    sklRef: string;
+    /** Resolved on-disk path, null when the project doesn't ship the file. */
+    sklPath: string | null;
+    sknRef: string | null;
+}
+
+export interface AnmModel {
+    clips: ClipInfo[];
+    masks: MaskData[];
+    tracks: TrackData[];
+    skeleton: SkeletonLink | null;
+    /** Non-fatal problems worth showing: dangling mask / track references and
+     *  mask weight counts that disagree with the skeleton's joint count. */
+    warnings: string[];
+}
+
 export interface ChildParams {
     effectKey: string;
     rate: number;
@@ -196,6 +366,12 @@ export function vfxOpen(path: string): Promise<VfxOpenResult> {
 /** Reproject the model from the live trees. */
 export function vfxModel(sessionId: number): Promise<VfxPortModel> {
     return invokeCommand<VfxPortModel>('vfx_model', { sessionId });
+}
+
+/** Project the animation read layer: clips, blend masks, tracks, the skeleton
+ *  those masks index into, and the non-fatal warnings worth surfacing. */
+export function vfxAnmModel(sessionId: number): Promise<AnmModel> {
+    return invokeCommand<AnmModel>('vfx_anm_model', { sessionId });
 }
 
 /** Reparse the session when any loaded BIN changed outside Quartz. */

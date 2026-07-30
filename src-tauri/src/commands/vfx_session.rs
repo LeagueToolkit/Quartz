@@ -5,6 +5,7 @@ natively. The heavy lifting lives in `quartz_lib::vfx_session`; these
 commands stay thin and translate to/from the camelCase shapes the frontend
 consumes. */
 
+use quartz_lib::vfx_session::anm::project::{self as anm_project, AnmModel};
 use quartz_lib::vfx_session::construct::{ChildParams, PersistentPayload};
 use quartz_lib::vfx_session::ops::{self, PortEmittersResult, PortSystemResult};
 use quartz_lib::vfx_session::path::VfxPath;
@@ -40,6 +41,16 @@ pub async fn vfx_model(session_id: u64) -> Result<VfxPortModel, String> {
     tokio::task::spawn_blocking(move || session::model_of(session_id))
         .await
         .map_err(|e| format!("Model task failed to join: {}", e))?
+        .map_err(|e| e.to_string())
+}
+
+/// Project the animation read layer: clips, blend masks, tracks, the skeleton
+/// those masks index into, and the non-fatal reference / length warnings.
+#[tauri::command]
+pub async fn vfx_anm_model(session_id: u64) -> Result<AnmModel, String> {
+    tokio::task::spawn_blocking(move || anm_project::anm_model_of(session_id))
+        .await
+        .map_err(|e| format!("Anm model task failed to join: {}", e))?
         .map_err(|e| e.to_string())
 }
 

@@ -204,6 +204,7 @@ fn main() {
             commands::bineditor::bin_editor_save,
             commands::vfx_session::vfx_open,
             commands::vfx_session::vfx_model,
+            commands::vfx_session::vfx_anm_model,
             commands::vfx_session::vfx_reload_if_changed,
             commands::vfx_session::vfx_save,
             commands::vfx_session::vfx_close,
