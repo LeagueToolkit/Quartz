@@ -10,6 +10,7 @@
 //! [`ops`] layers the porting edits on top. Save writes ONLY dirty bins, each
 //! back to its own original file.
 
+pub mod anm;
 pub mod construct;
 pub mod ops;
 pub mod path;
