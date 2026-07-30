@@ -147,15 +147,42 @@ pub fn create_system(id: SessionId, name: &str) -> Result<VfxPortModel> {
 /// Clone the selected donor emitters into the target system, preserving which
 /// list (complex vs simple) each came from. Returns the referenced asset
 /// strings so the frontend can copy them alongside.
+/// Reject donor paths that came from a different tree than the one now loaded.
+///
+/// `VfxPath` is raw indices, so a path from a previous donor resolves happily
+/// against a reloaded one and clones whatever sits at those positions - the UI
+/// symptom being emitters from the OLD donor appearing in a port. Callers pass
+/// the `generation` of the model their paths came from; a mismatch is a stale
+/// path, not a valid edit.
+///
+/// `None` skips the check, for callers that have no model to quote (and to keep
+/// older callers working).
+fn check_donor_generation(donor: SessionId, expected: Option<u64>) -> Result<()> {
+    let Some(expected) = expected else {
+        return Ok(());
+    };
+    let actual = session::with_session(donor, |d| d.generation)?;
+    if actual != expected {
+        return Err(Error::InvalidInput(
+            "The donor was reloaded since these emitters were listed. \
+             Re-select them and try again."
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub fn port_emitters(
     target: SessionId,
     donor: SessionId,
     donor_emitters: &[VfxPath],
     target_system: &VfxPath,
+    donor_generation: Option<u64>,
 ) -> Result<PortEmittersResult> {
     if donor_emitters.is_empty() {
         return Err(Error::InvalidInput("No emitters selected".to_string()));
     }
+    check_donor_generation(donor, donor_generation)?;
 
     // Phase 1: read + clone from the donor.
     let cloned =
@@ -226,7 +253,9 @@ pub fn port_system(
     donor_system: &VfxPath,
     desired_name: Option<&str>,
     preserve_name: bool,
+    donor_generation: Option<u64>,
 ) -> Result<PortSystemResult> {
+    check_donor_generation(donor, donor_generation)?;
     // Phase 1: clone the donor entry and collect its asset strings.
     let cloned = session::with_session(
         donor,
@@ -2531,6 +2560,7 @@ mod tests {
             },
             None,
             true,
+            None,
         )
         .unwrap();
         assert_eq!(res.final_name, "Katarina_Base_Dagger_Ground_Indicator");
@@ -2587,6 +2617,94 @@ mod tests {
         .unwrap();
 
         session::close(donor_id);
+        session::close(target_id);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Paths from a donor that has since been swapped must be REJECTED.
+    ///
+    /// A `VfxPath` is raw indices, so a path listed from donor A resolves
+    /// silently against donor B and clones whatever now sits there - the
+    /// reported symptom being emitters from the previous donor turning up in a
+    /// port (12 + 2 = 14). Quoting the generation the paths came from turns
+    /// that into a clean error.
+    #[test]
+    fn port_rejects_paths_from_a_swapped_donor() {
+        let h = hs();
+        let dir = std::env::temp_dir().join(format!("quartz-gen-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let sys_of = |name: &str| {
+            let path_str = format!("Characters/X/Skins/Skin0/Particles/{name}");
+            let mut e = system_entry(&h, hash_or_hex(&path_str));
+            e.fields
+                .insert(h.particle_name, BinValue::String(name.to_string()));
+            e.fields
+                .insert(h.particle_path, BinValue::String(path_str));
+            e
+        };
+
+        let donor_a = dir.join("donor_a.bin");
+        let donor_b = dir.join("donor_b.bin");
+        let target_file = dir.join("target.bin");
+        std::fs::write(&donor_a, bytes(&bin_of(vec![sys_of("SystemA")]))).unwrap();
+        std::fs::write(&donor_b, bytes(&bin_of(vec![sys_of("SystemB")]))).unwrap();
+        std::fs::write(
+            &target_file,
+            bytes(&bin_of(vec![
+                skin_entry(&h),
+                BinEntry {
+                    path_hash: hash_or_hex("Characters/T/Skins/Skin0/Resources"),
+                    class_hash: h.resource_resolver,
+                    fields: IndexMap::new(),
+                },
+            ])),
+        )
+        .unwrap();
+
+        let target_id = session::open(&target_file).unwrap().session_id;
+
+        // List a path from donor A, remembering the generation it came from.
+        let a = session::open(&donor_a).unwrap();
+        let stale_generation = a.model.generation;
+        let stale_path = a.model.systems[0].path.clone();
+        session::close(a.session_id);
+
+        // The user reloads a different donor into the same slot.
+        let b = session::open(&donor_b).unwrap();
+        assert_ne!(
+            b.model.generation, stale_generation,
+            "a freshly opened session must get a new generation"
+        );
+
+        // Porting donor A's path against donor B must be refused...
+        let err = port_system(
+            target_id,
+            b.session_id,
+            &stale_path,
+            None,
+            true,
+            Some(stale_generation),
+        )
+        .expect_err("stale donor path was accepted");
+        assert!(
+            err.to_string().contains("reloaded"),
+            "unexpected error: {err}"
+        );
+
+        // ...while the CURRENT donor's own path still works.
+        let fresh_path = b.model.systems[0].path.clone();
+        port_system(
+            target_id,
+            b.session_id,
+            &fresh_path,
+            None,
+            true,
+            Some(b.model.generation),
+        )
+        .expect("current donor path should port fine");
+
+        session::close(b.session_id);
         session::close(target_id);
         let _ = std::fs::remove_dir_all(&dir);
     }

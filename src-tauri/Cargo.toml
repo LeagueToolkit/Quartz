@@ -3,7 +3,7 @@ members = [".", "crates/quartz-lib"]
 
 [package]
 name = "quartz"
-version = "4.1.4"
+version = "4.1.5"
 edition = "2021"
 default-run = "quartz"
 
@@ -47,7 +47,11 @@ windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_UI_
 
 [profile.release]
 opt-level = 3
-lto = true
+# "thin" instead of full LTO: full LTO merges all ~640 crates into one unit and
+# re-optimizes it on a SINGLE thread, which was most of an 8-minute build on a
+# 12-core machine. Thin LTO parallelises that stage for near-identical runtime
+# performance and a marginally larger binary.
+lto = "thin"
 strip = true
 
 # Texture preview is CPU-heavy even in the development app. Keep the app

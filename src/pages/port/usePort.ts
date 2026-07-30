@@ -447,23 +447,45 @@ export default function usePort() {
     // only, since matching emitters just adds noise. Any other term also matches
     // emitters (by name or texture), narrowing each system to its hits.
     const isSystemOnlyTerm = (term: string) => /^_[a-z](_)?$/i.test(term.trim());
-    const emitterMatchesTerm = (e: VfxSystem['emitters'][number], term: string): boolean =>
-        (e.name || '').toLowerCase().includes(term) ||
+    const emitterNameMatches = (e: VfxSystem['emitters'][number], term: string): boolean =>
+        (e.name || '').toLowerCase().includes(term);
+    const emitterTextureMatches = (e: VfxSystem['emitters'][number], term: string): boolean =>
         (e.textures || []).some((t) => t.toLowerCase().includes(term));
 
+    /* Two passes, names before textures.
+       Texture search is genuinely useful (finding every system that uses a given
+       .tex), but a texture path contains the ability token too - so searching
+       "Q_tar" used to surface W_tar / E_Buff / R_Cas purely because their
+       emitters referenced a Q_Tar texture. The name hits were buried among them
+       and the results looked broken.
+
+       So: if ANY system matches by name (its own or an emitter's), show only
+       those. Only when nothing matches by name do we fall back to texture
+       matches, which keeps the feature without letting it drown the obvious
+       hits. */
     const filterSystems = (list: VfxSystem[], rawTerm: string): VfxSystem[] => {
         if (!rawTerm) return list;
         const term = rawTerm.toLowerCase();
         const systemOnly = isSystemOnlyTerm(rawTerm);
-        return list
+
+        const byName = list
             .map((sys) => {
                 const sysName = (sys.particleName || sys.name || sys.key || '').toLowerCase();
                 if (sysName.includes(term)) return sys;
                 if (!systemOnly && sys.emitters) {
-                    const matching = sys.emitters.filter((e) => emitterMatchesTerm(e, term));
+                    const matching = sys.emitters.filter((e) => emitterNameMatches(e, term));
                     if (matching.length > 0) return { ...sys, emitters: matching };
                 }
                 return null;
+            })
+            .filter((s): s is VfxSystem => s !== null);
+        if (byName.length > 0 || systemOnly) return byName;
+
+        return list
+            .map((sys) => {
+                if (!sys.emitters) return null;
+                const matching = sys.emitters.filter((e) => emitterTextureMatches(e, term));
+                return matching.length > 0 ? { ...sys, emitters: matching } : null;
             })
             .filter((s): s is VfxSystem => s !== null);
     };
@@ -511,6 +533,16 @@ export default function usePort() {
 
     // `recordRecent` defaults true; donor-from-game passes false because its
     // path is a throwaway temp extraction that shouldn't pollute recent history.
+    /* Swapping the donor must replace the session AND its model together.
+       A VfxPath is nothing but raw `{bin, entry, steps}` indices into the donor
+       tree - it carries no identity - so a path taken from one donor model
+       resolves happily against a DIFFERENT session and clones whatever now sits
+       at those indices. That is how a reloaded donor could port emitters that
+       belonged to the previous one.
+
+       The old model is therefore cleared BEFORE the new bin is opened, so there
+       is no window where a stale model is paired with a live session, and a
+       failed open leaves the donor genuinely empty rather than half-swapped. */
     const processDonorBin = useCallback(async (filePath: string, recordRecent = true) => {
         if (!filePath) return;
         try {
@@ -519,7 +551,15 @@ export default function usePort() {
             setProcessingText('Loading donor...');
 
             const prev = usePortStore.getState().donorSessionId;
-            if (prev !== null) void vfxClose(prev).catch(() => undefined);
+            // Drop the outgoing donor entirely first: no session id, no model,
+            // no stale paths for a port to pick up.
+            setDonorSessionId(null);
+            setDonorModel(null);
+            setCollapsedDonorSystems(new Set());
+            if (prev !== null) {
+                // Awaited, so the old tree is freed before the new one loads.
+                await vfxClose(prev).catch(() => undefined);
+            }
 
             const { sessionId, model } = await vfxOpen(filePath);
             setDonorSessionId(sessionId);
@@ -529,6 +569,8 @@ export default function usePort() {
             if (recordRecent) useUiPrefsStore.getState().pushRecentBinFor('donor', filePath);
             setStatusMessage(`Donor bin loaded: ${model.systems.length} systems found`);
         } catch (error) {
+            // Leave the donor cleared rather than pointing at a closed session.
+            setDonorPath('');
             setStatusMessage(`Error: ${(error as Error).message}`);
         } finally {
             setIsProcessing(false);
@@ -595,7 +637,7 @@ export default function usePort() {
             if (!emitter) return;
             await runTargetSessionTask(async () => {
                 try {
-                    const result = await vfxPortEmitters(targetSessionId, donorSessionId, [emitter.path], targetSystem.path);
+                    const result = await vfxPortEmitters(targetSessionId, donorSessionId, [emitter.path], targetSystem.path, donorModel?.generation);
                     applyTargetModel(result.model);
                     setStatusMessage(`Ported emitter "${result.ported[0] || emName}"`);
                     void copyDonorAssets(result.assetPaths);
@@ -604,7 +646,7 @@ export default function usePort() {
                 }
             }, 'Porting emitter...');
         },
-        [selectedTargetSystem, targetSessionId, donorSessionId, donorSystems, targetSystems, applyTargetModel, copyDonorAssets, runTargetSessionTask]
+        [selectedTargetSystem, targetSessionId, donorSessionId, donorModel, donorSystems, targetSystems, applyTargetModel, copyDonorAssets, runTargetSessionTask]
     );
 
     const handlePortAllEmitters = useCallback(
@@ -623,7 +665,8 @@ export default function usePort() {
                         targetSessionId,
                         donorSessionId,
                         donorSystem.emitters.map((e) => e.path),
-                        targetSystem.path
+                        targetSystem.path,
+                        donorModel?.generation,
                     );
                     applyTargetModel(result.model);
                     setStatusMessage(`Ported ${result.ported.length} emitters`);
@@ -633,7 +676,7 @@ export default function usePort() {
                 }
             }, 'Porting emitters...');
         },
-        [selectedTargetSystem, targetSessionId, donorSessionId, donorSystems, targetSystems, applyTargetModel, copyDonorAssets, runTargetSessionTask]
+        [selectedTargetSystem, targetSessionId, donorSessionId, donorModel, donorSystems, targetSystems, applyTargetModel, copyDonorAssets, runTargetSessionTask]
     );
 
     /* Insert a donor system dropped onto the target column. preserveName keeps
@@ -646,7 +689,7 @@ export default function usePort() {
             }
             await runTargetSessionTask(async () => {
                 try {
-                    const result = await vfxPortSystem(targetSessionId, donorSessionId, donorSystemPath, preserveName ? null : name, preserveName);
+                    const result = await vfxPortSystem(targetSessionId, donorSessionId, donorSystemPath, preserveName ? null : name, preserveName, donorModel?.generation);
                     applyTargetModel(result.model);
                     const modeText = preserveName ? 'with preserved ResourceResolver names' : 'with updated names';
                     setStatusMessage(`Added VFX system "${result.finalName}" to target ${modeText}`);
@@ -656,7 +699,7 @@ export default function usePort() {
                 }
             }, 'Porting VFX system...');
         },
-        [targetSessionId, donorSessionId, applyTargetModel, copyDonorAssets, runTargetSessionTask]
+        [targetSessionId, donorSessionId, donorModel, applyTargetModel, copyDonorAssets, runTargetSessionTask]
     );
 
     const handlePortAllSystems = useCallback(
@@ -701,7 +744,7 @@ export default function usePort() {
                     const system = donorSystemsList[i];
                     setProcessingText(`Porting system ${i + 1}/${donorSystemsList.length}: ${system.particleName || system.name}`);
                     try {
-                        const result = await vfxPortSystem(targetSessionId, donorSessionId, system.path, null, true);
+                        const result = await vfxPortSystem(targetSessionId, donorSessionId, system.path, null, true, donorModel?.generation);
                         latest = result.model;
                         for (const a of result.assetPaths) allAssets.add(a);
                         successCount++;
@@ -728,7 +771,7 @@ export default function usePort() {
                 setProcessingText('');
             }
         },
-        [targetSessionId, donorSessionId, donorSystems, targetModel, applyTargetModel, copyDonorAssets]
+        [targetSessionId, donorSessionId, donorModel, donorSystems, targetModel, applyTargetModel, copyDonorAssets]
     );
 
     /* Move an emitter between two target systems: clone into the destination
@@ -753,7 +796,7 @@ export default function usePort() {
             }
             await runTargetSessionTask(async () => {
                 try {
-                    const ported = await vfxPortEmitters(targetSessionId, targetSessionId, [emitter.path], targetSystem.path);
+                    const ported = await vfxPortEmitters(targetSessionId, targetSessionId, [emitter.path], targetSystem.path, targetModel?.generation);
                     const freshSource = ported.model.systems.find((s) => s.key === sourceSystemKey);
                     const freshEmitter = freshSource?.emitters.find((e) => e.name === emName);
                     if (freshEmitter) {
@@ -769,7 +812,7 @@ export default function usePort() {
                 }
             }, 'Moving emitter...');
         },
-        [targetSessionId, targetSystems, applyTargetModel, runTargetSessionTask]
+        [targetSessionId, targetModel, targetSystems, applyTargetModel, runTargetSessionTask]
     );
 
     const handleDeleteEmitter = useCallback(

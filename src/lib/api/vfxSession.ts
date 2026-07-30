@@ -115,6 +115,9 @@ export interface EffectKeyOption {
 }
 
 export interface VfxPortModel {
+    /** Identity of the session tree these paths index into. Echo it back on a
+     *  cross-session port so paths from a reloaded donor are rejected. */
+    generation: number;
     bins: BinInfo[];
     systems: PortSystem[];
     resolver: ResolverView | null;
@@ -233,9 +236,11 @@ export function vfxPortEmitters(
     donorSessionId: number,
     donorEmitters: VfxPath[],
     targetSystem: VfxPath,
+    donorGeneration?: number,
 ): Promise<PortEmittersResult> {
     return invokeCommand<PortEmittersResult>('vfx_port_emitters', {
         targetSessionId, donorSessionId, donorEmitters, targetSystem,
+        donorGeneration: donorGeneration ?? null,
     });
 }
 
@@ -246,9 +251,11 @@ export function vfxPortSystem(
     donorSystem: VfxPath,
     desiredName: string | null,
     preserveName: boolean,
+    donorGeneration?: number,
 ): Promise<PortSystemResult> {
     return invokeCommand<PortSystemResult>('vfx_port_system', {
         targetSessionId, donorSessionId, donorSystem, desiredName, preserveName,
+        donorGeneration: donorGeneration ?? null,
     });
 }
 

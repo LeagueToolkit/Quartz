@@ -55,8 +55,24 @@ pub struct VfxSession {
     pub id: SessionId,
     /// Index 0 is always the main bin; linked bins follow in `linked` order.
     pub bins: Vec<LoadedBin>,
+    /// Globally unique stamp for THIS session's tree identity, carried on every
+    /// model it projects.
+    ///
+    /// A [`VfxPath`](super::path::VfxPath) is raw `{bin, entry, steps}` indices
+    /// with no identity of its own, so a path taken from one session's model
+    /// resolves silently against ANY other session - cloning whatever happens to
+    /// sit at those indices. Requiring the caller to echo back the generation
+    /// its paths came from lets a cross-session op reject stale paths (a
+    /// reloaded or swapped donor) instead of porting the wrong emitters.
+    pub generation: u64,
     undo: Vec<VfxUndoFrame>,
     redo: Vec<VfxUndoFrame>,
+}
+
+static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
+
+fn next_generation() -> u64 {
+    NEXT_GENERATION.fetch_add(1, Ordering::Relaxed)
 }
 
 impl VfxSession {
@@ -170,6 +186,7 @@ pub fn open(path: impl AsRef<Path>) -> Result<OpenResult> {
     let session = VfxSession {
         id,
         bins,
+        generation: next_generation(),
         undo: Vec::new(),
         redo: Vec::new(),
     };
@@ -288,6 +305,7 @@ mod tests {
         VfxSession {
             id: 0,
             bins: vec![loaded(main, BinRole::Main), loaded(vfx, BinRole::Linked)],
+            generation: next_generation(),
             undo: Vec::new(),
             redo: Vec::new(),
         }
