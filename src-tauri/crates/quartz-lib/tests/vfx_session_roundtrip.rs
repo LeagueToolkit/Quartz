@@ -101,7 +101,7 @@ fn roundtrip_op(
     let id = opened.session_id;
 
     let _after = apply(id, &opened.model);
-    let written = session::save(id).unwrap();
+    let written = session::save(id, true).unwrap();
     assert!(!written.is_empty(), "[{name}] op marked nothing dirty");
     let changed = changed_files(baseline, ws);
     assert!(!changed.is_empty(), "[{name}] save changed no files");
@@ -113,7 +113,7 @@ fn roundtrip_op(
 
     // Undo on the live session, save, and the tree must be pristine again.
     session::undo(id).unwrap().expect("undo frame");
-    let rewritten = session::save(id).unwrap();
+    let rewritten = session::save(id, true).unwrap();
     assert!(!rewritten.is_empty(), "[{name}] undo marked nothing dirty");
     assert_trees_equal(baseline, ws, &format!("{name}: after undo+save"));
     session::close(id);
@@ -206,7 +206,7 @@ fn vfx_session_roundtrip() {
 
     // ── No-op save: nothing dirty, nothing written, bytes untouched ──────────
     let baseline = bin_bytes(&target_ws);
-    let written = session::save(id).unwrap();
+    let written = session::save(id, true).unwrap();
     assert!(written.is_empty(), "no-op save wrote files: {written:?}");
     assert_trees_equal(&baseline, &target_ws, "no-op save");
     session::close(id);
@@ -433,7 +433,7 @@ fn vfx_session_roundtrip() {
         |id, m| {
             let (target_sys, _, _) = first_system_with_emitters(m);
             let before = m.systems.iter().map(|s| s.emitters.len()).sum::<usize>();
-            let r = ops::port_emitters(id, donor_id, &[donor_em.clone()], target_sys).unwrap();
+            let r = ops::port_emitters(id, donor_id, &[donor_em.clone()], target_sys, None).unwrap();
             assert_eq!(r.ported.len(), 1);
             let after = r
                 .model
@@ -465,7 +465,7 @@ fn vfx_session_roundtrip() {
         "port_system",
         |id, _m| {
             let r =
-                ops::port_system(id, donor_id, &donor_sys, Some("qz_ported_sys"), false).unwrap();
+                ops::port_system(id, donor_id, &donor_sys, Some("qz_ported_sys"), false, None).unwrap();
             assert!(r.final_name.contains("qz_ported_sys"));
             r.model
         },
@@ -491,13 +491,13 @@ fn vfx_session_roundtrip() {
         assert!(created.emitters.is_empty());
         let created_path = created.path.clone();
 
-        let r = ops::port_emitters(id, donor_id, &[donor_em.clone()], &created_path).unwrap();
+        let r = ops::port_emitters(id, donor_id, &[donor_em.clone()], &created_path, None).unwrap();
         assert_eq!(
             r.ported.len(),
             1,
             "emitter did not port into the created system"
         );
-        session::save(id).unwrap();
+        session::save(id, true).unwrap();
 
         let reopened = session::open(target_ws.join(MAIN_REL)).unwrap();
         let sys = reopened
@@ -516,7 +516,7 @@ fn vfx_session_roundtrip() {
 
         session::undo(id).unwrap().expect("undo port");
         session::undo(id).unwrap().expect("undo create");
-        session::save(id).unwrap();
+        session::save(id, true).unwrap();
         assert_trees_equal(
             &baseline,
             &target_ws,
@@ -590,7 +590,7 @@ fn vfx_session_roundtrip() {
         |id, m| {
             let (target_sys, em, _) = first_system_with_emitters(m);
             let before = m.systems.iter().map(|s| s.emitters.len()).sum::<usize>();
-            let r = ops::port_emitters(id, id, &[em.clone()], target_sys).unwrap();
+            let r = ops::port_emitters(id, id, &[em.clone()], target_sys, None).unwrap();
             let after = r
                 .model
                 .systems
@@ -656,7 +656,7 @@ fn vfx_session_roundtrip() {
     };
     ops::persistent_upsert(id, None, &payload).unwrap();
 
-    session::save(id).unwrap();
+    session::save(id, true).unwrap();
     let reopened = session::open(target_ws.join(MAIN_REL)).unwrap();
     let rm = &reopened.model;
     assert!(rm
@@ -673,7 +673,7 @@ fn vfx_session_roundtrip() {
     for _ in 0..5 {
         session::undo(id).unwrap().expect("mixed undo frame");
     }
-    session::save(id).unwrap();
+    session::save(id, true).unwrap();
     assert_trees_equal(&baseline, &target_ws, "mixed: after 5x undo+save");
     session::close(id);
     println!("[vfx] mixed combined roundtrip OK");
@@ -721,7 +721,7 @@ fn vfx_session_bench() {
     let undo_pair_avg = t0.elapsed() / iters;
 
     let t0 = Instant::now();
-    let written = session::save(id).unwrap();
+    let written = session::save(id, true).unwrap();
     let save_cost = t0.elapsed();
 
     println!(

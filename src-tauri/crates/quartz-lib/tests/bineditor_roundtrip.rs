@@ -99,7 +99,7 @@ fn bineditor_roundtrip() {
         "expected VFX content in the test bin"
     );
 
-    session::save(id, Some(t("base.bin"))).expect("save baseline");
+    session::save(id, Some(t("base.bin")), true).expect("save baseline");
     let b0 = std::fs::read(t("base.bin")).unwrap();
     read_bin(&b0).expect("baseline save re-parses");
 
@@ -120,7 +120,7 @@ fn bineditor_roundtrip() {
     let node = find_node(&m, &path).expect("edited node still projectable");
     assert!(matches!(node.value, Some(NodeValue::F32(v)) if (v - 1234.5).abs() < 1e-3));
 
-    session::save(id, Some(t("mut.bin"))).expect("save mutated");
+    session::save(id, Some(t("mut.bin")), true).expect("save mutated");
     let b1 = std::fs::read(t("mut.bin")).unwrap();
     read_bin(&b1).expect("mutated save re-parses");
     assert_ne!(b0, b1, "mutation must change the serialized bytes");
@@ -140,7 +140,7 @@ fn bineditor_roundtrip() {
     let m = session::model_of(id).expect("model after undo");
     let node = find_node(&m, &path).expect("node after undo");
     assert!(matches!(node.value, Some(NodeValue::F32(v)) if (v - old_v).abs() < 1e-3));
-    session::save(id, Some(t("undo.bin"))).unwrap();
+    session::save(id, Some(t("undo.bin")), true).unwrap();
     assert_eq!(
         std::fs::read(t("undo.bin")).unwrap(),
         b0,
@@ -152,7 +152,7 @@ fn bineditor_roundtrip() {
     let m = session::model_of(id).expect("model after redo");
     let node = find_node(&m, &path).expect("node after redo");
     assert!(matches!(node.value, Some(NodeValue::F32(v)) if (v - 1234.5).abs() < 1e-3));
-    session::save(id, Some(t("redo.bin"))).unwrap();
+    session::save(id, Some(t("redo.bin")), true).unwrap();
     assert_eq!(
         std::fs::read(t("redo.bin")).unwrap(),
         b1,
@@ -161,7 +161,7 @@ fn bineditor_roundtrip() {
 
     // 6) Restore returns to the initially-loaded tree.
     session::restore(id).expect("restore");
-    session::save(id, Some(t("restore.bin"))).unwrap();
+    session::save(id, Some(t("restore.bin")), true).unwrap();
     assert_eq!(
         std::fs::read(t("restore.bin")).unwrap(),
         b0,
@@ -192,12 +192,12 @@ fn bineditor_roundtrip() {
         .find(|f| !before.contains(&f.key))
         .expect("new field present in projection");
     assert!(matches!(new_node.value, Some(NodeValue::F32(v)) if (v - 42.0).abs() < 1e-3));
-    session::save(id, Some(t("insert.bin"))).unwrap();
+    session::save(id, Some(t("insert.bin")), true).unwrap();
     read_bin(&std::fs::read(t("insert.bin")).unwrap()).expect("insert save re-parses");
 
     let m = session::remove(id, &new_node.path.clone()).expect("remove field");
     assert_eq!(m.systems[0].emitters[0].fields.len(), before.len());
-    session::save(id, Some(t("removed.bin"))).unwrap();
+    session::save(id, Some(t("removed.bin")), true).unwrap();
     assert_eq!(
         std::fs::read(t("removed.bin")).unwrap(),
         b0,
