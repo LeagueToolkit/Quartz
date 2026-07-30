@@ -42,6 +42,10 @@ import { useJadeBin } from '@/lib/jade/jadeInterop';
 
 function Port() {
     const p = usePort();
+    /* `usePort` returns a fresh object literal each render, so `p` itself is never
+       a stable dependency. Pull out the individual callbacks that feed the
+       virtualized/memoized VFX rows so their identities survive re-renders. */
+    const { handleSetTexture, handlePortEmitter, handleMoveEmitter } = p;
     useJadeBin(p.targetPath);
 
     const [showPortAllModeModal, setShowPortAllModeModal] = useState(false);
@@ -156,11 +160,14 @@ function Port() {
             showTexturePreview(assets, e.currentTarget as HTMLElement, binPathFor(isTarget), {
                 contextMenu: true,
                 onEditPath: (oldPath, newPath) => {
-                    void p.handleSetTexture(emitter, isTarget, oldPath, newPath);
+                    void handleSetTexture(emitter, isTarget, oldPath, newPath);
                 },
             });
         },
-        [binPathFor, p]
+        // Depend on the one callback used, not the whole `p` bag — `usePort`
+        // returns a fresh object every render, so `[p]` would give this handler
+        // a new identity each time and break the row-level React.memo.
+        [binPathFor, handleSetTexture]
     );
     const handleEmitterMouseLeave = useCallback(() => scheduleTexturePreviewClose(), []);
     const handleEmitterClick = useCallback((e: React.MouseEvent) => {
@@ -430,10 +437,10 @@ function Port() {
         (payload: Extract<PortDragPayload, { kind: 'emitter' }>, targetSystemKey: string) => {
             const { sourceType, sourceSystemKey, emitterName } = payload;
             if (!sourceSystemKey || !emitterName || targetSystemKey === sourceSystemKey) return;
-            if (sourceType === 'donor') p.handlePortEmitter(sourceSystemKey, emitterName, undefined, targetSystemKey);
-            else p.handleMoveEmitter?.(sourceSystemKey, emitterName, targetSystemKey);
+            if (sourceType === 'donor') handlePortEmitter(sourceSystemKey, emitterName, undefined, targetSystemKey);
+            else handleMoveEmitter?.(sourceSystemKey, emitterName, targetSystemKey);
         },
-        [p]
+        [handlePortEmitter, handleMoveEmitter]
     );
 
     const handleOpenIdleManager = useCallback(() => {

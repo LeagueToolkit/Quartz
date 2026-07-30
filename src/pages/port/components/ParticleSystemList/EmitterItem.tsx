@@ -1,3 +1,4 @@
+import React from 'react';
 import CropOriginalIcon from '@mui/icons-material/CropOriginal';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -6,14 +7,35 @@ import { usePortDrag } from '../../usePortDrag';
 import { isDivineLabChildParticle, type VfxEmitter, type VfxSystem } from '../../model';
 import type { ListSharedProps } from './types';
 
-interface EmitterItemProps extends ListSharedProps {
+/*
+ * Only the ListSharedProps fields this row actually reads. Previously the
+ * parent spread its entire props bag in ({...props}), so every EmitterItem
+ * re-rendered whenever any unrelated shared prop changed. Naming the subset
+ * explicitly is what lets the React.memo below actually skip work.
+ */
+type EmitterSharedProps = Pick<ListSharedProps,
+    | 'renamingEmitter'
+    | 'setRenamingEmitter'
+    | 'handleRenameEmitter'
+    | 'handlePortEmitter'
+    | 'selectedTargetSystem'
+    | 'setStatusMessage'
+    | 'handleDeleteEmitter'
+    | 'handleEditChildParticle'
+    | 'handleEmitterMouseEnter'
+    | 'handleEmitterMouseLeave'
+    | 'handleEmitterClick'
+    | 'handleEmitterContextMenu'
+>;
+
+interface EmitterItemProps extends EmitterSharedProps {
     emitter: VfxEmitter;
     index: number;
     system: VfxSystem;
     isTarget: boolean;
 }
 
-export default function EmitterItem({
+function EmitterItem({
     emitter,
     index,
     system,
@@ -236,3 +258,5 @@ export default function EmitterItem({
         </div>
     );
 }
+
+export default React.memo(EmitterItem);

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import KeyboardDoubleArrowLeftIcon from '@mui/icons-material/KeyboardDoubleArrowLeft';
 import { RenameInput } from '../common/Inputs';
 import SystemActionsButton from '../SystemActionsButton';
@@ -7,12 +7,17 @@ import { usePortDrag, usePortDropZone } from '../../usePortDrag';
 import { getShortSystemName, type VfxSystem } from '../../model';
 import type { ListSharedProps } from './types';
 
-interface ParticleSystemItemProps extends ListSharedProps {
+interface ParticleSystemItemProps extends Omit<ListSharedProps, 'collapsedSystems'> {
     system: VfxSystem;
     isTarget: boolean;
+    /* Plain boolean derived by the parent instead of the shared collapsedSystems
+       Set. The Set gets a new identity on every toggle, which would break the
+       React.memo below for every row; a boolean only changes for the one row
+       whose state actually changed. */
+    isCollapsed: boolean;
 }
 
-export default function ParticleSystemItem(props: ParticleSystemItemProps) {
+function ParticleSystemItem(props: ParticleSystemItemProps) {
     const {
         system,
         isTarget,
@@ -26,7 +31,7 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
         setRenamingSystem,
         trimTargetNames,
         trimDonorNames,
-        collapsedSystems,
+        isCollapsed,
         toggleSystemCollapse,
         hasResourceResolver,
         hasSkinCharacterData,
@@ -38,6 +43,18 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
         handleAddChildParticles,
         handleDeleteAllEmitters,
         dropEmitterOnSystem,
+        // Forwarded to EmitterItem explicitly (see the emitter map below).
+        renamingEmitter,
+        setRenamingEmitter,
+        handleRenameEmitter,
+        handlePortEmitter,
+        setStatusMessage,
+        handleDeleteEmitter,
+        handleEditChildParticle,
+        handleEmitterMouseEnter,
+        handleEmitterMouseLeave,
+        handleEmitterClick,
+        handleEmitterContextMenu,
     } = props;
 
     const { startDrag, dragging } = usePortDrag();
@@ -125,10 +142,10 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'color-mix(in oklab, var(--bg-hover) 30%, transparent)')}
-                    title={collapsedSystems.has(system.key) ? 'Expand' : 'Collapse'}
+                    title={isCollapsed ? 'Expand' : 'Collapse'}
                 >
                     <span style={{ fontSize: '14px', opacity: 0.9, color: 'var(--accent-primary)' }}>
-                        {collapsedSystems.has(system.key) ? '▶' : '▼'}
+                        {isCollapsed ? '▶' : '▼'}
                     </span>
                 </div>
 
@@ -256,10 +273,33 @@ export default function ParticleSystemItem(props: ParticleSystemItemProps) {
                     </div>
                 )}
             </div>
-            {!collapsedSystems.has(system.key) &&
+            {!isCollapsed &&
                 system.emitters.map((emitter, index) => (
-                    <EmitterItem key={`${emitter.name}-${index}`} {...props} emitter={emitter} index={index} system={system} isTarget={isTarget} />
+                    /* Explicit props, not {...props}: spreading the whole shared
+                       bag handed every emitter a new value for props that changed
+                       for unrelated reasons, so React.memo could never skip. */
+                    <EmitterItem
+                        key={`${emitter.name}-${index}`}
+                        emitter={emitter}
+                        index={index}
+                        system={system}
+                        isTarget={isTarget}
+                        renamingEmitter={renamingEmitter}
+                        setRenamingEmitter={setRenamingEmitter}
+                        handleRenameEmitter={handleRenameEmitter}
+                        handlePortEmitter={handlePortEmitter}
+                        selectedTargetSystem={selectedTargetSystem}
+                        setStatusMessage={setStatusMessage}
+                        handleDeleteEmitter={handleDeleteEmitter}
+                        handleEditChildParticle={handleEditChildParticle}
+                        handleEmitterMouseEnter={handleEmitterMouseEnter}
+                        handleEmitterMouseLeave={handleEmitterMouseLeave}
+                        handleEmitterClick={handleEmitterClick}
+                        handleEmitterContextMenu={handleEmitterContextMenu}
+                    />
                 ))}
         </div>
     );
 }
+
+export default React.memo(ParticleSystemItem);
