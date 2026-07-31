@@ -112,6 +112,7 @@ pub async fn vfx_port_emitters(
     donor_session_id: u64,
     donor_emitters: Vec<VfxPath>,
     target_system: VfxPath,
+    donor_generation: Option<u64>,
 ) -> Result<PortEmittersResult, String> {
     tokio::task::spawn_blocking(move || {
         ops::port_emitters(
@@ -119,6 +120,7 @@ pub async fn vfx_port_emitters(
             donor_session_id,
             &donor_emitters,
             &target_system,
+            donor_generation,
         )
     })
     .await
@@ -135,6 +137,7 @@ pub async fn vfx_port_system(
     donor_system: VfxPath,
     desired_name: Option<String>,
     preserve_name: bool,
+    donor_generation: Option<u64>,
 ) -> Result<PortSystemResult, String> {
     tokio::task::spawn_blocking(move || {
         ops::port_system(
@@ -143,6 +146,7 @@ pub async fn vfx_port_system(
             &donor_system,
             desired_name.as_deref(),
             preserve_name,
+            donor_generation,
         )
     })
     .await
@@ -156,6 +160,18 @@ pub async fn vfx_delete_emitter(session_id: u64, emitter: VfxPath) -> Result<Vfx
     tokio::task::spawn_blocking(move || ops::delete_emitter(session_id, &emitter))
         .await
         .map_err(|e| format!("Delete emitter task failed to join: {}", e))?
+        .map_err(|e| e.to_string())
+}
+
+/// Remove several emitters as one edit (one undo step, one reprojection).
+#[tauri::command]
+pub async fn vfx_delete_emitters(
+    session_id: u64,
+    emitters: Vec<VfxPath>,
+) -> Result<VfxPortModel, String> {
+    tokio::task::spawn_blocking(move || ops::delete_emitters(session_id, &emitters))
+        .await
+        .map_err(|e| format!("Delete emitters task failed to join: {}", e))?
         .map_err(|e| e.to_string())
 }
 

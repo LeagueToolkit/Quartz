@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
-import { ExpandMore, ChevronRight, VolumeUp, ArrowForward } from '@mui/icons-material';
+import { ExpandMore, ChevronRight, VolumeUp, ArrowForward, Folder } from '@mui/icons-material';
 import type { BnkNode, DroppedFile, Pane } from '../types';
 
 /* Pointer-event drag layer.
@@ -14,24 +14,85 @@ interface DragSession {
     sourceIds: string[];
     sourcePane: Pane;
     onDropReplace: (ids: string[], targetId: string) => void;
+    /** Move nodes into a folder within the reference pane (targetId = null moves
+     *  them back out to the pane root). */
+    onMoveIntoGroup: (ids: string[], targetGroupId: string | null) => void;
     lastTargetEl: Element | null;
     pointerId: number;
     startX: number;
     startY: number;
     active: boolean; // becomes true only after DRAG_THRESHOLD is crossed
+    /** What is being dragged, shown in the cursor ghost. */
+    label: string;
+    ghost: HTMLElement | null;
+    /** True when every dragged node is a sound, so it may be sorted into a
+     *  folder. Folders and bank containers are drag-to-replace only. */
+    canMove: boolean;
+}
+
+/** What the row under the cursor would do if we dropped right now. */
+type DropKind = 'replace' | 'move' | null;
+
+/* A right-pane drag can land two ways:
+     - on a LEFT row     -> replace that track's audio (the original behaviour)
+     - on a RIGHT folder -> move the dragged sounds into it (sorting)
+   Blank space in the reference pane moves them back out to the root.
+   `canMove` is false when the dragged selection contains anything that is not a
+   sound, so folders and banks cannot be nested. */
+function resolveTarget(x: number, y: number, canMove: boolean): { el: Element | null; kind: DropKind } {
+    const under = document.elementFromPoint(x, y);
+    if (!under) return { el: null, kind: null };
+
+    const leftRow = under.closest('[data-node-id][data-pane="left"]');
+    if (leftRow) return { el: leftRow, kind: 'replace' };
+
+    if (!canMove) return { el: null, kind: null };
+
+    const rightFolder = under.closest('[data-node-id][data-pane="right"][data-folder="true"]');
+    if (rightFolder) return { el: rightFolder, kind: 'move' };
+
+    if (under.closest('.bnk-extract-tree-right')) return { el: null, kind: 'move' };
+
+    return { el: null, kind: null };
 }
 let session: DragSession | null = null;
+
+/* Cursor ghost: a small chip that follows the pointer showing what you are
+   carrying and whether the row under the cursor will accept it. Without it a
+   pointer-event drag gives no feedback at all until you happen to hover a
+   valid target. */
+function createGhost(label: string): HTMLElement {
+    // Sweep any ghost orphaned by a gesture that never got its pointerup (the
+    // drop re-renders the tree, which can unmount the row mid-gesture). Without
+    // this they stack up on screen.
+    document.querySelectorAll('.bnk-drag-ghost').forEach((el) => el.remove());
+    const el = document.createElement('div');
+    el.className = 'bnk-drag-ghost';
+    el.textContent = label;
+    document.body.appendChild(el);
+    return el;
+}
+function moveGhost(ghost: HTMLElement | null, x: number, y: number, overTarget: boolean) {
+    if (!ghost) return;
+    ghost.style.transform = `translate(${x + 14}px, ${y + 14}px)`;
+    ghost.classList.toggle('is-valid', overTarget);
+}
 
 function clearHover() {
     document.querySelectorAll('.bnk-drop-over').forEach((el) => el.classList.remove('bnk-drop-over'));
 }
+/* Tear down unconditionally: listeners, highlight, and EVERY ghost in the DOM
+   (not just session.ghost, which misses orphans from an interrupted gesture).
+   Safe to call when no session is live. */
 function endSession() {
-    if (!session) return;
     clearHover();
+    document.querySelectorAll('.bnk-drag-ghost').forEach((el) => el.remove());
     document.body.classList.remove('bnk-dragging');
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
     window.removeEventListener('pointercancel', onUp);
+    window.removeEventListener('blur', endSession);
+    window.removeEventListener('dragend', endSession);
     session = null;
 }
 function onMove(e: PointerEvent) {
@@ -42,29 +103,29 @@ function onMove(e: PointerEvent) {
         if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
         session.active = true;
         document.body.classList.add('bnk-dragging');
+        session.ghost = createGhost(session.label);
     }
-    // Hit-test what's under the cursor. Only tree rows tagged with
-    // data-node-id[data-pane="left"] are valid targets — right-pane can
-    // only be a source.
-    const el = document.elementFromPoint(e.clientX, e.clientY);
-    const targetRow = el?.closest('[data-node-id][data-pane="left"]') ?? null;
+    const { el: targetRow, kind } = resolveTarget(e.clientX, e.clientY, session.canMove);
     if (targetRow !== session.lastTargetEl) {
         clearHover();
         if (targetRow) targetRow.classList.add('bnk-drop-over');
         session.lastTargetEl = targetRow;
     }
+    // A move onto blank space has no row to highlight but is still a valid drop.
+    moveGhost(session.ghost, e.clientX, e.clientY, kind !== null);
 }
 function onUp(e: PointerEvent) {
     if (!session) return;
     const s = session;
     // Only commit a drop if we actually crossed the drag threshold, otherwise
     // this was a click — let the click handler on the row deal with it.
-    if (s.active) {
-        const el = document.elementFromPoint(e.clientX, e.clientY);
-        const targetRow = el?.closest('[data-node-id][data-pane="left"]') as HTMLElement | null;
-        const targetId = targetRow?.getAttribute('data-node-id');
-        if (targetId && s.sourcePane === 'right') {
+    if (s.active && s.sourcePane === 'right') {
+        const { el: targetRow, kind } = resolveTarget(e.clientX, e.clientY, s.canMove);
+        const targetId = targetRow?.getAttribute('data-node-id') ?? null;
+        if (kind === 'replace' && targetId) {
             s.onDropReplace(s.sourceIds, targetId);
+        } else if (kind === 'move') {
+            s.onMoveIntoGroup(s.sourceIds, targetId);
         }
     }
     endSession();
@@ -90,6 +151,7 @@ interface TreeNodeProps {
     onToggleExpand: (id: string, shift: boolean, pane: Pane) => void;
     pane?: Pane;
     onDropReplace: (ids: string[], targetId: string) => void;
+    onMoveIntoGroup: (ids: string[], targetGroupId: string | null) => void;
     onExternalFileDrop: (files: DroppedFile[], targetId: string, pane: Pane) => void;
     renderChildren?: boolean;
 }
@@ -107,6 +169,7 @@ const TreeNode = React.memo<TreeNodeProps>(({
     onToggleExpand,
     pane = 'left',
     onDropReplace,
+    onMoveIntoGroup,
     onExternalFileDrop,
     renderChildren = true,
 }) => {
@@ -137,23 +200,44 @@ const TreeNode = React.memo<TreeNodeProps>(({
        pointer crosses DRAG_THRESHOLD so clicks on the row still work normally. */
     const handlePointerDown = (e: React.PointerEvent) => {
         if (pane !== 'right') return;
-        if (!isAudioFile && !hasChildren) return;
+        // Audio rows, folders, and containers can all be dragged (folders so the
+        // whole group can be re-sorted).
+        if (!isAudioFile && !hasChildren && !node.isFolder) return;
         // Only main-button presses; ignore right-click (context menu) etc.
         if (e.button !== 0) return;
+        // Clear anything left over from a gesture that never completed, so we
+        // never end up with two live sessions or a duplicated listener pair.
+        endSession();
         const sourceIds = selectedNodes.has(node.id) ? Array.from(selectedNodes) : [node.id];
+        // Sorting into a folder is sounds-only. For a multi-select we can only
+        // see this row, so fall back to the DOM: a row is a sound when it is not
+        // tagged as a folder and has no expander.
+        const allSounds = sourceIds.length === 1
+            ? isAudioFile
+            : sourceIds.every((id) => {
+                const row = document.querySelector(`[data-node-id="${CSS.escape(id)}"][data-pane="right"]`);
+                return !!row && row.getAttribute('data-folder') !== 'true' && row.getAttribute('data-container') !== 'true';
+            });
         session = {
             sourceIds,
             sourcePane: pane,
             onDropReplace,
+            onMoveIntoGroup,
             lastTargetEl: null,
             pointerId: e.pointerId,
             startX: e.clientX,
             startY: e.clientY,
             active: false,
+            label: sourceIds.length > 1 ? `${sourceIds.length} sounds` : node.name,
+            ghost: null,
+            canMove: allSounds,
         };
         window.addEventListener('pointermove', onMove);
         window.addEventListener('pointerup', onUp);
         window.addEventListener('pointercancel', onUp);
+        // Releasing outside the window never delivers pointerup; these catch it.
+        window.addEventListener('blur', endSession, { once: true });
+        window.addEventListener('dragend', endSession, { once: true });
     };
 
     return (
@@ -161,6 +245,11 @@ const TreeNode = React.memo<TreeNodeProps>(({
             <Box
                 data-node-id={node.id}
                 data-pane={pane}
+                // Marks a user-created folder as a valid drag-to-sort destination.
+                data-folder={node.isFolder ? 'true' : undefined}
+                // A parsed bank / event / wem container: neither draggable into a
+                // folder nor a drop target.
+                data-container={!node.isFolder && hasChildren ? 'true' : undefined}
                 onPointerDown={handlePointerDown}
                 onClick={handleClick}
                 onContextMenu={(e) => onContextMenu(e, node, pane)}
@@ -183,9 +272,12 @@ const TreeNode = React.memo<TreeNodeProps>(({
                     marginBottom: '2px',
                     transition: 'background-color 80ms ease, border-color 80ms ease',
                     position: 'relative',
+                    // Row that will receive the drop. Keeps the 1px border so the
+                    // row does not shift; the ring is drawn with a shadow instead.
                     '&.bnk-drop-over': {
-                        border: '2px dashed var(--accent-primary)',
-                        background: 'color-mix(in oklab, var(--accent-primary) 10%, transparent)',
+                        border: '1px solid var(--accent-primary)',
+                        background: 'color-mix(in oklab, var(--accent-primary) 26%, transparent)',
+                        boxShadow: '0 0 0 2px color-mix(in oklab, var(--accent-primary) 35%, transparent)',
                     },
                     '&:hover': {
                         background: isSelected ? 'color-mix(in oklab, var(--accent-primary) 22%, transparent)' : 'color-mix(in oklab, var(--accent-primary) 10%, transparent)',
@@ -193,7 +285,10 @@ const TreeNode = React.memo<TreeNodeProps>(({
                     },
                 }}
             >
-                {hasChildren ? (
+                {/* A folder always gets an expander (even when empty, so it reads
+                    as a container you can drop into); other rows only when they
+                    actually have children. */}
+                {(hasChildren || node.isFolder) ? (
                     <Box
                         role="button"
                         onClick={handleToggle}
@@ -205,6 +300,7 @@ const TreeNode = React.memo<TreeNodeProps>(({
                             justifyContent: 'center',
                             padding: '2px',
                             color: isExpanded ? 'var(--accent-primary)' : 'var(--text-muted)',
+                            opacity: !hasChildren && node.isFolder ? 0.35 : 1,
                             '&:hover': { color: 'var(--accent-primary)' },
                             borderRadius: '4px',
                         }}
@@ -214,8 +310,11 @@ const TreeNode = React.memo<TreeNodeProps>(({
                 ) : (
                     <Box sx={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {isAudioFile && <VolumeUp sx={{ fontSize: 12, color: 'var(--accent-primary)', opacity: isSelected ? 1 : 0.6 }} />}
-                        {!isAudioFile && !hasChildren && <Box sx={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--text-muted)' }} />}
+                        {!isAudioFile && <Box sx={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--text-muted)' }} />}
                     </Box>
+                )}
+                {node.isFolder && (
+                    <Folder sx={{ fontSize: 13, color: 'var(--accent-primary)', opacity: 0.85, ml: '2px' }} />
                 )}
                 <Typography
                     sx={{
@@ -233,6 +332,23 @@ const TreeNode = React.memo<TreeNodeProps>(({
                 >
                     {node.name}
                 </Typography>
+
+                {/* How many sounds a folder holds, so its contents are legible
+                    while collapsed. */}
+                {node.isFolder && (
+                    <Typography
+                        sx={{
+                            fontSize: '0.65rem',
+                            fontFamily: 'var(--font-mono)',
+                            color: 'var(--text-muted)',
+                            ml: 1,
+                            mr: 1,
+                            whiteSpace: 'nowrap',
+                        }}
+                    >
+                        {node.children?.length ?? 0}
+                    </Typography>
+                )}
 
                 {isAudioFile && node.audioData && node.audioData.length !== undefined && (
                     <Typography
@@ -268,6 +384,7 @@ const TreeNode = React.memo<TreeNodeProps>(({
                             onToggleExpand={onToggleExpand}
                             pane={pane}
                             onDropReplace={onDropReplace}
+                            onMoveIntoGroup={onMoveIntoGroup}
                             onExternalFileDrop={onExternalFileDrop}
                         />
                     ))}

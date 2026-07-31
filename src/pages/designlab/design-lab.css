@@ -392,9 +392,12 @@
     opacity: 0; cursor: pointer;
     margin: 0;
 }
+/* Off: a hairline outline over the page, not a filled chip.
+   On: a translucent wash of the accent rather than the solid colour, which read
+   as far too bright against these dark surfaces. Still fully theme-driven. */
 .dl-toggle__track {
     position: absolute; inset: 0;
-    background: var(--bg-tertiary);
+    background: color-mix(in oklab, var(--text-muted) 12%, transparent);
     border: 1px solid var(--border);
     border-radius: 999px;
     transition: background var(--dl-base), border-color var(--dl-base), box-shadow var(--dl-base);
@@ -405,19 +408,21 @@
     left: var(--_pad);
     width: calc(var(--_h) - var(--_pad) * 2);
     height: calc(var(--_h) - var(--_pad) * 2);
-    background: var(--text-secondary);
+    background: color-mix(in oklab, var(--text-muted) 70%, transparent);
     border-radius: 50%;
     box-shadow: 0 1px 2px rgba(0,0,0,.35);
     transition: transform 320ms var(--dl-ease-spring), background var(--dl-base);
 }
 .dl-toggle input:checked ~ .dl-toggle__track {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent-primary) 30%, transparent);
+    background: color-mix(in oklab, var(--accent-primary) 22%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 55%, transparent);
 }
 .dl-toggle input:checked ~ .dl-toggle__thumb {
-    background: white;
+    background: color-mix(in oklab, var(--accent-primary) 85%, white);
     transform: translateX(calc(var(--_w) - var(--_h)));
+}
+.dl-toggle:hover input:not(:disabled) ~ .dl-toggle__track {
+    border-color: color-mix(in oklab, var(--accent-primary) 45%, var(--border));
 }
 .dl-toggle input:focus-visible ~ .dl-toggle__track { box-shadow: var(--dl-ring); }
 .dl-toggle input:disabled ~ .dl-toggle__track,

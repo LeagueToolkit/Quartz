@@ -65,36 +65,40 @@ export default function BnkContextMenu({
                 },
             }}
         >
-            <MenuItem onClick={onPlay}>
-                <PlayArrow sx={{ fontSize: 14, marginRight: 1 }} /> Play audio
-            </MenuItem>
-            <Divider sx={{ borderColor: 'var(--border)' }} />
-            <MenuItem onClick={onExtract}>
-                <Download sx={{ fontSize: 14, marginRight: 1 }} /> Extract selection
-            </MenuItem>
-            <MenuItem onClick={onReplace}>
-                <Upload sx={{ fontSize: 14, marginRight: 1 }} /> Replace wem data
-            </MenuItem>
-            <MenuItem onClick={onMakeSilent}>
-                <VolumeOff sx={{ fontSize: 14, marginRight: 1 }} /> Make Silent
-            </MenuItem>
-            <MenuItem onClick={onAdjustGain} sx={{ opacity: isWwiseInstalled ? 1 : 0.45 }}>
-                <VolumeUp sx={{ fontSize: 14, marginRight: 1 }} /> Adjust Volume...
-                {!isWwiseInstalled && <Typography component="span" sx={{ fontSize: '0.6rem', ml: 'auto', color: 'var(--text-muted)' }}>needs tools</Typography>}
-            </MenuItem>
-            <MenuItem onClick={onOpenInSplitter} sx={{ opacity: contextMenu?.node?.audioData && !isWwiseInstalled ? 0.45 : 1 }}>
-                <ContentCut sx={{ fontSize: 14, marginRight: 1 }} /> Open in Audio Splitter...
-                {contextMenu?.node?.audioData && !isWwiseInstalled && <Typography component="span" sx={{ fontSize: '0.6rem', ml: 'auto', color: 'var(--text-muted)' }}>needs tools</Typography>}
-            </MenuItem>
-            <Divider sx={{ borderColor: 'var(--border)' }} />
-            <MenuItem onClick={onDeleteNode} sx={{ color: 'var(--color-danger) !important', '&:hover': { background: 'var(--color-danger) !important', color: '#fff !important' } }}>
-                <Delete sx={{ fontSize: 14, marginRight: 1 }} /> Remove from tree
-            </MenuItem>
-            <Divider sx={{ borderColor: 'var(--border)' }} />
-            <MenuItem onClick={onCopyName}>
-                <ContentCopy sx={{ fontSize: 14, marginRight: 1 }} /> Copy name
-            </MenuItem>
-            {(showCreateGroup || showAddToGroup || showRemoveFromGroup) && (
+            {/* Everything here acts on a specific row. A right-click on empty pane
+                space has no node, so only the pane-level actions below are shown. */}
+            {contextMenu?.node && [
+                <MenuItem key="play" onClick={onPlay}>
+                    <PlayArrow sx={{ fontSize: 14, marginRight: 1 }} /> Play audio
+                </MenuItem>,
+                <Divider key="d1" sx={{ borderColor: 'var(--border)' }} />,
+                <MenuItem key="extract" onClick={onExtract}>
+                    <Download sx={{ fontSize: 14, marginRight: 1 }} /> Extract selection
+                </MenuItem>,
+                <MenuItem key="replace" onClick={onReplace}>
+                    <Upload sx={{ fontSize: 14, marginRight: 1 }} /> Replace wem data
+                </MenuItem>,
+                <MenuItem key="silent" onClick={onMakeSilent}>
+                    <VolumeOff sx={{ fontSize: 14, marginRight: 1 }} /> Make Silent
+                </MenuItem>,
+                <MenuItem key="gain" onClick={onAdjustGain} sx={{ opacity: isWwiseInstalled ? 1 : 0.45 }}>
+                    <VolumeUp sx={{ fontSize: 14, marginRight: 1 }} /> Adjust Volume...
+                    {!isWwiseInstalled && <Typography component="span" sx={{ fontSize: '0.6rem', ml: 'auto', color: 'var(--text-muted)' }}>needs tools</Typography>}
+                </MenuItem>,
+                <MenuItem key="splitter" onClick={onOpenInSplitter} sx={{ opacity: contextMenu?.node?.audioData && !isWwiseInstalled ? 0.45 : 1 }}>
+                    <ContentCut sx={{ fontSize: 14, marginRight: 1 }} /> Open in Audio Splitter...
+                    {contextMenu?.node?.audioData && !isWwiseInstalled && <Typography component="span" sx={{ fontSize: '0.6rem', ml: 'auto', color: 'var(--text-muted)' }}>needs tools</Typography>}
+                </MenuItem>,
+                <Divider key="d2" sx={{ borderColor: 'var(--border)' }} />,
+                <MenuItem key="delete" onClick={onDeleteNode} sx={{ color: 'var(--color-danger) !important', '&:hover': { background: 'var(--color-danger) !important', color: '#fff !important' } }}>
+                    <Delete sx={{ fontSize: 14, marginRight: 1 }} /> Remove from tree
+                </MenuItem>,
+                <Divider key="d3" sx={{ borderColor: 'var(--border)' }} />,
+                <MenuItem key="copy" onClick={onCopyName}>
+                    <ContentCopy sx={{ fontSize: 14, marginRight: 1 }} /> Copy name
+                </MenuItem>,
+            ]}
+            {contextMenu?.node && (showCreateGroup || showAddToGroup || showRemoveFromGroup) && (
                 <Divider sx={{ borderColor: 'var(--border)' }} />
             )}
             {showRemoveFromGroup && (

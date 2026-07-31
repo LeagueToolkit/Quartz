@@ -212,6 +212,10 @@ pub struct EffectKeyOption {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VfxPortModel {
+    /// Identity of the session tree these paths index into. Cross-session ops
+    /// require the caller to echo it back so paths from a swapped or reloaded
+    /// donor are rejected rather than silently resolving against the new tree.
+    pub generation: u64,
     pub bins: Vec<BinInfo>,
     pub systems: Vec<PortSystem>,
     pub resolver: Option<ResolverView>,
@@ -230,7 +234,10 @@ pub struct VfxPortModel {
 pub fn project(session: &VfxSession) -> VfxPortModel {
     let guard = crate::bin::get_cached_bin_hashes().read();
     let mapper = NameLookup::new(&guard, &session.bins);
-    project_bins(&session.bins, &mapper)
+    let mut model = project_bins(&session.bins, &mapper);
+    // Stamp the tree identity so cross-session ops can reject stale paths.
+    model.generation = session.generation;
+    model
 }
 
 fn project_bins(bins: &[LoadedBin], mapper: &NameLookup) -> VfxPortModel {
@@ -417,6 +424,9 @@ fn project_bins(bins: &[LoadedBin], mapper: &NameLookup) -> VfxPortModel {
     });
 
     VfxPortModel {
+        // Overwritten by `project()` with the owning session's generation;
+        // 0 means "not from a live session" and matches nothing.
+        generation: 0,
         bins: bin_infos,
         systems,
         resolver,

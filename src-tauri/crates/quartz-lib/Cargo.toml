@@ -51,4 +51,4 @@ tracing = "0.1"
 # RitoShark crates — BIN/format handling + TEX decode. Pinned to a rev branched
 # off d6af5ac (the rev Flint uses) that adds Wad::from_reader_toc + seek-per-chunk
 # reads for lightweight WAD indexing/extraction (branch: wad-toc-seek).
-ritoshark = { git = "https://github.com/RitoShark/RitoShark-Crates", rev = "75297ef1cef134414bfb06bd60e8f20b836b5180", features = ["tex", "anim", "mesh"] }
+ritoshark = { git = "https://github.com/RitoShark/RitoShark-Crates", rev = "2ed5554828764cf0ce9f3f426ed6352fea39578a", features = ["tex", "anim", "mesh"] }

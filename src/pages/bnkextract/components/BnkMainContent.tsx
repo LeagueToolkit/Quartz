@@ -59,6 +59,7 @@ interface VirtualTreeListProps {
     handleContextMenu: (e: React.MouseEvent, node: BnkNode, pane: Pane) => void;
     handleToggleExpand: (id: string, shift: boolean, pane: Pane) => void;
     onDropReplace: (ids: string[], targetId: string) => void;
+    onMoveIntoGroup: (ids: string[], targetGroupId: string | null) => void;
     onExternalFileDrop: (files: DroppedFile[], targetId: string, pane: Pane) => void;
     pane: Pane;
     emptyText: string;
@@ -67,7 +68,7 @@ interface VirtualTreeListProps {
 function VirtualTreeList({
     rows, expandedNodes, selectedNodes, setSelectedNodes, setLastSelectedId,
     handleNodeSelect, playAudio, handleContextMenu, handleToggleExpand,
-    onDropReplace, onExternalFileDrop, pane, emptyText,
+    onDropReplace, onMoveIntoGroup, onExternalFileDrop, pane, emptyText,
 }: VirtualTreeListProps) {
     const [scrollTop, setScrollTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(500);
@@ -134,6 +135,7 @@ function VirtualTreeList({
                                 onToggleExpand={handleToggleExpand}
                                 pane={pane}
                                 onDropReplace={onDropReplace}
+                                onMoveIntoGroup={onMoveIntoGroup}
                                 onExternalFileDrop={onExternalFileDrop}
                                 renderChildren={false}
                             />
@@ -161,9 +163,12 @@ interface Props {
     handleNodeSelect: (node: BnkNode, ctrl: boolean, shift: boolean, pane: Pane) => void;
     playAudio: (node: BnkNode) => void;
     handleContextMenu: (e: React.MouseEvent, node: BnkNode, pane: Pane) => void;
+    /** Right-click on empty pane space (no row under the cursor). */
+    handlePaneContextMenu: (e: React.MouseEvent, pane: Pane) => void;
     expandedNodes: Set<string>;
     handleToggleExpand: (id: string, shift: boolean, pane: Pane) => void;
     handleDropReplace: (ids: string[], targetId: string) => void;
+    handleMoveIntoGroup: (ids: string[], targetGroupId: string | null) => void;
     handleAutoMatchByEventName: () => void;
     handleExternalFileDrop: (files: DroppedFile[], targetId: string, pane: Pane) => void;
     rightPaneDragOver: boolean;
@@ -213,7 +218,7 @@ export default function BnkMainContent(props: Props) {
         viewMode, activePane, setActivePane,
         leftSearchQuery, setLeftSearchQuery, filteredLeftTree,
         selectedNodes, setSelectedNodes, setLastSelectedId, handleNodeSelect, playAudio,
-        handleContextMenu, expandedNodes, handleToggleExpand, handleDropReplace,
+        handleContextMenu, handlePaneContextMenu, expandedNodes, handleToggleExpand, handleDropReplace, handleMoveIntoGroup,
         handleAutoMatchByEventName, handleExternalFileDrop,
         rightPaneDragOver, leftDragOver, handleRightPaneDragOver, handleRightPaneDragLeave, handleRightPaneFileDrop,
         rightSearchQuery, setRightSearchQuery, rightSortMode, setRightSortMode, leftSortMode, setLeftSortMode,
@@ -249,6 +254,7 @@ export default function BnkMainContent(props: Props) {
             <Box
                 className="bnk-extract-tree"
                 onDrop={handleLeftDrop}
+                onContextMenu={(e) => handlePaneContextMenu(e, 'left')}
                 onMouseDownCapture={viewMode === 'split' ? () => setActivePane('left') : undefined}
                 sx={{
                     ...treeViewStyle,
@@ -312,6 +318,7 @@ export default function BnkMainContent(props: Props) {
                             handleContextMenu={handleContextMenu}
                             handleToggleExpand={handleToggleExpand}
                             onDropReplace={handleDropReplace}
+                            onMoveIntoGroup={handleMoveIntoGroup}
                             onExternalFileDrop={handleExternalFileDrop}
                             pane="left"
                             emptyText={leftSearchQuery ? 'No matches' : 'Drag & drop a mod folder here'}
@@ -334,6 +341,7 @@ export default function BnkMainContent(props: Props) {
                     onDragOver={handleRightPaneDragOver}
                     onDragLeave={handleRightPaneDragLeave}
                     onDrop={handleRightDrop}
+                    onContextMenu={(e) => handlePaneContextMenu(e, 'right')}
                     onMouseDownCapture={() => setActivePane('right')}
                     sx={{
                         ...treeViewStyle,
@@ -395,6 +403,7 @@ export default function BnkMainContent(props: Props) {
                                 handleContextMenu={handleContextMenu}
                                 handleToggleExpand={handleToggleExpand}
                                 onDropReplace={handleDropReplace}
+                            onMoveIntoGroup={handleMoveIntoGroup}
                                 onExternalFileDrop={handleExternalFileDrop}
                                 pane="right"
                                 emptyText={rightSearchQuery ? 'No matches' : 'Drop .wem .wav .mp3 files here, autoconvert or load banks to drag replacement audio'}

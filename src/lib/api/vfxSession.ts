@@ -115,6 +115,9 @@ export interface EffectKeyOption {
 }
 
 export interface VfxPortModel {
+    /** Identity of the session tree these paths index into. Echo it back on a
+     *  cross-session port so paths from a reloaded donor are rejected. */
+    generation: number;
     bins: BinInfo[];
     systems: PortSystem[];
     resolver: ResolverView | null;
@@ -233,9 +236,11 @@ export function vfxPortEmitters(
     donorSessionId: number,
     donorEmitters: VfxPath[],
     targetSystem: VfxPath,
+    donorGeneration?: number,
 ): Promise<PortEmittersResult> {
     return invokeCommand<PortEmittersResult>('vfx_port_emitters', {
         targetSessionId, donorSessionId, donorEmitters, targetSystem,
+        donorGeneration: donorGeneration ?? null,
     });
 }
 
@@ -246,15 +251,24 @@ export function vfxPortSystem(
     donorSystem: VfxPath,
     desiredName: string | null,
     preserveName: boolean,
+    donorGeneration?: number,
 ): Promise<PortSystemResult> {
     return invokeCommand<PortSystemResult>('vfx_port_system', {
         targetSessionId, donorSessionId, donorSystem, desiredName, preserveName,
+        donorGeneration: donorGeneration ?? null,
     });
 }
 
 /** Remove one emitter from its owning system. */
 export function vfxDeleteEmitter(sessionId: number, emitter: VfxPath): Promise<VfxPortModel> {
     return invokeCommand<VfxPortModel>('vfx_delete_emitter', { sessionId, emitter });
+}
+
+/** Delete several emitters as ONE edit: a single undo step and a single model
+ *  rebuild. Looping `vfxDeleteEmitter` instead costs one IPC round-trip plus a
+ *  full reprojection per emitter, and makes undo restore them one by one. */
+export function vfxDeleteEmitters(sessionId: number, emitters: VfxPath[]): Promise<VfxPortModel> {
+    return invokeCommand<VfxPortModel>('vfx_delete_emitters', { sessionId, emitters });
 }
 
 /** Remove a system entry and any resolver entries pointing at it. */

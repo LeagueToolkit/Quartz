@@ -36,11 +36,6 @@ impl MultiUndoFrame {
             }
         }
     }
-
-    /// True when this frame recorded no entries (nothing to undo).
-    fn is_empty(&self) -> bool {
-        self.parts.is_empty()
-    }
 }
 
 pub struct BinSession {
@@ -432,6 +427,676 @@ pub fn save(id: SessionId, out_path: Option<PathBuf>, force: bool) -> Result<Vec
             }
         }
     })?
+}
+
+/* Self-contained edit tests.
+ *
+ * These build their own bins on disk rather than needing a real skin, so they
+ * always run. They cover the shapes a VFX colour actually takes - a bare vec4,
+ * a `constantValue`, an animated `values` list, and the `dynamics`-nested form -
+ * and assert that an edit reaches the BYTES, survives a save/reopen round-trip,
+ * and replays byte-exact through undo/redo. */
+#[cfg(test)]
+mod edit_tests {
+    use super::*;
+    use crate::bin::write_bin;
+    use crate::paint::fnv1a_lower as fh;
+    use crate::paint::recolor::{ColorTargetSel, PaletteStop, RecolorMode, RecolorOptions};
+    use indexmap::IndexMap;
+    use ritoshark::bin::{Bin, BinEntry, BinType, BinValue};
+
+    /// Colour field shapes a VfxEmitter can carry.
+    enum ColorShape {
+        /// `color: vec4 = {...}`
+        BareVec4([f32; 4]),
+        /// `color: embed = ValueColor { constantValue: vec4 }`
+        Constant([f32; 4]),
+        /// `ValueColor { values: list[vec4] }`
+        Values(Vec<[f32; 4]>),
+        /// `ValueColor { dynamics: pointer { values: list[vec4], times: list[f32] } }`
+        Dynamics(Vec<[f32; 4]>),
+        /// `ValueColor { constantValue: vec4, dynamics: { values, times } }` -
+        /// both a constant AND keyframes, the case the editor lists together.
+        ConstantPlusDynamics([f32; 4], Vec<[f32; 4]>),
+    }
+
+    fn vec4_list(items: &[[f32; 4]]) -> BinValue {
+        BinValue::List {
+            is_list2: false,
+            item: BinType::Vec4,
+            items: items.iter().map(|v| BinValue::Vec4(*v)).collect(),
+        }
+    }
+
+    fn f32_list(n: usize) -> BinValue {
+        BinValue::List {
+            is_list2: false,
+            item: BinType::F32,
+            items: (0..n)
+                .map(|i| {
+                    BinValue::F32(if n <= 1 {
+                        0.0
+                    } else {
+                        i as f32 / (n - 1) as f32
+                    })
+                })
+                .collect(),
+        }
+    }
+
+    fn color_field(shape: &ColorShape) -> BinValue {
+        match shape {
+            ColorShape::BareVec4(v) => BinValue::Vec4(*v),
+            ColorShape::Constant(v) => {
+                let mut f = IndexMap::new();
+                f.insert(fh("constantValue"), BinValue::Vec4(*v));
+                BinValue::Embed {
+                    class: fh("ValueColor"),
+                    fields: f,
+                }
+            }
+            ColorShape::Values(vs) => {
+                let mut f = IndexMap::new();
+                f.insert(fh("values"), vec4_list(vs));
+                f.insert(fh("times"), f32_list(vs.len()));
+                BinValue::Embed {
+                    class: fh("ValueColor"),
+                    fields: f,
+                }
+            }
+            ColorShape::Dynamics(vs) => {
+                let mut inner = IndexMap::new();
+                inner.insert(fh("values"), vec4_list(vs));
+                inner.insert(fh("times"), f32_list(vs.len()));
+                let mut f = IndexMap::new();
+                f.insert(
+                    fh("dynamics"),
+                    BinValue::Pointer {
+                        class: fh("VfxAnimatedColorVariableData"),
+                        fields: inner,
+                    },
+                );
+                BinValue::Embed {
+                    class: fh("ValueColor"),
+                    fields: f,
+                }
+            }
+            ColorShape::ConstantPlusDynamics(c, vs) => {
+                let mut inner = IndexMap::new();
+                inner.insert(fh("values"), vec4_list(vs));
+                inner.insert(fh("times"), f32_list(vs.len()));
+                let mut f = IndexMap::new();
+                f.insert(fh("constantValue"), BinValue::Vec4(*c));
+                f.insert(
+                    fh("dynamics"),
+                    BinValue::Pointer {
+                        class: fh("VfxAnimatedColorVariableData"),
+                        fields: inner,
+                    },
+                );
+                BinValue::Embed {
+                    class: fh("ValueColor"),
+                    fields: f,
+                }
+            }
+        }
+    }
+
+    /// One system, one complex emitter, with `color` set to `shape`.
+    fn bin_with_color(shape: ColorShape) -> Bin {
+        let mut emitter = IndexMap::new();
+        emitter.insert(fh("emitterName"), BinValue::String("Test".into()));
+        emitter.insert(fh("blendMode"), BinValue::U8(1));
+        emitter.insert(fh("color"), color_field(&shape));
+
+        let mut sys = IndexMap::new();
+        sys.insert(fh("particleName"), BinValue::String("TestSystem".into()));
+        sys.insert(
+            fh("complexEmitterDefinitionData"),
+            BinValue::List {
+                is_list2: false,
+                item: BinType::Embed,
+                items: vec![BinValue::Embed {
+                    class: fh("VfxEmitterDefinitionData"),
+                    fields: emitter,
+                }],
+            },
+        );
+
+        let mut bin = Bin::new();
+        bin.version = 3;
+        bin.entries.push(BinEntry {
+            path_hash: 0x1234_5678,
+            class_hash: fh("VfxSystemDefinitionData"),
+            fields: sys,
+        });
+        bin
+    }
+
+    fn write_temp(bin: &Bin, name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join("quartz-paint-tests");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("{}-{}.bin", name, std::process::id()));
+        std::fs::write(&path, write_bin(bin).unwrap()).unwrap();
+        path
+    }
+
+    fn only_emitter_key(id: SessionId) -> String {
+        with_session(id, |s| {
+            s.index
+                .emitter_colors
+                .keys()
+                .next()
+                .cloned()
+                .expect("emitter should have a colour target")
+        })
+        .unwrap()
+    }
+
+    /// Every alpha the model currently reports for the `color` slot, in the
+    /// same order the editor lists (and the writer zips) them.
+    fn alphas_of(id: SessionId, key: &str) -> Vec<f32> {
+        with_session(id, |s| {
+            let m = s.reproject();
+            let e = m
+                .emitters
+                .iter()
+                .find(|e| e.key == key)
+                .expect("emitter in model");
+            e.colors
+                .color
+                .as_ref()
+                .map(|c| c.keyframes.iter().map(|k| k.rgba[3]).collect())
+                .unwrap_or_default()
+        })
+        .unwrap()
+    }
+
+    fn session_bytes(id: SessionId) -> Vec<u8> {
+        with_session(id, |s| {
+            let mut out = Vec::new();
+            for lb in &s.bins {
+                out.extend(write_bin(&lb.tree).unwrap());
+            }
+            out
+        })
+        .unwrap()
+    }
+
+    /* ── alpha ─────────────────────────────────────────────────────────────── */
+
+    /// Setting alpha must reach every keyframe, for EVERY colour shape - the
+    /// bug being guarded here is a writer that only understands one of them and
+    /// silently no-ops on the rest.
+    #[test]
+    fn set_alpha_writes_every_color_shape() {
+        let cases: Vec<(&str, ColorShape, usize)> = vec![
+            ("bare_vec4", ColorShape::BareVec4([1.0, 0.0, 0.0, 1.0]), 1),
+            ("constant", ColorShape::Constant([1.0, 0.0, 0.0, 1.0]), 1),
+            (
+                "values",
+                ColorShape::Values(vec![[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0]]),
+                2,
+            ),
+            (
+                "dynamics",
+                ColorShape::Dynamics(vec![
+                    [1.0, 0.0, 0.0, 1.0],
+                    [0.0, 1.0, 0.0, 1.0],
+                    [0.0, 0.0, 1.0, 1.0],
+                ]),
+                3,
+            ),
+            (
+                "constant_plus_dynamics",
+                ColorShape::ConstantPlusDynamics(
+                    [1.0, 1.0, 1.0, 1.0],
+                    vec![[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0]],
+                ),
+                3,
+            ),
+        ];
+
+        for (name, shape, expected_kfs) in cases {
+            let path = write_temp(&bin_with_color(shape), name);
+            let id = open(&path).unwrap().session_id;
+            let key = only_emitter_key(id);
+
+            let before = alphas_of(id, &key);
+            assert_eq!(
+                before.len(),
+                expected_kfs,
+                "{name}: editor should list {expected_kfs} keyframe(s)"
+            );
+
+            // Drive every keyframe to a distinct value so a mis-zip is visible.
+            let wanted: Vec<f32> = (0..before.len())
+                .map(|i| 0.1 + 0.15 * i as f32)
+                .collect();
+            let out = set_color_alpha(id, &key, "color", &wanted).unwrap();
+            assert!(out.is_some(), "{name}: alpha edit reported no change");
+
+            let after = alphas_of(id, &key);
+            for (i, (got, want)) in after.iter().zip(wanted.iter()).enumerate() {
+                assert!(
+                    (got - want).abs() < 1e-6,
+                    "{name}: keyframe {i} alphaは {got}, expected {want}"
+                );
+            }
+            close(id);
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+
+    /// The edit must survive save + reopen. This is the "it didn't save" report:
+    /// an in-memory change that never reaches the file looks fine until reload.
+    #[test]
+    fn set_alpha_survives_save_and_reopen() {
+        let path = write_temp(
+            &bin_with_color(ColorShape::Dynamics(vec![
+                [1.0, 0.0, 0.0, 1.0],
+                [0.0, 1.0, 0.0, 1.0],
+            ])),
+            "alpha_roundtrip",
+        );
+
+        let id = open(&path).unwrap().session_id;
+        let key = only_emitter_key(id);
+        set_color_alpha(id, &key, "color", &[0.25, 0.75]).unwrap();
+        let written = save(id, None, true).unwrap();
+        assert_eq!(written.len(), 1, "the dirty main bin should be written");
+        close(id);
+
+        let id2 = open(&path).unwrap().session_id;
+        let key2 = only_emitter_key(id2);
+        let reloaded = alphas_of(id2, &key2);
+        assert_eq!(reloaded.len(), 2);
+        assert!((reloaded[0] - 0.25).abs() < 1e-6, "got {reloaded:?}");
+        assert!((reloaded[1] - 0.75).abs() < 1e-6, "got {reloaded:?}");
+        close(id2);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Alpha edits must not disturb RGB.
+    #[test]
+    fn set_alpha_preserves_rgb() {
+        let rgb = [0.2, 0.4, 0.6, 1.0];
+        let path = write_temp(&bin_with_color(ColorShape::Constant(rgb)), "alpha_rgb");
+        let id = open(&path).unwrap().session_id;
+        let key = only_emitter_key(id);
+
+        set_color_alpha(id, &key, "color", &[0.33]).unwrap();
+
+        let got = with_session(id, |s| {
+            let m = s.reproject();
+            m.emitters
+                .iter()
+                .find(|e| e.key == key)
+                .and_then(|e| e.colors.color.as_ref())
+                .map(|c| c.keyframes[0].rgba)
+                .unwrap()
+        })
+        .unwrap();
+        assert!((got[0] - rgb[0]).abs() < 1e-6, "r changed: {got:?}");
+        assert!((got[1] - rgb[1]).abs() < 1e-6, "g changed: {got:?}");
+        assert!((got[2] - rgb[2]).abs() < 1e-6, "b changed: {got:?}");
+        assert!((got[3] - 0.33).abs() < 1e-6, "a not applied: {got:?}");
+        close(id);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Out-of-range input clamps instead of writing a nonsense alpha.
+    #[test]
+    fn set_alpha_clamps_out_of_range() {
+        let path = write_temp(
+            &bin_with_color(ColorShape::Values(vec![
+                [1.0, 0.0, 0.0, 1.0],
+                [0.0, 1.0, 0.0, 1.0],
+            ])),
+            "alpha_clamp",
+        );
+        let id = open(&path).unwrap().session_id;
+        let key = only_emitter_key(id);
+
+        set_color_alpha(id, &key, "color", &[-5.0, 9.0]).unwrap();
+
+        let after = alphas_of(id, &key);
+        assert!((after[0] - 0.0).abs() < 1e-6, "got {after:?}");
+        assert!((after[1] - 1.0).abs() < 1e-6, "got {after:?}");
+        close(id);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A no-op edit must report "nothing changed" rather than dirtying the bin
+    /// and pushing an empty undo step.
+    #[test]
+    fn set_alpha_same_value_is_a_noop() {
+        let path = write_temp(
+            &bin_with_color(ColorShape::Constant([1.0, 0.0, 0.0, 0.5])),
+            "alpha_noop",
+        );
+        let id = open(&path).unwrap().session_id;
+        let key = only_emitter_key(id);
+
+        let before = session_bytes(id);
+        let out = set_color_alpha(id, &key, "color", &[0.5]).unwrap();
+        assert!(out.is_none(), "re-applying the same alpha reported a change");
+        assert_eq!(before, session_bytes(id), "no-op still mutated the bytes");
+        assert!(undo(id).unwrap().is_none(), "no-op pushed an undo frame");
+        close(id);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Fewer alphas than keyframes edits only the leading ones (zip semantics),
+    /// and extra alphas are ignored rather than panicking.
+    #[test]
+    fn set_alpha_handles_length_mismatch() {
+        let path = write_temp(
+            &bin_with_color(ColorShape::Values(vec![
+                [1.0, 0.0, 0.0, 1.0],
+                [0.0, 1.0, 0.0, 1.0],
+                [0.0, 0.0, 1.0, 1.0],
+            ])),
+            "alpha_mismatch",
+        );
+        let id = open(&path).unwrap().session_id;
+        let key = only_emitter_key(id);
+
+        // Short input: only the first keyframe moves.
+        set_color_alpha(id, &key, "color", &[0.2]).unwrap();
+        let a = alphas_of(id, &key);
+        assert!((a[0] - 0.2).abs() < 1e-6, "got {a:?}");
+        assert!((a[1] - 1.0).abs() < 1e-6, "trailing keyframe changed: {a:?}");
+
+        // Long input: extras are dropped, no panic.
+        set_color_alpha(id, &key, "color", &[0.9, 0.9, 0.9, 0.9, 0.9]).unwrap();
+        let b = alphas_of(id, &key);
+        assert_eq!(b.len(), 3);
+        assert!(b.iter().all(|v| (v - 0.9).abs() < 1e-6), "got {b:?}");
+        close(id);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// An unknown slot name must be rejected, not silently applied elsewhere.
+    #[test]
+    fn set_alpha_unknown_slot_is_rejected() {
+        let path = write_temp(
+            &bin_with_color(ColorShape::Constant([1.0, 0.0, 0.0, 1.0])),
+            "alpha_slot",
+        );
+        let id = open(&path).unwrap().session_id;
+        let key = only_emitter_key(id);
+
+        assert!(set_color_alpha(id, &key, "notAColor", &[0.5])
+            .unwrap()
+            .is_none());
+        assert!(set_color_alpha(id, "no-such-emitter", "color", &[0.5])
+            .unwrap()
+            .is_none());
+        close(id);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /* ── undo / redo ───────────────────────────────────────────────────────── */
+
+    /// Alpha edits must replay byte-exact both directions.
+    #[test]
+    fn alpha_undo_redo_is_byte_exact() {
+        let path = write_temp(
+            &bin_with_color(ColorShape::ConstantPlusDynamics(
+                [1.0, 1.0, 1.0, 1.0],
+                vec![[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0]],
+            )),
+            "alpha_undo",
+        );
+        let id = open(&path).unwrap().session_id;
+        let key = only_emitter_key(id);
+
+        let s0 = session_bytes(id);
+        set_color_alpha(id, &key, "color", &[0.1, 0.2, 0.3]).unwrap();
+        let s1 = session_bytes(id);
+        assert_ne!(s0, s1, "edit did not change the bytes");
+
+        set_color_alpha(id, &key, "color", &[0.6, 0.7, 0.8]).unwrap();
+        let s2 = session_bytes(id);
+        assert_ne!(s1, s2);
+
+        undo(id).unwrap().unwrap();
+        assert_eq!(session_bytes(id), s1, "undo #1 did not restore state 1");
+        undo(id).unwrap().unwrap();
+        assert_eq!(session_bytes(id), s0, "undo #2 did not restore the original");
+        redo(id).unwrap().unwrap();
+        assert_eq!(session_bytes(id), s1, "redo #1 mismatch");
+        redo(id).unwrap().unwrap();
+        assert_eq!(session_bytes(id), s2, "redo #2 mismatch");
+        close(id);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /* ── recolor ───────────────────────────────────────────────────────────── */
+
+    fn recolor_opts(preserve_alpha: bool) -> RecolorOptions {
+        RecolorOptions {
+            mode: RecolorMode::Linear,
+            ignore_black_white: false,
+            preserve_alpha,
+            hsl_shift: (0.0, 0.0, 0.0),
+            hue_target: None,
+            seed: 7,
+        }
+    }
+
+    fn two_stop_palette() -> Vec<PaletteStop> {
+        vec![
+            PaletteStop {
+                vec4: [1.0, 0.0, 0.0, 1.0],
+                time: 0.0,
+            },
+            PaletteStop {
+                vec4: [0.0, 0.0, 1.0, 1.0],
+                time: 1.0,
+            },
+        ]
+    }
+
+    /// Recolor must reach the bytes and survive save + reopen.
+    #[test]
+    fn recolor_survives_save_and_reopen() {
+        let path = write_temp(
+            &bin_with_color(ColorShape::Dynamics(vec![
+                [1.0, 1.0, 1.0, 1.0],
+                [0.5, 0.5, 0.5, 1.0],
+            ])),
+            "recolor_roundtrip",
+        );
+        let id = open(&path).unwrap().session_id;
+        let key = only_emitter_key(id);
+
+        let before = with_session(id, |s| {
+            let m = s.reproject();
+            m.emitters
+                .iter()
+                .find(|e| e.key == key)
+                .and_then(|e| e.colors.color.as_ref())
+                .map(|c| c.keyframes.iter().map(|k| k.rgba).collect::<Vec<_>>())
+                .unwrap()
+        })
+        .unwrap();
+
+        let n = recolor_emitters(
+            id,
+            &[key.clone()],
+            &[ColorTargetSel::All],
+            &two_stop_palette(),
+            &recolor_opts(true),
+        )
+        .unwrap();
+        assert!(n > 0, "recolor changed nothing");
+        save(id, None, true).unwrap();
+        close(id);
+
+        let id2 = open(&path).unwrap().session_id;
+        let key2 = only_emitter_key(id2);
+        let after = with_session(id2, |s| {
+            let m = s.reproject();
+            m.emitters
+                .iter()
+                .find(|e| e.key == key2)
+                .and_then(|e| e.colors.color.as_ref())
+                .map(|c| c.keyframes.iter().map(|k| k.rgba).collect::<Vec<_>>())
+                .unwrap()
+        })
+        .unwrap();
+        assert_ne!(before, after, "recolor did not persist to disk");
+        close(id2);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// `preserve_alpha` must leave a non-1.0 alpha untouched while RGB changes.
+    #[test]
+    fn recolor_preserve_alpha_keeps_alpha() {
+        let path = write_temp(
+            &bin_with_color(ColorShape::Values(vec![
+                [1.0, 1.0, 1.0, 0.25],
+                [0.5, 0.5, 0.5, 0.75],
+            ])),
+            "recolor_alpha",
+        );
+        let id = open(&path).unwrap().session_id;
+        let key = only_emitter_key(id);
+
+        recolor_emitters(
+            id,
+            &[key.clone()],
+            &[ColorTargetSel::All],
+            &two_stop_palette(),
+            &recolor_opts(true),
+        )
+        .unwrap();
+
+        let a = alphas_of(id, &key);
+        assert!((a[0] - 0.25).abs() < 1e-6, "alpha 0 not preserved: {a:?}");
+        assert!((a[1] - 0.75).abs() < 1e-6, "alpha 1 not preserved: {a:?}");
+        close(id);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Recolor undo/redo replays byte-exact.
+    #[test]
+    fn recolor_undo_redo_is_byte_exact_synthetic() {
+        let path = write_temp(
+            &bin_with_color(ColorShape::Dynamics(vec![
+                [1.0, 1.0, 1.0, 1.0],
+                [0.2, 0.4, 0.6, 1.0],
+            ])),
+            "recolor_undo",
+        );
+        let id = open(&path).unwrap().session_id;
+        let key = only_emitter_key(id);
+
+        let s0 = session_bytes(id);
+        recolor_emitters(
+            id,
+            &[key.clone()],
+            &[ColorTargetSel::All],
+            &two_stop_palette(),
+            &recolor_opts(true),
+        )
+        .unwrap();
+        let s1 = session_bytes(id);
+        assert_ne!(s0, s1);
+
+        undo(id).unwrap().unwrap();
+        assert_eq!(session_bytes(id), s0, "recolor undo was not byte-exact");
+        redo(id).unwrap().unwrap();
+        assert_eq!(session_bytes(id), s1, "recolor redo was not byte-exact");
+        close(id);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// An alpha edit followed by a recolor must both persist - interleaving two
+    /// different edit kinds is where entry-granular undo frames can collide.
+    #[test]
+    fn alpha_then_recolor_both_persist() {
+        let path = write_temp(
+            &bin_with_color(ColorShape::Dynamics(vec![
+                [1.0, 1.0, 1.0, 1.0],
+                [0.2, 0.4, 0.6, 1.0],
+            ])),
+            "alpha_then_recolor",
+        );
+        let id = open(&path).unwrap().session_id;
+        let key = only_emitter_key(id);
+
+        set_color_alpha(id, &key, "color", &[0.3, 0.4]).unwrap();
+        let after_alpha = session_bytes(id);
+
+        recolor_emitters(
+            id,
+            &[key.clone()],
+            &[ColorTargetSel::All],
+            &two_stop_palette(),
+            &recolor_opts(true),
+        )
+        .unwrap();
+
+        // Alpha must have survived the recolor (preserve_alpha = true).
+        let a = alphas_of(id, &key);
+        assert!((a[0] - 0.3).abs() < 1e-6, "recolor clobbered alpha: {a:?}");
+        assert!((a[1] - 0.4).abs() < 1e-6, "recolor clobbered alpha: {a:?}");
+
+        undo(id).unwrap().unwrap();
+        assert_eq!(
+            session_bytes(id),
+            after_alpha,
+            "undo of recolor did not return to the post-alpha state"
+        );
+        close(id);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Saving with nothing dirty must not rewrite files.
+    #[test]
+    fn save_with_no_changes_writes_nothing() {
+        let path = write_temp(
+            &bin_with_color(ColorShape::Constant([1.0, 0.0, 0.0, 1.0])),
+            "save_clean",
+        );
+        let id = open(&path).unwrap().session_id;
+        let written = save(id, None, true).unwrap();
+        assert!(
+            written.is_empty(),
+            "clean session wrote files: {written:?}"
+        );
+        close(id);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Undo must clear the dirty flag's effect: after undoing back to the
+    /// original state the saved file must match the original bytes.
+    #[test]
+    fn undo_then_save_restores_original_bytes() {
+        let bin = bin_with_color(ColorShape::Values(vec![
+            [1.0, 0.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0, 1.0],
+        ]));
+        let original = write_bin(&bin).unwrap();
+        let path = write_temp(&bin, "undo_save");
+
+        let id = open(&path).unwrap().session_id;
+        let key = only_emitter_key(id);
+        set_color_alpha(id, &key, "color", &[0.1, 0.2]).unwrap();
+        undo(id).unwrap().unwrap();
+        save(id, None, true).unwrap();
+        close(id);
+
+        let on_disk = std::fs::read(&path).unwrap();
+        assert_eq!(
+            on_disk, original,
+            "undo + save did not restore the original file bytes"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
 }
 
 #[cfg(test)]

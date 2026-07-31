@@ -1,14 +1,14 @@
 {
-  "version": "4.1.3",
-  "pub_date": "2026-07-29T18:15:09.630Z",
+  "version": "4.1.5",
+  "pub_date": "2026-07-29T23:55:11.603Z",
   "platforms": {
     "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTQmhYSTZ3YnRRVVk2Q0VnTlRtU0Foa2NJbUhpYUdJOUxBL0lDQWNGZWNRMkIwdjc3ZUx3REovQlNpYzBDVUIzeFNpM1pqSjhwamh2UEhtQ0F4Y3VHV1pqdEhkK2lQbUFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzQ4OTEwCWZpbGU6UXVhcnR6XzQuMS4zX3g2NC1zZXR1cC5leGUKTWxDRnhPUFZ5eHhCRFZueTZlVDNOY3BZMkVTdFo5UjhDMHV2ZUZVOU8yVHFXOHZnQThqSmdWZ2QveGNNR3JRVThMZ0s3OGoyQkhldXZmUk5SSU1rQlE9PQo=",
-      "url": "https://github.com/RitoShark/Quartz/releases/download/v4.1.3/Quartz_4.1.3_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTQmhYSTZ3YnRRVWNNZUhHSzR1OTQxWmJNUTNnUHdEVFRta0dRaU5nZmFFZ0JENVNlSCs2dzVLb2FSa0VDZGxVN3FnWmphZ0phRmVhZmZFa0QxR2FqNVY3QnFVT3Y2NVFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzY5MzExCWZpbGU6UXVhcnR6XzQuMS41X3g2NC1zZXR1cC5leGUKNUN0eUpSYWRkcG9ZaGpGaXBFYVJLZlppekhyVXlCb1RMTTRPTmVXR2hjVW85bDhYUERsdGo1U0pyZXUyVW80ZXkzc1ZERHUvdVZoVitVaFdhRzdTQmc9PQo=",
+      "url": "https://github.com/RitoShark/Quartz/releases/download/v4.1.5/Quartz_4.1.5_x64-setup.exe"
     },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTQmhYSTZ3YnRRVVk2Q0VnTlRtU0Foa2NJbUhpYUdJOUxBL0lDQWNGZWNRMkIwdjc3ZUx3REovQlNpYzBDVUIzeFNpM1pqSjhwamh2UEhtQ0F4Y3VHV1pqdEhkK2lQbUFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzQ4OTEwCWZpbGU6UXVhcnR6XzQuMS4zX3g2NC1zZXR1cC5leGUKTWxDRnhPUFZ5eHhCRFZueTZlVDNOY3BZMkVTdFo5UjhDMHV2ZUZVOU8yVHFXOHZnQThqSmdWZ2QveGNNR3JRVThMZ0s3OGoyQkhldXZmUk5SSU1rQlE9PQo=",
-      "url": "https://github.com/RitoShark/Quartz/releases/download/v4.1.3/Quartz_4.1.3_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTQmhYSTZ3YnRRVWNNZUhHSzR1OTQxWmJNUTNnUHdEVFRta0dRaU5nZmFFZ0JENVNlSCs2dzVLb2FSa0VDZGxVN3FnWmphZ0phRmVhZmZFa0QxR2FqNVY3QnFVT3Y2NVFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzY5MzExCWZpbGU6UXVhcnR6XzQuMS41X3g2NC1zZXR1cC5leGUKNUN0eUpSYWRkcG9ZaGpGaXBFYVJLZlppekhyVXlCb1RMTTRPTmVXR2hjVW85bDhYUERsdGo1U0pyZXUyVW80ZXkzc1ZERHUvdVZoVitVaFdhRzdTQmc9PQo=",
+      "url": "https://github.com/RitoShark/Quartz/releases/download/v4.1.5/Quartz_4.1.5_x64-setup.exe"
     }
   }
 }

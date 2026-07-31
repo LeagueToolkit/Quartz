@@ -91,6 +91,9 @@ fn read_settings_from_disk() -> Result<QuartzSettings, String> {
     serde_json::from_str(&data).map_err(|e| format!("Failed to parse settings: {}", e))
 }
 
+/// Only the release startup path consults this; the debug path skips updates
+/// entirely, so without this gate it reads as dead code in a debug build.
+#[cfg(not(debug_assertions))]
 pub(crate) fn auto_update_enabled() -> bool {
     read_settings_from_disk()
         .map(|settings| settings.auto_update_enabled)
