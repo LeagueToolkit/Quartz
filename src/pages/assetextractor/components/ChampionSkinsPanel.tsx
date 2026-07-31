@@ -118,12 +118,6 @@ export function ChampionSkinsPanel({
                                         </span>
                                     )}
 
-                                    {extractionProgress[skinKey] && !extractingSkins[skinKey] && (
-                                        <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8, background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 6px', fontSize: 11, fontWeight: 600, textAlign: 'center' }}>
-                                            {extractionProgress[skinKey]}
-                                        </div>
-                                    )}
-
                                     <div className="ae-card__toolstack">
                                         {!offlineMode && (
                                             <button
@@ -202,6 +196,14 @@ export function ChampionSkinsPanel({
                                                         }}
                                                     />
                                                 ))}
+                                            </div>
+                                        )}
+
+                                        {/* Above the title, in flow, so the footer grows to fit it
+                                            instead of the banner covering the name. */}
+                                        {extractionProgress[skinKey] && !extractingSkins[skinKey] && (
+                                            <div className="ae-card__progress" title={extractionProgress[skinKey]}>
+                                                {extractionProgress[skinKey]}
                                             </div>
                                         )}
 

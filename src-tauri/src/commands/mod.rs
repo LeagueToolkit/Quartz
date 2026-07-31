@@ -26,6 +26,7 @@ pub mod settings;
 pub mod system;
 pub mod themes;
 pub mod upscale;
+pub mod vfx_anm;
 pub mod vfx_session;
 pub mod vfx_tools;
 pub mod wad;

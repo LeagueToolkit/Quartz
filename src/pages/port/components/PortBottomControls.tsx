@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Tooltip } from '@mui/material';
 import { Undo2 as UndoIcon } from 'lucide-react';
+import type { PortMode } from '@/lib/stores/portStore';
 
 export interface PortActionButton {
     id: string;
@@ -21,6 +22,10 @@ interface PortBottomControlsProps {
     hasChangesToSave: () => boolean;
     /* VFX action buttons (formerly the floating island) — rendered at the left. */
     actions?: PortActionButton[];
+    /* VFX / ANM view switch. Page-global: both columns switch together, so it
+       lives here rather than in a column header. Omit to hide the control. */
+    mode?: PortMode;
+    onModeChange?: (mode: PortMode) => void;
 }
 
 /* Single compact bottom bar: VFX action buttons on the left, the status/console
@@ -35,6 +40,8 @@ export default function PortBottomControls({
     isProcessing,
     hasChangesToSave,
     actions = [],
+    mode,
+    onModeChange,
 }: PortBottomControlsProps) {
     const canSave = !isProcessing && hasChangesToSave();
     // Keep the action buttons MOUNTED whenever there's a target. Every port/
@@ -48,6 +55,22 @@ export default function PortBottomControls({
     return (
         <div className="port-bottom-bar">
             <div className="port-bottom-bar__actions port-bottom-bar__actions--left">
+                {mode && onModeChange && (
+                    <div className="port-mode-switch" role="group" aria-label="Port view">
+                        {(['vfx', 'anm'] as const).map((m) => (
+                            <button
+                                key={m}
+                                type="button"
+                                className={`port-mode-switch__opt${mode === m ? ' is-active' : ''}`}
+                                aria-pressed={mode === m}
+                                onClick={() => onModeChange(m)}
+                                title={m === 'vfx' ? 'VFX systems and emitters' : 'Animation clips and events'}
+                            >
+                                {m === 'vfx' ? 'VFX' : 'ANM'}
+                            </button>
+                        ))}
+                    </div>
+                )}
                 {showActions &&
                     actions.map(({ id, title, color, icon, onClick, disabled }) => {
                         const isDisabled = disabled || isProcessing;

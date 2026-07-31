@@ -3,7 +3,9 @@ pub mod downloader;
 pub mod lmdb_cache;
 
 pub use downloader::{
-    download_hashes, get_hash_dir, get_ritoshark_hash_dir, hashes_present, DownloadStats,
+    auto_sync, download_hashes, download_hashes_with_progress, get_hash_dir,
+    get_ritoshark_hash_dir, hashes_present, is_auto_sync_fresh, no_progress, DownloadStats,
+    HashProgress, ProgressSink, AUTO_SYNC_COOLDOWN_MINUTES,
 };
 pub use lmdb_cache::{
     drop_lmdb_cache, get_bin_env, get_or_open_env, get_wad_env, resolve_bin_hashes_lmdb,

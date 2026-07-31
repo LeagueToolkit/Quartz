@@ -378,12 +378,21 @@ function Paint() {
     });
 
     /* A bin routed here from another tool (e.g. Flint's "Open in Quartz paint"
-       via --paint-bin) or the file explorer's "Open in Paint" context menu. */
+       via --paint-bin) or the file explorer's "Open in Paint" context menu.
+
+       SUBSCRIBES to the pending file rather than reading it once on mount.
+       App.tsx remounts pages with `key={page}`, so a mount-only read worked
+       when the handoff arrived while Quartz sat on another page, and silently
+       dropped the bin when Quartz was ALREADY on Paint: `page` never changed,
+       nothing remounted, and this effect never re-ran. Flint's handoff into a
+       running Quartz hits that case whenever Paint was the last page open. */
+    const pendingFile = useNavigationStore((s) => s.pendingFile);
     const consumePendingFile = useNavigationStore((s) => s.consumePendingFile);
     useEffect(() => {
+        if (pendingFile?.page !== 'paint') return;
         const path = consumePendingFile('paint');
         if (path) void loadBinFile(path);
-    }, [consumePendingFile, loadBinFile]);
+    }, [pendingFile, consumePendingFile, loadBinFile]);
 
     const handleSave = useCallback(async (force = false) => {
         if (sessionId === null) return;

@@ -112,6 +112,79 @@
     background: color-mix(in oklab, var(--border) 70%, transparent);
 }
 
+/* Background hash-database sync pill. Only mounted while a sync is running, so
+   it must not reserve space or shift the buttons beside it when absent. */
+.q-hashsync {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-shrink: 0;
+    height: 26px;
+    margin-right: 6px;
+    padding: 0 10px;
+    border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--bg-hover) 45%, transparent);
+    white-space: nowrap;
+}
+
+.q-hashsync__label {
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 500;
+}
+
+.q-hashsync__count {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    /* Tabular figures so a ticking percentage doesn't jitter the pill's width. */
+    font-variant-numeric: tabular-nums;
+}
+
+.q-hashsync__spin {
+    color: var(--accent-primary);
+    animation: q-hashsync-spin 0.9s linear infinite;
+}
+
+.q-hashsync__done {
+    color: var(--color-success, #4ade80);
+}
+
+.q-hashsync__bar {
+    position: relative;
+    overflow: hidden;
+    width: 54px;
+    height: 3px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--border) 80%, transparent);
+}
+
+.q-hashsync__fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent-primary);
+    transition: width 0.2s ease;
+}
+
+@keyframes q-hashsync-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Respect a reduced-motion preference: the percentage still communicates
+   progress without a continuously spinning element. */
+@media (prefers-reduced-motion: reduce) {
+    .q-hashsync__spin {
+        animation: none;
+    }
+    .q-hashsync__fill {
+        transition: none;
+    }
+}
+
 /* Scrollable strip — scrollbar hidden so it never reserves height. Reveal on
    hover via the arrow buttons (or wheel/trackpad). */
 .q-topnav-strip {

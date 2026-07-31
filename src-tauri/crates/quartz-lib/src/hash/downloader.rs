@@ -12,6 +12,7 @@
 //! RitoShark tools.
 
 use crate::error::{Error, Result};
+use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
@@ -54,6 +55,28 @@ pub struct DownloadStats {
     pub skipped: usize,
     pub errors: usize,
 }
+
+/// Byte progress for one asset, for a UI indicator.
+///
+/// `total` is 0 when the server sent no `Content-Length` (chunked transfer);
+/// a consumer must treat that as indeterminate rather than dividing by it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HashProgress {
+    /// Which asset is downloading, e.g. "WAD hashes".
+    pub label: String,
+    pub received: u64,
+    pub total: u64,
+}
+
+/// Progress sink. `Fn` (not `FnMut`) so it can be shared across the per-asset
+/// loop without a lock; callers that need to mutate should capture a channel
+/// or an atomic.
+pub trait ProgressSink: Fn(HashProgress) + Send + Sync {}
+impl<T: Fn(HashProgress) + Send + Sync> ProgressSink for T {}
+
+/// A sink that discards progress, for callers that do not display it.
+pub fn no_progress(_: HashProgress) {}
 
 /// GitHub release JSON — only the fields we need.
 #[derive(Debug, Deserialize)]
@@ -105,6 +128,49 @@ pub fn hashes_present(hash_dir: &Path) -> bool {
         .all(|a| hash_dir.join(a.lmdb_dir).join("data.mdb").exists())
 }
 
+/// Default startup cooldown: check GitHub at most once a day per machine.
+pub const AUTO_SYNC_COOLDOWN_MINUTES: i64 = 60 * 24;
+
+/// Fast-path gate for startup auto-sync: true when the LMDBs exist AND the
+/// metadata was refreshed within `max_age_minutes`.
+///
+/// WHY THIS EXISTS
+/// Presence alone is the wrong gate. `download_hashes` used to return early the
+/// moment both `data.mdb` files existed, which meant the release-tag comparison
+/// below it was unreachable on any normal boot and a machine silently kept
+/// months-old hashes. Names Riot shipped after the local snapshot then resolve
+/// to nothing, and a brand new skin looks absent from its own WAD.
+///
+/// Time is the gate instead, matching the Electron build's `isAutoSyncFresh`:
+/// stale metadata means "go ask", fresh metadata means "skip the network".
+/// Anything unreadable / unparseable / missing counts as stale, so a corrupt
+/// meta file re-checks rather than pinning the user forever.
+///
+/// A clock that jumped backwards would make `updated_at` look like the future;
+/// that reads as stale too, which costs one API call rather than an indefinite
+/// skip.
+pub fn is_auto_sync_fresh(hash_dir: &Path, max_age_minutes: i64) -> bool {
+    if !hashes_present(hash_dir) {
+        return false;
+    }
+    let Ok(raw) = std::fs::read_to_string(hash_dir.join(META_FILE_NAME)) else {
+        return false;
+    };
+    let Ok(meta) = serde_json::from_str::<HashesMeta>(&raw) else {
+        return false;
+    };
+    let Some(updated_at) = meta.updated_at.as_deref() else {
+        return false;
+    };
+    let Ok(updated) = chrono::DateTime::parse_from_rfc3339(updated_at) else {
+        return false;
+    };
+    let age = chrono::Utc::now().signed_duration_since(updated.with_timezone(&chrono::Utc));
+    // A negative age means the stamp is in the future (clock skew): treat as
+    // stale so it re-checks instead of skipping forever.
+    age >= chrono::Duration::zero() && age.num_minutes() <= max_age_minutes
+}
+
 /// Download hash databases from `lmdb-hashes` GitHub releases.
 ///
 /// # Behaviour
@@ -120,6 +186,15 @@ pub fn hashes_present(hash_dir: &Path) -> bool {
 /// Re-checking for a newer tag only happens when the user explicitly clicks
 /// "Reload hashes" (`reload_hashes` / `force_rebuild_hashes` commands).
 pub async fn download_hashes(output_dir: impl AsRef<Path>, force: bool) -> Result<DownloadStats> {
+    download_hashes_with_progress(output_dir, force, no_progress).await
+}
+
+/// [`download_hashes`], reporting per-asset byte progress to `progress`.
+pub async fn download_hashes_with_progress(
+    output_dir: impl AsRef<Path>,
+    force: bool,
+    progress: impl ProgressSink,
+) -> Result<DownloadStats> {
     let output_dir = output_dir.as_ref();
 
     tracing::debug!("Hash dir: {}", output_dir.display());
@@ -149,14 +224,14 @@ pub async fn download_hashes(output_dir: impl AsRef<Path>, force: bool) -> Resul
         errors: 0,
     };
 
-    // Fast path: LMDBs already on disk and caller didn't force a refresh.
-    // Skip the GitHub API entirely — a startup that finds its hashes should
-    // not hit the network. Users can re-check via the reload commands.
-    if !force && hashes_present(output_dir) {
-        tracing::info!("Hash databases already present — skipping check");
-        stats.skipped = ASSETS.len();
-        return Ok(stats);
-    }
+    /* No presence-based early return here on purpose.
+    Gating on "the files exist" made the release-tag comparison below
+    unreachable on every normal boot, so a machine kept whatever snapshot it
+    first installed indefinitely. Startup callers gate on TIME instead, via
+    `auto_sync`, and reaching this function means a check was actually wanted.
+    The per-asset tag check below still skips the download itself when the
+    local tag already matches the release, so the cost of an up-to-date check
+    is one small API call, not a re-download. */
 
     let client = Client::builder()
         .user_agent(USER_AGENT)
@@ -192,7 +267,7 @@ pub async fn download_hashes(output_dir: impl AsRef<Path>, force: bool) -> Resul
             continue;
         }
 
-        match download_and_extract(&client, release_asset, &lmdb_dir).await {
+        match download_and_extract(&client, release_asset, &lmdb_dir, asset.label, &progress).await {
             Ok(()) => {
                 tracing::info!("Downloaded {} (tag {})", asset.label, latest_tag);
                 stats.downloaded += 1;
@@ -228,6 +303,45 @@ pub async fn download_hashes(output_dir: impl AsRef<Path>, force: bool) -> Resul
     Ok(stats)
 }
 
+/// Startup auto-sync: check for newer hashes at most once per cooldown window.
+///
+/// Returns `Ok(None)` when the check was skipped as fresh, so a caller can tell
+/// "nothing to do" from "checked and up to date" (`Ok(Some(stats))`).
+///
+/// Network failure is deliberately NOT an error here: a machine that boots
+/// offline must still start with the hashes it already has. The failure is
+/// logged and reported as a skip.
+pub async fn auto_sync(
+    output_dir: impl AsRef<Path>,
+    progress: impl ProgressSink,
+) -> Option<DownloadStats> {
+    let output_dir = output_dir.as_ref();
+
+    if is_auto_sync_fresh(output_dir, AUTO_SYNC_COOLDOWN_MINUTES) {
+        tracing::info!("Hash auto-sync: skipped, metadata is fresh");
+        return None;
+    }
+
+    tracing::info!("Hash auto-sync: checking for newer hashes");
+    match download_hashes_with_progress(output_dir, false, progress).await {
+        Ok(stats) => {
+            tracing::info!(
+                "Hash auto-sync: {} downloaded, {} skipped, {} errors",
+                stats.downloaded,
+                stats.skipped,
+                stats.errors
+            );
+            Some(stats)
+        }
+        Err(e) => {
+            // Offline, rate-limited, or GitHub down. Not fatal: the existing
+            // LMDBs stay usable and the next launch tries again.
+            tracing::warn!("Hash auto-sync failed (keeping existing hashes): {}", e);
+            None
+        }
+    }
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 async fn fetch_latest_release(client: &Client) -> Result<GitHubRelease> {
@@ -255,6 +369,8 @@ async fn download_and_extract(
     client: &Client,
     release_asset: &GitHubReleaseAsset,
     lmdb_dir: &Path,
+    label: &str,
+    progress: &impl ProgressSink,
 ) -> Result<()> {
     fs::create_dir_all(lmdb_dir).await?;
 
@@ -273,7 +389,25 @@ async fn download_and_extract(
         )));
     }
 
-    let compressed = response.bytes().await.map_err(Error::Network)?;
+    /* Streamed rather than `response.bytes()` so the UI can show real byte
+    progress. These assets are ~50-80 MB compressed and the pair expands to
+    ~240 MB on disk, which is long enough on a slow link that a silent wait
+    reads as a hang. `content_length` is absent on a chunked response, in which
+    case `total` stays 0 and the indicator falls back to an indeterminate
+    spinner instead of a bogus percentage. */
+    let total = response.content_length().unwrap_or(0);
+    let mut compressed: Vec<u8> = Vec::with_capacity(total as usize);
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(Error::Network)?;
+        compressed.extend_from_slice(&chunk);
+        progress(HashProgress {
+            label: label.to_string(),
+            received: compressed.len() as u64,
+            total,
+        });
+    }
+    let compressed = bytes::Bytes::from(compressed);
 
     // Decompress in a blocking task — zstd is CPU-bound.
     let decompressed = tokio::task::spawn_blocking(move || {
@@ -370,5 +504,86 @@ mod tests {
             assert!(s.contains("RitoShark"));
             assert!(s.contains("Hashes"));
         }
+    }
+
+    // ── Auto-sync freshness gate ─────────────────────────────────────────────
+
+    /// A scratch hash dir with both LMDBs "present" and a meta file whose
+    /// `updatedAt` is `age_minutes` in the past. Uses a unique dir per test so
+    /// the cases can run in parallel.
+    fn scratch(tag: &str, age_minutes: Option<i64>) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("quartz-hashtest-{tag}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        for asset in ASSETS {
+            let lmdb = dir.join(asset.lmdb_dir);
+            std::fs::create_dir_all(&lmdb).unwrap();
+            std::fs::write(lmdb.join("data.mdb"), b"x").unwrap();
+        }
+        if let Some(age) = age_minutes {
+            let stamp = chrono::Utc::now() - chrono::Duration::minutes(age);
+            let meta = format!(
+                r#"{{"releaseTag":"v1","updatedAt":"{}"}}"#,
+                stamp.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+            );
+            std::fs::write(dir.join(META_FILE_NAME), meta).unwrap();
+        }
+        dir
+    }
+
+    /* The regression this whole gate exists for: the old code returned early
+    whenever both data.mdb files existed, so the release-tag check below it
+    never ran and a machine kept months-old hashes forever. Freshness must be
+    decided by TIME, not by presence. */
+    #[test]
+    fn stale_metadata_is_not_fresh_even_though_the_lmdbs_exist() {
+        let dir = scratch("stale", Some(60 * 24 * 90)); // 90 days old
+        assert!(hashes_present(&dir), "fixture should look installed");
+        assert!(!is_auto_sync_fresh(&dir, AUTO_SYNC_COOLDOWN_MINUTES));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn recent_metadata_is_fresh() {
+        let dir = scratch("recent", Some(60)); // an hour ago
+        assert!(is_auto_sync_fresh(&dir, AUTO_SYNC_COOLDOWN_MINUTES));
+        // ...but not under a cooldown shorter than its age.
+        assert!(!is_auto_sync_fresh(&dir, 30));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Anything unreadable counts as stale: better one wasted API call than a
+    /// machine pinned to old hashes by a corrupt meta file.
+    #[test]
+    fn missing_or_unparseable_metadata_is_stale() {
+        let dir = scratch("nometa", None);
+        assert!(!is_auto_sync_fresh(&dir, AUTO_SYNC_COOLDOWN_MINUTES));
+
+        std::fs::write(dir.join(META_FILE_NAME), b"{not json").unwrap();
+        assert!(!is_auto_sync_fresh(&dir, AUTO_SYNC_COOLDOWN_MINUTES));
+
+        // Present but with no `updatedAt` at all.
+        std::fs::write(dir.join(META_FILE_NAME), br#"{"releaseTag":"v1"}"#).unwrap();
+        assert!(!is_auto_sync_fresh(&dir, AUTO_SYNC_COOLDOWN_MINUTES));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A future stamp (clock skew, or a restored backup) must not read as
+    /// fresh forever.
+    #[test]
+    fn future_metadata_is_stale() {
+        let dir = scratch("future", Some(-60 * 24 * 3));
+        assert!(!is_auto_sync_fresh(&dir, AUTO_SYNC_COOLDOWN_MINUTES));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// No LMDBs is a first run, which the download prompts own; auto-sync must
+    /// stay out of its way rather than racing it for the same files.
+    #[test]
+    fn absent_lmdbs_are_never_fresh() {
+        let dir = std::env::temp_dir().join("quartz-hashtest-empty");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(!is_auto_sync_fresh(&dir, AUTO_SYNC_COOLDOWN_MINUTES));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

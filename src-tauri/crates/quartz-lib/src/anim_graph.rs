@@ -59,21 +59,18 @@ const CLIP_FLAG_LOOP: u32 = 2;
 /// converts. Kept as its own type so this module does not force every consumer
 /// of a clip graph to depend on the VFX session.
 ///
-/// # Known limitation: map-contained values are addressed by pair index
+/// # Map-contained values
 ///
-/// Clips live in `mClipDataMap` and events in `mEventDataMap`, both `BinValue::Map`s.
-/// [`Step`] has only `Field` and `Index` variants - there is no map-key step - and
-/// `path.rs::walk_steps` does not descend into `BinValue::Map` at all. So the step
-/// recorded for a map entry is `Step::Index { index }` holding the entry's
-/// POSITION in the map's `entries` vector, and such a path will NOT resolve
-/// through `walk_steps` as-is.
+/// Clips live in `mClipDataMap` and events in `mEventDataMap`, both
+/// `BinValue::Map`s, so they are addressed with [`Step::MapIndex`] - the entry's
+/// POSITION in the map's `entries` vector. `walk_steps` resolves that to the
+/// entry's VALUE; `walk_map_key` reaches the sibling KEY, which is what a clip
+/// or event rename rewrites.
 ///
-/// A future write path must therefore special-case the map hop: walk to the map
-/// with the leading steps, then index its `entries` directly. Positional indices
-/// stay valid as long as nothing inserts or removes map entries in between.
-/// Fixing this properly means adding a key-aware `Step` variant, which would
-/// change the serialized path wire format shared with the frontend and
-/// `bineditor` - deliberately out of scope here; `path.rs` is left untouched.
+/// Positions are resolved against the live tree at edit time and never
+/// persisted, so an insert or removal elsewhere in the map cannot invalidate a
+/// path that is already being applied. An edit that itself inserts or removes
+/// map entries must re-project before addressing anything else.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BinAddr {
@@ -108,10 +105,16 @@ impl BinAddr {
         self.child(Step::Field { field: fnv1a(name) })
     }
 
-    /// Descend into a list item, or a map entry by position (see the type docs
-    /// for why a map hop does not resolve through `walk_steps`).
+    /// Descend into a list item.
     pub fn index(&self, index: usize) -> BinAddr {
         self.child(Step::Index { index })
+    }
+
+    /// Descend into a map entry by position. Distinct from [`Self::index`]:
+    /// `walk_steps` needs to know whether to index a list's `items` or a map's
+    /// `entries`, and resolving a map hop as a list index silently misses.
+    pub fn map_index(&self, index: usize) -> BinAddr {
+        self.child(Step::MapIndex { map_index: index })
     }
 
     /// The equivalent [`VfxPath`] - identical wire shape and semantics.
@@ -549,7 +552,10 @@ fn as_name(value: Option<&BinValue>) -> Option<String> {
     match value? {
         BinValue::String(s) if !s.is_empty() => Some(s.clone()),
         BinValue::String(_) => None,
-        BinValue::Hash(h) | BinValue::Link(h) => Some(format!("0x{h:08x}")),
+        // Hash-typed in every real bin (`mTrackDataName: hash = "Default"`), so
+        // this needs the same dictionary lookup the map keys use or the value
+        // shows as a hash while the map key it points at shows as a name.
+        BinValue::Hash(h) | BinValue::Link(h) => Some(resolve_bin_hash(*h)),
         _ => None,
     }
 }
@@ -575,12 +581,92 @@ fn class_of(value: &BinValue) -> Option<u32> {
     }
 }
 
-/// A map key normalised to a display string: a resolved name, or `0x{h:08x}`.
+/// A map key normalised to a display string: a resolved name, or `0x{h:08x}`
+/// when the BIN hash database cannot name it.
+///
+/// `mClipDataMap` and `mEventDataMap` are `map[hash, pointer]`, so EVERY key
+/// arrives as a bare fnv1a-32 with no text. Formatting the hash without first
+/// consulting the hash DB is why clips displayed as their `.anm` filename: a
+/// hash-form key falls through to [`clip_display_name`]'s filename fallback, so
+/// the sequencer keyed `Crit` rendered as `Qiyana_Base_Crit` (its first
+/// member's animation) and collided with the atomic clip of that name. ritobin
+/// resolves these same hashes, which is why a text dump shows `"Crit"`.
 fn key_name(key: &BinValue) -> Option<String> {
     match key {
         BinValue::String(s) => Some(s.clone()),
-        BinValue::Hash(h) | BinValue::Link(h) => Some(format!("0x{h:08x}")),
+        BinValue::Hash(h) | BinValue::Link(h) => Some(resolve_bin_hash(*h)),
         _ => None,
+    }
+}
+
+/// [`key_name`] for the sibling animation readers, so mask, track, clip and
+/// event keys are all named the same way.
+pub fn key_name_of(key: &BinValue) -> Option<String> {
+    key_name(key)
+}
+
+/// Opt a test INTO the real hash dictionary. Off by default so the suite is
+/// hermetic; see the note in [`resolve_bin_hash`].
+///
+/// THREAD-LOCAL, not a global: cargo runs tests in parallel on one process, so
+/// a process-wide flag turned the dictionary on for whichever unrelated tests
+/// happened to be mid-run and failed them at random.
+#[cfg(test)]
+mod hash_lookup {
+    use std::cell::Cell;
+
+    thread_local! {
+        pub(super) static ENABLED: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Enables the dictionary on THIS thread for as long as the guard lives.
+    pub(super) struct Guard;
+    impl Guard {
+        pub(super) fn new() -> Guard {
+            ENABLED.with(|e| e.set(true));
+            Guard
+        }
+    }
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            ENABLED.with(|e| e.set(false));
+        }
+    }
+}
+
+#[cfg(test)]
+fn hash_lookup_enabled() -> bool {
+    hash_lookup::ENABLED.with(|e| e.get())
+}
+
+#[cfg(not(test))]
+fn hash_lookup_enabled() -> bool {
+    true
+}
+
+/// Name a fnv1a-32 BIN hash through the process-wide hash cache, falling back
+/// to `0x{h:08x}`.
+///
+/// Reads the same `RwLock<HashMapper>` the BIN text writer uses, so a clip name
+/// here and in a ritobin dump always agree, and a hash-database refresh applies
+/// to both without a restart. The lock is read-only and the map is already
+/// resident, so this stays a hash lookup per key.
+fn resolve_bin_hash(h: u32) -> String {
+    /* Tests build synthetic bins by hashing ordinary words ("Wind", "Root",
+       "weapon"), and those ARE in the real League dictionary. Consulting it
+       would make every naming assertion depend on which hash database the
+       developer happens to have installed, so the lookup is disabled under
+       `cfg(test)` and the unit tests pin the hash-form fallback. Real naming is
+       covered end to end by the app, and by `resolves_a_known_bin_hash` below
+       when a database is present. */
+    if cfg!(test) && !hash_lookup_enabled() {
+        return format!("0x{h:08x}");
+    }
+    let cache = crate::bin::ritoshark_bridge::get_cached_bin_hashes().read();
+    match cache.get(h as u64) {
+        // A dictionary entry can be present but empty; that is not a name.
+        Some(name) if !name.is_empty() => name.to_string(),
+        _ => format!("0x{h:08x}"),
     }
 }
 
@@ -688,7 +774,7 @@ fn parse_all_events(
     let mut out = Vec::new();
     for (i, (k, v)) in entries.iter().enumerate() {
         let Some(class) = class_of(v) else { continue };
-        let addr = map_addr.index(i);
+        let addr = map_addr.map_index(i);
         out.push(AnimEvent {
             name: key_name(k).unwrap_or_default(),
             class_hash: class,
@@ -930,7 +1016,7 @@ fn resolve_members(
         let Some((idx, member)) = map.get(&name) else { continue };
         let Some(mf) = fields(member) else { continue };
         let member_class = class_of(member).unwrap_or(0);
-        let addr = map_addr.index(idx);
+        let addr = map_addr.map_index(idx);
         if let Some(anm) = clip_anm_path(mf) {
             let all_events = parse_all_events(mf, &addr);
             out.push(ClipMember {
@@ -1047,7 +1133,7 @@ pub fn resolve_clip_graph(bins: &[Bin]) -> Vec<ClipInfo> {
         let Some(key) = key_name(k) else { continue };
         let Some(cf) = fields(v) else { continue };
         let class = class_of(v).unwrap_or(0);
-        let addr = map_addr.index(i);
+        let addr = map_addr.map_index(i);
 
         let direct = clip_anm_path(cf);
         let members = if direct.is_some() {
@@ -1304,6 +1390,33 @@ mod tests {
         let c = by_name(&clips, "Idle1");
         assert_eq!(c.start_frame, Some(3.0));
         assert_eq!(c.end_frame, Some(9.0));
+    }
+
+    /* The bug this whole lookup exists for: `mClipDataMap` is `map[hash, ...]`,
+    so a clip key arrives as a bare fnv1a-32. Formatting it as `0x{h:08x}` sent
+    it through `clip_display_name`'s `.anm`-stem fallback, which is why the
+    sequencer keyed `Crit` rendered as `Qiyana_Base_Crit` and looked like a
+    duplicate of the atomic clip beside it.
+
+    Skipped when no hash database is installed, since it is the dictionary
+    itself under test. The hash-form FALLBACK is what every other test pins. */
+    #[test]
+    fn resolves_a_known_bin_hash_when_a_database_is_installed() {
+        let _guard = hash_lookup::Guard::new();
+        // "Default" is the track name on essentially every real clip.
+        let resolved = resolve_bin_hash(fnv1a("Default"));
+        if resolved.starts_with("0x") {
+            eprintln!("no BIN hash database installed; skipping");
+            return;
+        }
+        assert!(
+            resolved.eq_ignore_ascii_case("Default"),
+            "expected the dictionary to name this hash, got {resolved}"
+        );
+
+        // And an invented hash still falls back rather than inventing a name.
+        let missing = resolve_bin_hash(fnv1a("zz_not_a_real_bin_name_zz"));
+        assert!(missing.starts_with("0x"), "got {missing}");
     }
 
     #[test]
@@ -2087,8 +2200,9 @@ mod tests {
                 Step::Field {
                     field: fnv1a("mClipDataMap")
                 },
-                // Map hop is positional: "Second" is entry 1 of the map.
-                Step::Index { index: 1 },
+                // Map hop is positional AND map-typed: "Second" is entry 1 of
+                // the map, reached through `entries`, not a list's `items`.
+                Step::MapIndex { map_index: 1 },
             ]
         );
 
@@ -2100,11 +2214,12 @@ mod tests {
                 Step::Field {
                     field: fnv1a("mClipDataMap")
                 },
-                Step::Index { index: 1 },
+                Step::MapIndex { map_index: 1 },
                 Step::Field {
                     field: fnv1a("mEventDataMap")
                 },
-                Step::Index { index: 0 },
+                // The event map is a map too, so both hops are MapIndex.
+                Step::MapIndex { map_index: 0 },
             ]
         );
 
@@ -2143,7 +2258,7 @@ mod tests {
                     field: fnv1a("mClipDataMap")
                 },
                 // PartA is map entry 1, even though it is member 0 of Seq.
-                Step::Index { index: 1 },
+                Step::MapIndex { map_index: 1 },
             ]
         );
         assert_eq!(member.addr, by_name(&clips, "PartA").addr);
@@ -2157,6 +2272,42 @@ mod tests {
         assert_eq!(json["entry"], 3);
         assert_eq!(json["steps"][0]["field"], fnv1a("mClipDataMap"));
         assert_eq!(json["steps"][1]["index"], 2);
+    }
+
+    #[test]
+    fn map_hops_use_map_index_not_index() {
+        // A list index and a map hop are different steps: walk_steps indexes
+        // `items` for one and `entries` for the other, so conflating them
+        // resolves to the wrong node (or silently to None).
+        let a = BinAddr::root(0, 0).field("mClipDataMap").map_index(2);
+        let json = serde_json::to_value(&a).unwrap();
+        assert_eq!(json["steps"][1]["mapIndex"], 2);
+        assert!(json["steps"][1].get("index").is_none());
+    }
+
+    /// Every clip and event address must actually RESOLVE against the tree it
+    /// came from - the whole point of carrying an addr is that a write path can
+    /// reach the node. Before `Step::MapIndex` existed these all returned None.
+    #[test]
+    fn clip_and_event_addrs_resolve_through_walk_steps() {
+        use crate::vfx_session::path::{walk_map_key, walk_steps};
+
+        let mut bins = bins_with_clips(vec![(
+            key("Recall"),
+            clip("AtomicClipData", vec![anm("ASSETS/Recall.anm")]),
+        )]);
+        let clips = resolve_clip_graph(&bins);
+        let addr = clips[0].addr.clone();
+
+        let entry = &mut bins[addr.bin].entries[addr.entry];
+        assert!(
+            walk_steps(entry, &addr.steps).is_some(),
+            "a clip address must resolve to its value"
+        );
+        assert!(
+            walk_map_key(entry, &addr.steps).is_some(),
+            "a clip address must expose its map key, which a rename rewrites"
+        );
     }
 
     // ---- backward compatibility -----------------------------------------

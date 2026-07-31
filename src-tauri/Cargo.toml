@@ -3,7 +3,7 @@ members = [".", "crates/quartz-lib"]
 
 [package]
 name = "quartz"
-version = "4.1.5"
+version = "4.1.6"
 edition = "2021"
 default-run = "quartz"
 
@@ -45,13 +45,25 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 winreg = "0.52"
 windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
+# Release settings match Flint's, deliberately.
+#
+# Both ship unsigned NSIS installers, so the only thing standing between a
+# release and a Defender "Trojan:Win32/Wacatac.C!ml" is how familiar the binary
+# looks to an ML classifier. 4.1.5 tripped that (2/69 on VirusTotal, both hits
+# generic-ML) after this profile moved to thin LTO and a `.cargo/config.toml`
+# swapped the linker to rust-lld. Neither changed BEHAVIOUR, but together they
+# changed the produced PE's shape: section layout, padding and codegen all
+# differ from an MSVC-linked, fat-LTO build, which is exactly what those models
+# key on. Flint builds clean with the settings below, so Quartz uses them too.
+#
+# The cost is real: fat LTO with one codegen unit is single-threaded for most of
+# the link and takes several minutes longer. That is the trade being made on
+# purpose. Do not "optimize" this back to thin LTO or reintroduce a linker
+# override without re-scanning the installer afterwards.
 [profile.release]
 opt-level = 3
-# "thin" instead of full LTO: full LTO merges all ~640 crates into one unit and
-# re-optimizes it on a SINGLE thread, which was most of an 8-minute build on a
-# 12-core machine. Thin LTO parallelises that stage for near-identical runtime
-# performance and a marginally larger binary.
-lto = "thin"
+lto = "fat"
+codegen-units = 1
 strip = true
 
 # Texture preview is CPU-heavy even in the development app. Keep the app

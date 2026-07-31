@@ -21,7 +21,17 @@ export interface PortResidentState {
        round-trip through the mirror as cleanly). */
     collapsedTargetKeys: string[];
     collapsedDonorKeys: string[];
+    /* Which view the page is in. Page-global: both columns switch together, so
+       "VFX target + ANM donor" is not representable. Resident because Port.tsx
+       remounts on every page swap - as component state this would silently snap
+       back to 'vfx' whenever the user visited another tool and came back. */
+    portMode: PortMode;
 }
+
+/** Port renders either its VFX systems or the animation clip graph. Both read
+ *  the SAME resident sessions - the animation bin is already loaded as a linked
+ *  bin - so switching is a pure render-path change with no reload. */
+export type PortMode = 'vfx' | 'anm';
 
 interface PortStore extends PortResidentState {
     set: <K extends keyof PortResidentState>(key: K, value: PortResidentState[K]) => void;
@@ -41,6 +51,7 @@ export const PORT_DEFAULTS: PortResidentState = {
     canRedo: false,
     collapsedTargetKeys: [],
     collapsedDonorKeys: [],
+    portMode: 'vfx',
 };
 
 export const usePortStore = create<PortStore>((set) => ({

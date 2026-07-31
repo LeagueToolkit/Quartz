@@ -39,9 +39,99 @@ import { HubUploadModal, type UploadableSystem } from './port/components/modals/
 import { useHubDonor } from './port/components/modals/hub/useHubDonor';
 import { parseCompleteVFXSystems } from './vfxhub/lib/vfxSystemParser';
 import { useJadeBin } from '@/lib/jade/jadeInterop';
+import { useAnmMode } from './port/anm/useAnmMode';
+import ClipList from './port/anm/components/ClipList';
+import { AnmEditProvider } from './port/anm/components/AnmEditContext';
+import { filterClips } from './port/anm/filterClips';
+import type { PortClipResult } from '@/lib/api/vfxAnm';
 
 function Port() {
     const p = usePort();
+
+    /* Animation view. Reads the SAME resident sessions Port already holds - the
+       animation bin arrives as one of the skin's linked bins - so toggling costs
+       a projection, not a reload. */
+    const anm = useAnmMode({
+        targetSessionId: p.targetSessionId,
+        donorSessionId: p.donorSessionId,
+    });
+    /* An animation edit dirties the target bin exactly as a VFX edit does, so it
+       has to clear the same `fileSaved` flag the Save button gates on. Only the
+       TARGET side: the donor is never written. */
+    const setFileSaved = p.setFileSaved;
+    const markAnmDirty = useCallback(() => setFileSaved(false), [setFileSaved]);
+
+    /* A ported clip carries the same kind of donor assets a ported VFX system
+       does (its `.anm`, plus the textures of the systems that came with it), so
+       it reuses the VFX side's copier rather than a second implementation.
+       Unresolved effect keys are surfaced rather than swallowed: those
+       particles will not play until they are fixed, and silently porting a clip
+       that half-works is worse than saying so. */
+    const { copyDonorAssets, setStatusMessage } = p;
+    const handleAnmPorted = useCallback(
+        (result: PortClipResult) => {
+            setFileSaved(false);
+            anm.publishTarget(result.model);
+            if (result.assetPaths.length > 0) void copyDonorAssets(result.assetPaths);
+
+            const parts: string[] = [];
+            if (result.portedSystems.length > 0) {
+                parts.push(`${result.portedSystems.length} VFX system(s) came along`);
+            }
+            if (result.unresolvedEffectKeys.length > 0) {
+                parts.push(
+                    `${result.unresolvedEffectKeys.length} effect key(s) had no VFX system: ${result.unresolvedEffectKeys.join(', ')}`,
+                );
+            }
+            setStatusMessage(parts.length > 0 ? `Ported. ${parts.join('. ')}` : 'Ported.');
+        },
+        [setFileSaved, anm, copyDonorAssets, setStatusMessage],
+    );
+
+    /* The column search boxes are shared by both modes, so ANM reuses the same
+       filter state the VFX list uses instead of adding a second input the user
+       would have to notice. */
+    const filteredTargetClips = useMemo(
+        () => filterClips(anm.targetClips, p.targetFilter),
+        [anm.targetClips, p.targetFilter],
+    );
+    const filteredDonorClips = useMemo(
+        () => filterClips(anm.donorClips, p.donorFilter),
+        [anm.donorClips, p.donorFilter],
+    );
+
+    /* Row keys per column, so a drop target resolves from a key without every
+       card carrying the whole list. Memoised on the clips themselves: rebuilding
+       the array each render would give the edit context a new identity and
+       re-render every card in the column.
+
+       Keyed off the UNFILTERED list on purpose: a drop target that vanished
+       because of an active search is still a real clip, and resolving a move
+       against the filtered view would reject it. */
+    const targetClipKeys = useMemo(() => anm.targetClips.map((c) => c.key), [anm.targetClips]);
+    const donorClipKeys = useMemo(() => anm.donorClips.map((c) => c.key), [anm.donorClips]);
+
+    /* Which clips are OPEN. Tracked as expanded rather than collapsed so every
+       clip starts shut - a bin holds 100+ and opening them all buries the list.
+       View-local: clip keys and VFX system keys share no namespace. */
+    const [expandedTargetClips, setExpandedTargetClips] = useState<Set<string>>(new Set());
+    const [expandedDonorClips, setExpandedDonorClips] = useState<Set<string>>(new Set());
+    const toggleTargetClip = useCallback((key: string) => {
+        setExpandedTargetClips((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    }, []);
+    const toggleDonorClip = useCallback((key: string) => {
+        setExpandedDonorClips((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    }, []);
     /* `usePort` returns a fresh object literal each render, so `p` itself is never
        a stable dependency. Pull out the individual callbacks that feed the
        virtualized/memoized VFX rows so their identities survive re-renders. */
@@ -661,10 +751,54 @@ function Port() {
                save/port operations are quick enough to need no loader. */}
 
             <div className="port-main-content" style={{ display: 'flex', flex: 1, gap: '20px', padding: '12px', overflow: 'hidden', position: 'relative', zIndex: 1 }}>
-                <TargetColumn {...targetColumnProps} />
+                <TargetColumn
+                    {...targetColumnProps}
+                    anmSlot={
+                        anm.isAnm ? (
+                            <AnmEditProvider
+                                sessionId={p.targetSessionId}
+                                refresh={anm.refresh}
+                                onModel={anm.publishTarget}
+                                onDirty={markAnmDirty}
+                                clipKeys={targetClipKeys}
+                                donorSessionId={p.donorSessionId}
+                                donorGeneration={p.donorModel?.generation}
+                                onPorted={handleAnmPorted}
+                            >
+                                <ClipList
+                                    clips={filteredTargetClips}
+                                    expandedKeys={expandedTargetClips}
+                                    toggleCollapse={toggleTargetClip}
+                                    loading={anm.loading}
+                                    error={anm.error}
+                                />
+                            </AnmEditProvider>
+                        ) : undefined
+                    }
+                />
                 {/* Single center divider splitting the two halves. */}
                 <div style={{ width: '1px', alignSelf: 'stretch', background: 'var(--border)', flexShrink: 0 }} />
-                <DonorColumn {...donorColumnProps} />
+                <DonorColumn
+                    {...donorColumnProps}
+                    anmSlot={
+                        anm.isAnm ? (
+                            <AnmEditProvider
+                                sessionId={p.donorSessionId}
+                                refresh={anm.refresh}
+                                onModel={anm.publishDonor}
+                                clipKeys={donorClipKeys}
+                            >
+                                <ClipList
+                                    clips={filteredDonorClips}
+                                    expandedKeys={expandedDonorClips}
+                                    toggleCollapse={toggleDonorClip}
+                                    loading={anm.loading}
+                                    error={anm.error}
+                                />
+                            </AnmEditProvider>
+                        ) : undefined
+                    }
+                />
             </div>
 
             <HubBrowserModal
@@ -832,7 +966,9 @@ function Port() {
                 handleSave={handleSaveWithBackup}
                 isProcessing={p.isProcessing}
                 hasChangesToSave={p.hasChangesToSave}
-                actions={portActions}
+                actions={anm.isAnm ? [] : portActions}
+                mode={anm.mode}
+                onModeChange={anm.setMode}
             />
 
             <PortAllModeModal

@@ -9,6 +9,7 @@ import { CommunityPopover } from './CommunityPopover';
 import { useFileExplorer } from '@/components/explorer';
 import { requestOpenCurrentBinInJade } from '@/lib/jade/jadeInterop';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { HashSyncIndicator } from './HashSyncIndicator';
 
 const win = getCurrentWindow();
 
@@ -49,6 +50,9 @@ export function TitleBar({ collapsed = false }: TitleBarProps) {
             </div>
             <div className="q-titlebar-right">
                 <div className="q-topnav-settings" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+                    {/* Left of the action buttons, so a transient pill grows
+                        away from the window controls instead of shifting them. */}
+                    <HashSyncIndicator />
                     <Tooltip content={jadeInteropEnabled ? 'Open in Jade' : 'Jade communication is disabled'} side="bottom">
                         <button
                             type="button"

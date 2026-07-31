@@ -234,6 +234,63 @@ pub fn startup_main_ready(app_handle: AppHandle, gate: State<'_, StartupGate>) {
     gate.frontend_ready.store(true, Ordering::Release);
     tracing::info!("startup frontend-ready handshake received");
     try_reveal_main(&app_handle);
+    spawn_hash_auto_sync(app_handle);
+}
+
+/* Check for newer hash databases in the background, at most once a day.
+Ported from the Electron build, which ran the same check on boot behind a 24h
+cooldown; this one had no startup sync at all, so a machine kept whatever
+snapshot it first installed until someone happened to click "Reload hashes".
+Months-old hashes silently fail to name anything Riot shipped since, which
+reads as data missing from a WAD rather than as a stale lookup table.
+
+Spawned AFTER the main window is revealed and never awaited: it must not delay
+launch, and a failure (offline, rate-limited) must leave the app working with
+the hashes already on disk. */
+fn spawn_hash_auto_sync(app_handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let Ok(hash_dir) = quartz_lib::hash::get_hash_dir() else {
+            return;
+        };
+        // Nothing on disk yet is a first run: the existing download prompts
+        // handle that, and racing them here would fight over the same files.
+        if !quartz_lib::hash::hashes_present(&hash_dir) {
+            return;
+        }
+
+        /* Throttle the progress events rather than emitting one per network
+        chunk. A ~70 MB asset arrives in thousands of chunks and each emit
+        crosses the IPC boundary and re-renders the indicator; at one per
+        percent the bar still looks smooth and the cost disappears. */
+        let last_percent = std::sync::atomic::AtomicU64::new(u64::MAX);
+        let handle = app_handle.clone();
+        let progress = move |p: quartz_lib::hash::HashProgress| {
+            let percent = if p.total > 0 {
+                p.received.saturating_mul(100) / p.total
+            } else {
+                0
+            };
+            if last_percent.swap(percent, std::sync::atomic::Ordering::Relaxed) == percent {
+                return;
+            }
+            let _ = handle.emit("hash-sync-progress", &p);
+        };
+
+        let stats = quartz_lib::hash::auto_sync(&hash_dir, progress).await;
+        match stats {
+            Some(s) if s.downloaded > 0 => {
+                // Re-open the WAD env so the new names resolve without a restart.
+                quartz_lib::hash::drop_lmdb_cache();
+                let _ = quartz_lib::hash::get_wad_env(&hash_dir.to_string_lossy());
+                let _ = app_handle.emit("hash-sync-done", s.downloaded);
+            }
+            // Fresh, already up to date, or failed: nothing downloaded, so the
+            // indicator just clears.
+            _ => {
+                let _ = app_handle.emit("hash-sync-done", 0u64);
+            }
+        }
+    });
 }
 
 #[tauri::command]

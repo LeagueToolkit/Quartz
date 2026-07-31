@@ -29,6 +29,14 @@ export function SelectionActionBar({
     const hasSelection = selectedSkins.length > 0;
     const busy = isExtracting || isRepathing || isPreviewing;
     const disabledAction = busy || !isSetupValid || !hasSelection;
+    /* Say WHY the button is dead. A disabled Extract with a skin plainly
+       selected reads as a broken button, and the missing setup is on a
+       different page, so there is nothing on screen to connect it to. */
+    const blockedReason = !isSetupValid
+        ? 'Set the League folder and an output folder in Settings first'
+        : !hasSelection
+          ? 'Select at least one skin'
+          : '';
     const names = selectedSkins
         .map((s) => `${s.name}${s.champion?.name ? ` (${s.champion.name})` : ''}`)
         .join(', ');
@@ -42,13 +50,25 @@ export function SelectionActionBar({
                     : <span className="ae-bottom-bar__names" style={{ color: 'var(--text-muted)' }}>No skins selected</span>}
             </div>
 
-            {statusMessage && <span className="ae-bottom-bar__status">{statusMessage}</span>}
+            {statusMessage
+                ? <span className="ae-bottom-bar__status">{statusMessage}</span>
+                : blockedReason && <span className="ae-bottom-bar__status">{blockedReason}</span>}
 
             <div className="ae-bottom-bar__group">
-                <button className="dl-btn dl-btn--sm ae-extract-btn" onClick={onExtract} disabled={disabledAction}>
+                <button
+                    className="dl-btn dl-btn--sm ae-extract-btn"
+                    onClick={onExtract}
+                    disabled={disabledAction}
+                    title={blockedReason || 'Extract the selected skin files'}
+                >
                     {isExtracting ? 'Extracting...' : 'Extract'}
                 </button>
-                <button className="dl-btn dl-btn--sm dl-btn--primary" onClick={onRepath} disabled={disabledAction} title="Extract, combine, and repath into an installable mod">
+                <button
+                    className="dl-btn dl-btn--sm dl-btn--primary"
+                    onClick={onRepath}
+                    disabled={disabledAction}
+                    title={blockedReason || 'Extract, combine, and repath into an installable mod'}
+                >
                     {isRepathing ? 'Repathing...' : 'Repath'}
                 </button>
                 <button className="dl-btn dl-btn--sm dl-btn--secondary" onClick={onClearAll} disabled={busy || !hasSelection}>

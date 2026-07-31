@@ -135,7 +135,10 @@
 /* Only the interactive bits (chroma dots) should catch clicks; the gradient
    itself must pass clicks through to the card. */
 .ae-card__footer .chroma-container,
-.ae-card__footer .chroma-dot { pointer-events: auto; }
+.ae-card__footer .chroma-dot,
+/* The banner opts back in so its title tooltip shows the full message when the
+   text is ellipsised. */
+.ae-card__footer .ae-card__progress { pointer-events: auto; }
 .ae-card__title {
     margin: 0;
     font-weight: 600;
@@ -154,6 +157,30 @@
     font-size: 11px;
     line-height: 1.2;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+/* Extraction result banner.
+   Lives INSIDE the footer's flow, above the title, rather than absolutely
+   positioned over it. It used to be `position:absolute; bottom:8px`, which put
+   it on the same pixels as the skin name and the ID, and with no z-index it
+   stacked UNDER the footer (z-index 2) so the two texts rendered through each
+   other. Making it a flow sibling means the footer grows to fit it and no
+   overlap is possible at any card size or chroma-row height. */
+.ae-card__progress {
+    margin-bottom: 6px;
+    padding: 3px 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    /* Opaque: the splash art behind it must not bleed through the text. */
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.3;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* ── Skin-card skeletons (shown while skins load; same grid + card size) ─── */

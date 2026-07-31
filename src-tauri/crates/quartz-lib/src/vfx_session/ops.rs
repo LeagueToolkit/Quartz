@@ -157,7 +157,7 @@ pub fn create_system(id: SessionId, name: &str) -> Result<VfxPortModel> {
 ///
 /// `None` skips the check, for callers that have no model to quote (and to keep
 /// older callers working).
-fn check_donor_generation(donor: SessionId, expected: Option<u64>) -> Result<()> {
+pub(crate) fn check_donor_generation(donor: SessionId, expected: Option<u64>) -> Result<()> {
     let Some(expected) = expected else {
         return Ok(());
     };
@@ -1062,7 +1062,7 @@ pub fn resolver_upsert_op(id: SessionId, key: &str, value: &str) -> Result<VfxPo
 
 /// The bin new systems land in: most VfxSystemDefinitionData entries wins,
 /// ties (and no systems anywhere) go to the main bin.
-fn vfx_owner_bin(s: &VfxSession, h: &Hashes) -> usize {
+pub(crate) fn vfx_owner_bin(s: &VfxSession, h: &Hashes) -> usize {
     // New systems go into the linked bin whose file name carries "vfx";
     // without one, the main bin. (Matches how skin mods ship a dedicated
     // VFX bin next to the skin bin.)
@@ -1080,7 +1080,7 @@ fn vfx_owner_bin(s: &VfxSession, h: &Hashes) -> usize {
 }
 
 /// First ResourceResolver across all bins (main bin first).
-fn find_resolver(s: &VfxSession, h: &Hashes) -> Option<(usize, usize)> {
+pub(crate) fn find_resolver(s: &VfxSession, h: &Hashes) -> Option<(usize, usize)> {
     s.entries_by_class(h.resource_resolver).into_iter().next()
 }
 
@@ -1101,7 +1101,7 @@ fn main_skin_props_idx(s: &VfxSession, h: &Hashes) -> Result<usize> {
 
 /// Lowercased particleName/particlePath strings plus entry path hashes of
 /// every resident system, for collision-free naming.
-fn existing_system_names(s: &VfxSession, h: &Hashes) -> (HashSet<String>, HashSet<u32>) {
+pub(crate) fn existing_system_names(s: &VfxSession, h: &Hashes) -> (HashSet<String>, HashSet<u32>) {
     let mut names = HashSet::new();
     let mut hashes = HashSet::new();
     for (b, e) in s.entries_by_class(h.vfx_system_definition_data) {
@@ -1119,7 +1119,7 @@ fn existing_system_names(s: &VfxSession, h: &Hashes) -> (HashSet<String>, HashSe
 /// Suffix `_2`, `_3`, ... until the candidate collides with neither a known
 /// name nor a known entry hash (mirrors generateUniqueSystemName, including
 /// its timestamp bail-out past 100 tries).
-fn uniquify_name(base: &str, names: &HashSet<String>, hashes: &HashSet<u32>) -> String {
+pub(crate) fn uniquify_name(base: &str, names: &HashSet<String>, hashes: &HashSet<u32>) -> String {
     let taken = |c: &str| names.contains(&c.to_lowercase()) || hashes.contains(&hash_or_hex(c));
     if !taken(base) {
         return base.to_string();
@@ -1487,7 +1487,7 @@ fn persistent_upsert_core(
 
 // ── Resolver helpers ─────────────────────────────────────────────────────────
 
-fn resolver_map_ok(entry: &BinEntry, h: &Hashes) -> Result<()> {
+pub(crate) fn resolver_map_ok(entry: &BinEntry, h: &Hashes) -> Result<()> {
     match entry.fields.get(&h.resource_map) {
         None | Some(BinValue::Map { .. }) => Ok(()),
         Some(_) => Err(Error::InvalidInput(
@@ -1515,7 +1515,7 @@ fn resolver_upsert_core(entry: &mut BinEntry, h: &Hashes, key: &str, value: &str
     construct::resolver_upsert(map, key, value)
 }
 
-fn resolver_upsert_pair_core(
+pub(crate) fn resolver_upsert_pair_core(
     entry: &mut BinEntry,
     h: &Hashes,
     key: &BinValue,
@@ -1546,7 +1546,7 @@ fn resolver_upsert_pair_core(
     Ok(true)
 }
 
-fn resolver_entries_for_system_hash(
+pub(crate) fn resolver_entries_for_system_hash(
     bins: &[LoadedBin],
     h: &Hashes,
     system_hash: u32,
@@ -1570,7 +1570,7 @@ fn resolver_entries_for_system_hash(
     out
 }
 
-fn hashish_value(v: &BinValue) -> Option<u32> {
+pub(crate) fn hashish_value(v: &BinValue) -> Option<u32> {
     match v {
         BinValue::Hash(x) | BinValue::Link(x) => Some(*x),
         _ => None,
@@ -1598,7 +1598,7 @@ fn minimal_resolver_entry(h: &Hashes, key: &str, value: &str) -> BinEntry {
     }
 }
 
-fn minimal_resolver_entry_from_pairs(
+pub(crate) fn minimal_resolver_entry_from_pairs(
     h: &Hashes,
     seed_name: &str,
     pairs: &[(BinValue, BinValue)],
@@ -1630,7 +1630,7 @@ fn resolver_remove_links(entry: &mut BinEntry, h: &Hashes, target: u32) -> usize
 
 // ── Misc ─────────────────────────────────────────────────────────────────────
 
-fn entry_string_field(entry: &BinEntry, key: u32) -> Option<String> {
+pub(crate) fn entry_string_field(entry: &BinEntry, key: u32) -> Option<String> {
     match entry.fields.get(&key) {
         Some(BinValue::String(s)) => Some(s.clone()),
         _ => None,
@@ -1639,7 +1639,7 @@ fn entry_string_field(entry: &BinEntry, key: u32) -> Option<String> {
 
 /// Local copy of `port_donor::collect_assets` (private there): every
 /// asset/data string referenced under a value, minus `.bin` links.
-fn collect_asset_strings(value: &BinValue, out: &mut HashSet<String>) {
+pub(crate) fn collect_asset_strings(value: &BinValue, out: &mut HashSet<String>) {
     match value {
         BinValue::String(s) => {
             let lower = s.to_lowercase();

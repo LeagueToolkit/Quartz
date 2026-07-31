@@ -45,7 +45,6 @@ import type {
 } from './assetextractor/types';
 
 import { ChampionSidebar } from './assetextractor/components/ChampionSidebar';
-import { TopControls } from './assetextractor/components/TopControls';
 import { ChampionSkinsPanel } from './assetextractor/components/ChampionSkinsPanel';
 import { SkinlineResultsPanel } from './assetextractor/components/SkinlineResultsPanel';
 import { SelectionActionBar } from './assetextractor/components/SelectionActionBar';
@@ -119,12 +118,25 @@ export function AssetExtractor() {
     const chromaCacheRef = useRef<Set<string>>(new Set());
     const preparedCardAssetsRef = useRef<Map<string, Promise<DonorResult>>>(new Map());
 
-    const [leaguePath, setLeaguePath] = useState('');
+    /* SUBSCRIBED to the config store, not a snapshot.
+       This used to be local state filled once by `loadSettings()` on mount, so
+       setting the League folder in Settings while this page stayed mounted left
+       `leaguePath` empty here forever, and Extract/Repath stayed disabled with
+       no visible reason (`isSetupValid` gates both). `wadOutputPath` beside it
+       was already read from the store, which is why only the League folder had
+       the problem. `storedLeaguePath` is the authority; the detected fallback
+       below only fills it in when nothing is stored yet. */
+    const storedLeaguePath = useConfigStore((s) => s.settings.leaguePath);
+    const [detectedLeaguePath, setDetectedLeaguePath] = useState('');
+    const leaguePath = normalizePathString(storedLeaguePath) || detectedLeaguePath;
     const extractionPath = normalizePathString(wadOutputPath);
 
     const [isExtracting, setIsExtracting] = useState(false);
     const [isRepathing, setIsRepathing] = useState(false);
-    const [isCancelling, setIsCancelling] = useState(false);
+    /* Still honoured by the extract and repath loops, which break when it flips.
+       Nothing sets it today: the top-right stop button that did was removed for
+       overlapping the skin grid. Kept so a future stop control is a one-line
+       reconnect rather than re-threading cancellation through both loops. */
     const cancelRef = useRef(false);
 
     const [showExtractionModeModal, setShowExtractionModeModal] = useState(false);
@@ -267,10 +279,13 @@ export function AssetExtractor() {
         try {
             const detected = await getLeaguePath().catch(() => null);
             const stored = await getSettings().catch(() => null);
+            /* Only a FALLBACK. A path the user set in Settings lives in the
+               config store and is read reactively above, so it must win over
+               whatever autodetection turns up here. */
             const lp = normalizePathString(detected || stored?.leaguePath || '');
-            setLeaguePath(lp);
+            setDetectedLeaguePath(lp);
             if (lp) addConsoleLog(`League folder: ${lp}`, 'success');
-            else addConsoleLog('League folder not detected — set it in Settings.', 'warning');
+            else addConsoleLog('League folder not detected. Set it in Settings.', 'warning');
         } catch (e) {
             log.error('loadSettings', e);
         } finally {
@@ -1012,13 +1027,6 @@ export function AssetExtractor() {
         }
     };
 
-    const cancelOperations = async () => {
-        setIsCancelling(true);
-        cancelRef.current = true;
-        addConsoleLog('Cancelling all operations...', 'warning');
-        setTimeout(() => setIsCancelling(false), 1000);
-    };
-
     /* ── Sidebar resize ───────────────────────────────────────────────────── */
     const handleStartSidebarResize = (event: React.MouseEvent) => {
         event.preventDefault();
@@ -1089,12 +1097,6 @@ export function AssetExtractor() {
                             No internet connection detected. Splash art and metadata may be unavailable.
                         </div>
                     )}
-
-                    <TopControls
-                        isExtracting={isExtracting}
-                        isCancelling={isCancelling}
-                        onCancelOperations={cancelOperations}
-                    />
 
                     {showSkinlineSearch ? (
                         <SkinlineResultsPanel

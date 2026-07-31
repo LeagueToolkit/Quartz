@@ -342,11 +342,15 @@ export function BinEditor() {
         }
     }, [processBinFile, pick]);
 
-    // Auto-load a file handed over from the explorer's "Open in Bin Editor".
+    /* Auto-load a file handed over from the explorer's "Open in Bin Editor".
+       Subscribes to the pending file: a mount-only read drops the handoff when
+       this page is already the open one, since nothing remounts (see Paint). */
+    const pendingFile = useNavigationStore((s) => s.pendingFile);
     useEffect(() => {
+        if (pendingFile?.page !== 'bineditor') return;
         const path = consumePendingFile('bineditor');
         if (path) void processBinFile(path);
-    }, [consumePendingFile, processBinFile]);
+    }, [pendingFile, consumePendingFile, processBinFile]);
 
     const saveFile = useCallback(async () => {
         if (!data || !currentPath || !binPath) {

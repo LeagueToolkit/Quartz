@@ -7,13 +7,35 @@ use super::session::LoadedBin;
 use ritoshark::bin::{BinEntry, BinValue};
 use serde::{Deserialize, Serialize};
 
-/// One step from a parent field-map (embed/pointer/entry) or list down to a
-/// child. Untagged: serializes as `{"field": u32}` or `{"index": usize}`.
+/// One step from a parent field-map (embed/pointer/entry), list, or map down to
+/// a child. Untagged: serializes as `{"field": u32}`, `{"index": usize}`, or
+/// `{"mapIndex": usize}`.
+///
+/// `MapIndex` addresses a `BinValue::Map` entry BY POSITION, not by key. Two
+/// reasons position rather than key: a map key is itself a `BinValue` (hash,
+/// string, u32, ...) so it has no single wire representation, and the animation
+/// graph's clip and event maps are routinely keyed by unresolved hashes that
+/// would round-trip inconsistently. Position is stable for the lifetime of a
+/// resolved path, which is all an edit needs - paths are resolved against the
+/// live tree at edit time and never persisted.
+///
+/// Added for the animation editor: clips live in `mClipDataMap` and events in
+/// `mEventDataMap`, so without this NO animation node was addressable for
+/// mutation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Step {
     Field { field: u32 },
     Index { index: usize },
+    /* The rename is load-bearing and must stay explicit. `rename_all` on an
+       untagged enum renames the VARIANTS, which are invisible here, and leaves
+       struct-variant FIELDS alone - so without this the step would go over the
+       wire as `map_index` while the frontend reads `mapIndex`, and every map
+       address would arrive undefined. */
+    MapIndex {
+        #[serde(rename = "mapIndex")]
+        map_index: usize,
+    },
 }
 
 /// Which bin, which top-level entry, then the steps down to the value.
@@ -36,17 +58,40 @@ pub fn walk_steps<'a>(entry: &'a mut BinEntry, steps: &[Step]) -> Option<&'a mut
     let first = steps.next()?;
     let mut cur: &mut BinValue = match first {
         Step::Field { field } => entry.fields.get_mut(field)?,
-        Step::Index { .. } => return None,
+        Step::Index { .. } | Step::MapIndex { .. } => return None,
     };
     for step in steps {
         cur = match (step, cur) {
             (Step::Field { field }, BinValue::Embed { fields, .. })
             | (Step::Field { field }, BinValue::Pointer { fields, .. }) => fields.get_mut(field)?,
             (Step::Index { index }, BinValue::List { items, .. }) => items.get_mut(*index)?,
+            // Map entries are (key, value) pairs; a step addresses the VALUE.
+            // The key is reachable via `walk_map_key` when a rename needs it.
+            (Step::MapIndex { map_index }, BinValue::Map { entries, .. }) => {
+                &mut entries.get_mut(*map_index)?.1
+            }
             _ => return None,
         };
     }
     Some(cur)
+}
+
+/// The KEY of the map entry `steps` addresses, when its last step is a
+/// `MapIndex`. `walk_steps` yields the value; renaming a clip or an event means
+/// rewriting the key, which is a sibling of that value and unreachable through
+/// the normal walk.
+pub fn walk_map_key<'a>(entry: &'a mut BinEntry, steps: &[Step]) -> Option<&'a mut BinValue> {
+    let (last, parent) = steps.split_last()?;
+    let Step::MapIndex { map_index } = last else {
+        return None;
+    };
+    // A map directly on the entry's own fields has a single-step parent path,
+    // which `walk_steps` handles; an empty parent path cannot address a map.
+    let container = walk_steps(entry, parent)?;
+    match container {
+        BinValue::Map { entries, .. } => Some(&mut entries.get_mut(*map_index)?.0),
+        _ => None,
+    }
 }
 
 impl VfxPath {

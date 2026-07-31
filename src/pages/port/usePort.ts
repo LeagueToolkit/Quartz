@@ -1512,6 +1512,8 @@ export default function usePort() {
         trimDonorNames,
         setTrimDonorNames,
         setFileSaved,
+        // Shared with the animation port, which copies the same donor assets.
+        copyDonorAssets,
         // file
         processTargetBin,
         processDonorBin,

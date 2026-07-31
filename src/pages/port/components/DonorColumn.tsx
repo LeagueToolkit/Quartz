@@ -26,10 +26,14 @@ interface DonorColumnProps extends ListSharedProps {
     filteredDonorSystems: VfxSystem[];
     trimDonorNames: boolean;
     setTrimDonorNames: (v: boolean) => void;
+    /* Rendered instead of the VFX system list when Port is in ANM mode; the
+       column chrome is shared by both modes. */
+    anmSlot?: React.ReactNode;
 }
 
 export default function DonorColumn(props: DonorColumnProps) {
     const {
+        anmSlot,
         isProcessing,
         binLoading,
         handleOpenDonorBin,
@@ -55,7 +59,8 @@ export default function DonorColumn(props: DonorColumnProps) {
     const fileDrop = useBinFileDrop(handleFileDrop);
 
     return (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }} {...fileDrop.handlers}>
+        // `minWidth: 0` pins the centre divider; see the note in TargetColumn.
+        <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }} {...fileDrop.handlers}>
             {fileDrop.isOver && <DropOverlay accent="secondary" label="Drop .bin or .py to load as Donor" />}
             {/* One row: open · search · vfxhub · load-from-game · emitter toggle. */}
             <div className="port-toolbar-row">
@@ -75,7 +80,7 @@ export default function DonorColumn(props: DonorColumnProps) {
                 >
                     <SearchInput
                         initialValue={donorFilterInput}
-                        placeholder="Filter by Particle or Emitter"
+                        placeholder={anmSlot ? 'Filter by Clip, Anm or Event' : 'Filter by Particle or Emitter'}
                         onChange={filterDonorParticles}
                         trailing={
                             <button
@@ -124,7 +129,7 @@ export default function DonorColumn(props: DonorColumnProps) {
                     <PortSystemSkeleton isTarget={false} />
                 ) : Object.keys(safeDonorSystems).length > 0 ? (
                     <div ref={donorListRef} style={{ width: '100%', height: '100%', overflow: 'auto' }}>
-                        <ParticleSystemList systems={filteredDonorSystems} isTarget={false} {...props} />
+                        {anmSlot ?? <ParticleSystemList systems={filteredDonorSystems} isTarget={false} {...props} />}
                     </div>
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '28px', width: '100%', height: '100%', padding: '2rem', overflow: 'hidden', minHeight: 0 }}>

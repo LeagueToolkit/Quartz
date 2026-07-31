@@ -83,7 +83,7 @@ a third because `skeleton_for_graph` takes the hash as an argument and neither
 of those exposes it. Do NOT replace it with "the first AnimationGraphData entry
 in the bins" - a multi-skin bin set holds several and the first is the wrong
 one (see `skeleton_link`'s header). */
-fn graph_hash(bins: &[Bin]) -> Option<u32> {
+pub(crate) fn graph_hash(bins: &[Bin]) -> Option<u32> {
     let scdp_class = fnv1a("SkinCharacterDataProperties");
     let mut seen: HashSet<u32> = HashSet::new();
     let graph_of = |entry: &BinEntry| -> Option<u32> {
@@ -478,29 +478,32 @@ mod tests {
     fn enums_serialize_as_camel_case_discriminated_unions() {
         use crate::anim_graph::{AnimEventKind, ClipKind};
 
-        let json = |v: &serde_json::Value| serde_json::to_string(v).unwrap();
+        /* Serialize STRAIGHT to a string. Going via `serde_json::Value` first
+        would alphabetise the keys - without the `preserve_order` feature a
+        `Value::Object` is a BTreeMap - so the assertions below would be
+        pinning BTreeMap's ordering rather than the derive's. */
         assert_eq!(
-            json(&serde_json::to_value(ClipKind::Atomic).unwrap()),
+            serde_json::to_string(&ClipKind::Atomic).unwrap(),
             r#"{"type":"atomic"}"#
         );
         assert_eq!(
-            json(&serde_json::to_value(ClipKind::ConditionBool {
+            serde_json::to_string(&ClipKind::ConditionBool {
                 true_clip: Some("Yes".into()),
                 false_clip: None,
             })
-            .unwrap()),
+            .unwrap(),
             r#"{"type":"conditionBool","trueClip":"Yes","falseClip":null}"#
         );
         assert_eq!(
-            json(&serde_json::to_value(AnimEventKind::FaceTarget {
+            serde_json::to_string(&AnimEventKind::FaceTarget {
                 end_frame: Some(1.0),
                 y_rotation_degrees: None,
             })
-            .unwrap()),
+            .unwrap(),
             r#"{"type":"faceTarget","endFrame":1.0,"yRotationDegrees":null}"#
         );
         assert_eq!(
-            json(&serde_json::to_value(AnimEventKind::Unknown { class_hash: 7 }).unwrap()),
+            serde_json::to_string(&AnimEventKind::Unknown { class_hash: 7 }).unwrap(),
             r#"{"type":"unknown","classHash":7}"#
         );
     }

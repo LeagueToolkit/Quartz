@@ -474,6 +474,244 @@
 .port-bottom-bar__actions--left {
     flex-shrink: 0;
 }
+
+/* ── ANM event block ─────────────────────────────────────────────────────────
+   An event is a small RECORD, not a list item: its map key is usually an
+   unresolved hash, so a one-line row titled `0x6ef7601d` said nothing. The card
+   keeps .emitter-div's outer geometry (margin, radius, border, hover) and
+   replaces the single line with a class header plus one row per real field. */
+
+/* Structure follows the legacy AniPort's event-item: icon + type header, then a
+   single inset detail line. Only the palette is Quartz's. */
+.port-container .anm-ev {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0.25rem 0.5rem;
+}
+
+.port-container .anm-ev__content {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    background: color-mix(in oklab, var(--bg-hover) 30%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    transition: background var(--motion-fast), border-color var(--motion-fast);
+}
+
+.port-container .anm-ev:hover .anm-ev__content {
+    background: color-mix(in oklab, var(--bg-hover) 55%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 25%, var(--border));
+}
+
+.port-container .anm-ev__head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    margin-bottom: 4px;
+}
+
+.port-container .anm-ev__icon {
+    flex-shrink: 0;
+    font-size: 0.9rem;
+    line-height: 1;
+}
+
+.port-container .anm-ev__type {
+    flex-shrink: 0;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
+/* The map key is usually an unresolved hash, so it trails the class name as
+   dimmed secondary detail rather than titling the row. */
+.port-container .anm-ev__key {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+}
+
+.port-container .anm-ev__loop {
+    flex-shrink: 0;
+    margin-left: auto;
+    color: var(--accent-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 500;
+}
+
+/* The inset line carrying this class's real fields. */
+.port-container .anm-ev__details {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 4px 6px;
+    border-radius: 4px;
+    background: color-mix(in oklab, var(--bg-primary) 55%, transparent);
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+}
+
+.port-container .anm-ev__actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* ── ANM clip row extras ─────────────────────────────────────────────────── */
+
+/* Type badge (Atomic / Sequencer / Selector ...). */
+.port-container .anm-clip__kind {
+    flex-shrink: 0;
+    padding: 1px 7px;
+    border-radius: 4px;
+    background: color-mix(in oklab, var(--accent-primary) 14%, transparent);
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+/* Clip-level properties (track / mask), shown only when the clip is open. The
+   collapsed row stays one line so a 100-clip list is scannable. */
+.port-container .anm-clip__props {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin: 0.25rem 0.5rem;
+    padding: 5px 8px;
+    border-radius: 4px;
+    background: color-mix(in oklab, var(--bg-primary) 40%, transparent);
+}
+
+.port-container .anm-clip__prop {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.port-container .anm-clip__prop-label {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.port-container .anm-clip__prop-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+}
+
+.port-container .anm-clip__prop-value.is-hash {
+    opacity: 0.7;
+}
+
+/* The clip's .anm, last in the card because mAnimationResourceData is written
+   last in the bin - after the event map, not beside mTrackDataName. */
+.port-container .anm-clip__anm {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0.25rem 0.5rem;
+    padding: 5px 8px;
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 4px 4px;
+    background: color-mix(in oklab, var(--bg-primary) 40%, transparent);
+    min-width: 0;
+}
+
+.port-container .anm-clip__anm-label {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.port-container .anm-clip__anm-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--accent-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+}
+
+/* An unresolved hash name reads as "unnamed", not as broken data. */
+.port-container .anm-clip__hash {
+    font-family: var(--font-mono);
+    opacity: 0.7;
+}
+
+/* Validation strip: the legacy page COMPUTED these and never showed them. */
+.port-container .anm-clip__warn {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 0 0.5rem 0.25rem;
+    padding: 4px 8px;
+    border-radius: 5px;
+    border: 1px solid color-mix(in oklab, var(--color-warning, #fbbf24) 35%, transparent);
+    background: color-mix(in oklab, var(--color-warning, #fbbf24) 10%, transparent);
+    color: var(--color-warning, #fbbf24);
+    font-size: 0.7rem;
+    line-height: 1.35;
+}
+
+/* VFX / ANM view switch. A segmented pair rather than two loose buttons, so the
+   two options read as one control with one active state. Sits left of the
+   action buttons and is separated from them by the bar's own gap. */
+.port-mode-switch {
+    display: inline-flex;
+    flex-shrink: 0;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--bg-tertiary);
+}
+
+.port-mode-switch__opt {
+    padding: 3px 10px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: background var(--motion-fast), color var(--motion-fast);
+}
+
+.port-mode-switch__opt:hover:not(.is-active) {
+    color: var(--text-secondary);
+    background: color-mix(in oklab, var(--accent-primary) 8%, transparent);
+}
+
+.port-mode-switch__opt.is-active {
+    background: color-mix(in oklab, var(--accent-primary) 18%, transparent);
+    color: var(--accent-primary);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent-primary) 35%, transparent);
+}
 /* Scissor toggle pinned inside the column search input. */
 .port-search-trailing {
     position: absolute;
@@ -569,4 +807,282 @@
 .port-save-btn::after {
     background: radial-gradient(160px circle at var(--mx, 50%) var(--my, 50%),
         color-mix(in oklab, var(--color-success) 30%, transparent) 0%, transparent 60%);
+}
+
+/* â”€â”€ ANM inline editing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+   Editing is inline in the expanded card, never a modal, so the value you are
+   changing stays next to the clip it belongs to. A field row is text until you
+   click it; the input is the same box in the same slot, so committing does not
+   move the row and a column of fields never reflows while you work down it.
+   That is the only reason the value button and the input share their metrics
+   below - keep them in sync if either changes. */
+
+.port-container .anm-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.port-container .anm-field__label {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* The resting state of an editable value. A button, not a span, so it is
+   keyboard reachable and announces itself as activatable. */
+.port-container .anm-field__value,
+.port-container .anm-field__input {
+    min-width: 0;
+    max-width: 100%;
+    padding: 2px 6px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    line-height: 1.4;
+    text-align: left;
+}
+
+.port-container .anm-field__value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: text;
+    transition: background var(--motion-fast), border-color var(--motion-fast);
+}
+
+.port-container .anm-field__value:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--bg-hover) 55%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 30%, var(--border));
+}
+
+.port-container .anm-field__value:disabled {
+    cursor: default;
+    opacity: 0.55;
+}
+
+/* An unresolved hash reads as "unnamed", matching .anm-clip__hash. */
+.port-container .anm-field__value.is-hash {
+    opacity: 0.7;
+}
+
+.port-container .anm-field__value.is-static {
+    cursor: default;
+}
+
+.port-container .anm-field__input {
+    border-color: var(--accent-primary);
+    background: var(--bg-tertiary);
+    outline: none;
+}
+
+/* The spinner steals width from an already narrow field and the value commits
+   on Enter or blur regardless, so it earns nothing. */
+.port-container .anm-field__input[type='number']::-webkit-inner-spin-button,
+.port-container .anm-field__input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Booleans commit on click, so they are a switch rather than a text box. */
+.port-container .anm-field__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    padding: 2px 7px 2px 3px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: color-mix(in oklab, var(--bg-primary) 55%, transparent);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    cursor: pointer;
+    transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
+}
+
+.port-container .anm-field__toggle:hover:not(:disabled) {
+    border-color: color-mix(in oklab, var(--accent-primary) 45%, var(--border));
+}
+
+.port-container .anm-field__toggle:disabled {
+    cursor: default;
+    opacity: 0.55;
+}
+
+.port-container .anm-field__toggle-knob {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: background var(--motion-fast), transform var(--motion-fast);
+}
+
+.port-container .anm-field__toggle.is-on {
+    border-color: color-mix(in oklab, var(--accent-primary) 55%, var(--border));
+    background: color-mix(in oklab, var(--accent-primary) 14%, transparent);
+    color: var(--accent-primary);
+}
+
+.port-container .anm-field__toggle.is-on .anm-field__toggle-knob {
+    background: var(--accent-primary);
+}
+
+/* Why a value came back as something other than what was typed. */
+.port-container .anm-field__note {
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    font-style: italic;
+}
+
+/* The props block now holds rows rather than a wrapped inline list, so it
+   stacks instead of flowing. */
+.port-container .anm-clip__props {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+}
+
+/* Header delete: quiet until hovered, so a 100-clip list is not a wall of red. */
+.port-container .anm-clip__del,
+.port-container .anm-ev__del {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 2px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0.45;
+    transition: opacity var(--motion-fast), color var(--motion-fast), background var(--motion-fast);
+}
+
+.port-container .anm-clip__del:hover:not(:disabled),
+.port-container .anm-ev__del:hover:not(:disabled) {
+    opacity: 1;
+    color: var(--color-danger, #f87171);
+    background: color-mix(in oklab, var(--color-danger, #f87171) 12%, transparent);
+}
+
+.port-container .anm-clip__del:disabled,
+.port-container .anm-ev__del:disabled {
+    cursor: default;
+    opacity: 0.25;
+}
+
+/* Add-event strip. Picking the class up front rather than in a modal: the
+   class decides which fields exist, so it cannot be an editable field. */
+.port-container .anm-clip__add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0.25rem 0.5rem;
+}
+
+.port-container .anm-clip__add-btn,
+.port-container .anm-clip__add-kind {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border: 1px dashed color-mix(in oklab, var(--accent-primary) 40%, var(--border));
+    border-radius: 5px;
+    background: transparent;
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    cursor: pointer;
+    transition: background var(--motion-fast), border-color var(--motion-fast);
+}
+
+.port-container .anm-clip__add-btn:hover:not(:disabled),
+.port-container .anm-clip__add-kind:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--accent-primary) 12%, transparent);
+    border-style: solid;
+}
+
+.port-container .anm-clip__add-btn:disabled,
+.port-container .anm-clip__add-kind:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+
+/* A failed edit reuses the warning strip's geometry in the danger colour, so
+   both kinds of problem sit in the same place on the card. */
+.port-container .anm-clip__warn--error {
+    border-color: color-mix(in oklab, var(--color-danger, #f87171) 35%, transparent);
+    background: color-mix(in oklab, var(--color-danger, #f87171) 10%, transparent);
+    color: var(--color-danger, #f87171);
+}
+
+/* â”€â”€ ANM event card, editable â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+/* Collapsed, an event is still the one-line summary it was. The expander is
+   what buys the tall editable block, and only for the event you opened. */
+.port-container .anm-ev__expander {
+    flex-shrink: 0;
+    padding: 0 2px;
+    border: none;
+    background: transparent;
+    color: var(--accent-primary);
+    font-size: 0.7rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.75;
+}
+
+.port-container .anm-ev__expander:hover {
+    opacity: 1;
+}
+
+.port-container .anm-ev__fields {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 5px 6px;
+    border-radius: 4px;
+    background: color-mix(in oklab, var(--bg-primary) 55%, transparent);
+}
+
+.port-container .anm-ev__nofields,
+.port-container .anm-ev__hashnote {
+    color: var(--text-muted);
+    font-size: 0.66rem;
+    line-height: 1.4;
+}
+
+/* Shown once on a just-created event: the map is keyed by hash, so the name the
+   user typed is not what comes back. Explaining it on the row is what stops it
+   reading as a bug. */
+.port-container .anm-ev__hashnote {
+    margin-bottom: 4px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    border-left: 2px solid color-mix(in oklab, var(--accent-secondary) 55%, transparent);
+    background: color-mix(in oklab, var(--accent-secondary) 8%, transparent);
+    font-style: italic;
+}
+
+.port-container .anm-ev.is-busy {
+    opacity: 0.6;
+}
+
+/* Drop indicator for an event drag, matching .port-drop-active's accent so a
+   reorder and a cross-column port read as the same gesture. */
+.port-container .anm-ev--drop-before .anm-ev__content {
+    box-shadow: inset 0 2px 0 0 var(--accent-primary);
+}
+
+.port-container .anm-ev--drop-after .anm-ev__content {
+    box-shadow: inset 0 -2px 0 0 var(--accent-primary);
 }

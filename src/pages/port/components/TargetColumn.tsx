@@ -29,10 +29,15 @@ interface TargetColumnProps extends ListSharedProps {
     filteredTargetSystems: VfxSystem[];
     trimTargetNames: boolean;
     setTrimTargetNames: (v: boolean) => void;
+    /* Rendered instead of the VFX system list when Port is in ANM mode. The
+       column's own chrome (toolbar, search, drop zone, empty states) is shared
+       by both modes, so only the list body swaps. */
+    anmSlot?: React.ReactNode;
 }
 
 export default function TargetColumn(props: TargetColumnProps) {
     const {
+        anmSlot,
         isProcessing,
         binLoading,
         handleOpenTargetBin,
@@ -80,7 +85,13 @@ export default function TargetColumn(props: TargetColumnProps) {
     return (
         <div
             className={isSystemDropOver ? 'port-drop-active' : undefined}
-            style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative', borderRadius: '8px' }}
+            // `minWidth: 0` is what keeps the centre divider fixed. A flex item
+            // defaults to `min-width: auto`, so a wide child (a long clip name,
+            // an event's detail line) can force the column past its share and
+            // shove the divider off centre. Zeroing it makes the two columns
+            // split the row exactly; overflow becomes the panel's scroll or
+            // ellipsis instead of extra width.
+            style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative', borderRadius: '8px' }}
             {...fileDrop.handlers}
         >
             {fileDrop.isOver && <DropOverlay label="Drop .bin or .py to load as Target" />}
@@ -104,7 +115,7 @@ export default function TargetColumn(props: TargetColumnProps) {
                 >
                     <SearchInput
                         initialValue={targetFilterInput}
-                        placeholder="Filter by Particle or Emitter"
+                        placeholder={anmSlot ? 'Filter by Clip, Anm or Event' : 'Filter by Particle or Emitter'}
                         onChange={filterTargetParticles}
                         trailing={
                             <button
@@ -157,7 +168,9 @@ export default function TargetColumn(props: TargetColumnProps) {
                         onDragOver={handleTargetDropDragOver}
                         onDrop={(e) => processVfxSystemDrop(e, 'target list container')}
                     >
-                        <ParticleSystemList systems={filteredTargetSystems} isTarget {...props} />
+                        {/* ANM mode swaps only the list body: the toolbar, search,
+                            drop zone and empty states are identical in both modes. */}
+                        {anmSlot ?? <ParticleSystemList systems={filteredTargetSystems} isTarget {...props} />}
                     </div>
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '28px', width: '100%', height: '100%', padding: '2rem', overflow: 'hidden', minHeight: 0 }}>

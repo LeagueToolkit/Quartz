@@ -84,14 +84,15 @@ fn link_hash(value: Option<&BinValue>) -> Option<u32> {
     }
 }
 
-/// A map key normalised to a display string, matching `anim_graph`: a resolved
-/// string stays as-is, an unresolved hash renders `0x{h:08x}`.
+/// A map key normalised to a display string. Delegates to `anim_graph` rather
+/// than repeating the match: `mMaskDataMap` / `mTrackDataMap` are hash-keyed
+/// exactly like the clip and event maps, so a private copy that skipped the
+/// hash-database lookup showed every mask and track as `0x{h:08x}` while a
+/// ritobin dump of the same bin named them. A clip's `mMaskDataName` is
+/// resolved through the same path, so the two must agree or a healthy
+/// reference reads as dangling.
 fn key_name(key: &BinValue) -> Option<String> {
-    match key {
-        BinValue::String(s) => Some(s.clone()),
-        BinValue::Hash(h) | BinValue::Link(h) => Some(format!("0x{h:08x}")),
-        _ => None,
-    }
+    crate::anim_graph::key_name_of(key)
 }
 
 /// Every `f32` of a `list[f32]`, in file order.

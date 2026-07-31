@@ -101,4 +101,37 @@ mod tests {
         );
         let _ = std::fs::remove_file(path);
     }
+
+    /* The two callers pass DIFFERENTLY SHAPED argv and both must work.
+    `get_startup_paint_bin` strips argv[0] itself, while the single-instance
+    plugin hands the whole command line through with the exe still at index 0.
+    Searching by flag position covers both, and this pins it so a future
+    "tidy-up" that switches to a fixed index breaks here rather than in the
+    Flint handoff. */
+    #[test]
+    fn paint_launch_args_survive_a_leading_exe_path() {
+        let path = std::env::temp_dir().join(format!("quartz-paint2-{}.bin", std::process::id()));
+        std::fs::write(&path, []).unwrap();
+        let want = Some(path.to_string_lossy().into_owned());
+
+        let with_exe = vec![
+            r"C:\Program Files\Quartz\quartz.exe".to_string(),
+            "--paint-bin".to_string(),
+            path.to_string_lossy().into_owned(),
+        ];
+        assert_eq!(paint_bin_from_args(&with_exe), want);
+
+        // A flag with no value must not panic or take the next unrelated arg.
+        let dangling = vec!["--paint-bin".to_string()];
+        assert_eq!(paint_bin_from_args(&dangling), None);
+
+        // A path that does not exist is rejected rather than routed.
+        let missing = vec![
+            "--paint-bin".to_string(),
+            r"C:\nope\does-not-exist.bin".to_string(),
+        ];
+        assert_eq!(paint_bin_from_args(&missing), None);
+
+        let _ = std::fs::remove_file(path);
+    }
 }
