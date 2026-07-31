@@ -47,8 +47,14 @@ interface NavigationState {
     clearSettingsTarget: () => void;
     /* Navigate to `page` and stash `path` for it to auto-load on mount. */
     openInTool: (page: Page, path: string) => void;
-    /* Consume the pending file for `page` (returns its path once, then clears). */
+    /* Take the pending file for `page`. Returns the path on every call until
+       `clearPendingFile` confirms it was loaded — pages remount (App keys them
+       on `page`), and a cold-start handoff can arrive while the main window is
+       still hidden behind the startup window, so a read-once-and-drop would
+       lose the path to a remount. */
     consumePendingFile: (page: Page) => string | null;
+    /* Drop the pending file once the destination page has actually loaded it. */
+    clearPendingFile: (page: Page) => void;
 }
 
 export const useNavigationStore = create<NavigationState>((set, get) => ({
@@ -62,7 +68,10 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
     consumePendingFile: (page) => {
         const pf = get().pendingFile;
         if (!pf || pf.page !== page) return null;
-        set({ pendingFile: null });
         return pf.path;
+    },
+    clearPendingFile: (page) => {
+        const pf = get().pendingFile;
+        if (pf && pf.page === page) set({ pendingFile: null });
     },
 }));

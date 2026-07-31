@@ -294,10 +294,13 @@ function ImgRecolor() {
 
     // Auto-load a file handed over from the explorer's "Open in Image Recolor".
     const consumePendingFile = useNavigationStore((s) => s.consumePendingFile);
+    const clearPendingFile = useNavigationStore((s) => s.clearPendingFile);
     useEffect(() => {
         const path = consumePendingFile('imgrecolor');
-        if (path) void loadDroppedPaths([path]);
-    }, [consumePendingFile, loadDroppedPaths]);
+        if (!path) return;
+        clearPendingFile('imgrecolor');
+        void loadDroppedPaths([path]);
+    }, [consumePendingFile, clearPendingFile, loadDroppedPaths]);
 
     useFileDrop({
         onEnter: () => setIsDragging(true),

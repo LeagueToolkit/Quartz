@@ -380,10 +380,13 @@ function Paint() {
     /* A bin routed here from another tool (e.g. Flint's "Open in Quartz paint"
        via --paint-bin) or the file explorer's "Open in Paint" context menu. */
     const consumePendingFile = useNavigationStore((s) => s.consumePendingFile);
+    const clearPendingFile = useNavigationStore((s) => s.clearPendingFile);
     useEffect(() => {
         const path = consumePendingFile('paint');
-        if (path) void loadBinFile(path);
-    }, [consumePendingFile, loadBinFile]);
+        if (!path) return;
+        clearPendingFile('paint');
+        void loadBinFile(path);
+    }, [consumePendingFile, clearPendingFile, loadBinFile]);
 
     const handleSave = useCallback(async (force = false) => {
         if (sessionId === null) return;
