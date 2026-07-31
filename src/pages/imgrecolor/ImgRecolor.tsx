@@ -297,11 +297,14 @@ function ImgRecolor() {
        this page is already the open one, since nothing remounts (see Paint). */
     const pendingFile = useNavigationStore((s) => s.pendingFile);
     const consumePendingFile = useNavigationStore((s) => s.consumePendingFile);
+    const clearPendingFile = useNavigationStore((s) => s.clearPendingFile);
     useEffect(() => {
         if (pendingFile?.page !== 'imgrecolor') return;
         const path = consumePendingFile('imgrecolor');
-        if (path) void loadDroppedPaths([path]);
-    }, [pendingFile, consumePendingFile, loadDroppedPaths]);
+        if (!path) return;
+        clearPendingFile('imgrecolor');
+        void loadDroppedPaths([path]);
+    }, [pendingFile, consumePendingFile, clearPendingFile, loadDroppedPaths]);
 
     useFileDrop({
         onEnter: () => setIsDragging(true),

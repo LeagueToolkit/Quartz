@@ -200,6 +200,7 @@ export function BinEditor() {
     const pick = useFileExplorer();
     const page = useNavigationStore((s) => s.page);
     const consumePendingFile = useNavigationStore((s) => s.consumePendingFile);
+    const clearPendingFile = useNavigationStore((s) => s.clearPendingFile);
     const notify = useNotificationStore((s) => s.push);
 
     // ============ STATE ============
@@ -349,8 +350,10 @@ export function BinEditor() {
     useEffect(() => {
         if (pendingFile?.page !== 'bineditor') return;
         const path = consumePendingFile('bineditor');
-        if (path) void processBinFile(path);
-    }, [pendingFile, consumePendingFile, processBinFile]);
+        if (!path) return;
+        clearPendingFile('bineditor');
+        void processBinFile(path);
+    }, [pendingFile, consumePendingFile, clearPendingFile, processBinFile]);
 
     const saveFile = useCallback(async () => {
         if (!data || !currentPath || !binPath) {

@@ -380,19 +380,22 @@ function Paint() {
     /* A bin routed here from another tool (e.g. Flint's "Open in Quartz paint"
        via --paint-bin) or the file explorer's "Open in Paint" context menu.
 
-       SUBSCRIBES to the pending file rather than reading it once on mount.
-       App.tsx remounts pages with `key={page}`, so a mount-only read worked
-       when the handoff arrived while Quartz sat on another page, and silently
-       dropped the bin when Quartz was ALREADY on Paint: `page` never changed,
-       nothing remounted, and this effect never re-ran. Flint's handoff into a
-       running Quartz hits that case whenever Paint was the last page open. */
+       Two halves, and both are needed. SUBSCRIBING to `pendingFile` catches a
+       handoff that arrives while Paint is ALREADY the open page: `page` never
+       changes, so nothing remounts and a mount-only effect would not re-run.
+       CLEARING only after the load catches the opposite case, a cold start
+       where the main webview mounts hidden behind the startup window and the
+       page remounts after reading; dropping the path on read lost it there. */
     const pendingFile = useNavigationStore((s) => s.pendingFile);
     const consumePendingFile = useNavigationStore((s) => s.consumePendingFile);
+    const clearPendingFile = useNavigationStore((s) => s.clearPendingFile);
     useEffect(() => {
         if (pendingFile?.page !== 'paint') return;
         const path = consumePendingFile('paint');
-        if (path) void loadBinFile(path);
-    }, [pendingFile, consumePendingFile, loadBinFile]);
+        if (!path) return;
+        clearPendingFile('paint');
+        void loadBinFile(path);
+    }, [pendingFile, consumePendingFile, clearPendingFile, loadBinFile]);
 
     const handleSave = useCallback(async (force = false) => {
         if (sessionId === null) return;
