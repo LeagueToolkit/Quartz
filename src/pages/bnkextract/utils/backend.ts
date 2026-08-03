@@ -115,6 +115,22 @@ export async function saveBank(root: BnkNode, outPath: string): Promise<void> {
     await invoke('bnk_save_bank', { args: { root: toWireNode(root), outPath } });
 }
 
+/* Given a skin BIN, find the audio + events banks that belong to it. Returns
+   null when nothing convincing sits nearby, so the fields are left alone. */
+export async function locateBanksForBin(
+    binPath: string,
+): Promise<{ audio: string; events: string } | null> {
+    try {
+        return await invoke<{ audio: string; events: string } | null>(
+            'bnk_locate_banks_for_bin',
+            { binPath },
+        );
+    } catch (e) {
+        log.error('[BnkExtract] locateBanksForBin failed', e);
+        return null;
+    }
+}
+
 /* Encoding is in-process now — no external toolchain to check for or install. */
 export async function convertToWem(inputPath: string): Promise<Uint8Array> {
     return toBytes(await invoke<number[]>('audio_convert_to_wem', { inputPath }));

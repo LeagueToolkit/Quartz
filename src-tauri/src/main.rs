@@ -266,6 +266,7 @@ fn main() {
             commands::audio::audio_decode_to_wav,
             commands::audio::audio_amplify_wem,
             commands::audio::bnk_scan_mod_folder,
+            commands::audio::bnk_locate_banks_for_bin,
             commands::audio::bnk_extract_banks_from_game,
             commands::audio::audio_write_file,
             commands::bnk_session::bnk_session_save,

@@ -32,7 +32,7 @@ import type { BanksConfirmArgs } from './port/components/modals/donor/types';
 
 import {
     loadBanks, wemToPlayable, extractNodes, saveBank,
-    getModFiles, extractBnkBanksFromGame, pickDirectory,
+    getModFiles, extractBnkBanksFromGame, pickDirectory, locateBanksForBin,
     convertToWem, convertWavsToWem, amplifyWem, silenceWem, readFileBytes,
 } from './bnkextract/utils/backend';
 import { invoke } from '@tauri-apps/api/core';
@@ -366,6 +366,21 @@ export function BnkExtract() {
         if (typeof picked !== 'string') return;
         const setter = pane === 'right' ? setRightPaths : setLeftPaths;
         setter((prev) => ({ ...prev, [kind]: picked }));
+
+        /* Picking the BIN is enough to find its banks: they share a skin number
+           and a mod root, which is the same pairing a folder drop resolves. Only
+           empty fields are filled, so an explicit choice is never overwritten. */
+        if (kind !== 'bin') return;
+        const located = await locateBanksForBin(picked);
+        if (!located) return;
+        setter((prev) => ({
+            ...prev,
+            wpk: prev.wpk || located.audio,
+            bnk: prev.bnk || located.events,
+        }));
+        if (located.audio) {
+            setStatusMessage(`Found ${located.events ? 'audio + events banks' : 'audio bank'}`);
+        }
     }, []);
 
     const handleSetPath = useCallback((pane: Pane, kind: keyof PathSet, value: string) => {

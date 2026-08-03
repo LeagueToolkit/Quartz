@@ -383,14 +383,29 @@ pub async fn bnk_scan_mod_folder(
     skin_id: Option<String>,
 ) -> Result<Vec<ModFileSet>, String> {
     tokio::task::spawn_blocking(move || {
-        let root = PathBuf::from(&folder_path);
+        Ok(scan_folder_sets(
+            &PathBuf::from(&folder_path),
+            skin_id.as_deref(),
+        ))
+    })
+    .await
+    .map_err(|e| format!("scan task failed: {e}"))?
+}
+
+/** Every audio/events/bin triple under `root`, best BIN first.
+
+Shared by the folder scan and by the single-BIN lookup so both agree on which bank pairs with
+which — the matching rules here are the ones ported from the original Quartz mod processor and
+are not worth having two copies of. */
+fn scan_folder_sets(root: &Path, skin_id: Option<&str>) -> Vec<ModFileSet> {
+    {
         if !root.exists() {
-            return Ok(Vec::new());
+            return Vec::new();
         }
         let mut all: Vec<PathBuf> = Vec::new();
-        walk_files(&root, &mut all);
+        walk_files(root, &mut all);
 
-        let skin = skin_id.as_deref().filter(|s| !s.is_empty());
+        let skin = skin_id.filter(|s| !s.is_empty());
         let skin_matches = |p: &Path| -> bool {
             match skin {
                 None => true,
@@ -443,7 +458,7 @@ pub async fn bnk_scan_mod_folder(
             score
         };
         // Highest score first (stable so ties keep discovery order).
-        bins.sort_by(|a, b| bin_score(b).cmp(&bin_score(a)));
+        bins.sort_by_key(|b| std::cmp::Reverse(bin_score(b)));
         let selected_bin = bins
             .iter()
             .find(|p| skin_matches(p))
@@ -572,10 +587,84 @@ pub async fn bnk_scan_mod_folder(
             })
             .collect();
 
-        Ok(sets)
+        sets
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocatedBanks {
+    pub audio: String,
+    pub events: String,
+}
+
+/// The `skinNN` number in a path, which is what pairs a BIN with its banks.
+fn skin_id_from_path(path: &Path) -> Option<String> {
+    let lowered = path.to_string_lossy().to_lowercase();
+    let at = lowered.rfind("skin")?;
+    let digits: String = lowered[at + 4..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    (!digits.is_empty()).then(|| digits.trim_start_matches('0').to_string())
+        .map(|trimmed| if trimmed.is_empty() { "0".into() } else { trimmed })
+}
+
+/** The directory to search for banks given a BIN somewhere inside a mod.
+
+A skin BIN sits under `.../data/characters/<champ>/skins/` while its audio sits under
+`.../assets/sounds/...`, so the search has to start from a shared ancestor. Walking up to the
+directory holding `data` or `assets` finds the WAD root; failing that, a few levels up is still
+better than the BIN's own folder, which never contains banks. */
+fn bank_search_root(bin: &Path) -> PathBuf {
+    let mut ancestors: Vec<&Path> = bin.ancestors().skip(1).collect();
+    for dir in &ancestors {
+        let holds_root_marker = std::fs::read_dir(dir).is_ok_and(|entries| {
+            entries.flatten().any(|e| {
+                let name = e.file_name().to_string_lossy().to_lowercase();
+                e.path().is_dir() && (name == "assets" || name == "data" || name == "sounds")
+            })
+        });
+        if holds_root_marker {
+            return dir.to_path_buf();
+        }
+    }
+    ancestors.truncate(4);
+    ancestors
+        .last()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| bin.to_path_buf())
+}
+
+/** Find the audio and events banks that belong to a BIN the user just picked.
+
+Reuses the mod-folder matching, so the pairing is the same one the folder drop already produces.
+Returns `None` rather than a guess when nothing convincing is nearby. */
+#[tauri::command]
+pub async fn bnk_locate_banks_for_bin(bin_path: String) -> Result<Option<LocatedBanks>, String> {
+    tokio::task::spawn_blocking(move || {
+        let bin = PathBuf::from(&bin_path);
+        if !bin.is_file() {
+            return None;
+        }
+        let skin = skin_id_from_path(&bin);
+        let root = bank_search_root(&bin);
+
+        let sets = scan_folder_sets(&root, skin.as_deref());
+        // Prefer a set that resolved an events bank too — that is the pairing the
+        // tree actually needs to name anything.
+        let best = sets
+            .iter()
+            .find(|s| !s.events.is_empty())
+            .or_else(|| sets.first())?;
+
+        Some(LocatedBanks {
+            audio: best.audio.clone(),
+            events: best.events.clone(),
+        })
     })
     .await
-    .map_err(|e| format!("scan task failed: {e}"))?
+    .map_err(|e| format!("locate task failed: {e}"))
 }
 
 #[derive(Debug, Serialize)]
@@ -1027,3 +1116,48 @@ fn extract_banks_from_game_blocking(args: GameBanksArgs) -> Result<GameBanksResu
     })
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skin_number_comes_from_the_bin_path() {
+        let cases = [
+            ("mod/data/characters/aatrox/skins/skin0.bin", Some("0")),
+            ("mod/DATA/Characters/Ahri/Skins/Skin12.bin", Some("12")),
+            // Zero padding is how Riot writes it; the banks are not padded.
+            ("mod/data/characters/yone/skins/skin07.bin", Some("7")),
+            ("mod/data/characters/yone/yone.bin", None),
+        ];
+        for (path, expected) in cases {
+            assert_eq!(
+                skin_id_from_path(Path::new(path)).as_deref(),
+                expected,
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_last_skin_token_wins_over_an_earlier_one() {
+        // A mod folder can itself be named "Skin3 Something"; the file is what counts.
+        let path = Path::new("mods/Skin3 recolor/data/characters/ahri/skins/skin5.bin");
+        assert_eq!(skin_id_from_path(path).as_deref(), Some("5"));
+    }
+
+    #[test]
+    fn the_search_root_climbs_past_the_bin_folder() {
+        let dir = std::env::temp_dir().join("quartz_bank_root_test");
+        let bin_dir = dir.join("WAD/data/characters/ahri/skins");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        std::fs::create_dir_all(dir.join("WAD/assets/sounds")).unwrap();
+        let bin = bin_dir.join("skin0.bin");
+        std::fs::write(&bin, b"PROP").unwrap();
+
+        // data/ and assets/ are siblings under WAD, which is where banks live.
+        assert_eq!(bank_search_root(&bin), dir.join("WAD"));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}
