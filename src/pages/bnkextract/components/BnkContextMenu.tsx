@@ -1,4 +1,4 @@
-import { Menu, MenuItem, Divider, Typography } from '@mui/material';
+import { Menu, MenuItem, Divider } from '@mui/material';
 import { PlayArrow, Download, Upload, VolumeOff, VolumeUp, ContentCut, Delete, ContentCopy, CreateNewFolder } from '@mui/icons-material';
 import type { ContextMenuState } from '../types';
 
@@ -19,7 +19,6 @@ interface Props {
     showAddToGroup: boolean;
     onRemoveFromGroup: () => void;
     showRemoveFromGroup: boolean;
-    isWwiseInstalled: boolean;
 }
 
 export default function BnkContextMenu({
@@ -39,7 +38,6 @@ export default function BnkContextMenu({
     showAddToGroup,
     onRemoveFromGroup,
     showRemoveFromGroup,
-    isWwiseInstalled,
 }: Props) {
     return (
         <Menu
@@ -81,13 +79,11 @@ export default function BnkContextMenu({
                 <MenuItem key="silent" onClick={onMakeSilent}>
                     <VolumeOff sx={{ fontSize: 14, marginRight: 1 }} /> Make Silent
                 </MenuItem>,
-                <MenuItem key="gain" onClick={onAdjustGain} sx={{ opacity: isWwiseInstalled ? 1 : 0.45 }}>
+                <MenuItem key="gain" onClick={onAdjustGain}>
                     <VolumeUp sx={{ fontSize: 14, marginRight: 1 }} /> Adjust Volume...
-                    {!isWwiseInstalled && <Typography component="span" sx={{ fontSize: '0.6rem', ml: 'auto', color: 'var(--text-muted)' }}>needs tools</Typography>}
                 </MenuItem>,
-                <MenuItem key="splitter" onClick={onOpenInSplitter} sx={{ opacity: contextMenu?.node?.audioData && !isWwiseInstalled ? 0.45 : 1 }}>
+                <MenuItem key="splitter" onClick={onOpenInSplitter}>
                     <ContentCut sx={{ fontSize: 14, marginRight: 1 }} /> Open in Audio Splitter...
-                    {contextMenu?.node?.audioData && !isWwiseInstalled && <Typography component="span" sx={{ fontSize: '0.6rem', ml: 'auto', color: 'var(--text-muted)' }}>needs tools</Typography>}
                 </MenuItem>,
                 <Divider key="d2" sx={{ borderColor: 'var(--border)' }} />,
                 <MenuItem key="delete" onClick={onDeleteNode} sx={{ color: 'var(--color-danger) !important', '&:hover': { background: 'var(--color-danger) !important', color: '#fff !important' } }}>

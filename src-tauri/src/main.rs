@@ -78,6 +78,9 @@ fn main() {
             if let Err(e) = commands::context_menu::context_menu_refresh_if_enabled() {
                 tracing::warn!("Failed to refresh Explorer context menu: {}", e);
             }
+            // Audio encoding is in-process now; drop the toolchain older
+            // versions downloaded into %APPDATA% and never cleaned up.
+            std::thread::spawn(commands::audio::remove_legacy_audio_tools);
             // Seed bundled wallpapers/cursors so themed presets have their images.
             if let Ok(resource_dir) = app.path().resource_dir() {
                 commands::assets::seed_bundled_assets(&resource_dir);
@@ -256,11 +259,8 @@ fn main() {
             commands::audio::bnk_wem_to_ogg,
             commands::audio::bnk_wem_to_wav,
             commands::audio::bnk_wem_to_mp3,
-            commands::audio::bnk_load_codebook,
             commands::audio::bnk_extract_nodes,
             commands::audio::bnk_save_bank,
-            commands::audio::wwise_check,
-            commands::audio::wwise_install,
             commands::audio::audio_convert_to_wem,
             commands::audio::audio_convert_wavs_to_wem,
             commands::audio::audio_decode_to_wav,

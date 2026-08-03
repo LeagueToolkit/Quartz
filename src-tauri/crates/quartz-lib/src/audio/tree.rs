@@ -6,10 +6,9 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-use super::bnk::{self, AudioEntry};
+use super::bank::{self, AudioEntry};
 use super::event_mapper::{self, EventMapping};
 use super::hirc;
-use super::wpk;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -368,14 +367,7 @@ fn file_name(path: &str) -> String {
 
 /// Read all entries from a BNK or WPK buffer, sorted by id.
 fn read_entries(data: &[u8]) -> Result<Vec<AudioEntry>, String> {
-    if data.len() < 4 {
-        return Err("Audio file too small".into());
-    }
-    let mut entries = match &data[0..4] {
-        b"BKHD" => bnk::BnkFile::parse(data)?.read_all_entries(data)?,
-        b"r3d2" => wpk::WpkFile::parse(data)?.read_all_entries(data)?,
-        _ => return Err("Unknown audio format".into()),
-    };
+    let mut entries = bank::all_entries(data)?;
     entries.sort_by_key(|e| e.id);
     Ok(entries)
 }
