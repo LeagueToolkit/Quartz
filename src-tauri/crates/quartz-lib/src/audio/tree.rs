@@ -46,7 +46,6 @@ pub struct BnkNode {
 #[serde(rename_all = "camelCase")]
 pub struct LoadBanksResult {
     pub tree: BnkNode,
-    pub audio_files: Vec<AudioData>,
     pub file_count: usize,
     #[serde(rename = "type")]
     pub kind: String,
@@ -499,8 +498,7 @@ pub fn load_banks(
         &source_name
     });
 
-    let audio_files: Vec<AudioData> = entries.iter().map(to_audio_data).collect();
-    let file_count = audio_files.len();
+    let file_count = entries.len();
 
     let mut tree = group_audio_files(&entries, &mappings, &source_name);
     scope_ids(&mut tree, &scope_key, &[]);
@@ -519,7 +517,6 @@ pub fn load_banks(
 
     Ok(Some(LoadBanksResult {
         tree,
-        audio_files,
         file_count,
         kind: final_type,
     }))

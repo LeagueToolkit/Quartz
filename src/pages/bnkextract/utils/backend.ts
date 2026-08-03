@@ -7,7 +7,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { pickPath } from '@/components/explorer';
 import { log } from '@/lib/util/logger';
-import type { AudioData, BnkNode, ExtractFormat } from '../types';
+import type { BnkNode, ExtractFormat } from '../types';
 
 /* Tauri serializes Rust Vec<u8> as a JSON number array; rehydrate to bytes. */
 function toBytes(value: unknown): Uint8Array {
@@ -62,7 +62,6 @@ export interface LoadBanksArgs {
 
 export interface LoadBanksResult {
     tree: BnkNode;
-    audioFiles: AudioData[];
     fileCount: number;
     type: string;
 }
@@ -72,7 +71,6 @@ export async function loadBanks(args: LoadBanksArgs): Promise<LoadBanksResult | 
     const result = await invoke<LoadBanksResult | null>('bnk_load_banks', { args });
     if (!result?.tree) return result;
     hydrateTree(result.tree);
-    result.audioFiles?.forEach((a) => { if (a.data) a.data = toBytes(a.data); });
     return result;
 }
 
