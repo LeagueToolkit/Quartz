@@ -56,3 +56,7 @@ tracing = "0.1"
 # off d6af5ac (the rev Flint uses) that adds Wad::from_reader_toc + seek-per-chunk
 # reads for lightweight WAD indexing/extraction (branch: wad-toc-seek).
 ritoshark = { git = "https://github.com/RitoShark/RitoShark-Crates", rev = "2ed5554828764cf0ce9f3f426ed6352fea39578a", features = ["tex", "anim", "mesh"] }
+
+[dev-dependencies]
+# Scratch dirs for the live-install extraction tests (auto-removed on drop).
+tempfile = "3"

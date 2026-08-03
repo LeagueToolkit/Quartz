@@ -13,7 +13,10 @@
  * deep incidental hit outrank an obvious one.
  *
  * Hence four tiers, most-identifying first:
- *   1. the clip's name
+ *   1. the clip's TITLE  - the map key, plus the `.anm` stem shown beside it
+ *                         when that key is an unresolved hash. Both halves,
+ *                         because the row displays `0x58fc2d21 (Recall)` and
+ *                         typing either part must find it.
  *   2. its `.anm` FILENAME - the stem only. The full path is deliberately not
  *                         searched: every clip in a skin shares the same folders,
  *                         so a path match returns clips whose names have nothing
@@ -81,8 +84,17 @@ function anmStem(anmPath: string | null): string {
     return file.replace(/\.anm$/i, '').toLowerCase();
 }
 
+/* Match everything the row TITLES itself with.
+ *
+ * `clip.name` is the map key, which for most League animation graphs is an
+ * unresolved hash — the row shows `0x58fc2d21 (Recall)`, where "Recall" comes
+ * from the `.anm` stem. Matching the key alone meant typing the name you can
+ * plainly see on screen returned nothing, because the only thing being compared
+ * was the hash. Both halves of the visible title are searchable. */
 function clipMatches(clip: AnmSystem, term: string): boolean {
-    return (clip.name || clip.key || '').toLowerCase().includes(term);
+    if ((clip.name || clip.key || '').toLowerCase().includes(term)) return true;
+    const label = clip.anm.anmLabel;
+    return !!label && label.toLowerCase().includes(term);
 }
 
 function trackOrMaskMatches(clip: AnmSystem, term: string): boolean {

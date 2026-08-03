@@ -14,7 +14,7 @@ interface Props {
     chromaData: Record<string, Chroma[]>;
     selectedChromas: Record<string, Chroma>;
     onSkinClick: (skinName: string) => void;
-    onChromaClick: (chroma: Chroma, skin: ExtractorSkin, championName: string) => void;
+    onChromaClick: (chroma: Chroma, skin: ExtractorSkin, championName: string, championAlias?: string) => void;
     onDownloadSplashArt: (championName: string, championAlias: string, skinNumber: number, skinName: string, splashUrlOverride?: string | null) => void;
     onYouTubeSkin: (championName: string, skinName: string) => void;
     onOpenInJade?: (skin: ExtractorSkin) => void;
@@ -60,7 +60,10 @@ export function ChampionSkinsPanel({
                 <div className="ae-grid">
                     {championSkins.map((skin) => {
                         const isSelected = selectedSkins.some((s) => s.name === skin.name);
-                        const skinKey = `${selectedChampion.name}_${skin.id}`;
+                        // Keyed by alias: the legacy ("Jade") rows reuse the
+                        // modern champion's display name, so a name-based key
+                        // would make the two share chroma state.
+                        const skinKey = `${selectedChampion.alias || selectedChampion.name}_${skin.id}`;
                         const chromas = chromaData[skinKey] || [];
                         const iconOnly = Boolean(skin.iconUrl && !skin.centeredSplashPath);
 
@@ -192,7 +195,7 @@ export function ChampionSkinsPanel({
                                                         idLabel={String(chroma.id).slice(-2)}
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            onChromaClick(chroma, skin, selectedChampion.name);
+                                                            onChromaClick(chroma, skin, selectedChampion.name, selectedChampion.alias);
                                                         }}
                                                     />
                                                 ))}

@@ -38,12 +38,17 @@ export interface AnmSystemMeta {
      *  empty. */
     startFrame: number | null;
     endFrame: number | null;
-    /** True when the map key was an unresolved hash, so `name` is a fallback
-     *  derived from the `.anm` filename and is NOT unique. */
+    /** True when the map key is an unresolved hash. The row then shows the hash
+     *  as the name and the `.anm` stem beside it as a hint. */
     nameIsFallback: boolean;
-    /** The raw map key, shown when the name is a fallback so two clips sharing
-     *  a `.anm` are still tellable apart. */
-    rawKey: string | null;
+    /** The clip map's key as the bin holds it — a resolved name, or `0x…`.
+     *  This is the clip's IDENTITY: it is what a rename writes, and it does not
+     *  move when the animation path changes. */
+    rawKey: string;
+    /** The `.anm` filename stem, shown in parentheses next to an unresolved
+     *  hash so the row still reads as something. Null when the key resolved
+     *  (the name already says it) or when there is no animation path. */
+    anmLabel: string | null;
     /** Problems naming this clip, lifted from AnmModel.warnings. */
     warnings: string[];
 }
@@ -271,14 +276,20 @@ function warningsFor(clipName: string, all: string[]): string[] {
     return all.filter((w) => w.includes(needle));
 }
 
-/* `clip.name` falls back to the `.anm` filename stem when the map key is an
-   unresolved hash, so several distinct clips can present the SAME name (in
-   Yasuo skin36, most keys are hashes). Detect that so the row can show the key
-   alongside the name instead of looking like a duplicate. */
+/* True when the bin's clip-map key never resolved through the hashtable.
+   Read off `mapKey` directly rather than by comparing `clip.name` to the `.anm`
+   stem: that comparison also fired for a RESOLVED clip that happens to be named
+   after its animation (the common case — "Recall" playing Recall.anm), so such a
+   clip was wrongly treated as unnamed. */
 function isFallbackName(clip: ClipInfo): boolean {
-    if (!clip.anmPath) return false;
+    return /^0x[0-9a-f]+$/i.test(clip.mapKey);
+}
+
+/* The `.anm` filename stem, for the hint beside an unresolved hash. */
+function anmStem(clip: ClipInfo): string | null {
+    if (!clip.anmPath) return null;
     const stem = clip.anmPath.split(/[\\/]/).pop()?.replace(/\.anm$/i, '');
-    return !!stem && stem.toLowerCase() === clip.name.toLowerCase();
+    return stem || null;
 }
 
 /** A path's steps flattened into a stable string, for React keys. */
@@ -302,10 +313,15 @@ function toSystem(clip: ClipInfo, warnings: string[]): AnmSystem {
         : clip.name;
     const events = collectEvents(clip);
     const members = clip.members ?? [];
+    /* The clip's own map key, NOT `clip.name`. The backend substitutes the
+       `.anm` stem into `name` for an unresolved key, which made the row's title
+       track the animation path: editing the path appeared to rename the clip,
+       while editing the name did nothing the row could show. The hash is the
+       honest title; `anmLabel` carries the readable hint. */
     return {
         key,
-        name: clip.name,
-        particleName: clip.name,
+        name: clip.mapKey,
+        particleName: clip.mapKey,
         particlePath: clip.anmPath,
         binIndex: clip.addr?.bin ?? 0,
         path: clip.addr,
@@ -324,7 +340,9 @@ function toSystem(clip: ClipInfo, warnings: string[]): AnmSystem {
             startFrame: clip.startFrame ?? null,
             endFrame: clip.endFrame ?? null,
             nameIsFallback: isFallbackName(clip),
-            rawKey: null,
+            rawKey: clip.mapKey,
+            // Only worth showing when the key itself is unreadable.
+            anmLabel: isFallbackName(clip) ? anmStem(clip) : null,
             warnings: warningsFor(clip.name, warnings),
         },
     };

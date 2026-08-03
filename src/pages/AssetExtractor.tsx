@@ -267,6 +267,29 @@ export function AssetExtractor() {
         setExtractionProgress((prev) => ({ ...prev, [key]: msg }));
     };
 
+    /* Resolve a sidebar row by CDragon alias.
+
+       Display names are NOT unique: League re-shipped 60 pre-rework champions
+       under a `Jade_` alias that keeps the modern champion's name, so the list
+       holds two "Annie" rows. The alias is the only stable key. */
+    const findChampionByAlias = (alias: string | undefined) =>
+        alias ? champions.find((c) => c.alias.toLowerCase() === alias.toLowerCase()) : undefined;
+
+    /* Identity for a selected skin's champion. Falls back to the display name
+       only when no alias is present (TFT / ward / emote cards). */
+    const sameChampion = (a: SelectedSkin, b: SelectedSkin) => {
+        const aliasA = a.champion?.alias?.toLowerCase();
+        const aliasB = b.champion?.alias?.toLowerCase();
+        if (aliasA && aliasB) return aliasA === aliasB;
+        return a.champion?.name === b.champion?.name;
+    };
+
+    /* Selection key for a skin card. The legacy ("Jade") rows share the modern
+       champion's display name, so the alias has to be part of the key or the
+       two collide in `selectedChromas`. */
+    const skinKeyFor = (championName: string, skinId: number, championAlias?: string) =>
+        `${championAlias || championName}_${skinId}`;
+
     /* Champion sidebar filter. */
     useEffect(() => {
         const term = searchTerm.toLowerCase();
@@ -441,7 +464,7 @@ export function AssetExtractor() {
         await fetchAllChromaData();
         const pending: Record<string, Chroma[]> = {};
         for (const skin of skins) {
-            const skinKey = `${champion.name}_${skin.id}`;
+            const skinKey = skinKeyFor(champion.name, skin.id, champion.alias);
             if (chromaCacheRef.current.has(skinKey)) continue;
             try {
                 const chromas = await getChromaDataForSkin(champion.cdragonId, skin.id);
@@ -487,10 +510,10 @@ export function AssetExtractor() {
     const loadChromaDataForSkinlineResults = async (results: SkinlineGroup[]) => {
         const pending: Record<string, Chroma[]> = {};
         for (const { champion, skins } of results) {
-            const cdragonId = champions.find((c) => c.name === champion.name)?.cdragonId;
+            const cdragonId = (findChampionByAlias(champion.alias) ?? champions.find((c) => c.name === champion.name))?.cdragonId;
             if (!cdragonId) continue;
             for (const skin of skins) {
-                const skinKey = `${champion.name}_${skin.skinNumber}`;
+                const skinKey = skinKeyFor(champion.name, skin.skinNumber, champion.alias);
                 if (chromaCacheRef.current.has(skinKey)) continue;
                 try {
                     const chromas = await getChromaDataForSkin(cdragonId, skin.skinNumber);
@@ -530,9 +553,9 @@ export function AssetExtractor() {
             tier: skin.tier,
         };
         setSelectedSkins((prev) => {
-            const exists = prev.some((s) => s.name === entry.name && s.champion?.name === entry.champion.name);
+            const exists = prev.some((s) => s.name === entry.name && sameChampion(s, entry));
             return exists
-                ? prev.filter((s) => !(s.name === entry.name && s.champion?.name === entry.champion.name))
+                ? prev.filter((s) => !(s.name === entry.name && sameChampion(s, entry)))
                 : [...prev, entry];
         });
     };
@@ -541,24 +564,32 @@ export function AssetExtractor() {
         champion: SkinlineGroup['champion'],
         skin: SkinlineGroup['skins'][number],
     ) => {
-        const backendChamp = champions.find((c) => c.name === champion.name);
+        // Match on alias, not display name: the legacy ("Jade") champions share
+        // their modern counterpart's name, so a name lookup would hand a legacy
+        // skin the modern champion's id (and vice versa).
+        const backendChamp = findChampionByAlias(champion.alias) ?? champions.find((c) => c.name === champion.name);
         const entry: SelectedSkin = {
             id: skin.skinNumber,
             name: skin.name,
             champion: { name: champion.name, id: backendChamp?.id, alias: champion.alias },
         };
         setSelectedSkins((prev) => {
-            const exists = prev.some((s) => s.name === skin.name && s.champion?.name === champion.name);
+            const exists = prev.some((s) => s.name === skin.name && sameChampion(s, entry));
             return exists
-                ? prev.filter((s) => !(s.name === skin.name && s.champion?.name === champion.name))
+                ? prev.filter((s) => !(s.name === skin.name && sameChampion(s, entry)))
                 : [...prev, entry];
         });
     };
 
-    const handleChromaClick = (chroma: Chroma, skin: { id?: number; skinNumber?: number; name?: string }, championName: string) => {
+    const handleChromaClick = (
+        chroma: Chroma,
+        skin: { id?: number; skinNumber?: number; name?: string },
+        championName: string,
+        championAlias?: string,
+    ) => {
         const rawSkinId = Number(skin?.skinNumber != null ? skin.skinNumber : skin?.id ?? 0);
         const normalizedSkinId = rawSkinId >= 1000 ? rawSkinId % 1000 : rawSkinId;
-        const skinKey = `${championName}_${normalizedSkinId}`;
+        const skinKey = skinKeyFor(championName, normalizedSkinId, championAlias);
         const wasSelected = selectedChromas[skinKey]?.id === chroma?.id;
         setSelectedChromas((prev) => {
             if (wasSelected) {
@@ -569,19 +600,22 @@ export function AssetExtractor() {
             return { ...prev, [skinKey]: chroma };
         });
 
-        if (wasSelected) {
-            setSelectedSkins((prev) => prev.filter((s) => !(s.champion?.name === championName && Number(s.id) === normalizedSkinId)));
-            return;
-        }
-
-        const backendChamp = champions.find((c) => c.name === championName);
+        const backendChamp = findChampionByAlias(championAlias) ?? champions.find((c) => c.name === championName);
         const skinSelection: SelectedSkin = {
             id: normalizedSkinId,
             name: skin?.name || `Skin ${normalizedSkinId}`,
-            champion: { name: championName, id: backendChamp?.id, alias: backendChamp?.alias },
+            champion: { name: championName, id: backendChamp?.id, alias: backendChamp?.alias ?? championAlias },
         };
+
+        if (wasSelected) {
+            setSelectedSkins((prev) =>
+                prev.filter((s) => !(sameChampion(s, skinSelection) && Number(s.id) === normalizedSkinId)),
+            );
+            return;
+        }
+
         setSelectedSkins((prev) => {
-            const exists = prev.some((s) => s.champion?.name === championName && Number(s.id) === normalizedSkinId);
+            const exists = prev.some((s) => sameChampion(s, skinSelection) && Number(s.id) === normalizedSkinId);
             return exists ? prev : [...prev, skinSelection];
         });
     };
@@ -695,7 +729,7 @@ export function AssetExtractor() {
 
     const handleInspectSkinModel = (skin: ExtractorSkin) => {
         if (!selectedChampion) return;
-        const skinKey = `${selectedChampion.name}_${skin.id}`;
+        const skinKey = skinKeyFor(selectedChampion.name, skin.id, selectedChampion.alias);
         void runCardAssetAction(
             'model', selectedChampion.name, skin.id, skin.name,
             selectedChromas[skinKey]?.id ?? null,
@@ -758,9 +792,10 @@ export function AssetExtractor() {
             .map((skin): NormalizedSelection | null => {
                 if (!skin.champion?.name || skin.id == null || !skin.name) return null;
                 const championId = skin.champion.id
+                    || findChampionByAlias(skin.champion.alias)?.id
                     || champions.find((c) => c.name === skin.champion?.name)?.id
                     || '';
-                const chromaKey = `${skin.champion.name}_${skin.id}`;
+                const chromaKey = skinKeyFor(skin.champion.name, skin.id, skin.champion.alias);
                 const chroma = selectedChromas[chromaKey] || null;
                 return {
                     championId,
@@ -819,7 +854,8 @@ export function AssetExtractor() {
                     break;
                 }
                 const { championId, championName, skinId, skinName, chromaId, petAlias, tier } = normalized[i];
-                const skinKey = `${championName}_${skinId}`;
+                // Must match ExtractionModeModal's skinKey (champion id first).
+                const skinKey = `${championId || championName}_${skinId}`;
                 const progress = `${i + 1}/${normalized.length}`;
                 const clean = cleanBySkinKey.get(skinKey) !== false;
                 const isTft = !!petAlias;
@@ -916,7 +952,7 @@ export function AssetExtractor() {
         const normalized = getNormalizedSelectedSkins();
         if (normalized.length === 0) return;
         setPendingRepathSkins(
-            normalized.map((n) => ({ championName: n.championName, skinId: n.skinId, skinName: n.skinName, chromaId: n.chromaId, petAlias: n.petAlias, tier: n.tier })),
+            normalized.map((n) => ({ championId: n.championId, championName: n.championName, skinId: n.skinId, skinName: n.skinName, chromaId: n.chromaId, petAlias: n.petAlias, tier: n.tier })),
         );
         setShowPrefixModal(true);
     };
@@ -945,14 +981,23 @@ export function AssetExtractor() {
                     break;
                 }
                 const skin = skins[i];
-                const norm = getNormalizedSelectedSkins().find((n) => n.championName === skin.championName && n.skinId === skin.skinId);
+                // Match on champion id where available: modern and legacy
+                // ("Jade") champions share a display name.
+                const norm = getNormalizedSelectedSkins().find((n) =>
+                    n.skinId === skin.skinId
+                    && (skin.championId ? n.championId === skin.championId : n.championName === skin.championName),
+                );
                 const isTft = !!skin.petAlias;
-                const championId = norm?.championId || champions.find((c) => c.name === skin.championName)?.id || '';
+                const championId = skin.championId
+                    || norm?.championId
+                    || champions.find((c) => c.name === skin.championName)?.id
+                    || '';
                 // For TFT the "champion" folder is the pet alias; skin index is the tier.
                 const repathChampion = isTft ? skin.petAlias! : championId;
                 const repathSkinId = isTft ? (skin.tier ?? skin.skinId) : (skin.chromaId ?? skin.skinId);
                 const progress = `${i + 1}/${skins.length}`;
-                const skinKey = `${skin.championName}_${skin.skinId}`;
+                // Must match CustomPrefixModal's skinKeyOf (champion id first).
+                const skinKey = `${skin.championId || skin.championName}_${skin.skinId}`;
                 const prefix = payload.prefixesBySkinId[skin.skinId] || '';
 
                 if (!isTft && !championId) {

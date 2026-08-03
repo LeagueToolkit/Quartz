@@ -14,7 +14,6 @@ import Port from '@/pages/Port';
 import ImgRecolor from '@/pages/ImgRecolor';
 import ParticleRandomizer from '@/pages/ParticleRandomizer';
 import FakeGear from '@/pages/FakeGear';
-import AniPort from '@/pages/AniPort';
 import BnkExtract from '@/pages/BnkExtract';
 import Bumpath from '@/pages/Bumpath';
 import Tools from '@/pages/Tools';
@@ -37,7 +36,6 @@ const TITLES: Record<Page, string> = {
     imgrecolor: 'Image Recolor',
     upscale: 'Upscale',
     rgba: 'RGBA',
-    aniport: 'AniPort',
     tools: 'Tools',
     filehandler: 'File Randomizer',
     soundbanks: 'Sound Banks',
@@ -51,7 +49,7 @@ const TITLES: Record<Page, string> = {
    should fill the work area with no outer frame. Content/card pages keep the
    default p-6 gutter. */
 const FULL_BLEED_PAGES = new Set<Page>([
-    'home', 'paint', 'bineditor', 'assetextractor', 'wadexplorer', 'port', 'soundbanks', 'fakegear', 'aniport', 'particlerandomizer', 'upscale', 'rgba', 'imgrecolor', 'bumpath',
+    'home', 'paint', 'bineditor', 'assetextractor', 'wadexplorer', 'port', 'soundbanks', 'fakegear', 'particlerandomizer', 'upscale', 'rgba', 'imgrecolor', 'bumpath',
 ]);
 
 function PageView({ page }: { page: Page }) {
@@ -68,7 +66,6 @@ function PageView({ page }: { page: Page }) {
         case 'imgrecolor': return <ImgRecolor />;
         case 'particlerandomizer': return <ParticleRandomizer />;
         case 'fakegear': return <FakeGear />;
-        case 'aniport': return <AniPort />;
         // 'soundbanks' (BnkExtract) is rendered separately + always-mounted so its
         // editing state survives navigating away and back — see App().
         case 'bumpath': return <Bumpath />;

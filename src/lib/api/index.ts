@@ -14,10 +14,8 @@ export {
     type AssetFile, type WallpaperItem,
 } from './assets';
 export {
-    binScaleParams, binSplitSkin, binConsolidateAssets,
     binEditorOpen, binEditorModel, binEditorReloadIfChanged, binEditorApply, binEditorInsert, binEditorRemove,
     binEditorUndo, binEditorRedo, binEditorRestore, binEditorSave, binEditorClose,
-    type ScaleParamsResult, type SplitFile, type ConsolidateResult,
     type EditorModel, type EditorSystem, type EditorEmitter, type EditorNode,
     type NodePath, type Step, type JsonBinValue, type BinNumType, type EditOp,
     type BinEditorOpenResult, type BinEditorApplyResult,
@@ -63,10 +61,6 @@ export {
     imgRecolorDecodeTexture, imgRecolorSaveTexture, imgRecolorScanDir,
     type DecodedTexture, type ScannedImage,
 } from './imgrecolor';
-export {
-    aniportAutodetectSkl, aniportLoadSkeleton,
-    type JointInfo, type LoadedSkeleton,
-} from './aniport';
 export {
     wadFindChampion, wadReadToc, wadExtractChunks,
     portPrepareDonorFromSkin, portCleanupDonorTemp, portCopyAssetsToTarget, portResolveAssetPath,

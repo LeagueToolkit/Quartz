@@ -12,6 +12,8 @@ import {
 } from '@/lib/util/texturePreview';
 import { getLeaguePath } from '@/lib/api/league';
 import { readBin, writeBin } from '@/lib/api';
+import { vfxModel } from '@/lib/api/vfxSession';
+import { log } from '@/lib/util/logger';
 import { useUiPrefsStore } from '@/lib/stores';
 import { portPrepareDonorFromSkin, backupCreate, portCleanupDonorTemp } from '@/lib/api/wad';
 import TargetColumn from './port/components/TargetColumn';
@@ -67,12 +69,28 @@ function Port() {
        Unresolved effect keys are surfaced rather than swallowed: those
        particles will not play until they are fixed, and silently porting a clip
        that half-works is worse than saying so. */
-    const { copyDonorAssets, setStatusMessage } = p;
+    const { copyDonorAssets, setStatusMessage, applyTargetModel, targetSessionId } = p;
     const handleAnmPorted = useCallback(
         (result: PortClipResult) => {
             setFileSaved(false);
             anm.publishTarget(result.model);
             if (result.assetPaths.length > 0) void copyDonorAssets(result.assetPaths);
+
+            /* A clip port writes VFX systems into the session too, but the
+               command answers with the ANM projection only. The VFX list is
+               built from a SEPARATE model, so without this re-read the systems
+               that "came along" existed in the bin and saved correctly while the
+               VFX side of the page kept showing the pre-port list.
+
+               Unconditional rather than gated on `portedSystems`: the reprojection
+               is a cheap read of trees already in memory, and gating it on a
+               non-empty list would make the correctness of the view depend on
+               exactly which systems the installer chose to skip. */
+            if (targetSessionId !== null) {
+                void vfxModel(targetSessionId)
+                    .then(applyTargetModel)
+                    .catch((e) => log.error('[anm] vfx model refresh after port', e));
+            }
 
             const parts: string[] = [];
             if (result.portedSystems.length > 0) {
@@ -85,7 +103,7 @@ function Port() {
             }
             setStatusMessage(parts.length > 0 ? `Ported. ${parts.join('. ')}` : 'Ported.');
         },
-        [setFileSaved, anm, copyDonorAssets, setStatusMessage],
+        [setFileSaved, anm, copyDonorAssets, setStatusMessage, applyTargetModel, targetSessionId],
     );
 
     /* The column search boxes are shared by both modes, so ANM reuses the same
@@ -764,6 +782,7 @@ function Port() {
                                 donorSessionId={p.donorSessionId}
                                 donorGeneration={p.donorModel?.generation}
                                 onPorted={handleAnmPorted}
+                                onError={p.setStatusMessage}
                             >
                                 <ClipList
                                     clips={filteredTargetClips}
@@ -787,6 +806,7 @@ function Port() {
                                 refresh={anm.refresh}
                                 onModel={anm.publishDonor}
                                 clipKeys={donorClipKeys}
+                                onError={p.setStatusMessage}
                             >
                                 <ClipList
                                     clips={filteredDonorClips}

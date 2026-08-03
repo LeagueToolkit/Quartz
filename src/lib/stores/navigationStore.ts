@@ -12,7 +12,6 @@ export type Page =
     | 'imgrecolor'
     | 'upscale'
     | 'rgba'
-    | 'aniport'
     | 'tools'
     | 'filehandler'
     | 'soundbanks'

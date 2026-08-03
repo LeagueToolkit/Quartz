@@ -12,6 +12,7 @@ import {
 import { isStaleFileError } from '@/lib/api/staleFile';
 import { useNavigationStore, useNotificationStore, useUiPrefsStore } from '@/lib/stores';
 import { useFileDrop } from '@/lib/util/useFileDrop';
+import { recordRecentBin } from '@/lib/util/recordRecentBin';
 import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
 import { useSessionFileWatcher } from '@/lib/util/useSessionFileWatcher';
 import { Switch } from '@/components/settings/primitives';
@@ -200,7 +201,7 @@ function BinEditorV2() {
             setDirtyKeys(new Set());
             setCanUndo(false);
             setCanRedo(false);
-            useUiPrefsStore.getState().pushRecentBin(path);
+            recordRecentBin(path);
             const emCount = opened.systems.reduce((a, s) => a + s.emitters.length, 0);
             setStatus(`Loaded: ${opened.systems.length} systems, ${emCount} emitters`);
         } catch (error) {

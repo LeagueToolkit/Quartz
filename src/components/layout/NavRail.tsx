@@ -1,6 +1,6 @@
 import {
     Brush, ArrowLeftRight, Code, Image, PackageOpen,
-    Waypoints, Shuffle, Maximize, Pipette, FileDigit, Wrench, Music, Sparkles, Dices,
+    Waypoints, Maximize, Pipette, FileDigit, Wrench, Music, Sparkles, Dices,
     Settings as SettingsIcon, FolderSearch, type LucideIcon,
 } from 'lucide-react';
 import { useNavigationStore, useUiPrefsStore, type Page } from '@/lib/stores';
@@ -25,7 +25,6 @@ export const ITEMS: NavItem[] = [
     { id: 'imgrecolor', label: 'Image Recolor', icon: Image },
     { id: 'soundbanks', label: 'Sound Banks', icon: Music },
     { id: 'bumpath', label: 'Bumpath', icon: Waypoints },
-    { id: 'aniport', label: 'AniPort', icon: Shuffle },
     { id: 'upscale', label: 'Upscale', icon: Maximize },
     { id: 'rgba', label: 'RGBA', icon: Pipette },
     { id: 'filehandler', label: 'File Handler', icon: FileDigit },

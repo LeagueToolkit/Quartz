@@ -624,41 +624,19 @@
     opacity: 0.7;
 }
 
-/* The clip's .anm, last in the card because mAnimationResourceData is written
-   last in the bin - after the event map, not beside mTrackDataName. */
-.port-container .anm-clip__anm {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0.25rem 0.5rem;
-    padding: 5px 8px;
-    border-top: 1px solid var(--border);
-    border-radius: 0 0 4px 4px;
-    background: color-mix(in oklab, var(--bg-primary) 40%, transparent);
-    min-width: 0;
-}
-
-.port-container .anm-clip__anm-label {
-    flex-shrink: 0;
-    color: var(--text-muted);
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.port-container .anm-clip__anm-path {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--accent-secondary);
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-}
-
 /* An unresolved hash name reads as "unnamed", not as broken data. */
 .port-container .anm-clip__hash {
     font-family: var(--font-mono);
     opacity: 0.7;
+}
+
+/* The `.anm` stem beside an unresolved hash. Secondary to the key: the hash is
+   the clip's identity, this is only what makes the row readable. */
+.port-container .anm-clip__anmlabel {
+    margin-left: 6px;
+    color: var(--accent-secondary);
+    font-weight: 500;
+    font-size: 0.85em;
 }
 
 /* Validation strip: the legacy page COMPUTED these and never showed them. */
@@ -950,6 +928,69 @@
     gap: 3px;
 }
 
+/* Header edit (pencil): same quiet treatment as delete, but it opens the clip
+   editor rather than destroying anything, so it warms to the accent. */
+.port-container .anm-clip__edit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 2px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0.45;
+    transition: opacity var(--motion-fast), color var(--motion-fast), background var(--motion-fast);
+}
+
+.port-container .anm-clip__edit:hover:not(:disabled) {
+    opacity: 1;
+    color: var(--accent-primary);
+    background: color-mix(in oklab, var(--accent-primary) 12%, transparent);
+}
+
+.port-container .anm-clip__edit:disabled {
+    cursor: default;
+    opacity: 0.25;
+}
+
+/* The clip's field digest: one wrapping line of label/value chips, replacing
+   the block of inputs that used to sit above the events. */
+.port-container .anm-clip__summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    padding: 4px 12px 6px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    line-height: 1.5;
+}
+
+.port-container .anm-clip__summary-part {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    min-width: 0;
+}
+
+.port-container .anm-clip__summary-label {
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 0.62rem;
+}
+
+.port-container .anm-clip__summary-value {
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 30ch;
+}
+
 /* Header delete: quiet until hovered, so a 100-clip list is not a wall of red. */
 .port-container .anm-clip__del,
 .port-container .anm-ev__del {
@@ -1085,4 +1126,203 @@
 
 .port-container .anm-ev--drop-after .anm-ev__content {
     box-shadow: inset 0 -2px 0 0 var(--accent-primary);
+}
+
+/* ── Raw field editor ──────────────────────────────────────────────────────
+   The generic node editor behind an event's "Advanced" disclosure. Reaches the
+   fields the typed rows cannot name: a particle event's nested bone pairs, and
+   every field of an event class nothing models. */
+.port-container .anm-ev__raw {
+    margin-top: 6px;
+    border-top: 1px solid var(--border);
+    padding-top: 6px;
+}
+
+.port-container .anm-ev__raw-summary {
+    cursor: pointer;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    user-select: none;
+    list-style: none;
+}
+
+.port-container .anm-ev__raw-summary::-webkit-details-marker { display: none; }
+.port-container .anm-ev__raw-summary::before { content: '▸ '; }
+.port-container .anm-ev__raw[open] > .anm-ev__raw-summary::before { content: '▾ '; }
+.port-container .anm-ev__raw-summary:hover { color: var(--text-secondary); }
+
+.port-container .anm-raw {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 5px;
+}
+
+.port-container .anm-raw__class {
+    color: var(--accent-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    margin-bottom: 3px;
+}
+
+.port-container .anm-raw__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.port-container .anm-raw__name {
+    flex: 0 0 40%;
+    min-width: 0;
+    text-align: left;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.port-container .anm-raw__name:not(:disabled) { cursor: pointer; }
+.port-container .anm-raw__name:not(:disabled):hover { color: var(--text-primary); }
+.port-container .anm-raw__caret { margin-right: 4px; }
+
+.port-container .anm-raw__input {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 3px 7px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    outline: none;
+}
+
+.port-container .anm-raw__input:focus { border-color: var(--accent-primary); }
+
+.port-container .anm-raw__static,
+.port-container .anm-raw__type {
+    flex: 1 1 0;
+    min-width: 0;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    opacity: 0.75;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* A container's children indent under it; `flex-basis: 100%` puts them on their
+   own line rather than beside the name they belong to. */
+.port-container .anm-raw__children {
+    flex: 0 0 100%;
+    border-left: 1px solid var(--border);
+    margin: 2px 0 2px 6px;
+    padding-left: 6px;
+}
+
+.port-container .anm-raw__loading,
+.port-container .anm-raw__error {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    padding: 3px 0;
+}
+
+.port-container .anm-raw__error { color: var(--color-danger, #f87171); }
+
+/* Remove-field button. Quiet like the other row deletes; the tooltip is what
+   explains that an absent field is how League stores a default. */
+.port-container .anm-raw__del {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    display: grid;
+    place-items: center;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.4;
+    transition: opacity var(--motion-fast), color var(--motion-fast), background var(--motion-fast);
+}
+
+.port-container .anm-raw__del:hover:not(:disabled) {
+    opacity: 1;
+    color: var(--color-danger, #f87171);
+    background: color-mix(in oklab, var(--color-danger, #f87171) 12%, transparent);
+}
+
+.port-container .anm-raw__del:disabled { cursor: default; opacity: 0.2; }
+
+.port-container .anm-raw__add {
+    align-self: flex-start;
+    margin-top: 3px;
+    padding: 2px 8px;
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    cursor: pointer;
+    transition: color var(--motion-fast), border-color var(--motion-fast);
+}
+
+.port-container .anm-raw__add:hover:not(:disabled) {
+    color: var(--accent-primary);
+    border-color: color-mix(in oklab, var(--accent-primary) 45%, var(--border));
+}
+
+.port-container .anm-raw__addrow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.port-container .anm-raw__select {
+    flex: 0 0 auto;
+    padding: 3px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    outline: none;
+    cursor: pointer;
+}
+
+.port-container .anm-raw__addok {
+    flex: 0 0 auto;
+    padding: 3px 10px;
+    border: 1px solid color-mix(in oklab, var(--accent-primary) 45%, var(--border));
+    border-radius: 4px;
+    background: color-mix(in oklab, var(--accent-primary) 14%, transparent);
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.port-container .anm-raw__addok:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--accent-primary) 24%, transparent);
 }

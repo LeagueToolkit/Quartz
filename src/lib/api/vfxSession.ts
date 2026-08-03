@@ -244,6 +244,13 @@ export interface ClipMember {
 
 export interface ClipInfo {
     name: string;
+    /** The clip map's key exactly as the bin holds it: a resolved name, or
+     *  `0x…` when the hashtable could not resolve it.
+     *
+     *  `name` substitutes the `.anm` filename stem for an unresolved key, which
+     *  makes it a LABEL, not an identity — editing the animation path changed
+     *  it. Rename and identity must read this instead. */
+    mapKey: string;
     /** `.anm` asset path; for a composite clip, its first member's. */
     anmPath: string | null;
     /** A composite clip's ordered queue; empty for a plain atomic clip. */

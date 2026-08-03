@@ -31,6 +31,10 @@ interface PendingSkin {
     championName: string;
     skinId: number;
     skinName: string;
+    /** Backend champion id. Display names are not unique — the legacy ("Jade")
+     *  champions reuse the modern champion's name — so this keys the per-skin
+     *  decisions and output paths. */
+    championId?: string;
 }
 
 interface Props {
@@ -107,7 +111,7 @@ export function ExtractionModeModal({
     const total = skins.length;
     const multiSkin = total > 1;
     const current = skins[currentIndex];
-    const skinKey = (s: PendingSkin) => `${s.championName}_${s.skinId}`;
+    const skinKey = (s: PendingSkin) => `${s.championId || s.championName}_${s.skinId}`;
 
     const finalizeOptions = { extractVoiceover, skipSfx, preserveHudIcons2D, splitVfx, splitAnm, consolidateAssets };
 

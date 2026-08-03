@@ -12,6 +12,9 @@ export interface RepathSkin {
     skinId: number;
     skinName: string;
     chromaId: number | null;
+    /** Backend champion id — see ExtractionModeModal.PendingSkin: display names
+     *  are not unique across the modern and legacy ("Jade") champion sets. */
+    championId?: string;
     /** TFT companion WAD folder alias (e.g. petbunny); undefined for champions. */
     petAlias?: string;
     /** TFT skin index (itemId % 1000). */
@@ -40,7 +43,7 @@ interface Props {
 }
 
 const sanitizePrefix = (v: string) => String(v || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
-const skinKeyOf = (s: RepathSkin) => `${s.championName}_${s.skinId}`;
+const skinKeyOf = (s: RepathSkin) => `${s.championId || s.championName}_${s.skinId}`;
 
 /* A Design Lab styled checkbox row. */
 function DlCheck({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {

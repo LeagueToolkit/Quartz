@@ -41,6 +41,7 @@ import { fakegearBackupBin } from '@/lib/api/fakegear';
 import { useNotificationStore, useUiPrefsStore } from '@/lib/stores';
 import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
 import { useFileDrop } from '@/lib/util/useFileDrop';
+import { recordRecentBin } from '@/lib/util/recordRecentBin';
 import { useJadeBin } from '@/lib/jade/jadeInterop';
 
 import {
@@ -566,7 +567,7 @@ function FakeGear() {
 
             const systemCount = extractVfxSystems(content).length;
             setStatusMessage(`Loaded: ${systemCount} VFX systems found`);
-            useUiPrefsStore.getState().pushRecentBin(filePath);
+            recordRecentBin(filePath);
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             setStatusMessage(`Error: ${msg}`);

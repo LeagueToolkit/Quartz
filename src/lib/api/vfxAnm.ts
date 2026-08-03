@@ -1,5 +1,6 @@
 import { invokeCommand } from './core';
 import type { AnmModel, VfxPath } from './vfxSession';
+import type { JsonBinValue } from './bineditor';
 
 /* Animation write layer — the mutating half of `vfx_anm_model`'s read layer.
  *
@@ -199,4 +200,63 @@ export function vfxAnmPortEvent(
         targetClip,
         donorGeneration: donorGeneration ?? null,
     });
+}
+
+/* ── Raw node access ───────────────────────────────────────────────────────
+   The typed clip/event commands above cover the classes the read layer models.
+   These reach everything else: a particle event's nested bone pairs, and the
+   event classes that project as `unknown` because nothing models them. */
+
+/** One editable field of a node. */
+export interface RawField {
+    /** Resolved field name, or `0x…` when the hash DB cannot name it. */
+    name: string;
+    /** The field-name hash. 0 for a list index or map position. */
+    key: number;
+    value: JsonBinValue;
+    /** This field's own path, ready to pass back to `vfxAnmSetRawNode`. */
+    path: VfxPath;
+    /** Containers are descended into, not edited; only leaves are writable. */
+    isContainer: boolean;
+}
+
+export interface RawNode {
+    /** Resolved class name for an embed/pointer, else null. */
+    className: string | null;
+    fields: RawField[];
+}
+
+/** Project any node into its editable fields. */
+export function vfxAnmRawNode(sessionId: number, path: VfxPath): Promise<RawNode> {
+    return invokeCommand<RawNode>('vfx_anm_raw_node', { sessionId, path });
+}
+
+/** Write one primitive at `path`. The backend keeps the field's existing BIN
+ *  type and rejects both a container target and a type change. */
+export function vfxAnmSetRawNode(
+    sessionId: number,
+    path: VfxPath,
+    value: JsonBinValue,
+): Promise<AnmModel> {
+    return invokeCommand<AnmModel>('vfx_anm_set_raw_node', { sessionId, path, value });
+}
+
+/** Add a field a structure does not currently carry.
+ *
+ *  League omits a field holding its default, so a real `ParticleEventData` ships
+ *  a handful of its sixteen fields and the rest are ABSENT, not empty — editing
+ *  alone can never reach them. `name` is a field name, or a literal `0x…` for
+ *  one the hash dictionary cannot resolve. */
+export function vfxAnmAddRawField(
+    sessionId: number,
+    parent: VfxPath,
+    name: string,
+    value: JsonBinValue,
+): Promise<AnmModel> {
+    return invokeCommand<AnmModel>('vfx_anm_add_raw_field', { sessionId, parent, name, value });
+}
+
+/** Remove a field, restoring the "absent means default" state League reads. */
+export function vfxAnmRemoveRawField(sessionId: number, path: VfxPath): Promise<AnmModel> {
+    return invokeCommand<AnmModel>('vfx_anm_remove_raw_field', { sessionId, path });
 }

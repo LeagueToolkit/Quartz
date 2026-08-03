@@ -31,17 +31,34 @@ function ClipList({ clips, expandedKeys, toggleCollapse, loading, error }: ClipL
        clip has no single card to land on the way an event lands on its clip, so
        the list is the target: dropping anywhere in the target column ports the
        donor clip plus the VFX systems its particle events reference. */
+    /* Session-scoped for the same reason as the clip card's zone: both columns
+       render a ClipList, and a fixed id meant the two registrations collided in
+       the zone Map so only one column ever had a live zone. */
     usePortDropZone(
-        'anm-clip-list',
+        `anm-clip-list-${edit?.sessionId ?? 'ro'}`,
         listRef,
         (payload) => !!edit?.portClipIn && payload.kind === 'system',
         (payload) => {
             if (payload.kind !== 'system') return;
             const carried = takeDraggedClip();
-            if (!carried || !edit?.portClipIn) return;
+            /* Each bail below used to return in silence, which is what a dropped
+               clip that "does nothing" looked like: the zone highlighted, the
+               pointer released, and no row, error or status ever moved. Report
+               instead, so a refused drop always says why. */
+            if (!edit?.portClipIn) {
+                edit?.reportError('Load both a target and a donor bin to port clips.');
+                return;
+            }
+            if (!carried) {
+                edit.reportError('Drag a clip by its header to port it.');
+                return;
+            }
             // A same-column drop is a no-op: a clip already in this graph has
             // nothing to port, and reordering is a separate gesture.
-            if (carried.sessionId === edit.sessionId) return;
+            if (carried.sessionId === edit.sessionId) {
+                edit.reportError('Drag a clip from the donor column to port it here.');
+                return;
+            }
             void edit.portClipIn(`anm-port-${payload.systemKey}`, carried.path);
         },
         setIsDropOver,

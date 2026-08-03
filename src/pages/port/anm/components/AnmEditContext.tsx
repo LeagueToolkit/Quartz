@@ -15,7 +15,7 @@
  * in Port.tsx is what turns editing on, and it is one line per column.
  */
 
-import React, { createContext, useCallback, useContext, useMemo, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import type { AnmModel, VfxPath } from '@/lib/api/vfxSession';
 import type { PortClipResult } from '@/lib/api/vfxAnm';
 import { useAnmEdit, type UseAnmEditResult } from '../useAnmEdit';
@@ -63,6 +63,9 @@ interface AnmEditProviderProps {
     /** Called after a port lands, with the assets to copy and any effect keys
      *  that did not resolve. */
     onPorted?: (result: PortClipResult) => void;
+    /** Surfaces an edit/port failure to the page, so it shows somewhere the user
+     *  is actually looking rather than only inside an expanded clip card. */
+    onError?: (message: string) => void;
     children: React.ReactNode;
 }
 
@@ -75,6 +78,7 @@ export function AnmEditProvider({
     donorSessionId,
     donorGeneration,
     onPorted,
+    onError,
     children,
 }: AnmEditProviderProps) {
     const edit = useAnmEdit({ sessionId, refresh, onModel, onDirty });
@@ -87,6 +91,18 @@ export function AnmEditProvider({
     const onPortedRef = useRef(onPorted);
     onPortedRef.current = onPorted;
     const publish = useCallback((r: PortClipResult) => onPortedRef.current?.(r), []);
+
+    /* Mirror the edit surface's error into the page status bar. The only other
+       place it renders is inside an EXPANDED clip card, so a failed port —
+       including one refused before it reached the backend — was invisible
+       whenever the cards happened to be collapsed, which reads as the drop
+       silently doing nothing. */
+    const onErrorRef = useRef(onError);
+    onErrorRef.current = onError;
+    const { lastError } = edit;
+    useEffect(() => {
+        if (lastError) onErrorRef.current?.(lastError);
+    }, [lastError]);
 
     const { portClip, portEvent } = edit;
     const portClipIn = useCallback(

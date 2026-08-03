@@ -345,6 +345,14 @@ pub struct ClipMember {
 #[serde(rename_all = "camelCase")]
 pub struct ClipInfo {
     pub name: String,
+    /// The clip map's key exactly as it appears in the bin: a resolved name, or
+    /// `0x…` when the hashtable could not resolve it.
+    ///
+    /// `name` substitutes the `.anm` filename stem for an unresolved key so the
+    /// row reads as something, which makes it a LABEL rather than an identity —
+    /// editing the animation path silently changed it. Anything that renames or
+    /// identifies a clip must use this field instead.
+    pub map_key: String,
     /// `.anm` asset path (ASSETS/...); for a sequencer this is its first member's.
     pub anm_path: Option<String>,
     /// A sequencer's ordered queue; empty for an ordinary atomic clip.
@@ -1150,6 +1158,7 @@ pub fn resolve_clip_graph(bins: &[Bin]) -> Vec<ClipInfo> {
         }
         clips.push(ClipInfo {
             name: clip_display_name(&key, anm_path.as_deref()),
+            map_key: key.clone(),
             anm_path,
             members,
             events: submesh_events(&all_events),

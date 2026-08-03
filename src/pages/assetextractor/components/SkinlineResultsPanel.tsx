@@ -18,7 +18,7 @@ interface Props {
     extractingSkins: Record<string, boolean>;
     extractionProgress: Record<string, string>;
     onSkinClick: (champion: SkinlineChampion, skin: SkinlineSkin) => void;
-    onChromaClick: (chroma: Chroma, skin: SkinlineSkin, championName: string) => void;
+    onChromaClick: (chroma: Chroma, skin: SkinlineSkin, championName: string, championAlias?: string) => void;
     onDownloadSplashArt: (championName: string, championAlias: string, skinNumber: number, skinName: string) => void;
     onYouTubeSkin: (championName: string, skinName: string) => void;
     onOpenInJade: (champion: SkinlineChampion, skin: SkinlineSkin) => void;
@@ -83,7 +83,9 @@ export function SkinlineResultsPanel({
                 {skinlineSearchResults.flatMap(({ champion, skins }) =>
                     skins.map((skin) => {
                         const isSelected = selectedSkins.some((s) => s.name === skin.name && s.champion?.name === champion.name);
-                        const skinKey = `${champion.name}_${skin.skinNumber}`;
+                        // Keyed by alias — see ChampionSkinsPanel: legacy
+                        // ("Jade") champions share the modern display name.
+                        const skinKey = `${champion.alias || champion.name}_${skin.skinNumber}`;
                         const chromas = chromaData[skinKey] || [];
                         const isPreparing = extractingSkins[skinKey] === true;
 
@@ -208,7 +210,7 @@ export function SkinlineResultsPanel({
                                                         offlineMode={offlineMode}
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            onChromaClick(chroma, skin, champion.name);
+                                                            onChromaClick(chroma, skin, champion.name, champion.alias);
                                                         }}
                                                     />
                                                 ))}

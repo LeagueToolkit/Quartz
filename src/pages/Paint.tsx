@@ -28,6 +28,7 @@ import {
 } from '@/lib/api';
 import { useNavigationStore, useNotificationStore, usePaintStore, useUiPrefsStore, type HslValues, type PaintState as PaintStoreState } from '@/lib/stores';
 import { useFileDrop } from '@/lib/util/useFileDrop';
+import { recordRecentBin } from '@/lib/util/recordRecentBin';
 import { DropOverlay, RecentBinsList } from '@/components/ui';
 import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
 import { useSessionFileWatcher } from '@/lib/util/useSessionFileWatcher';
@@ -342,7 +343,7 @@ function Paint() {
                 setExpandedMaterials(new Set());
             }
 
-            useUiPrefsStore.getState().pushRecentBin(selectedPath);
+            recordRecentBin(selectedPath);
 
             setStatusMessage(`Loaded ${newModel.stats.systemCount} systems and ${newModel.stats.emitterCount} emitters`);
         } catch (error) {

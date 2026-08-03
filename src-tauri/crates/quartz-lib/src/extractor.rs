@@ -300,8 +300,84 @@ fn display_name_for_id(id: &str) -> String {
 /// display names with periods/spaces resolve correctly. A previous local copy
 /// stripped quotes/spaces but KEPT the period, turning "Dr. Mundo" into the
 /// non-existent stem "dr.mundo" (the real file is `DrMundo.wad.client`).
+///
+/// Legacy ("Jade") champions have no archive of their own — they ride inside the
+/// modern champion's WAD — so the `jade_` prefix is stripped before resolving.
 pub fn wad_stem_for_name(name: &str) -> String {
-    crate::wad::normalize_champion(name)
+    crate::wad::normalize_champion(strip_jade_prefix(name))
+}
+
+// ── Legacy ("Jade") champions ───────────────────────────────────────────────
+//
+// League re-shipped the pre-rework 2012-era champions under a `Jade_` alias.
+// They have NO WAD of their own: `Annie.wad.client` carries both the modern
+// `annie/` tree and the legacy `jade_annie/` one (~29% of the archive). So the
+// two are separated by character folder, not by file.
+
+/// The character-folder prefix marking the legacy champion set.
+const JADE_PREFIX: &str = "jade_";
+
+/// True when `name` is a legacy champion id/alias (`Jade_Annie`, `jade_ahri`).
+/// Matches on the `jade_` prefix specifically, so a champion merely containing
+/// "jade" is not caught.
+pub fn is_jade_champion(name: &str) -> bool {
+    name.to_lowercase().starts_with(JADE_PREFIX)
+}
+
+/// Drop a leading `jade_` so the name resolves to its parent WAD stem.
+fn strip_jade_prefix(name: &str) -> &str {
+    if is_jade_champion(name) {
+        &name[JADE_PREFIX.len()..]
+    } else {
+        name
+    }
+}
+
+/// The on-disk character folder for a legacy champion, derived from the CDragon
+/// alias rather than the WAD stem: legacy Wukong is aliased `Jade_Wukong` and
+/// his folder is `jade_wukong`, even though his archive is `MonkeyKing.wad`.
+pub fn jade_character_folder(name: &str) -> String {
+    let base = strip_jade_prefix(name)
+        .to_lowercase()
+        .replace(['\'', ' ', '.'], "");
+    format!("{}{}", JADE_PREFIX, base)
+}
+
+/// Which character folders an extraction may seed from.
+///
+/// A champion WAD holds more than one character tree: the champion, its
+/// companions (`annietibbers`, `monkeykingclone`), and — for the 60 reworked
+/// champions — the whole legacy `jade_*` set. An extraction targets exactly one
+/// of those sets.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CharacterScope {
+    /// The modern champion and its companions: every folder except `jade_*`.
+    Modern,
+    /// The legacy set only: every `jade_*` folder, including its companions.
+    Legacy,
+    /// Exactly one named folder — used for TFT, where `Companions.wad` holds
+    /// ~80 pets and `skin<N>.bin` would otherwise match many of them.
+    Exact(String),
+}
+
+impl CharacterScope {
+    /// Whether `folder` (a lowercase character-folder name) is in scope.
+    pub fn accepts(&self, folder: &str) -> bool {
+        match self {
+            CharacterScope::Modern => !folder.starts_with(JADE_PREFIX),
+            CharacterScope::Legacy => folder.starts_with(JADE_PREFIX),
+            CharacterScope::Exact(name) => folder == name,
+        }
+    }
+
+    /// The scope implied by a champion id/alias.
+    pub fn for_champion(name: &str) -> Self {
+        if is_jade_champion(name) {
+            CharacterScope::Legacy
+        } else {
+            CharacterScope::Modern
+        }
+    }
 }
 
 fn title_case(id: &str) -> String {
@@ -394,7 +470,11 @@ where
 {
     let started = std::time::Instant::now();
     let dir = champions_dir(opts.league_root);
+    // Legacy ("Jade") champions have no archive of their own — they ride inside
+    // the modern champion's WAD — so the stem resolves to the parent either way
+    // and the two are told apart by character-folder scope.
     let stem = wad_stem_for_name(opts.champion);
+    let scope = CharacterScope::for_champion(opts.champion);
     let main_wad = dir.join(format!("{}.wad.client", stem));
 
     if !main_wad.exists() {
@@ -406,13 +486,21 @@ where
 
     let effective_skin_id = opts.effective_skin_id();
 
+    // Name the output folder after the character tree actually extracted, so a
+    // legacy dump never collides with the modern one.
+    let folder_stem = if is_jade_champion(opts.champion) {
+        jade_character_folder(opts.champion)
+    } else {
+        stem.clone()
+    };
+
     // Each extraction gets its own wrapper folder inside the chosen output dir
     // (e.g. `<output>/ahri_skin0_extracted/`), so the WAD's internal `data/` +
     // `assets/` trees land inside it instead of scattering loose across the
     // output root. Auto-versioned so re-extracting never overwrites.
     let extract_root = unique_dir(
         opts.output_dir,
-        &skin_folder_name(&stem, effective_skin_id, opts.chroma_id, opts.clean),
+        &skin_folder_name(&folder_stem, effective_skin_id, opts.chroma_id, opts.clean),
     );
     std::fs::create_dir_all(&extract_root).map_err(|e| Error::io_with_path(e, &extract_root))?;
 
@@ -431,16 +519,16 @@ where
     let main = if opts.clean {
         extract_skin_clean(
             &main_wad,
-            &stem,
+            &folder_stem,
             effective_skin_id,
             opts.preserve_hud_icons2d,
             opts.skip_sfx,
-            None,
+            &scope,
             &extract_root,
             &progress,
         )?
     } else {
-        extract_archive(&main_wad, &extract_root, "extracting", &progress)?
+        extract_archive_scoped(&main_wad, &extract_root, "extracting", &scope, &progress)?
     };
     files += main.written as u32;
     skipped += main.skipped as u32;
@@ -572,6 +660,63 @@ where
     wad_explorer::extract_selected(&wad_str, &[], &out_str, Some(&cb))
 }
 
+/// Whole-archive extraction restricted to one character scope.
+///
+/// A champion WAD carries the modern tree and — for the 60 reworked champions —
+/// the legacy `jade_*` one (~29% of the archive). Even the "everything" mode
+/// must respect that split, so this selects the in-scope chunks explicitly
+/// instead of passing an empty (= all) selection. Falls back to a full dump when
+/// the scope excludes nothing, which keeps the common case allocation-free.
+fn extract_archive_scoped<F>(
+    wad_path: &Path,
+    output_dir: &Path,
+    phase: &str,
+    scope: &CharacterScope,
+    progress: &F,
+) -> Result<wad_explorer::ExtractResult>
+where
+    F: Fn(ExtractProgress) + Send + Sync,
+{
+    let (by_path, _by_hex, all_hashes) = resolve_toc(wad_path)?;
+
+    // Chunks whose path the hashtable can't resolve can't be attributed to a
+    // character folder. They're kept for the modern side (the historical
+    // behavior) and dropped for a legacy dump, which must be `jade_*`-only.
+    let mut selection: HashSet<u64> = HashSet::new();
+    let mut excluded = 0usize;
+    for (rel, &hash) in &by_path {
+        if rel_in_scope(rel, scope) {
+            selection.insert(hash);
+        } else {
+            excluded += 1;
+        }
+    }
+    if matches!(scope, CharacterScope::Modern) {
+        let resolved: HashSet<u64> = by_path.values().copied().collect();
+        for h in all_hashes.difference(&resolved) {
+            selection.insert(*h);
+        }
+    }
+
+    if excluded == 0 && matches!(scope, CharacterScope::Modern) {
+        // Nothing to strip — take the cheaper whole-archive path.
+        return extract_archive(wad_path, output_dir, phase, progress);
+    }
+
+    let wad_str = wad_path.to_string_lossy();
+    let out_str = output_dir.to_string_lossy();
+    let cb = move |done: u64, total: u64| {
+        progress(ExtractProgress {
+            phase: phase.to_string(),
+            current: done,
+            total,
+            message: String::new(),
+        });
+    };
+    let selection: Vec<u64> = selection.into_iter().collect();
+    wad_explorer::extract_selected(&wad_str, &selection, &out_str, Some(&cb))
+}
+
 // ── Clean (skin-files-only) extraction ─────────────────────────────────────
 
 /// Normalize a WAD-internal rel path: backslashes → `/`, strip leading `/`,
@@ -640,6 +785,24 @@ fn skin_bin_match<'a>(rel: &'a str, n: u32) -> Option<&'a str> {
     Some(champ)
 }
 
+/// Whether a WAD-relative path is in scope.
+///
+/// Only paths under a character folder are scoped; everything else (shared
+/// particles, materials, spell textures, maps) is common to both the modern and
+/// the legacy tree and stays selectable either way.
+fn rel_in_scope(rel: &str, scope: &CharacterScope) -> bool {
+    let Some(rest) = rel
+        .strip_prefix("assets/characters/")
+        .or_else(|| rel.strip_prefix("data/characters/"))
+    else {
+        return true;
+    };
+    match rest.split_once('/') {
+        Some((folder, _)) => scope.accepts(folder),
+        None => true,
+    }
+}
+
 /// True for a WAD-relative SFX audio bank (`sounds/wwise2016/sfx/*.{bnk,wpk,wem}`).
 /// `rel` is already normalized (lowercase, `/`-separated).
 fn is_sfx_audio_rel(rel: &str) -> bool {
@@ -657,9 +820,10 @@ fn extract_skin_clean<F>(
     skin_id: u32,
     preserve_hud_icons2d: bool,
     skip_sfx: bool,
-    // When set, only seed from this character folder — used for TFT, where the
-    // Companions WAD holds ~80 pets and `skin<N>.bin` matches many of them.
-    champ_filter: Option<&str>,
+    // Which character folders may be seeded from. Champion WADs hold more than
+    // one character tree (companions, and the whole legacy `jade_*` set), and
+    // the Companions WAD holds ~80 pets that `skin<N>.bin` would all match.
+    scope: &CharacterScope,
     out_dir: &Path,
     progress: &F,
 ) -> Result<wad_explorer::ExtractResult>
@@ -684,14 +848,13 @@ where
         all_hashes.contains(&h).then_some(h)
     };
 
-    // Seed: every skin<N>.bin rel present in the resolved TOC. When a
-    // `champ_filter` is given (TFT), restrict to that character folder so the
-    // Companions WAD's other ~80 pets aren't pulled in.
-    let champ_filter = champ_filter.map(|c| c.to_lowercase());
+    // Seed: every in-scope skin<N>.bin rel present in the resolved TOC. The
+    // scope keeps a modern champion's extraction out of the legacy `jade_*`
+    // tree that shares its archive (and vice versa), and pins TFT to one pet.
     let seed_rels: Vec<String> = by_path
         .keys()
         .filter(|rel| match skin_bin_match(rel, skin_id) {
-            Some(folder) => champ_filter.as_deref().map(|f| folder == f).unwrap_or(true),
+            Some(folder) => scope.accepts(folder),
             None => false,
         })
         .cloned()
@@ -760,12 +923,20 @@ where
         if skip_sfx && is_sfx_audio_rel(&rel) {
             continue;
         }
+        // A BIN in one character tree can reference an asset in another; keep
+        // the selection inside the scope so the legacy tree that shares this
+        // archive is never dragged in (and vice versa).
+        if !rel_in_scope(&rel, scope) {
+            continue;
+        }
         if let Some(&hash) = by_path.get(&rel) {
             selection.insert(hash);
         }
     }
 
     if preserve_hud_icons2d {
+        // `stem` is the character folder being extracted (`annie`, or
+        // `jade_annie` for a legacy dump), so this stays inside the scope.
         let prefix = format!("assets/characters/{}/hud/icons2d/", stem);
         for (rel, &hash) in &by_path {
             if rel.starts_with(&prefix) {
@@ -862,7 +1033,7 @@ where
             opts.skin_id,
             opts.preserve_hud_icons2d,
             opts.skip_sfx,
-            Some(&pet_alias),
+            &CharacterScope::Exact(pet_alias.to_lowercase()),
             &extract_root,
             &progress,
         )?
@@ -1424,6 +1595,143 @@ mod tests {
         // (DrMundo.wad.client), never the dotted "dr.mundo".
         assert_eq!(wad_stem_for_name("Dr. Mundo"), "drmundo");
         assert_eq!(wad_stem_for_name("DrMundo"), "drmundo");
+    }
+
+    // ── Legacy ("Jade") champion split ──────────────────────────────────────
+    //
+    // League ships the pre-rework 2012-era champions inside the SAME champion
+    // WAD as the modern one, under a `jade_`-prefixed character folder
+    // (`Annie.wad.client` holds both `annie/` and `jade_annie/`). These tests
+    // pin the rule that an extraction targets exactly one of the two sets.
+
+    #[test]
+    fn character_scope_modern_rejects_jade_folders() {
+        let scope = CharacterScope::Modern;
+        assert!(scope.accepts("annie"));
+        // Companion folders of the modern champion still come along.
+        assert!(scope.accepts("annietibbers"));
+        assert!(scope.accepts("monkeykingclone"));
+        // The legacy set does not.
+        assert!(!scope.accepts("jade_annie"));
+        assert!(!scope.accepts("jade_annie_tibbers"));
+        assert!(!scope.accepts("jade_wukong"));
+    }
+
+    #[test]
+    fn character_scope_legacy_keeps_only_jade_folders() {
+        let scope = CharacterScope::Legacy;
+        assert!(scope.accepts("jade_annie"));
+        // Legacy companions (jade_annie_tibbers, jade_teemomushroom, ...).
+        assert!(scope.accepts("jade_annie_tibbers"));
+        assert!(scope.accepts("jade_nasusult"));
+        // Modern folders are excluded.
+        assert!(!scope.accepts("annie"));
+        assert!(!scope.accepts("annietibbers"));
+    }
+
+    #[test]
+    fn character_scope_exact_is_unchanged_for_tft() {
+        // TFT pins one pet folder out of ~80 in Companions.wad.
+        let scope = CharacterScope::Exact("petturtle".to_string());
+        assert!(scope.accepts("petturtle"));
+        assert!(!scope.accepts("petdragon"));
+        assert!(!scope.accepts("jade_annie"));
+    }
+
+    #[test]
+    fn jade_champion_detection() {
+        assert!(is_jade_champion("Jade_Annie"));
+        assert!(is_jade_champion("jade_annie"));
+        assert!(is_jade_champion("Jade_Wukong"));
+        assert!(!is_jade_champion("Annie"));
+        assert!(!is_jade_champion("annie"));
+        // A modern champion whose name merely contains "jade" must not trip it.
+        assert!(!is_jade_champion("Jadelike"));
+    }
+
+    #[test]
+    fn jade_champion_resolves_to_parent_wad_stem() {
+        // The legacy set has no WAD of its own — it rides inside the modern
+        // champion's archive, so `Jade_Annie` must resolve to `annie`.
+        assert_eq!(wad_stem_for_name("Jade_Annie"), "annie");
+        assert_eq!(wad_stem_for_name("jade_ahri"), "ahri");
+        assert_eq!(wad_stem_for_name("Jade_TwistedFate"), "twistedfate");
+        assert_eq!(wad_stem_for_name("Jade_DrMundo"), "drmundo");
+        // CDragon aliases the legacy Wukong as `Jade_Wukong`; his WAD is
+        // MonkeyKing.wad.client, so the existing Wukong mapping must still win.
+        assert_eq!(wad_stem_for_name("Jade_Wukong"), "monkeyking");
+        assert_eq!(wad_stem_for_name("Jade_Nunu"), "nunu");
+    }
+
+    #[test]
+    fn jade_character_folder_uses_cdragon_alias_not_wad_stem() {
+        // The on-disk folder is `jade_wukong`, NOT `jade_monkeyking`.
+        assert_eq!(jade_character_folder("Jade_Wukong"), "jade_wukong");
+        assert_eq!(jade_character_folder("Jade_Annie"), "jade_annie");
+        assert_eq!(jade_character_folder("jade_kogmaw"), "jade_kogmaw");
+    }
+
+    #[test]
+    fn legacy_extraction_folder_name_is_distinct_from_modern() {
+        // The two must never collide in the output directory.
+        let modern = skin_folder_name("annie", 1, None, true);
+        let legacy = skin_folder_name("jade_annie", 1, None, true);
+        assert_ne!(modern, legacy);
+        assert_eq!(legacy, "jade_annie_skin1_extracted_clean");
+    }
+
+    /// The real TOC shape of `Annie.wad.client`: modern Annie + her companion,
+    /// and the whole legacy set riding in the same archive.
+    const ANNIE_WAD_SKIN1_BINS: &[&str] = &[
+        "data/characters/annie/skins/skin1.bin",
+        "data/characters/annietibbers/skins/skin1.bin",
+        "data/characters/jade_annie/skins/skin1.bin",
+        "data/characters/jade_annie_tibbers/skins/skin1.bin",
+    ];
+
+    fn seeds_for(rels: &[&str], skin: u32, scope: &CharacterScope) -> Vec<String> {
+        rels.iter()
+            .filter(|rel| match skin_bin_match(rel, skin) {
+                Some(folder) => scope.accepts(folder),
+                None => false,
+            })
+            .map(|s| s.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn modern_extraction_does_not_seed_legacy_skin_bins() {
+        // The bug: extracting Annie also pulled in ~29% of the archive as
+        // `jade_annie` assets, because seeding accepted ANY character folder.
+        let seeds = seeds_for(ANNIE_WAD_SKIN1_BINS, 1, &CharacterScope::Modern);
+        assert_eq!(
+            seeds,
+            vec![
+                "data/characters/annie/skins/skin1.bin",
+                "data/characters/annietibbers/skins/skin1.bin",
+            ]
+        );
+    }
+
+    #[test]
+    fn legacy_extraction_seeds_only_legacy_skin_bins() {
+        let seeds = seeds_for(ANNIE_WAD_SKIN1_BINS, 1, &CharacterScope::Legacy);
+        assert_eq!(
+            seeds,
+            vec![
+                "data/characters/jade_annie/skins/skin1.bin",
+                "data/characters/jade_annie_tibbers/skins/skin1.bin",
+            ]
+        );
+    }
+
+    #[test]
+    fn scope_for_champion_picks_the_right_side() {
+        assert_eq!(CharacterScope::for_champion("Annie"), CharacterScope::Modern);
+        assert_eq!(
+            CharacterScope::for_champion("Jade_Annie"),
+            CharacterScope::Legacy
+        );
     }
 
     fn opts_with<'a>(skin_id: u32, chroma_id: Option<u32>) -> ExtractOptions<'a> {

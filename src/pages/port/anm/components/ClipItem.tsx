@@ -13,23 +13,28 @@
  * All three were computable in the legacy page and none were shown; the mask and
  * track names in particular required expanding the clip to discover.
  *
- * Editing lives INSIDE the expanded body, never in a modal. The collapsed row is
- * unchanged, so a 100-clip list still scans the way it did before; the fields
- * only appear for the one clip you opened. Field rows are AnmFieldRow, so the
- * clip's own fields and its events' fields behave identically.
+ * The clip's OWN fields are edited in ClipEditModal, opened by the pencil in the
+ * header. They used to be a block of live inputs inside the expanded body, which
+ * made an opened clip read as a form with its events buried under it. The card
+ * now shows a read-only ClipSummary instead, so expanding a clip shows what a
+ * clip mostly is: its events.
+ *
+ * Event fields stayed inline. They are edited far more often than a clip's track
+ * or mask, and each one already sits on its own row inside the event it belongs
+ * to, so a modal per event would be friction rather than focus.
  */
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import AddIcon from '@mui/icons-material/Add';
 import { confirm } from '@tauri-apps/plugin-dialog';
 import EventItem from './EventItem';
-import AnmFieldRow from './AnmFieldRow';
-import ClipFields from './ClipFields';
+import ClipSummary from './ClipSummary';
+import ClipEditModal, { draftOf, type ClipSavePlan } from './ClipEditModal';
 import { useAnmEditContext } from './AnmEditContext';
 import { NEW_EVENT_KINDS } from '../eventEditFields';
 import { usePortDrag, usePortDropZone } from '../../usePortDrag';
-import type { AnmValue, ClipField } from '@/lib/api/vfxAnm';
 import type { AnmSystem } from '../anmModel';
 import { isAnmEmitter } from '../anmModel';
 
@@ -70,11 +75,18 @@ export function takeDraggedClip() {
     return carried;
 }
 
-/** An unresolved key renders as its hash; mark it so it reads as "unnamed"
- *  rather than as corrupt data. */
-function ClipName({ name }: { name: string }) {
-    const isHash = /^0x[0-9a-f]{8}$/i.test(name);
-    return <span className={isHash ? 'anm-clip__hash' : undefined}>{name}</span>;
+/** The clip's map key, plus the `.anm` stem when the key is an unresolved hash.
+ *  The hash is the title because it is the clip's identity — what a rename
+ *  writes — and the stem rides alongside as the readable hint, so the row still
+ *  says "Recall" without the name being derived from the animation path. */
+function ClipName({ name, anmLabel }: { name: string; anmLabel: string | null }) {
+    const isHash = /^0x[0-9a-f]+$/i.test(name);
+    return (
+        <>
+            <span className={isHash ? 'anm-clip__hash' : undefined}>{name}</span>
+            {anmLabel && <span className="anm-clip__anmlabel">({anmLabel})</span>}
+        </>
+    );
 }
 
 function ClipItem({ system, isCollapsed, toggleCollapse }: ClipItemProps) {
@@ -85,6 +97,7 @@ function ClipItem({ system, isCollapsed, toggleCollapse }: ClipItemProps) {
     const busy = edit?.busyKey === rowKey;
 
     const [adding, setAdding] = useState(false);
+    const [editOpen, setEditOpen] = useState(false);
     /* Events created in this card's lifetime, so only THEY carry the hash-name
        note. Keyed by the event's map key, which is what the note is about. */
     const [createdKeys, setCreatedKeys] = useState<Set<string>>(new Set());
@@ -98,38 +111,22 @@ function ClipItem({ system, isCollapsed, toggleCollapse }: ClipItemProps) {
     const cardRef = useRef<HTMLDivElement>(null);
     const [isDropOver, setIsDropOver] = useState(false);
 
-    const anmFile = meta.anmPath ? meta.anmPath.split(/[\\/]/).pop() : null;
-
-    const commit = useCallback(
-        (field: ClipField, value: AnmValue) => {
-            void edit?.setClipField(rowKey, system.path, field, value);
-        },
-        [edit, rowKey, system.path],
-    );
-
-    const handleRename = useCallback(
-        (value: AnmValue) => {
-            if (typeof value !== 'string' || !value || value === system.name) return;
-            /* Renaming rekeys the clip but does NOT rewrite the references to
-               it, so another clip's mClipNameList or condition branch can be
-               left pointing at a name that no longer exists. Confirm only when
-               there is actually something to dangle. */
+    /* Renaming rekeys the clip but does NOT rewrite the references to it, so
+       another clip's mClipNameList or condition branch can be left pointing at a
+       name that no longer exists. Confirm only when there is actually something
+       to dangle. Returns false when the user backs out. */
+    const confirmRename = useCallback(
+        async (nextName: string) => {
             const risky = meta.memberCount > 0 || meta.warnings.length > 0;
-            const run = async () => {
-                if (risky) {
-                    const ok = await confirm(
-                        'References to the old name are not updated, so any clip that ' +
-                            'sequences or branches to this one will dangle until you fix it. ' +
-                            'The card will flag the dangling reference afterwards.',
-                        { title: `Rename "${system.name}" to "${value}"?`, kind: 'warning' },
-                    );
-                    if (!ok) return;
-                }
-                await edit?.renameClip(rowKey, system.path, value);
-            };
-            void run();
+            if (!risky) return true;
+            return confirm(
+                'References to the old name are not updated, so any clip that ' +
+                    'sequences or branches to this one will dangle until you fix it. ' +
+                    'The card will flag the dangling reference afterwards.',
+                { title: `Rename "${system.name}" to "${nextName}"?`, kind: 'warning' },
+            );
         },
-        [edit, rowKey, system.path, system.name, meta.memberCount, meta.warnings.length],
+        [system.name, meta.memberCount, meta.warnings.length],
     );
 
     const handleDelete = useCallback(() => {
@@ -174,8 +171,16 @@ function ClipItem({ system, isCollapsed, toggleCollapse }: ClipItemProps) {
     /* A clip card accepts an event drop: from another clip it is a move, from
        this clip it is a reorder. Registered even when read-only so the zone id
        stays stable; `accepts` is what gates it. */
+    /* Scope the zone id to the SESSION, not just the clip key. A clip key is
+       `bin:entry:steps` — an address inside its own session — so a clip sitting
+       at the same structural position in the donor and the target produces the
+       SAME key. Drop zones live in a Map keyed by id, so the two cards collided
+       and only the last registered one survived: dropping an event on the
+       target's card hit nothing at all, which is the "nothing happens" report.
+       A donor/target pair with a clip of the same shape is the normal case, not
+       an edge case. */
     usePortDropZone(
-        `anm-clip-${system.key}`,
+        `anm-clip-${edit?.sessionId ?? 'ro'}-${system.key}`,
         cardRef,
         (payload) => editable && payload.kind === 'emitter',
         (payload) => {
@@ -215,6 +220,11 @@ function ClipItem({ system, isCollapsed, toggleCollapse }: ClipItemProps) {
         setIsDropOver,
     );
 
+    /* `edit?.sessionId` is read here and MUST stay in the deps. Without it the
+       callback kept the value from the first render — null, before the bin
+       finished opening — so a donor event was stamped with a null session. The
+       drop then compared null against the target's id, and every dragged event
+       looked like it came from somewhere that no longer existed. */
     const onEventDragStart = useCallback(
         (emitter: AnmSystem['emitters'][number], index: number, e: React.PointerEvent) => {
             dragged = {
@@ -234,7 +244,7 @@ function ClipItem({ system, isCollapsed, toggleCollapse }: ClipItemProps) {
                 e,
             );
         },
-        [startDrag, system.key],
+        [startDrag, system.key, edit?.sessionId],
     );
 
     /* Clip-level rows. Only the fields the class actually has: true/false clip
@@ -250,6 +260,56 @@ function ClipItem({ system, isCollapsed, toggleCollapse }: ClipItemProps) {
     const clipStartFrame = framed.startFrame ?? null;
     const clipEndFrame = framed.endFrame ?? null;
     const isDragSource = dragging?.kind === 'emitter' && dragging.sourceSystemKey === system.key;
+
+    /* The modal's baseline AND its diff source. Recomputed from the model, so a
+       landed save re-seeds it and a reopened modal is never stale. */
+    const initialDraft = useMemo(
+        () =>
+            draftOf({
+                name: system.name,
+                trackDataName: meta.trackDataName,
+                maskDataName: meta.maskDataName,
+                anmPath: meta.anmPath,
+                startFrame: clipStartFrame,
+                endFrame: clipEndFrame,
+                loops: meta.loops,
+                trueClip: condition?.trueClip ?? null,
+                falseClip: condition?.falseClip ?? null,
+            }),
+        [
+            system.name, meta.trackDataName, meta.maskDataName, meta.anmPath,
+            clipStartFrame, clipEndFrame, meta.loops,
+            condition?.trueClip, condition?.falseClip,
+        ],
+    );
+
+    /* Apply a buffered edit.
+     *
+     * There is no batch clip-field command, so each changed field is its own
+     * write. They are issued sequentially and awaited: `setClipField` addresses
+     * the clip by PATH, and firing them concurrently would race several writes
+     * against the same entry.
+     *
+     * The rename goes LAST for the same reason — it rekeys the clip, which
+     * invalidates the path every other write depends on. */
+    const handleSaveClip = useCallback(
+        (plan: ClipSavePlan) => {
+            if (!edit) return;
+            void (async () => {
+                for (const { field, value } of plan.edits) {
+                    const ok = await edit.setClipField(rowKey, system.path, field, value);
+                    if (!ok) return; // Leave the modal open showing the error.
+                }
+                if (plan.rename !== null) {
+                    if (!(await confirmRename(plan.rename))) return;
+                    const ok = await edit.renameClip(rowKey, system.path, plan.rename);
+                    if (!ok) return;
+                }
+                setEditOpen(false);
+            })();
+        },
+        [edit, rowKey, system.path, confirmRename],
+    );
 
     return (
         <div
@@ -311,7 +371,7 @@ function ClipItem({ system, isCollapsed, toggleCollapse }: ClipItemProps) {
                             className="ellipsis"
                             style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.95rem' }}
                         >
-                            <ClipName name={system.name} />
+                            <ClipName name={system.name} anmLabel={meta.anmLabel} />
                         </div>
                     </div>
 
@@ -334,6 +394,21 @@ function ClipItem({ system, isCollapsed, toggleCollapse }: ClipItemProps) {
                     >
                         {meta.memberCount > 0 ? `${meta.memberCount}▸` : meta.eventCount}
                     </span>
+                    {editable && (
+                        <button
+                            type="button"
+                            data-no-drag
+                            className="anm-clip__edit"
+                            disabled={busy}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setEditOpen(true);
+                            }}
+                            title="Edit this clip's properties"
+                        >
+                            <EditOutlinedIcon sx={{ fontSize: 16 }} />
+                        </button>
+                    )}
                     {editable && (
                         <button
                             type="button"
@@ -366,23 +441,20 @@ function ClipItem({ system, isCollapsed, toggleCollapse }: ClipItemProps) {
                 </div>
             )}
 
-            {/* Clip-level properties, above the events, matching the bin: the
-                clip writes mTrackDataName / mMaskDataName before mEventDataMap. */}
+            {/* A read-only digest of the clip's own fields. They are edited in
+                ClipEditModal now; leaving the inputs here as well would mean two
+                ways to write the same value, one of them live and one buffered. */}
             {!isCollapsed && (
-                <ClipFields
-                    name={system.name}
+                <ClipSummary
                     trackDataName={meta.trackDataName}
                     maskDataName={meta.maskDataName}
+                    anmPath={meta.anmPath}
                     startFrame={clipStartFrame}
                     endFrame={clipEndFrame}
                     loops={meta.loops}
                     isCondition={!!condition}
                     trueClip={condition?.trueClip ?? null}
                     falseClip={condition?.falseClip ?? null}
-                    busy={busy}
-                    editable={editable}
-                    onCommit={commit}
-                    onRename={handleRename}
                 />
             )}
 
@@ -453,20 +525,17 @@ function ClipItem({ system, isCollapsed, toggleCollapse }: ClipItemProps) {
                 </div>
             )}
 
-            {/* Last, as in the bin: mAnimationResourceData is written after the
-                event map. Full path in the tooltip, filename inline. */}
-            {!isCollapsed && (anmFile || editable) && (
-                <div className="anm-clip__anm" title={meta.anmPath ?? undefined}>
-                    <AnmFieldRow
-                        label="Animation"
-                        value={meta.anmPath}
-                        type="text"
-                        busy={busy}
-                        editable={editable}
-                        title={meta.anmPath ?? undefined}
-                        onCommit={(v) => commit('anmPath', v)}
-                    />
-                </div>
+            {editOpen && (
+                <ClipEditModal
+                    open={editOpen}
+                    initial={initialDraft}
+                    isCondition={!!condition}
+                    kindLabel={meta.kindLabel}
+                    busy={busy}
+                    error={edit?.lastError ?? null}
+                    onSave={handleSaveClip}
+                    onClose={() => setEditOpen(false)}
+                />
             )}
         </div>
     );

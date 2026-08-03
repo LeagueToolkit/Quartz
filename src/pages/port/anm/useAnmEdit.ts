@@ -29,6 +29,9 @@ import {
     vfxAnmReorderEvent,
     vfxAnmSetClipField,
     vfxAnmSetEventField,
+    vfxAnmSetRawNode,
+    vfxAnmAddRawField,
+    vfxAnmRemoveRawField,
     type AnmClipSpec,
     type AnmEventSpec,
     type AnmValue,
@@ -37,6 +40,7 @@ import {
     type PortClipResult,
 } from '@/lib/api/vfxAnm';
 import type { AnmModel, VfxPath } from '@/lib/api/vfxSession';
+import type { JsonBinValue } from '@/lib/api/bineditor';
 import { log } from '@/lib/util/logger';
 
 interface UseAnmEditArgs {
@@ -69,6 +73,15 @@ export interface UseAnmEditResult {
 
     setClipField: (busyKey: string, clip: VfxPath, field: ClipField, value: AnmValue) => Promise<boolean>;
     setEventField: (busyKey: string, event: VfxPath, field: EventField, value: AnmValue) => Promise<boolean>;
+    /** Write any node by path — the escape hatch for fields `EventField` does
+     *  not name. See `vfx_anm_set_raw_node`; type changes are rejected. */
+    setRawNode: (busyKey: string, path: VfxPath, value: JsonBinValue) => Promise<boolean>;
+    /** Create a field the structure does not carry. League omits a field holding
+     *  its default, so most of a class's vocabulary is absent from the bin and
+     *  unreachable by editing alone. `name` accepts a literal `0x…`. */
+    addRawField: (busyKey: string, parent: VfxPath, name: string, value: JsonBinValue) => Promise<boolean>;
+    /** Delete a field, restoring the defaulted (absent) state. */
+    removeRawField: (busyKey: string, path: VfxPath) => Promise<boolean>;
     renameClip: (busyKey: string, clip: VfxPath, newName: string) => Promise<boolean>;
     renameEvent: (busyKey: string, event: VfxPath, newName: string) => Promise<boolean>;
     deleteClip: (busyKey: string, clip: VfxPath) => Promise<boolean>;
@@ -214,6 +227,26 @@ export function useAnmEdit({
             run(key, (s) => vfxAnmSetEventField(s, event, field, value)),
         [run],
     );
+    /* Write any node by path, for fields the typed `EventField` vocabulary does
+       not name (a particle event's nested bone pairs, and every field of the
+       event classes the read layer does not model). */
+    const setRawNode = useCallback(
+        (key: string, path: VfxPath, value: JsonBinValue) =>
+            run(key, (s) => vfxAnmSetRawNode(s, path, value)),
+        [run],
+    );
+    /* League omits a field that still holds its default, so most of a class's
+       vocabulary is ABSENT from the bin rather than empty. Adding is how those
+       fields come into existence; removing restores the defaulted state. */
+    const addRawField = useCallback(
+        (key: string, parent: VfxPath, name: string, value: JsonBinValue) =>
+            run(key, (s) => vfxAnmAddRawField(s, parent, name, value)),
+        [run],
+    );
+    const removeRawField = useCallback(
+        (key: string, path: VfxPath) => run(key, (s) => vfxAnmRemoveRawField(s, path)),
+        [run],
+    );
     const renameClip = useCallback(
         (key: string, clip: VfxPath, newName: string) =>
             run(key, (s) => vfxAnmRenameClip(s, clip, newName)),
@@ -317,6 +350,9 @@ export function useAnmEdit({
         disabled: sessionId === null,
         setClipField,
         setEventField,
+        setRawNode,
+        addRawField,
+        removeRawField,
         renameClip,
         renameEvent,
         deleteClip,

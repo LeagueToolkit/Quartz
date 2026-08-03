@@ -51,7 +51,9 @@ export default function DonorColumn(props: DonorColumnProps) {
     } = props;
 
     const safeDonorSystems = donorSystems || {};
-    const hasBin = Object.keys(safeDonorSystems).length > 0;
+    /* See TargetColumn: in ANM mode the clip list is the content, so an
+       animation bin with no VFX systems still counts as loaded. */
+    const hasBin = !!anmSlot || Object.keys(safeDonorSystems).length > 0;
 
     const handleFileDrop = useCallback((filePath: string) => {
         if (typeof processDonorBin === 'function') processDonorBin(filePath);
@@ -127,8 +129,12 @@ export default function DonorColumn(props: DonorColumnProps) {
             >
                 {binLoading ? (
                     <PortSystemSkeleton isTarget={false} />
-                ) : Object.keys(safeDonorSystems).length > 0 ? (
+                ) : anmSlot || Object.keys(safeDonorSystems).length > 0 ? (
                     <div ref={donorListRef} style={{ width: '100%', height: '100%', overflow: 'auto' }}>
+                        {/* `anmSlot` also guards the branch above: an animation bin
+                            can have zero VFX systems, and gating on that count alone
+                            left the clip list unmounted so there was nothing to drag
+                            from. See TargetColumn for the matching note. */}
                         {anmSlot ?? <ParticleSystemList systems={filteredDonorSystems} isTarget={false} {...props} />}
                     </div>
                 ) : (

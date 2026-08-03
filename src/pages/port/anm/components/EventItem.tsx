@@ -23,9 +23,12 @@ import type { ReactNode } from 'react';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { confirm } from '@tauri-apps/plugin-dialog';
 import AnmFieldRow from './AnmFieldRow';
+import RawFields from './RawFields';
 import { useAnmEditContext } from './AnmEditContext';
 import { eventEditRows } from '../eventEditFields';
 import type { AnmValue, EventField } from '@/lib/api/vfxAnm';
+import type { JsonBinValue } from '@/lib/api/bineditor';
+import type { VfxPath } from '@/lib/api/vfxSession';
 import type { AnmEmitter, AnimEventType } from '../anmModel';
 
 /* Monochrome geometric glyphs, tinted per class, rather than the legacy page's
@@ -79,6 +82,34 @@ function EventItem({ emitter, actions, index = 0, justCreated, onDragStart, drop
             void edit?.setEventField(rowKey, meta.event.addr, field, value);
         },
         [edit, rowKey, meta.event.addr],
+    );
+
+    /* Raw edits go straight to the session rather than through `setEventField`,
+       which only speaks the typed `EventField` vocabulary. Bumping the revision
+       re-reads the node: the projection is what tells the rows what is actually
+       in the tree now, and a landed write can change more than the one field
+       (a list write renumbers the indices after it). */
+    const [rawRevision, setRawRevision] = useState(0);
+    const commitRaw = useCallback(
+        (path: VfxPath, value: JsonBinValue) => {
+            if (!edit?.setRawNode) return;
+            void edit.setRawNode(rowKey, path, value).then(() => setRawRevision((r) => r + 1));
+        },
+        [edit, rowKey],
+    );
+    const addRaw = useCallback(
+        (parent: VfxPath, name: string, value: JsonBinValue) => {
+            if (!edit?.addRawField) return;
+            void edit.addRawField(rowKey, parent, name, value).then(() => setRawRevision((r) => r + 1));
+        },
+        [edit, rowKey],
+    );
+    const removeRaw = useCallback(
+        (path: VfxPath) => {
+            if (!edit?.removeRawField) return;
+            void edit.removeRawField(rowKey, path).then(() => setRawRevision((r) => r + 1));
+        },
+        [edit, rowKey],
     );
 
     const handleDelete = useCallback(async () => {
@@ -191,12 +222,27 @@ function EventItem({ emitter, actions, index = 0, justCreated, onDragStart, drop
                                 onCommit={(v) => commit(r.field, v)}
                             />
                         ))}
-                        {rows.length === 0 && (
-                            <div className="anm-ev__nofields">
-                                This event class is preserved verbatim; none of its fields are
-                                addressable yet.
-                            </div>
-                        )}
+                        {/* Everything the typed rows above do not cover: the
+                            nested bone pairs on a particle event, and every
+                            field of a class nothing models — which used to be
+                            the whole event, shown as an un-editable hash.
+                            Always offered, because even a modelled class can
+                            carry fields the read layer does not name. */}
+                        <details className="anm-ev__raw" open={rows.length === 0}>
+                            <summary className="anm-ev__raw-summary">
+                                {rows.length === 0 ? 'All fields' : 'Advanced'}
+                            </summary>
+                            <RawFields
+                                sessionId={edit?.sessionId ?? null}
+                                path={meta.event.addr}
+                                revision={rawRevision}
+                                busy={busy}
+                                editable={editable}
+                                onCommit={commitRaw}
+                                onAdd={addRaw}
+                                onRemove={removeRaw}
+                            />
+                        </details>
                     </div>
                 )}
             </div>

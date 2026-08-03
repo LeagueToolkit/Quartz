@@ -59,7 +59,10 @@ export default function TargetColumn(props: TargetColumnProps) {
     } = props;
 
     const safeTargetSystems = targetSystems || {};
-    const hasBin = Object.keys(safeTargetSystems).length > 0;
+    /* In ANM mode the column's content is the clip list, which comes from the
+       animation model — an animation bin can hold zero VFX systems, so the VFX
+       count alone would read as "no bin" and disable the filter. */
+    const hasBin = !!anmSlot || Object.keys(safeTargetSystems).length > 0;
 
     const handleFileDrop = useCallback((filePath: string) => {
         if (typeof processTargetBin === 'function') processTargetBin(filePath);
@@ -71,11 +74,16 @@ export default function TargetColumn(props: TargetColumnProps) {
     // by the individual target system rows, so this zone ignores them. Reuse the
     // bin-drop hook's element ref (spread via fileDrop.handlers) so we don't add
     // a second `ref` to the same node.
+    //
+    // In ANM mode this zone stands down entirely. A dragged CLIP also travels as
+    // `kind: 'system'`, and this zone wraps the clip list, so accepting here
+    // would hand clips to `dropDonorSystem`, which looks them up in the VFX map,
+    // misses, and reports "no VFX content". Clips belong to `anm-clip-list`.
     const [isSystemDropOver, setIsSystemDropOver] = useState(false);
     usePortDropZone(
         'target-column',
         fileDrop.zoneRef,
-        (payload) => payload.kind === 'system',
+        (payload) => !anmSlot && payload.kind === 'system',
         (payload) => {
             if (payload.kind === 'system') dropDonorSystem?.(payload);
         },
@@ -157,7 +165,7 @@ export default function TargetColumn(props: TargetColumnProps) {
                 {isDragOverVfx && <DropOverlay label="Drop to add VFX system" />}
                 {binLoading ? (
                     <PortSystemSkeleton isTarget />
-                ) : Object.keys(safeTargetSystems).length > 0 ? (
+                ) : anmSlot || Object.keys(safeTargetSystems).length > 0 ? (
                     <div
                         ref={targetListRef}
                         style={{ width: '100%', height: '100%', overflow: 'auto', background: 'transparent' }}
@@ -169,7 +177,13 @@ export default function TargetColumn(props: TargetColumnProps) {
                         onDrop={(e) => processVfxSystemDrop(e, 'target list container')}
                     >
                         {/* ANM mode swaps only the list body: the toolbar, search,
-                            drop zone and empty states are identical in both modes. */}
+                            drop zone and empty states are identical in both modes.
+                            The branch above also tests `anmSlot`, because clips come
+                            from the animation model, not from `targetSystems`: gating
+                            on VFX count alone kept the ClipList (and with it the
+                            `anm-clip-list` drop zone) unmounted for an animation bin
+                            with no VFX systems, so clip drops silently fell through
+                            to the column zone, which rejects them. */}
                         {anmSlot ?? <ParticleSystemList systems={filteredTargetSystems} isTarget {...props} />}
                     </div>
                 ) : (

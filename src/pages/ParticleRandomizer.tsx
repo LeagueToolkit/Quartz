@@ -20,6 +20,7 @@ import { backupCreate, readBin, writeBin } from '@/lib/api';
 import { useUiPrefsStore } from '@/lib/stores';
 import { useExistingRecentBins } from '@/lib/util/useExistingRecentBins';
 import { useFileDrop } from '@/lib/util/useFileDrop';
+import { recordRecentBin } from '@/lib/util/recordRecentBin';
 import { useJadeBin } from '@/lib/jade/jadeInterop';
 
 import { parseVfxFile, type ParsedFile, type Emitter } from './particlerandomizer/parser';
@@ -164,7 +165,7 @@ export function ParticleRandomizer() {
             } else {
                 setStatus('File loaded but no VFX systems found', 'error');
             }
-            useUiPrefsStore.getState().pushRecentBin(filePath);
+            recordRecentBin(filePath);
         } catch (error) {
             console.error('Load error:', error);
             setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');

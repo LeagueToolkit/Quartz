@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePortStore } from '@/lib/stores/portStore';
 import { useUiPrefsStore } from '@/lib/stores';
+import { useExplorerStore } from '@/components/explorer/explorerStore';
 import { log } from '@/lib/util/logger';
-import { pickBinPath } from './utils/loadBin';
+import { binRecentsKey, pickBinPath } from './utils/loadBin';
 import {
     vfxOpen,
     vfxClose,
@@ -522,6 +523,11 @@ export default function usePort() {
             setCollapsedTargetSystems(new Set(model.systems.map((s) => s.key)));
             setSelectedTargetSystem(null);
             useUiPrefsStore.getState().pushRecentBinFor('target', filePath);
+            /* The explorer's sidebar has to learn about a file that arrived by
+               drag-and-drop too, since a drop never opens the picker. Into the
+               TARGET's own bucket: a bin dropped on one column must not surface
+               in the other column's Recent list. */
+            useExplorerStore.getState().addRecent(binRecentsKey('target'), filePath);
             setStatusMessage(`Target bin loaded: ${model.systems.length} systems found`);
         } catch (error) {
             setStatusMessage(`Error: ${(error as Error).message}`);
@@ -566,7 +572,10 @@ export default function usePort() {
             setDonorModel(model);
             setDonorPath(filePath);
             setCollapsedDonorSystems(new Set(model.systems.map((s) => s.key)));
-            if (recordRecent) useUiPrefsStore.getState().pushRecentBinFor('donor', filePath);
+            if (recordRecent) {
+                useUiPrefsStore.getState().pushRecentBinFor('donor', filePath);
+                useExplorerStore.getState().addRecent(binRecentsKey('donor'), filePath);
+            }
             setStatusMessage(`Donor bin loaded: ${model.systems.length} systems found`);
         } catch (error) {
             // Leave the donor cleared rather than pointing at a closed session.
@@ -579,12 +588,12 @@ export default function usePort() {
     }, []);
 
     const handleOpenTargetBin = useCallback(async () => {
-        const p = await pickBinPath();
+        const p = await pickBinPath('target');
         if (p) await processTargetBin(p);
     }, [processTargetBin]);
 
     const handleOpenDonorBin = useCallback(async () => {
-        const p = await pickBinPath();
+        const p = await pickBinPath('donor');
         if (p) await processDonorBin(p);
     }, [processDonorBin]);
 
@@ -1446,6 +1455,10 @@ export default function usePort() {
         donorModel,
         targetSystems,
         donorSystems,
+        /* Exposed so an ANM clip port can refresh the VFX list: that command
+           writes VFX systems into the session but answers with the ANM
+           projection only, so the VFX model has to be re-read separately. */
+        applyTargetModel,
         setDonorPath,
         setDonorTempRoot,
         statusMessage,

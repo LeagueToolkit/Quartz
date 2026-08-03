@@ -278,11 +278,17 @@
     filter: drop-shadow(0 0 5px color-mix(in oklab, var(--accent-primary) 70%, transparent));
 }
 /* Active marker sits on the bottom edge here (the rail uses a left pill; a
-   horizontal strip reads better with an underline). */
+   horizontal strip reads better with an underline).
+
+   `bottom: 0`, NOT a negative offset. The buttons live inside
+   `.q-topnav-strip`, which sets `overflow-y: hidden` so the horizontal scroll
+   never grows a vertical bar — and that clipped a marker hanging below the
+   button box. Only Settings showed one, because it renders outside the strip.
+   Keeping the marker inside the button's own bounds makes it survive. */
 .q-topnavbtn.is-active::before {
     content: '';
     position: absolute;
-    bottom: -2px;
+    bottom: 0;
     left: 50%;
     transform: translateX(-50%);
     width: 18px;
@@ -450,10 +456,15 @@
     color: var(--accent-primary);
     filter: drop-shadow(0 0 5px color-mix(in oklab, var(--accent-primary) 70%, transparent));
 }
+/* `left: 0`, NOT a negative offset — same reason as the titlebar's underline:
+   the rail's middle group is `.q-rail-scroll`, which sets `overflow-x: hidden`
+   so the vertical scroll never grows a horizontal bar. A pill hanging left of
+   the button was clipped by it, which is why only Settings appeared marked —
+   it sits in `.q-rail-bottom`, outside the scroll container. */
 .q-navbtn.is-active::before {
     content: '';
     position: absolute;
-    left: -8px;
+    left: 0;
     top: 50%;
     transform: translateY(-50%);
     width: 3px;

@@ -12,7 +12,9 @@ the return value, so no command needs a separate refresh round-trip. */
 
 use quartz_lib::vfx_session::anm::ops::{self, AnmValue, ClipField, EventField};
 use quartz_lib::vfx_session::anm::port::{self, PortClipResult};
+use quartz_lib::bineditor::JsonBinValue;
 use quartz_lib::vfx_session::anm::project::AnmModel;
+use quartz_lib::vfx_session::anm::raw::{self, RawNode};
 use quartz_lib::vfx_session::anm::structure::{self, NewClip, NewEvent};
 use quartz_lib::vfx_session::path::VfxPath;
 
@@ -215,4 +217,54 @@ pub async fn vfx_anm_port_event(
             donor_generation,
         )
     )
+}
+
+// ── Raw node access ──────────────────────────────────────────────────────────
+
+/// Project any node in the graph into its editable fields.
+///
+/// The typed commands above cover the seven event classes the read layer models.
+/// This reaches everything else: the bone bindings nested inside a particle
+/// event, and the event classes that arrive as `Unknown` because nothing models
+/// them (`JointSnapEventData`, `FadeEventData`, `SpringPhysicsEventData`, ...).
+#[tauri::command]
+pub async fn vfx_anm_raw_node(session_id: u64, path: VfxPath) -> Result<RawNode, String> {
+    anm_command!("Read node", raw::raw_node(session_id, &path))
+}
+
+/// Write one primitive at `path`, keeping the field's existing BIN type.
+///
+/// Rejects a container target and a type change, so a raw edit cannot reshape
+/// the tree or turn an `f32` field into a string.
+#[tauri::command]
+pub async fn vfx_anm_set_raw_node(
+    session_id: u64,
+    path: VfxPath,
+    value: JsonBinValue,
+) -> Result<AnmModel, String> {
+    anm_command!("Set node", raw::set_raw_node(session_id, &path, &value))
+}
+
+/// Add a field to a structure that does not currently carry it.
+///
+/// League omits a field holding its default, so a real `ParticleEventData` ships
+/// three of its sixteen fields and the rest are absent rather than empty. Editing
+/// alone could never reach them; this is how they come into existence.
+#[tauri::command]
+pub async fn vfx_anm_add_raw_field(
+    session_id: u64,
+    parent: VfxPath,
+    name: String,
+    value: JsonBinValue,
+) -> Result<AnmModel, String> {
+    anm_command!(
+        "Add field",
+        raw::add_raw_field(session_id, &parent, &name, &value)
+    )
+}
+
+/// Remove a field, restoring the "absent means default" state League reads.
+#[tauri::command]
+pub async fn vfx_anm_remove_raw_field(session_id: u64, path: VfxPath) -> Result<AnmModel, String> {
+    anm_command!("Remove field", raw::remove_raw_field(session_id, &path))
 }
