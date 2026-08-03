@@ -4,10 +4,10 @@
    the audio splitter overlay, the session / auto-extract / game-banks toolbar,
    the playback footer, per-format extract and the full context-menu + modal set.
 
-   Backend: BNK/WPK parsing, WEM decode and the external Wwise/vgmstream tooling
-   live behind the bnk_* / wwise_* / audio_* Tauri commands, wrapped by
-   ./bnkextract/utils/backend.ts. The audio splitter renders its waveform with
-   wavesurfer.js — see AudioSplitter.tsx. */
+   Backend: BNK/WPK parsing, WEM decode and Wwise Vorbis encode all live behind
+   the bnk_* / audio_* Tauri commands, wrapped by ./bnkextract/utils/backend.ts.
+   Everything runs in-process — there is no external toolchain. The audio splitter
+   renders its waveform with wavesurfer.js — see AudioSplitter.tsx. */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Box } from '@mui/material';
