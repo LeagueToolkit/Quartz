@@ -1,83 +1,44 @@
 /* Sound Banks (BnkExtract) backend.
 
-Pure-Rust BNK/WPK parsing, HIRC event mapping and WEM->OGG/WAV decoding live in
-quartz-lib::audio. WEM encoding and MP3 decoding need external tools
-(WwiseConsole.exe + vgmstream-cli.exe) fetched from the tarngaina/LtMAO repo into
-%APPDATA%/RitoShark/AudioTools, mirroring the original Electron handler. */
+Everything here is in-process. BNK/WPK containers, WEM decoding and Wwise Vorbis encoding come
+from ritoshark::audio; user-supplied mp3/flac/ogg/m4a is decoded by quartz_lib::audio::decode.
+
+This used to download WwiseConsole.exe and vgmstream-cli.exe from a third-party repo into
+%APPDATA%/RitoShark/AudioTools and shell out to them. The Rust encoder replaced the only thing
+that genuinely needed an external toolchain, so the download is gone and any copy a previous
+version left behind is removed on startup. */
 
 use base64::Engine;
+use quartz_lib::audio::bank;
+use quartz_lib::audio::decode;
 use quartz_lib::audio::tree::{self, LoadBanksResult};
-use quartz_lib::audio::wem;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Emitter};
 
 // ---------------------------------------------------------------------------
-// Tool paths (shared RitoShark appdata dir)
+// Legacy toolchain cleanup
 // ---------------------------------------------------------------------------
 
-fn audio_tools_root() -> Result<PathBuf, String> {
-    let appdata = std::env::var("APPDATA").map_err(|_| "APPDATA not set".to_string())?;
-    Ok(PathBuf::from(appdata).join("RitoShark").join("AudioTools"))
+fn audio_tools_root() -> Option<PathBuf> {
+    std::env::var("APPDATA")
+        .ok()
+        .map(|appdata| PathBuf::from(appdata).join("RitoShark").join("AudioTools"))
 }
 
-fn wwise_console_exe() -> Result<PathBuf, String> {
-    Ok(audio_tools_root()?
-        .join("Wwise")
-        .join("WwiseApp")
-        .join("Authoring")
-        .join("x64")
-        .join("Release")
-        .join("bin")
-        .join("WwiseConsole.exe"))
-}
+/** Deletes the Wwise/vgmstream toolchain older versions downloaded.
 
-fn wwise_wproj() -> Result<PathBuf, String> {
-    Ok(audio_tools_root()?
-        .join("Wwise")
-        .join("WwiseLeagueProjects")
-        .join("WWiseLeagueProjects.wproj"))
-}
-
-fn vgmstream_exe() -> Result<PathBuf, String> {
-    Ok(audio_tools_root()?
-        .join("Decoders")
-        .join("vgmstream-cli.exe"))
-}
-
-fn wwise_temp_dir() -> Result<PathBuf, String> {
-    Ok(audio_tools_root()?.join("Temp"))
-}
-
-/// Spawn a child process hidden (no console window on Windows) and wait for it.
-fn run_hidden(exe: &Path, args: &[&str], cwd: Option<&Path>) -> Result<(), String> {
-    use std::process::Command;
-    let mut cmd = Command::new(exe);
-    cmd.args(args);
-    if let Some(dir) = cwd {
-        cmd.current_dir(dir);
+Several hundred megabytes of third-party binaries that nothing reads any more. Called once at
+startup; a missing directory is the normal case and not an error. */
+pub fn remove_legacy_audio_tools() {
+    let Some(root) = audio_tools_root() else {
+        return;
+    };
+    if !root.exists() {
+        return;
     }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    let output = cmd
-        .output()
-        .map_err(|e| format!("Failed to launch {}: {e}", exe.display()))?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!(
-            "{} exited with {}: {}",
-            exe.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("process"),
-            output.status,
-            stderr.trim()
-        ))
+    match std::fs::remove_dir_all(&root) {
+        Ok(()) => tracing::info!("removed the legacy audio toolchain at {}", root.display()),
+        Err(e) => tracing::warn!("could not remove {}: {e}", root.display()),
     }
 }
 
@@ -100,56 +61,34 @@ pub async fn bnk_load_banks(args: LoadBanksArgs) -> Result<Option<LoadBanksResul
         tree::load_banks(&args.bnk_path, &args.wpk_path, &args.bin_path)
     })
     .await
-    .map_err(|e| format!("load_banks task failed: {e}"))?
+    .map_err(|e| format!("load banks task failed: {e}"))?
 }
 
 // ---------------------------------------------------------------------------
-// WEM decode
+// Decode
 // ---------------------------------------------------------------------------
 
-fn decode_to(data: Vec<u8>, want_wav: bool) -> Result<Vec<u8>, String> {
-    let decoded = wem::decode_wem(&data)?;
-    if want_wav && decoded.format != "wav" {
-        // The decoder returns OGG for Vorbis WEMs; the UI only needs a playable
-        // container, and an OGG is acceptable where WAV was requested for non-PCM
-        // sources. Hand back whatever the decoder produced.
-        return Ok(decoded.data);
-    }
-    Ok(decoded.data)
-}
-
-/// Decode raw WEM bytes to a playable container (OGG or WAV).
+/// Decode raw WEM bytes to a playable container (OGG for Vorbis, WAV for PCM).
 #[tauri::command]
 pub async fn bnk_wem_to_ogg(data: Vec<u8>) -> Result<Vec<u8>, String> {
-    tokio::task::spawn_blocking(move || decode_to(data, false))
+    tokio::task::spawn_blocking(move || bank::decode_wem(&data).map(|d| d.data))
         .await
         .map_err(|e| format!("wem decode task failed: {e}"))?
 }
 
-/// Decode raw WEM bytes to WAV/OGG PCM for extraction.
+/// Decode raw WEM bytes all the way to a WAV, whatever the source codec was.
 #[tauri::command]
 pub async fn bnk_wem_to_wav(data: Vec<u8>) -> Result<Vec<u8>, String> {
-    tokio::task::spawn_blocking(move || decode_to(data, true))
+    tokio::task::spawn_blocking(move || bank::wem_to_pcm(&data).map(|pcm| bank::pcm_to_wav(&pcm)))
         .await
         .map_err(|e| format!("wem decode task failed: {e}"))?
 }
 
-/// Decode a WEM, then transcode to MP3 via vgmstream + the system tools. When the
-/// tools are missing we fall back to the decoded OGG/WAV bytes so extraction still
-/// produces a file.
+/// There is no MP3 encoder here, so this yields the decoded container instead.
 #[tauri::command]
 pub async fn bnk_wem_to_mp3(data: Vec<u8>, bitrate: u32) -> Result<Vec<u8>, String> {
     let _ = bitrate;
-    tokio::task::spawn_blocking(move || decode_to(data, false))
-        .await
-        .map_err(|e| format!("wem decode task failed: {e}"))?
-}
-
-/// The packed codebook bundled with the decoder. Returned so the frontend can keep
-/// its loadCodebook() contract, though the Rust decoder embeds its own copy.
-#[tauri::command]
-pub async fn bnk_load_codebook() -> Result<Vec<u8>, String> {
-    Ok(wem::codebook_bytes().to_vec())
+    bnk_wem_to_ogg(data).await
 }
 
 // ---------------------------------------------------------------------------
@@ -164,6 +103,9 @@ pub struct ExtractNode {
     pub audio_data: Option<ExtractAudio>,
     #[serde(default)]
     pub children: Option<Vec<ExtractNode>>,
+    /// Set on a root node — the container the tree was loaded from.
+    #[serde(default)]
+    pub original_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -178,6 +120,8 @@ pub struct ExtractAudio {
 pub struct ExtractArgs {
     pub nodes: Vec<ExtractNode>,
     pub formats: Vec<String>,
+    /// Part of the frontend's payload; unread because there is no MP3 encoder.
+    #[allow(dead_code)]
     pub mp3_bitrate: u32,
     pub out_dir: String,
 }
@@ -205,32 +149,20 @@ fn write_node_formats(
                 .map_err(|e| format!("write wem failed: {e}"))?;
             *count += 1;
         }
-        if formats.iter().any(|f| f == "ogg") {
-            if let Ok(decoded) = wem::decode_wem(&audio.data) {
-                let ext = if decoded.format == "wav" {
-                    "wav"
-                } else {
-                    "ogg"
-                };
+        // ogg and mp3 both land as the decoded container; only wav is converted.
+        if formats.iter().any(|f| f == "ogg" || f == "mp3") {
+            if let Ok(decoded) = bank::decode_wem(&audio.data) {
+                let ext = if decoded.format == "wav" { "wav" } else { "ogg" };
                 let _ = std::fs::write(cur_dir.join(format!("{base}.{ext}")), &decoded.data);
                 *count += 1;
             }
         }
         if formats.iter().any(|f| f == "wav") {
-            if let Ok(decoded) = wem::decode_wem(&audio.data) {
-                let _ = std::fs::write(cur_dir.join(format!("{base}.wav")), &decoded.data);
-                *count += 1;
-            }
-        }
-        if formats.iter().any(|f| f == "mp3") {
-            // No native MP3 encoder; emit the decoded container so a file still lands.
-            if let Ok(decoded) = wem::decode_wem(&audio.data) {
-                let ext = if decoded.format == "wav" {
-                    "wav"
-                } else {
-                    "ogg"
-                };
-                let _ = std::fs::write(cur_dir.join(format!("{base}.{ext}")), &decoded.data);
+            if let Ok(pcm) = bank::wem_to_pcm(&audio.data) {
+                let _ = std::fs::write(
+                    cur_dir.join(format!("{base}.wav")),
+                    bank::pcm_to_wav(&pcm),
+                );
                 *count += 1;
             }
         }
@@ -278,10 +210,13 @@ pub struct SaveBankArgs {
     pub out_path: String,
 }
 
-/// Collect every audio leaf under a node into (id, data) pairs.
-fn collect_audio(node: &ExtractNode, out: &mut Vec<(u32, Vec<u8>)>) {
+/// Collect every audio leaf under a node into entries.
+fn collect_audio(node: &ExtractNode, out: &mut Vec<bank::AudioEntry>) {
     if let Some(audio) = &node.audio_data {
-        out.push((audio.id, audio.data.clone()));
+        out.push(bank::AudioEntry {
+            id: audio.id,
+            data: audio.data.clone(),
+        });
     }
     if let Some(children) = &node.children {
         for child in children {
@@ -290,29 +225,29 @@ fn collect_audio(node: &ExtractNode, out: &mut Vec<(u32, Vec<u8>)>) {
     }
 }
 
-/// Serialize a root node's audio back into a .bnk or .wpk container.
+/** Write a root node's audio back into its container.
+
+The edit is applied to the bank the tree was loaded from rather than to a fresh one, so the header
+revision, the bank id and the object hierarchy survive. Rebuilding from scratch — which is what
+this did before — produced a bank the engine could not load however good the audio inside it was,
+so a missing source is an error rather than a silent fallback. */
 #[tauri::command]
 pub async fn bnk_save_bank(args: SaveBankArgs) -> Result<(), String> {
-    use quartz_lib::audio::bnk::{self, AudioEntry};
-    use quartz_lib::audio::wpk;
-
     tokio::task::spawn_blocking(move || {
-        let mut pairs: Vec<(u32, Vec<u8>)> = Vec::new();
-        collect_audio(&args.root, &mut pairs);
-        pairs.sort_by_key(|p| p.0);
-        pairs.dedup_by_key(|p| p.0);
+        let source = args
+            .root
+            .original_path
+            .as_deref()
+            .ok_or("This bank has no source file recorded, so it cannot be saved safely")?;
+        let original = std::fs::read(source)
+            .map_err(|e| format!("could not read the source bank '{source}': {e}"))?;
 
-        let entries: Vec<AudioEntry> = pairs
-            .into_iter()
-            .map(|(id, data)| AudioEntry { id, data })
-            .collect();
+        let mut entries: Vec<bank::AudioEntry> = Vec::new();
+        collect_audio(&args.root, &mut entries);
+        entries.sort_by_key(|e| e.id);
+        entries.dedup_by_key(|e| e.id);
 
-        let lower = args.out_path.to_lowercase();
-        let bytes = if lower.ends_with(".wpk") {
-            wpk::write_wpk(&entries)
-        } else {
-            bnk::write_bnk(&entries)
-        };
+        let bytes = bank::save_with_entries(&original, &entries)?;
         std::fs::write(&args.out_path, bytes).map_err(|e| format!("write bank failed: {e}"))
     })
     .await
@@ -320,152 +255,19 @@ pub async fn bnk_save_bank(args: SaveBankArgs) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
-// Wwise / vgmstream tooling
+// Conversion
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
-pub async fn wwise_check() -> Result<bool, String> {
-    Ok(wwise_console_exe()?.exists())
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InstallResult {
-    pub success: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GitTreeItem {
-    path: String,
-    #[serde(rename = "type")]
-    kind: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct GitTree {
-    tree: Vec<GitTreeItem>,
-}
-
-/// Download the wiwawe (Wwise) + vgmstream tool files from tarngaina/LtMAO,
-/// emitting `wwise:install-progress` events as it goes.
-#[tauri::command]
-pub async fn wwise_install(app: AppHandle) -> Result<InstallResult, String> {
-    const REPO: &str = "tarngaina/LtMAO";
-    const BRANCH: &str = "hai";
-    let tree_api = format!("https://api.github.com/repos/{REPO}/git/trees/{BRANCH}?recursive=1");
-    let raw_base = format!("https://raw.githubusercontent.com/{REPO}/{BRANCH}/");
-
-    let wanted_prefixes = ["res/wiwawe/", "res/tools/vgmstream/"];
-    let dest_map: [(&str, PathBuf); 2] = [
-        ("res/wiwawe/", audio_tools_root()?.join("Wwise")),
-        ("res/tools/vgmstream/", audio_tools_root()?.join("Decoders")),
-    ];
-
-    let progress = |msg: &str| {
-        let _ = app.emit("wwise:install-progress", msg.to_string());
-    };
-
-    let result: Result<(), String> = async {
-        std::fs::create_dir_all(audio_tools_root()?).map_err(|e| e.to_string())?;
-        std::fs::create_dir_all(wwise_temp_dir()?).map_err(|e| e.to_string())?;
-
-        let client = reqwest::Client::builder()
-            .user_agent("Quartz-App")
-            .build()
-            .map_err(|e| e.to_string())?;
-
-        progress("Fetching file list from GitHub...");
-        let tree: GitTree = client
-            .get(&tree_api)
-            .send()
-            .await
-            .map_err(|e| format!("GitHub tree request failed: {e}"))?
-            .json()
-            .await
-            .map_err(|e| format!("GitHub tree parse failed: {e}"))?;
-
-        let files: Vec<&GitTreeItem> = tree
-            .tree
-            .iter()
-            .filter(|item| {
-                item.kind == "blob" && wanted_prefixes.iter().any(|p| item.path.starts_with(p))
-            })
-            .collect();
-
-        if files.is_empty() {
-            return Err("No files found — repo structure may have changed".into());
-        }
-
-        let total = files.len();
-        progress(&format!("Installing audio tools (0 / {total} files)..."));
-
-        let mut done = 0usize;
-        for item in files {
-            if item.path.contains("..") {
-                continue;
-            }
-            let mapping = dest_map.iter().find(|(p, _)| item.path.starts_with(p));
-            let (prefix, dest) = match mapping {
-                Some(m) => m,
-                None => continue,
-            };
-            let rel = &item.path[prefix.len()..];
-            let dest_path = rel.split('/').fold(dest.clone(), |acc, seg| acc.join(seg));
-
-            if let Some(parent) = dest_path.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-            }
-
-            let bytes = client
-                .get(format!("{raw_base}{}", item.path))
-                .send()
-                .await
-                .map_err(|e| format!("download failed for {}: {e}", item.path))?
-                .bytes()
-                .await
-                .map_err(|e| format!("download read failed for {}: {e}", item.path))?;
-            std::fs::write(&dest_path, &bytes)
-                .map_err(|e| format!("write failed for {}: {e}", dest_path.display()))?;
-
-            done += 1;
-            progress(&format!(
-                "Installing audio tools ({done} / {total} files)..."
-            ));
-        }
-
-        if !wwise_console_exe()?.exists() {
-            return Err(
-                "WwiseConsole.exe not found after install — repo structure may have changed."
-                    .into(),
-            );
-        }
-
-        progress("Done!");
-        Ok(())
-    }
-    .await;
-
-    match result {
-        Ok(()) => Ok(InstallResult {
-            success: true,
-            error: None,
-        }),
-        Err(e) => Ok(InstallResult {
-            success: false,
-            error: Some(e),
-        }),
-    }
-}
-
-/// Convert a user wav/mp3/ogg file to .wem via vgmstream + WwiseConsole. Returns
-/// the encoded WEM bytes.
+/// Convert a user audio file on disk to a Wwise Vorbis WEM.
 #[tauri::command]
 pub async fn audio_convert_to_wem(input_path: String) -> Result<Vec<u8>, String> {
-    tokio::task::spawn_blocking(move || convert_to_wem_blocking(&input_path))
-        .await
-        .map_err(|e| format!("convert task failed: {e}"))?
+    tokio::task::spawn_blocking(move || {
+        let data = std::fs::read(&input_path)
+            .map_err(|e| format!("could not read '{input_path}': {e}"))?;
+        bank::to_wem(&data, None)
+    })
+    .await
+    .map_err(|e| format!("convert task failed: {e}"))?
 }
 
 #[derive(Debug, Deserialize)]
@@ -483,297 +285,44 @@ pub struct BatchWemOutput {
     pub error: Option<String>,
 }
 
-/// Convert splitter WAV segments in one WwiseConsole invocation, matching the
-/// Electron workflow without exposing temporary paths to the webview.
+/// Convert splitter segments to WEM. One failure does not sink the batch.
 #[tauri::command]
 pub async fn audio_convert_wavs_to_wem(
     inputs: Vec<BatchWemInput>,
 ) -> Result<Vec<BatchWemOutput>, String> {
-    tokio::task::spawn_blocking(move || convert_wavs_to_wem_blocking(inputs))
-        .await
-        .map_err(|e| format!("batch convert task failed: {e}"))?
-}
-
-fn xml_attribute(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('"', "&quot;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
-
-fn safe_audio_stem(name: &str) -> String {
-    let raw = Path::new(name)
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("segment");
-    let safe: String = raw
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || character == '_' || character == '-' {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if safe.is_empty() {
-        "segment".to_string()
-    } else {
-        safe
-    }
-}
-
-fn convert_wavs_to_wem_blocking(inputs: Vec<BatchWemInput>) -> Result<Vec<BatchWemOutput>, String> {
-    if inputs.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let console = wwise_console_exe()?;
-    if !console.exists() {
-        return Err("Wwise tools not installed".into());
-    }
-    let temp = wwise_temp_dir()?;
-    std::fs::create_dir_all(&temp).map_err(|error| error.to_string())?;
-    let uid = unique_id();
-    let wsources = temp.join(format!("split_batch_{uid}.wsources"));
-
-    let mut jobs: Vec<(String, String, PathBuf)> = Vec::with_capacity(inputs.len());
-    for (index, input) in inputs.into_iter().enumerate() {
-        let destination = format!("split_{uid}_{index}_{}", safe_audio_stem(&input.name));
-        let wav_path = temp.join(format!("{destination}.wav"));
-        if let Err(error) = std::fs::write(&wav_path, input.data) {
-            for (_, _, path) in &jobs {
-                let _ = std::fs::remove_file(path);
-            }
-            return Err(format!("write splitter wav failed: {error}"));
-        }
-        jobs.push((input.name, destination, wav_path));
-    }
-
-    let mut xml = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ExternalSourcesList SchemaVersion=\"1\" Root=\"{}\">\n",
-        xml_attribute(&temp.to_string_lossy())
-    );
-    for (_, destination, wav_path) in &jobs {
-        xml.push_str(&format!(
-            "  <Source Path=\"{}\" Conversion=\"Vorbis Quality High\" Destination=\"{}\"/>\n",
-            xml_attribute(&wav_path.to_string_lossy()),
-            xml_attribute(destination),
-        ));
-    }
-    xml.push_str("</ExternalSourcesList>");
-    std::fs::write(&wsources, xml).map_err(|error| error.to_string())?;
-
-    let wproj = wwise_wproj()?;
-    let conversion = run_hidden(
-        &console,
-        &[
-            "convert-external-source",
-            &wproj.to_string_lossy(),
-            "--source-file",
-            &wsources.to_string_lossy(),
-            "--output",
-            &temp.to_string_lossy(),
-            "--platform",
-            "Windows",
-        ],
-        console.parent(),
-    );
-
-    let _ = std::fs::remove_file(&wsources);
-    for (_, _, wav_path) in &jobs {
-        let _ = std::fs::remove_file(wav_path);
-    }
-    conversion?;
-
-    let outputs = jobs
-        .into_iter()
-        .map(|(name, destination, _)| {
-            let candidates = [
-                temp.join("Windows").join(format!("{destination}.wem")),
-                temp.join(format!("{destination}.wem")),
-            ];
-            let wem_path = candidates.iter().find(|path| path.exists());
-            let result = match wem_path {
-                Some(path) => std::fs::read(path)
-                    .map(|data| base64::engine::general_purpose::STANDARD.encode(data))
-                    .map_err(|error| format!("read converted WEM failed: {error}")),
-                None => Err("Wwise did not produce a WEM file".to_string()),
-            };
-            if let Some(path) = wem_path {
-                let _ = std::fs::remove_file(path);
-            }
-            match result {
-                Ok(data_base64) => BatchWemOutput {
-                    name,
-                    data_base64: Some(data_base64),
+    tokio::task::spawn_blocking(move || {
+        inputs
+            .into_iter()
+            .map(|input| match bank::to_wem(&input.data, None) {
+                Ok(wem) => BatchWemOutput {
+                    name: input.name,
+                    data_base64: Some(base64::engine::general_purpose::STANDARD.encode(wem)),
                     error: None,
                 },
                 Err(error) => BatchWemOutput {
-                    name,
+                    name: input.name,
                     data_base64: None,
                     error: Some(error),
                 },
-            }
-        })
-        .collect();
-
-    Ok(outputs)
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| format!("batch convert task failed: {e}"))
 }
 
-fn unique_id() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("{nanos}")
-}
-
-fn convert_to_wem_blocking(input_path: &str) -> Result<Vec<u8>, String> {
-    let console = wwise_console_exe()?;
-    if !console.exists() {
-        return Err("Wwise tools not installed".into());
-    }
-    let temp = wwise_temp_dir()?;
-    std::fs::create_dir_all(&temp).map_err(|e| e.to_string())?;
-
-    let input = Path::new(input_path);
-    let ext = input
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    let base = input
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("audio")
-        .to_string();
-    let uid = unique_id();
-    let dest = format!("{base}_{uid}");
-
-    let mut wav_path = input.to_path_buf();
-    let mut temp_files: Vec<PathBuf> = Vec::new();
-
-    // MP3/OGG -> WAV via vgmstream.
-    if ext == "mp3" || ext == "ogg" {
-        let vgm = vgmstream_exe()?;
-        if !vgm.exists() {
-            return Err("vgmstream decoder not installed".into());
-        }
-        let out_wav = temp.join(format!("{dest}.wav"));
-        run_hidden(
-            &vgm,
-            &["-o", &out_wav.to_string_lossy(), input_path],
-            vgm.parent(),
-        )?;
-        temp_files.push(out_wav.clone());
-        wav_path = out_wav;
-    }
-
-    // Normalize to signed 16-bit PCM so WwiseConsole always reads it.
-    let raw = std::fs::read(&wav_path).map_err(|e| format!("read wav failed: {e}"))?;
-    if let Some(norm) = normalize_wav_to_s16(&raw) {
-        let norm_path = temp.join(format!("{dest}_norm.wav"));
-        std::fs::write(&norm_path, &norm).map_err(|e| e.to_string())?;
-        temp_files.push(norm_path.clone());
-        wav_path = norm_path;
-    }
-
-    // Build .wsources and run WwiseConsole.
-    let wsources = temp.join(format!("{dest}.wsources"));
-    let xml = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ExternalSourcesList SchemaVersion=\"1\" Root=\"{root}\">\n  <Source Path=\"{src}\" Conversion=\"Vorbis Quality High\" Destination=\"{dest}\"/>\n</ExternalSourcesList>",
-        root = temp.to_string_lossy(),
-        src = wav_path.to_string_lossy(),
-        dest = dest,
-    );
-    std::fs::write(&wsources, xml).map_err(|e| e.to_string())?;
-
-    let wproj = wwise_wproj()?;
-    run_hidden(
-        &console,
-        &[
-            "convert-external-source",
-            &wproj.to_string_lossy(),
-            "--source-file",
-            &wsources.to_string_lossy(),
-            "--output",
-            &temp.to_string_lossy(),
-            "--platform",
-            "Windows",
-        ],
-        console.parent(),
-    )?;
-
-    let candidates = [
-        temp.join("Windows").join(format!("{dest}.wem")),
-        temp.join(format!("{dest}.wem")),
-    ];
-    let wem_path = candidates.iter().find(|p| p.exists());
-
-    let result = match wem_path {
-        Some(p) => std::fs::read(p).map_err(|e| format!("read wem failed: {e}")),
-        None => Err("Conversion succeeded but .wem output not found".into()),
-    };
-
-    let _ = std::fs::remove_file(&wsources);
-    for f in &temp_files {
-        let _ = std::fs::remove_file(f);
-    }
-    if let Some(p) = wem_path {
-        let _ = std::fs::remove_file(p);
-    }
-
-    result
-}
-
-/// Decode a WEM/MP3/OGG to WAV bytes via the native decoder or vgmstream.
-/// The base64 result avoids leaving splitter temp files behind and is much
-/// smaller on the IPC boundary than a JSON array containing every byte.
+/// Decode a WEM, MP3, OGG, FLAC or WAV to WAV bytes, base64 for the IPC boundary.
 #[tauri::command]
 pub async fn audio_decode_to_wav(data: Vec<u8>) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
-        let temp = wwise_temp_dir()?;
-        std::fs::create_dir_all(&temp).map_err(|e| e.to_string())?;
-        let uid = unique_id();
-
-        // Try the native decoder first (handles WEM directly).
-        if let Ok(decoded) = wem::decode_wem(&data) {
-            if decoded.format == "wav" {
-                return Ok(base64::engine::general_purpose::STANDARD.encode(decoded.data));
-            }
-        }
-
-        // Fall back to vgmstream on a temp input file.
-        let vgm = vgmstream_exe()?;
-        if !vgm.exists() {
-            return Err("vgmstream decoder not installed".into());
-        }
-        let in_path = temp.join(format!("split_in_{uid}.bin"));
-        std::fs::write(&in_path, &data).map_err(|e| e.to_string())?;
-        let out = temp.join(format!("split_{uid}.wav"));
-        let res = run_hidden(
-            &vgm,
-            &["-o", &out.to_string_lossy(), &in_path.to_string_lossy()],
-            vgm.parent(),
-        );
-        let _ = std::fs::remove_file(&in_path);
-        if let Err(error) = res {
-            let _ = std::fs::remove_file(&out);
-            return Err(error);
-        }
-        let wav = std::fs::read(&out).map_err(|e| format!("read decoded wav failed: {e}"));
-        let _ = std::fs::remove_file(&out);
-        Ok(base64::engine::general_purpose::STANDARD.encode(wav?))
+        let pcm = bank::wem_to_pcm(&data).or_else(|_| decode::decode_any(&data))?;
+        Ok(base64::engine::general_purpose::STANDARD.encode(bank::pcm_to_wav(&pcm)))
     })
     .await
     .map_err(|e| format!("decode task failed: {e}"))?
 }
 
-/// Write raw bytes to a path, creating parent directories. Used by the audio
-/// splitter to save sliced WAV segments the frontend encodes in JS.
+/// Write raw bytes to a path, creating parent directories.
 #[tauri::command]
 pub async fn audio_write_file(path: String, data: Vec<u8>) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
@@ -786,84 +335,14 @@ pub async fn audio_write_file(path: String, data: Vec<u8>) -> Result<(), String>
     .map_err(|e| format!("write task failed: {e}"))?
 }
 
-/// Amplify a WEM by gain_db: decode -> scale PCM -> re-encode through Wwise.
+/// Amplify a WEM by gain_db, re-encoding into the codec it already used.
 #[tauri::command]
 pub async fn audio_amplify_wem(data: Vec<u8>, gain_db: f32) -> Result<Vec<u8>, String> {
-    tokio::task::spawn_blocking(move || {
-        let console = wwise_console_exe()?;
-        let vgm = vgmstream_exe()?;
-        if !console.exists() {
-            return Err("Wwise tools not installed".into());
-        }
-        if !vgm.exists() {
-            return Err("vgmstream decoder not installed".into());
-        }
-        let temp = wwise_temp_dir()?;
-        std::fs::create_dir_all(&temp).map_err(|e| e.to_string())?;
-        let uid = unique_id();
-        let base = format!("gain_{uid}");
-
-        // WEM -> WAV via vgmstream.
-        let in_wem = temp.join(format!("{base}.wem"));
-        std::fs::write(&in_wem, &data).map_err(|e| e.to_string())?;
-        let wav_path = temp.join(format!("{base}.wav"));
-        let dec = run_hidden(
-            &vgm,
-            &["-o", &wav_path.to_string_lossy(), &in_wem.to_string_lossy()],
-            vgm.parent(),
-        );
-        let _ = std::fs::remove_file(&in_wem);
-        dec?;
-
-        // Amplify PCM in place.
-        let raw = std::fs::read(&wav_path).map_err(|e| e.to_string())?;
-        let amplified = amplify_wav(&raw, gain_db);
-        std::fs::write(&wav_path, &amplified).map_err(|e| e.to_string())?;
-
-        // WAV -> WEM via WwiseConsole.
-        let wsources = temp.join(format!("{base}.wsources"));
-        let xml = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ExternalSourcesList SchemaVersion=\"1\" Root=\"{root}\">\n  <Source Path=\"{src}\" Conversion=\"Vorbis Quality High\" Destination=\"{dest}\"/>\n</ExternalSourcesList>",
-            root = temp.to_string_lossy(),
-            src = wav_path.to_string_lossy(),
-            dest = base,
-        );
-        std::fs::write(&wsources, xml).map_err(|e| e.to_string())?;
-        let wproj = wwise_wproj()?;
-        run_hidden(
-            &console,
-            &[
-                "convert-external-source",
-                &wproj.to_string_lossy(),
-                "--source-file",
-                &wsources.to_string_lossy(),
-                "--output",
-                &temp.to_string_lossy(),
-                "--platform",
-                "Windows",
-            ],
-            console.parent(),
-        )?;
-
-        let candidates = [
-            temp.join("Windows").join(format!("{base}.wem")),
-            temp.join(format!("{base}.wem")),
-        ];
-        let wem_path = candidates.iter().find(|p| p.exists());
-        let result = match wem_path {
-            Some(p) => std::fs::read(p).map_err(|e| e.to_string()),
-            None => Err("Output WEM not found after conversion".into()),
-        };
-        let _ = std::fs::remove_file(&wav_path);
-        let _ = std::fs::remove_file(&wsources);
-        if let Some(p) = wem_path {
-            let _ = std::fs::remove_file(p);
-        }
-        result
-    })
-    .await
-    .map_err(|e| format!("amplify task failed: {e}"))?
+    tokio::task::spawn_blocking(move || bank::amplify_wem(&data, gain_db))
+        .await
+        .map_err(|e| format!("amplify task failed: {e}"))?
 }
+
 
 // ---------------------------------------------------------------------------
 // Mod folder scan + game extraction
@@ -904,14 +383,29 @@ pub async fn bnk_scan_mod_folder(
     skin_id: Option<String>,
 ) -> Result<Vec<ModFileSet>, String> {
     tokio::task::spawn_blocking(move || {
-        let root = PathBuf::from(&folder_path);
+        Ok(scan_folder_sets(
+            &PathBuf::from(&folder_path),
+            skin_id.as_deref(),
+        ))
+    })
+    .await
+    .map_err(|e| format!("scan task failed: {e}"))?
+}
+
+/** Every audio/events/bin triple under `root`, best BIN first.
+
+Shared by the folder scan and by the single-BIN lookup so both agree on which bank pairs with
+which — the matching rules here are the ones ported from the original Quartz mod processor and
+are not worth having two copies of. */
+fn scan_folder_sets(root: &Path, skin_id: Option<&str>) -> Vec<ModFileSet> {
+    {
         if !root.exists() {
-            return Ok(Vec::new());
+            return Vec::new();
         }
         let mut all: Vec<PathBuf> = Vec::new();
-        walk_files(&root, &mut all);
+        walk_files(root, &mut all);
 
-        let skin = skin_id.as_deref().filter(|s| !s.is_empty());
+        let skin = skin_id.filter(|s| !s.is_empty());
         let skin_matches = |p: &Path| -> bool {
             match skin {
                 None => true,
@@ -964,7 +458,7 @@ pub async fn bnk_scan_mod_folder(
             score
         };
         // Highest score first (stable so ties keep discovery order).
-        bins.sort_by(|a, b| bin_score(b).cmp(&bin_score(a)));
+        bins.sort_by_key(|b| std::cmp::Reverse(bin_score(b)));
         let selected_bin = bins
             .iter()
             .find(|p| skin_matches(p))
@@ -1093,10 +587,84 @@ pub async fn bnk_scan_mod_folder(
             })
             .collect();
 
-        Ok(sets)
+        sets
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocatedBanks {
+    pub audio: String,
+    pub events: String,
+}
+
+/// The `skinNN` number in a path, which is what pairs a BIN with its banks.
+fn skin_id_from_path(path: &Path) -> Option<String> {
+    let lowered = path.to_string_lossy().to_lowercase();
+    let at = lowered.rfind("skin")?;
+    let digits: String = lowered[at + 4..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    (!digits.is_empty()).then(|| digits.trim_start_matches('0').to_string())
+        .map(|trimmed| if trimmed.is_empty() { "0".into() } else { trimmed })
+}
+
+/** The directory to search for banks given a BIN somewhere inside a mod.
+
+A skin BIN sits under `.../data/characters/<champ>/skins/` while its audio sits under
+`.../assets/sounds/...`, so the search has to start from a shared ancestor. Walking up to the
+directory holding `data` or `assets` finds the WAD root; failing that, a few levels up is still
+better than the BIN's own folder, which never contains banks. */
+fn bank_search_root(bin: &Path) -> PathBuf {
+    let mut ancestors: Vec<&Path> = bin.ancestors().skip(1).collect();
+    for dir in &ancestors {
+        let holds_root_marker = std::fs::read_dir(dir).is_ok_and(|entries| {
+            entries.flatten().any(|e| {
+                let name = e.file_name().to_string_lossy().to_lowercase();
+                e.path().is_dir() && (name == "assets" || name == "data" || name == "sounds")
+            })
+        });
+        if holds_root_marker {
+            return dir.to_path_buf();
+        }
+    }
+    ancestors.truncate(4);
+    ancestors
+        .last()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| bin.to_path_buf())
+}
+
+/** Find the audio and events banks that belong to a BIN the user just picked.
+
+Reuses the mod-folder matching, so the pairing is the same one the folder drop already produces.
+Returns `None` rather than a guess when nothing convincing is nearby. */
+#[tauri::command]
+pub async fn bnk_locate_banks_for_bin(bin_path: String) -> Result<Option<LocatedBanks>, String> {
+    tokio::task::spawn_blocking(move || {
+        let bin = PathBuf::from(&bin_path);
+        if !bin.is_file() {
+            return None;
+        }
+        let skin = skin_id_from_path(&bin);
+        let root = bank_search_root(&bin);
+
+        let sets = scan_folder_sets(&root, skin.as_deref());
+        // Prefer a set that resolved an events bank too — that is the pairing the
+        // tree actually needs to name anything.
+        let best = sets
+            .iter()
+            .find(|s| !s.events.is_empty())
+            .or_else(|| sets.first())?;
+
+        Some(LocatedBanks {
+            audio: best.audio.clone(),
+            events: best.events.clone(),
+        })
     })
     .await
-    .map_err(|e| format!("scan task failed: {e}"))?
+    .map_err(|e| format!("locate task failed: {e}"))
 }
 
 #[derive(Debug, Serialize)]
@@ -1548,164 +1116,48 @@ fn extract_banks_from_game_blocking(args: GameBanksArgs) -> Result<GameBanksResu
     })
 }
 
-// ---------------------------------------------------------------------------
-// WAV helpers (ported from the Electron audio.js)
-// ---------------------------------------------------------------------------
 
-fn read_u32_le(b: &[u8], o: usize) -> u32 {
-    u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn read_u16_le(b: &[u8], o: usize) -> u16 {
-    u16::from_le_bytes([b[o], b[o + 1]])
-}
-
-/// Find the fmt + data chunks. Returns (audio_format, bits, channels, sample_rate,
-/// data_start, data_size).
-fn parse_wav(buf: &[u8]) -> Option<(u16, u16, u16, u32, usize, usize)> {
-    if buf.len() < 12 {
-        return None;
-    }
-    let mut pos = 12usize;
-    let mut audio_format = 1u16;
-    let mut channels = 1u16;
-    let mut sample_rate = 44100u32;
-    let mut bits = 16u16;
-    while pos + 8 <= buf.len() {
-        let id = &buf[pos..pos + 4];
-        let size = read_u32_le(buf, pos + 4) as usize;
-        if id == b"fmt " && pos + 24 <= buf.len() {
-            audio_format = read_u16_le(buf, pos + 8);
-            channels = read_u16_le(buf, pos + 10);
-            sample_rate = read_u32_le(buf, pos + 12);
-            bits = read_u16_le(buf, pos + 22);
-        } else if id == b"data" {
-            return Some((audio_format, bits, channels, sample_rate, pos + 8, size));
-        }
-        pos += 8 + if size % 2 != 0 { size + 1 } else { size };
-    }
-    None
-}
-
-/// Amplify a PCM/float WAV buffer by gain_db decibels in place.
-fn amplify_wav(buf: &[u8], gain_db: f32) -> Vec<u8> {
-    let gain = 10f32.powf(gain_db / 20.0);
-    let mut out = buf.to_vec();
-    let (audio_format, bits, _ch, _sr, data_start, data_size) = match parse_wav(buf) {
-        Some(v) => v,
-        None => return out,
-    };
-    let end = (data_start + data_size).min(out.len());
-
-    if audio_format == 1 && bits == 16 {
-        let mut i = data_start;
-        while i + 1 < end {
-            let s = i16::from_le_bytes([out[i], out[i + 1]]) as f32 * gain;
-            let clamped = s.round().clamp(-32768.0, 32767.0) as i16;
-            out[i..i + 2].copy_from_slice(&clamped.to_le_bytes());
-            i += 2;
-        }
-    } else if audio_format == 1 && bits == 24 {
-        let mut i = data_start;
-        while i + 2 < end {
-            let mut s = (out[i] as i32) | ((out[i + 1] as i32) << 8) | ((out[i + 2] as i32) << 16);
-            if s & 0x80_0000 != 0 {
-                s |= !0xFF_FFFF;
-            }
-            let v = ((s as f32 * gain).round()).clamp(-8_388_608.0, 8_388_607.0) as i32;
-            out[i] = (v & 0xFF) as u8;
-            out[i + 1] = ((v >> 8) & 0xFF) as u8;
-            out[i + 2] = ((v >> 16) & 0xFF) as u8;
-            i += 3;
-        }
-    } else if audio_format == 1 && bits == 32 {
-        let mut i = data_start;
-        while i + 3 < end {
-            let s = i32::from_le_bytes([out[i], out[i + 1], out[i + 2], out[i + 3]]) as f32 * gain;
-            let v = s.round().clamp(i32::MIN as f32, i32::MAX as f32) as i32;
-            out[i..i + 4].copy_from_slice(&v.to_le_bytes());
-            i += 4;
-        }
-    } else if audio_format == 3 && bits == 32 {
-        let mut i = data_start;
-        while i + 3 < end {
-            let s = f32::from_le_bytes([out[i], out[i + 1], out[i + 2], out[i + 3]]) * gain;
-            out[i..i + 4].copy_from_slice(&s.clamp(-1.0, 1.0).to_le_bytes());
-            i += 4;
+    #[test]
+    fn skin_number_comes_from_the_bin_path() {
+        let cases = [
+            ("mod/data/characters/aatrox/skins/skin0.bin", Some("0")),
+            ("mod/DATA/Characters/Ahri/Skins/Skin12.bin", Some("12")),
+            // Zero padding is how Riot writes it; the banks are not padded.
+            ("mod/data/characters/yone/skins/skin07.bin", Some("7")),
+            ("mod/data/characters/yone/yone.bin", None),
+        ];
+        for (path, expected) in cases {
+            assert_eq!(
+                skin_id_from_path(Path::new(path)).as_deref(),
+                expected,
+                "{path}"
+            );
         }
     }
-    out
-}
 
-/// Convert any WAV to signed-16-bit PCM. Returns None if already S16 (no change
-/// needed) so callers can skip the rewrite.
-fn normalize_wav_to_s16(buf: &[u8]) -> Option<Vec<u8>> {
-    let (audio_format, bits, channels, sample_rate, data_start, data_size) = parse_wav(buf)?;
-    if audio_format == 1 && bits == 16 {
-        return None;
-    }
-    let data_end = (data_start + data_size).min(buf.len());
-    let data = &buf[data_start..data_end];
-
-    let mut samples: Vec<i16> = Vec::new();
-    if audio_format == 1 && bits == 8 {
-        for &b in data {
-            samples.push(((b as i16) - 128) << 8);
-        }
-    } else if audio_format == 1 && bits == 24 {
-        let n = data.len() / 3;
-        for i in 0..n {
-            let mut s = (data[i * 3] as i32)
-                | ((data[i * 3 + 1] as i32) << 8)
-                | ((data[i * 3 + 2] as i32) << 16);
-            if s & 0x80_0000 != 0 {
-                s |= !0xFF_FFFF;
-            }
-            samples.push((s >> 8) as i16);
-        }
-    } else if audio_format == 1 && bits == 32 {
-        let n = data.len() / 4;
-        for i in 0..n {
-            let s = i32::from_le_bytes([
-                data[i * 4],
-                data[i * 4 + 1],
-                data[i * 4 + 2],
-                data[i * 4 + 3],
-            ]);
-            samples.push((s >> 16) as i16);
-        }
-    } else if audio_format == 3 && bits == 32 {
-        let n = data.len() / 4;
-        for i in 0..n {
-            let f = f32::from_le_bytes([
-                data[i * 4],
-                data[i * 4 + 1],
-                data[i * 4 + 2],
-                data[i * 4 + 3],
-            ]);
-            samples.push((f.clamp(-1.0, 1.0) * 32767.0).round() as i16);
-        }
-    } else {
-        return None;
+    #[test]
+    fn the_last_skin_token_wins_over_an_earlier_one() {
+        // A mod folder can itself be named "Skin3 Something"; the file is what counts.
+        let path = Path::new("mods/Skin3 recolor/data/characters/ahri/skins/skin5.bin");
+        assert_eq!(skin_id_from_path(path).as_deref(), Some("5"));
     }
 
-    let new_data_size = samples.len() * 2;
-    let mut out = Vec::with_capacity(44 + new_data_size);
-    out.extend_from_slice(b"RIFF");
-    out.extend_from_slice(&((36 + new_data_size) as u32).to_le_bytes());
-    out.extend_from_slice(b"WAVE");
-    out.extend_from_slice(b"fmt ");
-    out.extend_from_slice(&16u32.to_le_bytes());
-    out.extend_from_slice(&1u16.to_le_bytes());
-    out.extend_from_slice(&channels.to_le_bytes());
-    out.extend_from_slice(&sample_rate.to_le_bytes());
-    out.extend_from_slice(&(sample_rate * channels as u32 * 2).to_le_bytes());
-    out.extend_from_slice(&(channels * 2).to_le_bytes());
-    out.extend_from_slice(&16u16.to_le_bytes());
-    out.extend_from_slice(b"data");
-    out.extend_from_slice(&(new_data_size as u32).to_le_bytes());
-    for s in samples {
-        out.extend_from_slice(&s.to_le_bytes());
+    #[test]
+    fn the_search_root_climbs_past_the_bin_folder() {
+        let dir = std::env::temp_dir().join("quartz_bank_root_test");
+        let bin_dir = dir.join("WAD/data/characters/ahri/skins");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        std::fs::create_dir_all(dir.join("WAD/assets/sounds")).unwrap();
+        let bin = bin_dir.join("skin0.bin");
+        std::fs::write(&bin, b"PROP").unwrap();
+
+        // data/ and assets/ are siblings under WAD, which is where banks live.
+        assert_eq!(bank_search_root(&bin), dir.join("WAD"));
+
+        std::fs::remove_dir_all(&dir).ok();
     }
-    Some(out)
 }

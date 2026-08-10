@@ -4,10 +4,10 @@
    the audio splitter overlay, the session / auto-extract / game-banks toolbar,
    the playback footer, per-format extract and the full context-menu + modal set.
 
-   Backend: BNK/WPK parsing, WEM decode and the external Wwise/vgmstream tooling
-   live behind the bnk_* / wwise_* / audio_* Tauri commands, wrapped by
-   ./bnkextract/utils/backend.ts. The audio splitter renders its waveform with
-   wavesurfer.js — see AudioSplitter.tsx. */
+   Backend: BNK/WPK parsing, WEM decode and Wwise Vorbis encode all live behind
+   the bnk_* / audio_* Tauri commands, wrapped by ./bnkextract/utils/backend.ts.
+   Everything runs in-process — there is no external toolchain. The audio splitter
+   renders its waveform with wavesurfer.js — see AudioSplitter.tsx. */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Box } from '@mui/material';
@@ -19,7 +19,6 @@ import AutoExtractDialog from './bnkextract/components/AutoExtractDialog';
 import AudioSplitter from './bnkextract/components/AudioSplitter';
 import BnkMainContent from './bnkextract/components/BnkMainContent';
 import BnkSettingsModal from './bnkextract/components/BnkSettingsModal';
-import BnkInstallModal from './bnkextract/components/BnkInstallModal';
 import BnkConvertOverlay from './bnkextract/components/BnkConvertOverlay';
 import BnkGainModal from './bnkextract/components/BnkGainModal';
 import BnkContextMenu from './bnkextract/components/BnkContextMenu';
@@ -32,12 +31,11 @@ import LoadFromGameModal from './port/components/modals/PortDonorFromGameModal';
 import type { BanksConfirmArgs } from './port/components/modals/donor/types';
 
 import {
-    loadBanks, wemToPlayable, extractNodes, saveBank, checkWwiseInstalled, installWwise,
-    getModFiles, extractBnkBanksFromGame, loadCodebook, pickDirectory,
+    loadBanks, wemToPlayable, extractNodes, saveBank,
+    getModFiles, extractBnkBanksFromGame, pickDirectory, locateBanksForBin,
     convertToWem, convertWavsToWem, amplifyWem, silenceWem, readFileBytes,
 } from './bnkextract/utils/backend';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { useFileDrop, type FileDropPosition } from '@/lib/util/useFileDrop';
 import {
     containerStyle, mainContentStyle, treeViewStyle, sidebarStyle,
@@ -188,12 +186,8 @@ export function BnkExtract() {
     const [leftSortMode, setLeftSortMode] = useState<SortMode>('name-asc');
 
     // ── Wwise conversion state ────────────────────────────────────────────────
-    const [isWwiseInstalled, setIsWwiseInstalled] = useState(false);
-    const [showInstallModal, setShowInstallModal] = useState(false);
     const [showConvertOverlay, setShowConvertOverlay] = useState(false);
     const [convertStatus, setConvertStatus] = useState('');
-    const [installProgress, setInstallProgress] = useState('');
-    const [isInstalling, setIsInstalling] = useState(false);
 
     // ── History (undo/redo) ───────────────────────────────────────────────────
     const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
@@ -240,9 +234,7 @@ export function BnkExtract() {
     // Object URL of the clip currently loaded into `audioRef`, so it can be
     // revoked when playback stops or another clip replaces it.
     const playingUrlRef = useRef<string | null>(null);
-    const codebookDataRef = useRef<Uint8Array | null>(null);
 
-    const pendingConversion = useRef<{ filePath: string; targetNodeId: string } | null>(null);
     const pendingGroupIds = useRef<string[]>([]);
 
 
@@ -294,8 +286,6 @@ export function BnkExtract() {
 
     // ── Codebook + Wwise availability (once) ──────────────────────────────────
     useEffect(() => {
-        void loadCodebook().then((cb) => { codebookDataRef.current = cb; }).catch(() => { });
-        void checkWwiseInstalled().then(setIsWwiseInstalled).catch(() => { });
     }, []);
 
     // ── Playback ──────────────────────────────────────────────────────────────
@@ -325,7 +315,7 @@ export function BnkExtract() {
             const playable = browserPlayable(raw)
                 ? raw
                 // Decode the WEM to a playable OGG/WAV container in Rust.
-                : await wemToPlayable(raw, codebookDataRef.current);
+                : await wemToPlayable(raw);
             if (!playable || playable.length === 0) {
                 setStatusMessage(`Cannot decode ${node.name} for playback`);
                 return;
@@ -376,6 +366,21 @@ export function BnkExtract() {
         if (typeof picked !== 'string') return;
         const setter = pane === 'right' ? setRightPaths : setLeftPaths;
         setter((prev) => ({ ...prev, [kind]: picked }));
+
+        /* Picking the BIN is enough to find its banks: they share a skin number
+           and a mod root, which is the same pairing a folder drop resolves. Only
+           empty fields are filled, so an explicit choice is never overwritten. */
+        if (kind !== 'bin') return;
+        const located = await locateBanksForBin(picked);
+        if (!located) return;
+        setter((prev) => ({
+            ...prev,
+            wpk: prev.wpk || located.audio,
+            bnk: prev.bnk || located.events,
+        }));
+        if (located.audio) {
+            setStatusMessage(`Found ${located.events ? 'audio + events banks' : 'audio bank'}`);
+        }
     }, []);
 
     const handleSetPath = useCallback((pane: Pane, kind: keyof PathSet, value: string) => {
@@ -577,7 +582,6 @@ export function BnkExtract() {
 
     const handleReplace = useCallback(async () => {
         if (!hasAudioSelection()) return;
-        if (!isWwiseInstalled) { setShowInstallModal(true); return; }
         const picked = await pickPath({ mode: 'file', filters: [{ name: 'Audio', extensions: ['wem', 'wav', 'ogg', 'mp3'] }], recentsKey: 'audio' });
         if (typeof picked !== 'string') return;
         const targets = collectSelectedAudioNodes();
@@ -599,7 +603,7 @@ export function BnkExtract() {
         } finally {
             setShowConvertOverlay(false);
         }
-    }, [hasAudioSelection, isWwiseInstalled, collectSelectedAudioNodes, activePane, pushToHistory, applyAudioToNodes]);
+    }, [hasAudioSelection, collectSelectedAudioNodes, activePane, pushToHistory, applyAudioToNodes]);
 
     const handleMakeSilent = useCallback((options?: { pane?: Pane; nodeIds?: string[] }) => {
         const pane = options?.pane ?? activePane;
@@ -741,7 +745,6 @@ export function BnkExtract() {
     const applyExternalFiles = useCallback(async (files: { path: string; name: string }[], targetId: string, pane: Pane) => {
         const file = files.find((f) => /\.(wem|wav|ogg|mp3)$/i.test(f.name));
         if (!file) return;
-        if (!file.name.toLowerCase().endsWith('.wem') && !isWwiseInstalled) { setShowInstallModal(true); return; }
         setShowConvertOverlay(true);
         setConvertStatus(`Converting ${file.name}...`);
         try {
@@ -757,7 +760,7 @@ export function BnkExtract() {
         } finally {
             setShowConvertOverlay(false);
         }
-    }, [isWwiseInstalled, pushToHistory, applyAudioToNodes]);
+    }, [pushToHistory, applyAudioToNodes]);
 
     /* External file→node drops are routed by the OS drag-drop listener (via cursor
        hit-test), so the DOM handler is a no-op. Internal node→node drags still flow
@@ -810,8 +813,6 @@ export function BnkExtract() {
     const importReferenceFiles = useCallback(async (paths: string[]) => {
         const audio = paths.filter((p) => /\.(wem|wav|ogg|mp3)$/i.test(p));
         if (audio.length === 0) return;
-        const nonWem = audio.some((p) => !p.toLowerCase().endsWith('.wem'));
-        if (nonWem && !isWwiseInstalled) { setShowInstallModal(true); return; }
         setShowConvertOverlay(true);
         const children: BnkNode[] = [];
         for (let i = 0; i < audio.length; i++) {
@@ -839,28 +840,13 @@ export function BnkExtract() {
         setRightExpandedNodes((prev) => new Set(prev).add(group.id));
         setActivePane('right');
         setStatusMessage(`Imported ${children.length} reference file(s)`);
-    }, [isWwiseInstalled, pushToHistory]);
+    }, [pushToHistory]);
 
     /* The OS drag-drop listener imports the real paths; the DOM handler only clears
        the drag-over highlight. */
     const handleRightPaneFileDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setRightPaneDragOver(false);
-    }, []);
-
-    // ── Wwise install ─────────────────────────────────────────────────────────
-    const handleInstallWwise = useCallback(async () => {
-        setIsInstalling(true);
-        setInstallProgress('Installing Wwise tools...');
-        const unlisten = await listen<string>('wwise:install-progress', (e) => setInstallProgress(e.payload));
-        try {
-            const res = await installWwise();
-            if (res.success) { setIsWwiseInstalled(true); setShowInstallModal(false); setStatusMessage('Wwise tools installed'); }
-            else setInstallProgress(res.error || 'Install failed');
-        } finally {
-            unlisten();
-            setIsInstalling(false);
-        }
     }, []);
 
     // ── Gain ──────────────────────────────────────────────────────────────────
@@ -879,7 +865,6 @@ export function BnkExtract() {
         }
         const withData = targets.filter((n) => n.audioData?.data?.length);
         if (withData.length === 0) { setStatusMessage('No audio to amplify'); return; }
-        if (!isWwiseInstalled) { setShowInstallModal(true); return; }
 
         const db = parseFloat(gainDb);
         if (isNaN(db)) { setStatusMessage('Invalid gain value'); return; }
@@ -910,17 +895,13 @@ export function BnkExtract() {
         } finally {
             setShowConvertOverlay(false);
         }
-    }, [gainDb, gainTargetPane, selectedNodes, rightSelectedNodes, treeData, rightTreeData, isWwiseInstalled, pushToHistory]);
+    }, [gainDb, gainTargetPane, selectedNodes, rightSelectedNodes, treeData, rightTreeData, pushToHistory]);
 
     // ── Splitter actions ──────────────────────────────────────────────────────
     const handleOpenInSplitter = useCallback(() => {
         const node = contextMenu?.node;
         const pane = contextMenu?.pane || activePane;
         handleCloseContextMenu();
-        if (node?.audioData && !isWwiseInstalled) {
-            setShowInstallModal(true);
-            return;
-        }
         setSplitterInitialFile(node ? {
             nodeId: node.id,
             name: node.name,
@@ -929,7 +910,7 @@ export function BnkExtract() {
             data: node.audioData?.data,
         } : null);
         setShowAudioSplitter(true);
-    }, [contextMenu, activePane, isWwiseInstalled, handleCloseContextMenu]);
+    }, [contextMenu, activePane, handleCloseContextMenu]);
 
     const handleSplitterReplace = useCallback((data: Uint8Array, nodeId: string, pane?: string) => {
         if (!data?.length || !nodeId) return;
@@ -940,12 +921,8 @@ export function BnkExtract() {
 
     const handleSplitterExportSegments = useCallback(async (segments: SplitterSegment[]) => {
         if (segments.length === 0) return;
-        if (!isWwiseInstalled) {
-            throw new Error('Wwise tools are required to push segments to the reference pane');
-        }
-
         setShowConvertOverlay(true);
-        setConvertStatus(`Converting ${segments.length} segment(s) with Wwise...`);
+        setConvertStatus(`Converting ${segments.length} segment(s)...`);
         try {
             const timestamp = Date.now();
             const converted = await convertWavsToWem(segments);
@@ -1005,7 +982,7 @@ export function BnkExtract() {
             setShowConvertOverlay(false);
             setConvertStatus('');
         }
-    }, [isWwiseInstalled, pushToHistory]);
+    }, [pushToHistory]);
 
     // ── Auto-extract / mod folder ─────────────────────────────────────────────
     /* Parse each scanned mod-file set into the left tree, then (if an output dir
@@ -1347,14 +1324,6 @@ export function BnkExtract() {
 
     return (
         <Box className="bnk-extract-container" sx={containerStyle}>
-            <BnkInstallModal
-                open={showInstallModal}
-                isInstalling={isInstalling}
-                installProgress={installProgress}
-                onCancel={() => { setShowInstallModal(false); pendingConversion.current = null; }}
-                onInstall={handleInstallWwise}
-            />
-
             <BnkConvertOverlay open={showConvertOverlay} convertStatus={convertStatus} />
 
             <BnkGainModal
@@ -1532,7 +1501,6 @@ export function BnkExtract() {
                 showAddToGroup={contextMenu?.pane === 'right' && !!contextMenu?.node?.id && collectRightGroups(rightTreeData).length > 0}
                 onRemoveFromGroup={() => { pendingGroupIds.current = getContextTargetIds(); handleCloseContextMenu(); handleRemoveFromGroup(); }}
                 showRemoveFromGroup={contextMenu?.pane === 'right' && !!contextMenu?.node?.id && isNodeInGroup(contextMenu.node.id, rightTreeData)}
-                isWwiseInstalled={isWwiseInstalled}
             />
 
             <BnkSettingsModal

@@ -6,10 +6,9 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-use super::bnk::{self, AudioEntry};
+use super::bank::{self, AudioEntry};
 use super::event_mapper::{self, EventMapping};
 use super::hirc;
-use super::wpk;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,7 +46,6 @@ pub struct BnkNode {
 #[serde(rename_all = "camelCase")]
 pub struct LoadBanksResult {
     pub tree: BnkNode,
-    pub audio_files: Vec<AudioData>,
     pub file_count: usize,
     #[serde(rename = "type")]
     pub kind: String,
@@ -368,14 +366,7 @@ fn file_name(path: &str) -> String {
 
 /// Read all entries from a BNK or WPK buffer, sorted by id.
 fn read_entries(data: &[u8]) -> Result<Vec<AudioEntry>, String> {
-    if data.len() < 4 {
-        return Err("Audio file too small".into());
-    }
-    let mut entries = match &data[0..4] {
-        b"BKHD" => bnk::BnkFile::parse(data)?.read_all_entries(data)?,
-        b"r3d2" => wpk::WpkFile::parse(data)?.read_all_entries(data)?,
-        _ => return Err("Unknown audio format".into()),
-    };
+    let mut entries = bank::all_entries(data)?;
     entries.sort_by_key(|e| e.id);
     Ok(entries)
 }
@@ -507,8 +498,7 @@ pub fn load_banks(
         &source_name
     });
 
-    let audio_files: Vec<AudioData> = entries.iter().map(to_audio_data).collect();
-    let file_count = audio_files.len();
+    let file_count = entries.len();
 
     let mut tree = group_audio_files(&entries, &mappings, &source_name);
     scope_ids(&mut tree, &scope_key, &[]);
@@ -527,7 +517,6 @@ pub fn load_banks(
 
     Ok(Some(LoadBanksResult {
         tree,
-        audio_files,
         file_count,
         kind: final_type,
     }))

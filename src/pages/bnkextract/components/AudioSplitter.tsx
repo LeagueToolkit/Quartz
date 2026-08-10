@@ -3,9 +3,9 @@
    pane / replace the source).
 
    The waveform + drag-to-create regions are rendered with wavesurfer.js (regions
-   plugin). Source audio is decoded to WAV in Rust (vgmstream / the native WEM
-   decoder); slicing and WAV encoding happen here in the browser via the Web Audio
-   API, and WEM re-encoding for "Replace Original" goes back through WwiseConsole. */
+   plugin). Source audio is decoded to WAV in Rust; slicing and WAV encoding happen
+   here in the browser via the Web Audio API, and WEM re-encoding for "Replace
+   Original" goes back through the in-process Wwise Vorbis encoder. */
 
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import {

@@ -1,13 +1,13 @@
 /* BNK/WPK parse + WEM decode/encode backend.
 
-   Pure-Rust parsing/decoding plus the external Wwise/vgmstream tooling live behind
-   the bnk_* / wwise_* / audio_* Tauri commands. These wrappers keep stable
-   signatures so the rest of the UI is unaffected. */
+   Everything is in-process behind the bnk_* / audio_* Tauri commands: containers
+   and Wwise Vorbis coding come from ritoshark::audio, and user mp3/flac/ogg is
+   decoded by symphonia. There is no external toolchain to install any more. */
 
 import { invoke } from '@tauri-apps/api/core';
 import { pickPath } from '@/components/explorer';
 import { log } from '@/lib/util/logger';
-import type { AudioData, BnkNode, ExtractFormat } from '../types';
+import type { BnkNode, ExtractFormat } from '../types';
 
 /* Tauri serializes Rust Vec<u8> as a JSON number array; rehydrate to bytes. */
 function toBytes(value: unknown): Uint8Array {
@@ -39,6 +39,7 @@ interface WireNode {
     name: string;
     audioData?: { id: number; data: number[] } | null;
     children?: WireNode[];
+    originalPath?: string;
 }
 function toWireNode(node: BnkNode): WireNode {
     const wire: WireNode = { name: node.name };
@@ -46,6 +47,10 @@ function toWireNode(node: BnkNode): WireNode {
         wire.audioData = { id: node.audioData.id, data: Array.from(toBytes(node.audioData.data)) };
     }
     if (node.children) wire.children = node.children.map(toWireNode);
+    /* Saving edits the container the tree came from instead of rebuilding one,
+       so the header and object hierarchy survive. The backend needs its path. */
+    const source = node.originalPath ?? node.wpkPath ?? node.bnkPath;
+    if (source) wire.originalPath = source;
     return wire;
 }
 
@@ -57,7 +62,6 @@ export interface LoadBanksArgs {
 
 export interface LoadBanksResult {
     tree: BnkNode;
-    audioFiles: AudioData[];
     fileCount: number;
     type: string;
 }
@@ -67,16 +71,12 @@ export async function loadBanks(args: LoadBanksArgs): Promise<LoadBanksResult | 
     const result = await invoke<LoadBanksResult | null>('bnk_load_banks', { args });
     if (!result?.tree) return result;
     hydrateTree(result.tree);
-    result.audioFiles?.forEach((a) => { if (a.data) a.data = toBytes(a.data); });
     return result;
 }
 
 /* Decode raw WEM bytes to a playable container (ogg/wav). Returns null on
    failure so the UI can fall back gracefully. */
-export async function wemToPlayable(
-    raw: Uint8Array,
-    _codebook: Uint8Array | null,
-): Promise<Uint8Array | null> {
+export async function wemToPlayable(raw: Uint8Array): Promise<Uint8Array | null> {
     try {
         return toBytes(await invoke<number[]>('bnk_wem_to_ogg', { data: Array.from(raw) }));
     } catch (e) {
@@ -86,13 +86,13 @@ export async function wemToPlayable(
 }
 
 /* Per-format conversions used by the extract pipeline. */
-export async function wemToWav(raw: Uint8Array, _codebook: Uint8Array | null): Promise<Uint8Array> {
+export async function wemToWav(raw: Uint8Array): Promise<Uint8Array> {
     return toBytes(await invoke<number[]>('bnk_wem_to_wav', { data: Array.from(raw) }));
 }
-export async function wemToOgg(raw: Uint8Array, _codebook: Uint8Array | null): Promise<Uint8Array> {
+export async function wemToOgg(raw: Uint8Array): Promise<Uint8Array> {
     return toBytes(await invoke<number[]>('bnk_wem_to_ogg', { data: Array.from(raw) }));
 }
-export async function wemToMp3(raw: Uint8Array, _codebook: Uint8Array | null, bitrate: number): Promise<Uint8Array> {
+export async function wemToMp3(raw: Uint8Array, bitrate: number): Promise<Uint8Array> {
     return toBytes(await invoke<number[]>('bnk_wem_to_mp3', { data: Array.from(raw), bitrate }));
 }
 
@@ -113,21 +113,23 @@ export async function saveBank(root: BnkNode, outPath: string): Promise<void> {
     await invoke('bnk_save_bank', { args: { root: toWireNode(root), outPath } });
 }
 
-/* Wwise / vgmstream tooling availability + install. */
-export async function checkWwiseInstalled(): Promise<boolean> {
+/* Given a skin BIN, find the audio + events banks that belong to it. Returns
+   null when nothing convincing sits nearby, so the fields are left alone. */
+export async function locateBanksForBin(
+    binPath: string,
+): Promise<{ audio: string; events: string } | null> {
     try {
-        return await invoke<boolean>('wwise_check');
-    } catch {
-        return false;
-    }
-}
-export async function installWwise(): Promise<{ success: boolean; error?: string }> {
-    try {
-        return await invoke<{ success: boolean; error?: string }>('wwise_install');
+        return await invoke<{ audio: string; events: string } | null>(
+            'bnk_locate_banks_for_bin',
+            { binPath },
+        );
     } catch (e) {
-        return { success: false, error: (e as Error).message };
+        log.error('[BnkExtract] locateBanksForBin failed', e);
+        return null;
     }
 }
+
+/* Encoding is in-process now — no external toolchain to check for or install. */
 export async function convertToWem(inputPath: string): Promise<Uint8Array> {
     return toBytes(await invoke<number[]>('audio_convert_to_wem', { inputPath }));
 }
@@ -203,15 +205,6 @@ export function silenceWem(): Uint8Array {
     }
     silenceWemCache = bytes;
     return bytes;
-}
-
-/* Codebook used by the WEM decoder, loaded once at mount. */
-export async function loadCodebook(): Promise<Uint8Array | null> {
-    try {
-        return toBytes(await invoke<number[]>('bnk_load_codebook'));
-    } catch {
-        return null;
-    }
 }
 
 /* Dialog helpers (these DO work today via the Tauri dialog plugin). */
