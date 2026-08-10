@@ -182,12 +182,18 @@ export async function getCDragonChampionSkins(
     const splashPathBySkinNum = new Map<number, string | null>();
     const uncenteredSplashPathBySkinNum = new Map<number, string | null>();
     const skinLineIdsBySkinNum = new Map<number, number[]>();
+    const nameBySkinNum = new Map<number, string>();
+    const rawIdBySkinNum = new Map<number, number>();
 
     if (Array.isArray(championSkinDetails?.skins)) {
         for (const skin of championSkinDetails.skins) {
             const rawSkinId = Number(skin?.id);
             if (!Number.isFinite(rawSkinId)) continue;
             const skinNum = rawSkinId >= 1000 ? rawSkinId % 1000 : rawSkinId;
+            rawIdBySkinNum.set(skinNum, rawSkinId);
+            if (typeof skin?.name === 'string' && skin.name) {
+                nameBySkinNum.set(skinNum, skin.name);
+            }
 
             if (typeof skin?.tilePath === 'string' && skin.tilePath) {
                 tilePathBySkinNum.set(skinNum, mapCdragonAssetPath(skin.tilePath));
@@ -221,6 +227,32 @@ export async function getCDragonChampionSkins(
                 skinLines: skinLineIdsBySkinNum.get(skinNum) || [],
             });
         }
+    }
+
+    /* Merge in anything the per-champion document lists that skins.json does
+       not. The global skins.json is incomplete for the legacy ("Jade", id
+       60000+) champions: 28 of the 60 have no rows at all, and the other 32
+       carry only the single "Classic X" card at skin number 301 — which for
+       most of them is not even a real asset (jade_amumu_..._301 404s while
+       jade_amumu_..._0 and _17 serve fine). champions/<id>.json is the
+       authoritative list there, so it fills the gap. Modern champions are
+       unaffected: their skins.json rows already cover these skin numbers, so
+       this pass adds nothing for them. */
+    const seenSkinNums = new Set(championSkins.map((s) => s.id));
+    for (const [skinNum, rawSkinId] of rawIdBySkinNum) {
+        if (seenSkinNums.has(skinNum)) continue;
+        const skinData = skinsData[String(rawSkinId)];
+        championSkins.push({
+            id: skinNum,
+            name: nameBySkinNum.get(skinNum) || skinData?.name || `Skin ${skinNum}`,
+            full_id: String(rawSkinId),
+            rarity: skinData?.rarity,
+            tilePath: tilePathBySkinNum.get(skinNum) || null,
+            centeredSplashPath: splashPathBySkinNum.get(skinNum) || null,
+            uncenteredSplashPath: uncenteredSplashPathBySkinNum.get(skinNum) || null,
+            skinLines: skinLineIdsBySkinNum.get(skinNum) || [],
+        });
+        seenSkinNums.add(skinNum);
     }
 
     // Expand quest-skin tiers into separate cards (e.g. K/DA ALL OUT Seraphine).
