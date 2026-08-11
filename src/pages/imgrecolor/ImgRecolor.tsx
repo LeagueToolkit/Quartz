@@ -1,16 +1,17 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import { Image as ImageIcon } from 'lucide-react';
 import {
     loadFolder,
     loadSingleImage,
-    saveImageFile,
-    isGrayscaleImage,
     applyAdjustment,
+    isProtectedTextureName,
     type ImageEntry,
     type RecolorParams,
 } from './utils/imgRecolorLogic';
+import { buildCurveLut, DEFAULT_CURVE, isIdentityCurve, type CurvePoint } from './utils/curve';
+import { imgRecolorBatch, imgRecolorFilterColored } from '@/lib/api';
 import { useFileDrop } from '@/lib/util/useFileDrop';
 import { DropOverlay } from '@/components/ui';
 import { useNavigationStore } from '@/lib/stores';
@@ -56,10 +57,20 @@ function ImgRecolor() {
     const [lightnessAdjust, setLightnessAdjust] = useState(0);
     const [opacity, setOpacity] = useState(100);
     const [preserveOriginalColors, setPreserveOriginalColors] = useState(false);
+    const [curve, setCurve] = useState<CurvePoint[]>(DEFAULT_CURVE);
+    /* Rebuilt only when the control points move; the preview and the save both use
+       this table, so neither can drift from what the editor draws. */
+    const curveLut = useMemo(() => (isIdentityCurve(curve) ? undefined : buildCurveLut(curve)), [curve]);
 
-    // ── Toast + async guards ──
-    const [showToast, setShowToast] = useState(false);
-    const [toastMessage, setToastMessage] = useState('');
+    /* ── Footer status ──
+       Long jobs (scanning, saving) report progress here instead of a toast. `progress`
+       is set per item as the loop advances so the footer counter is live, not estimated;
+       it is null whenever no job is running. */
+    const [status, setStatus] = useState('');
+    const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+    /* Bumped after a save so the selection thumbnails re-read the rewritten files
+       instead of showing the images from before the recolor. */
+    const [textureVersion, setTextureVersion] = useState(0);
     const [, setIsLoading] = useState(false); // re-entrancy guard (no UI overlay)
 
     // ── Drag state ──
@@ -95,13 +106,14 @@ function ImgRecolor() {
     }, []);
 
     // Debounced adjustment applied to the loaded previews.
-    const updateColorAdjustments = useCallback((hue: number, sat: number, light: number, opac: number, preserveColors: boolean) => {
+    const updateColorAdjustments = useCallback((hue: number, sat: number, light: number, opac: number, preserveColors: boolean, lut?: Uint8Array) => {
         if (loadedImages.size === 0) return;
         if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
 
         debounceTimerRef.current = setTimeout(() => {
             const params: RecolorParams = {
-                targetHue: hue, saturationBoost: sat, lightnessAdjust: light, opacity: opac, preserveOriginalColors: preserveColors,
+                targetHue: hue, saturationBoost: sat, lightnessAdjust: light, opacity: opac,
+                preserveOriginalColors: preserveColors, curveLut: lut,
             };
             setLoadedImages((prev) => {
                 const newMap = new Map(prev);
@@ -124,13 +136,22 @@ function ImgRecolor() {
                 setSelectedImages(new Set());
                 setShowingSelection(true);
                 setLoadedImages(new Map());
+                setStatus(`${result.images.length} image${result.images.length !== 1 ? 's' : ''} found`);
             }
         } finally {
             setIsLoading(false);
         }
     };
 
+    /* Distortion maps and cubemaps are never recolorable, so they stay out of every
+       selection path, not just the click handler. */
+    const selectableImages = useMemo(
+        () => allImages.filter((img) => !isProtectedTextureName(img.name)),
+        [allImages],
+    );
+
     const toggleImageSelection = useCallback((imagePath: string) => {
+        if (isProtectedTextureName(imagePath)) return;
         setSelectedImages((prev) => {
             const next = new Set(prev);
             if (next.has(imagePath)) next.delete(imagePath); else next.add(imagePath);
@@ -140,9 +161,11 @@ function ImgRecolor() {
 
     const toggleSelectAll = useCallback(() => {
         setSelectedImages((prev) => (
-            prev.size === allImages.length ? new Set<string>() : new Set(allImages.map((img) => img.path))
+            prev.size === selectableImages.length
+                ? new Set<string>()
+                : new Set(selectableImages.map((img) => img.path))
         ));
-    }, [allImages]);
+    }, [selectableImages]);
 
     const handleConfirmSelection = async () => {
         if (selectedImages.size === 0) return;
@@ -169,22 +192,30 @@ function ImgRecolor() {
         }
     };
 
-    // Re-apply adjustments when images load or sliders change.
+    // Re-apply adjustments when images load or sliders/curve change.
     useEffect(() => {
-        if (loadedImages.size > 0) updateColorAdjustments(hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors);
+        if (loadedImages.size > 0) updateColorAdjustments(hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors, curveLut);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [loadedImages.size]);
     useEffect(() => {
-        if (loadedImages.size > 0) updateColorAdjustments(hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors);
+        if (loadedImages.size > 0) updateColorAdjustments(hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors, curveLut);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors]);
+    }, [hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors, curveLut]);
 
+    /* Restore the neutral state: the image as it is on disk.
+
+       Hue 0 / saturation 0 is NOT neutral. With "preserve original colors" off, the
+       recolor REPLACES saturation with the slider value, so saturation 0 forces every
+       pixel to grey - reset used to wash the whole batch out. The identity is hue-shift
+       mode at its centre: preserve on, hue 180 (shift of 0) and saturation 50 (multiplier
+       of 1), which is the same baseline handleConfirmSelection starts from. */
     const handleReset = () => {
-        setHueShift(0);
-        setSaturationBoost(0);
+        setHueShift(180);
+        setSaturationBoost(50);
         setLightnessAdjust(0);
         setOpacity(100);
-        setPreserveOriginalColors(false);
+        setPreserveOriginalColors(true);
+        setCurve(DEFAULT_CURVE);
     };
 
     const handleBackToSelection = () => {
@@ -193,26 +224,26 @@ function ImgRecolor() {
     };
 
     const handleFilterGrayscale = async () => {
-        const isDistortionName = (name = '') => {
-            const n = String(name).toLowerCase();
-            return n.includes('distortion') || n.includes('distort') || n.includes('distord')
-                || /(^|[_\-\s.])dist([_\-\s.]|$)/i.test(n);
-        };
-
         setIsLoading(true);
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        // Only non-protected files are examined, so they are the real denominator.
+        const candidates = allImages.filter((img) => !isProtectedTextureName(img.name));
+        setStatus('Scanning for colored images');
+        setProgress({ done: 0, total: candidates.length });
         try {
-            const newSelected = new Set<string>();
-            for (const image of allImages) {
-                if (isDistortionName(image.name)) continue;
-                const imageData = await loadSingleImage(image.path);
-                if (imageData && !isGrayscaleImage(imageData)) newSelected.add(image.path);
+            /* Rust decodes and tests these in parallel and returns only the colored paths,
+               so no pixels cross the bridge. Sent in chunks purely so the footer can report
+               real progress: the counter advances by however many a chunk actually finished. */
+            const CHUNK = 64;
+            const colored: string[] = [];
+            for (let i = 0; i < candidates.length; i += CHUNK) {
+                const batch = candidates.slice(i, i + CHUNK).map((img) => img.path);
+                colored.push(...await imgRecolorFilterColored(batch));
+                setProgress({ done: Math.min(i + CHUNK, candidates.length), total: candidates.length });
             }
-            setSelectedImages(newSelected);
-            setToastMessage(`✅ Selected ${newSelected.size} colored image${newSelected.size !== 1 ? 's' : ''}`);
-            setShowToast(true);
-            setTimeout(() => setShowToast(false), 3000);
+            setSelectedImages(new Set(colored));
+            setStatus(`Selected ${colored.length} colored image${colored.length !== 1 ? 's' : ''}`);
         } finally {
+            setProgress(null);
             setIsLoading(false);
         }
     };
@@ -221,23 +252,44 @@ function ImgRecolor() {
         setIsLoading(true);
         let savedCount = 0;
         let failedCount = 0;
+        const paths = Array.from(selectedImages);
+        setStatus('Recoloring');
+        setProgress({ done: 0, total: paths.length });
         try {
-            const params: RecolorParams = { targetHue: hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors };
-            for (const imagePath of selectedImages) {
-                const original = loadedImages.has(imagePath) ? loadedImages.get(imagePath)!.original : await loadSingleImage(imagePath);
-                if (original) {
-                    const ok = await saveImageFile(applyAdjustment(original, params), imagePath);
-                    if (ok) savedCount++; else failedCount++;
-                } else {
-                    failedCount++;
-                }
+            /* Rust decodes, recolors and re-encodes these in parallel; nothing but paths
+               crosses the bridge. Sent in chunks only so the footer can report real
+               progress, since one call for the whole set would report nothing until it
+               finished. */
+            const CHUNK = 32;
+            for (let i = 0; i < paths.length; i += CHUNK) {
+                const batch = paths.slice(i, i + CHUNK);
+                const result = await imgRecolorBatch({
+                    paths: batch,
+                    targetHue: hueShift,
+                    saturationBoost,
+                    lightnessAdjust,
+                    opacity,
+                    preserveOriginalColors,
+                    // Rust takes the baked table, so the save matches the preview exactly.
+                    curve: curveLut ? Array.from(curveLut) : null,
+                });
+                savedCount += result.saved;
+                failedCount += result.failures.length;
+                for (const [path, error] of result.failures) console.error(`Recolor failed for ${path}: ${error}`);
+                /* These files just changed on disk. Thumbnails are cached by path, so
+                   without this the selection grid would keep showing the pre-recolor
+                   image. Only the files that actually failed keep their cached copy. */
+                const failedPaths = new Set(result.failures.map(([path]) => path));
+                thumbnailQueue.invalidate(batch.filter((path) => !failedPaths.has(path)));
+                setProgress({ done: Math.min(i + CHUNK, paths.length), total: paths.length });
             }
-            setToastMessage(failedCount === 0
-                ? `✅ Saved ${savedCount} image${savedCount !== 1 ? 's' : ''}`
-                : `⚠️ Saved ${savedCount}, failed ${failedCount}`);
-            setShowToast(true);
-            setTimeout(() => setShowToast(false), 3000);
+            setStatus(failedCount === 0
+                ? `Saved ${savedCount} image${savedCount !== 1 ? 's' : ''}`
+                : `Saved ${savedCount}, failed ${failedCount}`);
+            // Files on disk changed: make the selection grid re-read them.
+            if (savedCount > 0) setTextureVersion((v) => v + 1);
         } finally {
+            setProgress(null);
             setIsLoading(false);
         }
     };
@@ -350,6 +402,7 @@ function ImgRecolor() {
                             lightnessAdjust={lightnessAdjust} setLightnessAdjust={setLightnessAdjust}
                             opacity={opacity} setOpacity={setOpacity}
                             preserveOriginalColors={preserveOriginalColors} setPreserveOriginalColors={setPreserveOriginalColors}
+                            curve={curve} setCurve={setCurve}
                         />
                     </div>
                 </div>
@@ -364,6 +417,7 @@ function ImgRecolor() {
                                         image={image}
                                         isSelected={selectedImages.has(image.path)}
                                         onImageClick={toggleImageSelection}
+                                        version={textureVersion}
                                     />
                                 ))}
                             </div>
@@ -405,10 +459,12 @@ function ImgRecolor() {
                 showingSelection={showingSelection}
                 allImagesCount={allImages.length}
                 selectedCount={selectedImages.size}
-                allSelected={selectedImages.size === allImages.length}
+                allSelected={selectableImages.length > 0 && selectedImages.size === selectableImages.length}
                 loadedCount={loadedImages.size}
                 recursiveScan={recursiveScan}
                 setRecursiveScan={setRecursiveScan}
+                status={status}
+                progress={progress}
                 onLoadFolder={handleLoadFolder}
                 onFilterGrayscale={handleFilterGrayscale}
                 onToggleSelectAll={toggleSelectAll}
@@ -417,8 +473,6 @@ function ImgRecolor() {
                 onReset={handleReset}
                 onSaveAll={handleSaveAll}
             />
-
-            {showToast && <div className="imgrecolor-toast">{toastMessage}</div>}
         </div>
     );
 }

@@ -48,6 +48,7 @@ interface GithubRelease {
     author: {
         login: string;
         html_url: string;
+        avatar_url: string | null;
     } | null;
 }
 
@@ -60,6 +61,7 @@ interface ShowcaseRelease {
     author: {
         login: string;
         url: string;
+        avatarUrl: string | null;
     } | null;
 }
 
@@ -90,6 +92,11 @@ async function githubRelease(version: string, signal: AbortSignal): Promise<Show
             author: release.author ? {
                 login: release.author.login,
                 url: release.author.html_url,
+                /* Request a small avatar: GitHub serves the full-size image by
+                   default, and this is rendered at 20px. */
+                avatarUrl: release.author.avatar_url
+                    ? `${release.author.avatar_url}${release.author.avatar_url.includes('?') ? '&' : '?'}s=40`
+                    : null,
             } : null,
         };
     }
@@ -180,7 +187,18 @@ export function UpdateShowcase() {
                         <div className="update-showcase__details">
                             {release?.publishedAt && <time dateTime={release.publishedAt}>{new Date(release.publishedAt).toLocaleDateString('en-GB')}</time>}
                             {release?.author && (
-                                <button type="button" onClick={() => void openUrl(release.author!.url)}>
+                                <button type="button" className="update-showcase__author" onClick={() => void openUrl(release.author!.url)}>
+                                    {release.author.avatarUrl && (
+                                        <img
+                                            className="update-showcase__avatar"
+                                            src={release.author.avatarUrl}
+                                            alt=""
+                                            loading="lazy"
+                                            /* A failed avatar load should not leave a broken-image
+                                               icon next to the name. */
+                                            onError={(event) => { event.currentTarget.style.display = 'none'; }}
+                                        />
+                                    )}
                                     Posted by {release.author.login}
                                 </button>
                             )}

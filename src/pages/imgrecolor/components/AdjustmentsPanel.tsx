@@ -1,6 +1,8 @@
 import { Slider } from '@mui/material';
 import { Switch as DlSwitch } from '@/components/settings/primitives';
 import { sliderSx } from './sliderSx';
+import { CurveEditor } from './CurveEditor';
+import { DEFAULT_CURVE, isIdentityCurve, type CurvePoint } from '../utils/curve';
 
 interface AdjustSliderProps {
     label: string;
@@ -33,6 +35,7 @@ export interface AdjustmentsPanelProps {
     lightnessAdjust: number; setLightnessAdjust: (v: number) => void;
     opacity: number; setOpacity: (v: number) => void;
     preserveOriginalColors: boolean; setPreserveOriginalColors: (v: boolean) => void;
+    curve: CurvePoint[]; setCurve: (v: CurvePoint[]) => void;
 }
 
 /* Left-side Color Adjustments panel — Design Lab sidebar styling (uppercase
@@ -57,6 +60,29 @@ export function AdjustmentsPanel(props: AdjustmentsPanelProps) {
                     Preserve original colors
                 </span>
             </label>
+
+            <div className="imgrecolor-curve">
+                <div className="imgrecolor-adjust__head">
+                    <span>Curves</span>
+                    <div className="rule" />
+                </div>
+                <div className="imgrecolor-curve__head">
+                    <span className="imgrecolor-adjust__label">Value</span>
+                    <button
+                        className="dl-btn dl-btn--secondary dl-btn--sm"
+                        onClick={() => props.setCurve(DEFAULT_CURVE)}
+                        disabled={disabled || isIdentityCurve(props.curve)}
+                    >
+                        Reset
+                    </button>
+                </div>
+                <div className="imgrecolor-curve__box">
+                    <CurveEditor points={props.curve} onChange={props.setCurve} disabled={disabled} />
+                </div>
+                <span className="imgrecolor-curve__hint">
+                    Click to add a point / drag to move / right-click to remove
+                </span>
+            </div>
         </>
     );
 }

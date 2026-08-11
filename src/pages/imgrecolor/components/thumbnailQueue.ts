@@ -11,11 +11,19 @@ interface QueueJob {
 export const thumbnailQueue = {
     queue: [] as QueueJob[],
     activeCount: 0,
-    maxConcurrent: Math.max(2, Math.min(4, Math.floor(((typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : 8) || 8) / 3))),
+    /* Decode now happens in Rust on a blocking thread pool, so the browser side is just
+       waiting on IPC. The old 2-4 cap was sized for main-thread canvas work and is the
+       bottleneck once that work moves off-thread; allow more in flight, still bounded so
+       a huge folder cannot flood the backend. */
+    maxConcurrent: Math.max(4, Math.min(12, (typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : 8) || 8)),
     pausedUntil: 0,
     scrollListenerAttached: false,
     inflight: new Map<string, Promise<string | null>>(),
     cache: new Map<string, string>(),
+    /* Bumped per key by invalidate(). A decode that started under an older generation
+       is discarded on resolve, so a save cannot be overwritten by an in-flight read of
+       the pre-save file. */
+    generation: new Map<string, number>(),
     maxCacheSize: 600,
 
     attachScrollTracking() {
@@ -65,8 +73,25 @@ export const thumbnailQueue = {
         }
         this.cache.clear();
         this.inflight.clear();
+        this.generation.clear();
         this.queue = [];
         this.activeCount = 0;
+    },
+
+    /* Drop the cached thumbnails for specific files.
+       Entries are keyed by path, so a file rewritten on disk keeps its key and would
+       otherwise keep serving the pre-write image. Call this after saving. */
+    invalidate(keys: Iterable<string>) {
+        for (const key of keys) {
+            const objectUrl = this.cache.get(key);
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            this.cache.delete(key);
+            this.inflight.delete(key);
+            /* A decode already running for this key read the pre-save bytes. Bump its
+               generation so that when it resolves it is discarded instead of being
+               written back into the cache we just cleared. */
+            this.generation.set(key, (this.generation.get(key) ?? 0) + 1);
+        }
     },
 
     add(key: string, task: () => Promise<string | null>): Promise<string | null> {
@@ -75,14 +100,21 @@ export const thumbnailQueue = {
         if (cached) return Promise.resolve(cached);
         if (this.inflight.has(key)) return this.inflight.get(key)!;
 
+        const startedAt = this.generation.get(key) ?? 0;
         const managedPromise = new Promise<string | null>((resolve, reject) => {
             this.queue.push({ key, task, promiseHandlers: { resolve, reject } });
             this.process();
         }).then((result) => {
-            if (result) this.setCached(key, result);
+            if (!result) return result;
+            // Invalidated while this was decoding: the bytes are stale, so drop them.
+            if ((this.generation.get(key) ?? 0) !== startedAt) {
+                URL.revokeObjectURL(result);
+                return null;
+            }
+            this.setCached(key, result);
             return result;
         }).finally(() => {
-            this.inflight.delete(key);
+            if (this.inflight.get(key) === managedPromise) this.inflight.delete(key);
         });
 
         this.inflight.set(key, managedPromise);

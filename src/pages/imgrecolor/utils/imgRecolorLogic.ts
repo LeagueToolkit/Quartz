@@ -53,6 +53,24 @@ function extname(p: string): string {
     return m ? m[0].toLowerCase() : '';
 }
 
+/*
+ * Textures that must not be recolored, recognised by name.
+ *
+ * Distortion maps store a direction vector per texel rather than a color, so shifting their
+ * hue corrupts the offsets the shader reads. Cubemaps hold six faces in one file and the
+ * single-surface decode path keeps only the first, so a save writes that one face back over
+ * all six and permanently loses the rest.
+ *
+ * Name matching is deliberate: it catches these before anything decodes them, and the naming
+ * is consistent enough in League assets to be reliable.
+ */
+export function isProtectedTextureName(name = ''): boolean {
+    const n = String(name).toLowerCase();
+    if (n.includes('cubemap') || /(^|[_\-\s.])cube([_\-\s.]|$)/.test(n)) return true;
+    return n.includes('distortion') || n.includes('distort') || n.includes('distord')
+        || /(^|[_\-\s.])dist([_\-\s.]|$)/.test(n);
+}
+
 
 /*
  * Load a folder and scan for images. When no path is given, prompt for a directory and
@@ -288,6 +306,9 @@ export interface RecolorParams {
     lightnessAdjust: number;
     opacity: number;
     preserveOriginalColors: boolean;
+    /* Baked 256-entry Value tone curve. Omit for identity. The preview and the Rust
+       batch save both index this table, so they cannot drift apart. */
+    curveLut?: Uint8Array;
 }
 
 /*
@@ -300,14 +321,18 @@ export function applyAdjustmentInPlace(pixels: Uint8ClampedArray, params: Recolo
     const lightnessAdjustment = lightnessAdjust / 100;
     const saturationMultiplier = saturationBoost / 100;
     const opacityMultiplier = opacity / 100;
+    // Only a well-formed table is honoured; anything else is treated as identity.
+    const lut = params.curveLut && params.curveLut.length === 256 ? params.curveLut : null;
 
     for (let i = 0; i < pixels.length; i += 4) {
-        const r = pixels[i];
-        const g = pixels[i + 1];
-        const b = pixels[i + 2];
         const a = pixels[i + 3];
-
         if (a === 0) continue;
+
+        /* Curve first, on raw RGB, so the HSL stage sees curved values. Must stay in
+           the same order as apply_adjustment in quartz-lib/src/tex.rs. */
+        const r = lut ? lut[pixels[i]] : pixels[i];
+        const g = lut ? lut[pixels[i + 1]] : pixels[i + 1];
+        const b = lut ? lut[pixels[i + 2]] : pixels[i + 2];
 
         const hsl = rgbToHsl(r, g, b);
 
@@ -430,7 +455,12 @@ export function extractDominantColors(imageData: ImageData, count = 8): string[]
         });
 }
 
-/* Detect grayscale / colorless images (skip them when filtering). */
+/* Detect grayscale / colorless images.
+ *
+ * Filter Grayscale no longer calls this: it runs the same test in Rust via
+ * imgRecolorFilterColored, which decodes in parallel and never ships pixels over IPC.
+ * Kept for callers that already hold an ImageData. If the rule changes, change
+ * rgba_is_colored in quartz-lib/src/tex.rs to match, or the two will disagree. */
 export function isGrayscaleImage(imageData: ImageData): boolean {
     const pixels = imageData.data;
     let colorfulPixels = 0;

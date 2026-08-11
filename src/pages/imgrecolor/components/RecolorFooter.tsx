@@ -13,6 +13,10 @@ export interface RecolorFooterProps {
     loadedCount: number;
     recursiveScan: boolean;
     setRecursiveScan: (v: boolean) => void;
+    /* Centered status line. `progress` is non-null only while a job runs, and its
+       counts come from the job loop itself, so the readout is live. */
+    status: string;
+    progress: { done: number; total: number } | null;
     onLoadFolder: () => void;
     onFilterGrayscale: () => void;
     onToggleSelectAll: () => void;
@@ -25,12 +29,27 @@ export interface RecolorFooterProps {
 /* Full-width bottom action bar (Paint-style, fixed 48px). Left: Load Folder (once
    images exist) + the Include Subfolders toggle; right: mode-specific actions. */
 export function RecolorFooter(p: RecolorFooterProps) {
+    const pct = p.progress && p.progress.total > 0
+        ? Math.round((p.progress.done / p.progress.total) * 100)
+        : 0;
+
     return (
-        <Box className="imgrecolor-footer" sx={{
-            height: '48px', padding: '0 16px', boxSizing: 'border-box',
-            background: 'color-mix(in oklab, var(--bg-secondary) 94%, transparent)', borderTop: '1px solid var(--border)',
-            display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0,
-        }}>
+        <Box className="imgrecolor-footer">
+            {(p.progress || p.status) && (
+                <span className="imgrecolor-footer__status">
+                    <span className="imgrecolor-footer__status-label">{p.status}</span>
+                    {p.progress && (
+                        <>
+                            <span className="imgrecolor-footer__status-track">
+                                <span className="imgrecolor-footer__status-fill" style={{ width: `${pct}%` }} />
+                            </span>
+                            <span className="imgrecolor-footer__status-count">
+                                {p.progress.done}/{p.progress.total} ({pct}%)
+                            </span>
+                        </>
+                    )}
+                </span>
+            )}
             {!p.nothingLoaded && (
                 <button onClick={p.onLoadFolder} className="dl-btn dl-btn--primary dl-btn--sm dl-btn--icon" title="Load Folder">
                     <span className="dl-icon"><FolderOpenIcon sx={{ fontSize: 15 }} /></span>
@@ -45,7 +64,7 @@ export function RecolorFooter(p: RecolorFooterProps) {
             </label>
 
             {p.showingSelection && p.allImagesCount > 0 && (
-                <Box sx={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, justifyContent: 'flex-end' }}>
+                <Box className="imgrecolor-footer__actions-group">
                     <button className="dl-btn dl-btn--secondary dl-btn--sm" onClick={p.onFilterGrayscale}>Filter Grayscale</button>
                     <button className="dl-btn dl-btn--secondary dl-btn--sm" onClick={p.onToggleSelectAll}>
                         {p.allSelected ? 'Deselect All' : 'Select All'}
@@ -57,7 +76,7 @@ export function RecolorFooter(p: RecolorFooterProps) {
             )}
 
             {!p.showingSelection && p.allImagesCount > 0 && (
-                <Box sx={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, justifyContent: 'flex-end' }}>
+                <Box className="imgrecolor-footer__actions-group">
                     <button className="dl-btn dl-btn--secondary dl-btn--sm" onClick={p.onBackToSelection}>Back to Selection</button>
                     <button className="dl-btn dl-btn--secondary dl-btn--sm dl-btn--icon" onClick={p.onReset} title="Reset">
                         <span className="dl-icon"><RefreshIcon sx={{ fontSize: 15 }} /></span>

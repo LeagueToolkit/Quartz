@@ -24,6 +24,10 @@
 .update-showcase__details time { display: block; }
 .update-showcase__details button { appearance: none; padding: 0 0 0 9px; border: 0; border-left: var(--dl-border-soft); background: none; color: var(--text-muted); font: inherit; cursor: pointer; }
 .update-showcase__details button:hover { color: var(--accent-primary); }
+/* Author chip: the avatar sits inline with the name, so the button becomes a
+   flex row. `inline-flex` keeps it on the details line next to the date. */
+.update-showcase__author { display: inline-flex; align-items: center; gap: 6px; }
+.update-showcase__avatar { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; background: var(--bg-tertiary); object-fit: cover; }
 .update-showcase__head-actions { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
 
 .update-showcase__body { min-height: 210px; flex: 1; padding: 22px 26px; overflow-y: auto; }

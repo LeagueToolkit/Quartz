@@ -1,20 +1,26 @@
 import { useEffect, useRef, useState, memo } from 'react';
 import { Box, Typography, Checkbox } from '@mui/material';
-import { loadSingleImage, type ImageEntry } from '../utils/imgRecolorLogic';
+import { isProtectedTextureName, type ImageEntry } from '../utils/imgRecolorLogic';
+import { imgRecolorThumbnail } from '@/lib/api';
 import { thumbnailQueue } from './thumbnailQueue';
 
 interface ImageThumbnailProps {
     image: ImageEntry;
     isSelected: boolean;
     onImageClick: (path: string) => void;
+    /* Bumped when the files on disk change (after a save). The thumbnail is cached by
+       path, which does not change on rewrite, so this is what forces a re-read. */
+    version?: number;
 }
 
 /* Lazily-loaded, memoized selection thumbnail. Decodes only when scrolled into
    view (IntersectionObserver) and downscales via the shared thumbnail queue. */
-export const ImageThumbnail = memo(({ image, isSelected, onImageClick }: ImageThumbnailProps) => {
+export const ImageThumbnail = memo(({ image, isSelected, onImageClick, version = 0 }: ImageThumbnailProps) => {
     const [thumbnail, setThumbnail] = useState<string | null>(null);
     const [isVisible, setIsVisible] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
+    // Distortion maps and cubemaps break when recolored, so they render dimmed and inert.
+    const isProtected = isProtectedTextureName(image.name);
 
     useEffect(() => {
         const observer = new IntersectionObserver(
@@ -42,67 +48,54 @@ export const ImageThumbnail = memo(({ image, isSelected, onImageClick }: ImageTh
 
         thumbnailQueue.add(image.path, async () => {
             if (cancelled) return null;
-
-            const imageData = await loadSingleImage(image.path);
-            if (!imageData || cancelled) return null;
-
-            const { width, height } = imageData;
-            const maxSize = 128;
-            const scale = Math.min(maxSize / width, maxSize / height, 1);
-            const newWidth = Math.round(width * scale);
-            const newHeight = Math.round(height * scale);
-
-            const fullCanvas = document.createElement('canvas');
-            fullCanvas.width = width;
-            fullCanvas.height = height;
-            const fullCtx = fullCanvas.getContext('2d');
-            if (!fullCtx) return null;
-            fullCtx.putImageData(imageData, 0, 0);
-
-            const thumbCanvas = document.createElement('canvas');
-            thumbCanvas.width = newWidth;
-            thumbCanvas.height = newHeight;
-            const thumbCtx = thumbCanvas.getContext('2d');
-            if (!thumbCtx) return null;
-            thumbCtx.drawImage(fullCanvas, 0, 0, newWidth, newHeight);
-
-            const blob = await new Promise<Blob | null>((resolve) => thumbCanvas.toBlob(resolve, 'image/png'));
-            if (!blob) return null;
-            return URL.createObjectURL(blob);
+            /* Rust decodes, downscales and PNG-encodes in one pass, so only a small PNG
+               crosses the bridge. The old path pulled the full-resolution RGBA over as
+               base64 and resized it through two canvases on the main thread. */
+            const png = await imgRecolorThumbnail(image.path, 128);
+            if (cancelled) return null;
+            return URL.createObjectURL(new Blob([png], { type: 'image/png' }));
         }).then((dataUrl) => {
             if (dataUrl && !cancelled) setThumbnail(dataUrl);
         }).catch(() => { /* ignore cancelled loads */ });
 
         return () => { cancelled = true; };
-    }, [isVisible, image.path]);
+    }, [isVisible, image.path, version]);
 
     return (
         <Box
             ref={ref}
-            onClick={() => onImageClick(image.path)}
+            onClick={() => { if (!isProtected) onImageClick(image.path); }}
             data-image-path={image.path}
+            title={isProtected
+                ? `${image.name} — protected: recoloring a distortion map or cubemap corrupts it`
+                : undefined}
             sx={{
                 position: 'relative',
                 background: 'var(--bg-tertiary)',
                 borderRadius: 'var(--radius-sm)',
                 overflow: 'hidden',
                 border: isSelected ? '2px solid var(--accent-primary)' : '1px solid var(--border)',
-                cursor: 'pointer',
+                cursor: isProtected ? 'not-allowed' : 'pointer',
+                opacity: isProtected ? 0.4 : 1,
+                filter: isProtected ? 'grayscale(1)' : 'none',
                 transition: 'border-color 140ms var(--ease-out), box-shadow 140ms var(--ease-out)',
                 aspectRatio: '1',
                 display: 'flex',
                 flexDirection: 'column',
                 '&:hover': {
-                    border: isSelected
-                        ? '2px solid var(--accent-primary)'
-                        : '1px solid color-mix(in oklab, var(--accent-primary) 45%, var(--border))',
+                    border: isProtected
+                        ? '1px solid var(--border)'
+                        : isSelected
+                            ? '2px solid var(--accent-primary)'
+                            : '1px solid color-mix(in oklab, var(--accent-primary) 45%, var(--border))',
                 },
             }}
         >
             {/* Selection checkmark */}
             <Box sx={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
                 <Checkbox
-                    checked={isSelected}
+                    checked={isSelected && !isProtected}
+                    disabled={isProtected}
                     disableRipple
                     sx={{
                         color: 'var(--text-muted)',
@@ -144,5 +137,6 @@ export const ImageThumbnail = memo(({ image, isSelected, onImageClick }: ImageTh
     prev.isSelected === next.isSelected &&
     prev.image.path === next.image.path &&
     prev.image.name === next.image.name &&
-    prev.onImageClick === next.onImageClick
+    prev.onImageClick === next.onImageClick &&
+    prev.version === next.version
 ));

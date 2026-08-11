@@ -58,8 +58,9 @@ export {
     type UpscaleStatus, type UpscaleStreamResult, type UpscaleBatchResults,
 } from './upscale';
 export {
-    imgRecolorDecodeTexture, imgRecolorSaveTexture, imgRecolorScanDir,
-    type DecodedTexture, type ScannedImage,
+    imgRecolorDecodeTexture, imgRecolorFilterColored, imgRecolorThumbnail,
+    imgRecolorBatch, imgRecolorSaveTexture, imgRecolorScanDir,
+    type DecodedTexture, type ScannedImage, type RecolorBatchResult,
 } from './imgrecolor';
 export {
     wadFindChampion, wadReadToc, wadExtractChunks,

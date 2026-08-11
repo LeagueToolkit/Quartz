@@ -147,6 +147,129 @@
 .imgrecolor-footer__spacer { flex: 1; min-width: 0; }
 .imgrecolor-footer__actions { display: flex; gap: 8px; }
 
+/* ── Value tone curve (GIMP-style) ───────────────────────────────────────── */
+.imgrecolor-curve {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.imgrecolor-curve__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.imgrecolor-curve__box {
+    /* Square editor: the graph reads as input-vs-output only when both axes match. */
+    aspect-ratio: 1;
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    overflow: hidden;
+}
+.imgrecolor-curve__svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none; /* pointer drags must not scroll the panel */
+}
+/* The viewBox is stretched to the panel width, so strokes are given a
+   non-scaling width or they would render thicker on one axis. */
+.imgrecolor-curve__grid,
+.imgrecolor-curve__diagonal,
+.imgrecolor-curve__line {
+    vector-effect: non-scaling-stroke;
+    fill: none;
+}
+.imgrecolor-curve__grid {
+    stroke: var(--border);
+    stroke-width: 1;
+    opacity: 0.5;
+}
+.imgrecolor-curve__diagonal {
+    stroke: var(--border);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+}
+.imgrecolor-curve__line {
+    stroke: var(--accent-primary);
+    stroke-width: 2;
+}
+.imgrecolor-curve__point {
+    fill: var(--bg-secondary);
+    stroke: var(--accent-primary);
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+}
+.imgrecolor-curve__hint {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    line-height: 1.4;
+}
+
+/* Centered status + progress, matching Port's bottom-bar status treatment
+   (absolute centering on the bar, accent color, mono 12px). Absolute so its
+   position does not drift as the side controls change width between modes. */
+.imgrecolor-footer__status {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 50%;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-primary);
+    white-space: nowrap;
+    pointer-events: none;
+    /* Above the action group, which is painted to keep the buttons readable. */
+    z-index: 1;
+}
+.imgrecolor-footer__status-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.imgrecolor-footer__status-track {
+    display: block;
+    width: 110px;
+    height: 4px;
+    flex-shrink: 0;
+    border-radius: 2px;
+    background: var(--bg-tertiary);
+    overflow: hidden;
+}
+.imgrecolor-footer__status-fill {
+    display: block;
+    height: 100%;
+    background: var(--accent-primary);
+    transition: width 90ms linear;
+}
+.imgrecolor-footer__status-count {
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Right-aligned action buttons.
+
+   `margin-left: auto` pushes the group right instead of `flex: 1`, which would
+   stretch it across the whole bar. It must not span the full width: the group is
+   painted (so buttons stay readable where they meet the centered status) and a
+   full-width painted layer would sit on top of that status and wash it out. */
+.imgrecolor-footer__actions-group {
+    display: flex;
+    gap: 8px;
+    min-width: 0;
+    margin-left: auto;
+    justify-content: flex-end;
+    position: relative;
+    background: color-mix(in oklab, var(--bg-secondary) 94%, transparent);
+}
+
 .imgrecolor-subfolders {
     display: flex;
     align-items: center;
@@ -158,29 +281,5 @@
     white-space: nowrap;
 }
 
-/* Drag overlay */
 /* Drag overlay: now the shared <DropOverlay variant="scrim" /> component. */
-@keyframes imgrecolor-toast-in {
-    from { transform: translateY(12px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-}
-
-/* Toast */
-.imgrecolor-toast {
-    position: fixed;
-    bottom: 24px;
-    right: 24px;
-    z-index: 200;
-    max-width: 360px;
-    padding: 14px 20px;
-    background: color-mix(in oklab, var(--color-success) 18%, var(--bg-secondary));
-    border: 1px solid color-mix(in oklab, var(--color-success) 40%, var(--border));
-    border-radius: var(--radius);
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    font-size: 14px;
-    font-weight: 600;
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(10px);
-    animation: imgrecolor-toast-in 0.3s ease-out;
-}
+/* Status/progress now lives in the footer bar (RecolorFooter), not a toast. */
