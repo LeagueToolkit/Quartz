@@ -43,6 +43,12 @@ export function explorerReveal(path: string): Promise<void> {
     return invokeCommand<void>('explorer_reveal', { path });
 }
 
+/** Open a file in a program. Omit `withExe` to let the OS use whatever is
+ *  associated with the extension. */
+export function explorerOpenWith(path: string, withExe?: string): Promise<void> {
+    return invokeCommand<void>('explorer_open_with', { path, with: withExe ?? null });
+}
+
 /** Keep only paths that still exist on disk (order preserved). */
 export function explorerFilterExisting(paths: string[]): Promise<string[]> {
     return invokeCommand<string[]>('explorer_filter_existing', { paths });

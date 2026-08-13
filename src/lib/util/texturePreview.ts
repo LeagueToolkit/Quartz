@@ -12,7 +12,7 @@
 
 import type React from 'react';
 import { portResolveAssetPath } from '@/lib/api/wad';
-import { explorerReveal } from '@/lib/api/explorer';
+import { explorerReveal, explorerOpenWith } from '@/lib/api/explorer';
 import { revealInFileManager } from '@/components/explorer/useFileExplorer';
 import { openModelInspect } from '@/lib/model/modelInspectEvent';
 import { resolveDiskTextureDataUrl, resolveTextureDataUrl } from './resolveTextureDataUrl';
@@ -492,6 +492,15 @@ function openPreviewContextMenu(
                             JSON.stringify({ autoLoadPath: dir, autoSelectFile: diskPath }),
                         );
                         window.location.hash = '#/img-recolor';
+                    }, !diskPath),
+                );
+
+                /* Open the file in whatever program Windows associates with its
+                   extension — GIMP, Photoshop, whatever the user already set as the
+                   default for .dds/.tex. No configuration, no picker. */
+                menu.appendChild(
+                    makeItem('Open in image editor', () => {
+                        if (diskPath) void explorerOpenWith(diskPath).catch(() => {});
                     }, !diskPath),
                 );
             }

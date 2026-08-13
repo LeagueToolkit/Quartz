@@ -240,6 +240,41 @@ pub fn set_blend_mode(id: SessionId, emitter_key: &str, mode: u8) -> Result<bool
     })
 }
 
+/// Set the blend mode on many emitters at once, returning how many changed.
+///
+/// One undo frame covers the whole batch, so a bulk change is reversed by a single
+/// undo rather than one per emitter. Emitters that are already on `mode`, or whose
+/// blendMode node cannot be found, are skipped.
+pub fn set_blend_mode_bulk(id: SessionId, emitter_keys: &[String], mode: u8) -> Result<usize> {
+    with_session(id, |s| {
+        let paths: Vec<_> = emitter_keys
+            .iter()
+            .filter_map(|key| s.index.blend_modes.get(key).cloned())
+            .collect();
+        if paths.is_empty() {
+            return 0;
+        }
+
+        let frame = s.capture(paths.iter().map(|p| (p.bin, p.entry)));
+        let mut changed = 0usize;
+        let mut touched_bins = Vec::new();
+        for path in &paths {
+            if let Some(ritoshark::bin::BinValue::U8(v)) = path.resolve_mut(&mut s.bins) {
+                if *v != mode {
+                    *v = mode;
+                    changed += 1;
+                    touched_bins.push(path.bin);
+                }
+            }
+        }
+        if changed > 0 {
+            s.dirty_bins(touched_bins);
+            s.push_undo(frame);
+        }
+        changed
+    })
+}
+
 /// Rewrite an emitter's texture path (the `string` node whose current value is
 /// `old_path`). Returns the refreshed model so the edit index picks up the new
 /// path value; `None` if the node could not be located or the value was

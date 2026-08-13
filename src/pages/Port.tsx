@@ -14,7 +14,7 @@ import { getLeaguePath } from '@/lib/api/league';
 import { readBin, writeBin } from '@/lib/api';
 import { vfxModel } from '@/lib/api/vfxSession';
 import { log } from '@/lib/util/logger';
-import { useUiPrefsStore } from '@/lib/stores';
+import { useUiPrefsStore, useNavigationStore } from '@/lib/stores';
 import { portPrepareDonorFromSkin, backupCreate, portCleanupDonorTemp } from '@/lib/api/wad';
 import TargetColumn from './port/components/TargetColumn';
 import DonorColumn from './port/components/DonorColumn';
@@ -155,6 +155,22 @@ function Port() {
        virtualized/memoized VFX rows so their identities survive re-renders. */
     const { handleSetTexture, handlePortEmitter, handleMoveEmitter } = p;
     useJadeBin(p.targetPath);
+
+    /* A BIN handed off from another tool (RubyRe via `--port-bin`, or the
+       single-instance event when Quartz was already running) loads into the TARGET
+       column. Mirrors Paint: the path is cleared only once loaded, so a remount
+       between handoff and load cannot drop it. */
+    const pendingFile = useNavigationStore((s) => s.pendingFile);
+    const consumePendingFile = useNavigationStore((s) => s.consumePendingFile);
+    const clearPendingFile = useNavigationStore((s) => s.clearPendingFile);
+    const processTargetBin = p.processTargetBin;
+    useEffect(() => {
+        if (pendingFile?.page !== 'port') return;
+        const path = consumePendingFile('port');
+        if (!path) return;
+        clearPendingFile('port');
+        void processTargetBin(path);
+    }, [pendingFile, consumePendingFile, clearPendingFile, processTargetBin]);
 
     const [showPortAllModeModal, setShowPortAllModeModal] = useState(false);
     const [showIdleManagerModal, setShowIdleManagerModal] = useState(false);

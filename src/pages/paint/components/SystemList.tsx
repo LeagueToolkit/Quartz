@@ -203,7 +203,11 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                     <Box sx={{ display: 'flex', gap: '4px', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
                         {rgba.map((val, i) => (
                             <input
-                                key={`${row.selectionKey}_${i}`}
+                                /* Value in the key for the same reason as the BM input
+                                   below: uncontrolled inputs only read defaultValue on
+                                   mount, so without it an externally-changed value stays
+                                   stale until the row is recycled by scrolling. */
+                                key={`${row.selectionKey}_${i}_${val}`}
                                 type="text"
                                 defaultValue={val.toFixed(2)}
                                 style={{
@@ -343,7 +347,13 @@ const Row = React.memo(function Row(props: { row: ListRow; state: RowState; styl
                 >
                     <Typography sx={{ fontSize: '0.65rem', color: 'var(--accent-primary)', fontFamily: 'var(--font-mono)', mr: 0.25, opacity: 0.5 }}>BM:</Typography>
                     <input
-                        key={row.key}
+                        /* The value is in the key on purpose. This input is uncontrolled
+                           (defaultValue lets you type freely without a state round-trip per
+                           keystroke), and React only reads defaultValue when the element
+                           mounts. Keying on row.key alone meant a bulk blend-mode change
+                           left the old number on screen until react-window recycled the row
+                           on scroll. Including the value remounts the input when it changes. */
+                        key={`${row.key}:${currentBlendMode}`}
                         type="text"
                         defaultValue={currentBlendMode}
                         disabled={isLocked}

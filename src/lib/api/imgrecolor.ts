@@ -39,6 +39,12 @@ export function imgRecolorBatch(args: {
     return invokeCommand<RecolorBatchResult>('imgrecolor_recolor_batch', { args });
 }
 
+/* Fade black to transparent in the given files, in place. Standalone: it changes only
+   the alpha channel and does not touch color. */
+export function imgRecolorBlackToAlpha(paths: string[]): Promise<RecolorBatchResult> {
+    return invokeCommand<RecolorBatchResult>('imgrecolor_black_to_alpha', { paths });
+}
+
 /* Decode a texture straight to a downscaled PNG for the selection grid. Returns raw
    bytes, so a small PNG crosses the bridge instead of a full-size RGBA buffer. */
 export function imgRecolorThumbnail(path: string, maxDimension: number): Promise<ArrayBuffer> {

@@ -45,6 +45,10 @@ export interface ExtractChampionOptions {
     preserveHudIcons2D?: boolean;
     /** Skip exporting SFX audio banks in clean mode (default true). */
     skipSfx?: boolean;
+    /** Name for the output folder, replacing the generated
+     *  `<champ>_skin<N>_extracted`. Sanitized backend-side; blank uses the
+     *  generated name. Still auto-versioned, so it never overwrites. */
+    folderName?: string;
 }
 
 /* Extract a champion skin's asset bundle into outputDir. Emits
@@ -65,6 +69,8 @@ export function extractChampionAssets(
         chromaId: opts.chromaId,
         preserveHudIcons2D: opts.preserveHudIcons2D,
         skipSfx: opts.skipSfx,
+        // Empty string means "use the generated name", so normalize it to null.
+        folderName: opts.folderName || null,
     });
 }
 
@@ -74,6 +80,8 @@ export interface TftExtractOptions {
     preserveHudIcons2D?: boolean;
     /** Skip exporting SFX audio banks (default true). */
     skipSfx?: boolean;
+    /** Name for the output folder; see ExtractChampionOptions.folderName. */
+    folderName?: string;
 }
 
 /* Extract a TFT companion (little legend) asset bundle into outputDir. Emits
@@ -92,6 +100,8 @@ export function extractTftCompanion(
         clean: opts.clean,
         preserveHudIcons2D: opts.preserveHudIcons2D,
         skipSfx: opts.skipSfx,
+        // Empty string means "use the generated name", so normalize it to null.
+        folderName: opts.folderName || null,
     });
 }
 

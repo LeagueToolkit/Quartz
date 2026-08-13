@@ -24,7 +24,10 @@
     z-index: 1;
 }
 
-/* Left: system search / ability chips / system list. */
+/* Left: system search / ability chips / system list.
+   Solid panel surface (matching the Asset Extractor's panels) rather than the
+   old fully-transparent rail — on a light/busy backdrop the transparent version
+   let content bleed through and read as unfinished. */
 .bineditorv2-sidebar {
     width: 300px;
     flex-shrink: 0;
@@ -32,6 +35,7 @@
     flex-direction: column;
     overflow: hidden;
     padding: 12px;
+    background: var(--bg-secondary);
     border-right: 1px solid var(--border);
     transition: opacity var(--motion-base);
 }
@@ -165,34 +169,73 @@
     color: var(--accent-primary);
 }
 
-/* Emitter row — flush by default (no card fill/border) so the list doesn't read
-   as separated boxes; gains a subtle surface only when open, and the accent rail
-   + tint when selected. */
+/* Emitter row — a real card on the panel surface. These used to be fully
+   transparent and flush, which on a busy backdrop made the list read as
+   floating text with no structure. Each row now sits on `--bg-tertiary` with a
+   border, so the list has visible rhythm; open/selected states layer on top. */
 .biev2-emitter {
     border-radius: var(--radius-sm);
     overflow: hidden;
-    border: 1px solid transparent;
-    background: transparent;
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
     box-shadow: inset 3px 0 0 transparent;
     transition: background var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
-.biev2-emitter + .biev2-emitter { margin-top: 2px; }
+.biev2-emitter + .biev2-emitter { margin-top: 6px; }
 /* Hover feedback only on the COLLAPSED header row. When the emitter is open the
    whole field panel must not change brightness/opacity on hover. */
 .biev2-emitter:hover:not(.is-selected):not(.is-open) {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bg-hover);
+    border-color: color-mix(in oklab, var(--accent-primary) 25%, var(--border));
 }
 .biev2-emitter.is-open {
     background: var(--bg-tertiary);
-    border-color: var(--border);
+    border-color: var(--border-strong, var(--border));
 }
 .biev2-emitter.is-selected {
-    background: color-mix(in oklab, var(--accent-primary) 12%, transparent);
+    background: color-mix(in oklab, var(--accent-primary) 12%, var(--bg-tertiary));
     border-color: color-mix(in oklab, var(--accent-primary) 40%, var(--border));
     box-shadow: inset 3px 0 0 var(--accent-primary);
 }
 
+/* ── Emitter select checkbox ────────────────────────────────────────────────
+   Selection used to be an invisible click-the-row affordance — nothing showed
+   the rows were selectable until you had already clicked one. An explicit box
+   makes the bulk-edit target obvious and gives a hit target that can't be
+   confused with the expand caret. */
+.biev2-emitter__check {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 4px;
+    border: 1.5px solid var(--border-strong, var(--border));
+    background: var(--bg-primary);
+    color: transparent;
+    cursor: pointer;
+    transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
+}
+.biev2-emitter__check:hover {
+    border-color: var(--accent-primary);
+}
+.biev2-emitter__check.is-on {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: var(--bg-primary);
+}
+/* The tick is drawn as a glyph so it needs no icon dependency. */
+.biev2-emitter__check svg { display: block; }
+.biev2-emitter__check:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
 /* Main: BulkBar + CategoryTabs pinned, emitter list scrolls. */
+/* Right: the emitter work area. Sits one step darker than the sidebar panel so
+   the two sides read as distinct surfaces instead of one flat transparent
+   sheet, and the emitter cards have something to sit ON. */
 .bineditorv2-main {
     flex: 1;
     min-width: 0;
@@ -200,6 +243,7 @@
     flex-direction: column;
     overflow: hidden;
     padding: 12px 16px 0;
+    background: var(--bg-primary);
 }
 .bineditorv2-main__scroll {
     flex: 1;

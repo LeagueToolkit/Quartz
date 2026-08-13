@@ -298,8 +298,50 @@ pub fn apply_adjustment(rgba: &mut [u8], params: &RecolorParams) {
         px[0] = r.clamp(0.0, 255.0).ceil() as u8;
         px[1] = g.clamp(0.0, 255.0).ceil() as u8;
         px[2] = b.clamp(0.0, 255.0).ceil() as u8;
-        px[3] = (f64::from(px[3]) * opacity_multiplier).clamp(0.0, 255.0).ceil() as u8;
+
+        px[3] = (f64::from(px[3]) * opacity_multiplier)
+            .clamp(0.0, 255.0)
+            .ceil() as u8;
     }
+}
+
+/* Fade black out into the alpha channel, leaving the RGB alone.
+
+Additive blend modes drop black implicitly, so a texture authored for one shows solid
+black where it should be empty when moved to a blend mode that does not. Scaling alpha by
+brightness reproduces that, and scaling (rather than a hard cutoff) keeps soft glow edges
+from turning jagged. Rec. 601 luma weights are used because a saturated blue is far darker
+to the eye than a green of the same numeric value. */
+pub fn apply_black_to_alpha(rgba: &mut [u8]) {
+    for px in rgba.chunks_exact_mut(4) {
+        if px[3] == 0 {
+            continue;
+        }
+        let luma = 0.299 * f64::from(px[0]) + 0.587 * f64::from(px[1]) + 0.114 * f64::from(px[2]);
+        px[3] = (f64::from(px[3]) * (luma / 255.0)).clamp(0.0, 255.0).ceil() as u8;
+    }
+}
+
+/* Decode `path`, fade its black to transparent, and write it back in place. */
+pub fn black_to_alpha_file_in_place(path: &str) -> Result<(), String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("Failed to read {path}: {e}"))?;
+    let mut decoded = decode_texture(&bytes)?;
+    apply_black_to_alpha(&mut decoded.rgba);
+    let out = encode_texture(decoded.rgba, decoded.width, decoded.height, &decoded.format)?;
+    std::fs::write(path, out).map_err(|e| format!("Failed to write {path}: {e}"))
+}
+
+/* Fade black to transparent across every path in parallel, returning each failure. */
+pub fn black_to_alpha_files(paths: &[String]) -> Vec<(String, String)> {
+    use rayon::prelude::*;
+    paths
+        .par_iter()
+        .filter_map(|path| {
+            black_to_alpha_file_in_place(path)
+                .err()
+                .map(|e| (path.clone(), e))
+        })
+        .collect()
 }
 
 /* Decode `path`, apply the recolor, and write it back in its original container/format. */

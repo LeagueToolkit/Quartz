@@ -87,6 +87,8 @@ interface UiPrefs {
     useNativeFileBrowser: boolean;
     communicateWithJade: boolean;
     jadeExecutablePath: string;
+    /** Portable RubyRe executable, for installs the Start menu does not know about. */
+    rubyExecutablePath: string;
     // Windows integration
     contextMenuEnabled: boolean;
     // GitHub
@@ -150,6 +152,7 @@ export const useUiPrefsStore = create<UiPrefs>()(
             useNativeFileBrowser: false,
             communicateWithJade: true,
             jadeExecutablePath: '',
+            rubyExecutablePath: '',
             contextMenuEnabled: false,
             githubUsername: '',
             githubToken: '',

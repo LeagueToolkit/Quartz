@@ -1,12 +1,14 @@
-import type { EditOp, EditorEmitter, EditorNode } from '@/lib/api/bineditor';
+import type { EditOp, EditorEmitter, EditorNode, JsonBinValue } from '@/lib/api/bineditor';
 import { classify, sameKey } from './categories';
 import {
     childByKey,
     collectScalableLeaves,
     encodeBool,
     encodeNumber,
+    encodeOption,
     encodeVector,
     vectorComponents,
+    type ScalableTarget,
 } from './nodes';
 
 /* Bulk operations, ported from bineditorV3/model/bulkOps.js. V3 mutated parsed
@@ -20,6 +22,20 @@ export interface BulkCount {
 
 export interface BulkResult extends BulkCount {
     edits: EditOp[];
+}
+
+/**
+ * One edit for a scalable target, re-wrapping the payload when the target is an
+ * Option's inner value.
+ *
+ * An Option's inner child carries the OPTION's path, so `t.node.path` resolves
+ * to the option itself. Committing a bare scalar there makes the backend reject
+ * the edit ("Type mismatch: node is option, edit value is f32") — Lifetime is
+ * stored as `option[f32]`, which is why bulk edits on it failed while the
+ * single-field editor (which wraps correctly) worked.
+ */
+function targetEdit(t: ScalableTarget, inner: JsonBinValue): EditOp {
+    return { path: t.node.path, value: t.option ? encodeOption(t.option, inner) : inner };
 }
 
 /** Fields of an emitter that belong to `category` ('all' = every field; otherwise the field key). */
@@ -54,13 +70,13 @@ export function applyMultiply(
                 if (t.kind === 'scalar') {
                     const v = Number(t.node.value ?? 0);
                     if (skipSentinel && v === -1) continue; // infinite/forever sentinel
-                    edits.push({ path: t.node.path, value: encodeNumber(t.node, v * multiplier) });
+                    edits.push(targetEdit(t, encodeNumber(t.node, v * multiplier)));
                     changed = true;
                 } else {
                     const comps = vectorComponents(t.node);
                     if (skipSentinel && comps.every((c) => c === -1)) continue;
                     const next = comps.map((c) => (skipSentinel && c === -1 ? c : c * multiplier));
-                    edits.push({ path: t.node.path, value: encodeVector(t.node, next) });
+                    edits.push(targetEdit(t, encodeVector(t.node, next)));
                     changed = true;
                 }
             }
@@ -129,10 +145,10 @@ export function applySetVector(
                 if (targets.length === 0) continue;
                 for (const t of targets) {
                     if (t.kind === 'scalar') {
-                        edits.push({ path: t.node.path, value: encodeNumber(t.node, values[0]) });
+                        edits.push(targetEdit(t, encodeNumber(t.node, values[0])));
                     } else {
                         const next = vectorComponents(t.node).map(() => values[0]);
-                        edits.push({ path: t.node.path, value: encodeVector(t.node, next) });
+                        edits.push(targetEdit(t, encodeVector(t.node, next)));
                     }
                 }
                 fields++;

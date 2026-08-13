@@ -229,6 +229,21 @@ function BinEditorV2() {
         }
     }, [loadBinFile, pick]);
 
+    /* A BIN handed off from another tool (RubyRe via `--bineditor-bin`, or the
+       single-instance event when Quartz was already running). Mirrors Paint's
+       pending-file handling: the path is only cleared once it has been loaded, so a
+       remount between handoff and load cannot drop it. */
+    const pendingFile = useNavigationStore((s) => s.pendingFile);
+    const consumePendingFile = useNavigationStore((s) => s.consumePendingFile);
+    const clearPendingFile = useNavigationStore((s) => s.clearPendingFile);
+    useEffect(() => {
+        if (pendingFile?.page !== 'bineditor') return;
+        const path = consumePendingFile('bineditor');
+        if (!path) return;
+        clearPendingFile('bineditor');
+        void loadBinFile(path);
+    }, [pendingFile, consumePendingFile, clearPendingFile, loadBinFile]);
+
     useFileDrop({
         onEnter: () => setIsDragOver(true),
         onOver: () => setIsDragOver(true),

@@ -122,6 +122,7 @@ fn extractor_clean_repath_per_character() {
             preserve_hud_icons2d: true,
             // Keep SFX so the repath skip-SFX behavior is observable.
             skip_sfx: false,
+            folder_name: None,
         },
         |_p| {},
     )
@@ -444,6 +445,7 @@ fn finalize_skin_files_only_combines_without_prefix() {
             preserve_hud_icons2d: true,
             // Keep SFX so the repath skip-SFX behavior is observable.
             skip_sfx: false,
+            folder_name: None,
         },
         |_p| {},
     )
@@ -585,6 +587,7 @@ fn clean_extract_skip_sfx_excludes_banks() {
             chroma_id: None,
             preserve_hud_icons2d: true,
             skip_sfx: false,
+            folder_name: None,
         },
         |_p| {},
     )
@@ -606,6 +609,7 @@ fn clean_extract_skip_sfx_excludes_banks() {
             chroma_id: None,
             preserve_hud_icons2d: true,
             skip_sfx: true,
+            folder_name: None,
         },
         |_p| {},
     )
@@ -749,6 +753,7 @@ fn tft_companion_clean_extract_and_repath() {
             clean: true,
             preserve_hud_icons2d: true,
             skip_sfx: true,
+            folder_name: None,
         },
         |_p| {},
     )

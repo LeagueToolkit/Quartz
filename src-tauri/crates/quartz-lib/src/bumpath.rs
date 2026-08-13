@@ -536,6 +536,19 @@ pub fn repath_many(
     }
 
     if options.consolidate_assets {
+        /* ONE ledger for every bin in this run.
+           A champion and its subcharacter (Locke / LockeTotem) can reference the
+           same particle texture. Consolidating per-bin in isolation let the first
+           move the file into its own folder while the second kept pointing at the
+           original path - which no longer existed. Sharing the map makes them
+           agree on a single destination. */
+        let mut consolidated: crate::bin::bin_editor::ConsolidatedAssets = Default::default();
+        /* "VFX-exclusive" judged across EVERY bin: an asset can be VFX-only in one
+           and a mesh texture in another, and moving it would break the second. */
+        let mut protected: crate::bin::bin_editor::ProtectedAssets = Default::default();
+        for path in bin_outputs.values().chain(split_outputs.values()) {
+            crate::bin::bin_editor::collect_protected_assets(path, &mut protected);
+        }
         for seed in &seed_set {
             let normalized = normalize(seed);
             let Some(after_characters) = normalized.split("characters/").nth(1) else {
@@ -558,14 +571,17 @@ pub fn repath_many(
                 targets.push(split.clone());
             }
             for target in targets {
-                match crate::bin::bin_editor::consolidate_assets_repath(
+                match crate::bin::bin_editor::consolidate_assets_repath_shared(
                     &target,
                     output_dir,
                     prefix,
                     champ,
                     skin_num,
+                    Some(&mut consolidated),
+                    Some(&protected),
                 ) {
-                    Ok(consolidated) => result.assets_consolidated += consolidated.moved,
+                    // NB: bind a distinct name - `consolidated` is the shared ledger.
+                    Ok(summary) => result.assets_consolidated += summary.moved,
                     Err(error) => tracing::warn!("VFX asset organization failed for {}: {}", target.display(), error),
                 }
             }

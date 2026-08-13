@@ -51,7 +51,54 @@ export function useJadeBin(binPath: string | null | undefined): void {
             request.handled = true;
             request.task = openBinInJade(binPath);
         };
+        const onRuby = (event: Event) => {
+            const request = (event as CustomEvent<JadeOpenRequest>).detail;
+            if (!request || request.handled) return;
+            request.handled = true;
+            request.task = openBinInRuby(binPath);
+        };
         window.addEventListener(OPEN_CURRENT_BIN_EVENT, onOpen);
-        return () => window.removeEventListener(OPEN_CURRENT_BIN_EVENT, onOpen);
+        window.addEventListener(OPEN_CURRENT_BIN_IN_RUBY_EVENT, onRuby);
+        return () => {
+            window.removeEventListener(OPEN_CURRENT_BIN_EVENT, onOpen);
+            window.removeEventListener(OPEN_CURRENT_BIN_IN_RUBY_EVENT, onRuby);
+        };
     }, [binPath]);
+}
+
+/* ── RubyRe ───────────────────────────────────────────────────────────────────
+   Same shape as the Jade handoff: the title-bar button asks whichever BIN tool is
+   mounted for its path, and every page already calling `useJadeBin` answers both
+   without needing its own hook. */
+
+const OPEN_CURRENT_BIN_IN_RUBY_EVENT = 'quartz:open-current-bin-in-ruby';
+
+function openRuby(binPath: string | null): Promise<JadeOpenResult> {
+    const prefs = useUiPrefsStore.getState();
+    return invokeCommand<JadeOpenResult>('ruby_open', {
+        binPath,
+        configuredExecutable: prefs.rubyExecutablePath || null,
+    });
+}
+
+/** True when RubyRe is installed (or a portable path is configured). */
+export function rubyInstalled(): Promise<boolean> {
+    const prefs = useUiPrefsStore.getState();
+    return invokeCommand<boolean>('ruby_installed', {
+        configuredExecutable: prefs.rubyExecutablePath || null,
+    });
+}
+
+/* Deliberately does NOT throw on `warning`. "RubyRe is not installed" is an
+   expected outcome the caller turns into a download prompt, not an error. */
+export function openBinInRuby(binPath: string): Promise<JadeOpenResult> {
+    return openRuby(binPath);
+}
+
+/** `launched === null` means RubyRe is not installed; the caller shows the
+ *  download prompt rather than treating it as a failure. */
+export async function requestOpenCurrentBinInRuby(): Promise<JadeOpenResult> {
+    const detail: JadeOpenRequest = { handled: false };
+    window.dispatchEvent(new CustomEvent<JadeOpenRequest>(OPEN_CURRENT_BIN_IN_RUBY_EVENT, { detail }));
+    return detail.handled && detail.task ? detail.task : openRuby(null);
 }

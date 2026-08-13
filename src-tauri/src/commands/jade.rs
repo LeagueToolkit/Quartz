@@ -21,17 +21,36 @@ fn validate_bin_path(raw: &str) -> Result<PathBuf, String> {
     if !supported {
         return Err("Jade can only open .bin, .py, or .ritobin files from Quartz.".to_string());
     }
-    Ok(std::fs::canonicalize(&path).unwrap_or(path))
+    // Canonicalize to resolve `..` and symlinks, then DROP the `\\?\` prefix it adds
+    // on Windows. The receiving tool derives its project root from this path and
+    // appends asset paths to it; `\\?\` paths are used verbatim by the filesystem,
+    // so a forward slash in an appended asset path never resolves. RubyRe showed
+    // exactly that: the bin opened, but no character and no VFX textures.
+    let canonical = std::fs::canonicalize(&path).unwrap_or(path);
+    Ok(strip_extended_prefix(canonical))
+}
+
+/// Drop a Windows extended-length `\\?\` prefix, leaving `\\?\UNC\...` alone
+/// (stripping that yields `UNC\server\...`, which is not a usable path).
+fn strip_extended_prefix(path: PathBuf) -> PathBuf {
+    let stripped = {
+        let text = path.to_string_lossy();
+        text.strip_prefix(r"\\?\")
+            .filter(|rest| !rest.starts_with("UNC\\"))
+            .map(PathBuf::from)
+    };
+    stripped.unwrap_or(path)
 }
 
 #[cfg(target_os = "windows")]
-fn start_menu_jade_shortcut() -> Option<PathBuf> {
+fn start_menu_shortcut(name: &str) -> Option<PathBuf> {
+    let leaf = format!("{name}.lnk");
     let user = std::env::var_os("APPDATA").map(PathBuf::from).map(|root| {
         root.join("Microsoft")
             .join("Windows")
             .join("Start Menu")
             .join("Programs")
-            .join("Jade.lnk")
+            .join(&leaf)
     });
     let machine = std::env::var_os("ProgramData")
         .map(PathBuf::from)
@@ -40,9 +59,14 @@ fn start_menu_jade_shortcut() -> Option<PathBuf> {
                 .join("Windows")
                 .join("Start Menu")
                 .join("Programs")
-                .join("Jade.lnk")
+                .join(&leaf)
         });
     user.into_iter().chain(machine).find(|path| path.is_file())
+}
+
+#[cfg(target_os = "windows")]
+fn start_menu_jade_shortcut() -> Option<PathBuf> {
+    start_menu_shortcut("Jade")
 }
 
 #[cfg(target_os = "windows")]
@@ -120,6 +144,59 @@ pub fn jade_open(
                 "Jade is not installed in the Windows Start menu. Install Jade or set a portable Jade Executable Path in Settings > External Tools."
                     .to_string(),
             ),
+        });
+    };
+
+    shell_open_jade(&target, bin_path.as_deref())?;
+    Ok(JadeOpenResult {
+        launched: Some(target.to_string_lossy().into_owned()),
+        warning: None,
+    })
+}
+
+/// True when RubyRe resolves to something launchable, so the UI can show its
+/// button in a "not installed" state instead of failing on click.
+#[tauri::command]
+pub fn ruby_installed(configured_executable: Option<String>) -> bool {
+    resolve_ruby(configured_executable).is_some()
+}
+
+fn resolve_ruby(configured_executable: Option<String>) -> Option<PathBuf> {
+    let configured = configured_executable
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .filter(|path| path.is_file());
+
+    #[cfg(target_os = "windows")]
+    {
+        // Both names are in the wild: the product is "RubyRe" but the installer
+        // has shipped a plain "Ruby" shortcut too.
+        configured
+            .or_else(|| start_menu_shortcut("RubyRe"))
+            .or_else(|| start_menu_shortcut("Ruby"))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        configured
+    }
+}
+
+/// Open a BIN in RubyRe, the VFX previewer. Mirrors `jade_open`: the Start-menu
+/// shortcut is the install contract, and `launched: None` with a warning means
+/// "not installed" rather than an error.
+#[tauri::command]
+pub fn ruby_open(
+    bin_path: Option<String>,
+    configured_executable: Option<String>,
+) -> Result<JadeOpenResult, String> {
+    let bin_path = bin_path.as_deref().map(validate_bin_path).transpose()?;
+
+    let Some(target) = resolve_ruby(configured_executable) else {
+        return Ok(JadeOpenResult {
+            launched: None,
+            warning: Some("RubyRe is not installed.".to_string()),
         });
     };
 

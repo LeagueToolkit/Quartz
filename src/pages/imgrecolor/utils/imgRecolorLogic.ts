@@ -357,6 +357,7 @@ export function applyAdjustmentInPlace(pixels: Uint8ClampedArray, params: Recolo
         pixels[i] = Math.ceil(Math.max(0, Math.min(255, rgb.r)));
         pixels[i + 1] = Math.ceil(Math.max(0, Math.min(255, rgb.g)));
         pixels[i + 2] = Math.ceil(Math.max(0, Math.min(255, rgb.b)));
+
         pixels[i + 3] = Math.ceil(Math.max(0, Math.min(255, a * opacityMultiplier)));
     }
 }

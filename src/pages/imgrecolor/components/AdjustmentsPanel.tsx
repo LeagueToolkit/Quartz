@@ -61,6 +61,7 @@ export function AdjustmentsPanel(props: AdjustmentsPanelProps) {
                 </span>
             </label>
 
+
             <div className="imgrecolor-curve">
                 <div className="imgrecolor-adjust__head">
                     <span>Curves</span>

@@ -169,8 +169,8 @@ export function collectEmitterColors(
  * vector as ONE BinValue, so per-axis changes merge into a full-vector set.
  */
 export type ScalableTarget =
-    | { kind: 'scalar'; node: EditorNode }
-    | { kind: 'vector'; node: EditorNode };
+    | { kind: 'scalar'; node: EditorNode; option?: EditorNode }
+    | { kind: 'vector'; node: EditorNode; option?: EditorNode };
 
 /** Keys a "scale" multiply must never touch (times, probability tables, key arrays). */
 const EXCLUDE_KEYS = new Set(['times', 'probabilitytables', 'keytimes', 'keyvalues']);
@@ -187,21 +187,38 @@ export function collectScalableLeaves(field: EditorNode): ScalableTarget[] {
     if (field.kind === 'vector') return [{ kind: 'vector', node: field }];
     if (field.kind === 'option' && field.children?.[0]) {
         const v = field.children[0];
-        if (v.kind === 'primitive' && v.valueType === 'number') return [{ kind: 'scalar', node: v }];
-        if (v.kind === 'vector') return [{ kind: 'vector', node: v }];
+        // An Option's inner child carries the OPTION's path (see project.rs:
+        // "the child carries the option's path and edits commit the whole
+        // option value"). So the encoded edit must be re-wrapped in an option
+        // or the backend rejects it as a type mismatch — carry the option node
+        // along so callers can do that.
+        if (v.kind === 'primitive' && v.valueType === 'number') {
+            return [{ kind: 'scalar', node: v, option: field }];
+        }
+        if (v.kind === 'vector') return [{ kind: 'vector', node: v, option: field }];
         return [];
     }
 
     const out: ScalableTarget[] = [];
-    const rec = (node: EditorNode, underConstant: boolean, underValues: boolean): void => {
+    // `option` = the nearest enclosing Option node, when the value we land on is
+    // an Option's inner child. That child shares the option's path, so an edit
+    // to it must be re-wrapped as an option value (see the top-level option
+    // branch above); losing this reference is what produced backend errors like
+    // "Type mismatch: node is option, edit value is f32".
+    const rec = (
+        node: EditorNode,
+        underConstant: boolean,
+        underValues: boolean,
+        option?: EditorNode,
+    ): void => {
         if (node.kind === 'primitive') {
             if (node.valueType === 'number' && (underConstant || underValues)) {
-                out.push({ kind: 'scalar', node });
+                out.push({ kind: 'scalar', node, option });
             }
             return;
         }
         if (node.kind === 'vector') {
-            if (underConstant || underValues) out.push({ kind: 'vector', node });
+            if (underConstant || underValues) out.push({ kind: 'vector', node, option });
             return;
         }
         for (const c of node.children ?? []) {
@@ -210,10 +227,13 @@ export function collectScalableLeaves(field: EditorNode): ScalableTarget[] {
                 c,
                 underConstant || sameKey(c.key, 'constantValue'),
                 underValues || sameKey(c.key, 'values'),
+                // An Option contributes itself as the wrapper for its child;
+                // any other node passes the current wrapper through unchanged.
+                node.kind === 'option' ? node : option,
             );
         }
     };
-    rec(field, false, false);
+    rec(field, false, false, undefined);
     return out;
 }
 

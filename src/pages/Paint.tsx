@@ -21,7 +21,7 @@ import LockOpenIcon from '@mui/icons-material/LockOpen';
 import { FolderOpen as FolderOpenIcon, Undo2 as UndoIcon, Redo2 as RedoIcon } from 'lucide-react';
 import { useFileExplorer } from '@/components/explorer';
 import {
-    paintOpen, paintClose, paintReloadIfChanged, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintSetTexture, paintSetColorAlpha, paintUndo, paintRedo, paintSave,
+    paintOpen, paintClose, paintReloadIfChanged, paintModel, paintRecolor, paintSetBlendMode, paintSetBlendModeBulk, paintSetMaterialParam, paintSetTexture, paintSetColorAlpha, paintUndo, paintRedo, paintSave,
     isStaleFileError,
     type VfxEmitter, type ColorTargetId,
     type PaletteStopInput, type RecolorOptionsInput,
@@ -37,6 +37,7 @@ import './paint/Paint.css';
 import ColorHandler from './paint/utils/ColorHandler';
 import { savePalette, loadAllPalettes, deletePalette } from './paint/utils/paletteManager';
 import { getColorDescription } from './paint/utils/colorFilter';
+import { isDistortionEmitterName } from './paint/utils/emitterFilter';
 
 import SystemList, { type ColorSlotKey } from './paint/components/SystemList';
 import PaletteManager, { type SavedPaletteItem } from './paint/components/PaletteManager';
@@ -303,6 +304,25 @@ function Paint() {
         onReload: handleExternalReload,
         paused: isLoading,
     });
+
+    /* Re-derive the model whenever the page mounts.
+
+       Paint unmounts on navigation (App keys pages by name) but its session and
+       model live in a module-level store, so coming back re-renders a view that
+       was built before leaving. The file watcher only catches changes that reach
+       disk, so an edit made elsewhere in the same session — Port working on the
+       same bin — left a stale view on screen until some other action forced a
+       repaint. This reprojects from the live tree, no disk read involved. */
+    useEffect(() => {
+        if (sessionId === null) return;
+        let cancelled = false;
+        void paintModel(sessionId)
+            .then((fresh) => { if (!cancelled) setModel(fresh); })
+            .catch(() => { /* session may have closed; the watcher retries */ });
+        return () => { cancelled = true; };
+        // Mount-only: re-running on model changes would loop.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // ============================================================
     // FILE OPERATIONS
@@ -762,9 +782,15 @@ function Paint() {
     // SELECTION HELPERS
     // ============================================================
 
+    /* Select every visible, unlocked emitter, minus distortion ones.
+
+       Distortion textures store direction vectors rather than color, so recoloring
+       them corrupts the effect. They were the usual casualty of a select-all-then-
+       recolor, so they are skipped here; they can still be picked individually. */
     const selectAllVisible = useCallback(() => {
         if (!model) return;
         const newSelection = new Set<string>();
+        let skipped = 0;
         for (const emitter of model.emitters) {
             if (lockedSystems.has(emitter.systemKey)) continue;
             if (searchQuery) {
@@ -772,10 +798,13 @@ function Paint() {
                 const searchLower = searchQuery.toLowerCase();
                 if (!emitter.name.toLowerCase().includes(searchLower) && !system?.name.toLowerCase().includes(searchLower)) continue;
             }
+            if (isDistortionEmitterName(emitter.name)) { skipped++; continue; }
             newSelection.add(emitter.key);
         }
         setSelection(newSelection);
-        setStatusMessage(`Selected ${newSelection.size} emitters`);
+        setStatusMessage(skipped > 0
+            ? `Selected ${newSelection.size} emitters (skipped ${skipped} distortion)`
+            : `Selected ${newSelection.size} emitters`);
     }, [model, systemMap, lockedSystems, searchQuery]);
 
     const selectNone = useCallback(() => setSelection(new Set()), []);
@@ -900,6 +929,38 @@ function Paint() {
             setStatusMessage(`Error: ${error instanceof Error ? error.message : String(error)}`);
         }
     }, [model, sessionId, emitterMap]);
+
+    /* Set the chosen blend mode on every selected emitter in one step.
+
+       Pairs with "Select BM": select everything on one mode, then move it to another.
+       Locked systems are skipped, matching how the other bulk operations behave. The
+       backend applies the batch under a single undo frame, so this is one Ctrl+Z. */
+    const handleApplyBlendMode = useCallback(async () => {
+        if (!model || sessionId === null) return;
+        const keys = model.emitters
+            .filter((e) => selection.has(e.key) && !lockedSystems.has(e.systemKey))
+            .map((e) => e.key);
+        if (keys.length === 0) {
+            setStatusMessage('Select emitters first');
+            return;
+        }
+        try {
+            const changed = await paintSetBlendModeBulk(sessionId, keys, blendModeSelect);
+            if (changed > 0) {
+                const applied = new Set(keys);
+                setModel((prev) => prev && ({
+                    ...prev,
+                    emitters: prev.emitters.map((e) => (applied.has(e.key) ? { ...e, blendMode: blendModeSelect } : e)),
+                }));
+                setCanUndo(true);
+                setCanRedo(false);
+                setFileSaved(false);
+            }
+            setStatusMessage(`Set ${changed} emitter${changed !== 1 ? 's' : ''} to BlendMode ${blendModeSelect}`);
+        } catch (error) {
+            setStatusMessage(`Error: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }, [model, sessionId, selection, lockedSystems, blendModeSelect]);
 
     const toggleLockAll = useCallback(() => {
         if (!model) return;
@@ -1087,6 +1148,15 @@ function Paint() {
 
                         <button onClick={handleSelectByBlendMode} className="dl-btn dl-btn--primary dl-btn--sm">
                             Select BM {blendModeSelect}
+                        </button>
+
+                        <button
+                            onClick={handleApplyBlendMode}
+                            className="dl-btn dl-btn--secondary dl-btn--sm"
+                            disabled={selection.size === 0}
+                            title={`Set every selected emitter to BlendMode ${blendModeSelect}. One undo step.`}
+                        >
+                            Set BM {blendModeSelect}
                         </button>
 
                         <BlendModeChanceSlider value={blendModeChance} onCommit={setBlendModeChance} />

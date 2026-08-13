@@ -880,17 +880,21 @@ export function AssetExtractor() {
                 try {
                     // TFT companions use the Companions WAD but the SAME skin-graph
                     // clean extract + finalize pipeline; champion id === pet alias.
+                    // Only meaningful for a single-skin run; the modal blanks it otherwise.
+                    const folderName = payload?.options?.folderName || undefined;
                     const result = isTft
                         ? await extractTftCompanion(petAlias!, tier ?? skinId, outputDir, {
                               clean,
                               preserveHudIcons2D: payload?.options?.preserveHudIcons2D !== false,
                               skipSfx: payload?.options?.skipSfx !== false,
+                              folderName,
                           })
                         : await extractChampionAssets(championId, skinId, outputDir, useExtractVoiceover, {
                               clean,
                               chromaId: chromaId ?? undefined,
                               preserveHudIcons2D: payload?.options?.preserveHudIcons2D !== false,
                               skipSfx: payload?.options?.skipSfx !== false,
+                              folderName,
                           });
                     addRecentOutputPath(outputDir);
                     addConsoleLog(
@@ -1019,17 +1023,22 @@ export function AssetExtractor() {
                 try {
                     // 1) Clean-extract this skin (skin files only) into a folder.
                     addConsoleLog(`${progress} Extracting ${skin.skinName} (${isTft ? skin.petAlias : skin.championName})...`, 'info');
+                    // The repath runs IN PLACE on whatever this extract creates, so
+                    // naming the extract folder names the finished mod folder too.
+                    const folderName = payload.folderName || undefined;
                     const ext = isTft
                         ? await extractTftCompanion(skin.petAlias!, skin.tier ?? skin.skinId, outputDir, {
                               clean: true,
                               preserveHudIcons2D: payload.preserveHudIcons2D,
                               skipSfx: payload.skipSfxRepath,
+                              folderName,
                           })
                         : await extractChampionAssets(championId, skin.skinId, outputDir, payload.extractVoiceover, {
                               clean: true,
                               chromaId: skin.chromaId ?? undefined,
                               preserveHudIcons2D: payload.preserveHudIcons2D,
                               skipSfx: payload.skipSfxRepath,
+                              folderName,
                           });
 
                     // 2) Repath the extracted folder in place -> installable mod.

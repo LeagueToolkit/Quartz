@@ -15,6 +15,16 @@ export function getStartupPaintBin(): Promise<string | null> {
     return invokeCommand<string | null>('get_startup_paint_bin');
 }
 
+/** BIN handed off via `--port-bin` to open in Port. */
+export function getStartupPortBin(): Promise<string | null> {
+    return invokeCommand<string | null>('get_startup_port_bin');
+}
+
+/** BIN handed off via `--bineditor-bin` to open in the Bin Editor. */
+export function getStartupBinEditorBin(): Promise<string | null> {
+    return invokeCommand<string | null>('get_startup_bineditor_bin');
+}
+
 export function contextMenuIsEnabled(): Promise<boolean> {
     return invokeCommand<boolean>('context_menu_is_enabled');
 }

@@ -120,6 +120,23 @@ pub async fn imgrecolor_recolor_batch(
     .map_err(|e| format!("Recolor task failed to join: {e}"))
 }
 
+/* Fade black to transparent across `paths`, in place and in parallel.
+
+A standalone operation rather than part of the recolor: it is a one-off fix for textures
+authored against an additive blend mode, not something wanted on every save. */
+#[tauri::command]
+pub async fn imgrecolor_black_to_alpha(paths: Vec<String>) -> Result<RecolorBatchResult, String> {
+    tokio::task::spawn_blocking(move || {
+        let failures = quartz_lib::tex::black_to_alpha_files(&paths);
+        RecolorBatchResult {
+            saved: paths.len() - failures.len(),
+            failures,
+        }
+    })
+    .await
+    .map_err(|e| format!("Black-to-alpha task failed to join: {e}"))
+}
+
 /* Return the subset of `paths` whose textures carry real color.
 
 Filter Grayscale used to answer this in the frontend: decode every file, base64 the whole

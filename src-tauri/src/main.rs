@@ -63,6 +63,12 @@ fn main() {
             if let Some(path) = commands::system::paint_bin_from_args(&args) {
                 let _ = app.emit("paint-bin-launch", path);
             }
+            if let Some(path) = commands::system::port_bin_from_args(&args) {
+                let _ = app.emit("port-bin-launch", path);
+            }
+            if let Some(path) = commands::system::bineditor_bin_from_args(&args) {
+                let _ = app.emit("bineditor-bin-launch", path);
+            }
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
@@ -108,7 +114,11 @@ fn main() {
             commands::system::get_app_info,
             commands::system::get_startup_model_path,
             commands::system::get_startup_paint_bin,
+            commands::system::get_startup_port_bin,
+            commands::system::get_startup_bineditor_bin,
             commands::jade::jade_open,
+            commands::jade::ruby_open,
+            commands::jade::ruby_installed,
             commands::settings::get_app_home,
             commands::settings::get_settings,
             commands::settings::save_settings,
@@ -176,7 +186,9 @@ fn main() {
             commands::paint::paint_close,
             commands::paint::paint_reload_if_changed,
             commands::paint::paint_recolor,
+            commands::paint::paint_model,
             commands::paint::paint_set_blend_mode,
+            commands::paint::paint_set_blend_mode_bulk,
             commands::paint::paint_set_material_param,
             commands::paint::paint_set_texture,
             commands::paint::paint_set_color_alpha,
@@ -249,6 +261,7 @@ fn main() {
             commands::file_ops::paths_exist,
             commands::file_ops::paths_mtimes,
             commands::file_ops::tools_execute,
+            commands::imgrecolor::imgrecolor_black_to_alpha,
             commands::imgrecolor::imgrecolor_decode_texture,
             commands::imgrecolor::imgrecolor_filter_colored,
             commands::imgrecolor::imgrecolor_recolor_batch,
@@ -294,6 +307,7 @@ fn main() {
             commands::explorer::explorer_copy,
             commands::explorer::explorer_new_folder,
             commands::explorer::explorer_reveal,
+            commands::explorer::explorer_open_with,
             commands::explorer::explorer_thumbnail,
             commands::model_inspect::model_inspect_load,
             commands::model_inspect::model_inspect_scene_assets,

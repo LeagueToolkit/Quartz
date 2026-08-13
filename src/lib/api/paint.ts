@@ -116,6 +116,12 @@ export function paintReloadIfChanged(sessionId: number): Promise<VfxModel | null
     return invokeCommand<VfxModel | null>('paint_reload_if_changed', { sessionId });
 }
 
+/** Re-derive the model from the session's current tree, without touching disk.
+ *  Use when the resident view may be stale (e.g. the page remounted). */
+export function paintModel(sessionId: number): Promise<VfxModel> {
+    return invokeCommand<VfxModel>('paint_model', { sessionId });
+}
+
 /** Recolor selected emitters' selected color slots. Returns the count changed
  *  plus refreshed colors for just the touched emitters. */
 export function paintRecolor(
@@ -131,6 +137,12 @@ export function paintRecolor(
 /** Set a single emitter's blend mode. */
 export function paintSetBlendMode(sessionId: number, emitterKey: string, mode: number): Promise<boolean> {
     return invokeCommand<boolean>('paint_set_blend_mode', { sessionId, emitterKey, mode });
+}
+
+/* Set the blend mode on many emitters at once; returns how many actually changed.
+   The whole batch is a single undo step. */
+export function paintSetBlendModeBulk(sessionId: number, emitterKeys: string[], mode: number): Promise<number> {
+    return invokeCommand<number>('paint_set_blend_mode_bulk', { sessionId, emitterKeys, mode });
 }
 
 /** Set a single static-material color param (selectionKey = `mat::<key>::<name>`). */

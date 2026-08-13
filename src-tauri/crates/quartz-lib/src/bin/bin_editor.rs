@@ -570,9 +570,23 @@ pub struct ConsolidateResult {
     pub bin_rewritten: bool,
 }
 
+/// Extensions a VFX system OWNS and that consolidation may relocate.
+///
+/// Textures and the little meshes an emitter draws. Deliberately NOT `.anm` /
+/// `.skn` / `.skl`: a VFX entry can name an animation or a rig (an emitter bound
+/// to a mesh, a `RigPose`), but those belong to the CHARACTER, not the effect.
+/// Moving them into `skin<N>_<champ>_particles/` dragged LockeTotem's idle
+/// animations out of its animations folder and left every other reference to
+/// them dangling. Nothing here is speculative: each of these is a file a
+/// particle system renders with.
+const CONSOLIDATABLE_EXTS: [&str; 6] = [".tex", ".dds", ".png", ".jpg", ".scb", ".sco"];
+
 fn is_asset_path_string(s: &str) -> bool {
     let lower = s.replace('\\', "/").to_lowercase();
-    lower.starts_with("assets/") || lower.contains("/assets/")
+    if !(lower.starts_with("assets/") || lower.contains("/assets/")) {
+        return false;
+    }
+    CONSOLIDATABLE_EXTS.iter().any(|e| lower.ends_with(e))
 }
 
 /// Collect every asset-looking string from a value tree into `out`.
@@ -699,10 +713,56 @@ fn unique_basename(name: &str, used: &mut HashSet<String>) -> String {
     }
 }
 
+/// Where already-consolidated assets went, shared across the bins of one run.
+///
+/// Consolidation is per-bin, but an asset can be referenced by SEVERAL bins - a
+/// champion and its subcharacter (Locke / LockeTotem) commonly share particle
+/// textures. Without a shared record the first bin moves the file into its own
+/// particles folder and the second, finding the source gone, declines to rewrite
+/// its strings; they then point at a path that no longer exists.
+///
+/// Keyed by the lowercased ORIGINAL asset string, valued by the consolidated path
+/// the first bin chose. A later bin reuses that destination instead of inventing
+/// its own, so one file serves every reference.
+pub type ConsolidatedAssets = HashMap<String, String>;
+
+/// Assets that must NOT be consolidated because some BIN uses them outside VFX.
+///
+/// The per-BIN `protected` pass only sees one file, and that is not enough: a
+/// texture can be VFX-only in the champion's BIN while being the MESH texture in
+/// its subcharacter's. Consolidating on the champion's view moved
+/// `LockeTotem_Base_TX_CM.tex` into a particles folder and broke the totem's
+/// `SkinCharacterDataProperties` reference to it.
+///
+/// Build this over EVERY BIN of the run (see [`collect_protected_assets`]) and
+/// pass it to each consolidate call, so "is this VFX-exclusive" is answered
+/// across the whole mod rather than one BIN at a time.
+pub type ProtectedAssets = HashSet<String>;
+
+/// Add every asset `bin_path` references from a NON-VFX entry to `out`
+/// (lowercased). Call for each BIN before consolidating any of them.
+pub fn collect_protected_assets(bin_path: &Path, out: &mut ProtectedAssets) {
+    let vfx_class = fnv1a_lower("VfxSystemDefinitionData");
+    let Ok(data) = std::fs::read(bin_path) else { return };
+    let Ok(bin) = crate::bin::read_bin(&data) else { return };
+    for entry in bin.entries.iter() {
+        if entry.class_hash == vfx_class {
+            continue;
+        }
+        for (_, value) in entry.fields.iter() {
+            let mut found = Vec::new();
+            collect_asset_strings(value, &mut found);
+            for s in found {
+                out.insert(s.to_lowercase());
+            }
+        }
+    }
+}
+
 /// Standalone consolidate (bin-editor command): moves VFX assets into a shared
 /// `<ASSETS>/portedparticles/` folder.
 pub fn consolidate_assets(bin_path: &Path, project_dir: &Path) -> Result<ConsolidateResult> {
-    consolidate_assets_core(bin_path, project_dir, "portedparticles")
+    consolidate_assets_core(bin_path, project_dir, "portedparticles", None, None)
 }
 
 /// Repath consolidate (1:1 old Quartz `consolidateForSkin`): moves VFX assets
@@ -714,13 +774,29 @@ pub fn consolidate_assets_repath(
     champ: &str,
     skin_num: u32,
 ) -> Result<ConsolidateResult> {
+    consolidate_assets_repath_shared(bin_path, project_dir, prefix, champ, skin_num, None, None)
+}
+
+/// As [`consolidate_assets_repath`], but sharing a destination ledger across the
+/// bins of one repath run. Pass the SAME map for every bin so an asset referenced
+/// by more than one of them is moved once and every reference agrees on where it
+/// went. See [`ConsolidatedAssets`].
+pub fn consolidate_assets_repath_shared(
+    bin_path: &Path,
+    project_dir: &Path,
+    prefix: &str,
+    champ: &str,
+    skin_num: u32,
+    shared: Option<&mut ConsolidatedAssets>,
+    protected_global: Option<&ProtectedAssets>,
+) -> Result<ConsolidateResult> {
     let folder = format!("skin{}_{}_particles", skin_num, champ.to_lowercase());
     let segments = if prefix.is_empty() {
         folder
     } else {
         format!("{}/{}", prefix, folder)
     };
-    consolidate_assets_core(bin_path, project_dir, &segments)
+    consolidate_assets_core(bin_path, project_dir, &segments, shared, protected_global)
 }
 
 /// Gather every asset string referenced by the `VfxSystemDefinitionData`
@@ -732,6 +808,8 @@ fn consolidate_assets_core(
     bin_path: &Path,
     project_dir: &Path,
     folder_segments: &str,
+    mut shared: Option<&mut ConsolidatedAssets>,
+    protected_global: Option<&ProtectedAssets>,
 ) -> Result<ConsolidateResult> {
     let vfx_class = fnv1a_lower("VfxSystemDefinitionData");
 
@@ -767,7 +845,12 @@ fn consolidate_assets_core(
         if !seen.insert(lower.clone()) {
             continue;
         }
-        if protected.contains(&lower) {
+        // Protected by THIS bin, or by any other bin of the run. The cross-bin
+        // half matters: a texture can be VFX-only here and a mesh texture in a
+        // subcharacter's bin, and moving it would break that bin's reference.
+        if protected.contains(&lower)
+            || protected_global.is_some_and(|g| g.contains(&lower))
+        {
             skipped_shared += 1;
             continue;
         }
@@ -785,6 +868,13 @@ fn consolidate_assets_core(
     let mut used_names: HashSet<String> = HashSet::new();
     let mut path_map: HashMap<String, String> = HashMap::new(); // lowercased old → new
     for original in &referenced {
+        let lower = original.to_lowercase();
+        // An earlier bin in this run already relocated this asset: point at where
+        // it went rather than choosing a second home for the same file.
+        if let Some(existing) = shared.as_ref().and_then(|m| m.get(&lower)) {
+            path_map.insert(lower, existing.clone());
+            continue;
+        }
         let norm = original.replace('\\', "/");
         let base = match norm.split('/').next_back() {
             Some(b) if !b.is_empty() => b.to_string(),
@@ -792,7 +882,7 @@ fn consolidate_assets_core(
         };
         let final_name = unique_basename(&base, &mut used_names);
         if let Some(new_path) = build_new_path_with(original, folder_segments, &final_name) {
-            path_map.insert(original.to_lowercase(), new_path);
+            path_map.insert(lower, new_path);
         }
     }
 
@@ -820,8 +910,18 @@ fn consolidate_assets_core(
             continue;
         }
         if !src.exists() {
-            // Source file missing: leave the string pointing at the original
-            // location (do not rewrite) so the reference stays valid.
+            /* Source gone. Two very different cases:
+
+            An EARLIER BIN of this run already moved it - the destination exists.
+            Rewrite: the string has to follow the file, and leaving it alone is
+            what produced the Locke bug (file in the totem's folder, Locke's
+            references still naming a path that no longer exists).
+
+            Otherwise the file was never there. Leave the string alone so a
+            reference that resolved before still resolves. */
+            if dst.exists() {
+                rewrite_map.insert(old_lower.clone(), new_path.clone());
+            }
             continue;
         }
         if let Some(parent) = dst.parent() {
@@ -846,6 +946,12 @@ fn consolidate_assets_core(
         if ok {
             moved += 1;
             rewrite_map.insert(old_lower.clone(), new_path.clone());
+            // Tell the rest of the run where this asset went, so a later bin
+            // referencing the same file rewrites to here instead of hunting for a
+            // source that is no longer at the original path.
+            if let Some(map) = shared.as_mut() {
+                map.insert(old_lower.clone(), new_path.clone());
+            }
         }
     }
 

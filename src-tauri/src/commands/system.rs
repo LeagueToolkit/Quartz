@@ -51,13 +51,56 @@ pub fn get_startup_paint_bin() -> Option<String> {
 }
 
 pub(crate) fn paint_bin_from_args(args: &[String]) -> Option<String> {
+    bin_from_args(args, "--paint-bin")
+}
+
+/// BIN handed off to open directly in the Port page (`--port-bin <path>`).
+#[tauri::command]
+pub fn get_startup_port_bin() -> Option<String> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    port_bin_from_args(&args)
+}
+
+pub(crate) fn port_bin_from_args(args: &[String]) -> Option<String> {
+    bin_from_args(args, "--port-bin")
+}
+
+/// BIN handed off to open directly in the Bin Editor (`--bineditor-bin <path>`).
+#[tauri::command]
+pub fn get_startup_bineditor_bin() -> Option<String> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    bineditor_bin_from_args(&args)
+}
+
+pub(crate) fn bineditor_bin_from_args(args: &[String]) -> Option<String> {
+    bin_from_args(args, "--bineditor-bin")
+}
+
+/// Shared `--flag <path>` reader for the page-launch arguments. The path must
+/// exist: a dangling or missing value yields None rather than sending the UI to
+/// a page with nothing to open.
+fn bin_from_args(args: &[String], flag: &str) -> Option<String> {
     args.iter()
-        .position(|arg| arg == "--paint-bin")
+        .position(|arg| arg == flag)
         .and_then(|index| args.get(index + 1))
         .and_then(|value| {
             let path = std::path::Path::new(value);
-            path.is_file().then(|| path.to_string_lossy().into_owned())
+            path.is_file()
+                .then(|| strip_extended_prefix(&path.to_string_lossy()))
         })
+}
+
+/// Drop a Windows extended-length `\\?\` prefix from a handed-over path.
+///
+/// A sender that canonicalizes produces `\\?\C:\...`. Such paths are passed to the
+/// filesystem verbatim - no separator translation - so anything later built by
+/// appending a forward-slash relative path to it silently fails to resolve.
+/// `\\?\UNC\...` is left alone: stripping it yields `UNC\server\...`, not a path.
+fn strip_extended_prefix(path: &str) -> String {
+    match path.strip_prefix(r"\\?\") {
+        Some(rest) if !rest.starts_with("UNC\\") => rest.to_string(),
+        _ => path.to_string(),
+    }
 }
 
 #[cfg(test)]

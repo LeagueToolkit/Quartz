@@ -46,6 +46,20 @@ pub async fn paint_reload_if_changed(session_id: u64) -> Result<Option<VfxModel>
         .map_err(|e| e.to_string())
 }
 
+/// Reproject the session's current tree into a fresh model.
+///
+/// Unlike `paint_reload_if_changed` this does not consult mtimes or re-read the
+/// file; it re-derives the view from the resident tree. Paint calls it when the
+/// page remounts, so a view built before another page edited the same session
+/// cannot linger on screen.
+#[tauri::command]
+pub async fn paint_model(session_id: u64) -> Result<VfxModel, String> {
+    tokio::task::spawn_blocking(move || session::model_of(session_id))
+        .await
+        .map_err(|e| format!("Model task failed to join: {}", e))?
+        .map_err(|e| e.to_string())
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PaletteStopInput {
@@ -154,6 +168,17 @@ pub async fn paint_set_blend_mode(
     mode: u8,
 ) -> Result<bool, String> {
     session::set_blend_mode(session_id, &emitter_key, mode).map_err(|e| e.to_string())
+}
+
+/// Set the blend mode on many emitters at once, returning how many changed.
+/// The whole batch is one undo step.
+#[tauri::command]
+pub async fn paint_set_blend_mode_bulk(
+    session_id: u64,
+    emitter_keys: Vec<String>,
+    mode: u8,
+) -> Result<usize, String> {
+    session::set_blend_mode_bulk(session_id, &emitter_keys, mode).map_err(|e| e.to_string())
 }
 
 /// Set a single static-material color param. `selectionKey` is the

@@ -21,7 +21,7 @@ export {
     type BinEditorOpenResult, type BinEditorApplyResult,
 } from './bineditor';
 export {
-    paintOpen, paintClose, paintReloadIfChanged, paintRecolor, paintSetBlendMode, paintSetMaterialParam, paintSetTexture, paintSetColorAlpha, paintUndo, paintRedo, paintSave,
+    paintOpen, paintClose, paintReloadIfChanged, paintModel, paintRecolor, paintSetBlendMode, paintSetBlendModeBulk, paintSetMaterialParam, paintSetTexture, paintSetColorAlpha, paintUndo, paintRedo, paintSave,
     type VfxModel, type VfxSystem, type VfxEmitter, type VfxMaterial, type MaterialParam,
     type ColorData, type ColorKeyframe, type EmitterColors, type EmitterTexture,
     type PaintOpenResult, type RecolorResult, type RecolorModeId, type ColorTargetId,
@@ -59,7 +59,7 @@ export {
 } from './upscale';
 export {
     imgRecolorDecodeTexture, imgRecolorFilterColored, imgRecolorThumbnail,
-    imgRecolorBatch, imgRecolorSaveTexture, imgRecolorScanDir,
+    imgRecolorBatch, imgRecolorBlackToAlpha, imgRecolorSaveTexture, imgRecolorScanDir,
     type DecodedTexture, type ScannedImage, type RecolorBatchResult,
 } from './imgrecolor';
 export {

@@ -450,6 +450,21 @@ pub fn explorer_reveal(app: tauri::AppHandle, path: String) -> Result<(), String
         .map_err(|e| format!("reveal {path}: {e}"))
 }
 
+/// Open a file in a program. With `with = None` the OS picks whatever is
+/// associated with the extension (so a .dds opens in whatever the user already
+/// set as their default); with `Some(exe)` it opens in that program specifically.
+#[tauri::command]
+pub fn explorer_open_with(
+    app: tauri::AppHandle,
+    path: String,
+    with: Option<String>,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_path(&path, with.as_deref())
+        .map_err(|e| format!("open {path}: {e}"))
+}
+
 /// Decode an image / game texture to a small PNG data URL for thumbnails.
 /// Plain images go straight through `image`; .tex/.dds decode via quartz-lib
 /// first. Runs on a blocking thread so large textures never stall the UI.

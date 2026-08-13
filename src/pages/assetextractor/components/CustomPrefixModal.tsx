@@ -30,6 +30,9 @@ export interface RepathOptionsPayload {
     splitAnm: boolean;
     consolidateAssets: boolean;
     outputOverride: { enabled: boolean; keepForAll: boolean; path: string; perSkinPaths: Record<string, string> };
+    /** Name for the mod folder, replacing the generated
+     *  `<champ>_skin<N>_extracted`. Empty keeps it. Single-skin runs only. */
+    folderName: string;
 }
 
 interface Props {
@@ -81,6 +84,8 @@ export function CustomPrefixModal({
     const [outputKeepForAll, setOutputKeepForAll] = useState(true);
     const [outputPath, setOutputPath] = useState('');
     const [outputPathsBySkin, setOutputPathsBySkin] = useState<Record<string, string>>({});
+    /** Blank = keep the generated `<champ>_skin<N>_extracted` name. */
+    const [folderName, setFolderName] = useState('');
     const [infoOpen, setInfoOpen] = useState(false);
 
     // Reset when (re)opened.
@@ -90,6 +95,7 @@ export function CustomPrefixModal({
             setPrefixesBySkinId({});
             setPrefixInput('');
             setApplyToAll(false);
+            setFolderName('');
             setSkipSfxRepath(true);
             setExtractVoiceover(false);
             setPreserveHudIcons2D(true);
@@ -109,6 +115,11 @@ export function CustomPrefixModal({
     const total = skins.length;
     const multiSkin = total > 1;
     const current = skins[currentIndex];
+    /* Placeholder only, so the field reads as "leave blank for this". Approximates
+       the backend name, which also appends `_chroma_<id>` / `_clean`. */
+    const defaultFolderName = multiSkin
+        ? ''
+        : `${(current.petAlias || current.championId || current.championName || '').toLowerCase()}_skin${current.skinId}_extracted`;
     const isLast = currentIndex === total - 1;
     const sanitized = sanitizePrefix(prefixInput);
     const isPrefixValid = sanitized.length > 0;
@@ -129,6 +140,9 @@ export function CustomPrefixModal({
         splitAnm,
         consolidateAssets,
         outputOverride: { enabled: outputOverrideEnabled, keepForAll: outputKeepForAll, path: outputPath, perSkinPaths: paths },
+        // One name cannot serve several skins - they would collide and each get an
+        // auto-versioned suffix - so it is only sent for a single-skin run.
+        folderName: multiSkin ? '' : folderName.trim(),
     });
 
     const handleNextOrStart = () => {
@@ -273,6 +287,26 @@ export function CustomPrefixModal({
                                     )}
                                 </div>
                             )}
+
+                            {/* Names the mod folder INSIDE the output path. The repath
+                                runs in place on the extracted folder, so this is the
+                                finished mod's folder name. Blank keeps the generated one. */}
+                            <div style={{ marginTop: 8 }}>
+                                <label
+                                    htmlFor="ae-repath-folder-name"
+                                    style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}
+                                >
+                                    Folder name {multiSkin && <span>(single skin only)</span>}
+                                </label>
+                                <input
+                                    id="ae-repath-folder-name"
+                                    className="dl-input"
+                                    value={folderName}
+                                    disabled={multiSkin}
+                                    onChange={(e) => setFolderName(e.target.value)}
+                                    placeholder={multiSkin ? 'Auto-named per skin' : defaultFolderName || 'e.g. my-aurora-mod'}
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>

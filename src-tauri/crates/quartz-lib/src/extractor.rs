@@ -420,6 +420,10 @@ pub struct ExtractOptions<'a> {
     /// Skip exporting SFX audio banks (`sounds/wwise2016/sfx/*.{bnk,wpk,wem}`)
     /// in clean mode — they're rarely modded and bloat the dump. Default on.
     pub skip_sfx: bool,
+    /// Name for the wrapper folder, replacing the generated
+    /// `<stem>_skin<N>_extracted`. Sanitized before use; blank falls back to the
+    /// generated name. Still auto-versioned, so it never overwrites.
+    pub folder_name: Option<&'a str>,
 }
 
 impl ExtractOptions<'_> {
@@ -437,6 +441,33 @@ impl ExtractOptions<'_> {
             None => self.skin_id,
         }
     }
+}
+
+/// Make a user-supplied folder name safe to join onto the output directory.
+///
+/// The name comes from a text field, so it has to be reduced to a single folder
+/// component: separators would let it escape the chosen output directory, and the
+/// characters Windows reserves would make the create fail outright. Trailing dots
+/// and spaces are stripped too - Windows silently drops them, so `mod.` and `mod`
+/// would be the same directory while the caller thinks they differ.
+///
+/// Returns None when nothing usable is left, so the caller keeps its generated name.
+fn sanitize_folder_name(raw: &str) -> Option<String> {
+    let cleaned: String = raw
+        .trim()
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c if (c as u32) < 0x20 => '_',
+            c => c,
+        })
+        .collect();
+    let cleaned = cleaned.trim_matches(|c: char| c == '.' || c.is_whitespace());
+    // `.` and `..` survive the filter above but are not names.
+    if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
+        return None;
+    }
+    Some(cleaned.to_string())
 }
 
 /// Build the wrapper folder base name for a skin extraction:
@@ -500,7 +531,12 @@ where
     // output root. Auto-versioned so re-extracting never overwrites.
     let extract_root = unique_dir(
         opts.output_dir,
-        &skin_folder_name(&folder_stem, effective_skin_id, opts.chroma_id, opts.clean),
+        &opts
+            .folder_name
+            .and_then(sanitize_folder_name)
+            .unwrap_or_else(|| {
+                skin_folder_name(&folder_stem, effective_skin_id, opts.chroma_id, opts.clean)
+            }),
     );
     std::fs::create_dir_all(&extract_root).map_err(|e| Error::io_with_path(e, &extract_root))?;
 
@@ -982,6 +1018,9 @@ pub struct TftExtractOptions<'a> {
     pub preserve_hud_icons2d: bool,
     /// Skip exporting SFX audio banks (clean mode only).
     pub skip_sfx: bool,
+    /// Name for the wrapper folder, replacing the generated one. See
+    /// [`ExtractOptions::folder_name`].
+    pub folder_name: Option<&'a str>,
 }
 
 /// Extract a TFT companion from `Companions.wad.client`. In clean mode this is
@@ -1014,7 +1053,10 @@ where
     };
     let extract_root = unique_dir(
         opts.output_dir,
-        &format!("{}_tier{}{}", pet_alias, opts.skin_id, suffix),
+        &opts
+            .folder_name
+            .and_then(sanitize_folder_name)
+            .unwrap_or_else(|| format!("{}_tier{}{}", pet_alias, opts.skin_id, suffix)),
     );
     std::fs::create_dir_all(&extract_root).map_err(|e| Error::io_with_path(e, &extract_root))?;
 
@@ -1381,14 +1423,31 @@ fn run_split_and_consolidate(
     }
 
     if consolidate {
+        /* ONE ledger for every BIN of this extraction.
+           A champion and its subcharacter (Locke / LockeTotem) reference the same
+           particle textures. Consolidating each BIN in isolation let whichever ran
+           first move a shared file into its own particles folder; the other kept
+           pointing at the original path, which no longer existed. The ledger makes
+           every BIN agree on one destination per file. */
+        let mut consolidated: crate::bin::bin_editor::ConsolidatedAssets = Default::default();
+        /* "VFX-exclusive" has to be judged across EVERY bin, not one at a time.
+           LockeTotem's body texture is VFX-only inside Locke's bin but is the mesh
+           texture in the totem's, so consolidating on Locke's view alone moved it
+           and broke the totem. Collect the non-VFX references from all bins first. */
+        let mut protected: crate::bin::bin_editor::ProtectedAssets = Default::default();
+        for bin in &skin_bins {
+            crate::bin::bin_editor::collect_protected_assets(bin, &mut protected);
+        }
         for (champ, skin_num, targets) in consolidate_targets(&skin_bins, content_dir, skin_id) {
             for target in targets {
-                match crate::bin::bin_editor::consolidate_assets_repath(
+                match crate::bin::bin_editor::consolidate_assets_repath_shared(
                     &target,
                     content_dir,
                     prefix,
                     &champ,
                     skin_num,
+                    Some(&mut consolidated),
+                    Some(&protected),
                 ) {
                     Ok(r) => tracing::info!(
                         "Consolidated {} VFX assets (of {} referenced) for '{}'",
@@ -1745,6 +1804,7 @@ mod tests {
             chroma_id,
             preserve_hud_icons2d: false,
             skip_sfx: true,
+            folder_name: None,
         }
     }
 

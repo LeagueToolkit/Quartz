@@ -39,6 +39,7 @@ fn extract_rel_paths(root: &Path, champion: &str, skin_id: u32, out: &Path) -> V
             chroma_id: None,
             preserve_hud_icons2d: true,
             skip_sfx: true,
+            folder_name: None,
         },
         |_| {},
     )
@@ -179,6 +180,7 @@ fn whole_wad_mode_respects_the_split() {
                 chroma_id: None,
                 preserve_hud_icons2d: true,
                 skip_sfx: false,
+                folder_name: None,
             },
             |_| {},
         )
@@ -245,6 +247,7 @@ fn modern_and_legacy_write_to_distinct_folders() {
                 chroma_id: None,
                 preserve_hud_icons2d: true,
                 skip_sfx: true,
+                folder_name: None,
             },
             |_| {},
         )
@@ -291,6 +294,7 @@ fn legacy_extraction_finalizes_like_a_modern_one() {
             chroma_id: None,
             preserve_hud_icons2d: true,
             skip_sfx: true,
+            folder_name: None,
         },
         |_| {},
     )
@@ -380,6 +384,7 @@ fn every_legacy_champion_extracts_cleanly() {
                 chroma_id: None,
                 preserve_hud_icons2d: true,
                 skip_sfx: true,
+                folder_name: None,
             },
             |_| {},
         ) {
@@ -471,6 +476,7 @@ fn no_modern_champion_leaks_legacy_assets() {
                 chroma_id: None,
                 preserve_hud_icons2d: true,
                 skip_sfx: true,
+                folder_name: None,
             },
             |_| {},
         ) {

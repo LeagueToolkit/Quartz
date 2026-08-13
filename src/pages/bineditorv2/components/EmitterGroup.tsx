@@ -85,6 +85,32 @@ function EmitterGroup(props: EmitterGroupProps) {
                     {open ? '▼' : '▶'}
                 </span>
 
+                {/* Explicit select box — the row body is still clickable, but the
+                    box is what advertises that emitters are selectable at all. */}
+                <button
+                    type="button"
+                    className={`biev2-emitter__check${selected ? ' is-on' : ''}`}
+                    role="checkbox"
+                    aria-checked={selected}
+                    aria-label={`Select ${emitter.name} for bulk edit`}
+                    title={selected ? 'Selected — click to deselect' : 'Select for bulk edit'}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle(emitterId);
+                    }}
+                >
+                    <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true">
+                        <path
+                            d="M1.5 6.5L4.5 9.5L10.5 2.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        />
+                    </svg>
+                </button>
+
                 {/* Click the row body to highlight it for bulk selection */}
                 <div
                     onClick={() => onToggle(emitterId)}

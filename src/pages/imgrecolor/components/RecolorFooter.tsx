@@ -19,6 +19,7 @@ export interface RecolorFooterProps {
     progress: { done: number; total: number } | null;
     onLoadFolder: () => void;
     onFilterGrayscale: () => void;
+    onBlackToAlpha: () => void;
     onToggleSelectAll: () => void;
     onConfirmSelection: () => void;
     onBackToSelection: () => void;
@@ -66,6 +67,14 @@ export function RecolorFooter(p: RecolorFooterProps) {
             {p.showingSelection && p.allImagesCount > 0 && (
                 <Box className="imgrecolor-footer__actions-group">
                     <button className="dl-btn dl-btn--secondary dl-btn--sm" onClick={p.onFilterGrayscale}>Filter Grayscale</button>
+                    <button
+                        className="dl-btn dl-btn--secondary dl-btn--sm"
+                        onClick={p.onBlackToAlpha}
+                        disabled={p.selectedCount === 0}
+                        title="Fade black to transparent in the selected files, using each pixel's brightness. Colors are left alone. Use for textures made for an additive blend mode, which drops black on its own. This overwrites the files."
+                    >
+                        Remove Black
+                    </button>
                     <button className="dl-btn dl-btn--secondary dl-btn--sm" onClick={p.onToggleSelectAll}>
                         {p.allSelected ? 'Deselect All' : 'Select All'}
                     </button>

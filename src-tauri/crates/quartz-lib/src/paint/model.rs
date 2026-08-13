@@ -218,6 +218,12 @@ pub struct ColorTarget {
     pub constant: Option<NodePath>,
     /// Paths to each keyframe vec4 in the `values` list, in order.
     pub keyframes: Vec<NodePath>,
+    /// The keyframe times read from the bin's `times` list, parallel to `keyframes`.
+    ///
+    /// Recorded at projection time so a post-edit refresh reproduces the same view the
+    /// initial open produced. Without it the refresh has to guess even spacing, and any
+    /// color whose real times are uneven shifts its gradient after every recolor.
+    pub times: Vec<f32>,
 }
 
 // ── Projection ──────────────────────────────────────────────────────────────
@@ -489,7 +495,9 @@ fn project_emitter(
 
 /// Rebuild one color view from its edit target against the live tree — the
 /// partial-refresh path after a recolor. Mirrors `project_color`'s shape: the
-/// constant contributes a t=0 keyframe and list times are synthesized evenly.
+/// constant contributes a t=0 keyframe and list entries reuse the times captured
+/// when the color was first projected, so a refreshed swatch matches the one drawn
+/// on open.
 pub(crate) fn color_data_from_target(
     bins: &mut [crate::linked_bins::LoadedBin],
     target: &ColorTarget,
@@ -506,11 +514,18 @@ pub(crate) fn color_data_from_target(
     let count = target.keyframes.len();
     for (i, p) in target.keyframes.iter().enumerate() {
         if let Some(BinValue::Vec4(v)) = p.resolve_mut(bins) {
-            let time = if count <= 1 {
-                0.0
-            } else {
-                i as f32 / (count - 1) as f32
-            };
+            /* Reuse the times captured when the color was projected. Recomputing them
+            as even spacing here made a refreshed swatch disagree with the one drawn
+            on open, so a gradient visibly shifted after every recolor even though the
+            bin was unchanged. Fall back to even spacing only for targets recorded
+            before times were tracked. */
+            let time = target.times.get(i).copied().unwrap_or({
+                if count <= 1 {
+                    0.0
+                } else {
+                    i as f32 / (count - 1) as f32
+                }
+            });
             keyframes.push(ColorKeyframe { rgba: *v, time });
         }
     }
@@ -561,6 +576,7 @@ fn project_color(
             ColorTarget {
                 constant: Some(path.clone()),
                 keyframes: Vec::new(),
+                times: Vec::new(),
             },
         )),
         // ValueColor embed/pointer.
@@ -569,6 +585,7 @@ fn project_color(
             let mut target = ColorTarget {
                 constant: None,
                 keyframes: Vec::new(),
+                times: Vec::new(),
             };
 
             if let Some(BinValue::Vec4(v)) = fields.get(&h.constant_value) {
@@ -614,6 +631,7 @@ fn project_color(
                         });
                         keyframes.push(ColorKeyframe { rgba: *v, time });
                         target.keyframes.push(values_path.child(Step::Index(i)));
+                        target.times.push(time);
                     }
                 }
             }

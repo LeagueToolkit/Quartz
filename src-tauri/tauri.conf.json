@@ -10,7 +10,10 @@
     "active": true,
     "targets": "nsis",
     "createUpdaterArtifacts": true,
-    "icon": ["icons/icon.ico", "icons/icon.png"],
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
     "resources": [
       "resources/wallpapers/*",
       "resources/cursors/*",
@@ -20,7 +23,7 @@
     ]
   },
   "productName": "Quartz",
-  "version": "4.1.8",
+  "version": "4.2.0",
   "identifier": "com.github.ritoshark.quartz",
   "plugins": {
     "updater": {
@@ -80,7 +83,11 @@
       },
       "assetProtocol": {
         "enable": true,
-        "scope": { "allow": ["**/*"] }
+        "scope": {
+          "allow": [
+            "**/*"
+          ]
+        }
       }
     }
   }

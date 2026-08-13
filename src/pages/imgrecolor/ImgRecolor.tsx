@@ -11,7 +11,7 @@ import {
     type RecolorParams,
 } from './utils/imgRecolorLogic';
 import { buildCurveLut, DEFAULT_CURVE, isIdentityCurve, type CurvePoint } from './utils/curve';
-import { imgRecolorBatch, imgRecolorFilterColored } from '@/lib/api';
+import { imgRecolorBatch, imgRecolorBlackToAlpha, imgRecolorFilterColored } from '@/lib/api';
 import { useFileDrop } from '@/lib/util/useFileDrop';
 import { DropOverlay } from '@/components/ui';
 import { useNavigationStore } from '@/lib/stores';
@@ -20,6 +20,7 @@ import { ImageThumbnail } from './components/ImageThumbnail';
 import { ProcessedImageCard } from './components/ProcessedImageCard';
 import { AdjustmentsPanel } from './components/AdjustmentsPanel';
 import { RecolorFooter } from './components/RecolorFooter';
+import RemoveBlackConfirmModal from './components/RemoveBlackConfirmModal';
 import './ImgRecolor.css';
 
 // File extensions ImgRecolor can decode; anything else dropped is treated as a folder.
@@ -61,6 +62,16 @@ function ImgRecolor() {
     /* Rebuilt only when the control points move; the preview and the save both use
        this table, so neither can drift from what the editor draws. */
     const curveLut = useMemo(() => (isIdentityCurve(curve) ? undefined : buildCurveLut(curve)), [curve]);
+    /* One source of truth for the current settings, used by both the preview and the
+       batch save so the two cannot drift. */
+    const recolorParams = useMemo<RecolorParams>(() => ({
+        targetHue: hueShift,
+        saturationBoost,
+        lightnessAdjust,
+        opacity,
+        preserveOriginalColors,
+        curveLut,
+    }), [hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors, curveLut]);
 
     /* ── Footer status ──
        Long jobs (scanning, saving) report progress here instead of a toast. `progress`
@@ -71,6 +82,8 @@ function ImgRecolor() {
     /* Bumped after a save so the selection thumbnails re-read the rewritten files
        instead of showing the images from before the recolor. */
     const [textureVersion, setTextureVersion] = useState(0);
+    // Remove Black overwrites files with no undo, so it asks first.
+    const [confirmRemoveBlack, setConfirmRemoveBlack] = useState(false);
     const [, setIsLoading] = useState(false); // re-entrancy guard (no UI overlay)
 
     // ── Drag state ──
@@ -105,16 +118,14 @@ function ImgRecolor() {
         return { preview: smallCtx.getImageData(0, 0, newWidth, newHeight), scale };
     }, []);
 
-    // Debounced adjustment applied to the loaded previews.
-    const updateColorAdjustments = useCallback((hue: number, sat: number, light: number, opac: number, preserveColors: boolean, lut?: Uint8Array) => {
+    /* Debounced adjustment applied to the loaded previews. Takes the params object
+       rather than a positional list, so adding a setting cannot silently shift the
+       argument order at the call sites. */
+    const updateColorAdjustments = useCallback((params: RecolorParams) => {
         if (loadedImages.size === 0) return;
         if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
 
         debounceTimerRef.current = setTimeout(() => {
-            const params: RecolorParams = {
-                targetHue: hue, saturationBoost: sat, lightnessAdjust: light, opacity: opac,
-                preserveOriginalColors: preserveColors, curveLut: lut,
-            };
             setLoadedImages((prev) => {
                 const newMap = new Map(prev);
                 for (const [imagePath, data] of newMap.entries()) {
@@ -192,15 +203,15 @@ function ImgRecolor() {
         }
     };
 
-    // Re-apply adjustments when images load or sliders/curve change.
+    // Re-apply adjustments when images load or any setting changes.
     useEffect(() => {
-        if (loadedImages.size > 0) updateColorAdjustments(hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors, curveLut);
+        if (loadedImages.size > 0) updateColorAdjustments(recolorParams);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [loadedImages.size]);
     useEffect(() => {
-        if (loadedImages.size > 0) updateColorAdjustments(hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors, curveLut);
+        if (loadedImages.size > 0) updateColorAdjustments(recolorParams);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [hueShift, saturationBoost, lightnessAdjust, opacity, preserveOriginalColors, curveLut]);
+    }, [recolorParams]);
 
     /* Restore the neutral state: the image as it is on disk.
 
@@ -287,6 +298,42 @@ function ImgRecolor() {
                 ? `Saved ${savedCount} image${savedCount !== 1 ? 's' : ''}`
                 : `Saved ${savedCount}, failed ${failedCount}`);
             // Files on disk changed: make the selection grid re-read them.
+            if (savedCount > 0) setTextureVersion((v) => v + 1);
+        } finally {
+            setProgress(null);
+            setIsLoading(false);
+        }
+    };
+
+    /* Fade black to transparent in the selected files, in place.
+
+       Separate from the recolor: it only rewrites the alpha channel and ignores the
+       sliders entirely. Intended for textures authored against an additive blend mode,
+       which drops black on its own; on a blend mode that does not, those areas show up
+       as solid black until the transparency is baked into the file. */
+    const runBlackToAlpha = async () => {
+        const paths = Array.from(selectedImages);
+        if (paths.length === 0) return;
+        setIsLoading(true);
+        let savedCount = 0;
+        let failedCount = 0;
+        setStatus('Removing black');
+        setProgress({ done: 0, total: paths.length });
+        try {
+            const CHUNK = 32;
+            for (let i = 0; i < paths.length; i += CHUNK) {
+                const batch = paths.slice(i, i + CHUNK);
+                const result = await imgRecolorBlackToAlpha(batch);
+                savedCount += result.saved;
+                failedCount += result.failures.length;
+                for (const [path, error] of result.failures) console.error(`Black to alpha failed for ${path}: ${error}`);
+                const failedPaths = new Set(result.failures.map(([path]) => path));
+                thumbnailQueue.invalidate(batch.filter((path) => !failedPaths.has(path)));
+                setProgress({ done: Math.min(i + CHUNK, paths.length), total: paths.length });
+            }
+            setStatus(failedCount === 0
+                ? `Removed black from ${savedCount} image${savedCount !== 1 ? 's' : ''}`
+                : `Removed black from ${savedCount}, failed ${failedCount}`);
             if (savedCount > 0) setTextureVersion((v) => v + 1);
         } finally {
             setProgress(null);
@@ -467,11 +514,19 @@ function ImgRecolor() {
                 progress={progress}
                 onLoadFolder={handleLoadFolder}
                 onFilterGrayscale={handleFilterGrayscale}
+                onBlackToAlpha={() => setConfirmRemoveBlack(true)}
                 onToggleSelectAll={toggleSelectAll}
                 onConfirmSelection={handleConfirmSelection}
                 onBackToSelection={handleBackToSelection}
                 onReset={handleReset}
                 onSaveAll={handleSaveAll}
+            />
+
+            <RemoveBlackConfirmModal
+                open={confirmRemoveBlack}
+                count={selectedImages.size}
+                onClose={() => setConfirmRemoveBlack(false)}
+                onConfirm={() => { void runBlackToAlpha(); }}
             />
         </div>
     );

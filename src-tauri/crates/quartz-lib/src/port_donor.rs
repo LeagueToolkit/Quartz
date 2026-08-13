@@ -201,6 +201,7 @@ pub fn prepare_donor_from_skin(
             chroma_id,
             preserve_hud_icons2d: false,
             skip_sfx: true,
+            folder_name: None,
         },
         |_p| {},
     )?;

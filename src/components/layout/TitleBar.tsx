@@ -7,7 +7,8 @@ import { log } from '@/lib/util/logger';
 import { visibleNavItems, SETTINGS_ITEM, type NavItem } from './NavRail';
 import { CommunityPopover } from './CommunityPopover';
 import { useFileExplorer } from '@/components/explorer';
-import { requestOpenCurrentBinInJade } from '@/lib/jade/jadeInterop';
+import { requestOpenCurrentBinInJade, requestOpenCurrentBinInRuby } from '@/lib/jade/jadeInterop';
+import { RubyMissingModal } from './RubyMissingModal';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { HashSyncIndicator } from './HashSyncIndicator';
 
@@ -24,6 +25,7 @@ export function TitleBar({ collapsed = false }: TitleBarProps) {
     const pick = useFileExplorer();
     const communityRef = useRef<HTMLButtonElement>(null);
     const [communityOpen, setCommunityOpen] = useState(false);
+    const [rubyMissing, setRubyMissing] = useState(false);
     // Standalone browse: reopens at the last-visited folder (no defaultPath).
     const openExplorer = () => { void pick({ mode: 'browse', title: 'Asset Explorer' }); };
     const minimize = () => win.minimize().catch((e) => log.error('minimize', e));
@@ -33,6 +35,15 @@ export function TitleBar({ collapsed = false }: TitleBarProps) {
         void requestOpenCurrentBinInJade().catch((error) => {
             window.alert(error instanceof Error ? error.message : String(error));
         });
+    };
+    /* `launched === null` is the "not installed" answer, not a failure - it opens
+       the download prompt instead of an alert. */
+    const openRuby = () => {
+        void requestOpenCurrentBinInRuby()
+            .then((result) => { if (!result.launched) setRubyMissing(true); })
+            .catch((error: unknown) => {
+                window.alert(error instanceof Error ? error.message : String(error));
+            });
     };
 
     return (
@@ -62,6 +73,16 @@ export function TitleBar({ collapsed = false }: TitleBarProps) {
                             onClick={openJade}
                         >
                             <img src="/jade.webp" alt="" className="q-jade-logo" />
+                        </button>
+                    </Tooltip>
+                    <Tooltip content="Open this BIN in RubyRe" side="bottom">
+                        <button
+                            type="button"
+                            className="q-topnavbtn q-jade-launch"
+                            aria-label="Open this BIN in RubyRe"
+                            onClick={openRuby}
+                        >
+                            <img src="/ruby.png" alt="" className="q-jade-logo" />
                         </button>
                     </Tooltip>
                     <Tooltip content="Asset Explorer" side="bottom">
@@ -99,6 +120,11 @@ export function TitleBar({ collapsed = false }: TitleBarProps) {
                     anchorRect={communityRef.current.getBoundingClientRect()}
                     onClose={() => setCommunityOpen(false)}
                 />,
+                document.body,
+            )}
+            {/* Portaled: the title bar is a drag region and clips its children. */}
+            {rubyMissing && createPortal(
+                <RubyMissingModal open onClose={() => setRubyMissing(false)} />,
                 document.body,
             )}
         </header>

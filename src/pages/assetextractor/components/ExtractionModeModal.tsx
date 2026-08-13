@@ -18,6 +18,9 @@ export interface ExtractionPayload {
         splitVfx: boolean;
         splitAnm: boolean;
         consolidateAssets: boolean;
+        /* Name for the extraction's folder inside the output path. Empty = keep
+           the generated `<champ>_skin<N>_extracted`. Single-skin runs only. */
+        folderName: string;
         outputOverride: {
             enabled: boolean;
             keepForAll: boolean;
@@ -86,6 +89,8 @@ export function ExtractionModeModal({
     const [outputPathsBySkin, setOutputPathsBySkin] = useState<Record<string, string>>({});
     const [applyToAll, setApplyToAll] = useState(false);
     const [infoOpen, setInfoOpen] = useState(false);
+    /** Blank = keep the generated `<champ>_skin<N>_extracted` name. */
+    const [folderName, setFolderName] = useState('');
 
     useEffect(() => {
         if (open) {
@@ -103,6 +108,7 @@ export function ExtractionModeModal({
             setOutputPathsBySkin({});
             setApplyToAll(false);
             setInfoOpen(false);
+            setFolderName('');
         }
     }, [open, defaultOutputPath]);
 
@@ -111,9 +117,20 @@ export function ExtractionModeModal({
     const total = skins.length;
     const multiSkin = total > 1;
     const current = skins[currentIndex];
+    /* Shown as the placeholder so the field reads as "leave blank for this".
+       Approximates the backend's name (it also appends `_chroma_<id>`/`_clean`),
+       which is enough for a hint. */
+    const defaultFolderName = multiSkin
+        ? ''
+        : `${(current.championId || current.championName || '').toLowerCase()}_skin${current.skinId}_extracted`;
     const skinKey = (s: PendingSkin) => `${s.championId || s.championName}_${s.skinId}`;
 
-    const finalizeOptions = { extractVoiceover, skipSfx, preserveHudIcons2D, splitVfx, splitAnm, consolidateAssets };
+    // A single custom folder name cannot serve several skins (they would collide and
+    // each get an auto-versioned suffix), so it is only sent for a single-skin run.
+    const finalizeOptions = {
+        extractVoiceover, skipSfx, preserveHudIcons2D, splitVfx, splitAnm, consolidateAssets,
+        folderName: multiSkin ? '' : folderName.trim(),
+    };
 
     const resolvePayload = (nextDecisions: ExtractionDecision[]): ExtractionPayload => ({
         decisions: nextDecisions,
@@ -255,6 +272,28 @@ export function ExtractionModeModal({
                                     )}
                                 </div>
                             )}
+
+                            {/* Names the extraction's own folder INSIDE the output path,
+                                replacing the generated `<champ>_skin<N>_extracted`. Left
+                                blank it keeps that name. Disabled for a multi-skin run:
+                                one name for several skins would collide, and each would
+                                just get an auto-versioned suffix. */}
+                            <div style={{ marginTop: 8 }}>
+                                <label
+                                    htmlFor="ae-folder-name"
+                                    style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}
+                                >
+                                    Folder name {multiSkin && <span>(single skin only)</span>}
+                                </label>
+                                <input
+                                    id="ae-folder-name"
+                                    className="dl-input"
+                                    value={folderName}
+                                    disabled={multiSkin}
+                                    onChange={(e) => setFolderName(e.target.value)}
+                                    placeholder={multiSkin ? 'Auto-named per skin' : defaultFolderName || 'e.g. my-aurora-mod'}
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>

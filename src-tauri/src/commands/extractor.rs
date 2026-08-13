@@ -134,6 +134,7 @@ pub async fn extract_champion_assets(
     chroma_id: Option<u32>,
     preserve_hud_icons2d: Option<bool>,
     skip_sfx: Option<bool>,
+    folder_name: Option<String>,
 ) -> Result<ExtractResult, String> {
     let league = get_league_path().ok_or_else(|| {
         "Could not locate a League of Legends install. Set the path in Settings.".to_string()
@@ -162,6 +163,7 @@ pub async fn extract_champion_assets(
                 chroma_id,
                 preserve_hud_icons2d,
                 skip_sfx,
+                folder_name: folder_name.as_deref(),
             },
             progress,
         )
@@ -193,6 +195,7 @@ pub async fn extract_tft_companion(
     clean: Option<bool>,
     preserve_hud_icons2d: Option<bool>,
     skip_sfx: Option<bool>,
+    folder_name: Option<String>,
 ) -> Result<ExtractResult, String> {
     let league = get_league_path().ok_or_else(|| {
         "Could not locate a League of Legends install. Set the path in Settings.".to_string()
@@ -217,6 +220,7 @@ pub async fn extract_tft_companion(
                 clean,
                 preserve_hud_icons2d,
                 skip_sfx,
+                folder_name: folder_name.as_deref(),
             },
             progress,
         )
