@@ -292,6 +292,8 @@ fn decode_bin(value: &Value) -> Result<Bin> {
         linked,
         entries,
         patches,
+        // JSON has no trailer concept; a bin decoded from JSON carries none.
+        trailing: Vec::new(),
     })
 }
 
@@ -595,6 +597,7 @@ mod tests {
                 fields,
             }],
             patches: Vec::new(),
+            trailing: Vec::new(),
         };
 
         let json = to_json(&bin).unwrap();
@@ -615,6 +618,7 @@ mod tests {
                 path: "a.b.c".to_string(),
                 value: BinValue::U32(99),
             }],
+            trailing: Vec::new(),
         };
         let json = to_json(&bin).unwrap();
         let bin2 = from_json(&json).unwrap();

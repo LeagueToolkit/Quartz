@@ -105,14 +105,28 @@ pub fn repath_project(
 
     tracing::info!("Processing {} BIN files (all characters)", bin_files.len());
 
+    /* Parse in bounded chunks rather than one flat par_iter. Each in-flight
+    `read_bin` can hold a parsed tree from a file up to MAX_BIN_SIZE, so an
+    unbounded fan-out makes peak memory scale with core count — on a 12-thread
+    box that is a multi-GB spike, and an allocation failure aborts the process
+    without running any panic hook. Chunking caps concurrent parses while
+    keeping the parallelism that matters. */
     let all_asset_paths_set: DashSet<String> = DashSet::new();
-    bin_files.par_iter().for_each(|bin_path| {
-        if let Ok(paths) = scan_bin_for_paths(bin_path) {
-            for path in paths {
-                all_asset_paths_set.insert(path);
+    let scan_chunk = rayon::current_num_threads().clamp(1, 8);
+    for chunk in bin_files.chunks(scan_chunk) {
+        chunk.par_iter().for_each(|bin_path| match scan_bin_for_paths(bin_path) {
+            Ok(paths) => {
+                for path in paths {
+                    all_asset_paths_set.insert(path);
+                }
             }
-        }
-    });
+            // Don't fail the repath over one bad BIN, but don't hide it either:
+            // an unparseable BIN keeps its original paths and silently ships a
+            // broken mod, which is exactly the class of bug that gets reported
+            // as "repath did nothing".
+            Err(e) => tracing::warn!("Skipping unreadable BIN {}: {}", bin_path.display(), e),
+        });
+    }
     tracing::info!(
         "Found {} unique asset paths in BINs",
         all_asset_paths_set.len()
@@ -179,9 +193,11 @@ pub fn repath_project(
     let prefix = config.prefix();
     let bins_processed = AtomicUsize::new(0);
     let paths_modified = AtomicUsize::new(0);
+    // Collect every bumped `file =` path across all bins for the mod-root files.txt.
+    let file_paths: DashSet<String> = DashSet::new();
 
     bin_files.par_iter().for_each(|bin_path| {
-        match repath_bin_file(bin_path, &existing_paths, &prefix, config) {
+        match repath_bin_file(bin_path, &existing_paths, &prefix, config, &file_paths) {
             Ok(modified_count) => {
                 bins_processed.fetch_add(1, Ordering::Relaxed);
                 paths_modified.fetch_add(modified_count, Ordering::Relaxed);
@@ -191,6 +207,22 @@ pub fn repath_project(
             }
         }
     });
+
+    // Write files.txt at the mod root: every repathed `file =` path, one per line, no
+    // hash (hash is xxh64(path), computed on the fly). Complements the in-bin trailer —
+    // this is the easy-lookup, no-bin-parsing copy. Only written when there are file=
+    // paths (a mod with none gets no file).
+    if !file_paths.is_empty() {
+        let mut lines: Vec<String> = file_paths.iter().map(|s| s.clone()).collect();
+        lines.sort();
+        let contents = lines.join("\n");
+        let files_txt = content_base.join("files.txt");
+        if let Err(e) = fs::write(&files_txt, contents) {
+            tracing::warn!("Failed to write files.txt: {}", e);
+        } else {
+            tracing::info!("Wrote files.txt ({} file= paths) to mod root", lines.len());
+        }
+    }
 
     result.bins_processed = bins_processed.load(Ordering::Relaxed);
     result.paths_modified = paths_modified.load(Ordering::Relaxed);
@@ -253,10 +285,42 @@ fn scan_bin_for_paths(bin_path: &Path) -> Result<Vec<String>> {
         }
     }
 
+    // HASHED asset refs (File=xxh64, Hash/Link=fnv1a32): resolve each to its ORIGINAL
+    // path and include it, so the physical file gets relocated to the prefixed path to
+    // match the hash the bin walk bumps. Without this, `file =` assets keep their hash
+    // repathed in the bin but the .tex never moves -> game can't find it.
+    let resolve = build_file_resolve(&bin, &data);
+    for (_h, path) in resolve {
+        // Only real asset payloads (the walk's is_asset_path gate), and skip .bin.
+        if is_asset_path(&path) && !path.to_lowercase().ends_with(".bin") {
+            paths.push(path);
+        }
+    }
+
     Ok(paths)
 }
 
+/* Deepest Pointer/Embed/List/Map nesting we'll follow in one BIN value tree.
+   Real skin BINs nest well under 20; anything past this is a corrupt or
+   hostile file whose cycle would otherwise recurse until the thread's stack
+   is gone. A stack overflow on Windows is an unhandled SEH exception: it
+   kills the process instantly, with no panic hook and no log line, so this
+   has to be bounded here rather than caught upstream. */
+pub(crate) const MAX_BIN_VALUE_DEPTH: usize = 64;
+
 fn collect_paths_from_value(value: &BinValue, paths: &mut Vec<String>) {
+    collect_paths_from_value_depth(value, paths, 0);
+}
+
+fn collect_paths_from_value_depth(value: &BinValue, paths: &mut Vec<String>, depth: usize) {
+    if depth >= MAX_BIN_VALUE_DEPTH {
+        tracing::warn!(
+            "BIN value nesting exceeded {} levels; skipping deeper values (corrupt or cyclic BIN)",
+            MAX_BIN_VALUE_DEPTH
+        );
+        return;
+    }
+    let next = depth + 1;
     match value {
         BinValue::String(s) => {
             if is_asset_path(s) {
@@ -265,23 +329,23 @@ fn collect_paths_from_value(value: &BinValue, paths: &mut Vec<String>) {
         }
         BinValue::List { items, .. } => {
             for item in items {
-                collect_paths_from_value(item, paths);
+                collect_paths_from_value_depth(item, paths, next);
             }
         }
         BinValue::Pointer { fields, .. } | BinValue::Embed { fields, .. } => {
             for v in fields.values() {
-                collect_paths_from_value(v, paths);
+                collect_paths_from_value_depth(v, paths, next);
             }
         }
         BinValue::Option {
             value: Some(inner), ..
         } => {
-            collect_paths_from_value(inner, paths);
+            collect_paths_from_value_depth(inner, paths, next);
         }
         BinValue::Map { entries, .. } => {
             for (key, val) in entries {
-                collect_paths_from_value(key, paths);
-                collect_paths_from_value(val, paths);
+                collect_paths_from_value_depth(key, paths, next);
+                collect_paths_from_value_depth(val, paths, next);
             }
         }
         _ => {}
@@ -358,6 +422,7 @@ fn repath_bin_file(
     existing_paths: &HashSet<String>,
     prefix: &str,
     config: &RepathConfig,
+    file_paths_out: &DashSet<String>,
 ) -> Result<usize> {
     let data = fs::read(bin_path).map_err(|e| Error::io_with_path(e, bin_path))?;
 
@@ -366,23 +431,48 @@ fn repath_bin_file(
 
     let mut modified_count = 0;
 
+    // HASHED-ref support (Riot's string->file/hash migration): resolve this bin's
+    // File(xxh64) hashes against the WAD dict + the bin's own trailer, so `file =`
+    // values can be bumped like `string =` ones. `hash_trailer` accumulates the
+    // new_hash -> bumped_path entries to embed as the OUTPUT bin's trailer (the only
+    // place a repathed hash's custom path survives).
+    let mut hash_ctx = HashRepathCtx {
+        resolve: build_file_resolve(&bin, &data),
+        trailer: HashMap::new(),
+    };
+
     // 1:1 with old Quartz `_repathBin`: only bumPath asset strings in entry
     // fields. `championSkinName` is left untouched, and the `linked` list holds
     // only character BINs after combine (which bumPath skips), so it's left too.
     for entry in bin.entries.iter_mut() {
         for value in entry.fields.values_mut() {
-            modified_count += repath_value(value, existing_paths, prefix, config);
+            modified_count += repath_value(value, existing_paths, prefix, config, &mut hash_ctx);
         }
     }
 
-    if modified_count > 0 {
-        let new_data = write_bin(&bin)
+    // Carry forward the source bin's own trailer entries too (a bin repathed twice).
+    for (hex, path) in crate::bin::bin_trailer::read_trailer(&data) {
+        hash_ctx.trailer.entry(hex).or_insert(path);
+    }
+
+    // Feed the mod-root files.txt: the `file =` (xxh64, 16-hex key) bumped paths.
+    // Hash/Link (8-hex fnv1a) are excluded — files.txt is the FILE path table only.
+    for (hex, path) in &hash_ctx.trailer {
+        if hex.len() == 16 {
+            file_paths_out.insert(path.clone());
+        }
+    }
+
+    if modified_count > 0 || !hash_ctx.trailer.is_empty() {
+        let body = write_bin(&bin)
             .map_err(|e| Error::InvalidInput(format!("Failed to write BIN: {}", e)))?;
+        let new_data = crate::bin::bin_trailer::append_trailer(&body, &hash_ctx.trailer);
 
         fs::write(bin_path, new_data).map_err(|e| Error::io_with_path(e, bin_path))?;
         tracing::debug!(
-            "Repathed {} paths in {}",
+            "Repathed {} string paths + {} hashed refs in {}",
             modified_count,
+            hash_ctx.trailer.len(),
             bin_path.display()
         );
     }
@@ -390,12 +480,120 @@ fn repath_bin_file(
     Ok(modified_count)
 }
 
+/// Resolve/accumulate context for hashed asset refs during flint repath.
+struct HashRepathCtx {
+    /// hash (u64; fnv1a widened) -> path: this bin's File hashes resolved via the WAD
+    /// dict, plus the bin's own trailer (custom paths no dictionary knows).
+    resolve: HashMap<u64, String>,
+    /// hex hash -> bumped path, embedded as the output bin's trailer.
+    trailer: HashMap<String, String>,
+}
+
+/// Build the hash->path map for a bin: File(xxh64) via the WAD dictionary + the
+/// bin's own embedded trailer (authoritative for already-custom paths).
+fn build_file_resolve(bin: &ritoshark::bin::Bin, source_data: &[u8]) -> HashMap<u64, String> {
+    use ritoshark::bin::BinValue;
+    let mut hashes: Vec<u64> = Vec::new();
+    fn walk(v: &BinValue, out: &mut Vec<u64>) {
+        match v {
+            BinValue::File(h) => {
+                if *h != 0 {
+                    out.push(*h)
+                }
+            }
+            BinValue::List { items, .. } => items.iter().for_each(|x| walk(x, out)),
+            BinValue::Map { entries, .. } => entries.iter().for_each(|(k, val)| {
+                walk(k, out);
+                walk(val, out)
+            }),
+            BinValue::Pointer { fields, .. } | BinValue::Embed { fields, .. } => {
+                fields.values().for_each(|x| walk(x, out))
+            }
+            BinValue::Option { value: Some(inner), .. } => walk(inner, out),
+            _ => {}
+        }
+    }
+    for e in &bin.entries {
+        for f in e.fields.values() {
+            walk(f, &mut hashes);
+        }
+    }
+    for p in &bin.patches {
+        walk(&p.value, &mut hashes);
+    }
+    hashes.sort_unstable();
+    hashes.dedup();
+
+    let mut map = HashMap::new();
+    if !hashes.is_empty() {
+        if let Ok(hash_dir) = crate::hash::get_hash_dir() {
+            if let Some(env) = crate::hash::get_wad_env(&hash_dir.to_string_lossy()) {
+                let resolved = crate::hash::resolve_hashes_lmdb_bulk(&hashes, &env);
+                for h in &hashes {
+                    if let Some(p) = resolved.get(h) {
+                        map.insert(*h, p.to_string());
+                    }
+                }
+            }
+        }
+    }
+    // Bin's own trailer wins (custom/already-repathed paths).
+    for (hex, path) in crate::bin::bin_trailer::read_trailer(source_data) {
+        if let Ok(h) = u64::from_str_radix(&hex, 16) {
+            map.insert(h, path);
+        }
+    }
+    map
+}
+
 fn repath_value(
     value: &mut BinValue,
     existing_paths: &HashSet<String>,
     prefix: &str,
     config: &RepathConfig,
+    hash_ctx: &mut HashRepathCtx,
 ) -> usize {
+    repath_value_depth(value, existing_paths, prefix, config, 0, hash_ctx)
+}
+
+/// Bump a hashed asset ref: resolve -> apply prefix -> re-hash, recording
+/// new_hash -> bumped_path in the trailer. Returns the new hash, or None (unknown
+/// path / not an asset / unchanged).
+fn bump_hashed(h: u64, is_file: bool, prefix: &str, config: &RepathConfig, ctx: &mut HashRepathCtx) -> Option<u64> {
+    let path = ctx.resolve.get(&h)?.clone();
+    if !is_asset_path(&path) {
+        return None;
+    }
+    let bumped = apply_prefix_to_path(&path, prefix, config);
+    if bumped == path {
+        return None;
+    }
+    if is_file {
+        let new_h = crate::hash::xxh64(&bumped);
+        ctx.trailer.insert(format!("{:016x}", new_h), bumped);
+        Some(new_h)
+    } else {
+        let new_h = crate::hash::fnv1a(&bumped) as u64;
+        ctx.trailer.insert(format!("{:08x}", new_h as u32), bumped);
+        Some(new_h)
+    }
+}
+
+/// Depth-bounded twin of [`collect_paths_from_value_depth`] for the write side.
+/// The scan and the rewrite must stop at the same depth, or a BIN could have a
+/// path counted during the scan and then left unprefixed in the written file.
+fn repath_value_depth(
+    value: &mut BinValue,
+    existing_paths: &HashSet<String>,
+    prefix: &str,
+    config: &RepathConfig,
+    depth: usize,
+    hash_ctx: &mut HashRepathCtx,
+) -> usize {
+    if depth >= MAX_BIN_VALUE_DEPTH {
+        return 0;
+    }
+    let next = depth + 1;
     let mut count = 0;
 
     match value {
@@ -410,25 +608,39 @@ fn repath_value(
                 }
             }
         }
+        // HASHED asset refs (string->file/hash migration): resolve -> bump -> rehash,
+        // recording the bumped path in the output trailer.
+        BinValue::File(h) => {
+            if let Some(new_h) = bump_hashed(*h, true, prefix, config, hash_ctx) {
+                *h = new_h;
+                count += 1;
+            }
+        }
+        BinValue::Hash(h) | BinValue::Link(h) => {
+            if let Some(new_h) = bump_hashed(*h as u64, false, prefix, config, hash_ctx) {
+                *h = new_h as u32;
+                count += 1;
+            }
+        }
         BinValue::List { items, .. } => {
             for item in items.iter_mut() {
-                count += repath_value(item, existing_paths, prefix, config);
+                count += repath_value_depth(item, existing_paths, prefix, config, next, hash_ctx);
             }
         }
         BinValue::Pointer { fields, .. } | BinValue::Embed { fields, .. } => {
             for v in fields.values_mut() {
-                count += repath_value(v, existing_paths, prefix, config);
+                count += repath_value_depth(v, existing_paths, prefix, config, next, hash_ctx);
             }
         }
         BinValue::Option {
             value: Some(inner), ..
         } => {
-            count += repath_value(inner, existing_paths, prefix, config);
+            count += repath_value_depth(inner, existing_paths, prefix, config, next, hash_ctx);
         }
         BinValue::Map { entries, .. } => {
             for (key, val) in entries.iter_mut() {
-                count += repath_value(key, existing_paths, prefix, config);
-                count += repath_value(val, existing_paths, prefix, config);
+                count += repath_value_depth(key, existing_paths, prefix, config, next, hash_ctx);
+                count += repath_value_depth(val, existing_paths, prefix, config, next, hash_ctx);
             }
         }
         _ => {}

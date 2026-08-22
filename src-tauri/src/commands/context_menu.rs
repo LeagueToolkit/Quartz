@@ -29,7 +29,10 @@ mod imp {
     // Bumped 11 -> 12 to relabel that folder verb to "Quartz: Merge all BINs".
     // Bumped 12 -> 13 to revert SkinLite → NoSkinLite (verb key + label);
     // needed so the stale `32skinlite` registry entry gets wiped by disable().
-    const MENU_SCHEMA: u32 = 13;
+    // Bumped 13 -> 14 for the new .fantome menu ("Unzip Fantome"); without this
+    // an already-enabled install never re-registers and the new menu never shows.
+    // Bumped 14 -> 15 for the folder verb "Zip Fantome".
+    const MENU_SCHEMA: u32 = 15;
 
     /// A single child verb inside the Quartz submenu.
     struct Verb {
@@ -143,6 +146,8 @@ mod imp {
         "Quartz: Convert all .sco to .scb",
         "sco2scb",
     )];
+    // .fantome mod package (a zip) → extracted into a sibling folder.
+    const FANTOME: &[Verb] = &[v("01unzipfantome", "Unzip Fantome", "unzip-fantome")];
 
     // ── Folder menu ─────────────────────────────────────────────────────────
     const DIR: &[Verb] = &[
@@ -186,6 +191,8 @@ mod imp {
             "WadTool: Pack to .wad.client",
             "pack-wad",
         ),
+        // Pack a mod folder (one holding META/info.json) into a .fantome.
+        v("21zipfantome", "Zip Fantome", "zip-fantome"),
     ];
 
     const MENUS: &[Menu] = &[
@@ -243,6 +250,11 @@ mod imp {
         Menu {
             root: r"SystemFileAssociations\.sco\shell\Quartz",
             verbs: SCO,
+            arg: "%1",
+        },
+        Menu {
+            root: r"SystemFileAssociations\.fantome\shell\Quartz",
+            verbs: FANTOME,
             arg: "%1",
         },
         // WAD tools. `.wad.client` is seen by Windows both as `.wad.client`

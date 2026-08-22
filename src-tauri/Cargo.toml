@@ -3,7 +3,7 @@ members = [".", "crates/quartz-lib"]
 
 [package]
 name = "quartz"
-version = "4.2.0"
+version = "4.2.3"
 edition = "2021"
 default-run = "quartz"
 

@@ -180,6 +180,25 @@ impl XXH64 {
             string: Some(s),
         }
     }
+
+    /// Build from a path string, computing the hash so the value survives a
+    /// text -> binary round-trip.
+    ///
+    /// The binary writer emits `self.hash` verbatim, so a resolved `file =`
+    /// path parsed back from text MUST carry its hash or it would serialize
+    /// as 0 and silently break the reference.
+    pub fn from_string(s: &str) -> Self {
+        Self {
+            hash: Self::calculate(s),
+            string: Some(s.to_string()),
+        }
+    }
+
+    /// xxh64 (seed 0) of the lowercased path - the WAD chunk key. Same
+    /// function the rest of the codebase uses via `ritoshark::hash::xxh64`.
+    pub fn calculate(text: &str) -> u64 {
+        ritoshark::hash::xxh64(text)
+    }
 }
 
 /// Top-level Bin container — maps section names to values.

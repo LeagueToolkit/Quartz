@@ -321,7 +321,9 @@ impl<'a> TextReader<'a> {
         let c = self.peek();
         if c == b'"' || c == b'\'' {
             if let Some(s) = self.read_quoted_string() {
-                return XXH64::with_string(0, s);
+                // Must re-hash: the binary writer emits `hash` verbatim, so a
+                // quoted path left at hash 0 would serialize as a null reference.
+                return XXH64::from_string(&s);
             }
             return XXH64::new(0);
         }
@@ -333,7 +335,7 @@ impl<'a> TextReader<'a> {
             self.add_error(format!("Failed to parse file hash '{}'", word));
             return XXH64::new(0);
         }
-        XXH64::with_string(0, word)
+        XXH64::from_string(&word)
     }
 
     fn parse_type_name(name: &str) -> Option<BinType> {

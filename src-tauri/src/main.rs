@@ -11,6 +11,42 @@ use commands::settings::{get_quartz_home, initialize_app_home};
 use tauri::{Emitter, Manager};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
+/* Log every panic (thread name, location, payload, backtrace) before the
+   process dies. Without this a panic on a rayon worker or a spawn_blocking
+   thread tears the app down with nothing in quartz.log, which is what made
+   the "repath finished, then Quartz vanished" reports impossible to trace.
+
+   Not a catch-all: a true allocation failure aborts and a stack overflow is
+   an unhandled SEH exception on Windows, and neither runs this hook. Those
+   are bounded at the source instead (see flint_repath::refather). */
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let thread = std::thread::current();
+        let name = thread.name().unwrap_or("<unnamed>").to_string();
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown location>".to_string());
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "<non-string panic payload>".to_string());
+
+        tracing::error!(
+            "PANIC on thread '{}' at {}: {}\nbacktrace:\n{}",
+            name,
+            location,
+            payload,
+            std::backtrace::Backtrace::force_capture()
+        );
+
+        default_hook(info);
+    }));
+}
+
 fn main() {
     // Right-click "Convert" verbs run headlessly and exit before Tauri starts.
     if let Some(code) = cli_convert::try_run() {
@@ -36,6 +72,8 @@ fn main() {
         .with(fmt::layer().with_ansi(false).with_writer(file_writer))
         .with(filter)
         .init();
+
+    install_panic_hook();
 
     tracing::info!("Quartz starting...");
 

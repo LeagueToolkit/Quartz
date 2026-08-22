@@ -8,10 +8,13 @@ import { explorerFilterExisting } from '@/lib/api/explorer';
 const RECENTS_KEY = 'quartz-explorer-recents';
 const PINS_KEY = 'quartz-explorer-pins';
 const VIEW_KEY = 'quartz-explorer-view';
+const SORT_KEY = 'quartz-explorer-sort';
 const LAST_FOLDER_KEY = 'quartz-explorer-last-folder';
 const MAX_RECENTS = 10;
 
 type ViewMode = 'grid' | 'list';
+export type SortKey = 'name' | 'modified' | 'type' | 'size';
+export type SortDirection = 'asc' | 'desc';
 
 type Recents = Record<string, string[]>;
 
@@ -45,16 +48,32 @@ function loadView(): ViewMode {
     return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid';
 }
 
+/* The explorer modal unmounts on close, so sort has to live here to survive a
+   reopen. Validated on read: a hand-edited or stale localStorage value falls
+   back to the default rather than producing an unsortable column. */
+const SORT_KEYS: SortKey[] = ['name', 'modified', 'type', 'size'];
+
+function loadSort(): { sortKey: SortKey; sortDirection: SortDirection } {
+    const stored = loadJson<Partial<{ sortKey: SortKey; sortDirection: SortDirection }>>(SORT_KEY, {});
+    return {
+        sortKey: SORT_KEYS.includes(stored.sortKey as SortKey) ? (stored.sortKey as SortKey) : 'name',
+        sortDirection: stored.sortDirection === 'desc' ? 'desc' : 'asc',
+    };
+}
+
 interface ExplorerState {
     recents: Recents;
     pins: string[];
     view: ViewMode;
+    sortKey: SortKey;
+    sortDirection: SortDirection;
     lastFolder: string;
     addRecent: (bucket: string, path: string) => void;
     removeRecent: (bucket: string, path: string) => void;
     addPin: (path: string) => void;
     removePin: (path: string) => void;
     setView: (view: ViewMode) => void;
+    setSort: (sortKey: SortKey, sortDirection: SortDirection) => void;
     setLastFolder: (path: string) => void;
     /** Drop recents (all buckets) + pins whose paths no longer exist. */
     pruneRecents: () => Promise<void>;
@@ -64,6 +83,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     recents: initial.recents,
     pins: initial.pins,
     view: loadView(),
+    ...loadSort(),
     lastFolder: localStorage.getItem(LAST_FOLDER_KEY) ?? '',
     addRecent: (bucket, path) => {
         if (!path) return;
@@ -93,6 +113,10 @@ export const useExplorerStore = create<ExplorerState>((set, get) => ({
     setView: (view) => {
         localStorage.setItem(VIEW_KEY, view);
         set({ view });
+    },
+    setSort: (sortKey, sortDirection) => {
+        localStorage.setItem(SORT_KEY, JSON.stringify({ sortKey, sortDirection }));
+        set({ sortKey, sortDirection });
     },
     setLastFolder: (path) => {
         if (!path) return;

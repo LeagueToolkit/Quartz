@@ -2,6 +2,11 @@
 pub mod downloader;
 pub mod lmdb_cache;
 
+// Re-export the raw hashers so crates that don't depend on `ritoshark` directly
+// (e.g. src-tauri) can hash a path the same way the bin writer does: `xxh64` for
+// `file =` values, `fnv1a` for `hash =` / `link =` values.
+pub use ritoshark::hash::{fnv1a, xxh64};
+
 pub use downloader::{
     auto_sync, download_hashes, download_hashes_with_progress, get_hash_dir,
     get_ritoshark_hash_dir, hashes_present, is_auto_sync_fresh, no_progress, DownloadStats,

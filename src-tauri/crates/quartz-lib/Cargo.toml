@@ -60,7 +60,7 @@ tracing = "0.1"
 # headers instead of the DX10 extension (the client's loader does not parse DX10,
 # so recolored textures came out unreadable), and cubemap detection reads all six
 # faces. Bump this rev to pick up further upstream fixes.
-ritoshark = { git = "https://github.com/RitoShark/RitoShark-Crates", rev = "24fe6b3665edbf5b67977918571c8fa6769c74c2", features = ["tex", "anim", "mesh"] }
+ritoshark = { git = "https://github.com/RitoShark/RitoShark-Crates", rev = "d7be6f67dc6924bd8dd1f063cac52fc3cd379570", features = ["tex", "anim", "mesh"] }
 
 [dev-dependencies]
 # Scratch dirs for the live-install extraction tests (auto-removed on drop).

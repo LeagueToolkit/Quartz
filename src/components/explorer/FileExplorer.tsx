@@ -17,7 +17,7 @@ import { useExplorerNav } from './useExplorerNav';
 import { ExplorerSidebar } from './ExplorerSidebar';
 import { FileTile } from './FileTile';
 import { PreviewPane } from './PreviewPane';
-import { useExplorerStore } from './explorerStore';
+import { useExplorerStore, type SortKey, type SortDirection } from './explorerStore';
 import type { ExplorerOptions } from './types';
 import './explorer.css';
 
@@ -73,8 +73,6 @@ function matchesSearch(entry: FsEntry, query: string): boolean {
 }
 
 interface ContextState { x: number; y: number; entry: FsEntry }
-type SortKey = 'name' | 'modified' | 'type' | 'size';
-type SortDirection = 'asc' | 'desc';
 
 const typeName = (entry: FsEntry): string => entry.isDirectory
     ? 'File folder'
@@ -102,8 +100,12 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
     const recentsKey = options.recentsKey ?? 'default';
     const filterGroups = useMemo(() => filterGroupsFrom(options), [options]);
     const [filterIdx, setFilterIdx] = useState(0);
-    const [sortKey, setSortKey] = useState<SortKey>('name');
-    const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+    // Sort lives in the store, not local state: the modal unmounts on close, so
+    // a useState choice would be lost on every reopen.
+    const sortKey = useExplorerStore((s) => s.sortKey);
+    const sortDirection = useExplorerStore((s) => s.sortDirection);
+    const setSort = useExplorerStore((s) => s.setSort);
+    const toggleSortDirection = () => setSort(sortKey, sortDirection === 'asc' ? 'desc' : 'asc');
     const extFilter = filterGroups[filterIdx]?.exts;
     const nav = useExplorerNav(extFilter);
     const addRecent = useExplorerStore((s) => s.addRecent);
@@ -481,10 +483,10 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
 
     const changeSort = (key: SortKey) => {
         if (sortKey === key) {
-            setSortDirection((current) => current === 'asc' ? 'desc' : 'asc');
+            toggleSortDirection();
         } else {
-            setSortKey(key);
-            setSortDirection(key === 'modified' ? 'desc' : 'asc');
+            // Newest-first is the useful default for dates; A-Z for everything else.
+            setSort(key, key === 'modified' ? 'desc' : 'asc');
         }
     };
 
@@ -585,8 +587,7 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
                             value={sortKey}
                             onChange={(event) => {
                                 const key = event.target.value as SortKey;
-                                setSortKey(key);
-                                setSortDirection(key === 'modified' ? 'desc' : 'asc');
+                                setSort(key, key === 'modified' ? 'desc' : 'asc');
                             }}
                             title="Sort by"
                         >
@@ -597,7 +598,7 @@ export function FileExplorer({ open, options, onResolve, onCancel, onInspect }: 
                         </select>
                         <button
                             className="dl-btn dl-btn--icon dl-btn--sm"
-                            onClick={() => setSortDirection((current) => current === 'asc' ? 'desc' : 'asc')}
+                            onClick={toggleSortDirection}
                             title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
                         >
                             {sortDirection === 'asc' ? <ArrowUpNarrowWide size={15} /> : <ArrowDownNarrowWide size={15} />}

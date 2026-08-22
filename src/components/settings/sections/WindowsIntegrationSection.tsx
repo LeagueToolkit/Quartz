@@ -43,8 +43,10 @@ export function WindowsIntegrationSection() {
                             <li><strong>.py:</strong> Convert to .bin.</li>
                             <li><strong>Textures:</strong> .tex / .dds / .png conversions.</li>
                             <li><strong>Models:</strong> .mesh / .xps / .ascii and .pmx to .fbx.</li>
+                            <li><strong>.sco:</strong> Convert to .scb.</li>
+                            <li><strong>.fantome:</strong> Unzip Fantome (extract the mod package into a folder).</li>
                             <li><strong>.wad / .wad.client:</strong> Extract hashes, Unpack, Extract + Unpack.</li>
-                            <li><strong>Folders:</strong> Convert all BIN↔PY, extract hashes, pyntex missing/junk, batch texture conversions, pack to .wad.client.</li>
+                            <li><strong>Folders:</strong> Convert all BIN↔PY, extract hashes, pyntex missing/junk, batch texture conversions, pack to .wad.client, Zip Fantome.</li>
                         </ul>
                     </div>
                 )}

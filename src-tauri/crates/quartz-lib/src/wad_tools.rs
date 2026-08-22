@@ -394,12 +394,47 @@ pub fn unpack(wad_path: &Path, output_dir: Option<&Path>) -> Result<WadExtractRe
         None => Default::default(),
     };
 
+    // Harvest hash->path from any BIN chunk's embedded trailer. A repathed mod's
+    // custom asset paths live in no dictionary, so without this those chunks unpack
+    // as hex names; the bin that references them carries the mapping in its trailer.
+    // Scan .bin chunks (cheap: only bins can hold a trailer) and fold their maps in.
+    let mut trailer_resolved: HashMap<u64, String> = HashMap::new();
+    for chunk in &wad.chunks {
+        // Only bother with chunks that resolve to a .bin name, or are hex (could be a
+        // repathed bin). Reading every chunk would be wasteful; a bin trailer sits at
+        // the very end, so read the chunk and check the tail.
+        let looks_bin = lmdb_resolved
+            .get(&chunk.path_hash)
+            .map(|p| p.to_ascii_lowercase().ends_with(".bin"))
+            .unwrap_or(true); // unknown-named chunks are candidates too (repathed bins)
+        if !looks_bin {
+            continue;
+        }
+        if let Ok(bytes) = wad.chunk_data(chunk) {
+            for (hex, path) in crate::bin::bin_trailer::read_trailer(&bytes) {
+                if let Ok(h) = u64::from_str_radix(&hex, 16) {
+                    trailer_resolved.entry(h).or_insert(path);
+                }
+            }
+        }
+    }
+    if !trailer_resolved.is_empty() {
+        eprintln!(
+            "[WAD] recovered {} repathed path(s) from embedded bin trailers",
+            trailer_resolved.len()
+        );
+    }
+
     let resolve = |path_hash: u64| -> String {
         if let Some(v) = extracted_resolver.get(&path_hash) {
             return v.clone();
         }
         if let Some(v) = lmdb_resolved.get(&path_hash) {
             return v.to_string();
+        }
+        // Trailer-recovered repath paths (custom paths no dictionary knows).
+        if let Some(v) = trailer_resolved.get(&path_hash) {
+            return v.clone();
         }
         format!("{:016x}", path_hash)
     };

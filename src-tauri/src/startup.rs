@@ -16,6 +16,13 @@ pub struct StartupGate {
     launch_allowed: AtomicBool,
     frontend_ready: AtomicBool,
     resolved: AtomicBool,
+    /// Whether the once-a-day hash sync has already been spawned this run.
+    ///
+    /// `startup_main_ready` can fire more than once - React StrictMode double-mounts the
+    /// effect that calls it in development - and without this each call spawned its own sync
+    /// task. Two concurrent tasks then downloaded and tried to swap the SAME `data.mdb`,
+    /// which is the duplicate "Hash download complete" pair ~9s apart in the logs.
+    hash_sync_started: AtomicBool,
 }
 
 impl StartupGate {
@@ -234,7 +241,12 @@ pub fn startup_main_ready(app_handle: AppHandle, gate: State<'_, StartupGate>) {
     gate.frontend_ready.store(true, Ordering::Release);
     tracing::info!("startup frontend-ready handshake received");
     try_reveal_main(&app_handle);
-    spawn_hash_auto_sync(app_handle);
+    // Once per run, however many times the handshake arrives. Revealing the window is
+    // idempotent; spawning the sync is not - a second task races the first for the same
+    // data.mdb swap.
+    if !gate.hash_sync_started.swap(true, Ordering::AcqRel) {
+        spawn_hash_auto_sync(app_handle);
+    }
 }
 
 /* Check for newer hash databases in the background, at most once a day.

@@ -12,6 +12,7 @@
 
 use crate::bin::ritoshark_bridge::{get_cached_bin_hashes, read_bin, write_bin};
 use crate::error::{Error, Result};
+use crate::flint_repath::refather::MAX_BIN_VALUE_DEPTH;
 use ritoshark::bin::{Bin, BinValue};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -163,8 +164,142 @@ fn apply_hashed_files_map(source_dir: &Path, files: &mut HashMap<String, SourceF
     }
 }
 
-/// Recursively rewrite every asset/data string inside a value.
-fn repath_value(value: &mut BinValue, prefix: &str) {
+/// Context for repathing a bin: resolves a hashed asset ref (File=xxh64,
+/// Hash/Link=fnv1a32) back to its path so it can be bumped, and accumulates the
+/// `new_hash -> bumped_path` entries that must be embedded as the bin's trailer
+/// (the ONLY place a repathed hash's path survives — the writer stores only the
+/// hash, and the bumped path exists in no dictionary).
+pub(crate) struct RepathCtx {
+    /// hash (u64; fnv1a widened) -> path. Seeded from the SOURCE bin's own trailer
+    /// (custom/repath paths no dictionary has) AND from the WAD dictionary resolved
+    /// for THIS bin's File hashes up front (built in repath_bin). Consulted first;
+    /// the shared BIN mapper is the fnv1a fallback.
+    pub local: std::collections::HashMap<u64, String>,
+    /// Collected trailer for the OUTPUT bin: hex hash -> bumped path.
+    pub trailer: std::collections::HashMap<String, String>,
+}
+
+impl RepathCtx {
+    /// Resolve a hash to its path:
+    ///   1. `local` — the source bin's own trailer + this bin's WAD-resolved File
+    ///      hashes (xxh64), pre-filled in repath_bin.
+    ///   2. the shared BIN mapper (fnv1a32, for Hash/Link — vanilla + learned).
+    /// File (xxh64) hashes MUST come from `local` (the WAD dict) — the BIN mapper is
+    /// keyed by fnv1a32 and never holds them.
+    fn resolve(&self, h: u64) -> Option<String> {
+        if let Some(p) = self.local.get(&h) {
+            return Some(p.clone());
+        }
+        crate::bin::ritoshark_bridge::get_cached_bin_hashes()
+            .read()
+            .get(h)
+            .map(|s| s.to_string())
+    }
+}
+
+/// Resolve a bin's File (xxh64) hashes against the WAD dictionary and return the
+/// `hash -> path` map. File values live in the WAD namespace, NOT the BIN mapper, so
+/// this is how a `file =` value gets its path back for bumping. Empty if the WAD env
+/// is unavailable.
+fn resolve_file_hashes_for_bin(bin: &Bin) -> HashMap<u64, String> {
+    // Gather every File hash in the tree.
+    let mut hashes: Vec<u64> = Vec::new();
+    fn walk(v: &BinValue, out: &mut Vec<u64>) {
+        match v {
+            BinValue::File(h) => {
+                if *h != 0 {
+                    out.push(*h);
+                }
+            }
+            BinValue::List { items, .. } => items.iter().for_each(|x| walk(x, out)),
+            BinValue::Map { entries, .. } => entries.iter().for_each(|(k, val)| {
+                walk(k, out);
+                walk(val, out);
+            }),
+            BinValue::Pointer { fields, .. } | BinValue::Embed { fields, .. } => {
+                fields.values().for_each(|x| walk(x, out))
+            }
+            BinValue::Option { value: Some(inner), .. } => walk(inner, out),
+            _ => {}
+        }
+    }
+    for e in &bin.entries {
+        for f in e.fields.values() {
+            walk(f, &mut hashes);
+        }
+    }
+    for p in &bin.patches {
+        walk(&p.value, &mut hashes);
+    }
+    hashes.sort_unstable();
+    hashes.dedup();
+    if hashes.is_empty() {
+        return HashMap::new();
+    }
+
+    // Resolve against the WAD LMDB.
+    let mut map = HashMap::new();
+    let Ok(hash_dir) = crate::hash::get_hash_dir() else { return map };
+    let Some(env) = crate::hash::get_wad_env(&hash_dir.to_string_lossy()) else { return map };
+    let resolved = crate::hash::resolve_hashes_lmdb_bulk(&hashes, &env);
+    for h in &hashes {
+        if let Some(p) = resolved.get(h) {
+            map.insert(*h, p.to_string());
+        }
+    }
+    map
+}
+
+/// Recursively rewrite every asset/data string inside a value. Depth-bounded
+/// by `MAX_BIN_VALUE_DEPTH`: a cyclic or pathologically nested BIN would
+/// otherwise recurse until the stack is exhausted, and a Windows stack
+/// overflow terminates the process with no panic hook and no log line.
+fn repath_value(value: &mut BinValue, prefix: &str, ctx: &mut RepathCtx) {
+    repath_value_depth(value, prefix, 0, ctx)
+}
+
+/// Resolve a hashed ref to a path (mapper/trailer first), bump it, re-hash, and
+/// record `new_hash -> bumped_path` in the output trailer. Returns the new hash,
+/// or `None` if the path is unknown / not an asset / unchanged (leave as-is).
+fn bump_file_hash(h: u64, prefix: &str, ctx: &mut RepathCtx) -> Option<u64> {
+    let path = ctx.resolve(h)?;
+    let lower = path.to_lowercase();
+    if !(lower.contains("assets/") || lower.contains("data/")) {
+        return None;
+    }
+    let bumped = bum_path(&path, prefix);
+    if bumped == path {
+        return None; // already prefixed / no change
+    }
+    let new_h = crate::hash::xxh64(&bumped);
+    ctx.trailer.insert(format!("{:016x}", new_h), bumped);
+    Some(new_h)
+}
+
+fn bump_bin_hash(h: u32, prefix: &str, ctx: &mut RepathCtx) -> Option<u32> {
+    let path = ctx.resolve(h as u64)?;
+    let lower = path.to_lowercase();
+    if !(lower.contains("assets/") || lower.contains("data/")) {
+        return None;
+    }
+    let bumped = bum_path(&path, prefix);
+    if bumped == path {
+        return None;
+    }
+    let new_h = crate::hash::fnv1a(&bumped);
+    ctx.trailer.insert(format!("{:08x}", new_h), bumped);
+    Some(new_h)
+}
+
+fn repath_value_depth(value: &mut BinValue, prefix: &str, depth: usize, ctx: &mut RepathCtx) {
+    if depth >= MAX_BIN_VALUE_DEPTH {
+        tracing::warn!(
+            "BIN value nesting exceeded {} levels during bumpath; skipping deeper values",
+            MAX_BIN_VALUE_DEPTH
+        );
+        return;
+    }
+    let next = depth + 1;
     match value {
         BinValue::String(s) => {
             if is_asset_string(s) {
@@ -174,25 +309,38 @@ fn repath_value(value: &mut BinValue, prefix: &str) {
                 }
             }
         }
+        // HASHED asset refs (Riot's string->file/hash migration). Resolve -> bump
+        // -> re-hash, and record the new hash's path in the output trailer so the
+        // repathed path is not lost once the bin holds only the hash.
+        BinValue::File(h) => {
+            if let Some(new_h) = bump_file_hash(*h, prefix, ctx) {
+                *h = new_h;
+            }
+        }
+        BinValue::Hash(h) | BinValue::Link(h) => {
+            if let Some(new_h) = bump_bin_hash(*h, prefix, ctx) {
+                *h = new_h;
+            }
+        }
         BinValue::List { items, .. } => {
             for item in items.iter_mut() {
-                repath_value(item, prefix);
+                repath_value_depth(item, prefix, next, ctx);
             }
         }
         BinValue::Option {
             value: Some(inner), ..
         } => {
-            repath_value(inner, prefix);
+            repath_value_depth(inner, prefix, next, ctx);
         }
         BinValue::Map { entries, .. } => {
             for (k, v) in entries.iter_mut() {
-                repath_value(k, prefix);
-                repath_value(v, prefix);
+                repath_value_depth(k, prefix, next, ctx);
+                repath_value_depth(v, prefix, next, ctx);
             }
         }
         BinValue::Pointer { fields, .. } | BinValue::Embed { fields, .. } => {
             for (_k, v) in fields.iter_mut() {
-                repath_value(v, prefix);
+                repath_value_depth(v, prefix, next, ctx);
             }
         }
         _ => {}
@@ -211,8 +359,29 @@ fn bum_link(link: &str, prefix: &str) -> String {
     bum_path(link, prefix)
 }
 
-/// Repath every string/link in a parsed BIN in place.
-fn repath_bin(bin: &mut Bin, prefix: &str, entry_prefixes: &HashMap<u32, String>) {
+/// Repath every string/link in a parsed BIN in place. `source_data` is the raw
+/// bytes of the SOURCE bin (used to read its own embedded trailer so a
+/// twice-repathed bin still resolves its custom paths). Returns the OUTPUT
+/// trailer of `new_hash -> bumped_path` entries the caller must append.
+fn repath_bin(
+    bin: &mut Bin,
+    prefix: &str,
+    entry_prefixes: &HashMap<u32, String>,
+    source_data: &[u8],
+) -> HashMap<String, String> {
+    // Seed the resolver with (a) the source bin's own trailer (custom/repath paths
+    // no dictionary knows) and (b) this bin's File (xxh64) hashes resolved against the
+    // WAD dictionary (so `file =` values can be turned back into paths to bump).
+    let mut local: HashMap<u64, String> = resolve_file_hashes_for_bin(bin);
+    for (hex, path) in crate::bin::bin_trailer::read_trailer(source_data) {
+        if let Ok(h) = u64::from_str_radix(&hex, 16) {
+            local.insert(h, path); // trailer wins over dictionary (authoritative for custom)
+        }
+    }
+    let mut ctx = RepathCtx {
+        local,
+        trailer: HashMap::new(),
+    };
     for link in bin.linked.iter_mut() {
         *link = bum_link(link, prefix);
     }
@@ -223,12 +392,13 @@ fn repath_bin(bin: &mut Bin, prefix: &str, entry_prefixes: &HashMap<u32, String>
             .filter(|value| !value.trim().is_empty())
             .unwrap_or(prefix);
         for (_k, v) in entry.fields.iter_mut() {
-            repath_value(v, entry_prefix);
+            repath_value(v, entry_prefix, &mut ctx);
         }
     }
     for patch in bin.patches.iter_mut() {
-        repath_value(&mut patch.value, prefix);
+        repath_value(&mut patch.value, prefix, &mut ctx);
     }
+    ctx.trailer
 }
 
 fn collect_bin_assets_with_prefixes(
@@ -443,8 +613,8 @@ pub fn repath_many(
             Some(s) => s,
             None => continue,
         };
-        let data =
-            std::fs::read(&src.full_path).map_err(|e| Error::io_with_path(e, &src.full_path))?;
+        let data = std::fs::read(crate::longpath::to_extended(&src.full_path))
+            .map_err(|e| Error::io_with_path(e, &src.full_path))?;
         let mut bin = match read_bin(&data) {
             Ok(b) => b,
             Err(e) => {
@@ -458,17 +628,30 @@ pub fn repath_many(
             &options.entry_prefixes,
             &mut referenced,
         );
-        repath_bin(&mut bin, prefix, &options.entry_prefixes);
+        // Repath (incl. hashed File/Hash/Link refs); `trailer` holds the
+        // new_hash -> bumped_path entries for repathed hashed refs.
+        let mut trailer = repath_bin(&mut bin, prefix, &options.entry_prefixes, &data);
 
         let out_path = output_dir.join(rel);
         if let Some(parent) = out_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| Error::io_with_path(e, parent))?;
+            std::fs::create_dir_all(crate::longpath::to_extended(parent))
+                .map_err(|e| Error::io_with_path(e, parent))?;
         }
-        let bytes = write_bin(&bin).map_err(|e| Error::BinConversion {
+        let body = write_bin(&bin).map_err(|e| Error::BinConversion {
             message: e.to_string(),
             path: Some(out_path.clone()),
         })?;
-        std::fs::write(&out_path, bytes).map_err(|e| Error::io_with_path(e, &out_path))?;
+        // Carry forward any UNCHANGED custom-path entries from the source bin's own
+        // trailer too, so a bin that mixes already-repathed and newly-repathed refs
+        // keeps every custom path resolvable. (New entries win on key collision.)
+        for (hex, path) in crate::bin::bin_trailer::read_trailer(&data) {
+            trailer.entry(hex).or_insert(path);
+        }
+        let bytes = crate::bin::bin_trailer::append_trailer(&body, &trailer);
+        // \\?\-prefix the write so combined multi-skin BINs (>260-char names) don't
+        // fail with OS error 123 on Windows.
+        std::fs::write(crate::longpath::to_extended(&out_path), bytes)
+            .map_err(|e| Error::io_with_path(e, &out_path))?;
         bin_outputs.insert(rel.clone(), out_path);
         result.bins_processed += 1;
     }
@@ -492,9 +675,14 @@ pub fn repath_many(
         let repathed = bum_path(asset, asset_prefix);
         let out_path = output_dir.join(rel_normalize(&repathed));
         if let Some(parent) = out_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| Error::io_with_path(e, parent))?;
+            std::fs::create_dir_all(crate::longpath::to_extended(parent))
+                .map_err(|e| Error::io_with_path(e, parent))?;
         }
-        std::fs::copy(&src.full_path, &out_path).map_err(|e| Error::io_with_path(e, &out_path))?;
+        std::fs::copy(
+            crate::longpath::to_extended(&src.full_path),
+            crate::longpath::to_extended(&out_path),
+        )
+        .map_err(|e| Error::io_with_path(e, &out_path))?;
         result.assets_copied += 1;
     }
 
@@ -621,7 +809,8 @@ fn combine_into(
         return Ok(0);
     }
 
-    let data = std::fs::read(&main_path).map_err(|e| Error::io_with_path(e, &main_path))?;
+    let data = std::fs::read(crate::longpath::to_extended(&main_path))
+        .map_err(|e| Error::io_with_path(e, &main_path))?;
     let mut main = read_bin(&data).map_err(|e| Error::BinConversion {
         message: e.to_string(),
         path: Some(main_path.clone()),
@@ -636,7 +825,7 @@ fn combine_into(
             Some(p) => p.clone(),
             None => continue,
         };
-        let ldata = match std::fs::read(&linked_path) {
+        let ldata = match std::fs::read(crate::longpath::to_extended(&linked_path)) {
             Ok(d) => d,
             Err(_) => continue,
         };
@@ -651,7 +840,7 @@ fn combine_into(
         }
         merged_rels.insert(linked_rel.clone());
         merged_count += 1;
-        let _ = std::fs::remove_file(&linked_path);
+        let _ = std::fs::remove_file(crate::longpath::to_extended(&linked_path));
     }
 
     // Prune links that point at the merged files (compare on normalized rel,
@@ -669,7 +858,8 @@ fn combine_into(
         message: e.to_string(),
         path: Some(main_path.clone()),
     })?;
-    std::fs::write(&main_path, bytes).map_err(|e| Error::io_with_path(e, &main_path))?;
+    std::fs::write(crate::longpath::to_extended(&main_path), bytes)
+        .map_err(|e| Error::io_with_path(e, &main_path))?;
 
     Ok(merged_count)
 }

@@ -896,10 +896,12 @@ where
         .cloned()
         .collect();
     if seed_rels.is_empty() {
+        // Nearly always a stale hash DB rather than a missing skin: a WAD stores
+        // paths only as hashes, so an unresolvable name looks identical to an
+        // absent file. Point at the fix instead of blaming the archive.
         return Err(Error::InvalidInput(format!(
-            "No skin{}.bin found in {}",
-            skin_id,
-            file_label(wad_path)
+            "Failed to find skin{}. Redownload the hashes in Settings.",
+            skin_id
         )));
     }
 
@@ -908,6 +910,12 @@ where
     // combined/hash-named linked BINs are found and pulled in.
     let mut reachable_hashes: HashSet<u64> = HashSet::new();
     let mut referenced: HashSet<String> = HashSet::new();
+    // Hashed refs (File=xxh64, Hash/Link=fnv1a32) that no dictionary could resolve
+    // to a path. These still need extracting BY HASH (below) and flagging for the
+    // reverse-map — Riot's `string =` -> `file =` migration means these are now
+    // common, and dropping them is the "extractor ignores files" bug.
+    let mut unresolved_files: HashSet<u64> = HashSet::new();
+    let mut unresolved_bins: HashSet<u32> = HashSet::new();
     let mut queue: Vec<u64> = Vec::new();
     for rel in &seed_rels {
         if let Some(&h) = by_path.get(rel) {
@@ -921,10 +929,27 @@ where
         let Ok(bytes) = wad_explorer::read_chunk(&wad_str, hash) else {
             continue;
         };
-        let Ok(bin) = crate::bin::read_bin(&bytes) else {
+        // A bin may carry its own hash->path trailer (repathed/custom paths that no
+        // dictionary knows). Register it BEFORE resolving so those hashed refs
+        // resolve to their real paths and the assets land correctly instead of
+        // hex-named. Parse the stripped body so trailing bytes never confuse the reader.
+        {
+            let trailer = crate::bin::bin_trailer::read_trailer(&bytes);
+            if !trailer.is_empty() {
+                let mut w = crate::bin::ritoshark_bridge::get_cached_bin_hashes().write();
+                for (hex, path) in &trailer {
+                    if let Ok(h) = u64::from_str_radix(hex, 16) {
+                        w.insert(h, path.clone());
+                    }
+                }
+            }
+        }
+        let body = crate::bin::bin_trailer::strip_trailer(&bytes);
+        let Ok(bin) = crate::bin::read_bin(body) else {
             continue;
         };
 
+        // Plaintext `string =` asset refs (the classic form).
         for entry in &bin.entries {
             for (_k, v) in &entry.fields {
                 crate::port_donor::collect_assets(v, &mut referenced);
@@ -933,6 +958,17 @@ where
         for patch in &bin.patches {
             crate::port_donor::collect_assets(&patch.value, &mut referenced);
         }
+        // HASHED asset refs (`file =` / `hash =` / `link =`). Resolves them to real
+        // paths via the WAD + BIN dictionaries and folds them into `referenced` the
+        // same as string refs; anything that won't resolve is captured for by-hash
+        // extraction below. WITHOUT this, every asset Riot migrated string->file is
+        // silently dropped from the extraction.
+        crate::bin::ritoshark_bridge::collect_hashed_assets(
+            &bin,
+            &mut referenced,
+            &mut unresolved_files,
+            &mut unresolved_bins,
+        );
 
         for link in crate::port_donor::linked_bins(&bin) {
             if !link.to_lowercase().ends_with(".bin") {
@@ -968,6 +1004,35 @@ where
         if let Some(&hash) = by_path.get(&rel) {
             selection.insert(hash);
         }
+    }
+
+    // Unresolved `file =` refs whose path no dictionary knows: the xxh64 hash IS a
+    // WAD TOC key, so extract the chunk directly by hash if this archive holds it.
+    // This is what keeps repathed / mod-invented `file =` assets (whose paths exist
+    // in NO hashtable) from being silently dropped — they land as hex-named chunks
+    // and the reverse-map (hashed_files.json) carries their identity. Without this,
+    // Riot's string->file migration nukes exactly these assets on extraction.
+    if !unresolved_files.is_empty() {
+        for &h in &unresolved_files {
+            if all_hashes.contains(&h) {
+                selection.insert(h);
+            }
+        }
+        tracing::info!(
+            "extract: {} unresolved `file =` hashes ({} in this archive's TOC) extracted by hash",
+            unresolved_files.len(),
+            unresolved_files.iter().filter(|h| all_hashes.contains(h)).count()
+        );
+    }
+    if !unresolved_bins.is_empty() {
+        // fnv1a32 BIN hashes are NOT WAD keys, so they can't be extracted by hash
+        // here — they're bin-object/path refs that need the BIN dictionary. Log the
+        // count so a spike (Riot migrating another field to `hash =`/`link =`) is
+        // visible and the dictionary can be updated.
+        tracing::info!(
+            "extract: {} unresolved `hash =`/`link =` fnv1a32 refs (need BIN dictionary update)",
+            unresolved_bins.len()
+        );
     }
 
     if preserve_hud_icons2d {

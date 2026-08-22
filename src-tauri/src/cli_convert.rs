@@ -6,7 +6,7 @@ Windows) so the user sees success/errors. */
 
 use std::path::{Path, PathBuf};
 
-use quartz_lib::bin::{converter, ritoshark_bridge};
+use quartz_lib::bin::{bin_trailer, converter, ritoshark_bridge};
 use quartz_lib::tex;
 use quartz_lib::wad_explorer;
 
@@ -103,6 +103,7 @@ fn is_convert_verb(verb: &str) -> bool {
             | "ritobindir2py" | "ritobindir2bin"
             | "tex2ddsdir" | "dds2texdir" | "tex2pngdir" | "dds2pngdir" | "png2texdir" | "png2ddsdir"
             | "sco2scb" | "sco2scbdir"
+            | "unzip-fantome" | "zip-fantome"
             // Listed in the menu but their conversion logic lands in a later slice.
             | "noskinlite"
     )
@@ -155,6 +156,9 @@ fn dispatch(verb: &str, path: &Path) -> Result<String, String> {
         "sco2scb" => sco_to_scb(path),
         "sco2scbdir" => sco_to_scb_dir(path),
 
+        "unzip-fantome" => unzip_fantome(path),
+        "zip-fantome" => zip_fantome(path),
+
         _ => Err(format!("unknown verb '{verb}'")),
     }
 }
@@ -163,20 +167,136 @@ fn dispatch(verb: &str, path: &Path) -> Result<String, String> {
 
 fn bin_to_py(bin_path: &Path) -> Result<String, String> {
     let data = std::fs::read(bin_path).map_err(|e| e.to_string())?;
-    let tree = ritoshark_bridge::read_bin(&data).map_err(|e| e.to_string())?;
+
+    // Recover the embedded reverse-map (repathed `file =`/`hash =` paths that live
+    // in NO hashtable). Register it into the shared mapper so those hashes render as
+    // real paths in the .py instead of bare `0x...` hex. Strip the trailer before
+    // parsing so the bin body is clean (read_bin reads to the declared end anyway,
+    // but stripping keeps the tree free of any trailing-byte ambiguity).
+    let trailer = bin_trailer::read_trailer(&data);
+    if !trailer.is_empty() {
+        register_trailer_into_mapper(&trailer);
+    }
+    let body = bin_trailer::strip_trailer(&data);
+
+    let tree = ritoshark_bridge::read_bin(body).map_err(|e| e.to_string())?;
     let text = converter::bin_to_text(&tree).map_err(|e| e.to_string())?;
     let out = bin_path.with_extension("py");
     std::fs::write(&out, text).map_err(|e| e.to_string())?;
+
+    // No sidecar: the trailer we registered above already made the .py render the
+    // repathed paths readably, and py_to_bin re-captures them straight from the .py
+    // text. The reverse-map lives ONLY inside the .bin (the trailer) — nothing on the
+    // side to lose or leak.
     Ok(format!("{} -> {}", name(bin_path), name(&out)))
 }
 
 fn py_to_bin(py_path: &Path) -> Result<String, String> {
     let text = std::fs::read_to_string(py_path).map_err(|e| e.to_string())?;
     let tree = converter::text_to_bin(&text).map_err(|e| e.to_string())?;
-    let bytes = ritoshark_bridge::write_bin(&tree).map_err(|e| e.to_string())?;
+    let body = ritoshark_bridge::write_bin(&tree).map_err(|e| e.to_string())?;
     let out = py_path.with_extension("bin");
+
+    // AUTO-CAPTURE the reverse-map from the .py itself: every readable `file =`/
+    // `hash =`/`link =` path is hashed here (that's what text_to_bin just did), so
+    // THIS is the one moment both the path and its hash are known. For any whose hash
+    // no dictionary can reverse-resolve — i.e. a REPATHED / custom path invented by
+    // this mod — we embed `hash -> path` as a trailer so the path is never "gone
+    // forever" once the bin holds only the hash. Vanilla paths (dictionary-known) are
+    // NOT embedded — the shared hashtable already resolves them, so the trailer stays
+    // tiny (only the repaths).
+    let map = capture_unresolvable_paths(&text);
+    let bytes = bin_trailer::append_trailer(&body, &map);
+
     std::fs::write(&out, bytes).map_err(|e| e.to_string())?;
-    Ok(format!("{} -> {}", name(py_path), name(&out)))
+    let note = if map.is_empty() {
+        String::new()
+    } else {
+        format!("  (+{} embedded repath{})", map.len(), if map.len() == 1 { "" } else { "s" })
+    };
+    Ok(format!("{} -> {}{}", name(py_path), name(&out), note))
+}
+
+/// Scan `.py` text for `file =`/`hash =`/`link =` VALUES that are readable paths,
+/// hash each (xxh64 for `file`, fnv1a32 for `hash`/`link`), and keep only the ones
+/// the shared dictionary does NOT already reverse-resolve. Those are the repathed /
+/// mod-invented paths whose hash exists in no hashtable — the "gone forever" set the
+/// trailer must preserve. Returns `{ hex hash -> path }`.
+fn capture_unresolvable_paths(text: &str) -> std::collections::HashMap<String, String> {
+    use quartz_lib::hash::{fnv1a, xxh64};
+    let mut map = std::collections::HashMap::new();
+    let mapper = ritoshark_bridge::get_cached_bin_hashes().read();
+
+    // Small helper: record `name -> fnv1a32 hex` if the dictionary can't already
+    // resolve it (i.e. it's a custom/repathed name that would be lost as a bare hash).
+    let mut keep_fnv = |name: &str, map: &mut std::collections::HashMap<String, String>| {
+        if name.is_empty() {
+            return;
+        }
+        let h = fnv1a(name) as u64;
+        if mapper.get(h).is_none() {
+            map.insert(format!("{:08x}", h), name.to_string());
+        }
+    };
+
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+
+        // 1. VALUES: `... file = "PATH"` (xxh64) / `hash = "PATH"` / `link = "PATH"` (fnv1a32).
+        if let Some((kind, rest)) = trimmed
+            .split_once("file = \"")
+            .map(|r| ("file", r.1))
+            .or_else(|| trimmed.split_once("hash = \"").map(|r| ("hash", r.1)))
+            .or_else(|| trimmed.split_once("link = \"").map(|r| ("link", r.1)))
+        {
+            if let Some(val) = rest.split('"').next() {
+                if !val.is_empty() {
+                    if kind == "file" {
+                        let h = xxh64(val);
+                        if mapper.get(h).is_none() {
+                            map.insert(format!("{:016x}", h), val.to_string());
+                        }
+                    } else {
+                        keep_fnv(val, &mut map);
+                    }
+                }
+            }
+            continue;
+        }
+
+        // 2. OBJECT / ENTRY NAMES: `"NAME" = ClassName {`. The quoted string before the
+        //    `=` is a readable fnv1a32 name (e.g. a custom-named VfxSystemDefinitionData
+        //    like `"ebay"`). It round-trips to `0x... = ClassName {` and is lost unless we
+        //    preserve it. Only the QUOTED form is a name we can capture; a bare `0x...`
+        //    one is already just a hash with no known name.
+        if trimmed.starts_with('"') {
+            if let Some(after_open) = trimmed.strip_prefix('"') {
+                if let Some((name, tail)) = after_open.split_once('"') {
+                    // Confirm it's an object header: `= <Class> {` after the closing quote.
+                    let tail = tail.trim_start();
+                    if let Some(rhs) = tail.strip_prefix('=') {
+                        if rhs.trim_end().ends_with('{') {
+                            keep_fnv(name, &mut map);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    map
+}
+
+/// Fold a trailer's `hex hash -> path` entries into the shared BIN/WAD hash mapper
+/// so the converter renders those hashes as real paths. File hashes are 16-hex
+/// (xxh64, u64); Hash/Link are 8-hex (fnv1a32, widened to u64 — the mapper keyspace
+/// can't collide since every WAD hash is >= 2^32).
+fn register_trailer_into_mapper(trailer: &std::collections::HashMap<String, String>) {
+    let mut w = ritoshark_bridge::get_cached_bin_hashes().write();
+    for (hex, path) in trailer {
+        if let Ok(h) = u64::from_str_radix(hex, 16) {
+            w.insert(h, path.clone());
+        }
+    }
 }
 
 fn ritobin_dir(dir: &Path, from_ext: &str) -> Result<String, String> {
@@ -806,6 +926,178 @@ fn sco_to_scb_dir(dir: &Path) -> Result<String, String> {
         ));
     }
     Ok(format!("{} converted (of {})", r.converted, r.scanned))
+}
+
+/* ── fantome ─────────────────────────────────────────────────────────────── */
+
+/// Unzip a `.fantome` mod package into a sibling folder named after the archive
+/// (`Foo.fantome` -> `Foo/`). A .fantome is a plain zip holding `META/info.json`
+/// plus `WAD/` or `RAW/` payload folders, so this is a straight extraction.
+/// If the target folder already exists a numeric suffix is appended rather than
+/// merging into someone else's files.
+fn unzip_fantome(archive_path: &Path) -> Result<String, String> {
+    let file = std::fs::File::open(archive_path).map_err(|e| e.to_string())?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+
+    let parent = archive_path.parent().unwrap_or_else(|| Path::new("."));
+    let out_dir = unique_dir(parent, &file_stem(archive_path));
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+
+    let mut extracted = 0usize;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
+        // `enclosed_name` rejects absolute paths and `..` traversal, so a
+        // malicious archive can't write outside `out_dir`.
+        let Some(rel) = entry.enclosed_name() else {
+            eprintln!("  skipped unsafe entry: {}", entry.name());
+            continue;
+        };
+        let out_path = out_dir.join(rel);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
+            continue;
+        }
+        if let Some(dir) = out_path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        let mut out = std::fs::File::create(&out_path).map_err(|e| e.to_string())?;
+        std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
+        extracted += 1;
+    }
+
+    Ok(format!(
+        "{} -> {}/ ({extracted} files)",
+        name(archive_path),
+        name(&out_dir)
+    ))
+}
+
+/// Pack a mod folder into a `.fantome` next to it. The folder must contain
+/// `META/info.json`. The archive keeps the folder's own name, so unzip → rezip
+/// round-trips to the same filename. (LtMAO instead renames the archive to
+/// `<Name> V<Version> by <Author>` out of info.json, which silently changes the
+/// file name on every repack — we deliberately don't.)
+fn zip_fantome(dir: &Path) -> Result<String, String> {
+    use std::io::Write;
+
+    if !dir.is_dir() {
+        return Err(format!("{} is not a folder", name(dir)));
+    }
+    let info_path = dir.join("META").join("info.json");
+    if !info_path.exists() {
+        return Err(format!(
+            "no META/info.json inside {} — not a mod folder",
+            name(dir)
+        ));
+    }
+    // Parsed only to validate the folder really is a mod; the name comes from
+    // the folder itself.
+    let info_text = std::fs::read_to_string(&info_path).map_err(|e| e.to_string())?;
+    serde_json::from_str::<serde_json::Value>(&info_text)
+        .map_err(|e| format!("META/info.json is invalid: {e}"))?;
+
+    let parent = dir.parent().unwrap_or_else(|| Path::new("."));
+    let out_path = unique_file(parent, &sanitize_file_name(&file_stem(dir)), "fantome");
+
+    let mut files = Vec::new();
+    walk_all(dir, &mut files);
+    if files.is_empty() {
+        return Err(format!("{} is empty", name(dir)));
+    }
+
+    let out = std::fs::File::create(&out_path).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipWriter::new(out);
+    // Deflate at max level, matching what other Fantome packers produce.
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .compression_level(Some(9));
+
+    let mut written = 0usize;
+    for f in &files {
+        // Archive paths are always forward-slash relative to the mod root.
+        let Ok(rel) = f.strip_prefix(dir) else {
+            continue;
+        };
+        let arcname = rel.to_string_lossy().replace('\\', "/");
+        zip.start_file(arcname, options)
+            .map_err(|e| e.to_string())?;
+        let bytes = std::fs::read(f).map_err(|e| e.to_string())?;
+        zip.write_all(&bytes).map_err(|e| e.to_string())?;
+        written += 1;
+    }
+    zip.finish().map_err(|e| e.to_string())?;
+
+    Ok(format!(
+        "{}/ -> {} ({written} files)",
+        name(dir),
+        name(&out_path)
+    ))
+}
+
+/// Collect every file under `dir` recursively (directories are implied by the
+/// entry paths, so empty ones are not preserved).
+fn walk_all(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            walk_all(&p, out);
+        } else {
+            out.push(p);
+        }
+    }
+}
+
+/// Strip characters Windows forbids in file names, so a mod's declared Name
+/// can't produce an unwritable path.
+fn sanitize_file_name(s: &str) -> String {
+    let cleaned: String = s
+        .chars()
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            c if (c as u32) < 0x20 => '_',
+            c => c,
+        })
+        .collect();
+    // Trailing dots/spaces are also illegal on Windows.
+    let trimmed = cleaned.trim_end_matches([' ', '.']).trim();
+    if trimmed.is_empty() {
+        "mod".to_owned()
+    } else {
+        trimmed.to_owned()
+    }
+}
+
+/// `parent/stem.ext`, or `parent/stem (2).ext`… if taken.
+fn unique_file(parent: &Path, stem: &str, ext: &str) -> PathBuf {
+    let first = parent.join(format!("{stem}.{ext}"));
+    if !first.exists() {
+        return first;
+    }
+    for n in 2..1000 {
+        let candidate = parent.join(format!("{stem} ({n}).{ext}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    first
+}
+
+/// `parent/stem`, or `parent/stem (2)`, `parent/stem (3)`… if taken.
+fn unique_dir(parent: &Path, stem: &str) -> PathBuf {
+    let first = parent.join(stem);
+    if !first.exists() {
+        return first;
+    }
+    for n in 2..1000 {
+        let candidate = parent.join(format!("{stem} ({n})"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    first
 }
 
 /// Walk `dir` recursively, collecting files whose extension matches `ext`.

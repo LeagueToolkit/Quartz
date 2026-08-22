@@ -514,15 +514,23 @@ fn split_one(bin_path: &Path, out_dir: &Path, kind: &str) -> Result<Option<SkinS
         version: bin.version,
         ..Bin::new()
     };
-    let new_bytes = crate::bin::write_bin(&new_bin)
+    // Preserve the source bin's hash->path trailer across this reserialization —
+    // write_bin produces a clean body, so without re-appending it the repathed
+    // file=/hash= custom paths would be lost. Both the split sibling and the
+    // rewritten source carry it (extra entries in the sibling are harmless).
+    let src_trailer = crate::bin::bin_trailer::read_trailer(&data);
+
+    let new_body = crate::bin::write_bin(&new_bin)
         .map_err(|e| Error::InvalidInput(format!("Failed to serialize split BIN: {}", e)))?;
+    let new_bytes = crate::bin::bin_trailer::append_trailer(&new_body, &src_trailer);
     std::fs::write(&new_bin_abs, &new_bytes).map_err(|e| Error::io_with_path(e, &new_bin_abs))?;
 
     if !bin.linked.iter().any(|l| l.eq_ignore_ascii_case(&link_str)) {
         bin.linked.push(link_str.clone());
     }
-    let src_bytes = crate::bin::write_bin(&bin)
+    let src_body = crate::bin::write_bin(&bin)
         .map_err(|e| Error::InvalidInput(format!("Failed to serialize source BIN: {}", e)))?;
+    let src_bytes = crate::bin::bin_trailer::append_trailer(&src_body, &src_trailer);
     std::fs::write(bin_path, &src_bytes).map_err(|e| Error::io_with_path(e, bin_path))?;
 
     Ok(Some(SkinSplitFile {
@@ -590,11 +598,26 @@ fn is_asset_path_string(s: &str) -> bool {
 }
 
 /// Collect every asset-looking string from a value tree into `out`.
+///
+/// `file =` values count too. Riot's string->hash migration moved mesh fields
+/// (`SkinMeshDataProperties.texture` and its material overrides) from
+/// `string =` to `file =`, and a hashed ref this misses is a ref that never
+/// makes it into the protected set — consolidate then reads the texture as
+/// VFX-exclusive and moves it out of the mesh's folder.
 fn collect_asset_strings(value: &BinValue, out: &mut Vec<String>) {
     match value {
         BinValue::String(s) => {
             if is_asset_path_string(s) {
                 out.push(s.clone());
+            }
+        }
+        BinValue::File(h) => {
+            if *h != 0 {
+                if let Some(path) = crate::bin::ritoshark_bridge::resolve_file_hash(*h) {
+                    if is_asset_path_string(&path) {
+                        out.push(path);
+                    }
+                }
             }
         }
         BinValue::List { items, .. } => {
@@ -968,8 +991,11 @@ fn consolidate_assets_core(
 
     let mut bin_rewritten = false;
     if touched {
-        let bytes = crate::bin::write_bin(&bin)
+        let body = crate::bin::write_bin(&bin)
             .map_err(|e| Error::InvalidInput(format!("Failed to serialize BIN: {}", e)))?;
+        // Preserve the hash->path trailer across this reserialization.
+        let trailer = crate::bin::bin_trailer::read_trailer(&data);
+        let bytes = crate::bin::bin_trailer::append_trailer(&body, &trailer);
         std::fs::write(bin_path, &bytes).map_err(|e| Error::io_with_path(e, bin_path))?;
         bin_rewritten = true;
     }

@@ -49,11 +49,13 @@ export function TitleBar({ collapsed = false }: TitleBarProps) {
     return (
         <header className="q-titlebar shrink-0">
             <div data-tauri-drag-region className="q-titlebar-brand">
+                {/* Bigger logo only while the nav rail is showing — in collapsed
+                    mode the inline nav needs the horizontal room. */}
                 <img
                     src="/your-logo.gif"
                     alt=""
                     onClick={() => setPage('home')}
-                    className="q-titlebar-logo"
+                    className={`q-titlebar-logo ${collapsed ? '' : 'is-large'}`}
                     title="Home"
                 />
                 <span data-tauri-drag-region className="q-titlebar-title">Quartz</span>

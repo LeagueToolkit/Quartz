@@ -42,6 +42,15 @@
     transform: scale(1.08);
     filter: brightness(1.12);
 }
+/* Sidebar (nav rail) visible: no inline nav competing for width, so the mark
+   can breathe. Titlebar is 48px, leaving room above 22px. The left offset nudges
+   the brand inward so it sits over the rail rather than hugging the window edge. */
+.q-titlebar-logo.is-large {
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
+ 
+}
 
 .q-titlebar-title {
     font-family: var(--font-sans);
@@ -423,8 +432,8 @@
 
 .q-navbtn {
     position: relative;
-    width: 42px;
-    height: 42px;
+    width: 38px;
+    height: 38px;
     flex-shrink: 0;
     display: grid;
     place-items: center;

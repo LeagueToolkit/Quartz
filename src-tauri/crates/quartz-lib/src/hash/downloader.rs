@@ -146,9 +146,19 @@ pub const AUTO_SYNC_COOLDOWN_MINUTES: i64 = 60 * 24;
 /// Anything unreadable / unparseable / missing counts as stale, so a corrupt
 /// meta file re-checks rather than pinning the user forever.
 ///
-/// A clock that jumped backwards would make `updated_at` look like the future;
+/// A clock that jumped backwards would make the stamp look like the future;
 /// that reads as stale too, which costs one API call rather than an indefinite
 /// skip.
+///
+/// The gate is `last_checked_at`, NOT `updated_at`. Those mean different
+/// things: `updated_at` is stamped only when hashes actually downloaded, while
+/// `last_checked_at` is stamped on every check. Gating on `updated_at` made the
+/// cooldown "skip if the hashes CHANGED recently", which is backwards — landing
+/// a new hash release made the app refuse to look for the next one for a full
+/// day, so a user who updated yesterday silently sat on stale hashes until they
+/// clicked Download in Settings by hand. `last_checked_at` falls back to
+/// `updated_at` so metadata written by an older build (which had no
+/// `lastCheckedAt`) still counts as a check rather than re-downloading once.
 pub fn is_auto_sync_fresh(hash_dir: &Path, max_age_minutes: i64) -> bool {
     if !hashes_present(hash_dir) {
         return false;
@@ -159,13 +169,17 @@ pub fn is_auto_sync_fresh(hash_dir: &Path, max_age_minutes: i64) -> bool {
     let Ok(meta) = serde_json::from_str::<HashesMeta>(&raw) else {
         return false;
     };
-    let Some(updated_at) = meta.updated_at.as_deref() else {
+    let Some(checked_at) = meta
+        .last_checked_at
+        .as_deref()
+        .or(meta.updated_at.as_deref())
+    else {
         return false;
     };
-    let Ok(updated) = chrono::DateTime::parse_from_rfc3339(updated_at) else {
+    let Ok(checked) = chrono::DateTime::parse_from_rfc3339(checked_at) else {
         return false;
     };
-    let age = chrono::Utc::now().signed_duration_since(updated.with_timezone(&chrono::Utc));
+    let age = chrono::Utc::now().signed_duration_since(checked.with_timezone(&chrono::Utc));
     // A negative age means the stamp is in the future (clock skew): treat as
     // stale so it re-checks instead of skipping forever.
     age >= chrono::Duration::zero() && age.num_minutes() <= max_age_minutes
@@ -290,7 +304,20 @@ pub async fn download_hashes_with_progress(
         crate::bin::jade::hash_manager::reload_jade_hashes();
         tracing::info!("BIN hash caches reloaded after successful download");
     }
-    meta.last_checked_at = Some(now_iso());
+    // A FAILED run must not count as a check.
+    //
+    // This stamp is what `is_auto_sync_fresh` gates the daily cooldown on, so advancing it
+    // after an error told every startup for the next 24 hours that the hashes had just been
+    // checked - while the download had in fact failed and installed nothing. Combined with a
+    // swap that failed on every run, that is self-perpetuating: the auto-sync never ran again
+    // on its own and the only way to update was pressing Download in Settings by hand.
+    //
+    // A failed check re-checks on the next startup instead. The cost of getting this wrong in
+    // the other direction is one small API call per boot; the cost of getting it wrong this
+    // way was hashes that never updated at all.
+    if stats.errors == 0 {
+        meta.last_checked_at = Some(now_iso());
+    }
     write_meta(output_dir, &meta).await;
 
     tracing::info!(
@@ -431,7 +458,14 @@ async fn download_and_extract(
     f.flush().await?;
     drop(f);
 
-    // Drop the cached LMDB envs so Windows releases its handle on data.mdb.
+    // Release EVERY handle on data.mdb so Windows allows the replacement.
+    //
+    // Both of these are required. `heed::Env` is refcounted and unmaps the file only when its
+    // LAST `Arc` drops, so clearing the cache slot alone left the jade hash manager's
+    // process-lifetime `Arc` holding the mapping open — and the swap below failed on EVERY
+    // run with `os error 32` then `os error 5`, pinning the hash DBs to whatever snapshot
+    // installed first. Dropping the cache without detaching that owner is a no-op.
+    crate::bin::jade::hash_manager::detach_envs();
     crate::hash::lmdb_cache::drop_lmdb_cache();
 
     // Remove LMDB's lock file so a future open starts clean.
@@ -564,6 +598,42 @@ mod tests {
         // Present but with no `updatedAt` at all.
         std::fs::write(dir.join(META_FILE_NAME), br#"{"releaseTag":"v1"}"#).unwrap();
         assert!(!is_auto_sync_fresh(&dir, AUTO_SYNC_COOLDOWN_MINUTES));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /* The bug this gate had for real users: `updatedAt` is stamped only when
+    hashes actually DOWNLOAD, so gating on it meant "a new release landed
+    recently" blocked the next check for a full day. Someone who updated
+    yesterday then sat on stale hashes until they clicked Download by hand.
+    `lastCheckedAt` is the stamp that tracks checks, so a recent DOWNLOAD with
+    an old CHECK must still read as stale. */
+    #[test]
+    fn a_recent_download_does_not_block_the_next_check() {
+        let dir = scratch("recent-dl-old-check", None);
+        let downloaded = chrono::Utc::now() - chrono::Duration::minutes(30);
+        let checked = chrono::Utc::now() - chrono::Duration::minutes(60 * 24 * 3);
+        std::fs::write(
+            dir.join(META_FILE_NAME),
+            format!(
+                r#"{{"releaseTag":"v1","updatedAt":"{}","lastCheckedAt":"{}"}}"#,
+                downloaded.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                checked.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            ),
+        )
+        .unwrap();
+        assert!(
+            !is_auto_sync_fresh(&dir, AUTO_SYNC_COOLDOWN_MINUTES),
+            "a 30-minute-old download must not mask a 3-day-old check",
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Metadata from an older build has no `lastCheckedAt`; `updatedAt` stands
+    /// in so upgrading doesn't force a needless re-check.
+    #[test]
+    fn legacy_metadata_without_last_checked_falls_back_to_updated_at() {
+        let dir = scratch("legacy", Some(60)); // updatedAt only, an hour ago
+        assert!(is_auto_sync_fresh(&dir, AUTO_SYNC_COOLDOWN_MINUTES));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -77,9 +77,20 @@ pub fn resolve_animations(bin: &Bin) -> Vec<String> {
     found
 }
 
+/// Read an authored path field.
+///
+/// `file =` counts as well as `string =`. Riot's PBE migration moved every
+/// texture reference in a skin bin to a hashed `file =` value
+/// (`skinMeshProperties.texture`, the per-submesh `materialOverride.texture`,
+/// and `StaticMaterialDef.samplerValues[].texturePath`), so a String-only read
+/// resolved all of them to `None` and the viewer drew flat palette colours
+/// instead of the real textures.
 fn string(value: Option<&BinValue>) -> Option<String> {
     match value {
         Some(BinValue::String(value)) if !value.is_empty() => Some(value.clone()),
+        Some(BinValue::File(hash)) if *hash != 0 => {
+            crate::bin::ritoshark_bridge::resolve_file_hash(*hash)
+        }
         _ => None,
     }
 }

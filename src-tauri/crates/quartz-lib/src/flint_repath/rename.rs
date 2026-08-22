@@ -5,6 +5,7 @@
 //! rather than assuming a creator, since the creator comes from the global
 //! setting at refather time (not a per-project field) and may have drifted.
 
+use super::refather::MAX_BIN_VALUE_DEPTH;
 use crate::bin::ritoshark_bridge::{read_bin, write_bin};
 use crate::error::{Error, Result};
 use regex::Regex;
@@ -13,8 +14,28 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-/// Applies `re` to every string value of a BIN value tree.
+/// Applies `re` to every string value of a BIN value tree. Depth-bounded by
+/// `MAX_BIN_VALUE_DEPTH` for the same reason the refather walkers are: an
+/// unbounded descent into a cyclic BIN overflows the stack, which on Windows
+/// kills the process outright with nothing written to the log.
 fn replace_in_value(value: &mut BinValue, re: &Regex, replacement: &str) -> usize {
+    replace_in_value_depth(value, re, replacement, 0)
+}
+
+fn replace_in_value_depth(
+    value: &mut BinValue,
+    re: &Regex,
+    replacement: &str,
+    depth: usize,
+) -> usize {
+    if depth >= MAX_BIN_VALUE_DEPTH {
+        tracing::warn!(
+            "BIN value nesting exceeded {} levels during rename; skipping deeper values",
+            MAX_BIN_VALUE_DEPTH
+        );
+        return 0;
+    }
+    let next = depth + 1;
     let mut count = 0;
     match value {
         BinValue::String(s) => {
@@ -28,23 +49,23 @@ fn replace_in_value(value: &mut BinValue, re: &Regex, replacement: &str) -> usiz
         }
         BinValue::List { items, .. } => {
             for item in items.iter_mut() {
-                count += replace_in_value(item, re, replacement);
+                count += replace_in_value_depth(item, re, replacement, next);
             }
         }
         BinValue::Pointer { fields, .. } | BinValue::Embed { fields, .. } => {
             for v in fields.values_mut() {
-                count += replace_in_value(v, re, replacement);
+                count += replace_in_value_depth(v, re, replacement, next);
             }
         }
         BinValue::Option {
             value: Some(inner), ..
         } => {
-            count += replace_in_value(inner, re, replacement);
+            count += replace_in_value_depth(inner, re, replacement, next);
         }
         BinValue::Map { entries, .. } => {
             for (k, v) in entries.iter_mut() {
-                count += replace_in_value(k, re, replacement);
-                count += replace_in_value(v, re, replacement);
+                count += replace_in_value_depth(k, re, replacement, next);
+                count += replace_in_value_depth(v, re, replacement, next);
             }
         }
         _ => {}

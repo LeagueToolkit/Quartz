@@ -14,6 +14,7 @@ pub mod error;
 pub mod extractor;
 pub mod flint_repath;
 pub mod hash;
+pub mod longpath;
 pub mod linked_bins;
 pub mod mesh;
 pub mod model_bridge;

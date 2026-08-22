@@ -1,7 +1,7 @@
 {
   "name": "quartz",
   "productName": "Quartz",
-  "version": "4.2.0",
+  "version": "4.2.3",
   "description": "Quartz - League of Legends Modding Suite (Tauri)",
   "type": "module",
   "scripts": {
