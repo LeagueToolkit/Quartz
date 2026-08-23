@@ -4,33 +4,142 @@
     animation: update-showcase-fade var(--dl-base) both;
 }
 
+/* Two panes: a narrow rail carrying WHO shipped it, WHAT version, and WHEN,
+   beside the notes themselves. The metadata used to be crammed into a header
+   strip above the notes, which left the version and author competing with the
+   release title for one line. Splitting them gives the changelog the full
+   height of the panel and lets the rail hold the actions at its foot. */
 .update-showcase {
-    width: min(760px, 94vw); max-height: min(760px, 90vh); display: flex; flex-direction: column; overflow: hidden;
+    width: min(880px, 94vw); height: min(620px, 88vh); display: flex; overflow: hidden; position: relative;
     border: var(--dl-border); border-radius: var(--dl-radius-lg);
-    background: color-mix(in oklab, var(--bg-secondary) 94%, transparent);
+    /* Mixed from the theme's own surfaces rather than fixed hexes, so it holds
+       up under every theme instead of being pinned to the dark one. */
+    background: linear-gradient(160deg,
+        color-mix(in oklab, var(--accent-primary) 7%, var(--bg-secondary)) 0%,
+        var(--bg-secondary) 55%,
+        color-mix(in oklab, var(--accent-primary) 4%, var(--bg-primary)) 100%);
     box-shadow: var(--dl-shadow-lg), 0 0 60px -28px color-mix(in oklab, var(--accent-primary) 65%, transparent);
     animation: update-showcase-enter var(--dl-slow) both;
 }
 
-.update-showcase__head {
-    display: flex; align-items: center; gap: 13px; padding: 18px 22px;
-    border-bottom: var(--dl-border-soft);
-    background: linear-gradient(135deg, color-mix(in oklab, var(--accent-primary) 13%, var(--bg-tertiary)), var(--bg-secondary) 70%);
+/* Accent hairlines top and bottom, and a brand glow bleeding in behind the
+   rail — depth on an otherwise flat panel. */
+.update-showcase::before,
+.update-showcase::after {
+    content: ''; position: absolute; left: 0; right: 0; height: 1px; z-index: 20; pointer-events: none;
+    background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
 }
-.update-showcase__logo { width: 46px; height: 46px; flex: 0 0 46px; object-fit: contain; filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent-primary) 28%, transparent)); }
-.update-showcase__heading { min-width: 0; flex: 1; }
-.update-showcase__heading h2 { margin: 0; color: var(--text-primary); font-size: 20px; letter-spacing: -.015em; }
-.update-showcase__details { display: flex; align-items: center; gap: 9px; margin-top: 4px; color: var(--text-muted); font: 10px var(--font-mono); }
-.update-showcase__details time { display: block; }
-.update-showcase__details button { appearance: none; padding: 0 0 0 9px; border: 0; border-left: var(--dl-border-soft); background: none; color: var(--text-muted); font: inherit; cursor: pointer; }
-.update-showcase__details button:hover { color: var(--accent-primary); }
-/* Author chip: the avatar sits inline with the name, so the button becomes a
-   flex row. `inline-flex` keeps it on the details line next to the date. */
-.update-showcase__author { display: inline-flex; align-items: center; gap: 6px; }
-.update-showcase__avatar { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; background: var(--bg-tertiary); object-fit: cover; }
-.update-showcase__head-actions { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+.update-showcase::before { top: 0; opacity: .6; }
+.update-showcase::after { bottom: 0; opacity: .3; }
 
-.update-showcase__body { min-height: 210px; flex: 1; padding: 22px 26px; overflow-y: auto; }
+/* Wider, for a README.
+   Release notes are prose written to this panel's width, but a README is
+   written for GitHub — badge rows, wide code blocks and tables — and squeezes
+   badly in the narrower shell. Only that panel grows; the update notice keeps
+   the size it was designed at. */
+.update-showcase.is-wide {
+    width: min(1180px, 94vw);
+    height: min(760px, 90vh);
+}
+
+.update-showcase__glow {
+    position: absolute; top: -96px; left: -96px; width: 288px; height: 288px; border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, color-mix(in oklab, var(--accent-primary) 18%, transparent) 0%, transparent 70%);
+}
+
+/* Corner X only — no footer close button, per the modal rule. */
+.update-showcase__close {
+    position: absolute; top: 14px; right: 14px; z-index: 30;
+    display: grid; place-items: center; width: 30px; height: 30px; padding: 0;
+    border: 0; border-radius: var(--dl-radius-sm); background: none; color: var(--text-muted); cursor: pointer;
+    transition: background var(--dl-fast), color var(--dl-fast);
+}
+.update-showcase__close:hover { background: color-mix(in oklab, var(--accent-primary) 10%, transparent); color: var(--text-primary); }
+
+/* ── Left rail ─────────────────────────────────────────────────────────── */
+.update-showcase__rail {
+    position: relative; z-index: 10;
+    width: 264px; flex: 0 0 264px; display: flex; flex-direction: column; gap: 24px;
+    /* `hidden`, not `auto`: the credits list owns the scrolling now, so the rail
+       itself must never gain a second scrollbar around it. */
+    padding: 28px; overflow: hidden;
+    /* Everything else is fixed height, so a long credits list is what gives. */
+    min-height: 0;
+    border-right: var(--dl-border-soft);
+    background: color-mix(in oklab, var(--accent-primary) 4%, transparent);
+}
+.update-showcase__rail-label {
+    margin: 0 0 10px; color: var(--text-muted);
+    font-size: 10px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+}
+.update-showcase__brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.update-showcase__logo { width: 44px; height: 44px; flex-shrink: 0; object-fit: contain; filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent-primary) 28%, transparent)); }
+.update-showcase__brand-text { min-width: 0; }
+.update-showcase__brand-text strong {
+    display: block; color: var(--text-primary); font-size: 17px; font-weight: 700; letter-spacing: -.015em; line-height: 1.15;
+}
+.update-showcase__brand-text span {
+    display: block; margin-top: 2px; color: var(--text-muted);
+    font-size: 10px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+}
+
+/* Author chip: avatar beside the name, the whole row opening their profile. */
+.update-showcase__author {
+    display: flex; align-items: center; gap: 12px; width: 100%; padding: 0;
+    border: 0; background: none; text-align: left; cursor: pointer;
+}
+.update-showcase__author:disabled { cursor: default; }
+/* The credits list scrolls on its own once it outgrows this, so a repo with a
+   dozen contributors does not push the description and the buttons out of the
+   rail. Capped at roughly five faces, which is enough to read as a list and
+   short enough to leave room for everything below it. */
+.update-showcase__credits {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 264px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* Room for the scrollbar so it never sits on top of an avatar. */
+    padding-right: 4px;
+    margin-right: -4px;
+}
+.update-showcase__avatar { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; border: var(--dl-border-soft); background: var(--bg-tertiary); object-fit: cover; }
+/* Stand-in for a contributor with no GitHub account, so the credits stay on one
+   grid instead of some rows losing their avatar column. */
+.update-showcase__avatar--initial {
+    display: grid; place-items: center;
+    color: var(--text-muted); font-size: 17px; font-weight: 700; text-transform: uppercase;
+}
+.update-showcase__author-name { min-width: 0; }
+.update-showcase__author-name strong {
+    display: block; color: var(--text-primary); font-size: 13px; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    transition: color var(--dl-fast);
+}
+.update-showcase__author:enabled:hover .update-showcase__author-name strong { color: var(--accent-primary); }
+.update-showcase__author-name span { display: block; color: var(--text-muted); font-size: 11px; }
+
+.update-showcase__version {
+    display: inline-block; padding: 4px 12px; border-radius: 999px;
+    border: 1px solid color-mix(in oklab, var(--accent-primary) 55%, transparent);
+    background: color-mix(in oklab, var(--accent-primary) 12%, transparent);
+    color: var(--accent-primary); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.update-showcase__released { margin: 0; color: var(--text-secondary); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* Actions pinned to the rail's foot, above a seam that fades at both ends so
+   it reads as a soft separation rather than a rule across the rail. */
+.update-showcase__rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: 16px; padding-top: 16px; }
+.update-showcase__seam {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border) 20%, var(--border) 80%, transparent);
+}
+.update-showcase__actions { display: flex; flex-direction: column; gap: 8px; }
+/* The shared button primitives, full width in the rail. */
+.update-showcase__actions .dl-btn { width: 100%; }
+
+.update-showcase__body { position: relative; z-index: 10; min-width: 0; flex: 1; padding: 30px 34px; overflow-y: auto; }
 .update-showcase__loading { height: 190px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--text-muted); font-size: 12px; }
 .update-showcase__error { padding: 14px; border: 1px solid color-mix(in oklab, var(--color-warning) 40%, var(--border)); border-radius: var(--dl-radius-sm); background: color-mix(in oklab, var(--color-warning) 9%, transparent); color: var(--text-secondary); font-size: 12px; }
 
@@ -65,9 +174,80 @@
 .update-showcase__markdown table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .update-showcase__markdown th, .update-showcase__markdown td { padding: 7px 9px; border: 1px solid var(--border); text-align: left; }
 .update-showcase__markdown th { background: var(--bg-tertiary); color: var(--text-primary); }
-.update-showcase__markdown img { display: block; max-width: 100%; height: auto; margin: 14px auto; border: 1px solid var(--border); border-radius: 9px; }
+/* Images flow INLINE, the way a browser lays them out and the way a README is
+   written for. Forcing `display: block; margin: auto` here put every shields.io
+   badge on its own line and turned a one-line badge row into a tall column.
+   Nothing in the source says those badges are separate paragraphs — they are
+   several <img> in one <p>, so inline is what reproduces GitHub. */
+.update-showcase__markdown img {
+    display: inline-block;
+    vertical-align: middle;
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+}
+/* A lone image in its own paragraph is a FIGURE — a screenshot or a project
+   banner. That one gets the block treatment the rule above used to force on
+   everything: centred, spaced, and framed. */
+.update-showcase__markdown p > img:only-child {
+    display: block;
+    margin: 14px auto;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+}
+/* READMEs centre their header with <p align="center">; honour it.
+   CENTRING ONLY — not flex. A centred block is usually prose that separates its
+   lines with <br/>, and a flex container makes each <br> a flex ITEM instead of
+   a line break, so both sentences collapse onto one row. `text-align` centres
+   the inline content and leaves <br> doing its job. */
+.update-showcase__markdown p[align='center'],
+.update-showcase__markdown div[align='center'] {
+    text-align: center;
+    /* Badges are inline images, so a run of them already wraps on its own; this
+       just keeps the rows from touching. */
+    line-height: 2;
+}
+/* A badge is a link wrapping an image; keep the pair together on the row. */
+.update-showcase__markdown p[align='center'] a,
+.update-showcase__markdown div[align='center'] a {
+    display: inline-block;
+    margin: 0 2px;
+    vertical-align: middle;
+}
+/* The banner inside a centred header block must not pick up the figure rule
+   above and force a line break mid-row. */
+.update-showcase__markdown p[align='center'] > img:only-child { margin: 4px auto; }
+/* `---` separators. Left unstyled they fall back to the browser's bevelled
+   default, which renders as a bright white bar on a dark panel — the line
+   cutting through the Hematite header. A hairline in the panel's own border
+   colour is what the rest of the app uses to separate things. */
+.update-showcase__markdown hr {
+    height: 1px;
+    margin: 22px 0;
+    border: 0;
+    background: var(--border);
+}
 .update-showcase__markdown input[type='checkbox'] { accent-color: var(--accent-primary); }
 
+
+/* Narrow windows: the rail stacks above the notes instead of squeezing both.
+   Its actions leave the foot and sit inline, since there is no column left to
+   pin them to. */
+@media (max-width: 720px) {
+    .update-showcase { flex-direction: column; height: min(680px, 92vh); }
+    .update-showcase__rail {
+        width: auto; flex: 0 0 auto; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 16px;
+        padding: 18px 22px; border-right: 0; border-bottom: var(--dl-border-soft);
+    }
+    /* The rail becomes one horizontal row here, so its column labels (and the
+       wordmark's subtitle) only add height. The wordmark itself stays. */
+    .update-showcase__rail-label,
+    .update-showcase__brand-text span { display: none; }
+    .update-showcase__rail-foot { margin-top: 0; flex-direction: row; align-items: center; gap: 10px; padding-top: 0; }
+    .update-showcase__seam { display: none; }
+    .update-showcase__actions { flex-direction: row; }
+    .update-showcase__body { padding: 22px; }
+}
 
 @keyframes update-showcase-fade { from { opacity: 0; } }
 @keyframes update-showcase-enter { from { opacity: 0; transform: translateY(12px) scale(.975); } }

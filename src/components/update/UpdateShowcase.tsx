@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -8,6 +8,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { log } from '@/lib/util/logger';
 import {
+    SHOW_UPDATE_NOTES_EVENT,
     UPDATE_SHOWCASE_PENDING_KEY,
     UPDATE_SHOWCASE_SEEN_KEY,
 } from './updateShowcaseState';
@@ -103,6 +104,28 @@ async function githubRelease(version: string, signal: AbortSignal): Promise<Show
     throw new Error(`No GitHub release was found for Quartz ${normalized}`);
 }
 
+/** "23 Aug 2026 · 2 days ago", or just the date once it is a month old. */
+function formatReleased(iso: string): string {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+    const absolute = date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    const days = Math.floor((Date.now() - date.getTime()) / 86_400_000);
+    const relative = days <= 0 ? 'today' : days === 1 ? 'yesterday' : days < 30 ? `${days} days ago` : null;
+    return relative ? `${absolute} · ${relative}` : absolute;
+}
+
+/** True when a release title only restates the version the pill already shows
+ *  ("Quartz 4.2.4", "v4.2.4", "Release 4.2.4"). Printing it beside the pill
+ *  would show the same number twice. */
+function isRedundantTitle(title: string): boolean {
+    return title
+        .replace(/quartz/gi, '')
+        .replace(/release/gi, '')
+        .replace(/v?\d+(\.\d+)*/g, '')
+        .replace(/[^a-z0-9]/gi, '')
+        .trim().length === 0;
+}
+
 function shouldShow(version: string): boolean {
     try {
         const normalized = version.replace(/^v/i, '');
@@ -132,6 +155,8 @@ export function UpdateShowcase() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [open, setOpen] = useState(false);
+    /** Opened from Settings rather than shown automatically — see `close`. */
+    const [openedManually, setOpenedManually] = useState(false);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -158,21 +183,59 @@ export function UpdateShowcase() {
         return () => { cancelled = true; controller.abort(); };
     }, []);
 
+    /* Load the notes on demand, for the reopen shortcut below. The mount effect
+       above only fetches when the showcase is due to appear on its own, so
+       reopening it later would otherwise show an empty panel. */
+    const loadRelease = useCallback(async (version: string) => {
+        if (!version) return;
+        const controller = new AbortController();
+        setLoading(true);
+        setError(null);
+        try {
+            setRelease(await githubRelease(version, controller.signal));
+        } catch (reason) {
+            log.error('update showcase release notes', reason);
+            setError('Release notes could not be loaded. You can still view this release on GitHub.');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
         if (!open) return;
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
-                remember(currentVersion);
+                // Same rule as the X: a manual open does not consume the notice.
+                if (!openedManually) remember(currentVersion);
                 setOpen(false);
             }
         };
         document.addEventListener('keydown', onKeyDown);
         return () => document.removeEventListener('keydown', onKeyDown);
-    }, [currentVersion, open]);
+    }, [currentVersion, open, openedManually]);
+
+    /* Reopening from Settings.
+       The showcase appears once per version and is then remembered, so without
+       a way back in the notes for the running build are unreachable. Settings
+       asks for them by firing this event rather than importing the component's
+       state, which keeps the showcase the only owner of when it is visible. */
+    useEffect(() => {
+        const onRequest = () => {
+            setOpenedManually(true);
+            setOpen(true);
+            if (!release) void loadRelease(currentVersion);
+        };
+        window.addEventListener(SHOW_UPDATE_NOTES_EVENT, onRequest);
+        return () => window.removeEventListener(SHOW_UPDATE_NOTES_EVENT, onRequest);
+    }, [currentVersion, release, loadRelease]);
 
     if (!open) return null;
+    /* Only the AUTOMATIC notice marks the version seen. Opening the notes
+       yourself from Settings must not consume the one-time showing: a user who
+       browses the notes for an older build would otherwise never be shown the
+       notice for the build they are actually on. */
     const close = () => {
-        remember(currentVersion);
+        if (!openedManually) remember(currentVersion);
         setOpen(false);
     };
     const releaseUrl = release?.url || `https://github.com/${REPOSITORY}/releases/latest`;
@@ -180,37 +243,87 @@ export function UpdateShowcase() {
     return (
         <div className="update-showcase-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
             <section className="update-showcase" role="dialog" aria-modal="true" aria-labelledby="update-showcase-title">
-                <header className="update-showcase__head">
-                    <img className="update-showcase__logo" src="/your-logo.gif" alt="Quartz" />
-                    <div className="update-showcase__heading">
-                        <h2 id="update-showcase-title">Quartz {release?.version || currentVersion}</h2>
-                        <div className="update-showcase__details">
-                            {release?.publishedAt && <time dateTime={release.publishedAt}>{new Date(release.publishedAt).toLocaleDateString('en-GB')}</time>}
-                            {release?.author && (
-                                <button type="button" className="update-showcase__author" onClick={() => void openUrl(release.author!.url)}>
-                                    {release.author.avatarUrl && (
-                                        <img
-                                            className="update-showcase__avatar"
-                                            src={release.author.avatarUrl}
-                                            alt=""
-                                            loading="lazy"
-                                            /* A failed avatar load should not leave a broken-image
-                                               icon next to the name. */
-                                            onError={(event) => { event.currentTarget.style.display = 'none'; }}
-                                        />
-                                    )}
-                                    Posted by {release.author.login}
-                                </button>
-                            )}
+                <div className="update-showcase__glow" aria-hidden />
+
+                {/* Corner X only: no footer close button on a modal that has one. */}
+                <button type="button" className="update-showcase__close" onClick={close} aria-label="Close">
+                    <X size={16} />
+                </button>
+
+                {/* Left rail: who shipped it, which version, when, and the ways out. */}
+                <aside className="update-showcase__rail">
+                    {/* Wordmark beside the logo: the mark alone left the top of the
+                        rail reading as empty space. */}
+                    <div className="update-showcase__brand">
+                        <img className="update-showcase__logo" src="/your-logo.gif" alt="" />
+                        <div className="update-showcase__brand-text">
+                            {/* Labels the dialog: the release title below is optional
+                                (and suppressed when it just repeats the version), so
+                                pointing at it left the dialog unnamed most of the time. */}
+                            <strong id="update-showcase-title">Quartz</strong>
+                            <span>What&rsquo;s new</span>
                         </div>
                     </div>
-                    <div className="update-showcase__head-actions">
-                        <button type="button" className="dl-btn dl-btn--sm dl-btn--secondary" onClick={() => void openUrl(releaseUrl)}>
-                            <ExternalLink size={14} /><span>View on GitHub</span>
+
+                    <div>
+                        <p className="update-showcase__rail-label">Released by</p>
+                        <button
+                            type="button"
+                            className="update-showcase__author"
+                            onClick={() => release?.author && void openUrl(release.author.url)}
+                            disabled={!release?.author}
+                        >
+                            {release?.author?.avatarUrl && (
+                                <img
+                                    className="update-showcase__avatar"
+                                    src={release.author.avatarUrl}
+                                    alt=""
+                                    loading="lazy"
+                                    /* A failed avatar load should not leave a broken-image
+                                       icon next to the name. */
+                                    onError={(event) => { event.currentTarget.style.display = 'none'; }}
+                                />
+                            )}
+                            <span className="update-showcase__author-name">
+                                <strong>{release?.author?.login || 'Quartz'}</strong>
+                                {release?.author && <span>@{release.author.login}</span>}
+                            </span>
                         </button>
-                        <button type="button" className="dl-btn dl-btn--icon dl-btn--ghost" onClick={close} title="Close"><X size={17} /></button>
                     </div>
-                </header>
+
+                    {/* Only when the release was given a real name — a title that just
+                        repeats the version says nothing the pill below does not. */}
+                    {release?.title && !isRedundantTitle(release.title) && (
+                        <div>
+                            <p className="update-showcase__rail-label">Title</p>
+                            <h2 style={{ margin: 0, fontSize: 18, lineHeight: 1.3, color: 'var(--text-primary)' }}>
+                                {release.title}
+                            </h2>
+                        </div>
+                    )}
+
+                    <div>
+                        <p className="update-showcase__rail-label">Version</p>
+                        <span className="update-showcase__version">v{release?.version || currentVersion}</span>
+                    </div>
+
+                    <div className="update-showcase__rail-foot">
+                        {release?.publishedAt && (
+                            <div>
+                                <p className="update-showcase__rail-label">Released</p>
+                                <p className="update-showcase__released">
+                                    <time dateTime={release.publishedAt}>{formatReleased(release.publishedAt)}</time>
+                                </p>
+                            </div>
+                        )}
+                        <div className="update-showcase__seam" aria-hidden />
+                        <div className="update-showcase__actions">
+                            <button type="button" className="dl-btn dl-btn--primary" onClick={() => void openUrl(releaseUrl)}>
+                                <ExternalLink size={14} /><span>Open on GitHub</span>
+                            </button>
+                        </div>
+                    </div>
+                </aside>
 
                 <div className="update-showcase__body">
                     {loading && (

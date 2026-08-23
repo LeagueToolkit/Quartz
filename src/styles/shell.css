@@ -373,6 +373,144 @@
     background: color-mix(in oklab, var(--border) 70%, transparent);
 }
 
+/* === RitoShark suite menu ================================================
+   The title bar used to carry one launch button per tool. Those only did
+   anything with a bin open and named nothing about the tools, so they collapse
+   into this: the suite listed once, each row crediting a tool, with the
+   hand-off offered only when there is a file to hand over. Same surface and
+   entry animation as the community popover — it is the same kind of menu. */
+/* Invisible click-catcher behind the suite menu.
+   Needed because the title bar is a `data-tauri-drag-region`: Tauri intercepts
+   mousedown there to drag the window, so a document-level listener never sees a
+   click on the title bar or the empty space beside it and the menu stayed open.
+   This layer always receives it. Sits BELOW the menu (100005) and below the
+   title bar's own buttons, so the trigger keeps working as a toggle. */
+.q-ritoshark-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100004;
+    background: transparent;
+}
+/* The trigger has to clear the backdrop while the menu is open, or the logo is
+   covered and the click that should CLOSE the menu is caught by the backdrop
+   and then reopened by nothing — leaving the button dead until you click twice.
+   Only while open, so it stays in the title bar's own stacking the rest of the
+   time. */
+.q-topnavbtn.q-jade-launch.is-active {
+    position: relative;
+    z-index: 100006;
+}
+.q-ritoshark-pop {
+    position: fixed;
+    z-index: 100005;
+    width: 320px;
+    padding: 6px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--dl-shadow-md, 0 12px 30px rgba(0, 0, 0, 0.45));
+    animation: q-community-pop-in 140ms ease-out;
+    /* Scrolls instead of growing past the screen. The height cap is set inline
+       from the trigger's position, since only the component knows how much room
+       is left below the button. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+.q-ritoshark-pop__head {
+    /* Sticky so the group you are scrolling through stays named. */
+    position: sticky;
+    top: -6px;
+    z-index: 1;
+    margin: 0 -6px;
+    padding: 8px 16px;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+/* Air between one group and the next, but not above the first. */
+.q-ritoshark-pop__head:not(:first-child) {
+    margin-top: 6px;
+    border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+}
+.q-ritoshark-pop__row {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 9px 10px;
+    border-radius: var(--radius-sm);
+    transition: background var(--motion-fast);
+}
+.q-ritoshark-pop__row:hover {
+    background: color-mix(in oklab, var(--accent-primary) 8%, transparent);
+}
+.q-ritoshark-pop__logo {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    object-fit: contain;
+    border-radius: 6px;
+    /* Seated on its own tool's colour, which is what tells the three rows apart
+       at a glance — the logos are otherwise similar in size and weight. */
+    padding: 3px;
+    background: color-mix(in oklab, var(--accent-primary) 14%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent-primary) 30%, transparent);
+}
+.q-ritoshark-pop__text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1;
+    min-width: 0;
+}
+.q-ritoshark-pop__text strong {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+.q-ritoshark-pop__text span {
+    color: var(--text-muted);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.q-ritoshark-pop__actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.q-ritoshark-pop__btn {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
+}
+.q-ritoshark-pop__btn:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--accent-primary) 14%, transparent);
+    border-color: color-mix(in oklab, var(--accent-primary) 30%, transparent);
+    color: var(--accent-primary);
+}
+/* Disabled means "no bin open yet", not broken — dim it, keep it in place so
+   the row does not reflow the moment a file loads. */
+.q-ritoshark-pop__btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+.q-ritoshark-pop__btn.is-play:not(:disabled) {
+    color: color-mix(in oklab, var(--accent-primary) 80%, var(--text-primary));
+}
+
 /* === Nav rail ============================================================
    Continuous with the titlebar/work area: same primary surface, no seam line.
    Active page is marked by an accent pill on the left edge — no icon glows. */

@@ -389,43 +389,76 @@ function SystemList(props: SystemListProps) {
         const showVfx = viewMode !== 'materials';
 
         if (showVfx) {
-            for (const systemKey of (model.systemOrder || [])) {
-                const system = systemMap.get(systemKey);
-                if (!system) continue;
+            /* Search matches NAMES first and only falls back to texture paths,
+               the same two-pass rule Port's `filterSystems` uses.
 
-                let matchingEmitters = (system.emitterKeys || [])
-                    .map((k, idx) => {
-                        const em = emitterMap.get(k);
-                        return em ? { emitter: em, indexInSystem: idx + 1 } : null;
-                    })
-                    .filter((e): e is { emitter: VfxEmitter; indexInSystem: number } => !!e);
+               A texture path carries the ability token too, so a single pass
+               that ORed name and texture together answered "_Q_" with every
+               Dance / Taunt / Recall system whose emitters merely reference a
+               Q texture — the systems actually named _Q_ were buried among
+               them and the search read as broken. Texture search is still
+               worth having (it finds every system using a given .tex), so it
+               runs only when NOTHING matched by name.
 
-                if (variantFilter === 'v1') {
-                    matchingEmitters = matchingEmitters.filter(e => (e.emitter.name || '').toLowerCase().endsWith('_variant1'));
-                } else if (variantFilter === 'v2') {
-                    matchingEmitters = matchingEmitters.filter(e => (e.emitter.name || '').toLowerCase().endsWith('_variant2'));
-                }
+               `_q_`-style ability tokens skip emitter matching entirely: they
+               are a system-naming convention, so emitter hits are pure noise. */
+            const systemOnly = /^_[a-z](_)?$/i.test((searchQuery || '').trim());
 
-                if (searchQuery) {
-                    const systemMatches = (system.name || '').toLowerCase().includes(searchLower) || (systemKey || '').toLowerCase().includes(searchLower);
-                    if (!systemMatches) {
-                        matchingEmitters = matchingEmitters.filter(e =>
-                            (e.emitter.name || '').toLowerCase().includes(searchLower) ||
-                            e.emitter.textures.some(t => t.path.toLowerCase().includes(searchLower))
-                        );
+            const collect = (matchMode: 'name' | 'texture'): ListRow[] => {
+                const out: ListRow[] = [];
+                for (const systemKey of (model.systemOrder || [])) {
+                    const system = systemMap.get(systemKey);
+                    if (!system) continue;
+
+                    let matchingEmitters = (system.emitterKeys || [])
+                        .map((k, idx) => {
+                            const em = emitterMap.get(k);
+                            return em ? { emitter: em, indexInSystem: idx + 1 } : null;
+                        })
+                        .filter((e): e is { emitter: VfxEmitter; indexInSystem: number } => !!e);
+
+                    if (variantFilter === 'v1') {
+                        matchingEmitters = matchingEmitters.filter(e => (e.emitter.name || '').toLowerCase().endsWith('_variant1'));
+                    } else if (variantFilter === 'v2') {
+                        matchingEmitters = matchingEmitters.filter(e => (e.emitter.name || '').toLowerCase().endsWith('_variant2'));
+                    }
+
+                    if (searchQuery) {
+                        const systemMatches = (system.name || '').toLowerCase().includes(searchLower)
+                            || (systemKey || '').toLowerCase().includes(searchLower);
+                        if (systemMatches) {
+                            // The system itself matched: keep all of its emitters.
+                        } else if (matchMode === 'name') {
+                            // An ability token names systems, not emitters.
+                            if (systemOnly) continue;
+                            matchingEmitters = matchingEmitters.filter(e =>
+                                (e.emitter.name || '').toLowerCase().includes(searchLower)
+                            );
+                        } else {
+                            matchingEmitters = matchingEmitters.filter(e =>
+                                e.emitter.textures.some(t => t.path.toLowerCase().includes(searchLower))
+                            );
+                        }
+                    }
+
+                    if (matchingEmitters.length === 0) continue;
+
+                    out.push({ type: 'system', key: systemKey, system, matchingCount: matchingEmitters.length });
+
+                    if (expandedSystems.has(systemKey)) {
+                        for (const { emitter, indexInSystem } of matchingEmitters) {
+                            out.push({ type: 'emitter', key: emitter.key, emitter, systemKey, indexInSystem });
+                        }
                     }
                 }
+                return out;
+            };
 
-                if (matchingEmitters.length === 0) continue;
-
-                result.push({ type: 'system', key: systemKey, system, matchingCount: matchingEmitters.length });
-
-                if (expandedSystems.has(systemKey)) {
-                    for (const { emitter, indexInSystem } of matchingEmitters) {
-                        result.push({ type: 'emitter', key: emitter.key, emitter, systemKey, indexInSystem });
-                    }
-                }
-            }
+            const byName = collect('name');
+            // An ability token never falls back to textures — that fallback is
+            // exactly the noise it is meant to avoid.
+            const vfxRows = byName.length > 0 || !searchQuery || systemOnly ? byName : collect('texture');
+            result.push(...vfxRows);
         }
 
         for (const materialKey of (model.materialOrder || [])) {

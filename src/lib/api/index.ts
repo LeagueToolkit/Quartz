@@ -7,7 +7,7 @@ export {
     getHashStatus, downloadHashes, reloadHashes, forceRebuildHashes, readBin, writeBin, textToBinBytes,
     type HashStatus, type DownloadResult,
 } from './hashes';
-export { getLeaguePath } from './league';
+export { getLeaguePath, checkLeaguePath, type LeaguePathCheck } from './league';
 export {
     readFileBase64, getFontsDir, listFonts,
     getWallpapersDir, listWallpapers, importWallpaper, deleteWallpaper,

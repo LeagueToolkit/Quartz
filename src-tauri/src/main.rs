@@ -182,6 +182,7 @@ fn main() {
             commands::context_menu::context_menu_enable,
             commands::context_menu::context_menu_disable,
             commands::league::get_league_path,
+            commands::league::check_league_path,
             commands::extractor::discover_champions,
             commands::extractor::extract_champion_assets,
             commands::extractor::extract_tft_companion,

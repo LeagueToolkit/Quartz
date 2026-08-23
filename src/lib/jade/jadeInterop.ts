@@ -14,6 +14,27 @@ interface JadeOpenRequest {
 
 const OPEN_CURRENT_BIN_EVENT = 'quartz:open-current-bin-in-jade';
 
+/** Asks any mounted BIN tool whether it currently has a file open. */
+const CURRENT_BIN_PROBE_EVENT = 'quartz:probe-current-bin';
+
+interface CurrentBinProbe {
+    path: string | null;
+}
+
+/** The bin the active page has open, or `null` when none does.
+ *
+ * Answered by the same pages that answer the launch events, so it can never
+ * disagree with what a launch would actually send. A probe rather than shared
+ * state because the path lives in each tool's own store. */
+export function currentBinPath(): string | null {
+    const detail: CurrentBinProbe = { path: null };
+    window.dispatchEvent(new CustomEvent<CurrentBinProbe>(CURRENT_BIN_PROBE_EVENT, { detail }));
+    return detail.path;
+}
+
+/** React to a bin being opened or closed anywhere in the app. */
+export const CURRENT_BIN_CHANGED_EVENT = 'quartz:current-bin-changed';
+
 function openJade(binPath: string | null): Promise<JadeOpenResult> {
     const prefs = useUiPrefsStore.getState();
     if (!prefs.communicateWithJade) {
@@ -57,11 +78,23 @@ export function useJadeBin(binPath: string | null | undefined): void {
             request.handled = true;
             request.task = openBinInRuby(binPath);
         };
+        /* Also answers "is anything open?", so the title bar can show a launch
+           action only when there is actually a bin to hand over. Same listener
+           lifetime as the launch handlers above, so the two can never disagree. */
+        const onProbe = (event: Event) => {
+            const probe = (event as CustomEvent<CurrentBinProbe>).detail;
+            if (probe && !probe.path) probe.path = binPath;
+        };
         window.addEventListener(OPEN_CURRENT_BIN_EVENT, onOpen);
         window.addEventListener(OPEN_CURRENT_BIN_IN_RUBY_EVENT, onRuby);
+        window.addEventListener(CURRENT_BIN_PROBE_EVENT, onProbe);
+        // Mount and unmount both change the answer, so tell the title bar to re-ask.
+        window.dispatchEvent(new Event(CURRENT_BIN_CHANGED_EVENT));
         return () => {
             window.removeEventListener(OPEN_CURRENT_BIN_EVENT, onOpen);
             window.removeEventListener(OPEN_CURRENT_BIN_IN_RUBY_EVENT, onRuby);
+            window.removeEventListener(CURRENT_BIN_PROBE_EVENT, onProbe);
+            window.dispatchEvent(new Event(CURRENT_BIN_CHANGED_EVENT));
         };
     }, [binPath]);
 }

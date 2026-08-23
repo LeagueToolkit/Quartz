@@ -32,6 +32,85 @@ pub fn get_league_path() -> Option<String> {
     extractor::detect_league_path_by_common_paths().map(|p| p.to_string_lossy().into_owned())
 }
 
+/// Whether a candidate League folder is usable, and why not when it isn't.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeaguePathCheck {
+    pub valid: bool,
+    /// One short sentence naming what is actually wrong, for the Settings field
+    /// to show. Empty when the path is valid.
+    pub reason: String,
+}
+
+/// Check a League install path WITHOUT falling back to detection.
+///
+/// `get_league_path` silently ignores a bad stored path and moves on to the
+/// registry and the common locations, which is right for "just find me an
+/// install" but wrong for telling someone whether the path they typed works: a
+/// user with a wrong path got "Could not locate a League of Legends install"
+/// only once an extraction failed, which reads as "no path set" rather than
+/// "your path is wrong". This answers for the given path and nothing else, so
+/// Settings can say so the moment it is entered.
+///
+/// The rules mirror `extractor::is_valid_league_root` — a `Game` subfolder,
+/// plus either `LeagueClient.exe` or the champion WAD folder — and each failure
+/// is reported separately so the message names the real problem.
+#[tauri::command]
+pub fn check_league_path(path: String) -> LeaguePathCheck {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return LeaguePathCheck { valid: false, reason: String::new() };
+    }
+
+    let root = Path::new(trimmed);
+    if !root.is_dir() {
+        return LeaguePathCheck {
+            valid: false,
+            reason: "That folder does not exist.".into(),
+        };
+    }
+    if !root.join("Game").is_dir() {
+        /* Say what to pick, not what is missing.
+           The two mistakes are picking the `Game` folder INSIDE the install and
+           picking the `Riot Games` parent ABOVE it, and in both cases the right
+           answer is one folder away — so name that folder instead of reporting
+           the absent `Game` directory, which only makes sense to someone who
+           already knows the layout. */
+        if root.file_name().is_some_and(|n| n.eq_ignore_ascii_case("Game")) {
+            // Their own parent IS the answer, so quote it back verbatim.
+            let parent = root
+                .parent()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "League of Legends".into());
+            return LeaguePathCheck {
+                valid: false,
+                reason: format!("Go up one folder: {parent}"),
+            };
+        }
+        if root.join("League of Legends").join("Game").is_dir() {
+            let inner = root.join("League of Legends");
+            return LeaguePathCheck {
+                valid: false,
+                reason: format!("Go one folder deeper: {}", inner.to_string_lossy()),
+            };
+        }
+        return LeaguePathCheck {
+            valid: false,
+            reason: "Not a League install. Pick the \"League of Legends\" folder itself, \
+                     e.g. C:\\Riot Games\\League of Legends"
+                .into(),
+        };
+    }
+    if !extractor::is_valid_league_root(root) {
+        return LeaguePathCheck {
+            valid: false,
+            reason: "This folder has a \"Game\" subfolder but no League files in it.".into(),
+        };
+    }
+
+    LeaguePathCheck { valid: true, reason: String::new() }
+}
+
 /// Read the `leaguePath` field out of the persisted settings, if present.
 fn stored_league_path() -> Option<String> {
     let appdata = std::env::var("APPDATA").ok()?;

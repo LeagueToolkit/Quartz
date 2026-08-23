@@ -23,7 +23,7 @@
     ]
   },
   "productName": "Quartz",
-  "version": "4.2.3",
+  "version": "4.2.6",
   "identifier": "com.github.ritoshark.quartz",
   "plugins": {
     "updater": {

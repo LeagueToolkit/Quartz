@@ -220,8 +220,23 @@ fn analyze_dir(dir: &Path) -> Result<(Vec<String>, Vec<String>)> {
         }
     }
 
-    if exists_map.contains_key("hashed_files.json") {
-        exists_map.insert("hashed_files.json".to_string(), false);
+    /* Mod metadata is never REFERENCED by a bin, so the rule above would call
+       all of it junk and delete it.
+       `files.txt` is the one that actually hurts: it is the record of every
+       custom path and object name this mod invented, and those exist in no
+       dictionary by definition — delete it and a reserialize that drops the
+       in-bin trailer makes them unrecoverable. The rest are cheap to keep and
+       cost a user real work to lose. */
+    for keep in [
+        "hashed_files.json",
+        "files.txt",
+        "missing_files.txt",
+        "meta/info.json",
+        "readme.txt",
+    ] {
+        if exists_map.contains_key(keep) {
+            exists_map.insert(keep.to_string(), false);
+        }
     }
 
     let junk: Vec<String> = exists_map

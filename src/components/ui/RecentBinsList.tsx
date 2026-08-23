@@ -19,6 +19,30 @@ export interface RecentBinEntry {
     lastOpened: string;
 }
 
+/* The project a bin belongs to, for the subtitle under its name.
+ *
+ * Every recent entry is called `skin0.bin`, so the filename alone cannot tell
+ * two projects apart — the row has to name the folder the bin came out of.
+ *
+ * An extracted project is laid out as `<project>/data/characters/<champ>/...`
+ * (or `<project>/assets/...`), so the useful label is the segment ABOVE the
+ * `data`/`assets` root, not the bin's immediate parent — that is only ever
+ * `skins` or `animations`, which is the same for every project. Falls back to
+ * the parent folder for a bin sitting outside that layout, and to nothing when
+ * the parent would just repeat the filename.
+ */
+function projectLabel(path: string): string {
+    const parts = path.replace(/\\/g, '/').split('/').filter(Boolean);
+    if (parts.length < 2) return '';
+    // Walk from the end so a project that itself contains "data" higher up the
+    // tree (C:\data\mymod\data\characters\...) still resolves to `mymod`.
+    for (let i = parts.length - 2; i >= 1; i--) {
+        const seg = parts[i].toLowerCase();
+        if (seg === 'data' || seg === 'assets') return parts[i - 1];
+    }
+    return parts[parts.length - 2] ?? '';
+}
+
 /* "3m ago" / "2h ago" / "5d ago" relative stamp. */
 function relativeTime(iso: string): string {
     const then = new Date(iso).getTime();
@@ -68,7 +92,15 @@ export default function RecentBinsList({ bins, onOpen, onRemove, title = 'Recent
                             >
                                 <FolderOpenIcon size={15} className="paint2-recent__icon" />
                             </button>
-                            <span className="paint2-recent__name">{bin.name}</span>
+                            {/* Name over project: the filename is almost always
+                               `skin0.bin`, so the folder is what actually
+                               identifies the row. */}
+                            <span className="paint2-recent__label">
+                                <span className="paint2-recent__name">{bin.name}</span>
+                                {projectLabel(bin.path) && (
+                                    <span className="paint2-recent__project">{projectLabel(bin.path)}</span>
+                                )}
+                            </span>
                         </div>
                         <div className="paint2-recent__actions">
                             <span className="paint2-recent__date">{relativeTime(bin.lastOpened)}</span>

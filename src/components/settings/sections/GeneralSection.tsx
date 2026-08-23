@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { Update } from '@tauri-apps/plugin-updater';
-import { Download, RefreshCw, Plug, PanelLeftClose, FolderOpen, ListTree, SlidersHorizontal } from 'lucide-react';
+import { Download, RefreshCw, Plug, PanelLeftClose, FolderOpen, ListTree, SlidersHorizontal, FileText } from 'lucide-react';
 import { FormGroup, Button, CardRow, Switch, cardSurface } from '../primitives';
 import { useConfigStore, useUiPrefsStore } from '@/lib/stores';
 import { getAppInfo } from '@/lib/api';
 import { checkForUpdate, installUpdate } from '@/lib/api/updater';
+import { showUpdateNotes } from '@/components/update/updateShowcaseState';
 import { log } from '@/lib/util/logger';
 
 export function GeneralSection() {
@@ -81,9 +82,15 @@ export function GeneralSection() {
                     />
                     <div className="settings-card" style={{ ...cardSurface, display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {version && <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Current Version: {version}</div>}
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                             <Button icon={<RefreshCw size={16} style={checking ? { animation: 'spin 1s linear infinite' } : undefined} />} variant="secondary" onClick={checkUpdate} disabled={checking}>
                                 {checking ? 'Checking...' : 'Check for Updates'}
+                            </Button>
+                            {/* The showcase appears once per version and is then
+                                remembered, so this is the only way back to the notes
+                                for the build you are already on. */}
+                            <Button icon={<FileText size={16} />} variant="secondary" onClick={showUpdateNotes}>
+                                Patch Notes
                             </Button>
                             {pending && (
                                 <Button icon={<Download size={16} />} variant="primary" onClick={() => installUpdate(pending).catch((e) => { log.error('installUpdate', e); setUpdateMessage('Install failed.'); })}>

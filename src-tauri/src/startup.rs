@@ -264,10 +264,21 @@ fn spawn_hash_auto_sync(app_handle: AppHandle) {
         let Ok(hash_dir) = quartz_lib::hash::get_hash_dir() else {
             return;
         };
-        // Nothing on disk yet is a first run: the existing download prompts
-        // handle that, and racing them here would fight over the same files.
+        /* A FIRST RUN downloads too.
+           This used to return early when the databases were absent, on the
+           assumption that "the existing download prompts handle that" — but the
+           only prompt is a card inside WAD Explorer, so anyone who never opened
+           that page sat with no hashes at all: files listed as hex, `file =`
+           references unresolvable, and errors that read as missing data rather
+           than a missing lookup table. Nothing else ever fetched them.
+
+           Downloading here is the same work the user would have to trigger by
+           hand. Nothing else needs changing for it: the freshness gate already
+           reports "not fresh" when a database is absent, and the per-asset skip
+           requires the file to exist, so a missing (or half-installed) pair is
+           always fetched even when the release tag already matches. */
         if !quartz_lib::hash::hashes_present(&hash_dir) {
-            return;
+            tracing::info!("Hash databases missing; downloading them on startup");
         }
 
         /* Throttle the progress events rather than emitting one per network

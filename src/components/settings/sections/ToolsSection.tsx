@@ -5,7 +5,7 @@ import { desktopDir } from '@tauri-apps/api/path';
 import { FormGroup, StatusBadge, Button, InputWithButton, cardSurface } from '../primitives';
 import { useUiPrefsStore, useConfigStore, useNavigationStore } from '@/lib/stores';
 import {
-    getHashStatus, downloadHashes, getLeaguePath, type HashStatus,
+    getHashStatus, downloadHashes, getLeaguePath, checkLeaguePath, type HashStatus,
     upscaleCheckStatus, upscaleDownloadAll, type UpscaleStatus,
 } from '@/lib/api';
 import { log } from '@/lib/util/logger';
@@ -38,6 +38,27 @@ export function ToolsSection() {
 
     const [detectStatus, setDetectStatus] = useState<null | 'loading' | 'success' | 'error'>(null);
     const [detectMessage, setDetectMessage] = useState('');
+
+    /* Whether the configured League folder actually works.
+       A wrong path used to stay silent here and only surface much later as
+       "Could not locate a League of Legends install" when an extraction failed
+       — which reads as "no path set" rather than "this path is wrong", and cost
+       a user a support thread to work out. Checked as the field is edited so
+       the answer is next to the input that caused it. */
+    const [pathCheck, setPathCheck] = useState<{ valid: boolean; reason: string } | null>(null);
+
+    useEffect(() => {
+        const path = leaguePath.trim();
+        if (!path) { setPathCheck(null); return; }
+        let cancelled = false;
+        // Debounced: this hits the filesystem and the field is typed into.
+        const timer = setTimeout(() => {
+            checkLeaguePath(path)
+                .then((r) => { if (!cancelled) setPathCheck(r); })
+                .catch((e) => { log.error('checkLeaguePath', e); if (!cancelled) setPathCheck(null); });
+        }, 300);
+        return () => { cancelled = true; clearTimeout(timer); };
+    }, [leaguePath]);
 
     const [hashStatus, setHashStatus] = useState<HashStatus | null>(null);
     const [downloading, setDownloading] = useState(false);
@@ -116,17 +137,34 @@ export function ToolsSection() {
                     <InputWithButton
                         value={leaguePath}
                         onChange={(e) => update({ leaguePath: e.target.value })}
-                        placeholder="C:\\Riot Games\\League of Legends"
+                        /* Single backslashes: this is a JSX string, not an escape
+                           sequence, so "\\" would render two of them. */
+                        placeholder="C:\Riot Games\League of Legends"
                         buttonIcon={<FolderOpen size={16} />}
                         buttonText="Browse"
                         onButtonClick={browseLeague}
                     />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {/* The example stays visible whether or not anything is wrong.
+                        Picking the `Game` subfolder is the common mistake, and
+                        showing the shape up front prevents it instead of
+                        correcting it afterwards. */}
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                        Pick the <strong style={{ color: 'var(--text-primary)' }}>League of Legends</strong> folder itself, not the{' '}
+                        <code style={{ fontSize: '11px', opacity: 0.85 }}>Game</code> folder inside it.
+                        {' '}Example: <code style={{ fontSize: '11px', color: 'var(--text-primary)' }}>C:\Riot Games\League of Legends</code>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <Button icon={<Search size={16} />} variant="secondary" onClick={autoDetect} disabled={detectStatus === 'loading'}>
                             {detectStatus === 'loading' ? 'Scanning…' : 'Auto Detect'}
                         </Button>
                         {detectMessage && detectStatus !== 'loading' && (
                             <span style={{ fontSize: '12px', fontWeight: 600, color: statusColor }}>{detectMessage}</span>
+                        )}
+                        {/* Only once a path is set: an empty field is not yet wrong. */}
+                        {pathCheck && (
+                            pathCheck.valid
+                                ? <StatusBadge status="success" text="Valid League folder" />
+                                : <StatusBadge status="warning" text={pathCheck.reason || 'Not a League folder'} />
                         )}
                     </div>
                 </div>

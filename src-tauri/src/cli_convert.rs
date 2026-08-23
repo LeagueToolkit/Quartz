@@ -6,7 +6,7 @@ Windows) so the user sees success/errors. */
 
 use std::path::{Path, PathBuf};
 
-use quartz_lib::bin::{bin_trailer, converter, ritoshark_bridge};
+use quartz_lib::bin::{bin_trailer, converter, hash_capture, ritoshark_bridge};
 use quartz_lib::tex;
 use quartz_lib::wad_explorer;
 
@@ -177,6 +177,15 @@ fn bin_to_py(bin_path: &Path) -> Result<String, String> {
     if !trailer.is_empty() {
         register_trailer_into_mapper(&trailer);
     }
+    /* Then two fallbacks for a bin whose trailer is missing — one written by a
+       tool that emits none, or one whose trailer a reserialize dropped. Both
+       only fill gaps, so a recorded name always beats an inferred one.
+
+       `files.txt` first: it is a deliberate record of this mod's own paths, and
+       it names them whether or not the file is still on disk. The folder scan
+       second, which needs no sidecar at all but can only find what exists. */
+    register_files_txt(bin_path);
+    register_mod_root_paths(bin_path);
     let body = bin_trailer::strip_trailer(&data);
 
     let tree = ritoshark_bridge::read_bin(body).map_err(|e| e.to_string())?;
@@ -197,93 +206,38 @@ fn py_to_bin(py_path: &Path) -> Result<String, String> {
     let body = ritoshark_bridge::write_bin(&tree).map_err(|e| e.to_string())?;
     let out = py_path.with_extension("bin");
 
-    // AUTO-CAPTURE the reverse-map from the .py itself: every readable `file =`/
-    // `hash =`/`link =` path is hashed here (that's what text_to_bin just did), so
-    // THIS is the one moment both the path and its hash are known. For any whose hash
-    // no dictionary can reverse-resolve — i.e. a REPATHED / custom path invented by
-    // this mod — we embed `hash -> path` as a trailer so the path is never "gone
-    // forever" once the bin holds only the hash. Vanilla paths (dictionary-known) are
-    // NOT embedded — the shared hashtable already resolves them, so the trailer stays
-    // tiny (only the repaths).
-    let map = capture_unresolvable_paths(&text);
+    // AUTO-CAPTURE the reverse-map from the .py itself: THIS is the one moment
+    // both a name and its hash are known, because `text_to_bin` just did the
+    // hashing. For any hash no dictionary can reverse-resolve — a REPATHED or
+    // custom name invented by this mod — we embed `hash -> name` as a trailer so
+    // it is never "gone forever" once the bin holds only the hash. Vanilla names
+    // are NOT embedded: the shared hashtable already resolves them, so the
+    // trailer stays tiny.
+    //
+    // The parsed TREE is passed too, so matching is done against the hashes the
+    // bin really contains rather than by guessing at the text's syntax.
+    let map = hash_capture::capture_unresolvable_paths(&text, &tree);
     let bytes = bin_trailer::append_trailer(&body, &map);
 
     std::fs::write(&out, bytes).map_err(|e| e.to_string())?;
+
+    /* And the same paths at the mod root, as `files.txt`.
+       The trailer lives INSIDE the bin, so it is lost the moment any other tool
+       reserializes the file — and then a custom path is unrecoverable, because
+       it exists in no dictionary by definition. A plain list beside the mod
+       survives that, needs no bin parsing to read, and is the format Quartz's
+       repath already writes. Merged, not overwritten: a bin is converted one at
+       a time, and rewriting the file per conversion would drop every other
+       bin's paths. */
+    if !map.is_empty() {
+        merge_into_files_txt(&out, &map);
+    }
     let note = if map.is_empty() {
         String::new()
     } else {
         format!("  (+{} embedded repath{})", map.len(), if map.len() == 1 { "" } else { "s" })
     };
     Ok(format!("{} -> {}{}", name(py_path), name(&out), note))
-}
-
-/// Scan `.py` text for `file =`/`hash =`/`link =` VALUES that are readable paths,
-/// hash each (xxh64 for `file`, fnv1a32 for `hash`/`link`), and keep only the ones
-/// the shared dictionary does NOT already reverse-resolve. Those are the repathed /
-/// mod-invented paths whose hash exists in no hashtable — the "gone forever" set the
-/// trailer must preserve. Returns `{ hex hash -> path }`.
-fn capture_unresolvable_paths(text: &str) -> std::collections::HashMap<String, String> {
-    use quartz_lib::hash::{fnv1a, xxh64};
-    let mut map = std::collections::HashMap::new();
-    let mapper = ritoshark_bridge::get_cached_bin_hashes().read();
-
-    // Small helper: record `name -> fnv1a32 hex` if the dictionary can't already
-    // resolve it (i.e. it's a custom/repathed name that would be lost as a bare hash).
-    let mut keep_fnv = |name: &str, map: &mut std::collections::HashMap<String, String>| {
-        if name.is_empty() {
-            return;
-        }
-        let h = fnv1a(name) as u64;
-        if mapper.get(h).is_none() {
-            map.insert(format!("{:08x}", h), name.to_string());
-        }
-    };
-
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-
-        // 1. VALUES: `... file = "PATH"` (xxh64) / `hash = "PATH"` / `link = "PATH"` (fnv1a32).
-        if let Some((kind, rest)) = trimmed
-            .split_once("file = \"")
-            .map(|r| ("file", r.1))
-            .or_else(|| trimmed.split_once("hash = \"").map(|r| ("hash", r.1)))
-            .or_else(|| trimmed.split_once("link = \"").map(|r| ("link", r.1)))
-        {
-            if let Some(val) = rest.split('"').next() {
-                if !val.is_empty() {
-                    if kind == "file" {
-                        let h = xxh64(val);
-                        if mapper.get(h).is_none() {
-                            map.insert(format!("{:016x}", h), val.to_string());
-                        }
-                    } else {
-                        keep_fnv(val, &mut map);
-                    }
-                }
-            }
-            continue;
-        }
-
-        // 2. OBJECT / ENTRY NAMES: `"NAME" = ClassName {`. The quoted string before the
-        //    `=` is a readable fnv1a32 name (e.g. a custom-named VfxSystemDefinitionData
-        //    like `"ebay"`). It round-trips to `0x... = ClassName {` and is lost unless we
-        //    preserve it. Only the QUOTED form is a name we can capture; a bare `0x...`
-        //    one is already just a hash with no known name.
-        if trimmed.starts_with('"') {
-            if let Some(after_open) = trimmed.strip_prefix('"') {
-                if let Some((name, tail)) = after_open.split_once('"') {
-                    // Confirm it's an object header: `= <Class> {` after the closing quote.
-                    let tail = tail.trim_start();
-                    if let Some(rhs) = tail.strip_prefix('=') {
-                        if rhs.trim_end().ends_with('{') {
-                            keep_fnv(name, &mut map);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    map
 }
 
 /// Fold a trailer's `hex hash -> path` entries into the shared BIN/WAD hash mapper
@@ -297,6 +251,207 @@ fn register_trailer_into_mapper(trailer: &std::collections::HashMap<String, Stri
             w.insert(h, path.clone());
         }
     }
+}
+
+/// Mirror the trailer into `files.txt` at the mod root, keeping what is there.
+///
+/// EVERYTHING the trailer holds, not just asset paths. A custom VFX system name
+/// (`"ebay" = VfxSystemDefinitionData {`) becomes an fnv1a32 hash in the bin
+/// exactly the way a repathed texture becomes an xxh64 one, and is just as
+/// unrecoverable once the trailer is gone. Anything that turns into a hash on
+/// write has to be written down here too.
+///
+/// `<hex> <name>` per line, because the two keyspaces cannot be told apart from
+/// the name alone — 8 hex digits is fnv1a32, 16 is xxh64. A bare list of paths
+/// worked only while this held asset paths and nothing else.
+///
+/// Sorted by name and deduped, so reconverting the same bin produces no diff.
+/// Only entries the dictionary cannot resolve are written: a vanilla name is
+/// already recoverable, and listing those would bury the few that matter.
+fn merge_into_files_txt(bin_path: &Path, map: &std::collections::HashMap<String, String>) {
+    let Some(root) = mod_root(bin_path) else {
+        return;
+    };
+    let list = root.join("files.txt");
+
+    // Keyed by name so a re-hash of the same name cannot produce a duplicate row.
+    let mut entries: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    for line in std::fs::read_to_string(&list).unwrap_or_default().lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        match line.split_once(char::is_whitespace) {
+            // `<hex> <name>` — the current format.
+            Some((hex, name)) if is_hash_hex(hex) => {
+                entries.insert(name.trim().to_string(), hex.to_ascii_lowercase());
+            }
+            // A bare path, from the older format or written by hand. Keep it by
+            // hashing it as the asset path it must be.
+            _ => {
+                entries.insert(line.to_string(), format!("{:016x}", quartz_lib::wad::path_hash(line)));
+            }
+        }
+    }
+
+    let before = entries.len();
+    for (hex, name) in map {
+        entries.insert(name.clone(), hex.to_ascii_lowercase());
+    }
+    if entries.len() == before {
+        return;
+    }
+
+    let contents = entries
+        .iter()
+        .map(|(name, hex)| format!("{hex} {name}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if let Err(e) = std::fs::write(&list, contents) {
+        tracing::warn!("could not write {}: {e}", list.display());
+    }
+}
+
+/// 8 hex digits (fnv1a32) or 16 (xxh64) — the two hash widths a bin uses.
+fn is_hash_hex(s: &str) -> bool {
+    (s.len() == 8 || s.len() == 16) && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Register `files.txt` at the mod root into the shared mapper.
+///
+/// The fallback for a bin with no trailer: the paths are listed beside the mod,
+/// and `xxh64(path)` is exactly the hash the bin holds, so the list is a
+/// dictionary for this mod's own invented names. Cheaper and more reliable than
+/// walking the folder, because it names paths whether or not the file is
+/// currently on disk.
+fn register_files_txt(bin_path: &Path) -> usize {
+    let Some(root) = mod_root(bin_path) else {
+        return 0;
+    };
+    let Ok(text) = std::fs::read_to_string(root.join("files.txt")) else {
+        return 0;
+    };
+
+    let mut w = ritoshark_bridge::get_cached_bin_hashes().write();
+    let mut added = 0usize;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        /* `<hex> <name>` is the current format; a bare path is the older one, or
+           a hand-written line. The hex matters because a name alone cannot say
+           which keyspace it belongs to — an fnv1a32 object name and an xxh64
+           asset path look identical as text. */
+        let (hash, name) = match line.split_once(char::is_whitespace) {
+            Some((hex, name)) if is_hash_hex(hex) => {
+                let Ok(h) = u64::from_str_radix(hex, 16) else { continue };
+                (h, name.trim())
+            }
+            _ => (quartz_lib::wad::path_hash(line), line),
+        };
+        // Gap-fill only: a name from the trailer or the real dictionary wins.
+        if w.get(hash).is_none() {
+            w.insert(hash, name.to_string());
+            added += 1;
+        }
+    }
+    if added > 0 {
+        tracing::info!("resolved {added} path(s) from files.txt at {}", root.display());
+    }
+    added
+}
+
+/// The mod folder a bin sits in: the directory holding `data/` or `assets/`.
+///
+/// Walks up from the bin, so `<mod>/data/characters/x/skins/skin0.bin` resolves
+/// to `<mod>`. Returns `None` for a bin outside that layout.
+fn mod_root(bin_path: &Path) -> Option<std::path::PathBuf> {
+    let mut dir = bin_path.parent();
+    while let Some(d) = dir {
+        if d.join("data").is_dir() || d.join("assets").is_dir() {
+            return Some(d.to_path_buf());
+        }
+        dir = d.parent();
+    }
+    None
+}
+
+/// Register every asset in the mod folder under its own `xxh64`, so a `file =`
+/// pointing at one renders as a path.
+///
+/// WHY: Riot's `string =` -> `file =` migration means a bin names its assets
+/// only by hash. A REPATHED asset's path was invented by the mod, so it exists
+/// in no published dictionary — and unless the bin still carries the trailer
+/// that records it, the hash resolves to nothing and the `.py` shows `0x...`.
+///
+/// The mod folder itself is the missing dictionary: the file is right there, and
+/// its WAD-relative path is exactly what was hashed. Hashing what is on disk
+/// recovers the name without any table, which also covers a bin written by a
+/// tool that emits no trailer, or one whose trailer was dropped by a reserialize.
+///
+/// Only fills gaps: entries already known (the trailer, then the shared
+/// dictionary) are left alone, so a real dictionary name always wins over a
+/// guess from the filesystem.
+fn register_mod_root_paths(bin_path: &Path) -> usize {
+    const ASSET_EXTS: [&str; 12] = [
+        "tex", "dds", "png", "jpg", "jpeg", "skn", "skl", "scb", "sco", "anm", "bnk", "wpk",
+    ];
+    let Some(root) = mod_root(bin_path) else {
+        return 0;
+    };
+
+    let mut found = Vec::new();
+    let mut stack = vec![root.clone()];
+    let mut scanned = 0usize;
+    // A mod is small, but a misplaced root must not turn this into a disk crawl.
+    const MAX_FILES: usize = 100_000;
+
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            if scanned >= MAX_FILES {
+                tracing::warn!("mod-root scan hit the {MAX_FILES}-file cap; some `file =` refs may stay hex");
+                stack.clear();
+                break;
+            }
+            let path = entry.path();
+            match entry.file_type() {
+                Ok(t) if t.is_dir() => stack.push(path),
+                Ok(t) if t.is_file() => {
+                    let ext = path
+                        .extension()
+                        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+                        .unwrap_or_default();
+                    if !ASSET_EXTS.contains(&ext.as_str()) {
+                        continue;
+                    }
+                    scanned += 1;
+                    let Ok(rel) = path.strip_prefix(&root) else { continue };
+                    // A WAD path is lowercase and forward-slashed; that is the
+                    // exact string the hash in the bin was computed from.
+                    let rel = rel.to_string_lossy().replace('\\', "/").to_ascii_lowercase();
+                    found.push((quartz_lib::wad::path_hash(&rel), rel));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut w = ritoshark_bridge::get_cached_bin_hashes().write();
+    let mut added = 0usize;
+    for (hash, rel) in found {
+        if w.get(hash).is_none() {
+            w.insert(hash, rel);
+            added += 1;
+        }
+    }
+    if added > 0 {
+        tracing::info!("resolved {added} `file =` path(s) from the mod folder at {}", root.display());
+    }
+    added
 }
 
 fn ritobin_dir(dir: &Path, from_ext: &str) -> Result<String, String> {

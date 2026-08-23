@@ -3,6 +3,7 @@ pub mod batch_split_vfx;
 pub mod bin_editor;
 pub mod bin_json;
 pub mod bin_trailer;
+pub mod hash_capture;
 pub mod combine;
 pub mod merge;
 pub mod concat;

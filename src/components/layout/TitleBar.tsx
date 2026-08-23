@@ -7,8 +7,14 @@ import { log } from '@/lib/util/logger';
 import { visibleNavItems, SETTINGS_ITEM, type NavItem } from './NavRail';
 import { CommunityPopover } from './CommunityPopover';
 import { useFileExplorer } from '@/components/explorer';
-import { requestOpenCurrentBinInJade, requestOpenCurrentBinInRuby } from '@/lib/jade/jadeInterop';
+import {
+    requestOpenCurrentBinInJade, requestOpenCurrentBinInRuby,
+    currentBinPath, CURRENT_BIN_CHANGED_EVENT,
+} from '@/lib/jade/jadeInterop';
 import { RubyMissingModal } from './RubyMissingModal';
+import { RitoSharkPopover } from './RitoSharkPopover';
+import { AppReadmeModal } from './AppReadmeModal';
+import { type RitoSharkApp } from './ritosharkApps';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { HashSyncIndicator } from './HashSyncIndicator';
 
@@ -26,6 +32,21 @@ export function TitleBar({ collapsed = false }: TitleBarProps) {
     const communityRef = useRef<HTMLButtonElement>(null);
     const [communityOpen, setCommunityOpen] = useState(false);
     const [rubyMissing, setRubyMissing] = useState(false);
+    const suiteRef = useRef<HTMLButtonElement>(null);
+    const [suiteOpen, setSuiteOpen] = useState(false);
+    const [readmeApp, setReadmeApp] = useState<RitoSharkApp | null>(null);
+
+    /* Whether any mounted tool has a bin open, so the menu can offer the
+       hand-off only when there is a file to hand over. Re-asked whenever a tool
+       mounts or unmounts, and again on open in case something changed while the
+       menu was closed. */
+    const [binPath, setBinPath] = useState<string | null>(null);
+    useEffect(() => {
+        const refresh = () => setBinPath(currentBinPath());
+        refresh();
+        window.addEventListener(CURRENT_BIN_CHANGED_EVENT, refresh);
+        return () => window.removeEventListener(CURRENT_BIN_CHANGED_EVENT, refresh);
+    }, []);
     // Standalone browse: reopens at the last-visited folder (no defaultPath).
     const openExplorer = () => { void pick({ mode: 'browse', title: 'Asset Explorer' }); };
     const minimize = () => win.minimize().catch((e) => log.error('minimize', e));
@@ -44,6 +65,21 @@ export function TitleBar({ collapsed = false }: TitleBarProps) {
             .catch((error: unknown) => {
                 window.alert(error instanceof Error ? error.message : String(error));
             });
+    };
+
+    /* Hand the open bin to a tool. Flint takes no bin, so it never reaches here
+       — the menu shows no play button for it. */
+    const launchApp = (app: RitoSharkApp) => {
+        setSuiteOpen(false);
+        if (app.id === 'jade') {
+            if (!jadeInteropEnabled) {
+                window.alert('Jade communication is disabled in Settings > External Tools.');
+                return;
+            }
+            openJade();
+            return;
+        }
+        if (app.id === 'ruby') openRuby();
     };
 
     return (
@@ -66,27 +102,41 @@ export function TitleBar({ collapsed = false }: TitleBarProps) {
                     {/* Left of the action buttons, so a transient pill grows
                         away from the window controls instead of shifting them. */}
                     <HashSyncIndicator />
-                    <Tooltip content={jadeInteropEnabled ? 'Open in Jade' : 'Jade communication is disabled'} side="bottom">
+                    {/* One entry for the whole suite. The per-tool launch buttons
+                        that used to sit here were only useful with a bin open and
+                        named nothing about the tools themselves. */}
+                    {/* The tooltip is dropped while the menu is open. The popover
+                        covers the button, so the pointer never leaves it and the
+                        tooltip would hang there over the menu it just opened —
+                        unmounting the wrapper is what actually retracts it. The
+                        menu's own heading names the thing anyway. */}
+                    {suiteOpen ? (
                         <button
+                            ref={suiteRef}
                             type="button"
-                            className="q-topnavbtn q-jade-launch"
-                            aria-label={jadeInteropEnabled ? 'Open in Jade' : 'Jade communication is disabled'}
-                            disabled={!jadeInteropEnabled}
-                            onClick={openJade}
+                            className="q-topnavbtn q-jade-launch is-active"
+                            aria-label="RitoShark tools"
+                            aria-haspopup="menu"
+                            aria-expanded
+                            onClick={() => setSuiteOpen(false)}
                         >
-                            <img src="/jade.webp" alt="" className="q-jade-logo" />
+                            <img src="/ritoshark.png" alt="" className="q-jade-logo" />
                         </button>
-                    </Tooltip>
-                    <Tooltip content="Open this BIN in RubyRe" side="bottom">
-                        <button
-                            type="button"
-                            className="q-topnavbtn q-jade-launch"
-                            aria-label="Open this BIN in RubyRe"
-                            onClick={openRuby}
-                        >
-                            <img src="/ruby.png" alt="" className="q-jade-logo" />
-                        </button>
-                    </Tooltip>
+                    ) : (
+                        <Tooltip content="RitoShark tools" side="bottom">
+                            <button
+                                ref={suiteRef}
+                                type="button"
+                                className="q-topnavbtn q-jade-launch"
+                                aria-label="RitoShark tools"
+                                aria-haspopup="menu"
+                                aria-expanded={false}
+                                onClick={() => setSuiteOpen(true)}
+                            >
+                                <img src="/ritoshark.png" alt="" className="q-jade-logo" />
+                            </button>
+                        </Tooltip>
+                    )}
                     <Tooltip content="Asset Explorer" side="bottom">
                         <button
                             type="button"
@@ -122,6 +172,20 @@ export function TitleBar({ collapsed = false }: TitleBarProps) {
                     anchorRect={communityRef.current.getBoundingClientRect()}
                     onClose={() => setCommunityOpen(false)}
                 />,
+                document.body,
+            )}
+            {suiteOpen && suiteRef.current && createPortal(
+                <RitoSharkPopover
+                    anchorRect={suiteRef.current.getBoundingClientRect()}
+                    binPath={binPath}
+                    onClose={() => setSuiteOpen(false)}
+                    onShowReadme={(app) => { setSuiteOpen(false); setReadmeApp(app); }}
+                    onLaunch={launchApp}
+                />,
+                document.body,
+            )}
+            {readmeApp && createPortal(
+                <AppReadmeModal app={readmeApp} onClose={() => setReadmeApp(null)} />,
                 document.body,
             )}
             {/* Portaled: the title bar is a drag region and clips its children. */}

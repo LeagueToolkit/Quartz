@@ -146,6 +146,14 @@
 .paint2-recent__reveal:hover .paint2-recent__icon {
     color: var(--accent-primary);
 }
+/* Filename over project folder. Stacked because the filename is nearly always
+   `skin0.bin` — the folder underneath is what tells two rows apart. */
+.paint2-recent__label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
 .paint2-recent__name {
     font-family: var(--font-mono);
     font-size: 0.85rem;
@@ -154,6 +162,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+.paint2-recent__project {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.paint2-recent__item:hover .paint2-recent__project {
+    color: var(--text-secondary);
 }
 .paint2-recent__actions {
     display: flex;
