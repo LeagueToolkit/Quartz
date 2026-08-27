@@ -32,36 +32,75 @@ use ritoshark::bin::Bin;
 /// Only pairs the shared dictionary cannot already resolve are kept — those are
 /// the repathed / mod-invented names that exist in no hashtable anywhere and are
 /// unrecoverable once the bin holds only the hash. Returns `{ hex hash -> name }`,
-/// 8-hex for fnv1a32 and 16-hex for xxh64.
-pub fn capture_unresolvable_paths(text: &str, tree: &Bin) -> std::collections::HashMap<String, String> {
+/// The names a bin holds that no hashtable can resolve, split by hash category.
+///
+/// Categories are the ones the embedded-hashtable standard defines. There is deliberately
+/// no `binfields` or `bintypes`: field and type names come from the game's metaclass
+/// definitions, so a mod cannot mint one the game would read, and anything already in the
+/// community tables is filtered out here anyway.
+#[derive(Default, Debug)]
+pub struct CapturedNames {
+    /// `game`, xxh64/64: asset paths, covering both WAD chunk paths and `file =` values.
+    pub game: std::collections::BTreeSet<String>,
+    /// `binentries`, fnv1a_32/32: BIN object path names. The one fnv1a category a mod
+    /// really does mint, e.g. `"ebay" = VfxSystemDefinitionData {`.
+    pub binentries: std::collections::BTreeSet<String>,
+    /// `binhashes`, fnv1a_32/32: values that appear as a `Hash`-typed property.
+    pub binhashes: std::collections::BTreeSet<String>,
+}
+
+impl CapturedNames {
+    pub fn is_empty(&self) -> bool {
+        self.game.is_empty() && self.binentries.is_empty() && self.binhashes.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.game.len() + self.binentries.len() + self.binhashes.len()
+    }
+}
+
+/// Recover the names behind a bin's unresolvable hashes, by hashing every quoted string
+/// in the matching `.py` text and keeping the ones the bin actually holds.
+///
+/// This is the one moment both halves are known: the text still has the name and the tree
+/// already has the hash. Only names the shared mapper CANNOT resolve are kept, which is
+/// the standard's "ship only what the community tables lack" rule applied at capture time
+/// rather than at pack time.
+pub fn capture_unresolvable_paths(text: &str, tree: &Bin) -> CapturedNames {
     use crate::hash::{fnv1a, xxh64};
 
     let hashes = tree_hashes(tree);
     let mapper = super::ritoshark_bridge::get_cached_bin_hashes().read();
-    let mut map = std::collections::HashMap::new();
+    let mut out = CapturedNames::default();
 
     for name in text_name_candidates(text) {
-        // fnv1a32: object/entry names, `hash =` and `link =` values.
+        // Canonicalised the way the standard specifies: ASCII-lowercase, then hash. The
+        // file keeps the name's display casing.
         let h32 = fnv1a(&name);
-        if hashes.names.contains(&h32) && mapper.get(h32 as u64).is_none() {
-            map.entry(format!("{h32:08x}")).or_insert_with(|| name.clone());
+        if mapper.get(h32 as u64).is_none() {
+            if hashes.entries.contains(&h32) {
+                out.binentries.insert(name.clone());
+            } else if hashes.hashes.contains(&h32) {
+                out.binhashes.insert(name.clone());
+            }
         }
-        // xxh64: `file =` asset paths.
         if !hashes.files.is_empty() {
             let h64 = xxh64(&name);
             if hashes.files.contains(&h64) && mapper.get(h64).is_none() {
-                map.entry(format!("{h64:016x}")).or_insert_with(|| name.clone());
+                out.game.insert(name);
             }
         }
     }
-    map
+    out
 }
 
-/// The hashes a parsed bin actually holds, split by keyspace.
+/// The hashes a parsed bin actually holds, split by hash category.
 #[derive(Default)]
 struct TreeHashes {
-    /// fnv1a32: field, class, entry and object names, plus `hash`/`link` values.
-    names: std::collections::HashSet<u32>,
+    /// fnv1a32: BIN object path names (entries).
+    entries: std::collections::HashSet<u32>,
+    /// fnv1a32: `hash =` / `link =` values, and the pair packed into a blend key.
+    hashes: std::collections::HashSet<u32>,
     /// xxh64: `file =` values.
     files: std::collections::HashSet<u64>,
 }
@@ -69,14 +108,15 @@ struct TreeHashes {
 fn tree_hashes(tree: &Bin) -> TreeHashes {
     let mut out = TreeHashes::default();
     for entry in &tree.entries {
-        out.names.insert(entry.path_hash);
-        out.names.insert(entry.class_hash);
+        // The entry's own name is mintable; its CLASS is not, so the class hash is not
+        // collected - a type name always comes from the game's metaclass definitions.
+        out.entries.insert(entry.path_hash);
         collect_field_hashes(&entry.fields, &mut out);
     }
     // A patch names the field it overrides and carries the same hashed value
-    // types a field does.
+    // types a field does. The field name itself is game-defined, so only the value side
+    // is collected.
     for patch in &tree.patches {
-        out.names.insert(patch.key_hash);
         collect_value_hashes(&patch.value, patch.key_hash, &mut out);
     }
     out
@@ -87,7 +127,7 @@ fn collect_field_hashes(
     out: &mut TreeHashes,
 ) {
     for (field, value) in fields {
-        out.names.insert(*field);
+        // Field names are game-defined; only the values can hold a minted name.
         collect_value_hashes(value, *field, out);
     }
 }
@@ -96,18 +136,18 @@ fn collect_value_hashes(value: &ritoshark::bin::BinValue, field: u32, out: &mut 
     use ritoshark::bin::BinValue;
     match value {
         BinValue::Hash(hash) | BinValue::Link(hash) if *hash != 0 => {
-            out.names.insert(*hash);
+            out.hashes.insert(*hash);
         }
         BinValue::File(hash) if *hash != 0 => {
             out.files.insert(*hash);
         }
         // A blend-transition key packs two clip-name hashes into one u64.
         BinValue::U64(value) if ritoshark::bin::is_blend_key_field(field) => {
-            out.names.insert((value >> 32) as u32);
-            out.names.insert(*value as u32);
+            out.hashes.insert((value >> 32) as u32);
+            out.hashes.insert(*value as u32);
         }
-        BinValue::Pointer { class, fields } | BinValue::Embed { class, fields } => {
-            out.names.insert(*class);
+        BinValue::Pointer { class: _, fields } | BinValue::Embed { class: _, fields } => {
+            // Class names are game-defined, so only the fields are walked.
             collect_field_hashes(fields, out);
         }
         BinValue::List { items, .. } => {

@@ -220,32 +220,34 @@ fn py_to_bin(py_path: &Path) -> Result<String, String> {
     //
     // The parsed TREE is passed too, so matching is done against the hashes the
     // bin really contains rather than by guessing at the text's syntax.
-    let map = hash_capture::capture_unresolvable_paths(&text, &tree);
+    let captured = hash_capture::capture_unresolvable_paths(&text, &tree);
 
     // The bin is written CLEAN. Quartz no longer appends the hash->path trailer:
     // trailing bytes after a bin's declared end are not part of the format, so every
     // other tool has to strip them, a reserialization silently drops them anyway, and
-    // one measured file grew 40%. `files.txt` below carries the same record beside the
+    // one measured file grew 40%. The hashtables below carry the same record beside the
     // mod, where nothing has to know about it to stay correct.
     //
     // Reads are kept (see `read_trailer` callers) so a bin that already carries one
     // still resolves its custom paths.
     std::fs::write(&out, body).map_err(|e| e.to_string())?;
 
-    /* The captured names, at the WAD root, split by universe: `files.txt` for asset
-       paths and `binhashes.hashes.txt` for everything fnv1a32. This is now the ONLY
-       record. A trailer lived inside the bin and was lost the moment any other tool
-       reserialized the file, and then a custom name was unrecoverable, because it
-       exists in no dictionary by definition. A plain list beside the assets survives
-       that and needs no bin parsing to read. `zip_fantome` copies both up into META/
-       when the mod is packed. */
-    if !map.is_empty() {
-        merge_into_files_txt(&out, &map);
+    /* The captured names as embedded hashtables, one file per category. This is now the
+       ONLY record: a trailer lived inside the bin and was lost the moment any other tool
+       reserialized the file, and then a custom name was unrecoverable, because it exists
+       in no dictionary by definition. A plain list beside the assets survives that and
+       needs no bin parsing to read. */
+    if !captured.is_empty() {
+        record_captured_names(&out, &captured);
     }
-    let note = if map.is_empty() {
+    let note = if captured.is_empty() {
         String::new()
     } else {
-        format!("  (+{} embedded repath{})", map.len(), if map.len() == 1 { "" } else { "s" })
+        format!(
+            "  (+{} recorded name{})",
+            captured.len(),
+            if captured.len() == 1 { "" } else { "s" }
+        )
     };
     Ok(format!("{} -> {}{}", name(py_path), name(&out), note))
 }
@@ -277,76 +279,160 @@ fn register_trailer_into_mapper(trailer: &std::collections::HashMap<String, Stri
 ///
 /// Sorted by name and deduped, so reconverting the same bin produces no diff.
 /// Only entries the dictionary cannot resolve are written: a vanilla name is
-/// The universe file for fnv1a32 names, beside `files.txt` at the mod root.
+/// The hash categories the embedded-hashtable standard defines, with the algorithm and
+/// stored key width each one declares.
 ///
-/// `<universe>.hashes.txt`, per the community spec: the FILE NAME says which hash
-/// function its lines take, so the lines are bare names with no hash column. `binhashes`
-/// is the catch-all for fnv1a32 values, which is what Quartz captures here (field, class,
-/// entry and object names plus `hash =` / `link =` values) with no way to tell which
-/// sub-universe any one name came from.
-const BIN_HASHES_TXT: &str = "binhashes.hashes.txt";
+/// `game` deliberately serves two lookups: a `file =` value is the xxh64 of a path in the
+/// same hash space as WAD chunk identification, so one table resolves both. There is no
+/// `binfields` or `bintypes` on purpose, because a mod cannot mint a name the game's
+/// metaclass definitions do not already define.
+const HASH_CATEGORIES: &[(&str, &str, u32)] = &[
+    ("game", "xxh64", 64),
+    ("binentries", "fnv1a_32", 32),
+    ("binhashes", "fnv1a_32", 32),
+];
 
-/// Record the captured names beside the mod, split by keyspace.
+/// The table file name for a category. `{category}.hashes.txt` is the convention the
+/// standard uses; the manifest is what actually locates a table.
+fn hash_table_name(category: &str) -> String {
+    format!("{category}.hashes.txt")
+}
+
+/// The package root: the nearest ancestor holding `META/info.json`.
 ///
-/// One file per hash universe, and NO hash column in either. The hash is `xxh64(line)`
-/// for `files.txt` and `fnv1a32(line)` for `binhashes.hashes.txt`, both recomputable, so
-/// storing them only adds a second copy that can disagree with the name next to it after
-/// a hand edit. Quartz used to write `<hex> <name>` into one mixed file, which forced
-/// every reader to disambiguate two keyspaces by hex width and made `files.txt` unusable
-/// by anything expecting the WAD-path convention.
+/// `None` for a bare WAD folder with no fantome wrapper, which is normal when converting
+/// a loose bin. The WAD-root copies are written either way.
+fn package_root(from: &Path) -> Option<PathBuf> {
+    let mut cur = Some(from);
+    while let Some(dir) = cur {
+        if dir.join("META").join("info.json").is_file() {
+            return Some(dir.to_path_buf());
+        }
+        cur = dir.parent();
+    }
+    None
+}
+
+/// Record the captured names as embedded hashtables.
 ///
-/// Merged, not overwritten: a bin is converted one at a time, and rewriting per
-/// conversion would drop every other bin's names.
-fn merge_into_files_txt(bin_path: &Path, map: &std::collections::HashMap<String, String>) {
+/// Two destinations on purpose:
+///   * the WAD content root, so the names travel INSIDE the packed `.wad.client` and
+///     survive a lost or stripped `META/`;
+///   * `META/hashes/` plus a `Hashtables` manifest in `META/info.json`, which is the
+///     location and the declaration the standard specifies, and the only one another
+///     tool is required to look at.
+///
+/// Merged, not overwritten: a bin is converted one at a time, so rewriting either copy
+/// per conversion would drop every other bin's names.
+fn record_captured_names(bin_path: &Path, captured: &quartz_lib::bin::hash_capture::CapturedNames) {
     use std::collections::BTreeSet;
 
-    let Some(root) = mod_root(bin_path) else {
+    let Some(wad_root) = mod_root(bin_path) else {
         return;
     };
-    let files_txt = root.join("files.txt");
-    let hashes_txt = root.join(BIN_HASHES_TXT);
+    let pkg = package_root(&wad_root);
 
-    // Sets, not maps: the name IS the row now.
-    let mut wad: BTreeSet<String> = BTreeSet::new();
-    let mut names: BTreeSet<String> = BTreeSet::new();
+    for (category, _, _) in HASH_CATEGORIES {
+        let fresh: &BTreeSet<String> = match *category {
+            "game" => &captured.game,
+            "binentries" => &captured.binentries,
+            _ => &captured.binhashes,
+        };
+        let file = hash_table_name(category);
 
-    // Existing content, including anything written in the old mixed format. A legacy
-    // `<hex> <name>` row is filed by its hex WIDTH (8 = fnv1a32, 16 = xxh64) rather than
-    // by the file it was found in, which is what un-mixes a pre-split `files.txt`.
-    for (path, is_fnv_file) in [(&files_txt, false), (&hashes_txt, true)] {
-        for line in std::fs::read_to_string(path).unwrap_or_default().lines() {
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            match line.split_once(char::is_whitespace) {
-                Some((hex, rest)) if is_hash_hex(hex) && !rest.trim().is_empty() => {
-                    let bucket = if hex.len() == 8 { &mut names } else { &mut wad };
-                    bucket.insert(rest.trim().to_string());
+        // Every place this category can already be recorded, including the pre-standard
+        // `files.txt` so an older mod's names migrate on the first rewrite.
+        let mut sites: Vec<PathBuf> = vec![wad_root.join(&file)];
+        if let Some(root) = &pkg {
+            sites.push(root.join("META").join("hashes").join(&file));
+        }
+        let legacy = (*category == "game").then(|| wad_root.join("files.txt"));
+
+        let mut lines: BTreeSet<String> = fresh.clone();
+        for site in sites.iter().chain(legacy.iter()) {
+            for line in std::fs::read_to_string(site).unwrap_or_default().lines() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
                 }
-                // A bare line means whichever universe its file is for.
-                _ => {
-                    let bucket = if is_fnv_file { &mut names } else { &mut wad };
-                    bucket.insert(line.to_string());
+                // A pre-standard `<hex> <name>` row keeps only its name half.
+                let name = match line.split_once(char::is_whitespace) {
+                    Some((hex, rest)) if is_hash_hex(hex) && !rest.trim().is_empty() => rest.trim(),
+                    _ => line,
+                };
+                lines.insert(name.to_string());
+            }
+        }
+        if lines.is_empty() {
+            continue;
+        }
+        for site in &sites {
+            if let Some(dir) = site.parent() {
+                if let Err(e) = std::fs::create_dir_all(dir) {
+                    tracing::warn!("could not create {}: {e}", dir.display());
+                    continue;
                 }
             }
+            write_name_list(site, &lines);
         }
     }
 
-    let before = (wad.len(), names.len());
-    for (hex, captured) in map {
-        let bucket = if hex.len() == 8 { &mut names } else { &mut wad };
-        bucket.insert(captured.clone());
+    if let Some(root) = &pkg {
+        write_hashtable_manifest(root);
     }
-    if (wad.len(), names.len()) == before {
-        return;
-    }
-
-    write_name_list(&files_txt, &wad);
-    write_name_list(&hashes_txt, &names);
 }
 
-/// Write one name per line, or remove the file when there is nothing to record.
+/// Declare every table present under `META/hashes/` in `META/info.json`.
+///
+/// The manifest is authoritative: the standard says tools do not auto-discover tables
+/// from file names, so a table nothing declares is a table nothing reads. Written from
+/// what is on disk rather than from what this conversion produced, so a category
+/// recorded by an earlier run stays declared.
+fn write_hashtable_manifest(pkg_root: &Path) {
+    let info_path = pkg_root.join("META").join("info.json");
+    let Ok(text) = std::fs::read_to_string(&info_path) else {
+        return;
+    };
+    let Ok(mut info) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return;
+    };
+    let Some(obj) = info.as_object_mut() else {
+        return;
+    };
+
+    let mut tables = Vec::new();
+    for (category, algorithm, bits) in HASH_CATEGORIES {
+        let rel = format!("META/hashes/{}", hash_table_name(category));
+        if !pkg_root.join(&rel).is_file() {
+            continue;
+        }
+        tables.push(serde_json::json!({
+            "Path": rel,
+            "Category": category,
+            "Algorithm": algorithm,
+            "Bits": bits,
+        }));
+    }
+
+    // Omitted when empty, so a mod with nothing to declare looks untouched to a tool
+    // that predates the field.
+    if tables.is_empty() {
+        obj.remove("Hashtables");
+    } else {
+        obj.insert("Hashtables".to_string(), serde_json::Value::Array(tables));
+    }
+
+    match serde_json::to_string_pretty(&info) {
+        Ok(out) => {
+            if let Err(e) = std::fs::write(&info_path, out) {
+                tracing::warn!("could not write {}: {e}", info_path.display());
+            }
+        }
+        Err(e) => tracing::warn!("could not encode {}: {e}", info_path.display()),
+    }
+}
+
+/// Write one name per line, LF, no trailing hash column.
 fn write_name_list(path: &Path, lines: &std::collections::BTreeSet<String>) {
     if lines.is_empty() {
         return;
@@ -375,37 +461,56 @@ fn register_files_txt(bin_path: &Path) -> usize {
     let Some(root) = mod_root(bin_path) else {
         return 0;
     };
+    let pkg = package_root(&root);
+
+    // Where a table can be, most authoritative first. The manifest in `META/info.json`
+    // is the declaration the standard requires, so it is consulted before the
+    // conventional paths; a table nothing declares is still read here, because Quartz
+    // wrote the WAD-root copies itself and knows where they are.
+    let mut tables: Vec<(PathBuf, &str)> = Vec::new();
+    if let Some(pkg_root) = &pkg {
+        for (rel, category) in declared_hashtables(pkg_root) {
+            tables.push((pkg_root.join(rel), category));
+        }
+    }
+    for (category, _, _) in HASH_CATEGORIES {
+        let file = hash_table_name(category);
+        tables.push((root.join(&file), *category));
+        if let Some(pkg_root) = &pkg {
+            tables.push((pkg_root.join("META").join("hashes").join(&file), *category));
+        }
+    }
+    // Pre-standard: one mixed file whose rows carried their own hex.
+    tables.push((root.join("files.txt"), "game"));
+
     let mut w = ritoshark_bridge::get_cached_bin_hashes().write();
     let mut added = 0usize;
-
-    // One file per universe, and the file decides how a bare line is hashed:
-    // `files.txt` lines are asset paths (xxh64), `binhashes.hashes.txt` lines are names
-    // (fnv1a32, widened - the mapper cannot collide because every WAD hash is >= 2^32).
-    for (path, is_fnv_file) in [
-        (root.join("files.txt"), false),
-        (root.join(BIN_HASHES_TXT), true),
-    ] {
+    for (path, category) in tables {
         let Ok(text) = std::fs::read_to_string(&path) else {
             continue;
         };
+        // fnv1a32 keys are widened to the mapper's u64 keyspace, which cannot collide
+        // with a WAD hash because every one of those is >= 2^32.
+        let is_fnv = category != "game";
         for line in text.lines() {
             let line = line.trim();
             if line.is_empty() {
                 continue;
             }
             let (hash, resolved) = match line.split_once(char::is_whitespace) {
-                // A legacy `<hex> <name>` row from before the split. Still read, so a
-                // mod written by an older Quartz keeps resolving.
+                // A legacy `<hex> <name>` row. Still read, so a mod written by an older
+                // Quartz keeps resolving until something rewrites it.
                 Some((hex, rest)) if is_hash_hex(hex) && !rest.trim().is_empty() => {
                     let Ok(h) = u64::from_str_radix(hex, 16) else {
                         continue;
                     };
                     (h, rest.trim())
                 }
-                _ if is_fnv_file => (quartz_lib::hash::fnv1a(line) as u64, line),
+                _ if is_fnv => (quartz_lib::hash::fnv1a(line) as u64, line),
                 _ => (quartz_lib::wad::path_hash(line), line),
             };
-            // Gap-fill only: a name from the trailer or the real dictionary wins.
+            // First occurrence wins, per the standard, and a name from the trailer or
+            // the real dictionary beats anything here.
             if w.get(hash).is_none() {
                 w.insert(hash, resolved.to_string());
                 added += 1;
@@ -413,9 +518,40 @@ fn register_files_txt(bin_path: &Path) -> usize {
         }
     }
     if added > 0 {
-        tracing::info!("resolved {added} name(s) from hash lists at {}", root.display());
+        tracing::info!("resolved {added} name(s) from hashtables at {}", root.display());
     }
     added
+}
+
+/// The tables `META/info.json` declares, as `(path relative to the package root, category)`.
+///
+/// An entry whose category this build does not know is skipped rather than guessed at,
+/// which is what the standard asks of a reader; the file itself is left untouched.
+fn declared_hashtables(pkg_root: &Path) -> Vec<(String, &'static str)> {
+    let Ok(text) = std::fs::read_to_string(pkg_root.join("META").join("info.json")) else {
+        return Vec::new();
+    };
+    let Ok(info) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    let Some(entries) = info.get("Hashtables").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    for entry in entries {
+        let (Some(path), Some(category)) = (
+            entry.get("Path").and_then(|v| v.as_str()),
+            entry.get("Category").and_then(|v| v.as_str()),
+        ) else {
+            continue;
+        };
+        let Some((known, _, _)) = HASH_CATEGORIES.iter().find(|(c, _, _)| *c == category) else {
+            continue;
+        };
+        out.push((path.to_string(), *known));
+    }
+    out
 }
 
 /// The mod folder a bin sits in: the directory holding `data/` or `assets/`.
@@ -2059,29 +2195,34 @@ fn unzip_fantome(archive_path: &Path) -> Result<String, String> {
 /// round-trips to the same filename. (LtMAO instead renames the archive to
 /// `<Name> V<Version> by <Author>` out of info.json, which silently changes the
 /// file name on every repack — we deliberately don't.)
-/// Copy every hash list found under `dir` up into the mod's `META/`.
+/// Lift every hashtable found under `dir` into `META/hashes/` and declare it.
 ///
-/// The lists are written at the WAD root, next to the assets they name, which is where a
-/// tool that opens one WAD expects them. A fantome also wants them in `META/`, because
-/// that is the one place a reader can look WITHOUT knowing the mod's WAD layout, and it
-/// is what the community spec asks for.
+/// The tables are written at each WAD content root, next to the assets they name, so they
+/// travel inside a packed `.wad.client` and survive a stripped `META/`. A fantome also
+/// wants them at `META/hashes/`, because that is where the standard says they live and the
+/// only place a reader can look WITHOUT knowing the mod's WAD layout.
 ///
-/// Both copies are kept: the WAD-root one travels with the WAD if it is ever extracted
-/// on its own, the META one describes the package. Contents are unioned per universe, so
-/// a multi-WAD mod gets one complete list rather than the last WAD's.
-///
-/// Never destructive: an existing META list is merged into, not replaced.
+/// Both copies are kept. Contents are unioned per category, so a multi-WAD mod gets one
+/// complete table rather than the last WAD's, and an existing META table is merged into
+/// rather than replaced.
 fn hydrate_meta_hash_lists(dir: &Path) {
     use std::collections::BTreeSet;
 
-    let meta = dir.join("META");
+    let hashes_dir = dir.join("META").join("hashes");
     let mut all = Vec::new();
     walk_all(dir, &mut all);
 
-    for universe in ["files.txt", BIN_HASHES_TXT] {
+    for (category, _, _) in HASH_CATEGORIES {
+        let file = hash_table_name(category);
+        // `files.txt` is the pre-standard mixed table; its asset paths belong to `game`.
+        let legacy = *category == "game";
+
         let mut lines: BTreeSet<String> = BTreeSet::new();
         for f in &all {
-            if f.file_name().and_then(|n| n.to_str()) != Some(universe) {
+            let Some(found) = f.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if found != file && !(legacy && found == "files.txt") {
                 continue;
             }
             for line in std::fs::read_to_string(f).unwrap_or_default().lines() {
@@ -2089,26 +2230,36 @@ fn hydrate_meta_hash_lists(dir: &Path) {
                 if line.is_empty() {
                     continue;
                 }
-                // A legacy `<hex> <name>` row keeps only its name half: the file it now
-                // lives in already says which hash function applies.
-                let value = match line.split_once(char::is_whitespace) {
+                // A legacy `<hex> <name>` row keeps only its name half, and only when the
+                // hex width matches this category: 16 is xxh64, 8 is fnv1a32.
+                let name = match line.split_once(char::is_whitespace) {
                     Some((hex, rest)) if is_hash_hex(hex) && !rest.trim().is_empty() => {
+                        let wide = hex.len() == 16;
+                        if wide != (*category == "game") {
+                            continue;
+                        }
                         rest.trim()
                     }
-                    _ => line,
+                    _ if legacy && found == "files.txt" => line,
+                    _ if found == file => line,
+                    _ => continue,
                 };
-                lines.insert(value.to_string());
+                lines.insert(name.to_string());
             }
         }
         if lines.is_empty() {
             continue;
         }
-        if let Err(e) = std::fs::create_dir_all(&meta) {
-            tracing::warn!("could not create {}: {e}", meta.display());
+        if let Err(e) = std::fs::create_dir_all(&hashes_dir) {
+            tracing::warn!("could not create {}: {e}", hashes_dir.display());
             return;
         }
-        write_name_list(&meta.join(universe), &lines);
+        write_name_list(&hashes_dir.join(&file), &lines);
     }
+
+    // Declare whatever ended up there. Without this the tables are invisible: the
+    // standard is explicit that tools do not auto-discover them by file name.
+    write_hashtable_manifest(dir);
 }
 
 fn zip_fantome(dir: &Path) -> Result<String, String> {
