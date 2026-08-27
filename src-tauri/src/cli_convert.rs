@@ -1160,8 +1160,19 @@ fn unpack_modpkg(archive_path: &Path) -> Result<String, String> {
     for (layer_idx, layer_name) in &layer_names {
         for (wad_idx, wad_name) in &wad_names {
             for key in pkg.chunks_for_wad_layer(*wad_idx, *layer_idx) {
-                let Some(rel) = paths.get(&key.path) else {
-                    continue;
+                // The path table is keyed by `xxh64(path string)`, but a HEX-named chunk
+                // records the PARSED value as its hash, so the two never match and the
+                // lookup misses for every such chunk. Skipping on a miss silently
+                // dropped them: an archive whose paths were lost unpacked to almost
+                // nothing. A chunk with no resolvable path IS its hash, so the hex form
+                // is the name, and it round-trips back to exactly this chunk on repack.
+                let hex;
+                let rel = match paths.get(&key.path) {
+                    Some(p) => p,
+                    None => {
+                        hex = format!("{:016x}", key.path.value());
+                        &hex
+                    }
                 };
                 // The meta folder describes the package, and the marker above already
                 // carries it; the builder regenerates those chunks on repack.
