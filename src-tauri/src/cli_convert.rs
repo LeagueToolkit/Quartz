@@ -292,10 +292,21 @@ const HASH_CATEGORIES: &[(&str, &str, u32)] = &[
     ("binhashes", "fnv1a_32", 32),
 ];
 
-/// The table file name for a category. `{category}.hashes.txt` is the convention the
-/// standard uses; the manifest is what actually locates a table.
+/// The table file name for a category.
+///
+/// `{category}.hashes.txt` for the fnv1a32 categories, but the asset-path table stays
+/// `files.txt`. That name predates the `{category}.hashes.txt` convention and the rest of
+/// the ecosystem already reads it: Celestial looks for `META/files.txt` and a WAD-root
+/// copy, and renaming it silently cut the two tools apart. The convention was introduced
+/// alongside the OTHER hash universes, which had no file at all before it.
+///
+/// Only the name is legacy. The contents follow the standard either way: one name per
+/// line, no hash column.
 fn hash_table_name(category: &str) -> String {
-    format!("{category}.hashes.txt")
+    match category {
+        "game" => "files.txt".to_string(),
+        _ => format!("{category}.hashes.txt"),
+    }
 }
 
 /// The package root: the nearest ancestor holding `META/info.json`.
@@ -340,16 +351,19 @@ fn record_captured_names(bin_path: &Path, captured: &quartz_lib::bin::hash_captu
         };
         let file = hash_table_name(category);
 
-        // Every place this category can already be recorded, including the pre-standard
-        // `files.txt` so an older mod's names migrate on the first rewrite.
+        // Every place this category can already be recorded. The asset table keeps its
+        // historical home at `META/` rather than `META/hashes/`, because that is where
+        // the rest of the ecosystem looks for it.
         let mut sites: Vec<PathBuf> = vec![wad_root.join(&file)];
         if let Some(root) = &pkg {
-            sites.push(root.join("META").join("hashes").join(&file));
+            sites.push(match *category {
+                "game" => root.join("META").join(&file),
+                _ => root.join("META").join("hashes").join(&file),
+            });
         }
-        let legacy = (*category == "game").then(|| wad_root.join("files.txt"));
 
         let mut lines: BTreeSet<String> = fresh.clone();
-        for site in sites.iter().chain(legacy.iter()) {
+        for site in &sites {
             for line in std::fs::read_to_string(site).unwrap_or_default().lines() {
                 let line = line.trim();
                 if line.is_empty() {
@@ -402,7 +416,13 @@ fn write_hashtable_manifest(pkg_root: &Path) {
 
     let mut tables = Vec::new();
     for (category, algorithm, bits) in HASH_CATEGORIES {
-        let rel = format!("META/hashes/{}", hash_table_name(category));
+        // The asset table sits at `META/files.txt`, its historical home; the rest go in
+        // `META/hashes/`. The manifest records wherever each one actually is.
+        let file = hash_table_name(category);
+        let rel = match *category {
+            "game" => format!("META/{file}"),
+            _ => format!("META/hashes/{file}"),
+        };
         if !pkg_root.join(&rel).is_file() {
             continue;
         }
@@ -477,11 +497,10 @@ fn register_files_txt(bin_path: &Path) -> usize {
         let file = hash_table_name(category);
         tables.push((root.join(&file), *category));
         if let Some(pkg_root) = &pkg {
+            tables.push((pkg_root.join("META").join(&file), *category));
             tables.push((pkg_root.join("META").join("hashes").join(&file), *category));
         }
     }
-    // Pre-standard: one mixed file whose rows carried their own hex.
-    tables.push((root.join("files.txt"), "game"));
 
     let mut w = ritoshark_bridge::get_cached_bin_hashes().write();
     let mut added = 0usize;
@@ -1956,9 +1975,7 @@ fn wad_to_modpkg(wad_path: &Path) -> Result<String, String> {
     let game_table = hash_table_name("game");
     for candidate in [
         parent.join(&game_table),
-        parent.join("META").join("hashes").join(&game_table),
-        parent.join("files.txt"),
-        parent.join("META").join("files.txt"),
+        parent.join("META").join(&game_table),
     ] {
         if let Ok(text) = std::fs::read_to_string(&candidate) {
             known.extend(parse_files_txt(&text));
@@ -2008,14 +2025,13 @@ fn fantome_to_modpkg(archive_path: &Path) -> Result<String, String> {
         let lower = rel_str.to_ascii_lowercase();
 
         // A hashtable anywhere in the archive names assets that exist in no dictionary,
-        // so it is READ here. `game.hashes.txt` and the pre-standard `files.txt` both
-        // hold asset paths; the fnv1a32 tables name bin internals, which cannot name a
-        // chunk, so those are left to be packed with everything else and travel inside
-        // the WAD.
+        // so it is READ here. `files.txt` holds the asset paths; the fnv1a32 tables name
+        // bin internals, which cannot name a chunk, so those are left to be packed with
+        // everything else and travel inside the WAD.
         //
         // Both the META copy and the WAD-root copy are read, and the names are what stop
         // a chunk landing hash-named in the modpkg.
-        if lower.ends_with("files.txt") || lower.ends_with("game.hashes.txt") {
+        if lower.ends_with("files.txt") {
             use std::io::Read;
             let mut text = String::new();
             if entry.read_to_string(&mut text).is_ok() {
@@ -2222,21 +2238,21 @@ fn unzip_fantome(archive_path: &Path) -> Result<String, String> {
 fn hydrate_meta_hash_lists(dir: &Path) {
     use std::collections::BTreeSet;
 
-    let hashes_dir = dir.join("META").join("hashes");
+    let meta = dir.join("META");
     let mut all = Vec::new();
     walk_all(dir, &mut all);
 
     for (category, _, _) in HASH_CATEGORIES {
         let file = hash_table_name(category);
-        // `files.txt` is the pre-standard mixed table; its asset paths belong to `game`.
-        let legacy = *category == "game";
+        // The asset table's own name IS `files.txt`, so nothing extra to look for.
+        let is_game = *category == "game";
 
         let mut lines: BTreeSet<String> = BTreeSet::new();
         for f in &all {
             let Some(found) = f.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            if found != file && !(legacy && found == "files.txt") {
+            if found != file {
                 continue;
             }
             for line in std::fs::read_to_string(f).unwrap_or_default().lines() {
@@ -2248,15 +2264,14 @@ fn hydrate_meta_hash_lists(dir: &Path) {
                 // hex width matches this category: 16 is xxh64, 8 is fnv1a32.
                 let name = match line.split_once(char::is_whitespace) {
                     Some((hex, rest)) if is_hash_hex(hex) && !rest.trim().is_empty() => {
-                        let wide = hex.len() == 16;
-                        if wide != (*category == "game") {
+                        // A pre-standard row carried its own hex. Keep it only when the
+                        // width matches this category: 16 is xxh64, 8 is fnv1a32.
+                        if (hex.len() == 16) != is_game {
                             continue;
                         }
                         rest.trim()
                     }
-                    _ if legacy && found == "files.txt" => line,
-                    _ if found == file => line,
-                    _ => continue,
+                    _ => line,
                 };
                 lines.insert(name.to_string());
             }
@@ -2264,11 +2279,19 @@ fn hydrate_meta_hash_lists(dir: &Path) {
         if lines.is_empty() {
             continue;
         }
-        if let Err(e) = std::fs::create_dir_all(&hashes_dir) {
-            tracing::warn!("could not create {}: {e}", hashes_dir.display());
-            return;
+        // `META/files.txt` for the asset table, `META/hashes/` for the rest.
+        let dest = if is_game {
+            meta.join(&file)
+        } else {
+            meta.join("hashes").join(&file)
+        };
+        if let Some(parent) = dest.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                tracing::warn!("could not create {}: {e}", parent.display());
+                return;
+            }
         }
-        write_name_list(&hashes_dir.join(&file), &lines);
+        write_name_list(&dest, &lines);
     }
 
     // Declare whatever ended up there. Without this the tables are invisible: the
