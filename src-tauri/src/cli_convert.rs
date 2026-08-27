@@ -1439,16 +1439,12 @@ struct ModpkgAsk {
     description: Option<String>,
 }
 
-/// Ask for the metadata a modpkg carries, defaulting to what the source already knew.
+/// Read the metadata a modpkg carries out of a source that already has it.
 ///
-/// A `.wad.client` knows nothing about itself, so every field is asked cold. A
-/// `.fantome` has an `info.json`, but its fields are NOT mapped across as-is: they only
-/// seed the defaults, and the user still confirms each one, because the two formats do
-/// not describe a mod the same way.
-///
-/// Falls back to the defaults without asking when there is no console to ask through
-/// (a piped or scripted run), so a conversion still completes unattended.
-fn ask_modpkg_metadata(fallback_name: &str, defaults: Option<&serde_json::Value>) -> ModpkgAsk {
+/// A `.fantome` ships `META/info.json`, so nothing needs asking: the values are taken
+/// as they are. Only the SHAPE differs between the formats (a modpkg wants a slug, a
+/// semver and an author list), and `write_modpkg_from_wads` handles that.
+fn read_modpkg_metadata(fallback_name: &str, defaults: Option<&serde_json::Value>) -> ModpkgAsk {
     let field = |key: &str| -> Option<String> {
         defaults
             .and_then(|v| v.get(key))
@@ -1457,62 +1453,52 @@ fn ask_modpkg_metadata(fallback_name: &str, defaults: Option<&serde_json::Value>
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
-    let default_name = field("Name").unwrap_or_else(|| fallback_name.to_string());
-    let default_author = field("Author").unwrap_or_default();
-    let default_version = field("Version").unwrap_or_else(|| "1.0.0".to_string());
-    let default_description = field("Description").unwrap_or_default();
+    ModpkgAsk {
+        display_name: field("Name").unwrap_or_else(|| fallback_name.to_string()),
+        author: field("Author").unwrap_or_else(|| "Unknown".to_string()),
+        version: coerce_version(&field("Version").unwrap_or_else(|| "1.0.0".to_string())),
+        description: field("Description"),
+    }
+}
 
+/// Ask the user for the metadata a modpkg carries.
+///
+/// Only for sources that carry NO metadata of their own: a bare `.wad.client` says
+/// nothing about who made it or what it is, and a modpkg has to record all of it.
+/// A `.fantome` is never asked about, since `read_modpkg_metadata` reads its info.json.
+///
+/// Falls back to the defaults without asking when there is no console to ask through
+/// (a piped or scripted run), so a conversion still completes unattended.
+fn ask_modpkg_metadata(fallback_name: &str) -> ModpkgAsk {
+    // The file name is the only thing a bare WAD offers, so it seeds the mod name and
+    // nothing else has a default worth suggesting.
     if !ensure_console() {
         return ModpkgAsk {
-            display_name: default_name,
-            author: if default_author.is_empty() {
-                "Unknown".to_string()
-            } else {
-                default_author
-            },
-            version: coerce_version(&default_version),
-            description: Some(default_description).filter(|s| !s.is_empty()),
+            display_name: fallback_name.to_string(),
+            author: "Unknown".to_string(),
+            version: semver::Version::new(1, 0, 0),
+            description: None,
         };
     }
 
     println!();
     println!("Packing a modpkg. Press Enter to accept a [default].");
 
-    let display_name = prompt("  Mod name", Some(&default_name)).unwrap_or(default_name);
-    let author = prompt(
-        "  Author",
-        Some(if default_author.is_empty() {
-            "Unknown"
-        } else {
-            &default_author
-        }),
-    )
-    .unwrap_or_else(|| "Unknown".to_string());
-    let version_raw =
-        prompt("  Version", Some(&default_version)).unwrap_or_else(|| default_version.clone());
+    let display_name =
+        prompt("  Mod name", Some(fallback_name)).unwrap_or_else(|| fallback_name.to_string());
+    let author = prompt("  Author", Some("Unknown")).unwrap_or_else(|| "Unknown".to_string());
+    let version_raw = prompt("  Version", Some("1.0.0")).unwrap_or_else(|| "1.0.0".to_string());
     // Description is the one optional field, so an empty answer is accepted as "none"
-    // instead of being re-asked the way `prompt` would.
+    // rather than being re-asked the way `prompt` would.
     let description = {
         use std::io::Write;
-        if default_description.is_empty() {
-            print!("  Description (optional): ");
-        } else {
-            print!("  Description (optional) [{default_description}]: ");
-        }
+        print!("  Description (optional): ");
         let _ = std::io::stdout().flush();
         let mut line = String::new();
-        let answered = match std::io::stdin().read_line(&mut line) {
-            Ok(0) | Err(_) => default_description.clone(),
-            Ok(_) => {
-                let answer = line.trim();
-                if answer.is_empty() {
-                    default_description.clone()
-                } else {
-                    answer.to_string()
-                }
-            }
-        };
-        Some(answered).filter(|s| !s.is_empty())
+        match std::io::stdin().read_line(&mut line) {
+            Ok(0) | Err(_) => None,
+            Ok(_) => Some(line.trim().to_string()).filter(|s| !s.is_empty()),
+        }
     };
     println!();
 
@@ -1666,7 +1652,7 @@ fn wad_to_modpkg(wad_path: &Path) -> Result<String, String> {
     let base = wad_name[..wad_name.len() - ".wad.client".len()].to_string();
     let champion = (!base.contains('.') && !base.contains('_')).then(|| base.clone());
 
-    let ask = ask_modpkg_metadata(&base, None);
+    let ask = ask_modpkg_metadata(&base);
     let parent = wad_path.parent().unwrap_or_else(|| Path::new("."));
     let out_path = unique_file(parent, &sanitize_file_name(&ask.display_name), "modpkg");
 
@@ -1678,8 +1664,8 @@ fn wad_to_modpkg(wad_path: &Path) -> Result<String, String> {
 /// Convert a `.fantome` into a `.modpkg` beside it.
 ///
 /// A fantome is a zip of `WAD/<name>.wad.client` payloads (and/or loose `RAW/`
-/// content) plus `META/info.json`. The info.json is read only to SEED the prompts:
-/// modpkg describes a mod its own way, so the fields are confirmed rather than copied.
+/// content) plus `META/info.json`. It already carries its name, author and version, so
+/// the conversion runs straight through without asking anything.
 fn fantome_to_modpkg(archive_path: &Path) -> Result<String, String> {
     let file = std::fs::File::open(archive_path).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
@@ -1787,7 +1773,13 @@ fn fantome_to_modpkg(archive_path: &Path) -> Result<String, String> {
         _ => None,
     };
 
-    let ask = ask_modpkg_metadata(&file_stem(archive_path), info.as_ref());
+    // With an info.json the fantome already knows what it is, so nothing is asked. A
+    // fantome missing one (or carrying an unreadable one) is the same situation as a
+    // bare WAD, so it falls back to asking rather than inventing an author.
+    let ask = match info.as_ref() {
+        Some(info) => read_modpkg_metadata(&file_stem(archive_path), Some(info)),
+        None => ask_modpkg_metadata(&file_stem(archive_path)),
+    };
     let parent = archive_path.parent().unwrap_or_else(|| Path::new("."));
     let out_path = unique_file(parent, &sanitize_file_name(&ask.display_name), "modpkg");
 
