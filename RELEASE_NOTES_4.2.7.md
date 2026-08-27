@@ -3,6 +3,7 @@
 ## What's new
 
 - Right-click a `.modpkg` and pick "Unpack Modpkg" to dump it to a folder beside it. Right-click that folder and pick "Pack Modpkg" to rebuild the package under its original name.
+- Files inside a modpkg whose original path was never recorded now come out with a real extension (`.dds`, `.bin`, `.skn` and so on) instead of a bare hash, so you can see what they are and open them. Repacking still puts them back exactly where they were.
 - Right-click a `.fantome` and pick "Convert to .modpkg". A modpkg needs a mod name, author and version, so Quartz asks for them, using the fantome's own info as the defaults. Press Enter to accept each one.
 - Right-click a `.wad.client` and pick "Convert to .modpkg". A bare WAD says nothing about who made it, so the same details are asked for.
 
