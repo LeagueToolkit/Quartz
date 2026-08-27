@@ -40,6 +40,10 @@ chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "ico"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# `.modpkg` unpack/pack for the Explorer menu. Pinned to the same version
+# Celestial vendors, so a package one tool writes is one the other reads.
+ltk_modpkg = "0.8.0"
+semver = "1"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

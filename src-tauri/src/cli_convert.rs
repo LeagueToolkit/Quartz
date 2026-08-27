@@ -104,6 +104,7 @@ fn is_convert_verb(verb: &str) -> bool {
             | "tex2ddsdir" | "dds2texdir" | "tex2pngdir" | "dds2pngdir" | "png2texdir" | "png2ddsdir"
             | "sco2scb" | "sco2scbdir"
             | "unzip-fantome" | "zip-fantome"
+            | "unpack-modpkg" | "pack-modpkg"
             // Listed in the menu but their conversion logic lands in a later slice.
             | "noskinlite"
     )
@@ -158,6 +159,8 @@ fn dispatch(verb: &str, path: &Path) -> Result<String, String> {
 
         "unzip-fantome" => unzip_fantome(path),
         "zip-fantome" => zip_fantome(path),
+        "unpack-modpkg" => unpack_modpkg(path),
+        "pack-modpkg" => pack_modpkg(path),
 
         _ => Err(format!("unknown verb '{verb}'")),
     }
@@ -1058,7 +1061,289 @@ fn file_stem(p: &Path) -> String {
         .unwrap_or_default()
 }
 
+/* ── .modpkg <-> folder ──────────────────────────────────────────────────── */
+
+/// The marker naming the folder a `.modpkg` was unpacked from.
+///
+/// Written at the root of the unpacked folder so `pack-modpkg` can rebuild the
+/// package under its ORIGINAL name and metadata, rather than guessing from the folder.
+/// Also the thing that identifies the folder as repackable at all.
+const MODPKG_MARKER: &str = ".modpkg-origin.json";
+
+/// Unpack a `.modpkg` into a sibling folder.
+///
+/// The folder is named `_<stem>`. The leading underscore keeps the unpacked tree
+/// distinguishable from the archive's own stem, and is a one-character prefix so deep
+/// chunk paths have as much room as possible before Windows' path limits bite.
+///
+/// Layout mirrors what the package holds, so the round-trip is mechanical:
+///   `<layer>/<Wad>.wad.client/<chunk path>`
+fn unpack_modpkg(archive_path: &Path) -> Result<String, String> {
+    let file = std::fs::File::open(archive_path).map_err(|e| e.to_string())?;
+    let mut pkg = ltk_modpkg::Modpkg::mount_from_reader(std::io::BufReader::new(file))
+        .map_err(|e| format!("not a readable modpkg: {e}"))?;
+
+    let parent = archive_path.parent().unwrap_or_else(|| Path::new("."));
+    let out_dir = unique_dir(parent, &format!("_{}", file_stem(archive_path)));
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+
+    // The metadata is what lets `pack-modpkg` rebuild an identical package. Stored as
+    // JSON beside the content rather than msgpack, so a human can read and edit it.
+    let metadata = pkg.load_metadata().map_err(|e| e.to_string())?;
+    let origin = serde_json::json!({
+        "archive_name": name(archive_path),
+        "metadata": metadata,
+    });
+    std::fs::write(
+        out_dir.join(MODPKG_MARKER),
+        serde_json::to_string_pretty(&origin).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Enumerate by the (WAD, layer) grid rather than by `chunk.wad()`. A chunk can be
+    // registered under SEVERAL WADs, and `chunk.wad()` reports only one of them, so
+    // walking the chunk map would drop every extra registration and the repack would
+    // put the chunk back under a single WAD. `chunks_for_wad_layer` lists a shared
+    // chunk under each WAD that claims it, which is what the round-trip needs.
+    //
+    // The tables are snapshotted first because the chunk reads below need `&mut pkg`.
+    let paths = pkg.chunk_paths().clone();
+    // Resolve each layer's TABLE POSITION by name. `layers()` is a HashMap, so its
+    // iteration order says nothing about the on-disk index; pairing it with an
+    // enumeration counter would address the wrong layer whenever there is more than one.
+    let layer_list: Vec<String> = pkg.layers().values().map(|l| l.name.clone()).collect();
+    let layer_names: Vec<(ltk_modpkg::LayerIndex, String)> = layer_list
+        .into_iter()
+        .filter_map(|n| pkg.layer_index(&n).map(|i| (i, n)))
+        .collect();
+    let wad_names: Vec<(ltk_modpkg::WadIndex, String)> = (0..pkg.wad_count())
+        .filter_map(|i| {
+            let idx = ltk_modpkg::WadIndex::new(i as u32);
+            pkg.wad_name_for_index(idx).map(|n| (idx, n.to_string()))
+        })
+        .collect();
+
+    // `(destination, key)` pairs, gathered before any read so the loads can borrow
+    // `pkg` mutably without fighting the tables above.
+    let mut planned: Vec<(PathBuf, ltk_modpkg::ChunkKey)> = Vec::new();
+    for (layer_idx, layer_name) in &layer_names {
+        for (wad_idx, wad_name) in &wad_names {
+            for key in pkg.chunks_for_wad_layer(*wad_idx, *layer_idx) {
+                let Some(rel) = paths.get(&key.path) else {
+                    continue;
+                };
+                // The meta folder describes the package, and the marker above already
+                // carries it; the builder regenerates those chunks on repack.
+                if rel == ltk_modpkg::METADATA_FOLDER_NAME
+                    || rel.starts_with(&format!("{}/", ltk_modpkg::METADATA_FOLDER_NAME))
+                {
+                    continue;
+                }
+                let mut out_path = out_dir.join(layer_name);
+                out_path.push(wad_name);
+                // Rebuild the chunk path component by component, dropping anything that
+                // could escape the output directory.
+                for seg in rel.split('/') {
+                    if seg.is_empty() || seg == ".." || seg == "." {
+                        continue;
+                    }
+                    out_path.push(seg);
+                }
+                planned.push((out_path, *key));
+            }
+        }
+    }
+
+    let mut extracted = 0usize;
+    for (out_path, key) in planned {
+        let Ok(data) = pkg.load_chunk_decompressed(key) else {
+            continue;
+        };
+        if let Some(dir) = out_path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&out_path, &data).map_err(|e| e.to_string())?;
+        extracted += 1;
+    }
+
+    Ok(format!(
+        "{} -> {}/ ({extracted} files)",
+        name(archive_path),
+        name(&out_dir)
+    ))
+}
+
+/// Repack a folder produced by [`unpack_modpkg`] back into its `.modpkg`.
+///
+/// Writes the archive under the name recorded in the marker and OVERWRITES it, so the
+/// unpack -> edit -> pack round-trip lands on the same file the user started from
+/// rather than accumulating copies.
+fn pack_modpkg(dir: &Path) -> Result<String, String> {
+    use ltk_modpkg::builder::{ModpkgBuilder, ModpkgChunkBuilder, ModpkgLayerBuilder};
+    use ltk_modpkg::ModpkgCompression;
+
+    if !dir.is_dir() {
+        return Err(format!("{} is not a folder", name(dir)));
+    }
+    let marker_path = dir.join(MODPKG_MARKER);
+    if !marker_path.exists() {
+        return Err(format!(
+            "no {MODPKG_MARKER} inside {}: unpack a .modpkg first",
+            name(dir)
+        ));
+    }
+    let marker: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&marker_path).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("{MODPKG_MARKER} is invalid: {e}"))?;
+
+    let metadata: ltk_modpkg::ModpkgMetadata = match marker.get("metadata") {
+        Some(v) if !v.is_null() => serde_json::from_value(v.clone())
+            .map_err(|e| format!("{MODPKG_MARKER} metadata is invalid: {e}"))?,
+        // A hand-written marker may carry only `archive_name`; the format still needs
+        // metadata, so fall back to the defaults rather than refusing to pack.
+        _ => ltk_modpkg::ModpkgMetadata::default(),
+    };
+    let archive_name = marker
+        .get("archive_name")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("{}.modpkg", file_stem(dir).trim_start_matches('_')));
+
+    // Layer PRIORITY is what decides which layer wins for a chunk present in more
+    // than one, and it lives only in the metadata. Building every layer at the default
+    // priority would silently flatten a multi-layer mod's ordering on the round-trip,
+    // so the priorities are read back out before the layers are declared.
+    let priorities: std::collections::HashMap<String, i32> = metadata
+        .layers
+        .iter()
+        .map(|l| (l.name.clone(), l.priority))
+        .collect();
+
+    // Layer directories are the top level; each holds one directory per WAD.
+    let mut builder = ModpkgBuilder::default().with_metadata(metadata);
+    let mut chunk_data: std::collections::HashMap<ltk_modpkg::ChunkKey, Vec<u8>> =
+        std::collections::HashMap::new();
+    let mut declared: Vec<String> = Vec::new();
+
+    let Ok(layer_entries) = std::fs::read_dir(dir) else {
+        return Err(format!("cannot read {}", name(dir)));
+    };
+    for layer_entry in layer_entries.flatten() {
+        let layer_dir = layer_entry.path();
+        if !layer_dir.is_dir() {
+            continue;
+        }
+        let layer_name = name(&layer_dir);
+
+        if !declared.contains(&layer_name) {
+            let mut layer = if layer_name == ltk_modpkg::BASE_LAYER_NAME {
+                ModpkgLayerBuilder::base()
+            } else {
+                ModpkgLayerBuilder::new(&layer_name)
+                    .map_err(|e| format!("invalid layer name {layer_name:?}: {e}"))?
+            };
+            if let Some(priority) = priorities.get(&layer_name) {
+                layer = layer.with_priority(*priority);
+            }
+            builder = builder.with_layer(layer);
+            declared.push(layer_name.clone());
+        }
+
+        let Ok(wad_entries) = std::fs::read_dir(&layer_dir) else {
+            continue;
+        };
+        for wad_entry in wad_entries.flatten() {
+            let wad_dir = wad_entry.path();
+            if !wad_dir.is_dir() {
+                continue;
+            }
+            let wad_name = name(&wad_dir);
+
+            let mut files = Vec::new();
+            walk_all(&wad_dir, &mut files);
+            for abs in files {
+                let Ok(rel_path) = abs.strip_prefix(&wad_dir) else {
+                    continue;
+                };
+                let rel = rel_path.to_string_lossy().replace('\\', "/");
+                let Ok(bytes) = std::fs::read(&abs) else {
+                    continue;
+                };
+
+                // A 16-hex stem IS the chunk hash, not something to hash: hashing the
+                // hex STRING would move the chunk somewhere the game never looks.
+                let file_name = rel.rsplit('/').next().unwrap_or(&rel);
+                let stem = file_name.split('.').next().unwrap_or(file_name);
+                let is_hex =
+                    stem.len() == 16 && stem.bytes().all(|b| b.is_ascii_hexdigit());
+                let cb = if is_hex {
+                    ModpkgChunkBuilder::new()
+                        .with_hashed_chunk_name(&rel)
+                        .map_err(|e| format!("invalid chunk name {rel:?}: {e}"))?
+                } else {
+                    ModpkgChunkBuilder::new().with_path(&rel)
+                };
+                let ext = Path::new(&rel).extension().and_then(|e| e.to_str());
+                let cb = cb
+                    .with_compression(ModpkgCompression::for_extension(ext))
+                    .with_layer(&layer_name)
+                    .with_wad(&wad_name);
+
+                chunk_data.insert(cb.key(), bytes);
+                builder = builder.with_chunk(cb);
+            }
+        }
+    }
+
+    if chunk_data.is_empty() {
+        return Err(format!("{} holds no chunks to pack", name(dir)));
+    }
+    if !declared.iter().any(|l| l == ltk_modpkg::BASE_LAYER_NAME) {
+        // The format requires a base layer even when every chunk sits elsewhere.
+        builder = builder.with_layer(ModpkgLayerBuilder::base());
+    }
+
+    let mut out = std::io::Cursor::new(Vec::<u8>::new());
+    builder
+        .build_to_writer(&mut out, |cb| {
+            // Every chunk handed to the provider was registered above, so a miss means
+            // the key derivation disagrees with itself. Fail rather than quietly
+            // writing an empty chunk that would look like a successful pack.
+            chunk_data.get(&cb.key()).cloned().ok_or_else(|| {
+                ltk_modpkg::builder::ModpkgBuilderError::InvalidChunkName(format!(
+                    "no data registered for {}",
+                    cb.path()
+                ))
+            })
+        })
+        .map_err(|e| format!("failed to build modpkg: {e}"))?;
+    let bytes = out.into_inner();
+
+    // Verify it mounts before replacing anything on disk.
+    ltk_modpkg::Modpkg::mount_from_reader(std::io::Cursor::new(bytes.as_slice()))
+        .map_err(|e| format!("rebuilt modpkg failed verification: {e}"))?;
+
+    let parent = dir.parent().unwrap_or_else(|| Path::new("."));
+    let out_path = parent.join(&archive_name);
+    let tmp_path = parent.join(format!("{archive_name}.tmp"));
+    std::fs::write(&tmp_path, &bytes).map_err(|e| e.to_string())?;
+    let _ = std::fs::remove_file(&out_path);
+    std::fs::rename(&tmp_path, &out_path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        e.to_string()
+    })?;
+
+    Ok(format!(
+        "{}/ -> {} ({} chunks)",
+        name(dir),
+        name(&out_path),
+        chunk_data.len()
+    ))
+}
+
 /* ── sco -> scb ──────────────────────────────────────────────────────────── */
+
 
 fn sco_to_scb(sco_path: &Path) -> Result<String, String> {
     let scb = quartz_lib::sco_scb::convert_one(sco_path)?;

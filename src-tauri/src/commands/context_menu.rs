@@ -32,7 +32,10 @@ mod imp {
     // Bumped 13 -> 14 for the new .fantome menu ("Unzip Fantome"); without this
     // an already-enabled install never re-registers and the new menu never shows.
     // Bumped 14 -> 15 for the folder verb "Zip Fantome".
-    const MENU_SCHEMA: u32 = 15;
+    // Bumped 15 -> 16 for the .modpkg menu ("Unpack Modpkg") and the matching
+    // folder verb ("Pack Modpkg"); without the bump an already-enabled install
+    // never re-registers and neither entry appears.
+    const MENU_SCHEMA: u32 = 16;
 
     /// A single child verb inside the Quartz submenu.
     struct Verb {
@@ -148,6 +151,8 @@ mod imp {
     )];
     // .fantome mod package (a zip) → extracted into a sibling folder.
     const FANTOME: &[Verb] = &[v("01unzipfantome", "Unzip Fantome", "unzip-fantome")];
+    // A .modpkg package, unpacked into a sibling `_<name>` folder.
+    const MODPKG: &[Verb] = &[v("01unpackmodpkg", "Unpack Modpkg", "unpack-modpkg")];
 
     // ── Folder menu ─────────────────────────────────────────────────────────
     const DIR: &[Verb] = &[
@@ -193,6 +198,9 @@ mod imp {
         ),
         // Pack a mod folder (one holding META/info.json) into a .fantome.
         v("21zipfantome", "Zip Fantome", "zip-fantome"),
+        // Repack a folder produced by "Unpack Modpkg" back into its .modpkg,
+        // overwriting the original. Refuses a folder with no origin marker.
+        v("22packmodpkg", "Pack Modpkg", "pack-modpkg"),
     ];
 
     const MENUS: &[Menu] = &[
@@ -250,6 +258,11 @@ mod imp {
         Menu {
             root: r"SystemFileAssociations\.sco\shell\Quartz",
             verbs: SCO,
+            arg: "%1",
+        },
+        Menu {
+            root: r"SystemFileAssociations\.modpkg\shell\Quartz",
+            verbs: MODPKG,
             arg: "%1",
         },
         Menu {
