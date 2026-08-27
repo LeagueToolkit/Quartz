@@ -1023,9 +1023,37 @@ fn convert_texture(src: &Path, out_ext: &str, fmt: &str) -> Result<String, Strin
     }
 
     let decoded = tex::decode_any(&bytes)?;
-    let encoded = tex::encode_texture(decoded.rgba, decoded.width, decoded.height, fmt)?;
+    // Change the CONTAINER, keep the pixel format. `fmt` only supplies the fallback
+    // tag: re-encoding every texture at it would silently re-compress a BC7 normal map
+    // as BC3, or block-compress one that shipped uncompressed, so a "convert to .tex"
+    // would quietly degrade the asset instead of rewrapping it.
+    let target = retag_format(fmt, &decoded.format);
+    let encoded = tex::encode_texture(decoded.rgba, decoded.width, decoded.height, &target)?;
     std::fs::write(&out, encoded).map_err(|e| e.to_string())?;
     Ok(format!("{} -> {}", name(src), name(&out)))
+}
+
+/// Combine the requested container with the SOURCE's pixel format.
+///
+/// `fmt` is the caller's `container:tag` default (e.g. `tex:bc3`) and `source` is what
+/// the decoder reported the input was (e.g. `dds:bc7`). The container always comes from
+/// `fmt` because that is what the user asked to convert to; the tag comes from the
+/// source so the texture keeps its own compression.
+///
+/// The source tag is dropped when the target container cannot express it: `png:rgba`
+/// names no BC format, and a `.tex` has no BC7-less equivalent to fall back to, so the
+/// caller's default is used instead.
+fn retag_format(fmt: &str, source: &str) -> String {
+    let container = fmt.split_once(':').map(|(c, _)| c).unwrap_or(fmt);
+    let source_tag = source.split_once(':').map(|(_, t)| t).unwrap_or("");
+    // The tags both containers can encode. Anything else (rgba from a PNG, or a format
+    // rs_tex cannot re-encode) falls through to the caller's default.
+    let keep = matches!(source_tag, "bc1" | "bc3" | "bc5" | "bc7" | "bgra8");
+    if keep {
+        format!("{container}:{source_tag}")
+    } else {
+        fmt.to_string()
+    }
 }
 
 fn texture_dir(dir: &Path, from_ext: &str, out_ext: &str, fmt: &str) -> Result<String, String> {

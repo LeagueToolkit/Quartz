@@ -389,6 +389,28 @@ fn encode_standard(img: &RgbaImage, format: image::ImageFormat) -> Result<Vec<u8
     Ok(out.into_inner())
 }
 
+/// Grow an image to the 4x4 minimum a BC block needs, repeating the edge pixels.
+///
+/// Only the dimensions below 4 are changed; a 1x8 becomes 4x8, not 4x4. Each new texel
+/// copies the nearest real one (clamp-to-edge), so a solid 1x1 stays that exact colour
+/// across the whole block and no new colour is invented for the encoder to average
+/// against.
+fn pad_to_block(img: &RgbaImage) -> RgbaImage {
+    let (w, h) = img.dimensions();
+    let (tw, th) = (w.max(4), h.max(4));
+    let mut out = RgbaImage::new(tw, th);
+    for y in 0..th {
+        // `w`/`h` are non-zero: the caller rejects a zero-dimension texture before
+        // getting here, so these subtractions cannot underflow.
+        let src_y = y.min(h - 1);
+        for x in 0..tw {
+            let src_x = x.min(w - 1);
+            out.put_pixel(x, y, *img.get_pixel(src_x, src_y));
+        }
+    }
+    out
+}
+
 fn tag_to_tex_format(tag: &str) -> Option<TexFormat> {
     Some(match tag {
         "bc1" => TexFormat::Bc1,
@@ -422,6 +444,28 @@ pub fn encode_texture(
         .ok_or_else(|| "Failed to build RGBA image from pixels".to_string())?;
 
     let (container, tag) = format.split_once(':').unwrap_or(("tex", "bc3"));
+
+    // BC formats encode in 4x4 blocks, so a texture smaller than that in either
+    // dimension cannot be block compressed. Riot ships such textures (1x1 fills are
+    // common), and encoding one anyway produces a file the game CRASHES on rather than
+    // rejects: a 1x1 .dds converted to a BC3 .tex is a confirmed crash.
+    //
+    // Pad up to the 4x4 minimum by repeating the edge pixels. Stretching the existing
+    // content rather than filling with transparent black keeps a 1x1 fill (the common
+    // case) exactly the same solid colour it was, and leaves every sampled texel of a
+    // 2x2 or 1x4 unchanged too.
+    if width == 0 || height == 0 {
+        return Err(format!("Texture is {width}x{height} and has no pixels"));
+    }
+    // Only the block-compressed targets are padded. PNG and JPEG have no block
+    // constraint, and bgra8 stores any size exactly, so growing those would change the
+    // output's dimensions for no reason.
+    let needs_block = !matches!(container, "png" | "jpg" | "jpeg") && tag != "bgra8";
+    let img = if needs_block && (width < 4 || height < 4) {
+        pad_to_block(&img)
+    } else {
+        img
+    };
 
     match container {
         "png" => encode_standard(&img, image::ImageFormat::Png),
