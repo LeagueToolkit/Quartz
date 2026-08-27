@@ -1156,7 +1156,10 @@ fn unpack_modpkg(archive_path: &Path) -> Result<String, String> {
 
     // `(destination, key)` pairs, gathered before any read so the loads can borrow
     // `pkg` mutably without fighting the tables above.
-    let mut planned: Vec<(PathBuf, ltk_modpkg::ChunkKey)> = Vec::new();
+    // `(destination, chunk, name came from the hash)`. The third field marks a chunk
+    // that has no recorded path, so its extension is sniffed from the bytes at write
+    // time; the bytes are not loaded yet here.
+    let mut planned: Vec<(PathBuf, ltk_modpkg::ChunkKey, bool)> = Vec::new();
     for (layer_idx, layer_name) in &layer_names {
         for (wad_idx, wad_name) in &wad_names {
             for key in pkg.chunks_for_wad_layer(*wad_idx, *layer_idx) {
@@ -1167,9 +1170,11 @@ fn unpack_modpkg(archive_path: &Path) -> Result<String, String> {
                 // nothing. A chunk with no resolvable path IS its hash, so the hex form
                 // is the name, and it round-trips back to exactly this chunk on repack.
                 let hex;
+                let mut from_hash = false;
                 let rel = match paths.get(&key.path) {
                     Some(p) => p,
                     None => {
+                        from_hash = true;
                         hex = format!("{:016x}", key.path.value());
                         &hex
                     }
@@ -1191,16 +1196,28 @@ fn unpack_modpkg(archive_path: &Path) -> Result<String, String> {
                     }
                     out_path.push(seg);
                 }
-                planned.push((out_path, *key));
+                planned.push((out_path, *key, from_hash));
             }
         }
     }
 
     let mut extracted = 0usize;
-    for (out_path, key) in planned {
+    for (mut out_path, key, from_hash) in planned {
         let Ok(data) = pkg.load_chunk_decompressed(key) else {
             continue;
         };
+        // A hash-named chunk carries no extension, which leaves a folder of opaque hex
+        // files that no tool will open by double-click. The type is still recoverable
+        // from the bytes, so it is sniffed with LeagueToolkit's own magic table (the
+        // same crate family as the modpkg reader, so both agree on what a file is).
+        //
+        // This does NOT cost the round-trip: a hex chunk name is parsed as the hash up
+        // to the first `.`, so `<hex>.dds` repacks to exactly the chunk `<hex>` did.
+        if from_hash {
+            if let Some(ext) = ltk_file::LeagueFileKind::identify_from_bytes(&data).extension() {
+                out_path.set_extension(ext);
+            }
+        }
         if let Some(dir) = out_path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }

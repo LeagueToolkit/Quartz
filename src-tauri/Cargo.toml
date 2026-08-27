@@ -43,6 +43,9 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 # `.modpkg` unpack/pack for the Explorer menu. Pinned to the same version
 # Celestial vendors, so a package one tool writes is one the other reads.
 ltk_modpkg = "0.8.0"
+# LeagueToolkit's own magic-byte file-kind table, so a chunk unpacked from a modpkg
+# gets the same extension their tools would give it rather than a second opinion.
+ltk_file = "0.2"
 semver = "1"
 
 [target.'cfg(windows)'.dependencies]
