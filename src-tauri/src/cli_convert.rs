@@ -199,10 +199,9 @@ fn bin_to_py(bin_path: &Path) -> Result<String, String> {
     let out = bin_path.with_extension("py");
     std::fs::write(&out, text).map_err(|e| e.to_string())?;
 
-    // No sidecar: the trailer we registered above already made the .py render the
-    // repathed paths readably, and py_to_bin re-captures them straight from the .py
-    // text. The reverse-map lives ONLY inside the .bin (the trailer) — nothing on the
-    // side to lose or leak.
+    // No sidecar: the trailer read above already made the .py render the repathed
+    // paths readably, and py_to_bin re-captures them straight from the .py text and
+    // records them in `files.txt`. Nothing extra to write here.
     Ok(format!("{} -> {}", name(bin_path), name(&out)))
 }
 
@@ -214,27 +213,32 @@ fn py_to_bin(py_path: &Path) -> Result<String, String> {
 
     // AUTO-CAPTURE the reverse-map from the .py itself: THIS is the one moment
     // both a name and its hash are known, because `text_to_bin` just did the
-    // hashing. For any hash no dictionary can reverse-resolve — a REPATHED or
-    // custom name invented by this mod — we embed `hash -> name` as a trailer so
-    // it is never "gone forever" once the bin holds only the hash. Vanilla names
-    // are NOT embedded: the shared hashtable already resolves them, so the
-    // trailer stays tiny.
+    // hashing. For any hash no dictionary can reverse-resolve (a REPATHED or
+    // custom name invented by this mod) the pair has to be written down, or it is
+    // gone for good once the bin holds only the hash. Vanilla names are skipped:
+    // the shared hashtable already resolves them.
     //
     // The parsed TREE is passed too, so matching is done against the hashes the
     // bin really contains rather than by guessing at the text's syntax.
     let map = hash_capture::capture_unresolvable_paths(&text, &tree);
-    let bytes = bin_trailer::append_trailer(&body, &map);
 
-    std::fs::write(&out, bytes).map_err(|e| e.to_string())?;
+    // The bin is written CLEAN. Quartz no longer appends the hash->path trailer:
+    // trailing bytes after a bin's declared end are not part of the format, so every
+    // other tool has to strip them, a reserialization silently drops them anyway, and
+    // one measured file grew 40%. `files.txt` below carries the same record beside the
+    // mod, where nothing has to know about it to stay correct.
+    //
+    // Reads are kept (see `read_trailer` callers) so a bin that already carries one
+    // still resolves its custom paths.
+    std::fs::write(&out, body).map_err(|e| e.to_string())?;
 
-    /* And the same paths at the mod root, as `files.txt`.
-       The trailer lives INSIDE the bin, so it is lost the moment any other tool
-       reserializes the file — and then a custom path is unrecoverable, because
-       it exists in no dictionary by definition. A plain list beside the mod
-       survives that, needs no bin parsing to read, and is the format Quartz's
-       repath already writes. Merged, not overwritten: a bin is converted one at
-       a time, and rewriting the file per conversion would drop every other
-       bin's paths. */
+    /* The captured paths, at the mod root, as `files.txt`. This is now the ONLY
+       record: a trailer lived inside the bin and was lost the moment any other tool
+       reserialized the file, and then a custom path was unrecoverable, because it
+       exists in no dictionary by definition. A plain list beside the mod survives
+       that, needs no bin parsing to read, and is the format Quartz's repath already
+       writes. Merged, not overwritten: a bin is converted one at a time, and
+       rewriting the file per conversion would drop every other bin's paths. */
     if !map.is_empty() {
         merge_into_files_txt(&out, &map);
     }

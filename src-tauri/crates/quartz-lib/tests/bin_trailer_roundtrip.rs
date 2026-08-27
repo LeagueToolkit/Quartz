@@ -5,6 +5,11 @@
 //! in no dictionary) survives a write -> read cycle, because the bumped path is
 //! embedded in the bin's trailer and read back out.
 //!
+//! LEGACY-COMPAT. Quartz no longer WRITES trailers (the record lives in `files.txt`
+//! beside the mod), so this covers the read path only: a bin that already carries one,
+//! written by an older Quartz or another tool, must keep resolving its custom paths.
+//! The writer is called here to produce that input, not because anything ships it.
+//!
 //! Uses the real extracted skin0.bin when present; otherwise a synthetic bin.
 
 use quartz_lib::bin::bin_trailer;

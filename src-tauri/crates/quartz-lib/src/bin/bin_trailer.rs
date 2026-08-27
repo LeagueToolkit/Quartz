@@ -63,6 +63,15 @@ pub fn strip_trailer(bytes: &[u8]) -> &[u8] {
 /// Append (or replace) the reverse-map trailer on a bin body. `body` should be a
 /// freshly-serialized bin (no existing trailer); any existing trailer is stripped
 /// first so re-embedding is idempotent. An empty map writes no trailer.
+///
+/// LEGACY. Quartz no longer writes trailers anywhere: trailing bytes past a bin's
+/// declared end are not part of the format, so every other tool had to strip them, a
+/// reserialization silently dropped them anyway, and one measured file grew 40%. The
+/// hash->path record lives in `files.txt` beside the mod instead.
+///
+/// Kept so [`read_trailer`] and [`strip_trailer`] can be tested against real output,
+/// and because bins already carrying a trailer must keep resolving. Do not call it
+/// from a write path.
 pub fn append_trailer(body: &[u8], map: &HashMap<String, String>) -> Vec<u8> {
     let base = strip_trailer(body);
     if map.is_empty() {
